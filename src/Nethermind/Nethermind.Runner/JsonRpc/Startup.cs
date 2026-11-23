@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.IO.Pipelines;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -18,7 +16,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
@@ -39,6 +36,7 @@ using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Hosting;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring;
@@ -108,7 +106,7 @@ public class Startup : IStartup
                 .Select(static u => u.Port)
                 .ToHashSet();
 
-        services.AddSingleton<IMemoryPoolFactory<byte>, TransportMemoryPoolFactory>();
+        services.AddJsonRpcTransportMemoryPool();
         services.Configure<KestrelServerOptions>(options =>
         {
             options.AddServerHeader = false;
@@ -515,11 +513,11 @@ public class Startup : IStartup
 
         long? contentLength = ctx.Request.ContentLength;
         long? effectiveMaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize ?? _jsonRpcConfig.MaxRequestBodySize;
-        CollectedHttpBody collectedBody = new();
+        JsonRpcRequestBody collectedBody = new();
         HttpJsonRpcResponseSink? responseSink = null;
         try
         {
-            await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
+            await collectedBody.ReadAsync(ctx, contentLength, effectiveMaxRequestBodySize, ctx.RequestAborted);
             JsonRpcContext jsonRpcContext = new(RpcEndpoint.Http, url: jsonRpcUrl)
             {
                 RemoteAddress = ctx.Connection.RemoteIpAddress,
@@ -592,179 +590,9 @@ public class Startup : IStartup
         }
     }
 
-    private static async ValueTask CollectHttpRequestBodyAsync(
-        HttpContext context,
-        long? contentLength,
-        long? maxRequestBodySize,
-        CollectedHttpBody collectedBody,
-        CancellationToken cancellationToken)
-    {
-        const int MissingContentLengthInitialCapacity = 4096;
-
-        if (contentLength is > 0 &&
-            maxRequestBodySize is not null &&
-            contentLength.Value > maxRequestBodySize.Value)
-        {
-            ThrowRequestBodyTooLarge(maxRequestBodySize.Value);
-        }
-
-        if (contentLength is > 0 and <= int.MaxValue)
-        {
-            collectedBody.EnsureExactCapacity((int)contentLength.Value);
-        }
-        else if (contentLength is null or > int.MaxValue)
-        {
-            collectedBody.SetInitialCapacity(MissingContentLengthInitialCapacity);
-        }
-
-        PipeReader bodyReader = context.Request.BodyReader;
-        try
-        {
-            while (true)
-            {
-                ReadResult readResult;
-                try
-                {
-                    readResult = await bodyReader.ReadAsync(cancellationToken);
-                }
-                catch (IOException e) when (e.GetType() == typeof(IOException))
-                {
-                    // Kestrel reports some malformed bodies (e.g. a chunk-size line overflowing Int32) as a *bare*
-                    // IOException; without this it escapes as an unhandled 500 instead of a framed 400.
-                    //
-                    // The exact-type test is deliberate. Everything Kestrel surfaces from the body pipe derives from
-                    // IOException, including BadHttpRequestException (already handled below) and the genuine
-                    // transport failures - ConnectionResetException, a mid-body TLS or stream error, an IOException
-                    // wrapping a socket error. Reframing those as a client error would blame the caller for a
-                    // dropped connection and, because the handler below logs at Debug, would leave a real I/O
-                    // failure with no trace at default log level. They keep propagating instead.
-                    //
-                    // The message is a constant on purpose, even though the handler below no longer echoes an
-                    // arbitrary one: the real transport-layer message stays on the inner exception, which
-                    // LogBadRequest writes at Debug.
-                    throw new Microsoft.AspNetCore.Http.BadHttpRequestException(MalformedRequestBodyMessage, StatusCodes.Status400BadRequest, e);
-                }
-
-                ReadOnlySequence<byte> buffer = readResult.Buffer;
-
-                long newBytesRead = collectedBody.BytesRead + buffer.Length;
-                if (maxRequestBodySize is not null && newBytesRead > maxRequestBodySize)
-                {
-                    ThrowRequestBodyTooLarge(maxRequestBodySize.Value);
-                }
-
-                if (newBytesRead > int.MaxValue)
-                {
-                    ThrowRequestBodyTooLarge(maxRequestBodySize ?? int.MaxValue);
-                }
-
-                collectedBody.Append(buffer);
-                bodyReader.AdvanceTo(buffer.End);
-
-                if (readResult.IsCompleted || readResult.IsCanceled)
-                {
-                    break;
-                }
-            }
-        }
-        finally
-        {
-            await bodyReader.CompleteAsync();
-        }
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowRequestBodyTooLarge(long maxRequestBodySize) =>
-            throw new Microsoft.AspNetCore.Http.BadHttpRequestException(
-                $"Request body too large. The max request body size is {maxRequestBodySize} bytes.",
-                StatusCodes.Status413PayloadTooLarge);
-    }
-
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void LogBadRequest(ILogger logger, Exception e) =>
         logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
 
-    private sealed class CollectedHttpBody : IDisposable
-    {
-        private const int DefaultInitialCapacity = 256;
 
-        private byte[]? _buffer;
-        private int _initialCapacity = DefaultInitialCapacity;
-
-        public int BytesRead { get; private set; }
-
-        public ReadOnlyMemory<byte> Memory =>
-            _buffer is null ? ReadOnlyMemory<byte>.Empty : _buffer.AsMemory(0, BytesRead);
-
-        public void SetInitialCapacity(int initialCapacity)
-        {
-            if (_buffer is null && initialCapacity > _initialCapacity)
-            {
-                _initialCapacity = initialCapacity;
-            }
-        }
-
-        public void EnsureExactCapacity(int capacity)
-        {
-            if (capacity <= 0 || _buffer?.Length >= capacity)
-            {
-                return;
-            }
-
-            RentCapacity(capacity);
-        }
-
-        public void EnsureCapacity(int minCapacity)
-        {
-            if (minCapacity <= 0 || _buffer?.Length >= minCapacity)
-            {
-                return;
-            }
-
-            int newCapacity = _buffer is null ? _initialCapacity : _buffer.Length;
-            while (newCapacity < minCapacity)
-            {
-                newCapacity = newCapacity <= Array.MaxLength / 2 ? newCapacity * 2 : minCapacity;
-            }
-
-            RentCapacity(newCapacity);
-        }
-
-        private void RentCapacity(int newCapacity)
-        {
-            byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newCapacity);
-            if (_buffer is not null)
-            {
-                _buffer.AsSpan(0, BytesRead).CopyTo(newBuffer);
-                ArrayPool<byte>.Shared.Return(_buffer);
-            }
-
-            _buffer = newBuffer;
-        }
-
-        public void Append(ReadOnlySequence<byte> sequence)
-        {
-            int sequenceLength = (int)sequence.Length;
-            if (sequenceLength == 0)
-            {
-                return;
-            }
-
-            int newLength = BytesRead + sequenceLength;
-            EnsureCapacity(newLength);
-            sequence.CopyTo(_buffer!.AsSpan(BytesRead, sequenceLength));
-            BytesRead = newLength;
-        }
-
-        public void Dispose()
-        {
-            if (_buffer is null)
-            {
-                return;
-            }
-
-            ArrayPool<byte>.Shared.Return(_buffer);
-            _buffer = null;
-            BytesRead = 0;
-        }
-    }
 }

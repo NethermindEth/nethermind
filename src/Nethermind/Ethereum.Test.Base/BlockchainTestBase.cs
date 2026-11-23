@@ -53,7 +53,7 @@ using Nethermind.Core.Collections;
 
 namespace Ethereum.Test.Base;
 
-public abstract class BlockchainTestBase
+public abstract partial class BlockchainTestBase
 {
     private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
@@ -233,11 +233,10 @@ public abstract class BlockchainTestBase
 
         try
         {
-            BlockHeader parentHeader;
             string lastPayloadStatus = "";
             string? lastValidationError = null;
             string? asyncBlockError = null;
-            parentHeader = ProcessGenesis(test, specProvider, stateProvider, blockchainProcessor, blockTree, blockDecoder, stopwatch);
+            BlockHeader parentHeader = ProcessGenesis(test, stateProvider, specProvider, blockDecoder, blockTree, blockchainProcessor, stopwatch);
 
             List<string> engineWitnessDifferences = [];
             if (test.Blocks is not null)
@@ -380,8 +379,8 @@ public abstract class BlockchainTestBase
 
         try
         {
-            Hash256 genesisHash = ProcessGenesis(group, specProvider, stateProvider,
-                (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor, blockTree, container.Resolve<BlockDecoder>(), null).Hash!;
+            Hash256 genesisHash = ProcessGenesis(group, stateProvider, specProvider, container.Resolve<BlockDecoder>(), blockTree,
+                (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor, null).Hash!;
             (IJsonRpcService rpcService, JsonRpcContext rpcContext) = CreateEngineRpc(container);
 
             int payloads = 0;
@@ -560,8 +559,11 @@ public abstract class BlockchainTestBase
         return containerBuilder;
     }
 
-    private static BlockHeader ProcessGenesis(BlockchainTest test, ISpecProvider specProvider, IWorldState stateProvider,
-        BlockchainProcessor blockchainProcessor, IBlockTree blockTree, BlockDecoder blockDecoder, Stopwatch? stopwatch)
+    /// <summary>
+    /// Sets up the test's pre-state, then suggests its genesis block and waits until the block is the head.
+    /// </summary>
+    /// <returns>The genesis block header.</returns>
+    private static BlockHeader ProcessGenesis(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider, BlockDecoder blockDecoder, IBlockTree blockTree, BlockchainProcessor blockchainProcessor, Stopwatch? stopwatch)
     {
         using (stateProvider.BeginScope(null))
         {

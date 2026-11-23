@@ -13,7 +13,7 @@ on:
   workflow_call:
     inputs:
       test_types:
-        description: Comma-separated test types to run (engineTest, engineXTest, blockTest, stateTest, syncTest, txTest)
+        description: Comma-separated test types to run (engineTest, engineXTest, blockTest, stateTest, syncTest, engineReorgTest, txTest)
         required: false
         default: engineTest
         type: string
@@ -65,7 +65,7 @@ on:
         default: ''
         type: string
       test_types:
-        description: Comma-separated test types (engineTest, engineXTest, blockTest, stateTest, syncTest, txTest)
+        description: Comma-separated test types (engineTest, engineXTest, blockTest, stateTest, syncTest, engineReorgTest, txTest)
         required: false
         default: engineTest
         type: string
@@ -308,6 +308,16 @@ jobs:
                   emit "$type" flat_sequential full 1 false false 4 1
                 fi
                 ;;
+              engineReorgTest)
+                # Reorgs roll the state back and forth, so both layouts run, with the client's default BAL
+                # execution. One chunk runs the whole set in about a minute.
+                if run_sequential; then
+                  emit "$type" sequential full '' '' '' 4 1
+                fi
+                if run_flat; then
+                  emit "$type" flat_sequential full 1 '' '' 4 1
+                fi
+                ;;
               txTest)
                 # Raw-tx validation touches neither the state layout nor block execution,
                 # so it only runs in the sequential group (flat would be a duplicate).
@@ -487,6 +497,7 @@ jobs:
             stateTest)  FIXTURE_NAME=state_tests;             RUNNER_FLAG=--stateTest ;;
             # Sync fixtures use the engine-payload format; run them through the engine harness.
             syncTest)   FIXTURE_NAME=blockchain_tests_sync;   RUNNER_FLAG=--engineTest ;;
+            engineReorgTest) FIXTURE_NAME=blockchain_tests_engine_reorg; RUNNER_FLAG=--engineReorgTest ;;
             txTest)     FIXTURE_NAME=transaction_tests;       RUNNER_FLAG=--txTest ;;
             # The zkEVM archive ships blockchain-test-shaped fixtures with stateless bytes.
             zkevmTest)  FIXTURE_NAME=blockchain_tests;        RUNNER_FLAG=--zkevmTest ;;

@@ -194,6 +194,9 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
 
         try
         {
+            if (test is EngineReorgTest engineReorgTest)
+                return await RunEngineReorgTest(engineReorgTest);
+
             if (!_trace)
                 return await RunTest(test, rejections: rejections);
 

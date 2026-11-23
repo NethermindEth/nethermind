@@ -126,6 +126,24 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
     }
 
+    [TestCase("null", SimulateErrorMessages.NullBlock)]
+    [TestCase("{\"calls\":[null]}", SimulateErrorMessages.NullCall)]
+    public async Task Simulate_rejects_null_blocks_and_calls(string blockStateCall, string expectedMessage)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonElement payload = SimulatePayloadJson(blockStateCall);
+
+        string response = await chain.TestEthRpc("eth_simulateV1", payload, "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement error = document.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo(expectedMessage), response);
+        }
+    }
+
     private const string ConflictingStorage = "\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"state\":{},\"stateDiff\":{}}}";
     private const string MixedFeeCalls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gasPrice\":\"0x1\",\"maxFeePerGas\":\"0x2\"}]";
 
