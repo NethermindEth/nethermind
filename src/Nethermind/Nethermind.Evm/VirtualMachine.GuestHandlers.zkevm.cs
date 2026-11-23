@@ -3155,6 +3155,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     goto Dispatch;
                 }
 
+                // CALL reaches here without value.
+                if (TOpCall.ExecutionType is ExecutionType.STATICCALL or ExecutionType.CALL && codeInfo.Precompile is { } precompile &&
+                    vm.TryRunPrecompileInCaller(precompile, target, ref policy, childGas, in dataOffset, in dataLength, in outputOffset, in outputLength, out bool succeeded))
+                {
+                    SetWord(ref status, succeeded ? 1UL : 0UL);
+                    head++;
+                    goto Dispatch;
+                }
+
                 stack.Head = head;
                 EvmExceptionType result = EvmInstructions.CreateFullCallFrame<TGasPolicy, TOpCall, OffFlag, OffFlag>(
                     vm, ref stack, ref policy, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller,

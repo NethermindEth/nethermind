@@ -1460,23 +1460,39 @@ public class GuestDispatchDifferentialTests
             .. Call(op, noCode, 0x20, 0x20, 0, 0x20, value),
             // A non-zero input byte shows where the precompile reads and writes.
             (byte)Instruction.PUSH1, 0xff, (byte)Instruction.PUSH1, 0x10, (byte)Instruction.MSTORE,
-            .. Call(op, last, 0x10, 0x20, 0xe0, 0x20, value),
+            // A marker in the half of the input the output window keeps; the window cuts the precompile's output.
+            (byte)Instruction.PUSH1, 0xee, (byte)Instruction.PUSH1, 0x10, (byte)Instruction.MSTORE8,
+            .. Call(op, last, 0x10, 0x20, 0xe0, 0x10, value),
+            (byte)Instruction.RETURNDATASIZE,
             (byte)Instruction.STOP
         ];
         const ulong ample = 100_000;
-        ulong needed = ample - Run(ample, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository).GasLeft;
+        bool onFrameGas = target == CallTarget.Precompile;
+        // A state-gas reservoir shows that a failed precompile call gives it back to the caller.
+        EthereumGasPolicy? Funded(ulong gas) => onFrameGas && spec.IsEip8037Enabled ? EthereumGasPolicy.FromULong(gas) with { StateReservoir = 1000 } : null;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(program), Table.Cancelable, spec, returnData: [], isStatic: isStatic, initial: Funded(ample), codeInfoRepository: repository, onFrameGas: onFrameGas).GasLeft;
 
         List<string> mismatches = [];
-        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        // Ample gas too: only above the need does a call leave its frame gas to refund.
+        foreach (ulong gas in Enumerable.Range(0, (int)needed + 1).Select(static gas => (ulong)gas).Append(ample))
         {
-            Outcome untraced = Run(gas, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository);
-            Outcome shared = Run(gas, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository);
+            if (mismatches.Count >= 5) break;
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(program), Table.Untraced, spec, returnData: [], isStatic: isStatic, initial: Funded(gas), codeInfoRepository: repository, onFrameGas: onFrameGas);
+            Outcome shared = Run(gas, [], 0, new CodeInfo(program), Table.Cancelable, spec, returnData: [], isStatic: isStatic, initial: Funded(gas), codeInfoRepository: repository, onFrameGas: onFrameGas);
+            if (target == CallTarget.Precompile)
+            {
+                // The guest handler runs a value-less precompile call in the caller, with no frame snapshot; the shared
+                // handler's snapshot frames no state change, so only the calls between them are compared.
+                untraced = untraced with { WorldStateCalls = WithoutSnapshots(untraced.WorldStateCalls) };
+                shared = shared with { WorldStateCalls = WithoutSnapshots(shared.WorldStateCalls) };
+            }
+
             // A frame entered is not a fault: the gas, stack and counter it leaves the caller at must match too.
             if (untraced.Exception == EvmExceptionType.Suspend ? untraced != shared : !Matches(untraced, shared))
                 mismatches.Add($"gas {gas}\n untraced {untraced}\n shared   {shared}");
         }
 
-        Outcome complete = Run(needed, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository);
+        Outcome complete = Run(needed, [], 0, new CodeInfo(program), Table.Untraced, spec, returnData: [], isStatic: isStatic, initial: Funded(needed), codeInfoRepository: repository, onFrameGas: onFrameGas);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mismatches, Is.Empty);
@@ -1484,6 +1500,9 @@ public class GuestDispatchDifferentialTests
                 isStatic && op == Instruction.CALL ? EvmExceptionType.StaticCallViolation
                 : EvmExceptionType.Stop));
         }
+
+        static string WithoutSnapshots(string calls) =>
+            string.Join("; ", calls.Split("; ").Where(static call => !call.StartsWith("TakeSnapshot(") && !call.StartsWith("Restore(")));
 
         static byte[] Call(Instruction op, Address to, byte inputOffset, byte inputLength, byte outputOffset, byte outputLength, byte value) =>
         [
@@ -1721,10 +1740,11 @@ public class GuestDispatchDifferentialTests
     /// <param name="initial">The frame's full policy, whose execution gas must be <paramref name="gas"/>; by default one holding only it.</param>
     /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
     /// <param name="txContext">The transaction's context, which holds the versioned blob hashes; without it BLOBHASH runs as INVALID.</param>
+    /// <param name="onFrameGas">Runs the chain on the frame's gas, which a precompile call run in a frame refunds, as the dispatch loop does; a nested code frame needs the frame loop instead.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
         bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
         ICodeInfoRepository? codeInfoRepository = null, BlockExecutionContext? context = null, TxExecutionContext? txContext = null,
-        FrameTxContext? frameTxContext = null, bool advanceFrameAfterWrite = false, UInt256? balance = null)
+        FrameTxContext? frameTxContext = null, bool advanceFrameAfterWrite = false, UInt256? balance = null, bool onFrameGas = false)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         if (context is { } blockContext)
@@ -1796,6 +1816,9 @@ public class GuestDispatchDifferentialTests
 
         // On the heap, so the state that refers to it can be handed to a function pointer, whose parameters cannot be scoped.
         EthereumGasPolicy[] gasPolicy = [initial ?? EthereumGasPolicy.FromULong(gas)];
+        // The frame's own gas instead, as the dispatch loop runs a frame on, where a precompile call run in a frame refunds.
+        if (onFrameGas) frame.Gas = gasPolicy[0];
+        ref EthereumGasPolicy chainGas = ref onFrameGas ? ref frame.Gas : ref gasPolicy[0];
         EvmExceptionType exception;
         nint pc;
         nint finalHead;
@@ -1807,7 +1830,7 @@ public class GuestDispatchDifferentialTests
             EvmStack stack = new(head, vm.Tracer, ref stackBytes[start], codeInfo.ExecutionCodeSpan, codeInfo);
             if ((spec ?? ReleaseSpec).IsEip7979Enabled) stack.UseCallDestinations();
             stack.HoistInputData(inputData);
-            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = entries, Vm = vm, Memory = ref frame.Memory };
+            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref chainGas, OpcodeHandlers = entries, Vm = vm, Memory = ref frame.Memory };
             exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
                 entries[Unsafe.ReadUnaligned<ushort>(ref stack.Code)])(ref stack, gas, ref state, ref stack.Code, stack.Head, entries, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
             pc = state.FinalProgramCounter;
@@ -1827,7 +1850,7 @@ public class GuestDispatchDifferentialTests
         string worldStateCalls = string.Join("; ", stateSubstitute.ReceivedCalls().Select(static call =>
             $"{call.GetMethodInfo().Name}({string.Join(", ", call.GetArguments().Where((_, i) => !call.GetParameterInfos()[i].IsOut))})"));
         if (balanceState is not null) worldStateCalls += $"; balance reads: {balanceState.Reads}";
-        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0], frame.Refund, worldStateCalls);
+        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in chainGas), pc, finalHead, stackHex, memoryHex, size, chainGas, frame.Refund, worldStateCalls);
     }
 
     /// <summary>The value every test world state holds at <paramref name="key"/> when the transaction starts.</summary>
