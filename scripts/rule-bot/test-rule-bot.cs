@@ -6,7 +6,6 @@
 #:include rule-bot.helpers.cs
 
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using Obj = System.Collections.Generic.OrderedDictionary<string, object?>;
 using static RuleBot;
 using static RuleBotTestSupport;
@@ -511,7 +510,16 @@ return 0;
 
 static class RuleBotTestSupport
 {
-    internal static string ScriptDirectory([CallerFilePath] string path = "") => Path.GetDirectoryName(path)!;
+    internal static string ScriptDirectory()
+    {
+        for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)
+        {
+            var candidate = Path.Combine(directory.FullName, "scripts", "rule-bot");
+            if (File.Exists(Path.Combine(candidate, "routes.json"))) return candidate;
+        }
+
+        throw new DirectoryNotFoundException("scripts/rule-bot not found above the current directory");
+    }
     internal static Obj O(object? value) => (Obj)value!;
     internal static Func<Task> Sync(Action body) => () => { body(); return Task.CompletedTask; };
     internal static void True(bool condition) { if (!condition) throw new InvalidOperationException("expected true"); }
