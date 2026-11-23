@@ -129,21 +129,17 @@ public class EthSimulateTestsBlocksAndTransactions
     private const string ConflictingStorage = "\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"state\":{},\"stateDiff\":{}}}";
     private const string MixedFeeCalls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gasPrice\":\"0x1\",\"maxFeePerGas\":\"0x2\"}]";
 
-    [TestCase("null", "Simulated blocks must not be null.")]
-    [TestCase("""{"calls":[null]}""", "Simulated calls must not be null.")]
-    public async Task Simulate_rejects_null_entries(string blockStateCall, string expectedMessage)
+    [TestCase("null", "{}")]
+    [TestCase("""{"calls":[null]}""", """{"calls":[{}]}""")]
+    public async Task Simulate_treats_null_entries_as_empty_objects(string blockStateCall, string equivalentCall)
     {
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(blockStateCall), "latest");
 
-        using JsonDocument document = JsonDocument.Parse(response);
-        JsonElement error = document.RootElement.GetProperty("error");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
-            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo(expectedMessage), response);
-        }
+        string expected = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(equivalentCall), "latest");
+
+        Assert.That(response, Is.EqualTo(expected));
     }
 
     [Test]
@@ -160,11 +156,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         using JsonDocument document = JsonDocument.Parse(response);
         JsonElement error = document.RootElement.GetProperty("error");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput), response);
-            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("Storage override values must not be null."), response);
-        }
+        Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
     }
 
     [TestCase("{" + ConflictingStorage + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides in a block without calls")]

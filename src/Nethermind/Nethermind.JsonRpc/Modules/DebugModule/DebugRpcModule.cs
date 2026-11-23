@@ -228,7 +228,7 @@ public class DebugRpcModule(
                     if (moveError is not null)
                         return ResultWrapper<GethLikeTxTrace>.Fail(moveError, ErrorCodes.InvalidInput);
                 }
-                if (StateOverrideValidation.GetStorageError(address, accountOverride) is { } storageError)
+                if (StateOverrideValidation.GetStorageConflictError(address, accountOverride) is { } storageError)
                     return ResultWrapper<GethLikeTxTrace>.Fail(storageError, ErrorCodes.InvalidInput);
             }
         }
@@ -1332,7 +1332,7 @@ public class DebugRpcModule(
         if (bundles.Any(static b => b.BlockOverride?.Withdrawals is not null))
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput);
 
-        if (StateOverrideValidation.GetStorageError(options?.StateOverrides) is { } storageError)
+        if (StateOverrideValidation.GetStorageConflictError(options?.StateOverrides) is { } storageError)
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
 
         if (options?.TxIndex is not null) options = options with { TxIndex = null };
@@ -1425,7 +1425,7 @@ public class DebugRpcModule(
         {
             foreach (TransactionBundle bundle in bundles)
             {
-                if (StateOverrideValidation.GetStorageError(bundle.StateOverrides) is { } storageError)
+                if (StateOverrideValidation.GetStorageConflictError(bundle.StateOverrides) is { } storageError)
                     return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
             }
 

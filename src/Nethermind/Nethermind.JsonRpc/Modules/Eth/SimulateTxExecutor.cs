@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -47,7 +46,7 @@ public class SimulateTxExecutor<TTrace>(
             foreach (BlockStateCall<TransactionForRpc> blockStateCall in call.BlockStateCalls)
             {
                 // As in Geth, a block's state overrides are validated before its calls.
-                if (StateOverrideValidation.GetStorageError(blockStateCall.StateOverrides) is { } storageError)
+                if (StateOverrideValidation.GetStorageConflictError(blockStateCall.StateOverrides) is { } storageError)
                     return storageError;
 
                 TransactionWithSourceDetails[]? calls = null;
@@ -121,23 +120,11 @@ public class SimulateTxExecutor<TTrace>(
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
 
-        foreach (BlockStateCall<TransactionForRpc>? block in call.BlockStateCalls)
-        {
-            if (block is null)
-                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Simulated blocks must not be null.", ErrorCodes.InvalidParams);
-        }
-
         string? callsLimitError = GetCallsLimitError(call.BlockStateCalls);
         if (callsLimitError is not null)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(callsLimitError, ErrorCodes.ClientLimitExceededError);
 
-        foreach (BlockStateCall<TransactionForRpc> block in call.BlockStateCalls)
-        {
-            if (block.Calls is { } calls && Array.IndexOf(calls, null) >= 0)
-                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Simulated calls must not be null.", ErrorCodes.InvalidParams);
-        }
-
-        if (StateOverrideValidation.GetStorageError(stateOverride) is { } storageError)
+        if (StateOverrideValidation.GetStorageConflictError(stateOverride) is { } storageError)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
 
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);

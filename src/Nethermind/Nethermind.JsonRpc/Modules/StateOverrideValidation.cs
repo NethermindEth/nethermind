@@ -12,23 +12,21 @@ namespace Nethermind.JsonRpc.Modules;
 internal static class StateOverrideValidation
 {
     /// <summary>
-    /// Returns the error for conflicting storage fields or a missing storage value.
+    /// Returns the error for conflicting storage fields.
     /// </summary>
-    public static string? GetStorageError(Address address, AccountOverride? accountOverride)
+    public static string? GetStorageConflictError(Address address, AccountOverride? accountOverride)
     {
         if (accountOverride is { State: not null, StateDiff: not null })
             return $"account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'";
 
-        return accountOverride?.State?.ContainsValue(null!) == true || accountOverride?.StateDiff?.ContainsValue(null!) == true
-            ? "Storage override values must not be null."
-            : null;
+        return null;
     }
 
     /// <summary>
     /// Returns the storage error for the lowest invalid address in <paramref name="overrides"/>.
     /// </summary>
     /// <remarks>Geth applies overrides in ascending address order and stops at the first conflict.</remarks>
-    public static string? GetStorageError(Dictionary<Address, AccountOverride>? overrides)
+    public static string? GetStorageConflictError(Dictionary<Address, AccountOverride>? overrides)
     {
         if (overrides is null) return null;
 
@@ -36,7 +34,7 @@ internal static class StateOverrideValidation
         string? error = null;
         foreach ((Address address, AccountOverride? accountOverride) in overrides)
         {
-            if ((lowest is null || address.CompareTo(lowest) < 0) && GetStorageError(address, accountOverride) is { } storageError)
+            if ((lowest is null || address.CompareTo(lowest) < 0) && GetStorageConflictError(address, accountOverride) is { } storageError)
             {
                 lowest = address;
                 error = storageError;
@@ -64,7 +62,7 @@ internal static class StateOverrideValidation
                 && StateOverridesExtensions.GetPrecompileMoveError(address, destination, spec.IsPrecompile(address), overrides) is { } moveError)
                 return moveError;
 
-            if (GetStorageError(address, accountOverride) is { } storageError)
+            if (GetStorageConflictError(address, accountOverride) is { } storageError)
                 return storageError;
         }
 
