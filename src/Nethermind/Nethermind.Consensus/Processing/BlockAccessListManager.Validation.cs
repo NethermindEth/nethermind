@@ -264,7 +264,7 @@ public partial class BlockAccessListManager
                 continue;
             }
 
-            bool hasChargeableReads = !IsSystemContract(address) && gen.HasStorageReadsForOrdinal(ordinal);
+            bool hasChargeableReads = index == 0 && address == Address.SystemUser && gen.HasStorageReadsForOrdinal(ordinal);
             if (IsToleratedGeneratedOnlyAccount(address, index, hasNoChangesAtIndex: !gen.Lanes.HasAt(row, ordinal), hasChargeableReads)) continue;
 
             ThrowMissingAccountChanges(block, address, index);
