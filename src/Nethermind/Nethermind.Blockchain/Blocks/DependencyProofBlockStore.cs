@@ -15,7 +15,7 @@ namespace Nethermind.Blockchain.Blocks;
 /// Blocks read back carry no proof, so cached blocks stay small. The proof is written before the body and deleted after it,
 /// so an interrupted write or delete leaves an unread proof without a body rather than a body without its proof.
 /// </remarks>
-public sealed class DependencyProofSplittingBlockStore(IBlockStore blockStore, IDependencyProofStore proofStore) : IBlockStore, IClearableCache
+public sealed class DependencyProofBlockStore(IBlockStore blockStore, IDependencyProofStore proofStore) : IBlockStore, IClearableCache
 {
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {

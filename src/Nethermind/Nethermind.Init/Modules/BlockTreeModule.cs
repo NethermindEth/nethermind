@@ -38,7 +38,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IBadBlockStore, IDb, IInitConfig, IHeaderDecoder, ILogManager>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBalStore)
             .AddSingleton<IDependencyProofStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateDependencyProofStore)
-            .AddDecorator<IBlockStore, DependencyProofSplittingBlockStore>()
+            .AddDecorator<IBlockStore, DependencyProofBlockStore>()
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
             .AddSingleton<IBlobCustodyTracker, BlobCustodyTracker>()
