@@ -17,6 +17,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.LightClient.Rpc;
 using Nethermind.LightClient;
 using Nethermind.LightClient.Consensus;
+using Nethermind.LightClient.Eez;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Logging.NLog;
 using Nethermind.Network;
@@ -59,6 +60,7 @@ if (Array.Exists(args, static arg => arg is "--help" or "-h"))
         "          --data-dir src/Nethermind/artifacts/lightclient\n" +
         "          --beacon-port 9050 --beacon-quic-port 9051 (0 disables QUIC) --execution-port 30307\n" +
         "          --host-accounts <0xaddress,0xaddress,...> (complete account state retained in RAM)\n" +
+        EezLightClientExtension.Help +
         "          --send-policy-rules <path> (refuse eth_sendRawTransaction that breaks the SendPolicy rule file)\n" +
         "          --log-level Trace|Debug|Info|Warn|Error|Fatal (default Info)\n" +
         "Mainnet needs --checkpoint or --checkpoint-url; Hoodi and Sepolia use EF-operated defaults.\n" +
@@ -147,9 +149,13 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         _ => throw new ArgumentException("Supported networks: mainnet, hoodi, sepolia, gnosis."),
     };
     Address[] hostedAccounts = HostedAccountState.ParseAccounts(builder.Configuration["host-accounts"]);
-    string? sendPolicyRules = builder.Configuration["send-policy-rules"];
-    SendPolicyRelay? sendPolicy = sendPolicyRules is null ? null : new(sendPolicyRules, chainId, logManager);
     (int beaconPort, int quicPort, int executionPort) = LightClientHost.ReadPorts(builder.Configuration);
+    EezLightClientOptions? eez = EezLightClientOptions.Read(builder.Configuration, beaconPort, quicPort, executionPort);
+    eez?.ValidateSettlementNetwork(network);
+    ulong rpcChainId = eez?.Settlement.ChainId ?? chainId;
+    ulong latestHeadMaxAgeSeconds = eez is null ? OptimisticHeadMaxAgeSeconds : FinalizedHeadMaxAgeSeconds;
+    string? sendPolicyRules = builder.Configuration["send-policy-rules"];
+    SendPolicyRelay? sendPolicy = sendPolicyRules is null ? null : new(sendPolicyRules, rpcChainId, logManager);
     string? checkpointValue = builder.Configuration["checkpoint"];
     string? checkpointCheckUrl = builder.Configuration["checkpoint-check-url"];
     string dataDirectory = builder.Configuration["data-dir"] ?? Path.Combine("src", "Nethermind", "artifacts", "lightclient");
@@ -163,8 +169,8 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     ulong CurrentSlot() => spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
     bool IsHeadFresh(VerifiedHead? snapshot, ulong maximumAgeSeconds) =>
         snapshot?.IsFresh(CurrentSlot(), maximumAgeSeconds / spec.SecondsPerSlot) ?? false;
-    LightClientStatus status = new(spec.ChainId, hostedAccounts,
-        latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds));
+    LightClientStatus status = new(rpcChainId, hostedAccounts,
+        latest => IsHeadFresh(latest, latestHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds));
     LightClientMetrics metrics = new(network, status.Read);
     string rpcUrl = LightClientHost.ReadRpcUrls(builder.Configuration);
     using RpcService rpcService = new(status, logManager);
@@ -178,6 +184,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     foreach (string value in rpcUrl.Split(';', StringSplitOptions.RemoveEmptyEntries))
     {
         BindingAddress address = BindingAddress.Parse(value);
+        eez?.ValidateRpcPort(address.Port);
         JsonRpcUrl listener = new(address.Scheme, address.Host, address.Port, RpcTransport.Http | RpcTransport.Ws,
             false, rpcService.Config.EnabledModules, RpcEndpoint.MaxRequestBodySize);
         listeners.Add(listener);
@@ -238,7 +245,9 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         bool redirected = Console.IsOutputRedirected;
         Console.Write(LightClientBanner.Render(network, rpcUrl, checkpoint.ToString(), redirected, beaconPort, executionPort));
         await using ExecutionPeerTransport execution = new(network, logManager,
-            dataDirectory: dataDirectory, hostedAccounts: hostedAccounts, port: executionPort);
+            dataDirectory: dataDirectory, hostedAccounts: eez is null ? hostedAccounts : null, port: executionPort);
+        await using EezLightClientExtension? rollup = eez is null ? null : new(eez, execution, dataDirectory, hostedAccounts, chainId, logManager, logger);
+        ExecutionPeerTransport served = rollup?.Transport ?? execution;
         status.SetStage(StartupStage.Beacon);
         using SemaphoreSlim consensusGate = new(1, 1);
         using ColumnsDb<BeaconChainDbColumns> beaconDb = BeaconPeerTransport.OpenPeerDb(dataDirectory, spec, logManager);
@@ -296,6 +305,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                 await execution.StartAsync(startupStop.Token);
                 logger.LogInformation("Execution P2P started; searching for SNAP peers via {Discovery}",
                     string.IsNullOrEmpty(execution.DiscoveryDomain) ? "discv4 + discv5 bootnodes" : execution.DiscoveryDomain);
+                if (rollup is not null) await rollup.StartAsync(startupStop.Token);
             }
             catch
             {
@@ -328,24 +338,27 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             await publisher.PublishFinalizedAsync(startupToken);
             logger.LogInformation("Finalized execution block {BlockNumber} verified", publisher.Heads.Finalized!.Number);
         }
-        VerifiedHead GetHead() =>
-            publisher.Heads.Finalized ?? throw new RpcException(-32000, "Waiting for an authenticated execution header.");
-        VerifiedHead? GetLatestHead() => publisher.Heads.Latest;
+        VerifiedHead? GetFinalizedHead() => rollup is null ? publisher.Heads.Finalized : rollup.Head;
+        VerifiedHead GetHead() => GetFinalizedHead() ?? throw new RpcException(-32000, "Waiting for an authenticated execution header.");
+        VerifiedHead? GetLatestHead() => rollup is null ? publisher.Heads.Latest : rollup.Head;
         VerifiedHead? GetFreshLatestHead()
         {
             VerifiedHead? snapshot = GetLatestHead();
-            return IsHeadFresh(snapshot, OptimisticHeadMaxAgeSeconds) ? snapshot : null;
+            return IsHeadFresh(snapshot, latestHeadMaxAgeSeconds) ? snapshot : null;
         }
-        using EvmExecutor calls = new(execution, execution.SpecProvider, logManager, secondsPerSlot: spec.SecondsPerSlot,
-            withdrawalProcessorFactory: execution.WithdrawalProcessorFactory);
-        using RpcBackend rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead,
-            latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
-            token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
-                () => optimisticRequests.Writer.TryWrite(true), token), blockForRpcFactory: execution.BlockForRpcFactory, sendPolicy: sendPolicy,
-            getExecutionPeerCount: () => execution.PeerCount, forkInfo: execution.ForkInfo,
-            getNextHeadChange: () => publisher.NextHeadChange);
-        RpcSubscriptions subscriptions = new(execution, rpc, processor, logger, logManager: logManager, secondsPerSlot: spec.SecondsPerSlot);
-        execution.TransactionAnnounced += subscriptions.PublishPendingTransaction;
+        using EvmExecutor calls = new(served, served.SpecProvider, logManager, secondsPerSlot: spec.SecondsPerSlot,
+            withdrawalProcessorFactory: served.WithdrawalProcessorFactory, executionRules: rollup?.CallRules);
+        using RpcBackend rpc = new(served, GetHead, rpcChainId, calls, served.SpecProvider, GetLatestHead,
+            latest => IsHeadFresh(latest, latestHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
+            rollup is null
+                ? token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
+                    () => optimisticRequests.Writer.TryWrite(true), token)
+                : null,
+            blockForRpcFactory: served.BlockForRpcFactory, sendPolicy: sendPolicy,
+            getExecutionPeerCount: () => served.PeerCount, forkInfo: served.ForkInfo,
+            getNextHeadChange: () => rollup?.NextHeadChange ?? publisher.NextHeadChange);
+        RpcSubscriptions subscriptions = new(served, rpc, processor, logger, logManager: logManager, secondsPerSlot: spec.SecondsPerSlot);
+        served.TransactionAnnounced += subscriptions.PublishPendingTransaction;
         ConsensusSync.Processor consensus = new(store, journal, spec, clock, consensusGate,
             PublishPersistedHeaders, lifetime.StopApplication, logger, lifetime.ApplicationStopping);
         bool rpcInitialized = false;
@@ -360,16 +373,16 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         {
             status.SetStage(StartupStage.Stopping);
             lifetime.StopApplication();
-            execution.TransactionAnnounced -= subscriptions.PublishPendingTransaction;
+            served.TransactionAnnounced -= subscriptions.PublishPendingTransaction;
             try { await subscriptions.DisposeAsync(); }
             finally { await app.StopAsync(CancellationToken.None); }
         }
 
         void InitializeRpc()
         {
-            if (rpcInitialized || publisher.Heads.Finalized is null) return;
-            status.Initialize(rpc, subscriptions.HandleAsync, GetLatestHead, () => publisher.Heads.Finalized,
-                execution.GetHostedAccountProgress, () => execution.LogHistoryProgress);
+            if (rpcInitialized || GetFinalizedHead() is null) return;
+            status.Initialize(rpc, subscriptions.HandleAsync, GetLatestHead, GetFinalizedHead,
+                served.GetHostedAccountProgress, () => served.LogHistoryProgress);
             rpcInitialized = true;
         }
 
@@ -392,7 +405,10 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             Task[] workers = [PollConsensusAsync(workersStop.Token), PublishConsensusAsync(workersStop.Token),
                 consensus.RunRecoveryLoopAsync(workersStop.Token),
                 ReportPeersAsync(workersStop.Token), beacon.GossipCompletion,
-                execution.HostAccountsAsync(GetFreshLatestHead, clock, workersStop.Token)];
+                served.HostAccountsAsync(GetFreshLatestHead, clock, workersStop.Token)];
+            if (rollup is not null)
+                workers = [.. workers, rollup.RunAsync(() => publisher.Heads.Finalized, PublishRpcHead,
+                    TimeSpan.FromSeconds(spec.SecondsPerSlot), clock, workersStop.Token)];
             await Task.WhenAny(workers);
             lifetime.StopApplication();
             await workersStop.CancelAsync();
@@ -419,7 +435,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
 
             void Observe(ConsensusPublisher.PublishedHeads snapshot)
             {
-                InitializeRpc();
+                if (rollup is null) InitializeRpc();
                 if (snapshot.Finalized is { } finalized && finalized != loggedFinalized)
                 {
                     logger.LogInformation("Finalized execution block {BlockNumber} verified", finalized.Number);
@@ -427,11 +443,10 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                 }
                 WarnIfStale(snapshot.Finalized, 30 * 60, "Finalized", ref finalizedWarning);
                 WarnIfStale(snapshot.Latest, OptimisticHeadMaxAgeSeconds, "Optimistic", ref optimisticWarning);
-                if (snapshot.Latest is { } observed && IsHeadFresh(observed, OptimisticHeadMaxAgeSeconds) &&
+                if (rollup is null && snapshot.Latest is { } observed && IsHeadFresh(observed, OptimisticHeadMaxAgeSeconds) &&
                     observed.BlockHash != subscriptionHash)
                 {
-                    subscriptions.PublishHead(observed);
-                    execution.NotifyHostedHeadChanged();
+                    PublishRpcHead(observed);
                     subscriptionHash = observed.BlockHash;
                 }
             }
@@ -450,6 +465,13 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                     kind, current?.Slot, current?.Number);
                 warning = (true, current);
             }
+        }
+
+        void PublishRpcHead(VerifiedHead head)
+        {
+            InitializeRpc();
+            subscriptions.PublishHead(head);
+            served.NotifyHostedHeadChanged();
         }
 
         async Task PollConsensusAsync(CancellationToken cancellationToken)
@@ -513,9 +535,10 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                 do
                 {
                     int beaconPeers = beacon.PeerCount, executionPeers = execution.PeerCount, snapPeers = execution.SnapPeerCount;
-                    metrics.SetPeers(beaconPeers, executionPeers, snapPeers);
+                    metrics.SetPeers(beaconPeers, served.PeerCount, served.SnapPeerCount);
                     logger.LogInformation("Peers: beacon {BeaconPeers}, execution {ExecutionPeers}, SNAP {SnapPeers} ({ExecutionCandidates} candidates, DNS {DnsStatus})",
                         beaconPeers, executionPeers, snapPeers, execution.CandidateCount, execution.DiscoveryStatus);
+                    rollup?.ReportPeers();
                 } while (await timer.WaitForNextTickAsync(cancellationToken));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }

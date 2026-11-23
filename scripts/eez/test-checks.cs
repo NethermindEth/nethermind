@@ -56,17 +56,28 @@ tests.Case("new_transitive_dependency_is_detected", () =>
     RpcScriptTests.Assert(EezChecks.Select(graph, ["src/Nethermind/Added/New.cs"], false).Live == "smoke",
         "New transitive dependencies must not require a manually updated path list.");
 });
-foreach (var project in new[] { "Nethermind.Core", "Nethermind.Eez.Prove", "Nethermind.Eez.Execution", "Nethermind.Eez.Attester" })
+foreach (var (project, dependency) in new (string, string)[]
 {
-    tests.Case("reject_reverse_dependency_" + project, () =>
+    ("Nethermind.Core", "Nethermind.Eez"),
+    ("Nethermind.Eez.Prove", "Nethermind.Eez"),
+    ("Nethermind.Eez.Execution", "Nethermind.Eez"),
+    ("Nethermind.Eez.Rpc", "Nethermind.Eez"),
+    ("Nethermind.Eez.Attester", "Nethermind.Eez"),
+    ("Nethermind.LightClient", "Nethermind.Eez"),
+    ("Nethermind.LightClient", "Nethermind.Eez.Attester"),
+    ("Nethermind.Eez", "Nethermind.LightClient"),
+    ("Nethermind.Runner", "Nethermind.LightClient"),
+})
+{
+    tests.Case($"reject_dependency_{project}_to_{dependency}", () =>
     {
         var graph = new Dictionary<string, string[]>(projects, StringComparer.Ordinal)
         {
-            [$"src/Nethermind/{project}/{project}.csproj"] = ["src/Nethermind/Nethermind.Eez/Nethermind.Eez.csproj"],
+            [$"src/Nethermind/{project}/{project}.csproj"] = [$"src/Nethermind/{dependency}/{dependency}.csproj"],
         };
         try { EezChecks.ValidateDependencies(graph); }
         catch (InvalidDataException) { return; }
-        throw new InvalidOperationException($"Forbidden dependency accepted for {project}.");
+        throw new InvalidOperationException($"Forbidden dependency accepted: {project} -> {dependency}.");
     });
 }
 var gate = CiWorkflow.Bodies(workflow, "Require every selected check").Single();

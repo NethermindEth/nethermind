@@ -29,6 +29,7 @@
     <Project Path="Nethermind.Eez.Test/Nethermind.Eez.Test.csproj" />
     <Project Path="Nethermind.Eez.Execution/Nethermind.Eez.Execution.csproj" />
     <Project Path="Nethermind.Eez.Prove/Nethermind.Eez.Prove.csproj" />
+    <Project Path="Nethermind.Eez.Rpc/Nethermind.Eez.Rpc.csproj" />
     <Project Path="Nethermind.Eez/Nethermind.Eez.csproj" />
   </Folder>
   <Folder Name="/Plugins/CensorshipDetector/">

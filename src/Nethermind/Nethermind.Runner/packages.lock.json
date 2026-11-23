@@ -641,6 +641,7 @@
           "Nethermind.Api": "[2.4.0-preview, )",
           "Nethermind.Eez.Execution": "[2.4.0-preview, )",
           "Nethermind.Eez.Prove": "[2.4.0-preview, )",
+          "Nethermind.Eez.Rpc": "[2.4.0-preview, )",
           "Nethermind.Init": "[2.4.0-preview, )",
           "Nethermind.Libp2p.Core": "[1.2.0, )",
           "Nethermind.Libp2p.Protocols.IpTcp": "[1.2.0, )",
@@ -662,6 +663,13 @@
         "dependencies": {
           "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )"
+        }
+      },
+      "nethermind.eez.rpc": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Eez.Execution": "[2.4.0-preview, )",
+          "Nethermind.Facade": "[2.4.0-preview, )"
         }
       },
       "nethermind.era1": {

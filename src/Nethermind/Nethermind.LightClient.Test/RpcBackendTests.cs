@@ -10,10 +10,13 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Eez.Execution;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.LightClient.Eez;
 using Nethermind.LightClient.Rpc;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -2797,6 +2800,38 @@ public class RpcBackendTests
             Assert.That(result.GetProperty("balance").GetString(), Is.EqualTo("0x7b"));
             Assert.That(result.GetProperty("storageProof")[0].GetProperty("key").GetString(), Is.EqualTo("0x" + Convert.ToHexString(key.ToBigEndian()).ToLowerInvariant()));
             Assert.That(ExecutionProofVerifier.VerifyStorage(account.StorageRoot, key, slotProof), Is.EqualTo((UInt256)42));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Transaction_rpc_NativeHistory_RendersTheVerifiedEnvelope()
+    {
+        RollupXSchedule schedule = new(2, 6, new(1, 1, Keccak.Zero, 12, Keccak.Zero), 12);
+        EezChainRules rules = EezChainRules.NativeRollupX(schedule, Address.FromNumber(1), NativeSystemTxFormat.ContractV7);
+        EezExecutionRules.RegisterRpcTransactionTypes(rules);
+        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(rules.NativeFormat));
+        using Provider provider = new(new Account(7, 123));
+        Hash256 historyHash = Keccak.Compute("history block");
+        NativeHistoryTransaction transaction = new(NativeHistoryEnvelope.CreateBlocks(901, [new(32, historyHash.ValueHash256)]));
+        Hash256 transactionHash = transaction.Hash = transaction.CalculateHash();
+        provider.Transactions = [transaction];
+        provider.Header.TxRoot = TxTrie.CalculateRoot(provider.Transactions);
+
+        JsonElement byHash = (JsonElement)await provider.Rpc.InvokeAsync("eth_getTransactionByHash",
+            Parameters(transactionHash.ToString()), CancellationToken.None);
+        JsonElement byIndex = (JsonElement)await provider.Rpc.InvokeAsync("eth_getTransactionByBlockNumberAndIndex",
+            Parameters("finalized", "0x0"), CancellationToken.None);
+        JsonElement block = (JsonElement)await provider.Rpc.InvokeAsync("eth_getBlockByNumber",
+            Parameters("finalized", true), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonElement.DeepEquals(byHash, byIndex), Is.True);
+            Assert.That(JsonElement.DeepEquals(byHash, block.GetProperty("transactions")[0]), Is.True);
+            Assert.That(byHash.GetProperty("type").GetString(), Is.EqualTo("0x46"));
+            Assert.That(byHash.GetProperty("blockHash").GetString(), Is.EqualTo(BlockHash.ToString()));
+            Assert.That(byHash.GetProperty("blocks")[0].GetProperty("blockHash").GetString(), Is.EqualTo(historyHash.ToString()));
         }
     }
 

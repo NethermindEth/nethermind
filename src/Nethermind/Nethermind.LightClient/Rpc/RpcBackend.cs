@@ -91,6 +91,7 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
         CancellationToken cancellationToken)
     {
         if (calls is null) throw new RpcException(-32601, "Method is not supported by the verified RPC.");
+        if (!calls.SupportsBlockExecution) throw new RpcException(-32601, "Block simulation is unavailable on this execution network.");
         (VerifiedHead head, bool historical) = block.ValueKind == JsonValueKind.Undefined
             ? (await LatestHeadAsync(cancellationToken), false) : await ResolveStateHeadAsync(block, cancellationToken);
         try { return await calls.SimulateAsync(head, payload, cancellationToken); }

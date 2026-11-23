@@ -27,10 +27,16 @@ static class EezChecks
             foreach (var reference in references)
             {
                 var dependency = Path.GetFileNameWithoutExtension(reference);
+                var lightClientDependency = name == "Nethermind.LightClient" &&
+                    dependency is "Nethermind.Eez.Execution" or "Nethermind.Eez.Rpc";
                 var invalid = name == "Nethermind.Eez.Prove" ||
+                    (name.StartsWith("Nethermind.Eez", StringComparison.Ordinal) || name == "Nethermind.Runner") &&
+                    dependency == "Nethermind.LightClient" ||
                     name == "Nethermind.Eez.Execution" && dependency.StartsWith("Nethermind.Eez", StringComparison.Ordinal) ||
+                    name == "Nethermind.Eez.Rpc" && dependency.StartsWith("Nethermind.Eez", StringComparison.Ordinal) && dependency != "Nethermind.Eez.Execution" ||
                     name == "Nethermind.Eez.Attester" && dependency == "Nethermind.Eez" ||
                     !name.StartsWith("Nethermind.Eez", StringComparison.Ordinal) && name != "Nethermind.Runner" &&
+                    !lightClientDependency &&
                     !name.Contains(".Test", StringComparison.Ordinal) && !name.Contains("Benchmark", StringComparison.Ordinal) &&
                     dependency.StartsWith("Nethermind.Eez", StringComparison.Ordinal);
                 if (invalid) throw new InvalidDataException($"Invalid dependency: {name} -> {dependency}.");

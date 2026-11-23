@@ -29,14 +29,15 @@ namespace Nethermind.LightClient.Rpc;
 
 /// <summary>Executes calls against authenticated state, fetching missing state between clean EVM attempts.</summary>
 internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null,
-    ulong? secondsPerSlot = null, IWithdrawalProcessorFactory? withdrawalProcessorFactory = null) : IDisposable
+    ulong? secondsPerSlot = null, IWithdrawalProcessorFactory? withdrawalProcessorFactory = null,
+    Module? executionRules = null) : IDisposable
 {
     private const ulong GasCap = 10_000_000;
     private const int CodeCacheCapacity = 256;
     private readonly BoundedMemoryCache _cache = new();
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly ICodeCache _codeCache = new StaticCodeCache(CodeCacheCapacity);
-    private readonly IContainer _processing = CreateExecutionBuilder(specs, logs)
+    private readonly IContainer _processing = CreateExecutionBuilder(specs, logs, executionRules)
         .AddScoped<CodeOverrideStore>()
         .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
         .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>(static codes => (OverridableCodeInfoRepository)codes)
@@ -46,6 +47,8 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
         .Build();
     private readonly SemaphoreSlim _slots = new(4);
     private readonly Nethermind.Logging.ILogger _logger = logs.GetClassLogger<EvmExecutor>();
+
+    internal bool SupportsBlockExecution { get; } = executionRules is null;
 
     internal Task<string> ExecuteAsync(VerifiedHead head, TransactionForRpc request, bool estimateGas, CancellationToken cancellationToken,
         Dictionary<Address, AccountOverride>? stateOverrides = null, BlockOverride? blockOverrides = null) =>
@@ -222,21 +225,26 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
     private ILifetimeScope CreateExecutionScope(VerifiedHead head, ICodeCache? codeCache = null, bool traceCall = false) =>
         _processing.BeginLifetimeScope(new ExecutionState(head, _cache, codeCache ?? _codeCache, TraceCall: traceCall));
 
-    private static ContainerBuilder CreateExecutionBuilder(ISpecProvider specs, ILogManager logs) => new ContainerBuilder()
-        .AddModule(new TransactionProcessingModule(initialAccountCapacity: 32))
-        .AddSingleton<ISpecProvider>(specs)
-        .AddSingleton<ILogManager>(logs)
-        .AddScoped<IWorldStateScopeProvider, ILifetimeScope>(static scope =>
-        {
-            ExecutionState context = (ExecutionState)scope.Tag;
-            return new CallState(context.Head, context.Cache);
-        })
-        .AddScoped<IBlockhashProvider, ILifetimeScope>(static scope =>
-        {
-            ExecutionState context = (ExecutionState)scope.Tag;
-            return new VerifiedBlockhashes(context.Head, context.Cache, context.SimulatedHashes, context.TraceCall);
-        })
-        .AddScoped<ICodeCache, ILifetimeScope>(static scope => ((ExecutionState)scope.Tag).CodeCache);
+    private static ContainerBuilder CreateExecutionBuilder(ISpecProvider specs, ILogManager logs, Module? executionRules = null)
+    {
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TransactionProcessingModule(initialAccountCapacity: 32))
+            .AddSingleton<ISpecProvider>(specs)
+            .AddSingleton<ILogManager>(logs)
+            .AddScoped<IWorldStateScopeProvider, ILifetimeScope>(static scope =>
+            {
+                ExecutionState context = (ExecutionState)scope.Tag;
+                return new CallState(context.Head, context.Cache);
+            })
+            .AddScoped<IBlockhashProvider, ILifetimeScope>(static scope =>
+            {
+                ExecutionState context = (ExecutionState)scope.Tag;
+                return new VerifiedBlockhashes(context.Head, context.Cache, context.SimulatedHashes, context.TraceCall);
+            })
+            .AddScoped<ICodeCache, ILifetimeScope>(static scope => ((ExecutionState)scope.Tag).CodeCache);
+        if (executionRules is not null) builder.RegisterModule(executionRules);
+        return builder;
+    }
 
     /// <param name="SimulatedHashes">The hashes of the blocks simulated so far on top of <paramref name="Head"/>, by number.</param>
     private sealed record ExecutionState(VerifiedHead Head, BoundedMemoryCache Cache, ICodeCache CodeCache,

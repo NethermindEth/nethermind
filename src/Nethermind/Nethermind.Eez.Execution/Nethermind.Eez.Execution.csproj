@@ -7,6 +7,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.Eez.Test" />
     <InternalsVisibleTo Include="Nethermind.Eez" />
+    <InternalsVisibleTo Include="Nethermind.Eez.Rpc" />
+    <InternalsVisibleTo Include="Nethermind.LightClient" />
+    <InternalsVisibleTo Include="Nethermind.LightClient.Test" />
     <InternalsVisibleTo Include="nethermind-eez-attester" />
   </ItemGroup>
 
