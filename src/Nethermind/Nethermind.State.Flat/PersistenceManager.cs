@@ -220,13 +220,18 @@ public class PersistenceManager(
     /// of the range, and draining it piece by piece (1, 2, 4, 8, 16 blocks) costs one RocksDB batch each
     /// instead of one per range. Deferring is bounded: once the head is a full window past the
     /// <c>MinReorgDepth</c> gate, the partial chunk is persisted as before. Only a base on a compaction
-    /// boundary defers: the compactor builds boundary-aligned ranges, so from a base left mid-window by a
-    /// backstop or byte-budget persist no range would start at the base and waiting gains nothing.
+    /// boundary, or one no persisted snapshot ends at (left by an in-memory persist, so the compactor
+    /// restarts its range there), defers. A base left mid-window by a persisted-tier persist keeps its
+    /// persisted snapshot and the compactor builds boundary-aligned ranges, so no range would start at
+    /// the base and waiting gains nothing. A fresh database never defers: from <c>PreGenesis</c> the full
+    /// chunk spans more than <c>CompactSize</c> and can never be persisted whole.
     /// </remarks>
     private bool IsDeferrablePartialChunk(PersistedSnapshot? persisted, in StateId currentPersistedState, ulong nextBoundary, in StateId latestSnapshot) =>
         persisted is not null
         && persisted.To.BlockNumber != nextBoundary
-        && nextBoundary - (currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber) == _compactSize
+        && currentPersistedState != StateId.PreGenesis
+        && (nextBoundary - currentPersistedState.BlockNumber == _compactSize
+            || !snapshotRepository.HasBasePersistedSnapshot(currentPersistedState))
         && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) < _minReorgDepth + _compactSize;
 
     private StateId ForcedPersistSeed(in StateId latestSnapshot) =>
