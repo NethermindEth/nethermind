@@ -95,8 +95,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         NativePrestateTracerConfig config = NativePrestateTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
         _diffMode = config.DiffMode;
         _includeEmpty = config.IncludeEmpty;
-        if (_diffMode && _includeEmpty)
-            throw new ArgumentException("cannot use diffMode with includeEmpty");
         _disableCode = config.DisableCode;
         _disableStorage = config.DisableStorage;
         if (_disableStorage)

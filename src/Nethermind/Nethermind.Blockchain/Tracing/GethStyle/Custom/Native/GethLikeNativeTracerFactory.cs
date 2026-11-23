@@ -51,7 +51,7 @@ public static class GethLikeNativeTracerFactory
         }
         catch (JsonException exception)
         {
-            throw new NativeTracerConfigException(exception);
+            throw new NativeTracerConfigException(exception.Message, exception);
         }
     }
 

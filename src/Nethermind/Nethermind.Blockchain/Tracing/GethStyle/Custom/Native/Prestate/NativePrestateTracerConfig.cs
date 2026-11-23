@@ -21,6 +21,8 @@ public class NativePrestateTracerConfig
     internal static NativePrestateTracerConfig FromJson(JsonElement? json, JsonSerializerOptions options)
     {
         JsonConfig? config = GethLikeNativeTracerFactory.ParseConfig<JsonConfig>(json, options);
+        if (config is { DiffMode: true, IncludeEmpty: true })
+            throw new NativeTracerConfigException("cannot use diffMode with includeEmpty");
         return new()
         {
             DiffMode = config?.DiffMode ?? false,
