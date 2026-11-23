@@ -464,8 +464,7 @@ public class PowForwardHeaderProvider(
 
     // Ethash refuses to validate an epoch it was not hinted for, so the hint has to sit next to the validation:
     // subclasses call ValidateSeals without going through RequestHeaders. A dedicated guid keeps this exact
-    // range from evicting the wider pre-warm hint RequestHeaders issues. The range runs from the lowest to the
-    // highest number among the headers NeedsSealHint accepts, so a batch without such headers hints nothing.
+    // range from evicting the wider pre-warm hint RequestHeaders issues.
     private void HintBatchRange(IReadOnlyList<BlockHeader?> headers)
     {
         ulong min = ulong.MaxValue;
