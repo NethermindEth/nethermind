@@ -225,7 +225,15 @@ public class WitnessGeneratingWorldState(
 
     public override void RecordAccountAccess(Address address) => RecordEmptySlots(address);
 
-    public override void RecordBytecodeAccess(Address address) => GetCode(address);
+    public override void RecordBytecodeAccess(Address address)
+    {
+        RecordEmptySlots(address);
+        ValueHash256 codeHash = base.GetCodeHash(address);
+        if (codeHash == Keccak.OfAnEmptyString.ValueHash256 || _bytecodes.ContainsKey(codeHash)
+            || _inBlockDeployed.Contains(codeHash) || _transientDeployed.Contains(codeHash)) return;
+
+        RecordBytecode(in codeHash, base.GetCode(address));
+    }
 
     public override bool IsContract(Address address)
     {

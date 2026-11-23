@@ -67,13 +67,16 @@
     <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="0.8.0.11" />
     <PackageVersion Include="Nethermind.DotNetty.Transport" Version="0.8.0.11" />
     <PackageVersion Include="Nethermind.GmpBindings" Version="6.3.0.195" />
-    <PackageVersion Include="Nethermind.Libp2p" Version="1.2.0" />
     <PackageVersion Include="Nethermind.Libp2p.Core" Version="1.2.0" />
+    <PackageVersion Include="Nethermind.Libp2p.Protocols.Identify" Version="1.2.0" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.IpTcp" Version="1.2.0" />
+    <PackageVersion Include="Nethermind.Libp2p.Protocols.Mplex" Version="1.2.0" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.Multistream" Version="1.2.0" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.Noise" Version="1.2.0" />
+    <PackageVersion Include="Nethermind.Libp2p.Protocols.Ping" Version="1.2.0" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.Pubsub" Version="1.2.0" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.2.0" />
+    <PackageVersion Include="Nethermind.Libp2p.Protocols.Quic" Version="1.2.0" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.Yamux" Version="1.2.0" />
     <PackageVersion Include="Nethermind.MclBindings" Version="4.30.0.119" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.15.0" />
@@ -105,7 +108,6 @@
     <PackageVersion Include="SSH.NET" Version="2026.0.0" />
     <PackageVersion Include="System.CommandLine" Version="3.0.0" />
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="11.0.0" />
-    <PackageVersion Include="System.Formats.Cbor" Version="10.0.15" />
     <PackageVersion Include="System.IO.Hashing" Version="11.0.0" />
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="11.0.0" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />

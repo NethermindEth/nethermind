@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -10,7 +11,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -18,8 +18,8 @@ using Nethermind.Facade.Simulate;
 namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class SimulateTxExecutor<TTrace>(
-    IBlockchainBridge blockchainBridge,
-    IBlockFinder blockFinder,
+    ISimulateBridge simulateBridge,
+    IBlockFinder? blockFinder,
     IJsonRpcConfig rpcConfig,
     ISpecProvider specProvider,
     ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
@@ -27,8 +27,7 @@ public class SimulateTxExecutor<TTrace>(
     bool readLoneBlobFeeCapAsAbsent = true,
     bool callSemantics = false)
 {
-    private readonly IBlockchainBridge _blockchainBridge = blockchainBridge;
-    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly ISimulateBridge _simulateBridge = simulateBridge;
     private readonly IJsonRpcConfig _rpcConfig = rpcConfig;
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private readonly long _callsLimit = rpcConfig.MaxSimulateCallsCap ?? 10000;
@@ -75,7 +74,7 @@ public class SimulateTxExecutor<TTrace>(
                             return error;
                         }
 
-                        tx.ChainId = _blockchainBridge.GetChainId();
+                        tx.ChainId = _simulateBridge.GetChainId();
 
                         calls[i] = new TransactionWithSourceDetails
                         {
@@ -110,7 +109,8 @@ public class SimulateTxExecutor<TTrace>(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
         Dictionary<Address, AccountOverride>? stateOverride = null,
-        SearchResult<BlockHeader>? searchResult = null)
+        SearchResult<BlockHeader>? searchResult = null,
+        CancellationToken cancellationToken = default)
     {
         if (call.BlockStateCalls is null || call.BlockStateCalls.Count == 0)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.EmptyBlockStateCalls, ErrorCodes.InvalidParams);
@@ -119,18 +119,29 @@ public class SimulateTxExecutor<TTrace>(
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
 
+        foreach (BlockStateCall<TransactionForRpc>? block in call.BlockStateCalls)
+        {
+            if (block is null || block.Calls is { } calls && Array.IndexOf(calls, null) >= 0)
+                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
+                    block is null ? SimulateErrorMessages.NullBlock : SimulateErrorMessages.NullCall, ErrorCodes.InvalidParams);
+        }
+
         string? callsLimitError = GetCallsLimitError(call.BlockStateCalls);
         if (callsLimitError is not null)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(callsLimitError, ErrorCodes.ClientLimitExceededError);
 
-        searchResult ??= _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult is null)
+        {
+            ArgumentNullException.ThrowIfNull(blockFinder);
+            searchResult = blockFinder.SearchForHeader(blockParameter);
+        }
 
         if (searchResult.Value.IsError || searchResult.Value.Object is null)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(searchResult.Value);
 
         BlockHeader header = searchResult.Value.Object;
 
-        if (!_blockchainBridge.HasStateForBlock(header!))
+        if (!_simulateBridge.HasStateForBlock(header!))
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
                 ErrorCodes.ResourceNotFound);
 
@@ -208,18 +219,10 @@ public class SimulateTxExecutor<TTrace>(
             call.BlockStateCalls = [.. completeBlockStateCalls];
         }
 
-        CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-        try
-        {
-            Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
-            return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
-                : Execute(header.Clone(), data, stateOverride, timeout.Token);
-        }
-        finally
-        {
-            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
-        }
+        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
+        return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
+            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
+            : Execute(header.Clone(), data, stateOverride, cancellationToken);
     }
 
     private ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
@@ -228,7 +231,7 @@ public class SimulateTxExecutor<TTrace>(
         Dictionary<Address, AccountOverride>? stateOverride,
         CancellationToken token)
     {
-        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap.EffectiveGasCap(), token);
+        SimulateOutput<TTrace> results = _simulateBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap.EffectiveGasCap(), token);
 
         foreach (SimulateBlockResult<TTrace> item in results.Items)
         {
@@ -352,4 +355,16 @@ internal static class SimulateErrorMessages
     /// (error code <see cref="ErrorCodes.InvalidParams"/>).
     /// </summary>
     public const string EmptyBlockStateCalls = "empty input";
+
+    /// <summary>
+    /// Returned when an entry of <c>blockStateCalls</c> is <c>null</c>
+    /// (error code <see cref="ErrorCodes.InvalidParams"/>).
+    /// </summary>
+    public const string NullBlock = "Simulated blocks must not be null.";
+
+    /// <summary>
+    /// Returned when an entry of a block's <c>calls</c> is <c>null</c>
+    /// (error code <see cref="ErrorCodes.InvalidParams"/>).
+    /// </summary>
+    public const string NullCall = "Simulated calls must not be null.";
 }

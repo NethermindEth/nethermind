@@ -109,7 +109,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                         {
                             t.Result.TryDispose();
                         }
-                    });
+                    }, CancellationToken.None);
                 }
 
                 StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);

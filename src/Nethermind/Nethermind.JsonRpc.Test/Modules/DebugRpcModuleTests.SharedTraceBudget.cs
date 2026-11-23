@@ -260,9 +260,12 @@ public partial class DebugRpcModuleTests
         {
             if (!clock.Enabled) return inner.Execute(transaction, tracer);
             clock.Calls++;
-            if (clock.Expiry != "after") clock.Advance(transaction.Nonce);
+            ulong position = clock.UseExecutionIndex ? (ulong)(clock.Calls - 1) : transaction.Nonce;
+            if (clock.Expiry != "after") clock.Advance(position);
+            if (clock.UseExecutionIndex && clock.Calls == 1) clock.PrefixCancelled = tracer.IsCancelled;
+            if (position == clock.Target) clock.TargetCancelled = tracer.IsCancelled;
             TransactionResult result = inner.Execute(transaction, tracer);
-            if (clock.Expiry == "after") clock.Advance(transaction.Nonce);
+            if (clock.Expiry == "after") clock.Advance(position);
             return result;
         }
         public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
@@ -289,6 +292,9 @@ public partial class DebugRpcModuleTests
         internal string Expiry = "reset";
         internal Action? Cancel;
         internal int Calls;
+        internal bool? TargetCancelled;
+        internal bool? PrefixCancelled;
+        internal bool UseExecutionIndex;
         internal List<ExecutionTimer> Timers { get; } = [];
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
         public override long GetTimestamp() => _timestamp;
@@ -610,7 +616,7 @@ public partial class DebugRpcModuleTests
         }
 
         Task<string[]> RunBoth() => Task.WhenAll(
-            Task.Run(() => RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, new { tracer = "callTracer" })),
+            Task.Run(() => RpcTest.TestSerializedRequest(chain.DebugRpcModule, rpc.Timeout, "debug_traceBlockByHash", block.Hash, new { tracer = "callTracer" })),
             Task.Run(() => RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_block", block.Hash)));
     }
 

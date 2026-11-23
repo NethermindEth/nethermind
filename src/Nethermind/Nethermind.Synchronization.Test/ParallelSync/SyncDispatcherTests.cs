@@ -280,7 +280,7 @@ public class SyncDispatcherTests
         await syncFeed.WaitForHandleResponse().WaitAsync(cancellationToken);
         syncFeed.Finish();
 
-        Task disposeTask = Task.Run(() => dispatcher.DisposeAsync().AsTask());
+        Task disposeTask = Task.Run(() => dispatcher.DisposeAsync().AsTask(), cancellationToken);
 
         // Production invariant: DisposeAsync must remain blocked while HandleResponse is in flight.
         // WaitAsync throws TimeoutException iff disposeTask is still running after the window —

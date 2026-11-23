@@ -30,8 +30,12 @@ public partial class NLogManager : ILogManager, IDisposable
     public NLogManager(string logFileName, string? logDirectory = null, string? logRules = null)
     {
         Setup(logFileName, logDirectory, logRules);
-        // Required since 'NLog.config' could change during runtime, we need to re-apply the configuration
-        _logManagerOnConfigurationChanged = (sender, args) => Setup(logFileName, logDirectory, logRules);
+        // Required since 'NLog.config' could change during runtime, we need to re-apply the configuration.
+        // Shutdown raises the event without a configuration; reading LogManager.Configuration then would load NLog.config again.
+        _logManagerOnConfigurationChanged = (sender, args) =>
+        {
+            if (args.ActivatedConfiguration is not null) Setup(logFileName, logDirectory, logRules);
+        };
         LogManager.ConfigurationChanged += _logManagerOnConfigurationChanged;
         Static.LogManager = this;
     }
@@ -86,7 +90,12 @@ public partial class NLogManager : ILogManager, IDisposable
         //Add rules here for e.g. 'JsonRpc.*: Warn; Block.*: Error;',
         if (logRules is not null)
         {
-            IList<LoggingRule> configurationLoggingRules = LogManager.Configuration.LoggingRules;
+            if (LogManager.Configuration?.LoggingRules is not { } configurationLoggingRules)
+            {
+                InternalLogger.Warn("Ignoring Init.LogRules '{0}': there is no NLog configuration.", logRules);
+                return;
+            }
+
             lock (configurationLoggingRules)
             {
                 Target[] targets = GetTargets(configurationLoggingRules);

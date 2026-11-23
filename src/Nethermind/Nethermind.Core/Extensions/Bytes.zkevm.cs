@@ -198,6 +198,43 @@ public static unsafe partial class Bytes
         return ReadWord(a + last) == ReadWord(b + last);
     }
 
+    /// <inheritdoc cref="SequenceEqualByWords"/>
+    /// <remarks>By words where <see cref="StrictAlignmentFlag"/> is on, see <see cref="SequenceEqualByWords"/>; corelib's
+    /// comparison elsewhere. See <c>Bytes.std.cs</c> for the host form.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool SequenceEqualAtAnyAlignment(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second) =>
+        StrictAlignmentFlag.IsActive ? SequenceEqualByWords(first, second) : first.SequenceEqual(second);
+
+    /// <summary>The length of the common prefix of <paramref name="first"/> and <paramref name="second"/>.</summary>
+    /// <remarks>The prefix counterpart of <see cref="SequenceEqualByWords"/>, with the same reads.</remarks>
+    internal static int CommonPrefixLengthByWords(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second)
+    {
+        int length = Math.Min(first.Length, second.Length);
+        byte* a = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(first));
+        byte* b = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(second));
+        if (length < sizeof(ulong))
+        {
+            int i = 0;
+            while (i < length && a[i] == b[i]) i++;
+            return i;
+        }
+
+        ulong* wordsA = (ulong*)((nuint)a & ~(nuint)(sizeof(ulong) - 1));
+        ulong* wordsB = (ulong*)((nuint)b & ~(nuint)(sizeof(ulong) - 1));
+        int lowA = (int)((nuint)a & (sizeof(ulong) - 1)) * 8;
+        int lowB = (int)((nuint)b & (sizeof(ulong) - 1)) * 8;
+        int leading = (length - 1) / sizeof(ulong);
+        for (int k = 0; k < leading; k++)
+        {
+            ulong diff = MergeWord(wordsA, k, lowA) ^ MergeWord(wordsB, k, lowB);
+            if (diff != 0) return k * sizeof(ulong) + (BitOperations.TrailingZeroCount(diff) >> 3);
+        }
+
+        int last = length - sizeof(ulong);
+        ulong tail = ReadWord(a + last) ^ ReadWord(b + last);
+        return tail == 0 ? length : last + (BitOperations.TrailingZeroCount(tail) >> 3);
+    }
+
     /// <summary>The eight bytes at <paramref name="source"/>, read from the aligned words that hold them.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ReadWord(byte* source) =>

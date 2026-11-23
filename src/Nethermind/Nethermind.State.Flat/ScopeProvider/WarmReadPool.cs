@@ -86,7 +86,7 @@ public sealed class WarmReadPool : IDisposable
         {
             _current = batch;
             _workAvailable.Release(activeWorkers);
-            batch.Done.Wait();
+            batch.Done.Wait(CancellationToken.None);
             if (batch.FirstException is not null) throw batch.FirstException;
         }
         finally

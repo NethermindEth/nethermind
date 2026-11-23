@@ -154,7 +154,7 @@ public class ProcessStallWatchdogTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(attempts, Is.EqualTo(2));
-        Assert.That(context.Debug, Is.EqualTo(new[] { "Process stall watchdog tick failed." }));
+        Assert.That(context.Debug, Is.EqualTo(new[] { "Process stall watchdog tick failed: InvalidOperationException: Operation is not valid due to the current state of the object." }));
         Assert.That(context.Info, Is.Empty);
     }
 
