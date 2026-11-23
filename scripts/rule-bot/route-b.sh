@@ -24,10 +24,10 @@ attempt() {
   fi
   git add -N .
   local guard_ok tests_ok red_ok summary red_summary
-  python3 "$here/rule_bot.py" guard --new-id "$id" && guard_ok=true || guard_ok=false
-  env -u CLAUDE_CODE_OAUTH_TOKEN python3 "$here/rule_bot.py" test --test-class "$test_class" > "$data/analyzer-tests.log" 2>&1 && tests_ok=true || tests_ok=false
+  "$here/rule-bot" guard --new-id "$id" && guard_ok=true || guard_ok=false
+  env -u CLAUDE_CODE_OAUTH_TOKEN "$here/rule-bot" test --test-class "$test_class" > "$data/analyzer-tests.log" 2>&1 && tests_ok=true || tests_ok=false
   summary=$(grep -E 'total: [0-9]+|Passed!|Failed!' "$data/analyzer-tests.log" | tail -1)
-  env -u CLAUDE_CODE_OAUTH_TOKEN python3 "$here/rule_bot.py" red --analyzer "$analyzer" --test-class "$test_class" > "$data/analyzer-red.log" 2>&1 && red_ok=true || red_ok=false
+  env -u CLAUDE_CODE_OAUTH_TOKEN "$here/rule-bot" red --analyzer "$analyzer" --test-class "$test_class" > "$data/analyzer-red.log" 2>&1 && red_ok=true || red_ok=false
   red_summary=$(grep '^red:' "$data/analyzer-red.log" | tail -1)
   echo "route-b: $id ($cluster) guard=$guard_ok tests=$tests_ok red=$red_ok :: $summary"
   jq --arg c "$cluster" --arg w "$why" --arg a "$analyzer" --argjson g $guard_ok --argjson t $tests_ok --argjson r $red_ok \
