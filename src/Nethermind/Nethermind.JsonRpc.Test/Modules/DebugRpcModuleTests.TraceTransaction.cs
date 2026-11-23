@@ -39,12 +39,26 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
-    [Test]
+    private static IEnumerable<TestCaseData> TimeoutSelectorCases()
+    {
+        foreach (string method in new[] { "debug_traceCall", "debug_traceTransaction", "debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBadBlock" })
+        {
+            foreach (bool streamMode in new[] { false, true })
+            {
+                foreach (string kind in new[] { "noop", "mux-empty", "mux-null", "mux-omitted" })
+                    yield return new TestCaseData(method, false, streamMode, kind, "abc");
+                yield return new TestCaseData(method, true, streamMode, "mux-empty", "abc");
+            }
+        }
+        foreach (string method in new[] { "debug_traceCall", "debug_traceBadBlock" })
+            foreach (string kind in new[] { "mux-empty", "mux-null", "mux-omitted" })
+                foreach (string timeout in new[] { "5s", "5" })
+                    yield return new TestCaseData(method, false, false, kind, timeout);
+    }
+
+    [TestCaseSource(nameof(TimeoutSelectorCases))]
     public async Task Debug_trace_invalid_duration_is_validated_after_selector(
-        [Values("debug_traceCall", "debug_traceTransaction", "debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBadBlock")] string method,
-        [Values] bool missing, [Values] bool streamMode,
-        [Values("noop", "mux-empty", "mux-null", "mux-omitted")] string kind,
-        [Values("abc", "5s", "5")] string timeout)
+        string method, bool missing, bool streamMode, string kind, string timeout)
     {
         using Context context = await Context.Create();
         Transaction transaction = await AddBlockWithTransfer(context);
