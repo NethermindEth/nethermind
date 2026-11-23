@@ -166,15 +166,17 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
     internal static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
     {
         string keyStoreDirectory = keyStoreConfig.KeyStoreDirectory;
+        string oldPath = Path.GetFullPath("keystore/jwt-secret");
         bool sharedWorkingDirectory = IsWritableByOthers(Environment.CurrentDirectory);
         if (sharedWorkingDirectory)
         {
-            if (logger.IsWarn) logger.Warn("The working directory can be written by other users, so the JWT secret is not read from it.");
-            keyStoreDirectory = Path.GetFullPath(keyStoreDirectory, PathUtils.ExecutingDirectory);
+            string appKeyStoreDirectory = Path.GetFullPath(keyStoreDirectory, PathUtils.ExecutingDirectory);
+            if (logger.IsWarn && (appKeyStoreDirectory != Path.GetFullPath(keyStoreDirectory) || File.Exists(oldPath)))
+                logger.Warn("The working directory can be written by other users, so the JWT secret is not read from it.");
+            keyStoreDirectory = appKeyStoreDirectory;
         }
 
         string newPath = Path.GetFullPath(Path.Join(keyStoreDirectory, "jwt-secret"));
-        string oldPath = Path.GetFullPath("keystore/jwt-secret");
         jsonRpcConfig.JwtSecretFile = newPath;
 
         // check if jwt-secret file already exists in previous default directory
@@ -201,5 +203,5 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
     }
 
     private static bool IsWritableByOthers(string directory) =>
-        !OperatingSystem.IsWindows() && (File.GetUnixFileMode(directory) & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0;
+        !OperatingSystem.IsWindows() && (File.GetUnixFileMode(directory) & UnixFileMode.OtherWrite) != 0;
 }
