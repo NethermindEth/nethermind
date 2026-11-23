@@ -16,7 +16,7 @@ public class StartRpcJwtSecretTests
 {
     [Test, NonParallelizable, Platform(Exclude = "Win")]
     [UnsupportedOSPlatform("windows")]
-    public void ConfigureJwtSecret_keeps_the_working_directory_secret_when_others_cannot_write([Values] bool groupWritable)
+    public void ConfigureJwtSecret_keeps_the_working_directory_secret_when_only_the_owner_can_write()
     {
         string keyStoreDirectory = $"keystore-{Guid.NewGuid():N}";
         string previousWorkingDirectory = Directory.GetCurrentDirectory();
@@ -27,9 +27,7 @@ public class StartRpcJwtSecretTests
             Directory.CreateDirectory(Path.GetDirectoryName(workingDirectorySecret)!);
             File.WriteAllText(workingDirectorySecret, "secret");
 
-            UnixFileMode mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
-            if (groupWritable) mode |= UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute;
-            File.SetUnixFileMode(workingDirectory.FullName, mode);
+            File.SetUnixFileMode(workingDirectory.FullName, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             Directory.SetCurrentDirectory(workingDirectory.FullName);
             JsonRpcConfig jsonRpcConfig = new();
 
@@ -46,7 +44,7 @@ public class StartRpcJwtSecretTests
 
     [Test, NonParallelizable, Platform(Exclude = "Win")]
     [UnsupportedOSPlatform("windows")]
-    public void ConfigureJwtSecret_does_not_read_a_secret_from_a_working_directory_others_can_write([Values("", "./")] string prefix)
+    public void ConfigureJwtSecret_does_not_read_a_secret_from_a_working_directory_others_can_write([Values("", "./")] string prefix, [Values] bool groupWritable)
     {
         string keyStoreName = $"keystore-{Guid.NewGuid():N}";
         string keyStoreDirectory = prefix + keyStoreName;
@@ -63,9 +61,9 @@ public class StartRpcJwtSecretTests
                 File.WriteAllText(secret, "secret");
             }
 
-            File.SetUnixFileMode(workingDirectory.FullName,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-                UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute);
+            File.SetUnixFileMode(workingDirectory.FullName, groupWritable
+                ? UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute
+                : UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute);
             Directory.SetCurrentDirectory(workingDirectory.FullName);
             JsonRpcConfig jsonRpcConfig = new();
 

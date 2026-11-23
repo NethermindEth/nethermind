@@ -172,7 +172,7 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
         {
             string appKeyStoreDirectory = Path.GetFullPath(keyStoreDirectory, PathUtils.ExecutingDirectory);
             if (logger.IsWarn && (appKeyStoreDirectory != Path.GetFullPath(keyStoreDirectory) || File.Exists(oldPath)))
-                logger.Warn("The working directory can be written by other users, so the JWT secret is not read from it.");
+                logger.Warn("The working directory can be written by its group or by other users, so the JWT secret is not read from it.");
             keyStoreDirectory = appKeyStoreDirectory;
         }
 
@@ -203,5 +203,5 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
     }
 
     private static bool IsWritableByOthers(string directory) =>
-        !OperatingSystem.IsWindows() && (File.GetUnixFileMode(directory) & UnixFileMode.OtherWrite) != 0;
+        !OperatingSystem.IsWindows() && (File.GetUnixFileMode(directory) & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0;
 }
