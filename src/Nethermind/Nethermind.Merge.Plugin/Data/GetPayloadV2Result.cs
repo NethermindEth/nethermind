@@ -17,6 +17,9 @@ public class GetPayloadV2Result<TVersionedExecutionPayload>(Block block, UInt256
 
     public virtual TVersionedExecutionPayload ExecutionPayload => _executionPayload ??= TVersionedExecutionPayload.Create(Block);
 
+    public TPayload CreateExecutionPayload<TPayload>()
+        where TPayload : ExecutionPayload, IExecutionPayloadParams, IExecutionPayloadFactory<TPayload> => TPayload.Create(Block);
+
     public override string ToString() => $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}}}";
 }
 

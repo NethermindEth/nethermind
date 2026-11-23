@@ -52,6 +52,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private NativeCallTracerBuffer _buffer;
 
     private EvmExceptionType? _error;
+    private NativeCallTracerCallFrame? _pendingSelfDestruct;
     private ulong _logIndexStart;
     private ulong _logIndex;
     private bool _framesCollapsed = false;
@@ -126,6 +127,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
         // BuildResult already removed the frame it handed to the trace, so everything still here is ours.
         _callStack.DisposeRecursive();
+        _pendingSelfDestruct?.Dispose();
         _logIndexAtEntry?.Dispose();
         _buffer.Release();
     }
@@ -230,19 +232,24 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         base.ReportActionRevert(gas, output);
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The SELFDESTRUCT frame is added when the halted frame ends: the opcode can still run out of gas after this call,
+    /// and Geth then reports no frame. Geth also reports the frame after the EIP-7708 transfer log, which so takes the
+    /// frame's <c>position</c>.
+    /// </remarks>
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
         base.ReportSelfDestruct(address, balance, refundAddress);
         if (!_config.OnlyTopCall && _callStack.Count > 0)
         {
-            NativeCallTracerCallFrame callFrame = new()
+            _pendingSelfDestruct = new()
             {
                 Type = Instruction.SELFDESTRUCT,
                 From = address,
                 To = refundAddress,
                 Value = balance
             };
-            _callStack[^1].Calls.Add(callFrame);
         }
     }
 
@@ -489,6 +496,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
     private void OnExit(ulong gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
     {
+        if (_pendingSelfDestruct is not null)
+        {
+            if (error is null) _callStack[^1].Calls.Add(_pendingSelfDestruct);
+            else _pendingSelfDestruct.Dispose();
+            _pendingSelfDestruct = null;
+        }
+
         if (_logIndexAtEntry is not null)
         {
             // Logs of a halted frame never reach the receipt, so they do not consume an index.
@@ -535,10 +549,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// <remarks>
     /// A CREATE, CREATE2 or TCREATE frame that halted deployed no contract, so its <c>to</c> is dropped —
     /// the execution-apis <c>CallFrame</c> schema requires it to be omitted there.
+    /// A stack overflow uses Geth's text, which is always the same: no opcode grows the stack by more than one item,
+    /// so it overflows only on a full stack of 1024 items against a limit of 1023.
     /// </remarks>
     private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
     {
-        callFrame.Error ??= error.GetEvmExceptionDescription();
+        callFrame.Error ??= error == EvmExceptionType.StackOverflow
+            ? "stack limit reached 1024 (1023)"
+            : error.GetEvmExceptionDescription();
         if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE)
         {
             callFrame.To = null;

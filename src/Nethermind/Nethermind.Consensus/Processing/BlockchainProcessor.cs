@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Evm;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -654,6 +655,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             finally
             {
+                if (ExecutionMetricsFlag.IsActive) PerTxTimingCollector.DiscardPending();
                 IsBlockProcessingThread = previousMainThread;
                 IsProcessingBlock = false;
                 GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);

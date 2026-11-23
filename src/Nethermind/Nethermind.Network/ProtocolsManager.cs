@@ -11,7 +11,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -96,6 +95,8 @@ namespace Nethermind.Network
             session.Initialized -= _onSessionInitialized;
             _sessions.TryRemove(session.SessionId, out _);
 
+            if (session.RemoteNodeId is null) return;
+
             if (_logger.IsTrace && session.BestStateReached == SessionState.Initialized)
             {
                 TraceSessionDisconnected(session, e);
@@ -111,21 +112,10 @@ namespace Nethermind.Network
                 }
             }
 
-            PublicKey? handlerKey = null;
             if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
             {
                 _syncPool.RemovePeer(removed);
-                if (removed.Node?.Id is not null)
-                {
-                    handlerKey = removed.Node.Id;
-                    _txPool.RemovePeer(handlerKey);
-                }
-            }
-
-            PublicKey sessionKey = session.Node?.Id;
-            if (sessionKey is not null && sessionKey != handlerKey)
-            {
-                _txPool.RemovePeer(session.Node.Id);
+                if (removed.IncludeInTxPool) _txPool.RemovePeer(removed);
             }
         }
 

@@ -33,7 +33,11 @@ public class CallFrameEntryCreditTests
     [TestCase(ExecutionType.CALL, 1, true, false, ExpectedResult = true)]
     [TestCase(ExecutionType.CALL, 0, false, false, ExpectedResult = true)]
     [TestCase(ExecutionType.CREATE, 0, true, false, ExpectedResult = true)]
-    [TestCase(ExecutionType.CALL, 0, true, true, ExpectedResult = true)]
+    [TestCase(ExecutionType.CALL, 0, true, true, ExpectedResult = false)]
+    [TestCase(ExecutionType.DELEGATECALL, 1, true, true, ExpectedResult = false)]
+    [TestCase(ExecutionType.CALL, 1, true, true, ExpectedResult = true)]
+    [TestCase(ExecutionType.CALL, 0, false, true, ExpectedResult = true)]
+    [TestCase(ExecutionType.CREATE, 0, true, true, ExpectedResult = true)]
     public bool Frame_entry_credits_the_executing_account(ExecutionType executionType, int value, bool hasCode, bool blockAccessList)
     {
         IReleaseSpec spec = blockAccessList ? Amsterdam.Instance : Osaka.Instance;
