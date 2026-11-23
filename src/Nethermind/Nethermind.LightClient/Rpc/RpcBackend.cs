@@ -27,7 +27,7 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
     Func<VerifiedHead, bool>? isLatestHeadFresh = null, Func<VerifiedHead, bool>? isFinalizedHeadFresh = null,
     Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null, IBlockForRpcFactory? blockForRpcFactory = null,
     SendPolicyRelay? sendPolicy = null, Func<int>? getExecutionPeerCount = null, IForkInfo? forkInfo = null,
-    Func<Task>? getNextHeadChange = null)
+    Func<Task>? getNextHeadChange = null, TimeProvider? timeProvider = null)
     : IDisposable
 {
     private const ulong HistoricalStateDepth = 32;

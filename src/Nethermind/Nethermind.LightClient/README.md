@@ -182,6 +182,8 @@ permissions. Startup does not automatically migrate a potentially shared key.
 Native beacon networking keeps its private P2P identity and monotonically
 increasing signed ENR sequence in `<data-dir>/cl/<chain-id>/network`, using
 Nethermind's RocksDB storage with synchronous WAL writes before advertisement.
+On Unix, startup sets the database directory to owner-only mode `0700` before
+opening it, including when reusing an existing database.
 Restart with the same data directory to retain the public PeerID; this identity
 is separate from wallet keys and is isolated per network. A repaired database
 stops startup rather than silently reusing an identity with an older sequence.
@@ -508,8 +510,9 @@ closing its database.
 optimistic and finalized heads. Genesis falls outside the bounded history.
 `eth_getTransactionCount(..., "pending")` starts at the latest authenticated
 nonce and advances over consecutive, affordable transactions this client has
-announced to execution peers. Pending account state and pending block construction
-are unavailable.
+announced to execution peers. A frame transaction's fee counts against the sender
+when the sender approved payment. Pending account state and pending block
+construction are unavailable.
 The optimistic head can be reorganized,
 whereas the finalized head is stable. Each state or block request pins its selected authenticated head,
 including during a concurrent consensus update. Returned account and storage values are not
@@ -639,16 +642,18 @@ logged without their contents. Routine ASP.NET Core request logs are suppressed.
 
 Create an `eth_newBlockFilter` to poll for block hashes, an `eth_newFilter` to
 poll for logs, or an `eth_newPendingTransactionFilter` for hashes of submissions
-announced by this client. `eth_getFilterChanges` consumes changes since the last
-poll and includes `removed: true` for previously returned logs on a replaced
+announced by this client. `eth_getFilterChanges` consumes changes when its
+response is accepted for delivery and includes `removed: true` for previously returned logs on a replaced
 branch. `eth_getFilterLogs` reads the authenticated canonical range without
 advancing the cursor. The client retains up to 32 filters, expires them after
 five minutes without a change poll, and keeps up to 32 authenticated head publications.
 If a client falls behind that window, create a new filter and use `eth_getLogs`
-to recover logs. Use HTTP for large polling results.
+to recover logs. Retry rejected WebSocket polls over HTTP. Use a narrower query
+to recover when the change set exceeds the HTTP response limit.
 
 `eth_sendRawTransactionSync` takes a signed transaction and an optional timeout
-in milliseconds. The default is 20 seconds and the maximum is 60 seconds. It
+in milliseconds as a JSON number or hex quantity. The default is 20 seconds and
+positive requests above 60 seconds are capped at 60 seconds. The method
 returns an authenticated receipt when available, or error `4` with the submitted
 hash if the wait expires. A gap from the authenticated nonce returns error `6`
 with the expected nonce. A valid transaction that exceeds the available balance
@@ -674,8 +679,9 @@ catch-up emits each intervening block's logs and only the newest head.
 Subscriptions start after their acknowledgement and belong to their connection.
 `eth_unsubscribe` takes the returned subscription ID. `newPendingTransactions`
 streams transactions this client announces to execution peers, as hashes by default or
-objects when the second parameter is `true`. Sync-status subscriptions are
-unavailable.
+objects when the second parameter is `true` or `{"includeTransactions":true}`.
+`newHeads` accepts the same option with full transactions disabled.
+Sync-status subscriptions are unavailable.
 
 The host permits 16 connections and 16 subscriptions per connection. Each
 connection has an eight-head backlog, a 128-message, 1 MiB outbound queue, a 256 KiB message limit,

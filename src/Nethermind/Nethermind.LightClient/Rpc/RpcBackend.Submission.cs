@@ -34,9 +34,9 @@ internal sealed partial class RpcBackend
         {
             VerifiedHead start = await LatestHeadAsync(cancellationToken);
             Hash256 hash = await _data.SendRawTransactionAsync(start, raw, calls, cancellationToken, requireReady: true);
-            int waitMs = timeoutMs is > 0 and <= 60_000 ? (int)timeoutMs.Value : 20_000;
-            using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            wait.CancelAfter(TimeSpan.FromMilliseconds(waitMs));
+            int waitMs = timeoutMs is > 0 ? (int)Math.Min(timeoutMs.Value, 60_000UL) : 20_000;
+            using CancellationTokenSource timeout = new(TimeSpan.FromMilliseconds(waitMs), timeProvider ?? TimeProvider.System);
+            using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
             try { return await WaitForReceiptAsync(_data, start, hash, wait.Token); }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {

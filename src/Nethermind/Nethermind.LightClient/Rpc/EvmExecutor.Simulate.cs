@@ -3,11 +3,13 @@
 
 using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -57,14 +59,16 @@ internal sealed partial class EvmExecutor
         MaxSimulateCallsCap = 64,
         MaxSimulateCallsPerBlockCap = 64,
     };
-    private static ContainerBuilder CreateBlockExecutionBuilder(ISpecProvider specs, ILogManager logs, ulong? secondsPerSlot) =>
+    private static ContainerBuilder CreateBlockExecutionBuilder(ISpecProvider specs, ILogManager logs, ulong? secondsPerSlot,
+        IWithdrawalProcessorFactory? withdrawalProcessorFactory) =>
         CreateExecutionBuilder(specs, logs)
         .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
         .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>()
         .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
         .AddScoped<IBlockhashStore, BlockhashStore>()
-        .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
-        .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
+        .AddSingleton(withdrawalProcessorFactory ?? new WithdrawalProcessorFactory(logs))
+        .AddScoped<IWithdrawalProcessor, IWithdrawalProcessorFactory, IWorldState, ITransactionProcessor>(
+            static (factory, state, processor) => factory.Create(state, processor))
         .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
         .AddScoped<BalTxProcessorFactory>()
         .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
@@ -76,7 +80,7 @@ internal sealed partial class EvmExecutor
         .AddSingleton<IBlockValidator>(Always.Valid)
         .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance);
 
-    private readonly IContainer _simulation = CreateBlockExecutionBuilder(specs, logs, secondsPerSlot)
+    private readonly IContainer _simulation = CreateBlockExecutionBuilder(specs, logs, secondsPerSlot, withdrawalProcessorFactory)
         .AddScoped<IBlockProcessor, StandardBlockProcessor>()
         // The simulation pieces of SimulateReadOnlyBlocksProcessingEnvFactory and OverridableEnvFactory.
         .AddScoped<CodeOverrideStore>()
@@ -202,6 +206,11 @@ internal sealed partial class EvmExecutor
             {
                 output.Error = exception.Message;
                 output.TransactionResult = TransactionResult.InsufficientSenderBalance;
+            }
+            catch (ContractException exception) when (exception.InnerException is MissingCallState or OperationCanceledException)
+            {
+                // A withdrawal system transaction needs the same proof retry and cancellation as a user call.
+                ExceptionDispatchInfo.Throw(exception.InnerException);
             }
             catch (Exception exception) when (exception is not (MissingCallState or OperationCanceledException or RpcException))
             {

@@ -153,6 +153,19 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     internal static ColumnsDb<BeaconChainDbColumns> OpenPeerDb(string dataDirectory, BeaconChainSpec spec, ILogManager logs)
     {
         string path = Path.GetFullPath(Path.Combine(dataDirectory, "cl", spec.ChainId.ToString(), "network"));
+        if (!OperatingSystem.IsWindows())
+        {
+            const UnixFileMode ownerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+            DirectoryInfo directory = Directory.CreateDirectory(path, ownerOnly);
+            if (directory.LinkTarget is not null)
+                throw new IOException($"Beacon networking storage '{path}' must be a directory, not a symbolic link.");
+            if (File.GetUnixFileMode(path) != ownerOnly)
+            {
+                File.SetUnixFileMode(path, ownerOnly);
+                if (File.GetUnixFileMode(path) != ownerOnly)
+                    throw new IOException($"Cannot establish owner-only permissions for beacon networking storage '{path}'.");
+            }
+        }
         DbConfig config = new()
         {
             WriteAheadLogSync = true,

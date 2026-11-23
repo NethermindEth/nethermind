@@ -3107,6 +3107,47 @@ public class RpcBackendTests
         }
     }
 
+    [CancelAfter(10_000)]
+    [TestCase(120_000, 60_000)]
+    [TestCase("0xea60", 60_000)]
+    [TestCase("0x2a", 42)]
+    [TestCase(0, 20_000)]
+    [TestCase(null, 20_000)]
+    public async Task Synchronous_submission_binds_and_caps_the_receipt_wait(object? requested, int expected, CancellationToken token)
+    {
+        using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+        using Provider provider = new(new Account(7, 1_000_000), headNumber: 20_000_000, accountAddress: key.Address);
+        Transaction transaction = new() { Nonce = 7, GasLimit = 21_000, GasPrice = 2, To = AccountAddress };
+        new EthereumEcdsa(1).Sign(key, transaction, true);
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        ConsensusTests.RepairClock clock = new();
+        TaskCompletionSource nextHead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using RpcBackend rpc = new(provider, () => provider.Head, 1, specProvider: MainnetSpecProvider.Instance,
+            getLatestHead: () => provider.Head, getNextHeadChange: () => nextHead.Task, timeProvider: clock);
+        using CancellationTokenSource cleanup = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<object> request = rpc.InvokeAsync("eth_sendRawTransactionSync", Parameters("0x" + Convert.ToHexString(encoded), requested), cleanup.Token);
+
+        try
+        {
+            await clock.WaitForTimersAsync(1).WaitAsync(token);
+            bool early = clock.Advance(TimeSpan.FromMilliseconds(expected - 1));
+            bool due = clock.Advance(TimeSpan.FromMilliseconds(1));
+            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await request.WaitAsync(token));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.False);
+                Assert.That(due, Is.True);
+                Assert.That(error!.Code, Is.EqualTo(4));
+                Assert.That(error.Message, Does.Contain($"within {expected}ms"));
+            }
+        }
+        finally
+        {
+            cleanup.Cancel();
+            await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
     [Test]
     public async Task Synchronous_submission_finds_a_receipt_at_the_new_authenticated_head([Values] bool unavailableOnce)
     {

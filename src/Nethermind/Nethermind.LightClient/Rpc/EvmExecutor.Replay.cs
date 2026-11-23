@@ -20,7 +20,7 @@ namespace Nethermind.LightClient.Rpc;
 
 internal sealed partial class EvmExecutor
 {
-    private readonly Lazy<IContainer> _replay = new(() => CreateBlockExecutionBuilder(specs, logs, secondsPerSlot)
+    private readonly Lazy<IContainer> _replay = new(() => CreateBlockExecutionBuilder(specs, logs, secondsPerSlot, withdrawalProcessorFactory)
         .AddSingleton<IEthereumEcdsa>(new EthereumEcdsa(specs.ChainId))
         // Bind the adapter to the supplied processor, including when a BAL processor is created.
         .AddSingleton<TransactionProcessorAdapterFactory>(static (ITransactionProcessor processor) => new ExecuteTransactionProcessorAdapter(processor))

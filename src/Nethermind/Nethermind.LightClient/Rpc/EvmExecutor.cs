@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -28,7 +29,7 @@ namespace Nethermind.LightClient.Rpc;
 
 /// <summary>Executes calls against authenticated state, fetching missing state between clean EVM attempts.</summary>
 internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null,
-    ulong? secondsPerSlot = null) : IDisposable
+    ulong? secondsPerSlot = null, IWithdrawalProcessorFactory? withdrawalProcessorFactory = null) : IDisposable
 {
     // Preserve existing log filters when the implementation class is renamed.
     internal const string LogCategory = "LightClient.Rpc.VerifiedCall";
@@ -162,6 +163,7 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
                             }
                             if (!result || tracer.Violated || tracer.Payer is null)
                                 throw new RpcException(-32003, tracer.ViolationReason ?? result.GetErrorMessage(null) ?? "Frame validation prefix failed.");
+                            transaction.PayerAddress = tracer.Payer;
                             completed = true;
                             returned = true;
                             return;

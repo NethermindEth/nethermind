@@ -17,6 +17,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
@@ -33,6 +34,7 @@ using Nethermind.Int256;
 using Nethermind.KeyStore.Config;
 using Nethermind.LightClient.Rpc;
 using Nethermind.Logging;
+using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
@@ -113,6 +115,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     internal int PeerCount => _services.Resolve<ISyncPeerPool>().PeerCount;
     internal Nethermind.Core.Specs.ISpecProvider SpecProvider => _services.Resolve<Nethermind.Core.Specs.ISpecProvider>();
     internal Nethermind.Facade.Eth.IBlockForRpcFactory BlockForRpcFactory => _services.Resolve<Nethermind.Facade.Eth.IBlockForRpcFactory>();
+    internal IWithdrawalProcessorFactory WithdrawalProcessorFactory => _services.Resolve<IWithdrawalProcessorFactory>();
     internal IForkInfo ForkInfo => _services.Resolve<IForkInfo>();
     internal int SnapPeerCount
     {
@@ -195,7 +198,13 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         ConfigProvider config = new(init, net, sync, discovery, keyStore, new FlatDbConfig { Enabled = false });
         ContainerBuilder builder = new();
         builder.RegisterModule(new NethermindModule(chainSpec, config, logManager));
-        if (isGnosis) builder.RegisterModule(new AuRaHeaderModule());
+        if (isGnosis)
+        {
+            builder.AddModule(new AuRaHeaderModule())
+                .AddSingleton(chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>())
+                .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
+                .AddSingleton<IWithdrawalProcessorFactory, AuraWithdrawalProcessorFactory>();
+        }
         builder.RegisterModule(new LightExecutionOverrides(_syncServer, _transactionRelay, _stop.Token));
         if (dataDirectory is not null)
         {

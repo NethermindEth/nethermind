@@ -12,6 +12,7 @@ internal sealed class RpcResponseBuffer(int limit, string limitMessage,
 {
     private readonly BoundedJsonBuffer _output = new(limit, 6 * limit);
     private BoundedJsonBuffer? _finalError;
+    private Action<bool>? _completePolls;
     private int _responses;
     private bool _batch;
     private bool _sealed;
@@ -21,6 +22,15 @@ internal sealed class RpcResponseBuffer(int limit, string limitMessage,
     internal int? ErrorCode { get; private set; }
     public long BytesWritten => _output.WrittenMemory.Length;
     public bool StopRequested { get; private set; }
+
+    internal void CommitPolls() => FinishPolls(accepted: true);
+
+    private void FinishPolls(bool accepted)
+    {
+        Action<bool>? complete = _completePolls;
+        _completePolls = null;
+        complete?.Invoke(accepted);
+    }
 
     public JsonRpcErrorResponse? GetBatchLimitResponse(JsonRpcRequest? request)
     {
@@ -128,6 +138,7 @@ internal sealed class RpcResponseBuffer(int limit, string limitMessage,
             if (!_batch) ErrorCode = ErrorCodes.LimitExceeded;
             return;
         }
+        if (response is RpcFilters.PollResponse poll) _completePolls += poll.TakeCompletion();
         report?.Invoke(response, rpcReport);
     }
 
@@ -154,6 +165,7 @@ internal sealed class RpcResponseBuffer(int limit, string limitMessage,
 
     public void Dispose()
     {
+        FinishPolls(accepted: false);
         _output.Dispose();
         _finalError?.Dispose();
     }

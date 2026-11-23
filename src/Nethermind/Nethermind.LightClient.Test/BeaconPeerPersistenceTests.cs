@@ -42,6 +42,56 @@ public class BeaconPeerPersistenceTests
     }
 
     [Test]
+    public void Unix_beacon_network_database_is_private([Values] bool existingDatabase)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Ignore("Unix directory modes only.");
+            return;
+        }
+
+        const UnixFileMode privateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        string path = Path.Combine(_directory, "cl", "1", "network");
+        if (existingDatabase)
+        {
+            using (ColumnsDb<BeaconChainDbColumns> initial = Open(BeaconChainSpec.Mainnet))
+                new BeaconChainStore(initial).PutMetadata("network-marker", [0x42]);
+            File.SetUnixFileMode(path, privateMode | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+
+        using ColumnsDb<BeaconChainDbColumns> db = Open(BeaconChainSpec.Mainnet);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.GetUnixFileMode(path), Is.EqualTo(privateMode));
+            Assert.That(new BeaconChainStore(db).GetMetadata("network-marker"), Is.EqualTo(existingDatabase ? new byte[] { 0x42 } : null));
+        }
+    }
+
+    [Test]
+    public void Unix_beacon_network_database_refuses_a_symbolic_link()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Ignore("Unix directory permissions only.");
+            return;
+        }
+
+        string target = Path.Combine(_directory, "shared");
+        Directory.CreateDirectory(target);
+        UnixFileMode mode = File.GetUnixFileMode(target);
+        string chain = Path.Combine(_directory, "cl", "1");
+        Directory.CreateDirectory(chain);
+        Directory.CreateSymbolicLink(Path.Combine(chain, "network"), target);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => { using ColumnsDb<BeaconChainDbColumns> db = Open(BeaconChainSpec.Mainnet); },
+                Throws.TypeOf<IOException>().With.Message.Contains("symbolic link"));
+            Assert.That(File.GetUnixFileMode(target), Is.EqualTo(mode));
+        }
+    }
+
+    [Test]
     [CancelAfter(45_000)]
     public async Task Restart_keeps_the_identity_and_advances_the_enr_sequence(CancellationToken token)
     {

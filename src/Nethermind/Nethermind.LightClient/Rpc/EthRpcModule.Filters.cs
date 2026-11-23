@@ -22,7 +22,7 @@ internal sealed partial class EthRpcModule
     public Task<ResultWrapper<JsonElement>> eth_getFilterChanges(UInt256 filterId)
     {
         bool webSocket = JsonRpcContext.Current?.RpcEndpoint == RpcTransport.Ws;
-        return Execute((rpc, token) => rpc.Filters.PollAsync(filterId, rpc, token, webSocket));
+        return Execute((rpc, token) => rpc.Filters.PollAsync(filterId, rpc, token, webSocket), static response => response);
     }
 
     public Task<ResultWrapper<JsonElement>> eth_getFilterLogs(UInt256 filterId) =>

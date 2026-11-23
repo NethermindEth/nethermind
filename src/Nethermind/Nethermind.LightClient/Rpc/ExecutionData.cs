@@ -185,7 +185,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
                     logIndex = checked(logIndex + 1);
                     if (!Matches(log)) continue;
                     if (result.Count >= 10_000)
-                        throw new RpcException(-32001, "Verified log query exceeds the 10000-log response limit.");
+                        throw new RpcException(ErrorCodes.LimitExceeded, "Verified log query exceeds the 10000-log response limit.");
                     payloadBytes += log.Data.LongLength * 2 + 4 + log.Topics.LongLength * 68;
                     if (payloadBytes > BoundedJson.ResultLimit) throw BoundedJson.TooLarge();
                     result.Add(new LogEntryForRpc
@@ -345,7 +345,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         catch (InvalidDataException) { throw new RpcException(-32003, "Invalid transaction signature: the sender cannot be recovered."); }
         Account sender = await source.GetAccountAsync(head, transaction.SenderAddress!, cancellationToken);
         ValidateRelayNonce(transaction.Nonce, sender.Nonce, requireReady);
-        if (!TryGetRelayCost(transaction, out UInt256 cost) || cost > sender.Balance)
+        if (!TryGetSenderCost(transaction, out UInt256 cost) || cost > sender.Balance)
             throw Unready("Transaction exceeds the sender's authenticated balance.");
         if (sender.HasCode)
         {
@@ -373,12 +373,13 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
             throw new RpcException(6, "Transaction nonce has a gap from authenticated state.", RpcBackend.Quantity(expected));
     }
 
-    internal static bool TryGetRelayCost(Transaction transaction, out UInt256 cost)
+    internal static bool TryGetSenderCost(Transaction transaction, out UInt256 cost)
     {
         cost = default;
         if (transaction.SupportsFrames)
         {
-            cost = transaction.MaxFee;
+            cost = transaction.PayerAddress is { } payer && payer != transaction.SenderAddress
+                ? UInt256.Zero : transaction.MaxFee;
             return true;
         }
         UInt256 feeCap = transaction.Supports1559 ? transaction.MaxFeePerGas : transaction.GasPrice;

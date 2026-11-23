@@ -53,6 +53,7 @@ using Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -3010,6 +3011,30 @@ public class TransportTests
             Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
         }
         unavailable.SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Execution_rejects_a_well_formed_BAL_with_the_wrong_commitment_before_caching(
+        [Values] bool snap2, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap2: snap2, ethVersion: snap2 ? (byte)69 : (byte)71);
+        ExecutionPeer invalid = peers.Ordered[0];
+        ExecutionPeer valid = peers.Ordered[1];
+        invalid.BalPayload = BlockAccessListDecoder.EncodeToBytes(new ReadOnlyBlockAccessList([new(Address.Zero, [], [], [], [], [])], 1));
+
+        ReadOnlyBlockAccessList first = await peers.Transport.GetBlockAccessListAsync(peers.Header, token);
+        ReadOnlyBlockAccessList cached = await peers.Transport.GetBlockAccessListAsync(peers.Header, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.WireHash, Is.EqualTo(peers.Header.BlockAccessListHash));
+            Assert.That(cached, Is.SameAs(first));
+            Assert.That(peers.Counts(AllocationContexts.BlockAccessLists), Is.EqualTo(new[] { 1, 1 }));
+            Assert.That(invalid.ResponsesDisposed, Is.EqualTo(1));
+            Assert.That(valid.ResponsesDisposed, Is.EqualTo(1));
+        }
+        invalid.SyncPeer.Received(1).Disconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 
     [Test]
@@ -6281,6 +6306,7 @@ public class TransportTests
         internal ConcurrentDictionary<AllocationContexts, int> Calls { get; } = new();
         internal int ResponsesDisposed;
         internal bool InvalidData;
+        internal byte[]? BalPayload;
         internal bool InvalidAncestors;
         internal bool DivergentAncestors;
         internal bool MissingAncestors;
@@ -6357,7 +6383,7 @@ public class TransportTests
             SyncPeer.GetBlockAccessLists(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>()).Returns(async call =>
             {
                 await Read(AllocationContexts.BlockAccessLists, call.ArgAt<CancellationToken>(1));
-                return (IOwnedReadOnlyList<byte[]?>)new TrackedResponse<byte[]?>([InvalidData ? [0x80] : [0xc0]], Disposed);
+                return (IOwnedReadOnlyList<byte[]?>)new TrackedResponse<byte[]?>([GetBalPayload()], Disposed);
             });
             if (snap1 || snap2)
             {
@@ -6408,7 +6434,7 @@ public class TransportTests
                 snap.GetBlockAccessLists(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>()).Returns(async call =>
                 {
                     await Read(AllocationContexts.BlockAccessLists, call.ArgAt<CancellationToken>(1));
-                    return (IByteArrayList)new ByteArrayListAdapter(new TrackedResponse<byte[]>([InvalidData ? [0x80] : [0xc0]], Disposed));
+                    return (IByteArrayList)new ByteArrayListAdapter(new TrackedResponse<byte[]>([GetBalPayload()], Disposed));
                 });
             }
 
@@ -6419,6 +6445,8 @@ public class TransportTests
                 if (BeforeResponse is { } before) await before(context, token);
             }
         }
+
+        private byte[] GetBalPayload() => BalPayload ?? (InvalidData ? [0x80] : [0xc0]);
 
         private void Disposed() => Interlocked.Increment(ref ResponsesDisposed);
     }

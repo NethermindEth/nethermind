@@ -73,6 +73,7 @@ internal static class RpcEndpoint
             {
                 context.Response.ContentType = "application/json; charset=utf-8";
                 await context.Response.Body.WriteAsync(response.WrittenMemory, cancellation.Token);
+                response.CommitPolls();
             }
             outcome = response.ErrorCode == ErrorCodes.ParseError ? "parse_error"
                 : response.ErrorCode == ErrorCodes.InvalidRequest && batchInput

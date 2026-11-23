@@ -334,7 +334,8 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             VerifiedHead? snapshot = GetLatestHead();
             return IsHeadFresh(snapshot, OptimisticHeadMaxAgeSeconds) ? snapshot : null;
         }
-        using EvmExecutor calls = new(execution, execution.SpecProvider, logManager, secondsPerSlot: spec.SecondsPerSlot);
+        using EvmExecutor calls = new(execution, execution.SpecProvider, logManager, secondsPerSlot: spec.SecondsPerSlot,
+            withdrawalProcessorFactory: execution.WithdrawalProcessorFactory);
         using RpcBackend rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead,
             latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
             token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),

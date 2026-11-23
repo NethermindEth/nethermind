@@ -39,9 +39,8 @@ internal sealed partial class EthRpcModule(RpcService service, ILogManager logs)
         Execute((rpc, token) => rpc.GetProofAsync(address, storageKeys, blockParameter ?? default, token));
     public Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction) =>
         Execute((rpc, token) => rpc.SendRawTransactionAsync(transaction, token), waitForStartup: false);
-    public Task<ResultWrapper<JsonElement>> eth_sendRawTransactionSync(byte[] transaction, JsonElement? timeoutMs = null) =>
-        Execute((rpc, token) => rpc.SendRawTransactionSyncAsync(transaction, timeoutMs is { ValueKind: JsonValueKind.Number } timeout
-            && timeout.TryGetUInt64(out ulong milliseconds) ? milliseconds : null, token), waitForStartup: false);
+    public Task<ResultWrapper<JsonElement>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null) =>
+        Execute((rpc, token) => rpc.SendRawTransactionSyncAsync(transaction, timeoutMs, token), waitForStartup: false);
     public Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>> eth_simulateV1(JsonElement payload, JsonElement? blockParameter = null) =>
         Execute((rpc, token) => rpc.SimulateAsync(payload, blockParameter ?? default, token));
     public Task<ResultWrapper<JsonElement>> eth_feeHistory(UInt256 blockCount, JsonElement newestBlock, double[] rewardPercentiles) =>
@@ -67,20 +66,24 @@ internal sealed partial class EthRpcModule(RpcService service, ILogManager logs)
     public Task<ResultWrapper<JsonElement>> eth_getLogs(JsonElement filter) =>
         Execute((rpc, token) => rpc.GetLogsDataAsync(filter, token));
 
-    private Task<ResultWrapper<T>> Execute<T>(Func<RpcBackend, CancellationToken, Task<T>> invoke, bool waitForStartup = true)
+    private Task<ResultWrapper<T>> Execute<T>(Func<RpcBackend, CancellationToken, Task<T>> invoke, bool waitForStartup = true) =>
+        Execute(invoke, static result => ResultWrapper<T>.Success(result), waitForStartup);
+
+    private Task<ResultWrapper<T>> Execute<T, TResult>(Func<RpcBackend, CancellationToken, Task<TResult>> invoke,
+        Func<TResult, ResultWrapper<T>> wrap, bool waitForStartup = true)
     {
         // Current is thread-static and only belongs to this request before the first await.
         CancellationToken token = JsonRpcContext.Current?.RequestAborted ?? default;
-        return ExecuteAsync(invoke, token, waitForStartup);
+        return ExecuteAsync(invoke, wrap, token, waitForStartup);
     }
 
-    private async Task<ResultWrapper<T>> ExecuteAsync<T>(Func<RpcBackend, CancellationToken, Task<T>> invoke,
-        CancellationToken token, bool waitForStartup)
+    private async Task<ResultWrapper<T>> ExecuteAsync<T, TResult>(Func<RpcBackend, CancellationToken, Task<TResult>> invoke,
+        Func<TResult, ResultWrapper<T>> wrap, CancellationToken token, bool waitForStartup)
     {
         try
         {
             RpcBackend backend = await service.GetBackendAsync(token, waitForStartup);
-            return ResultWrapper<T>.Success(await invoke(backend, token));
+            return wrap(await invoke(backend, token));
         }
         catch (RpcException exception)
         {

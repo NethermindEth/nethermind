@@ -146,6 +146,96 @@ public class RpcSubscriptionsTests
     }
 
     [Test]
+    public async Task Websocket_batch_limit_preserves_filter_changes_for_an_http_retry(
+        [Values("block", "log", "pending")] string kind)
+    {
+        await using Harness harness = new();
+        FakeSocket socket = harness.Connect();
+        await socket.Request("eth_subscribe", "newHeads");
+        string method = kind switch
+        {
+            "block" => "eth_newBlockFilter",
+            "log" => "eth_newFilter",
+            _ => "eth_newPendingTransactionFilter",
+        };
+        object[] arguments = kind == "log" ? [new { }] : [];
+        string filter = (await harness.HttpRequest(method, arguments)).GetProperty("result").GetString()!;
+        List<string> expected = [];
+        if (kind == "pending")
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                Hash256 hash = Keccak.Compute($"pending {i}");
+                harness.Subscriptions.PublishPendingTransaction(new Transaction { Hash = hash });
+                expected.Add(hash.ToString());
+            }
+        }
+        else
+        {
+            Block head = harness.Source.Current;
+            for (int i = 0; i < 16; i++)
+            {
+                head = harness.Source.Add((ulong)(11 + i), head, 1);
+                expected.Add(head.Hash!.ToString());
+            }
+            harness.Publish(head);
+            AssertHead(await socket.Next(), head);
+        }
+        harness.Source.Code = new byte[(RpcSubscriptions.MaxMessageBytes - 1_024) / 2];
+        socket.Push(new[] { Request("eth_getCode", Address.ToString(), "latest"), Request("eth_getFilterChanges", filter) });
+
+        JsonElement batch = await socket.Next();
+        JsonElement changes = (await harness.HttpRequest("eth_getFilterChanges", [filter])).GetProperty("result");
+        JsonElement consumed = (await harness.HttpRequest("eth_getFilterChanges", [filter])).GetProperty("result");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch[0].GetProperty("result").GetString(), Has.Length.EqualTo(2 + 2 * harness.Source.Code.Length));
+            Assert.That(batch[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(Nethermind.JsonRpc.ErrorCodes.LimitExceeded));
+            Assert.That(changes.EnumerateArray().Select(change => (kind == "log" ? change.GetProperty("blockHash") : change).GetString()), Is.EqualTo(expected));
+            Assert.That(consumed.GetArrayLength(), Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Http_poll_preserves_pending_changes_after_a_failed_response_write()
+    {
+        await using Harness harness = new();
+        string filter = (await harness.HttpRequest("eth_newPendingTransactionFilter", [])).GetProperty("result").GetString()!;
+        Hash256 hash = Keccak.Compute("pending before write failure");
+        harness.Subscriptions.PublishPendingTransaction(new Transaction { Hash = hash });
+
+        await Assert.ThatAsync(() => harness.HttpRequest("eth_getFilterChanges", [filter], failWrite: true), Throws.TypeOf<IOException>());
+        JsonElement retry = (await harness.HttpRequest("eth_getFilterChanges", [filter])).GetProperty("result");
+
+        Assert.That(retry.EnumerateArray().Select(entry => entry.GetString()), Is.EqualTo(new[] { hash.ToString() }));
+    }
+
+    [Test]
+    public async Task Polling_retires_a_filter_when_one_block_exceeds_the_log_count_limit()
+    {
+        await using Harness harness = new();
+        FakeSocket socket = harness.Connect();
+        await socket.Request("eth_subscribe", "newHeads");
+        string filter = (await harness.HttpRequest("eth_newFilter", [new { }])).GetProperty("result").GetString()!;
+        Block head = harness.Source.Add(11, harness.Source.Current, 1, logCount: 10_001);
+        harness.Publish(head);
+        AssertHead(await socket.Next(), head);
+
+        JsonElement limit = (await harness.HttpRequest("eth_getFilterChanges", [filter])).GetProperty("error");
+        JsonElement retired = (await harness.HttpRequest("eth_getFilterChanges", [filter])).GetProperty("error");
+        JsonElement logs = (await harness.HttpRequest("eth_getLogs", [new { blockHash = head.Hash!.ToString() }])).GetProperty("error");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(limit.GetProperty("code").GetInt32(), Is.EqualTo(Nethermind.JsonRpc.ErrorCodes.LimitExceeded));
+            Assert.That(retired.GetProperty("code").GetInt32(), Is.EqualTo(Nethermind.JsonRpc.ErrorCodes.InvalidInput));
+            Assert.That(logs.GetProperty("code").GetInt32(), Is.EqualTo(Nethermind.JsonRpc.ErrorCodes.LimitExceeded));
+            Assert.That(logs.GetProperty("message").GetString(), Does.Contain("10000-log"));
+        }
+    }
+
+    [Test]
     public async Task Http_filter_parameters_reject_invalid_ranges_and_filter_kinds()
     {
         await using Harness harness = new();
@@ -956,11 +1046,12 @@ public class RpcSubscriptionsTests
     }
 
     [Test]
-    public async Task Pending_subscription_reports_only_local_admissions_in_the_requested_shape([Values] bool full)
+    public async Task Pending_subscription_reports_only_local_admissions_in_the_requested_shape([Values] bool full, [Values] bool objectOption)
     {
         await using Harness harness = new();
         FakeSocket socket = harness.Connect();
-        string id = (await socket.Request("eth_subscribe", "newPendingTransactions", full)).GetProperty("result").GetString()!;
+        object options = objectOption ? new { includeTransactions = full } : full;
+        string id = (await socket.Request("eth_subscribe", "newPendingTransactions", options)).GetProperty("result").GetString()!;
         string filterId = (await harness.HttpRequest("eth_newPendingTransactionFilter", [])).GetProperty("result").GetString()!;
         Transaction transaction = new() { SenderAddress = Address, To = Address.Zero, GasLimit = 21_000, Hash = Keccak.Compute("local pending") };
 
@@ -977,6 +1068,41 @@ public class RpcSubscriptionsTests
             if (full) Assert.That(pending.GetProperty("blockHash").ValueKind, Is.EqualTo(JsonValueKind.Null));
             Assert.That(changes.EnumerateArray().Select(hash => hash.GetString()), Is.EqualTo(new[] { transaction.Hash.ToString() }));
             Assert.That(consumed.GetArrayLength(), Is.Zero);
+        }
+    }
+
+    [TestCase("{}", true)]
+    [TestCase("{\"includeTransactions\":false}", true)]
+    [TestCase("\"fAlSe\"", true)]
+    [TestCase("{\"includeTransactions\":true}", false)]
+    [TestCase("[]", false)]
+    public async Task Head_subscription_accepts_standard_transaction_options_without_requesting_bodies(string option, bool accepted)
+    {
+        await using Harness harness = new();
+        FakeSocket socket = harness.Connect();
+        using JsonDocument document = JsonDocument.Parse(option);
+        JsonElement response = await socket.Request("eth_subscribe", "newHeads", document.RootElement);
+        if (accepted)
+        {
+            harness.Source.RejectBlocks = true;
+            Block head = harness.Source.Add(11, harness.Source.Current, 1);
+            harness.Publish(head);
+            JsonElement publication = await socket.Next();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.GetProperty("result").GetString(), Does.StartWith("0x"));
+                Assert.That(harness.Source.BlockReads, Is.Zero);
+                AssertHead(publication, head);
+            }
+            return;
+        }
+
+        JsonElement error = response.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(Nethermind.JsonRpc.ErrorCodes.InvalidParams));
+            if (option.Contains("true", StringComparison.Ordinal))
+                Assert.That(error.GetProperty("message").GetString(), Does.Contain("cannot include full transactions"));
         }
     }
 
@@ -1207,11 +1333,11 @@ public class RpcSubscriptionsTests
             Subscriptions.PublishHead(Head(block));
         }
 
-        internal async Task<JsonElement> HttpRequest(string method, object[] parameters, CancellationToken token = default)
+        internal async Task<JsonElement> HttpRequest(string method, object[] parameters, CancellationToken token = default, bool failWrite = false)
         {
             byte[] request = JsonSerializer.SerializeToUtf8Bytes(Request(method, parameters));
             using MemoryStream input = new(request);
-            using MemoryStream output = new();
+            using MemoryStream output = failWrite ? new FailingWriteStream() : new MemoryStream();
             DefaultHttpContext context = new() { RequestAborted = token };
             context.Request.Body = input;
             context.Request.ContentLength = request.Length;
@@ -1233,6 +1359,12 @@ public class RpcSubscriptionsTests
         }
 
         internal static VerifiedHead Head(Block block) => new(100, block.Number, block.Hash!, block.StateRoot!);
+    }
+
+    private sealed class FailingWriteStream : MemoryStream
+    {
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+            ValueTask.FromException(new IOException("The test response body rejected the write."));
     }
 
     private sealed class ExecutionLoad : IAsyncDisposable

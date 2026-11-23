@@ -25,13 +25,14 @@ internal sealed class BoundedTransactionRelay : NullTxPool, ITxPool, IDisposable
         {
             long size = transaction.GetLength() * 2L + 1024;
             bool added = !_transactions.TryGetValue(hash, out Entry? entry);
-            if (added)
+            if (entry is null || entry.Transaction.PayerAddress != transaction.PayerAddress)
             {
                 Transaction retained = new();
                 transaction.CopyTo(retained, copyHash: true);
-                entry = new(retained);
+                if (entry is null) entry = new(retained);
+                else entry.UpdateTransaction(retained);
             }
-            _transactions.Set(hash, entry!, new MemoryCacheEntryOptions { Size = size, AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10) });
+            _transactions.Set(hash, entry, new MemoryCacheEntryOptions { Size = size, AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10) });
             if (!_transactions.TryGetValue(hash, out _))
                 throw new RpcException(-32005, "The bounded transaction relay is full.");
             return added;
@@ -49,7 +50,7 @@ internal sealed class BoundedTransactionRelay : NullTxPool, ITxPool, IDisposable
         foreach (object key in _transactions.Keys)
         {
             if (_transactions.TryGetValue(key, out Entry? entry) && entry is { IsAnnounced: true, Transaction: { } tx } && tx.SenderAddress == address
-                && tx.NonceKeys is null && tx.Nonce >= nonce && ExecutionData.TryGetRelayCost(tx, out UInt256 cost))
+                && tx.NonceKeys is null && tx.Nonce >= nonce && ExecutionData.TryGetSenderCost(tx, out UInt256 cost))
             {
                 local ??= [];
                 if (!local.TryGetValue(tx.Nonce, out UInt256 existing) || cost < existing) local[tx.Nonce] = cost;
@@ -245,7 +246,9 @@ internal sealed class BoundedTransactionRelay : NullTxPool, ITxPool, IDisposable
     private sealed class Entry(Transaction transaction)
     {
         private int _announced;
-        internal Transaction Transaction { get; } = transaction;
+        private Transaction _transaction = transaction;
+        internal Transaction Transaction => Volatile.Read(ref _transaction);
+        internal void UpdateTransaction(Transaction updated) => Volatile.Write(ref _transaction, updated);
         internal bool IsAnnounced => Volatile.Read(ref _announced) != 0;
         internal bool TryMarkAnnounced() => Interlocked.Exchange(ref _announced, 1) == 0;
     }

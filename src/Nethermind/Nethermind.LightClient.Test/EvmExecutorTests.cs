@@ -144,6 +144,76 @@ public class EvmExecutorTests
     }
 
     [Test]
+    public async Task Pending_frame_nonce_charges_the_validated_payer([Values] bool sponsored)
+    {
+        byte[] approve = [0x60, sponsored ? (byte)FrameFlags.ApproveExecution : (byte)FrameFlags.ApproveExecutionAndPayment,
+            0x60, 0x00, 0x60, 0x00, 0xaa, 0x00];
+        using BoundedTransactionRelay relay = new();
+        FakeSource source = new(approve, contractBalance: sponsored ? UInt256.Zero : 1_000_000_000) { TransactionRelay = relay };
+        Address payer = Contract;
+        Transaction transaction = CreateFrameSubmission();
+        transaction.Nonce = source.ContractAccount.Nonce;
+        transaction.NonceKeys = null;
+        if (sponsored)
+        {
+            payer = new("0x0000000000000000000000000000000000000042");
+            byte[] approvePayment = [0x60, (byte)FrameFlags.ApprovePayment, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00];
+            source.ExtraContracts.Add(payer, approvePayment);
+            source.ExtraAccounts.Add(payer, new Account(1, 1_000_000_000, Keccak.EmptyTreeHash, Keccak.Compute(approvePayment)));
+            transaction.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, null, 100_000, 200_000, default, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, payer, 100_000, 200_000, default, default)];
+            transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
+        }
+        SingleReleaseSpecProvider spec = new(Eip8141Prototype.Instance, 1, 1);
+        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        JsonElement submission = JsonSerializer.SerializeToElement(new[] { "0x" + Convert.ToHexString(encoded) });
+        object result = await rpc.InvokeAsync("eth_sendRawTransaction", submission, CancellationToken.None);
+        object pending = await rpc.InvokeAsync("eth_getTransactionCount", JsonSerializer.SerializeToElement(new[] { Contract.ToString(), "pending" }), CancellationToken.None);
+
+        Hash256 hash = transaction.CalculateHash();
+        bool retained = relay.TryGetPendingTransaction(hash, out Transaction? admitted);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(hash.ToString()));
+            Assert.That(retained, Is.True);
+            Assert.That(admitted?.PayerAddress, Is.EqualTo(payer));
+            Assert.That(pending, Is.EqualTo("0x2"));
+            Assert.That(relay.GetPendingNonce(Contract, new Account(transaction.Nonce, 0)), Is.EqualTo(sponsored ? 2UL : 1UL));
+        }
+    }
+
+    [Test]
+    public void Reannounced_frame_transaction_refreshes_the_validated_payer([Values] bool sponsoredFirst)
+    {
+        using BoundedTransactionRelay relay = new();
+        Address sponsor = new("0x0000000000000000000000000000000000000042");
+        Transaction transaction = CreateFrameSubmission();
+        transaction.Nonce = 1;
+        transaction.NonceKeys = null;
+        transaction.Hash = transaction.CalculateHash();
+        transaction.PayerAddress = sponsoredFirst ? sponsor : Contract;
+        Account sender = new(transaction.Nonce, 0);
+        relay.AddVerified(transaction);
+        relay.TryMarkAnnounced(transaction.Hash);
+        ulong before = relay.GetPendingNonce(Contract, sender);
+
+        transaction.PayerAddress = sponsoredFirst ? Contract : sponsor;
+        bool added = relay.AddVerified(transaction);
+        ulong after = relay.GetPendingNonce(Contract, sender);
+        bool announcedAgain = relay.TryMarkAnnounced(transaction.Hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.EqualTo(sponsoredFirst ? 2UL : 1UL));
+            Assert.That(after, Is.EqualTo(sponsoredFirst ? 1UL : 2UL));
+            Assert.That(added, Is.False);
+            Assert.That(announcedAgain, Is.False);
+        }
+    }
+
+    [Test]
     public async Task Frame_submission_from_a_guarded_sender_is_refused_before_relay([Values] bool guarded)
     {
         byte[] approve = [0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00];
@@ -1620,9 +1690,16 @@ public class EvmExecutorTests
         public Func<VerifiedHead, CancellationToken, Task<UInt256>>? StorageResponse { get; set; }
         public Func<VerifiedHead, Account>? ContractAccountResponse { get; set; }
         public int Broadcasts { get; private set; }
+        public BoundedTransactionRelay? TransactionRelay { get; init; }
+        public ulong GetPendingNonce(Address address, Account account) => TransactionRelay?.GetPendingNonce(address, account) ?? account.Nonce;
         public Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken)
         {
             Broadcasts++;
+            if (TransactionRelay is { } relay)
+            {
+                relay.AddVerified(transaction);
+                relay.TryMarkAnnounced(transaction.Hash!);
+            }
             return Task.CompletedTask;
         }
 

@@ -7,7 +7,9 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -66,6 +68,7 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
             return ResultWrapper<string>.Fail("Subscriptions require an open verified WebSocket connection.", ErrorCodes.MethodNotFound);
         try { return client.Subscribe(name, filter); }
         catch (RpcException error) { return ResultWrapper<string>.Fail(error.Message, error.Code); }
+        catch (SafePublicMessageFormatException error) { return ResultWrapper<string>.Fail(error.Message, ErrorCodes.InvalidParams); }
     }
 
     internal static ResultWrapper<bool> Unsubscribe(IJsonRpcDuplexClient? duplex, string id)
@@ -298,6 +301,7 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
                 [.. added.Select(snapshot => snapshot.Head.BlockHash)],
                 [.. added.Where(snapshot => snapshot.ExecutionHeader is not null).Select(snapshot => snapshot.ExecutionHeader!)]));
         }
+        if (clients.Length == 0) return;
         HashSet<Hash256> canonical = [];
         foreach (Snapshot snapshot in _history) canonical.Add(snapshot.Head.BlockHash);
         Delivery delivery = new(sequence, removed, added, tip, canonical);
@@ -569,7 +573,7 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
                 _token.ThrowIfCancellationRequested();
                 if (Volatile.Read(ref _closing) != 0) return;
                 if (response.HasResponses)
-                    await EnqueueResponseAsync(response.WrittenMemory.ToArray());
+                    await EnqueueResponseAsync(response);
                 else
                     lock (_lock) ActivatePending();
             }
@@ -591,23 +595,35 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
                 {
                     "newHeads" => SubscriptionKind.Heads,
                     "logs" => SubscriptionKind.Logs,
-                    "newPendingTransactions" when filter?.ValueKind is null or JsonValueKind.False => SubscriptionKind.PendingHashes,
-                    "newPendingTransactions" when filter?.ValueKind == JsonValueKind.True => SubscriptionKind.PendingTransactions,
-                    "newPendingTransactions" => throw new RpcException(-32602, "A pending transaction subscription accepts a boolean full transaction flag."),
+                    "newPendingTransactions" => SubscriptionKind.PendingHashes,
                     _ => throw new RpcException(-32602, "Only newHeads, logs and newPendingTransactions subscriptions are available."),
                 };
                 HashSet<Address>? addresses = null;
                 List<HashSet<Hash256>?> topics = [];
-                if (filter is { } value && kind is SubscriptionKind.Heads or SubscriptionKind.Logs)
+                if (filter is { } value)
                 {
-                    if (name != "logs" || value.ValueKind != JsonValueKind.Object) throw new RpcException(-32602, "Invalid subscription filter.");
-                    foreach (JsonProperty property in value.EnumerateObject())
+                    if (kind == SubscriptionKind.Logs)
                     {
-                        switch (property.Name)
+                        if (value.ValueKind != JsonValueKind.Object) throw new RpcException(-32602, "Invalid subscription filter.");
+                        foreach (JsonProperty property in value.EnumerateObject())
                         {
-                            case "address": addresses = property.Value.ValueKind == JsonValueKind.Null ? null : RpcBackend.ParseAddresses(property.Value); break;
-                            case "topics": topics = property.Value.ValueKind == JsonValueKind.Null ? [] : RpcBackend.ParseTopics(property.Value); break;
-                            default: throw new RpcException(-32602, "Subscription filters accept only address and topics.");
+                            switch (property.Name)
+                            {
+                                case "address": addresses = property.Value.ValueKind == JsonValueKind.Null ? null : RpcBackend.ParseAddresses(property.Value); break;
+                                case "topics": topics = property.Value.ValueKind == JsonValueKind.Null ? [] : RpcBackend.ParseTopics(property.Value); break;
+                                default: throw new RpcException(-32602, "Subscription filters accept only address and topics.");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        TransactionsOption options = new();
+                        options.ReadJson(value, EthereumJsonSerializer.JsonOptions);
+                        if (options.IncludeTransactions)
+                        {
+                            if (kind == SubscriptionKind.Heads)
+                                throw new RpcException(ErrorCodes.InvalidParams, "newHeads cannot include full transactions.");
+                            kind = SubscriptionKind.PendingTransactions;
                         }
                     }
                 }
@@ -835,11 +851,11 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
             }
         }
 
-        private async Task<bool> EnqueueResponseAsync(byte[] message)
+        private async Task EnqueueResponseAsync(RpcResponseBuffer response)
         {
             using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10), _owner._clock);
             using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _workCancellation.Token);
-            try { return await EnqueueAsync(message, null, cancellation.Token, activatePending: true); }
+            try { await EnqueueAsync(response.WrittenMemory.ToArray(), null, cancellation.Token, response); }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
             {
                 if (_workCancellation.IsCancellationRequested)
@@ -851,12 +867,11 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
                     _owner._logger.LogWarning("Closing subscription connection after its response queue exceeded the admission deadline");
                     Close((WebSocketCloseStatus)1013, "Response queue exceeded its admission deadline; reconnect and resubscribe.");
                 }
-                return false;
             }
         }
 
         private async Task<bool> EnqueueAsync(byte[] message, string? subscriptionId, CancellationToken cancellationToken,
-            bool activatePending = false)
+            RpcResponseBuffer? response = null)
         {
             if (message.Length > MaxMessageBytes) { Terminate(); return false; }
             while (true)
@@ -870,7 +885,12 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
                     if (_queuedBytes + message.Length <= MaxQueuedBytes && _outgoing.Writer.TryWrite(message))
                     {
                         _queuedBytes += message.Length;
-                        if (activatePending) ActivatePending();
+                        if (response is not null)
+                        {
+                            // The sender takes this lock before writing the frame to the socket.
+                            response.CommitPolls();
+                            ActivatePending();
+                        }
                         return true;
                     }
                     _space ??= new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -66,7 +66,7 @@ internal sealed class RpcFilters(TimeProvider? timeProvider = null)
             bool interested = false;
             foreach (Filter filter in _filters.Values)
             {
-                if (filter.Pending is not null || filter.Cursor >= sequence || filter.Cursor < _lostThrough) continue;
+                if (filter.Pending is not null || filter.Cursor >= sequence || !filter.Polling && filter.Cursor < _lostThrough) continue;
                 if (filter.Query is not null)
                 {
                     logs = true;
@@ -122,7 +122,7 @@ internal sealed class RpcFilters(TimeProvider? timeProvider = null)
         lock (_lock) return GetFilter(id, _clock.GetTimestamp()).Query ?? throw FilterNotFound();
     }
 
-    internal async Task<JsonElement> PollAsync(UInt256 id, RpcBackend rpc, CancellationToken token, bool webSocket = false)
+    internal async Task<ResultWrapper<JsonElement>> PollAsync(UInt256 id, RpcBackend rpc, CancellationToken token, bool webSocket = false)
     {
         Filter filter;
         HeadChange[] changes;
@@ -137,45 +137,56 @@ internal sealed class RpcFilters(TimeProvider? timeProvider = null)
             if (filter.Pending is { } pending)
             {
                 if (filter.PendingOverflow) throw RemoveOverflowedFilter(id);
-                if (pending.Count == 0) return Empty;
+                if (pending.Count == 0) return ResultWrapper<JsonElement>.Success(Empty);
                 hashes = [.. pending];
-                pending.Clear();
                 changes = [];
             }
             else
             {
                 if (filter.Cursor < _lostThrough) throw RemoveOverflowedFilter(id);
                 changes = [.. _history.Where(head => head.Sequence > filter.Cursor)];
-                if (changes.Length == 0) return Empty;
-                if (filter.Query is null)
-                {
-                    hashes = [.. changes.SelectMany(change => change.AddedHashes)];
-                    filter.Cursor = changes[^1].Sequence;
-                }
-                else filter.Polling = true;
+                if (changes.Length == 0) return ResultWrapper<JsonElement>.Success(Empty);
+                if (filter.Query is null) hashes = [.. changes.SelectMany(change => change.AddedHashes)];
             }
+            filter.Polling = true;
         }
-        if (hashes is not null) return BoundedJson.ToElement(hashes);
         try
         {
-            JsonElement? result = await rpc.GetLogChangesAsync(filter.Query!, filter.Start, changes, token, webSocket);
+            JsonElement? result = hashes is not null ? BoundedJson.ToElement(hashes)
+                : await rpc.GetLogChangesAsync(filter.Query!, filter.Start, changes, token, webSocket);
+            long sequence = changes.Length == 0 ? 0 : changes[^1].Sequence;
+            int pendingCount = filter.Pending is not null ? hashes!.Length : 0;
             lock (_lock)
             {
                 token.ThrowIfCancellationRequested();
                 if (!_filters.TryGetValue(id, out Filter? installed) || !ReferenceEquals(filter, installed)) throw FilterNotFound();
-                if (changes[^1].Sequence < _lostThrough) throw RemoveOverflowedFilter(id);
+                if (filter.Pending is null && sequence < _lostThrough) throw RemoveOverflowedFilter(id);
                 if (result is null)
                 {
                     _filters.Remove(id);
-                    throw new RpcException(ErrorCodes.LimitExceeded, "Polling filter changes exceed the HTTP response limit; recover logs by range and install a new filter.");
+                    throw new RpcException(ErrorCodes.LimitExceeded, "Polling filter changes exceed the HTTP response limit; recover logs with a narrower query and install a new filter.");
                 }
-                filter.Cursor = changes[^1].Sequence;
             }
-            return result.Value;
+            return new PollResponse(result.Value, sent => CompletePoll(filter, sequence, pendingCount, sent));
         }
-        finally
+        catch
         {
-            lock (_lock) filter.Polling = false;
+            CompletePoll(filter, 0, 0, sent: false);
+            throw;
+        }
+    }
+
+    private void CompletePoll(Filter filter, long sequence, int pendingCount, bool sent)
+    {
+        lock (_lock)
+        {
+            filter.Polling = false;
+            if (!sent) return;
+            if (filter.Pending is { } pending)
+            {
+                if (!filter.PendingOverflow) pending.RemoveRange(0, pendingCount);
+            }
+            else filter.Cursor = sequence;
         }
     }
 
@@ -201,6 +212,26 @@ internal sealed class RpcFilters(TimeProvider? timeProvider = null)
 
     internal readonly record struct LogBlock(long AddedAt, BlockHeader Header);
     internal sealed record HeadChange(long Sequence, LogBlock[] Removed, Hash256[] AddedHashes, BlockHeader[] AddedLogHeaders);
+
+    // The response owns the poll until the transport accepts it into the outgoing frame.
+    internal sealed class PollResponse : ResultWrapper<JsonElement>
+    {
+        private Action<bool>? _complete;
+
+        internal PollResponse(JsonElement result, Action<bool> complete)
+        {
+            Data = result;
+            _complete = complete;
+        }
+
+        internal Action<bool>? TakeCompletion() => Interlocked.Exchange(ref _complete, null);
+
+        public override void Dispose()
+        {
+            TakeCompletion()?.Invoke(false);
+            base.Dispose();
+        }
+    }
 
     private sealed class Filter(RpcBackend.LogQuery? query, bool pending, long start, long now)
     {

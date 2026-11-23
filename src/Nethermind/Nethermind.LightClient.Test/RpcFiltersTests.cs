@@ -24,14 +24,14 @@ public class RpcFiltersTests
         Assert.That(Assert.Throws<RpcException>(() => filters.Install())!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
 
         clock.Advance(RpcFilters.IdleTimeout - TimeSpan.FromTicks(1));
-        JsonElement empty = await filters.PollAsync(id, rpc, CancellationToken.None);
+        JsonElement empty = await DeliveredPollAsync(filters, id, rpc);
         Assert.That(empty.GetArrayLength(), Is.Zero);
         clock.Advance(TimeSpan.FromTicks(1));
         UInt256 replacement = filters.Install();
-        Assert.That((await filters.PollAsync(id, rpc, CancellationToken.None)).GetArrayLength(), Is.Zero);
+        Assert.That((await DeliveredPollAsync(filters, id, rpc)).GetArrayLength(), Is.Zero);
 
         clock.Advance(RpcFilters.IdleTimeout);
-        RpcException? expired = await Assert.ThrowsAsync<RpcException>(async () => await filters.PollAsync(id, rpc, CancellationToken.None));
+        RpcException? expired = await Assert.ThrowsAsync<RpcException>(async () => await DeliveredPollAsync(filters, id, rpc));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(expired!.Code, Is.EqualTo(ErrorCodes.InvalidInput));
@@ -51,12 +51,12 @@ public class RpcFiltersTests
             long sequence = filters.StartPublication();
             Hash256 hash = Keccak.Compute($"head {sequence}");
             filters.RecordHead(new(sequence, [], [hash], []));
-            JsonElement changes = await filters.PollAsync(active, rpc, CancellationToken.None);
+            JsonElement changes = await DeliveredPollAsync(filters, active, rpc);
             Assert.That(changes.EnumerateArray().Select(item => item.GetString()), Is.EqualTo(new[] { hash.ToString() }));
         }
 
-        RpcException? overflowed = await Assert.ThrowsAsync<RpcException>(async () => await filters.PollAsync(slow, rpc, CancellationToken.None));
-        JsonElement consumed = await filters.PollAsync(active, rpc, CancellationToken.None);
+        RpcException? overflowed = await Assert.ThrowsAsync<RpcException>(async () => await DeliveredPollAsync(filters, slow, rpc));
+        JsonElement consumed = await DeliveredPollAsync(filters, active, rpc);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(overflowed!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
@@ -77,8 +77,8 @@ public class RpcFiltersTests
         Hash256 second = Keccak.Compute("second pending");
         filters.PublishPending(second);
 
-        JsonElement changes = await filters.PollAsync(slow, rpc, CancellationToken.None);
-        JsonElement recentChanges = await filters.PollAsync(recent, rpc, CancellationToken.None);
+        JsonElement changes = await DeliveredPollAsync(filters, slow, rpc);
+        JsonElement recentChanges = await DeliveredPollAsync(filters, recent, rpc);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(changes.EnumerateArray().Select(item => item.GetString()), Is.EqualTo(new[] { first.ToString(), second.ToString() }));
@@ -86,10 +86,10 @@ public class RpcFiltersTests
         }
 
         for (int i = 0; i < RpcFilters.MaxPendingHashes; i++) filters.PublishPending(first);
-        JsonElement full = await filters.PollAsync(recent, rpc, CancellationToken.None);
+        JsonElement full = await DeliveredPollAsync(filters, recent, rpc);
         filters.PublishPending(second);
-        RpcException? overflowed = await Assert.ThrowsAsync<RpcException>(async () => await filters.PollAsync(slow, rpc, CancellationToken.None));
-        JsonElement last = await filters.PollAsync(recent, rpc, CancellationToken.None);
+        RpcException? overflowed = await Assert.ThrowsAsync<RpcException>(async () => await DeliveredPollAsync(filters, slow, rpc));
+        JsonElement last = await DeliveredPollAsync(filters, recent, rpc);
         Assert.That(last.GetArrayLength(), Is.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
@@ -97,6 +97,13 @@ public class RpcFiltersTests
             Assert.That(overflowed!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
             Assert.That(last[0].GetString(), Is.EqualTo(second.ToString()));
         }
+    }
+
+    private static async Task<JsonElement> DeliveredPollAsync(RpcFilters filters, UInt256 id, RpcBackend rpc)
+    {
+        using ResultWrapper<JsonElement> response = await filters.PollAsync(id, rpc, CancellationToken.None);
+        if (response is RpcFilters.PollResponse poll) poll.TakeCompletion()?.Invoke(true);
+        return response.Data;
     }
 
     private static RpcBackend Backend() => new(Substitute.For<IExecutionStateSource>(), static () => throw new InvalidOperationException(), 1);

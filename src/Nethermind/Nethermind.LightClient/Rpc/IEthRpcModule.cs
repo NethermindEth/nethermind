@@ -33,7 +33,7 @@ internal partial interface IEthRpcModule : IRpcModule
     Task<ResultWrapper<Hash256>> eth_sendRawTransaction([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictDataConverter))] byte[] transaction);
     Task<ResultWrapper<JsonElement>> eth_sendRawTransactionSync(
         [JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictDataConverter))] byte[] transaction,
-        JsonElement? timeoutMs = null);
+        ulong? timeoutMs = null);
     Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>> eth_simulateV1(JsonElement payload, JsonElement? blockParameter = null);
     Task<ResultWrapper<JsonElement>> eth_feeHistory([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictQuantityConverter))] UInt256 blockCount, JsonElement newestBlock, double[] rewardPercentiles);
     Task<ResultWrapper<JsonElement>> eth_getBlockByNumber(JsonElement blockParameter, bool returnFullTransactionObjects);

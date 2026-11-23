@@ -26,6 +26,46 @@ public class GnosisRpcTests
     public void SelectPreset() => BeaconPresetSelection.Initialize(BlockchainIds.Gnosis);
 
     [Test]
+    public async Task Simulate_processes_Gnosis_withdrawals_through_the_configured_contract([Values] bool withdrawalsEnabled)
+    {
+        VerifiedHead head = new(1, 30_000_000, Keccak.Compute("Gnosis simulation head"), Keccak.EmptyTreeHash);
+        await using ExecutionPeerTransport transport = new("gnosis", LimboLogs.Instance, head);
+        Address recipient = new("0x1000000000000000000000000000000000000001");
+        Address withdrawalContract = new("0x0B98057eA310F4d31F2a452B414647007d1645d9");
+        ulong secondsPerSlot = BeaconChainSpec.Gnosis.SecondsPerSlot;
+        BlockHeader header = GnosisExecutionTests.CallHeader(head);
+        header.Timestamp = GnosisSpecProvider.ShanghaiTimestamp - (withdrawalsEnabled ? secondsPerSlot : 3 * secondsPerSlot);
+        header.BlobGasUsed = header.ExcessBlobGas = null;
+
+        // A system call stores amounts[0], starting at ABI offset 0x84. An empty call reads the native balance and the slot.
+        byte[] code = [0x36, 0x15, 0x60, 0x0c, 0x57, 0x60, 0x84, 0x35, 0x60, 0x00, 0x55, 0x00, 0x5b,
+            0x73, .. recipient.Bytes, 0x31, 0x60, 0x00, 0x52, 0x60, 0x00, 0x54, 0x60, 0x20, 0x52, 0x60, 0x40, 0x60, 0x00, 0xf3];
+        Account account = new(1, 0, Keccak.EmptyTreeHash, Keccak.Compute(code));
+        GnosisExecutionTests.ExecutionSource source = new(new Block(header, [], []), withdrawalContract, account, code);
+        using EvmExecutor calls = new(source, transport.SpecProvider, LimboLogs.Instance, secondsPerSlot: secondsPerSlot,
+            withdrawalProcessorFactory: transport.WithdrawalProcessorFactory);
+        using RpcBackend rpc = new(source, () => head, BlockchainIds.Gnosis, calls, transport.SpecProvider, () => head);
+        object payload = new
+        {
+            blockStateCalls = new object[]
+            {
+                new { blockOverrides = new { withdrawals = new[] { new { index = "0x0", validatorIndex = "0x1", address = recipient.ToString(), amount = "0x7" } } } },
+                new { calls = new[] { new { to = withdrawalContract.ToString() } } },
+            },
+        };
+
+        JsonElement blocks = (JsonElement)await rpc.InvokeAsync("eth_simulateV1",
+            JsonSerializer.SerializeToElement(new[] { payload }), CancellationToken.None);
+
+        JsonElement observed = blocks[1].GetProperty("calls")[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observed.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+            Assert.That(observed.GetProperty("returnData").GetString(), Is.EqualTo("0x" + new string('0', 127) + (withdrawalsEnabled ? "7" : "0")));
+        }
+    }
+
+    [Test]
     public async Task Blocks_and_subscription_headers_preserve_the_registered_seal_shape(
         [Values("genesis", "aura", "pos")] string era, [Values] bool byHash, [Values] bool fullTransactions)
     {
