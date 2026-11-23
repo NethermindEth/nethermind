@@ -109,7 +109,7 @@ public class LiveEventPipeTests
         static async Task Signal(string signal, int pid)
         {
             using Process kill = Process.Start("kill", [$"-{signal}", pid.ToString(CultureInfo.InvariantCulture)])!;
-            await kill.WaitForExitAsync();
+            await kill.WaitForExitAsync(CancellationToken.None);
         }
     }
 

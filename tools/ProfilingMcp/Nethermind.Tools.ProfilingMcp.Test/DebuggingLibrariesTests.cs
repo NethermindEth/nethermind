@@ -76,6 +76,49 @@ public class DebuggingLibrariesTests
     }
 
     [Test]
+    public async Task Records_a_download_timeout_as_one_runtimes_problem()
+    {
+        // HttpClient reports its own timeout as a cancellation, though the caller did not cancel.
+        string? problem = await DebuggingLibraries.TrySupplyAsync(
+            static () => Task.FromException(new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 300 seconds elapsing.")),
+            CancellationToken.None);
+
+        Assert.That(problem, Does.Contain("HttpClient.Timeout"));
+    }
+
+    [Test]
+    public void Ends_the_preparation_when_the_caller_cancels()
+    {
+        using CancellationTokenSource caller = new();
+        caller.Cancel();
+
+        Assert.That(async () => await DebuggingLibraries.TrySupplyAsync(() => Task.FromCanceled(caller.Token), caller.Token), Throws.InstanceOf<OperationCanceledException>());
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Leaves_no_partial_file_behind(bool fails)
+    {
+        string folder = Directory.CreateTempSubdirectory().FullName;
+        string dac = Path.Combine(folder, "libmscordaccore.so");
+        try
+        {
+            using Stream source = fails ? new FailingStream() : new MemoryStream([1, 2, 3]);
+            Task saving = DebuggingLibraries.SaveAsync(source, dac, CancellationToken.None);
+            if (fails)
+                Assert.That(async () => await saving, Throws.InstanceOf<IOException>());
+            else
+                await saving;
+
+            Assert.That(Directory.GetFiles(folder).Select(Path.GetFileName), fails ? Is.Empty : Is.EqualTo(new[] { "libmscordaccore.so" }));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Test]
     public void Refuses_only_a_target_that_loaded_musl()
     {
         using (Assert.EnterMultipleScope())
@@ -94,4 +137,20 @@ public class DebuggingLibrariesTests
     [TestCase("cpu_sample", "1", ExpectedResult = false)]
     public bool Supplies_dacs_only_for_tools_that_load_one(string tool, string target) =>
         DebuggingLibraries.AreNeededBy(tool, new Dictionary<string, JsonElement> { ["target"] = JsonSerializer.SerializeToElement(target) });
+
+    /// <summary>A download that breaks after its first bytes.</summary>
+    private sealed class FailingStream : MemoryStream
+    {
+        private bool _started;
+
+        public FailingStream() : base([1, 2, 3]) { }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_started)
+                throw new IOException("connection reset");
+            _started = true;
+            return base.ReadAsync(buffer[..1], cancellationToken);
+        }
+    }
 }

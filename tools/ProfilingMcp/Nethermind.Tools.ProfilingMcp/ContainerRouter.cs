@@ -38,7 +38,8 @@ internal sealed class ContainerRouter : IAsyncDisposable
     private readonly ConcurrentDictionary<(string? DockerHost, string Container), Lazy<Task<McpClient>>> _sidecars = new();
     private readonly Func<string?, string, Task<McpClient>> _start;
     private readonly Func<string?, string, CancellationToken, Task<string?>> _provideDebuggingLibraries;
-    private readonly Func<string?, string, Task<string>> _identify;
+    private readonly Func<string?, string, CancellationToken, Task<string>> _identify;
+    private volatile bool _disposed;
 
     public ContainerRouter() : this(ContainerSidecar.StartAsync, ContainerSidecar.ProvideDebuggingLibrariesAsync, ContainerSidecar.ContainerIdAsync)
     {
@@ -50,12 +51,15 @@ internal sealed class ContainerRouter : IAsyncDisposable
     internal ContainerRouter(
         Func<string?, string, Task<McpClient>> start,
         Func<string?, string, CancellationToken, Task<string?>>? provideDebuggingLibraries = null,
-        Func<string?, string, Task<string>>? identify = null)
+        Func<string?, string, CancellationToken, Task<string>>? identify = null)
     {
         _start = start;
         _provideDebuggingLibraries = provideDebuggingLibraries ?? (static (_, _, _) => Task.FromResult<string?>(null));
-        _identify = identify ?? (static (_, container) => Task.FromResult(container));
+        _identify = identify ?? (static (_, container, _) => Task.FromResult(container));
     }
+
+    /// <summary>How many sidecar connections are kept, started or starting.</summary>
+    internal int SidecarCount => _sidecars.Count;
 
     /// <summary>Adds the container and engine arguments to the tools' input schemas.</summary>
     public static McpRequestHandler<ListToolsRequestParams, ListToolsResult> AddTargetArguments(McpRequestHandler<ListToolsRequestParams, ListToolsResult> next) =>
@@ -90,7 +94,7 @@ internal sealed class ContainerRouter : IAsyncDisposable
                 return await next(request, cancellationToken);
 
             // Connections are kept per container ID: a name can move to another container while a session runs.
-            (string?, string) key = (dockerHost, await _identify(dockerHost, container!));
+            (string?, string) key = (dockerHost, await _identify(dockerHost, container!, cancellationToken));
             Lazy<Task<McpClient>> sidecar = await LiveSidecarAsync(key);
             try
             {
@@ -140,13 +144,48 @@ internal sealed class ContainerRouter : IAsyncDisposable
         return Add(key);
     }
 
-    private Lazy<Task<McpClient>> Add((string? DockerHost, string Container) key) =>
-        _sidecars.GetOrAdd(key, key => new(() => _start(key.DockerHost, key.Container)));
+    private Lazy<Task<McpClient>> Add((string? DockerHost, string Container) key)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        Lazy<Task<McpClient>> sidecar = _sidecars.GetOrAdd(key, key =>
+        {
+            Lazy<Task<McpClient>> created = null!;
+            created = new(() => StartAsync(key, created));
+            return created;
+        });
+
+        // A sidecar added while the router was being disposed would be missed by DisposeAsync.
+        ObjectDisposedException.ThrowIf(_disposed && _sidecars.TryRemove(new KeyValuePair<(string?, string), Lazy<Task<McpClient>>>(key, sidecar)), this);
+        return sidecar;
+    }
+
+    /// <remarks>
+    /// The connection is forgotten and disposed once it closes, as when its container stops: a replaced container has another ID, so no
+    /// later call would find the old entry. A sidecar that finishes starting after the router was disposed is disposed at once.
+    /// </remarks>
+    private async Task<McpClient> StartAsync((string? DockerHost, string Container) key, Lazy<Task<McpClient>> sidecar)
+    {
+        McpClient client = await _start(key.DockerHost, key.Container);
+        bool disposed = _disposed;
+        if (disposed)
+            await client.DisposeAsync();
+        ObjectDisposedException.ThrowIf(disposed, this);
+
+        _ = ForgetWhenClosedAsync(key, sidecar, client);
+        return client;
+    }
+
+    private async Task ForgetWhenClosedAsync((string?, string) key, Lazy<Task<McpClient>> sidecar, McpClient client)
+    {
+        await ((Task)client.Completion).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        if (_sidecars.TryRemove(new KeyValuePair<(string?, string), Lazy<Task<McpClient>>>(key, sidecar)))
+            await client.DisposeAsync();
+    }
 
     private async Task DropAsync((string?, string) key, Lazy<Task<McpClient>> sidecar)
     {
         if (_sidecars.TryRemove(new KeyValuePair<(string?, string), Lazy<Task<McpClient>>>(key, sidecar)) && sidecar.Value.IsCompletedSuccessfully)
-            await sidecar.Value.Result.DisposeAsync();
+            await (await sidecar.Value).DisposeAsync();
     }
 
     /// <summary>Whether a sidecar failed to start or its connection closed, as opposed to one call failing while others still use it.</summary>
@@ -165,12 +204,26 @@ internal sealed class ContainerRouter : IAsyncDisposable
         static string? Text(JsonElement value) => value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text ? text : null;
     }
 
+    /// <remarks>New sidecars are refused from now on; ones still starting are waited for, so that none outlives the router.</remarks>
     public async ValueTask DisposeAsync()
     {
-        foreach (Lazy<Task<McpClient>> sidecar in _sidecars.Values)
+        _disposed = true;
+        while (!_sidecars.IsEmpty)
         {
-            if (sidecar.IsValueCreated && sidecar.Value.IsCompletedSuccessfully)
-                await sidecar.Value.Result.DisposeAsync();
+            foreach (KeyValuePair<(string?, string), Lazy<Task<McpClient>>> entry in _sidecars)
+            {
+                if (!_sidecars.TryRemove(entry) || !entry.Value.IsValueCreated)
+                    continue;
+
+                try
+                {
+                    await (await entry.Value.Value).DisposeAsync();
+                }
+                catch (Exception)
+                {
+                    // It failed to start, or saw the router disposed and disposed itself; either way nothing is left to dispose.
+                }
+            }
         }
     }
 }

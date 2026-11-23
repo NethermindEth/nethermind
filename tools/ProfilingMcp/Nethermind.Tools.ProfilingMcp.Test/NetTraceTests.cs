@@ -68,9 +68,15 @@ public class NetTraceTests
         worker.Start();
         try
         {
-            await CpuSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(2), trace, cancellationToken);
-            stop.Cancel();
-            worker.Join();
+            try
+            {
+                await CpuSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(2), trace, cancellationToken);
+            }
+            finally
+            {
+                stop.Cancel();
+                worker.Join();
+            }
 
             NetTraceProfile profile = new NetTraceReader().Read(trace);
 
@@ -127,9 +133,15 @@ public class NetTraceTests
         worker.Start();
         try
         {
-            await AllocationSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(2), trace, cancellationToken);
-            stop.Cancel();
-            worker.Join();
+            try
+            {
+                await AllocationSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(2), trace, cancellationToken);
+            }
+            finally
+            {
+                stop.Cancel();
+                worker.Join();
+            }
 
             AllocationProfile all = AllocationSampler.Read(trace, include: null);
             AllocationProfile filtered = AllocationSampler.Read(trace, new Regex(@"\.AllocatingWork$"));

@@ -70,7 +70,8 @@ internal static class ContainerSidecar
     public static async Task<McpClient> StartAsync(string? dockerHost, string container)
     {
         string[] engine = EngineArguments(dockerHost);
-        string sidecar = await EnsureSidecarAsync(engine, container);
+        // Other calls may wait for this start too, so no single request's cancellation stops it.
+        string sidecar = await EnsureSidecarAsync(engine, container, CancellationToken.None);
         StdioClientTransport transport = new(new StdioClientTransportOptions
         {
             Name = sidecar,
@@ -88,23 +89,23 @@ internal static class ContainerSidecar
     public static async Task<string?> ProvideDebuggingLibrariesAsync(string? dockerHost, string container, CancellationToken cancellationToken)
     {
         string[] engine = EngineArguments(dockerHost);
-        string sidecar = await EnsureSidecarAsync(engine, container);
+        string sidecar = await EnsureSidecarAsync(engine, container, cancellationToken);
         string architecture = await DockerAsync(engine, ["version", "--format", "{{.Server.Arch}}"], cancellationToken);
         return await DebuggingLibraries.ProvideAsync(engine, sidecar, architecture, WorkspacePaths.FromEnvironment().Root, cancellationToken);
     }
 
-    private static async Task<string> EnsureSidecarAsync(string[] engine, string container)
+    private static async Task<string> EnsureSidecarAsync(string[] engine, string container, CancellationToken cancellationToken)
     {
-        Target target = await InspectAsync(engine, container);
-        string image = await SidecarImageAsync(engine);
-        string imageId = await DockerAsync(engine, "image", "inspect", "--format", "{{.Id}}", image);
+        Target target = await InspectAsync(engine, container, cancellationToken);
+        string image = await SidecarImageAsync(engine, cancellationToken);
+        string imageId = await DockerAsync(engine, ["image", "inspect", "--format", "{{.Id}}", image], cancellationToken);
         // The name carries the target's ID, which never changes, so a container that later takes the target's name gets its own sidecar.
         string name = $"profmcp-{target.Name}-{target.Id[..12]}-{imageId.Replace("sha256:", "", StringComparison.Ordinal)[..12]}";
-        if (await IsRunningAsync(engine, name))
+        if (await IsRunningAsync(engine, name, cancellationToken))
             return name;
 
         // perf needs it to sample another process, and Docker's seccomp profile allows perf_event_open only with it; kernels before 5.8 lack it.
-        string[] perfmon = HasPerfmon(await DockerAsync(engine, "version", "--format", "{{.Server.KernelVersion}}")) ? ["--cap-add", "PERFMON"] : [];
+        string[] perfmon = HasPerfmon(await DockerAsync(engine, ["version", "--format", "{{.Server.KernelVersion}}"], cancellationToken)) ? ["--cap-add", "PERFMON"] : [];
         try
         {
             await DockerAsync(engine,
@@ -125,12 +126,12 @@ internal static class ContainerSidecar
                 "--env", $"{DockerCommandVariable}={string.Join(' ', ["docker", .. engine])}",
                 "--env", $"{IdleMinutesVariable}={IdleLimit(Environment.GetEnvironmentVariable(IdleMinutesVariable)).TotalMinutes.ToString(CultureInfo.InvariantCulture)}",
                 image,
-            ]);
+            ], cancellationToken);
         }
         catch (InvalidOperationException)
         {
             // Fine when another session started it first.
-            if (!await IsRunningAsync(engine, name))
+            if (!await IsRunningAsync(engine, name, cancellationToken))
                 throw;
         }
 
@@ -143,11 +144,11 @@ internal static class ContainerSidecar
         return parts.Length >= 2 && int.TryParse(parts[0], out int major) && int.TryParse(parts[1], out int minor) && (major, minor).CompareTo((5, 8)) >= 0;
     }
 
-    private static async Task<bool> IsRunningAsync(string[] engine, string container)
+    private static async Task<bool> IsRunningAsync(string[] engine, string container, CancellationToken cancellationToken)
     {
         try
         {
-            return await DockerAsync(engine, "inspect", "--type", "container", "--format", "{{.State.Running}}", container) == "true";
+            return await DockerAsync(engine, ["inspect", "--type", "container", "--format", "{{.State.Running}}", container], cancellationToken) == "true";
         }
         catch (InvalidOperationException)
         {
@@ -357,9 +358,9 @@ internal static class ContainerSidecar
     /// <param name="Id">The container's full ID, which identifies it for the sidecar's lifetime even if it is renamed.</param>
     private sealed record Target(string Id, string Name, string Image, string TempFolder, bool ExplicitTempFolder);
 
-    private static async Task<Target> InspectAsync(string[] engine, string container)
+    private static async Task<Target> InspectAsync(string[] engine, string container, CancellationToken cancellationToken)
     {
-        using JsonDocument inspection = JsonDocument.Parse(await DockerAsync(engine, "inspect", "--type", "container", "--format", "{{json .}}", container));
+        using JsonDocument inspection = JsonDocument.Parse(await DockerAsync(engine, ["inspect", "--type", "container", "--format", "{{json .}}", container], cancellationToken));
         JsonElement root = inspection.RootElement;
         if (!root.GetProperty("State").GetProperty("Running").GetBoolean())
             throw new InvalidOperationException($"Container '{container}' is not running.");
@@ -396,24 +397,24 @@ internal static class ContainerSidecar
 
     /// <summary>Returns the sidecar image for this server: the image named by <see cref="ImageVariable"/>, or one built from this server's Linux build.</summary>
     /// <remarks>The build for the engine's architecture is used, so amd64 and arm64 engines both work.</remarks>
-    private static async Task<string> SidecarImageAsync(string[] engine)
+    private static async Task<string> SidecarImageAsync(string[] engine, CancellationToken cancellationToken)
     {
         string? choice = Environment.GetEnvironmentVariable(ImageVariable);
         if (choice is { Length: > 0 })
-            return await IsPresentOrPulledAsync(engine, choice) ? choice : throw new InvalidOperationException($"Could not pull {choice}, the sidecar image set in {ImageVariable}.");
+            return await IsPresentOrPulledAsync(engine, choice, cancellationToken) ? choice : throw new InvalidOperationException($"Could not pull {choice}, the sidecar image set in {ImageVariable}.");
 
-        string platform = await DockerAsync(engine, "version", "--format", "{{.Server.Os}}/{{.Server.Arch}}");
+        string platform = await DockerAsync(engine, ["version", "--format", "{{.Server.Os}}/{{.Server.Arch}}"], cancellationToken);
         string buildFolder = BuildFolder(platform)
             ?? throw new InvalidOperationException($"The Docker engine runs {platform}; only linux/amd64 and linux/arm64 are supported.");
         string build = Path.Combine(AppContext.BaseDirectory, buildFolder);
         string local = BuildVersion(build) is { } version
             ? $"{LocalRepository}:{version}"
             : throw new InvalidOperationException($"There is no Linux build in {build} to build the sidecar image from. Publish the server without a runtime identifier, which also publishes the Linux builds.");
-        if (await SucceedsAsync(engine, "image", "inspect", local))
+        if (await SucceedsAsync(engine, ["image", "inspect", local], cancellationToken))
             return local;
 
-        await DockerAsync(engine, "build", "--quiet", "--tag", local, "--build-arg", $"BASE={await BaseImageAsync(engine)}",
-            "--file", Path.Combine(AppContext.BaseDirectory, Dockerfile), build);
+        await DockerAsync(engine, ["build", "--quiet", "--tag", local, "--build-arg", $"BASE={await BaseImageAsync(engine, cancellationToken)}",
+            "--file", Path.Combine(AppContext.BaseDirectory, Dockerfile), build], cancellationToken);
         return local;
     }
 
@@ -425,22 +426,22 @@ internal static class ContainerSidecar
         _ => null,
     };
 
-    private static async Task<bool> IsPresentOrPulledAsync(string[] engine, string image) =>
-        await SucceedsAsync(engine, "image", "inspect", image) || await SucceedsAsync(engine, "pull", "--quiet", image);
+    private static async Task<bool> IsPresentOrPulledAsync(string[] engine, string image, CancellationToken cancellationToken) =>
+        await SucceedsAsync(engine, ["image", "inspect", image], cancellationToken) || await SucceedsAsync(engine, ["pull", "--quiet", image], cancellationToken);
 
     /// <summary>Returns the image to build the sidecar image on: .NET's runtime-deps image.</summary>
     /// <remarks>
     /// The sidecar needs only the native libraries of a self-contained .NET app. A fixed image keeps it independent of the target's, which may
     /// lack them (Alpine, distroless) and is never trusted: the sidecar runs as root with ptrace and perf access to the target.
     /// </remarks>
-    private static async Task<string> BaseImageAsync(string[] engine) =>
-        await IsPresentOrPulledAsync(engine, RuntimeImage)
+    private static async Task<string> BaseImageAsync(string[] engine, CancellationToken cancellationToken) =>
+        await IsPresentOrPulledAsync(engine, RuntimeImage, cancellationToken)
             ? RuntimeImage
             : throw new InvalidOperationException($"Could not pull {RuntimeImage} to build the sidecar image on. Pull it on the engine, or set {ImageVariable} to an image to use.");
 
     /// <summary>Returns the full ID of a container given by name or ID, which stays the same if the container is renamed.</summary>
-    public static Task<string> ContainerIdAsync(string? dockerHost, string container) =>
-        DockerAsync(EngineArguments(dockerHost), "inspect", "--type", "container", "--format", "{{.Id}}", container);
+    public static Task<string> ContainerIdAsync(string? dockerHost, string container, CancellationToken cancellationToken) =>
+        DockerAsync(EngineArguments(dockerHost), ["inspect", "--type", "container", "--format", "{{.Id}}", container], cancellationToken);
 
     /// <summary>Identifies a Linux build and the Dockerfile by a hash, or returns null when the server was published without that build.</summary>
     private static string? BuildVersion(string build)

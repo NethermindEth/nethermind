@@ -74,17 +74,29 @@ internal static partial class DebuggingLibraries
             if (version == own || await ContainerSidecar.SucceedsAsync(engine, ["exec", sidecar, "test", "-f", $"{target}/{Dac}"], cancellationToken))
                 continue;
 
-            try
-            {
-                await SupplyAsync(engine, sidecar, rid, version, target, cacheRoot, cancellationToken);
-            }
-            catch (Exception e) when (e is not OperationCanceledException)
-            {
-                problems.Add($".NET {version}: {e.Message}");
-            }
+            if (await TrySupplyAsync(() => SupplyAsync(engine, sidecar, rid, version, target, cacheRoot, cancellationToken), cancellationToken) is { } problem)
+                problems.Add($".NET {version}: {problem}");
         }
 
         return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    /// <summary>Runs <paramref name="supply"/> for one runtime, returning why it failed instead of throwing, so the others are still supplied.</summary>
+    /// <remarks>
+    /// <see cref="HttpClient"/> reports its own timeout as an <see cref="OperationCanceledException"/>, which is one runtime's failure like any
+    /// other; only the caller's cancellation ends the whole preparation.
+    /// </remarks>
+    internal static async Task<string?> TrySupplyAsync(Func<Task> supply, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await supply();
+            return null;
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            return e.Message;
+        }
     }
 
     private static async Task SupplyAsync(string[] engine, string sidecar, string rid, string version, string target, string cacheRoot, CancellationToken cancellationToken)
@@ -99,7 +111,8 @@ internal static partial class DebuggingLibraries
         }
         catch
         {
-            await ContainerSidecar.SucceedsAsync(engine, "exec", sidecar, "rm", "-f", partial);
+            // Removing the partial copy is needed most after a cancellation, so it does not take the token.
+            await ContainerSidecar.SucceedsAsync(engine, ["exec", sidecar, "rm", "-f", partial], CancellationToken.None);
             throw;
         }
     }
@@ -185,12 +198,25 @@ internal static partial class DebuggingLibraries
             ?? throw new InvalidOperationException($"The .NET {version} runtime pack for {rid} has no {Dac}.");
 
         Directory.CreateDirectory(folder);
-        string partial = dac + $".{Guid.NewGuid():N}.partial";
         await using (Stream source = entry.Open())
-        await using (FileStream file = File.Create(partial))
-            await source.CopyToAsync(file, cancellationToken);
-        File.Move(partial, dac, overwrite: true);
+            await SaveAsync(source, dac, cancellationToken);
         return dac;
+    }
+
+    /// <summary>Writes <paramref name="source"/> to <paramref name="path"/> under a temporary name and renames it, so a failed write leaves nothing behind.</summary>
+    internal static async Task SaveAsync(Stream source, string path, CancellationToken cancellationToken)
+    {
+        string partial = path + $".{Guid.NewGuid():N}.partial";
+        try
+        {
+            await using (FileStream file = File.Create(partial))
+                await source.CopyToAsync(file, cancellationToken);
+            File.Move(partial, path, overwrite: true);
+        }
+        finally
+        {
+            File.Delete(partial);
+        }
     }
 
     /// <summary>Run in the sidecar: the trusted DAC for a target runtime loaded from <paramref name="coreclrPath"/>.</summary>

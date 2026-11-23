@@ -66,7 +66,7 @@ public class ContainerRouterRecoveryTests
     {
         // "node" and "node-alias" name the first container; then "node" is taken by a new container.
         string nodeId = "id-1";
-        ContainerRouter router = new((_, _) => StartSidecarAsync(), identify: (_, container) => Task.FromResult(container == "node" ? nodeId : "id-1"));
+        ContainerRouter router = new((_, _) => StartSidecarAsync(), identify: (_, container, _) => Task.FromResult(container == "node" ? nodeId : "id-1"));
         McpRequestHandler<CallToolRequestParams, CallToolResult> route = router.Route(static (_, _) => throw new AssertionException("the call should be routed"));
 
         await route(Call("echo", "node"), cancellationToken);
@@ -96,6 +96,52 @@ public class ContainerRouterRecoveryTests
             Assert.That(dump.IsError, Is.Not.True);
             Assert.That(dump.Content.OfType<TextContentBlock>().Select(static c => c.Text), Has.Some.EqualTo("ok").And.Some.Contains("nuget.org is unreachable"));
             Assert.That(async () => await route(Call("native_memory"), cancellationToken), Throws.InvalidOperationException, "a tool that loads the DAC itself still fails");
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Forgets_a_connection_once_it_closes(CancellationToken cancellationToken)
+    {
+        ContainerRouter router = new((_, _) => StartSidecarAsync());
+        McpRequestHandler<CallToolRequestParams, CallToolResult> route = router.Route(static (_, _) => throw new AssertionException("the call should be routed"));
+        await route(Call("echo"), cancellationToken);
+        int connected = router.SidecarCount;
+
+        // As when the container stops; a replacement has another ID, so no later call would look the old entry up.
+        await _sidecars[0].StopServerAsync();
+        while (router.SidecarCount > 0)
+            await Task.Delay(20, cancellationToken);
+
+        Assert.That(connected, Is.EqualTo(1));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Disposes_a_sidecar_that_finishes_starting_during_disposal(CancellationToken cancellationToken)
+    {
+        TaskCompletionSource startup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ContainerRouter router = new(async (_, _) =>
+        {
+            await startup.Task;
+            return await StartSidecarAsync();
+        });
+        McpRequestHandler<CallToolRequestParams, CallToolResult> route = router.Route(static (_, _) => throw new AssertionException("the call should be routed"));
+
+        using CancellationTokenSource caller = new();
+        Task call = route(Call("echo"), caller.Token).AsTask();
+        await caller.CancelAsync();
+        Assert.That(async () => await call, Throws.InstanceOf<OperationCanceledException>(), "the caller stops waiting while the start goes on");
+
+        Task disposal = router.DisposeAsync().AsTask();
+        startup.SetResult();
+        await disposal.WaitAsync(cancellationToken);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_sidecars, Has.Count.EqualTo(1));
+            Assert.That(_sidecars[0].Client.Completion.IsCompleted, Is.True, "the client that connected during disposal was disposed");
+            Assert.That(async () => await route(Call("echo"), cancellationToken), Throws.InstanceOf<ObjectDisposedException>());
         }
     }
 

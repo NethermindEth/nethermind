@@ -60,8 +60,14 @@ public static class NativeSampler
         }
         finally
         {
-            File.Delete(data);
-            DisablePerfMap(runtime, perfMap);
+            try
+            {
+                File.Delete(data);
+            }
+            finally
+            {
+                DisablePerfMap(runtime, perfMap);
+            }
         }
     }
 
