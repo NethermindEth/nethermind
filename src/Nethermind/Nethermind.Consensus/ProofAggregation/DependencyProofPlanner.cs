@@ -12,7 +12,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>Plans the EIP-8288 proof of a block being produced when the proof of its own body is not ready.</summary>
-internal static class ProductionProofPlanner
+internal static class DependencyProofPlanner
 {
     private const int MaxExtensionCandidates = 4;
 

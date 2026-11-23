@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Producers
             .AddScoped<TransactionProcessorAdapterFactory>(CreateBuildUpAdapter)
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
-            .AddDecorator<IBlockProcessor, ProductionProofBlockProcessor>()
+            .AddDecorator<IBlockProcessor, DependencyProofBlockProcessor>()
             .AddScoped<IBlockchainProcessor, MainStateBlockBuildingChainProcessor>()
             .AddDecorator<IBlockchainProcessor, TracingProducedBlockProcessor>()
             .AddDecorator<IBlockchainProcessor, BlockBuildingTrackingProcessor>()

@@ -98,7 +98,7 @@ public class Eip8288BlockProductionTests
             Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([resolved]))));
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block.Hash));
             Assert.That(verifier.ProofCalls, Is.EqualTo(1), "only production proves; import verifies the attached proof");
-            Assert.That(chain.BlockProcessor, Is.Not.TypeOf<ProductionProofBlockProcessor>());
+            Assert.That(chain.BlockProcessor, Is.Not.TypeOf<DependencyProofBlockProcessor>());
             Assert.That(log.Producing, Is.EqualTo(pluginProcessor ? 1 : 0));
             Assert.That(log.Importing, Is.EqualTo(pluginProcessor ? 1 : 0));
         }
@@ -111,7 +111,7 @@ public class Eip8288BlockProductionTests
         IBlockProcessor inner = Substitute.For<IBlockProcessor>();
         inner.ProcessOne(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, Eip8288Prototype.Instance, default)
             .Returns((block, []));
-        ProductionProofBlockProcessor processor = new(inner, Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(), new CountingVerifier());
+        DependencyProofBlockProcessor processor = new(inner, Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(), new CountingVerifier());
 
         Assert.That(() => processor.ProcessOne(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, Eip8288Prototype.Instance),
             Throws.InvalidOperationException);
@@ -955,7 +955,7 @@ public class Eip8288BlockProductionTests
         int widest = 1;
         while (widest < backlog.Length
                && RecursiveStarkAggregator.EstimatedCost(new AggregationInput { Deps = backlog[..(widest + 1)], Witnesses = new ReadOnlyMemory<byte>[widest + 1] })
-                  <= ProductionProofPlanner.MaxScheduledStatementCost) widest++;
+                  <= DependencyProofPlanner.MaxScheduledStatementCost) widest++;
         HashSet<FrameDependency> all = [.. backlog];
         Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == widest), Is.True.After(5000, 20));
         Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Length > widest), Is.False);
@@ -999,7 +999,7 @@ public class Eip8288BlockProductionTests
         await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
 
         AggregationInput wideInput = new() { Deps = wide, Witnesses = new ReadOnlyMemory<byte>[wide.Length] };
-        Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.LessThanOrEqualTo(ProductionProofPlanner.MaxScheduledStatementCost));
+        Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.LessThanOrEqualTo(DependencyProofPlanner.MaxScheduledStatementCost));
         HashSet<FrameDependency> all = [.. backlog, .. wide];
         Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Intersect(wide).Any()), Is.True.After(5000, 20));
     }
@@ -1503,7 +1503,7 @@ public class Eip8288BlockProductionTests
         public int Importing { get; set; }
     }
 
-    /// <summary>A plugin processor that, like Optimism's, overrides block processing and replaces the standard one everywhere.</summary>
+    /// <summary>Replaces the standard processor everywhere, as Optimism's does.</summary>
     private sealed class PluginBlockProcessor(ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor executor, IWorldState state, IReceiptStorage receipts, IBeaconBlockRootHandler beaconRoot,
         IBlockhashStore blockHashes, ILogManager logManager, IWithdrawalProcessor withdrawals, IExecutionRequestsProcessor requests,

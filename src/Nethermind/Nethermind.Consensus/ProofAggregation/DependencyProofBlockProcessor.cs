@@ -14,13 +14,10 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
-/// <summary>Attaches the EIP-8288 <c>stark_proof</c> and its header commitment to the blocks a block producer processes.</summary>
-/// <remarks>
-/// The proof is prepared on <see cref="IBlockProcessor.TransactionsExecuted"/>, after the other subscribers and before the
-/// block is finalized, so the header hash covers the commitment and a proof that is not ready fails the pass before its
-/// roots are computed. An inner processor that never raises the event fails the pass rather than return a block without a proof.
-/// </remarks>
-internal sealed class ProductionProofBlockProcessor(
+/// <summary>Attaches the EIP-8288 <c>stark_proof</c> and its header commitment to blocks being produced.</summary>
+/// <remarks>Prepared on <see cref="IBlockProcessor.TransactionsExecuted"/>, before finalization, so the header hash covers the
+/// commitment; an inner processor that never raises it fails the pass rather than return a block without a proof.</remarks>
+internal sealed class DependencyProofBlockProcessor(
     IBlockProcessor inner,
     IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
     ILeanProofVerifier leanProofVerifier,
@@ -107,13 +104,13 @@ internal sealed class ProductionProofBlockProcessor(
                 // is proven off the production path and the body is rebuilt from dependencies whose proofs exist.
                 if (producing is not null && token.CanBeCanceled && leanProofStore is not null)
                 {
-                    ProductionProofPlanner.OfferInclusionListProofs(producing, leanProofStore);
+                    DependencyProofPlanner.OfferInclusionListProofs(producing, leanProofStore);
                     HashSet<FrameDependency> attempted = [.. deps];
-                    ProductionProofPlanner.IncludableTransactions includable = new(block);
+                    DependencyProofPlanner.IncludableTransactions includable = new(block);
                     (HashSet<FrameDependency> limit, int kept) = includable.ChooseProvenLimit(leanProofStore.ProvenSubsets(attempted));
                     // Only the latest payload's unrestricted body is worth proving; a restricted rebuild is a subset of it.
                     if (latest && producing.LeanProduction.DependencyLimit is null && !_productionProofCache.IsScheduledWithin(attempted))
-                        ProductionProofPlanner.ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept,
+                        DependencyProofPlanner.ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept,
                             leanProofStore, verifier, _productionProofCache);
                     throw new LeanProofNotReadyException(limit);
                 }
@@ -125,8 +122,8 @@ internal sealed class ProductionProofBlockProcessor(
                 // A prover that cannot take the statement now leaves the body to what is already proven, as a deadline would.
                 catch (LeanProverBusyException) when (producing is not null && leanProofStore is not null)
                 {
-                    ProductionProofPlanner.OfferInclusionListProofs(producing, leanProofStore);
-                    throw new LeanProofNotReadyException(new ProductionProofPlanner.IncludableTransactions(block)
+                    DependencyProofPlanner.OfferInclusionListProofs(producing, leanProofStore);
+                    throw new LeanProofNotReadyException(new DependencyProofPlanner.IncludableTransactions(block)
                         .ChooseProvenLimit(leanProofStore.ProvenSubsets(new HashSet<FrameDependency>(deps))).Limit);
                 }
                 leanProofStore?.AddCachedRecursive(deps, proof);
