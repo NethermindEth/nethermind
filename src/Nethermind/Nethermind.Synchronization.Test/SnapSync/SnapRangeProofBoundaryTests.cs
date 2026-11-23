@@ -138,7 +138,7 @@ public class SnapRangeProofBoundaryTests
         Source source = new();
 
         (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
-            CreatePatriciaFactory(), source.AccountD, [source.SlotEntry(KeyD)], KeyB, null,
+            CreatePatriciaFactory(), source.AccountD, [source.SlotEntry(KeyD)], KeyB, KeyB, null,
             Proofs(WithoutExtensionChild(source.StorageProof(KeyD, KeyB))));
 
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
@@ -155,7 +155,7 @@ public class SnapRangeProofBoundaryTests
             Assert.That(slots[0].Select(static s => s.Path), Is.EqualTo(new[] { KeyB, KeyC, KeyD }), "guards the premise");
 
             (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
-                CreatePatriciaFactory(), source.AccountD, slots[0], KeyB, null, proofs);
+                CreatePatriciaFactory(), source.AccountD, slots[0], KeyB, KeyB, null, proofs);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
@@ -178,7 +178,7 @@ public class SnapRangeProofBoundaryTests
         Assert.That(ContainsExtensionChild(Proofs(proof)), Is.False, "guards the premise");
 
         (AddRangeResult result, bool moreChildrenToRight, _, _) = SnapProviderHelper.AddStorageRange(
-            CreatePatriciaFactory(), source.AccountD, [], origin, limit, Proofs(proof));
+            CreatePatriciaFactory(), source.AccountD, [], origin, origin, limit, Proofs(proof));
 
         using (Assert.EnterMultipleScope())
         {
@@ -269,7 +269,7 @@ public class SnapRangeProofBoundaryTests
         slots.Sort(static (x, y) => x.Path.CompareTo(y.Path));
 
         (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
-            scope.Factory, source.AccountA, slots, null, null, Proofs(WithoutExtensionChild(source.StorageProof(KeyA, RootExtensionSlot1))));
+            scope.Factory, source.AccountA, slots, null, ValueKeccak.Zero, null, Proofs(WithoutExtensionChild(source.StorageProof(KeyA, RootExtensionSlot1))));
 
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
     }
@@ -305,7 +305,7 @@ public class SnapRangeProofBoundaryTests
             {
                 byte[] key = Keccak.Compute(new byte[] { (byte)nibble, (byte)i }).BytesToArray();
                 key[0] = (byte)((nibble << 4) | (key[0] & 0x0f));
-                accounts.Add(new PathWithAccount(new ValueHash256(key), Build.An.Account.WithBalance(9).TestObject));
+                accounts.Add(new PathWithAccount(new ValueHash256(key), Build.An.Account.WithBalance(9).TestObject.ToStruct()));
             }
         }
         accounts.Sort(static (x, y) => x.Path.CompareTo(y.Path));
@@ -353,7 +353,49 @@ public class SnapRangeProofBoundaryTests
         byte[][] proof = [.. source.StorageProof(KeyD, origin), .. WithoutExtensionChild(source.StorageProof(KeyD, limit))];
 
         (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
-            CreatePatriciaFactory(), source.AccountD, [], origin, limit, Proofs(proof));
+            CreatePatriciaFactory(), source.AccountD, [], origin, origin, limit, Proofs(proof));
+
+        Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
+    }
+
+    /// <summary>
+    /// A range ending at B persists neither leaf B nor the nodes above it, as their paths reach past B. The range from
+    /// the slot after B persists leaf B from its own proof and stitches up to the root when it continues the run of
+    /// the first at the same root; when it starts a run of its own they are left to healing, the root with them.
+    /// </summary>
+    [Test]
+    public void AddStorageRange_NodesReachingPastARange_ArePersistedOnlyByTheRangeContinuingItsRun([Values] Backend backend, [Values] bool continuesRun)
+    {
+        Source source = new();
+        using FactoryScope scope = new(backend);
+        ValueHash256 afterB = KeyB.IncrementPath();
+
+        (AddRangeResult first, bool moreAfterFirst, _, _) = SnapProviderHelper.AddStorageRange(
+            scope.Factory, source.AccountD, [source.SlotEntry(KeyA), source.SlotEntry(KeyB)], ValueKeccak.Zero, ValueKeccak.Zero, null,
+            Proofs([.. source.StorageProof(KeyD, ValueKeccak.Zero), .. source.StorageProof(KeyD, KeyB)]));
+        (AddRangeResult second, _, _, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(
+            scope.Factory, source.AccountD, [source.SlotEntry(KeyC), source.SlotEntry(KeyD)], afterB, continuesRun ? ValueKeccak.Zero : afterB, null,
+            Proofs([.. source.StorageProof(KeyD, afterB), .. source.StorageProof(KeyD, KeyD)]));
+
+        using ISnapTree<PathWithStorageSlot> tree = scope.Factory.CreateStorageTree(KeyD);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((first, moreAfterFirst, second), Is.EqualTo((AddRangeResult.OK, true, AddRangeResult.OK)));
+            Assert.That(tree.IsPersisted(TreePath.FromHexString("b10"), ValueKeccak.Compute(source.StorageProof(KeyD, KeyB)[^1])), Is.EqualTo(continuesRun), "leaf B");
+            Assert.That(isRootPersisted, Is.EqualTo(continuesRun), "root");
+        }
+    }
+
+    // The proof for the slot after B ends at leaf B, alone under its path, so no slot can lie there.
+    [Test]
+    public void AddStorageRange_SlotUnderTheLeafBeforeTheRange_IsAnInvalidProof([Values] Backend backend)
+    {
+        Source source = new();
+        using FactoryScope scope = new(backend);
+        ValueHash256 afterB = KeyB.IncrementPath();
+
+        (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
+            scope.Factory, source.AccountD, [source.SlotEntry(afterB)], afterB, afterB, null, Proofs(source.StorageProof(KeyD, afterB)));
 
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
     }
@@ -368,7 +410,7 @@ public class SnapRangeProofBoundaryTests
         Assert.That(proof, Has.Length.EqualTo(1), "guards the premise: the proof of the origin is the root extension alone");
 
         (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
-            CreatePatriciaFactory(), source.AccountA, [], origin, null, Proofs(proof));
+            CreatePatriciaFactory(), source.AccountA, [], origin, origin, null, Proofs(proof));
 
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
     }
@@ -412,7 +454,7 @@ public class SnapRangeProofBoundaryTests
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
         DrainAccountRangePartition(progressTracker);
 
-        PathWithAccount refreshed = new(KeyB, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject);
+        PathWithAccount refreshed = new(KeyB, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject.ToStruct());
         progressTracker.EnqueueAccountRefresh(refreshed, ValueKeccak.Zero, Keccak.MaxValue);
         progressTracker.IsFinished(out SnapSyncBatch? refresh);
         using (refresh)
@@ -436,7 +478,7 @@ public class SnapRangeProofBoundaryTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(retry!.AccountsToRefreshRequest!.Paths[0].PathAndAccount?.Path, Is.EqualTo(KeyB));
-                Assert.That(refreshed.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakG), "nothing was adopted");
+                Assert.That(refreshed.Account.StorageRoot, Is.EqualTo(TestItem.KeccakG), "nothing was adopted");
             }
         }
     }
@@ -450,7 +492,7 @@ public class SnapRangeProofBoundaryTests
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
         DrainAccountRangePartition(progressTracker);
 
-        PathWithAccount refreshed = new(KeyB, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject);
+        PathWithAccount refreshed = new(KeyB, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject.ToStruct());
         progressTracker.EnqueueAccountRefresh(refreshed, ValueKeccak.Zero, Keccak.MaxValue);
         progressTracker.IsFinished(out SnapSyncBatch? refresh);
         using (refresh)
@@ -463,10 +505,10 @@ public class SnapRangeProofBoundaryTests
             snapProvider.ReleaseRequest(refresh, responseHandled: true);
         }
 
-        Assert.That(refreshed.Account!.StorageRoot, Is.EqualTo(source.Accounts[KeyB].StorageRoot), "the proven storage root is adopted");
+        Assert.That(refreshed.Account.StorageRoot, Is.EqualTo(source.Accounts[KeyB].StorageRoot), "the proven storage root is adopted");
     }
 
-    private static PathWithAccount MadeUpAccountBeforeD() => new(KeyBeforeD, Build.An.Account.WithBalance(9).TestObject);
+    private static PathWithAccount MadeUpAccountBeforeD() => new(KeyBeforeD, Build.An.Account.WithBalance(9).TestObject.ToStruct());
 
     private static ContainerBuilder CreateContainerBuilder(Hash256 stateRoot) =>
         new ContainerBuilder()
@@ -617,7 +659,7 @@ public class SnapRangeProofBoundaryTests
 
         public PathWithAccount AccountD => AccountEntry(KeyD);
 
-        public PathWithAccount AccountEntry(in ValueHash256 path) => new(path, Accounts[path]);
+        public PathWithAccount AccountEntry(in ValueHash256 path) => new(path, Accounts[path].ToStruct());
 
         public PathWithStorageSlot SlotEntry(in ValueHash256 path) => new(path, SlotValue(path));
 

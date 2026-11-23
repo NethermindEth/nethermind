@@ -611,11 +611,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void DebugRequest(JsonRpcRequest request, JsonRpcContext context) =>
-        _logger.Debug($"JSON RPC request {request.Method}{DescribeRemoteAddress(context)}");
+        _logger.Debug($"JSON RPC request {request.MethodForLogging}{DescribeRemoteAddress(context)}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void DebugBatchRequest(JsonRpcRequest request, JsonRpcContext context, int requestIndex, int requestCount) =>
-        _logger.Debug($"JSON RPC batch request {requestIndex}/{requestCount} {request.Method}{DescribeRemoteAddress(context)}");
+        _logger.Debug($"JSON RPC batch request {requestIndex}/{requestCount} {request.MethodForLogging}{DescribeRemoteAddress(context)}");
 
     /// <summary>Runs one JSON-RPC batch: size limit, then decode-dispatch-write per item, then close the array.</summary>
     /// <remarks>
@@ -859,10 +859,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private JsonRpcResult.Entry CreateBatchResponseLimitEntry(JsonRpcRequest jsonRpcRequest) =>
         new(
             _jsonRpcService.GetErrorResponse(
-                ErrorCodes.LimitExceeded,
-                jsonRpcRequest.Method,
-                in jsonRpcRequest.IdRef,
-                $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded"),
+                errorCode: ErrorCodes.LimitExceeded,
+                errorMessage: $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded",
+                id: in jsonRpcRequest.IdRef,
+                methodName: jsonRpcRequest.Method),
             RpcReport.Error);
 
     private ValueTask WriteSingleEntryAsync(JsonRpcResult.Entry entry, IJsonRpcResponseSink sink, CancellationToken cancellationToken) =>
@@ -985,7 +985,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         cancellationToken.IsCancellationRequested && exception.CancellationToken == cancellationToken;
 
     private static string DescribeErrorResponse(JsonRpcRequest request, Error responseError) =>
-        $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {(SensitiveLogMasking.Enabled ? "[redacted]" : responseError.Message)}";
+        $"Error response handling JsonRpc Id:{request.Id} Method:{request.MethodForLogging} | Code: {responseError.Code} Message: {(SensitiveLogMasking.Enabled ? "[redacted]" : JsonRpcRequest.EncodeLogText(responseError.Message))}";
 
     /// <remarks>Debug lines only: the forwarded header is caller-controlled, so it must not reach default-level output.</remarks>
     private static string DescribeRemoteAddress(JsonRpcContext context) =>
@@ -1019,7 +1019,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         bool isSuccess = !response.TryGetError(out Error? responseError);
         if (isSuccess)
         {
-            if (_logger.IsTrace) _logger.Trace($"Responded to Id:{request.Id} Method:{request.Method} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (_logger.IsTrace) _logger.Trace($"Responded to Id:{request.Id} Method:{request.MethodForLogging} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             if (response.Streaming is { } streaming)
             {
                 streaming.ReportCompletion = true;

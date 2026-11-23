@@ -113,7 +113,6 @@ public class ChainLevelHelper(
 
             if (beaconMainChainBlock.IsBeaconInfo)
             {
-                newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty; // This is suppose to be removed, but I forgot to remove it before testing, so we only tested with this line in. Need to remove this back....
                 if (beaconMainChainBlock.TotalDifficulty != 0)
                 {
                     newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty;

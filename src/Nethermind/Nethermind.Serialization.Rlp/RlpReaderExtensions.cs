@@ -704,11 +704,11 @@ public static class RlpReaderExtensions
         ulong first = FirstWord(span);
         if (first == OfAnEmptyStringFirstWord)
         {
-            if (span.SequenceEqual(Keccak.OfAnEmptyString.Bytes)) return Keccak.OfAnEmptyString;
+            if (Bytes.SequenceEqualAtAnyAlignment(span, Keccak.OfAnEmptyString.Bytes)) return Keccak.OfAnEmptyString;
         }
         else if (first == EmptyTreeHashFirstWord)
         {
-            if (span.SequenceEqual(Keccak.EmptyTreeHash.Bytes)) return Keccak.EmptyTreeHash;
+            if (Bytes.SequenceEqualAtAnyAlignment(span, Keccak.EmptyTreeHash.Bytes)) return Keccak.EmptyTreeHash;
         }
 
         return new Hash256(span);

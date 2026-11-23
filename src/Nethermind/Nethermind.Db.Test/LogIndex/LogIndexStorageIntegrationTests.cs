@@ -227,15 +227,19 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 using CancellationTokenSource cancellation = new();
                 Task cancelledWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), cancellation.Token);
-                Task completedWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
+                Task<bool> completedWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
                 Assert.That(completedWait.IsCompleted, Is.False);
                 cancellation.Cancel();
                 Assert.That(async () => await cancelledWait, Throws.InstanceOf<OperationCanceledException>());
 
-                await compressor.WaitUntilEmptyAsync(TimeSpan.Zero, CancellationToken.None);
-                Assert.That(completedWait.IsCompleted, Is.False, "a timeout or cancellation must not signal queue completion");
+                bool drainedWithinZero = await compressor.WaitUntilEmptyAsync(TimeSpan.Zero, CancellationToken.None);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(drainedWithinZero, Is.False);
+                    Assert.That(completedWait.IsCompleted, Is.False, "a timeout or cancellation must not signal queue completion");
+                }
                 compressor.Start();
-                await completedWait.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(await completedWait.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
 
                 await Task.WhenAll(Enumerable.Range(0, 4).Select(async _ =>
                 {
@@ -624,6 +628,72 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, maxBlock: lastBlock - reorgDepth);
         }
 
+        [Test]
+        public async Task Set_ReorgBeyondRevertableDepth_CapsIndexAcrossRestart_Test()
+        {
+            const ulong maxReorgDepth = 4;
+            BlockReceipts reorged = testData.Batches.SelectMany(b => b).ToArray()[^((int)maxReorgDepth + 1)];
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth))
+            {
+                await AddReceiptsAsync(logIndexStorage, testData.Batches);
+                await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(reorged), Throws.TypeOf<LogIndexStateException>());
+            }
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth))
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(logIndexStorage.MaxBlockNumber, Is.Null, "queries must not use the index once a reorg could not be reverted");
+                    await Assert.ThatAsync(() => logIndexStorage.AddReceiptsAsync([reorged], false), Throws.TypeOf<LogIndexStateException>());
+                }
+            }
+        }
+
+        [Test]
+        public async Task Set_ReorgBelowRevertedMaxBlock_ThrowsBeyondPeakDepth_Test([Values] bool restart)
+        {
+            const ulong maxReorgDepth = 4;
+            BlockReceipts[] blocks = testData.Batches.SelectMany(b => b).ToArray();
+
+            ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth);
+            await AddReceiptsAsync(logIndexStorage, testData.Batches);
+            await logIndexStorage.RemoveReorgedAsync(blocks[^1]);
+
+            if (restart)
+            {
+                await logIndexStorage.DisposeAsync();
+                logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth);
+            }
+
+            await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(blocks[^((int)maxReorgDepth + 1)]), Throws.TypeOf<LogIndexStateException>());
+        }
+
+        [Test]
+        public async Task Set_Compact_ReorgBeyondFirstDepth_AfterDepthRaised_Throws_Test([Values] bool depthRecorded)
+        {
+            const ulong firstDepth = 4;
+            const ulong raisedDepth = firstDepth * 2;
+            BlockReceipts[] blocks = testData.Batches.SelectMany(b => b).ToArray();
+            IDbFactory dbFactory = CreateRecordingDbFactory();
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: firstDepth, dbFactory: dbFactory))
+            {
+                await AddReceiptsAsync(logIndexStorage, testData.Batches);
+                await CompactAsync(logIndexStorage);
+
+                // As an index written before the depth was recorded
+                if (!depthRecorded)
+                    _root.GetColumnDb(LogIndexColumns.Meta).Remove("mrd"u8);
+            }
+
+            // A second open at the raised depth must not replace the smallest depth the index has run with
+            await CreateLogIndexStorage(maxReorgDepth: raisedDepth, dbFactory: dbFactory).DisposeAsync();
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: raisedDepth, dbFactory: dbFactory))
+                await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(blocks[^((int)firstDepth + 1)]), Throws.TypeOf<LogIndexStateException>());
+        }
+
         [Combinatorial]
         public async Task Set_PeriodicReorg_Get_Test(
             [Values(10, 70)] int reorgFrequency,
@@ -660,7 +730,6 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: allReorgBlocks, addedBlocks: allAddedBlocks);
         }
 
-        [Ignore("Not supported, but is probably not needed.")]
         [Combinatorial]
         public async Task Set_ConsecutiveReorgsLast_Get_Test(
             [Values(new[] { 2, 1 }, new[] { 1, 2 })] int[] reorgDepths,
@@ -1369,19 +1438,17 @@ namespace Nethermind.Db.Test.LogIndex
 
                 foreach (BlockReceipts block in blocks)
                 {
-                    foreach (TxReceipt txReceipt in block.Receipts)
+                    BlockReceipts.LogReader logs = block.ReadLogs();
+                    while (logs.TryGetNext(out ReadOnlySpan<byte> logAddress, out ReadOnlySpan<byte> logTopics))
                     {
-                        foreach (LogEntry log in txReceipt.Logs!)
-                        {
-                            HashSet<int> addressMap = address.GetOrAdd(log.Address, static _ => []);
-                            addressMap.Add(block.BlockNumber);
+                        HashSet<int> addressMap = address.GetOrAdd(new Address(logAddress), static _ => []);
+                        addressMap.Add(block.BlockNumber);
 
-                            for (int i = 0; i < log.Topics.Length; i++)
-                            {
-                                Dictionary<Hash256, HashSet<int>> topicI = topic.GetOrAdd(i, static _ => []);
-                                HashSet<int> topicMap = topicI.GetOrAdd(log.Topics[i], static _ => []);
-                                topicMap.Add(block.BlockNumber);
-                            }
+                        for (int i = 0; i < logTopics.Length / Hash256.Size; i++)
+                        {
+                            Dictionary<Hash256, HashSet<int>> topicI = topic.GetOrAdd(i, static _ => []);
+                            HashSet<int> topicMap = topicI.GetOrAdd(new Hash256(logTopics.Slice(i * Hash256.Size, Hash256.Size)), static _ => []);
+                            topicMap.Add(block.BlockNumber);
                         }
                     }
                 }

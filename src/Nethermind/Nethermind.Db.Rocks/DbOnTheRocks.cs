@@ -24,7 +24,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb, IReadPrefetcher
 {
     protected ILogger _logger;
 
@@ -588,29 +588,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     };
 
 
-    public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
-    {
-        get
-        {
-            ThrowIfDisposing();
-            UpdateReadMetrics(keys.Length);
-
-            try
-            {
-                if (_columnFamily is null) return _db.MultiGet(keys);
-
-                IColumnFamilyHandle[] columnFamilies = new IColumnFamilyHandle[keys.Length];
-                Array.Fill(columnFamilies, _columnFamily);
-                return _db.MultiGet(keys, columnFamilies);
-            }
-            catch (RocksDbException e)
-            {
-                HandleFatalDbError(e);
-                throw;
-            }
-        }
-    }
-
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
@@ -716,6 +693,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Does nothing outside Linux: there the bindings read the keys before they return, so the caller would wait for them.</remarks>
+    void IReadPrefetcher.Prefetch(ReadOnlySpan<byte> keys, int keyLength)
+    {
+        if (OperatingSystem.IsLinux()) Prefetch(keys, keyLength, _columnFamily, _defaultReadOptions);
+    }
+
+    /// <inheritdoc/>
+    bool IReadPrefetcher.IsCached(ReadOnlySpan<byte> key) => IsCached(key, _columnFamily);
+
     internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
@@ -814,6 +801,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     /// <summary>How long <see cref="Dispose"/> waits for pinned slices before it leaves the native close to the last release.</summary>
     internal TimeSpan PinnedSliceDrainTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
+    internal void ReleaseSnapshotAfterReads(InFlightOperations reads, Action release)
+    {
+        if (_logger.IsWarn) _logger.Warn($"DB {_instance.Name} releases a snapshot when its {reads.Count} reads complete");
+        reads.RunWhenDrained(release);
+    }
 
     private void ReleasePinnedSlice()
     {
@@ -2130,7 +2123,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             ReadOptions readOptions = CreateReadOptions();
             readOptions.SetSnapshot(snapshot);
             return readOptions;
-        }, _columnFamily, snapshot);
+        }, _columnFamily, snapshot)
+        {
+            Reads = new InFlightOperations()
+        };
     }
 
     public sealed class RocksDbSnapshot(
@@ -2155,6 +2151,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 return;
             }
 
+            if (DrainReads())
+            {
+                Release();
+            }
+            else
+            {
+                ReleaseAfterReads(Release);
+            }
+        }
+
+        private void Release()
+        {
             base.Dispose();
             snapshot.Dispose();
         }

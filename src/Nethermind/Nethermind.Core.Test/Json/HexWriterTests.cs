@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -42,6 +43,41 @@ public class HexWriterTests
         ArrayBufferWriter<byte> buffer = new();
         writeAction(buffer);
         return Utf8.UTF8.GetString(buffer.WrittenSpan);
+    }
+
+    [Test]
+    public void WriteHexStringValue_InputLongerThanHexStringLimit_ThrowsJsonException([Values(1_073_741_794, 1 << 30, 0x7FFFFFC7)] int length) =>
+        Assert.That(() => WriteToString((Utf8JsonWriter w) =>
+        {
+            byte first = 1;
+            HexWriter.WriteHexStringValue(w, MemoryMarshal.CreateReadOnlySpan(ref first, length));
+        }), Throws.TypeOf<JsonException>());
+
+    [Test]
+    public void WriteHexChunked_InputWithHexLengthAboveIntMax_RequestsBoundedSpan([Values(1 << 30, 0x7FFFFFC7)] int length)
+    {
+        SizeHintRecorder writer = new();
+        Assert.That(() =>
+        {
+            byte first = 1;
+            HexWriter.WriteHexChunked(writer, MemoryMarshal.CreateReadOnlySpan(ref first, length));
+        }, Throws.TypeOf<NotSupportedException>());
+        Assert.That(writer.SizeHint, Is.EqualTo((int)Eip4844Constants.GasPerBlob * 2));
+    }
+
+    private sealed class SizeHintRecorder : IBufferWriter<byte>
+    {
+        public int SizeHint { get; private set; }
+
+        public void Advance(int count) => throw new NotSupportedException();
+
+        public Memory<byte> GetMemory(int sizeHint = 0) => throw new NotSupportedException();
+
+        public Span<byte> GetSpan(int sizeHint = 0)
+        {
+            SizeHint = sizeHint;
+            throw new NotSupportedException();
+        }
     }
 
     private static byte[] HexBytes(string hex)

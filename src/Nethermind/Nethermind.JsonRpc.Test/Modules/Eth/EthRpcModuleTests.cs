@@ -591,7 +591,7 @@ public partial class EthRpcModuleTests
             .WithCode(logCreateCode)
             .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei).TestObject;
 
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether);
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether);
 
         Hash256? blockHash = Keccak.Zero;
         void handleNewBlock(object? sender, BlockEventArgs e)
@@ -1023,7 +1023,7 @@ public partial class EthRpcModuleTests
         await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
         await writer.CompleteAsync();
 
-        System.IO.Pipelines.ReadResult read = await pipe.Reader.ReadAsync();
+        System.IO.Pipelines.ReadResult read = await pipe.Reader.ReadAsync(cancellationToken);
         string serialized = Encoding.UTF8.GetString(read.Buffer.ToArray());
         pipe.Reader.AdvanceTo(read.Buffer.End);
         await pipe.Reader.CompleteAsync();
@@ -1122,7 +1122,7 @@ public partial class EthRpcModuleTests
             .WithCode(logCreateCode)
             .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei).TestObject;
 
-        TestRpcBlockchain? test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).Build(initialValues: 2.Ether);
+        using TestRpcBlockchain test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).Build(initialValues: 2.Ether);
 
         Hash256? blockHash = Keccak.Zero;
 
@@ -1156,7 +1156,7 @@ public partial class EthRpcModuleTests
             .Log(1, 63, [TestItem.KeccakA])
             .Done;
 
-        TestRpcBlockchain test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).Build(initialValues: 2.Ether);
+        using TestRpcBlockchain test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).Build(initialValues: 2.Ether);
         ulong nonce = 3;
         for (int block = 0; block < 2; block++)
         {
@@ -1772,7 +1772,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_block_by_number_should_not_recover_tx_senders_for_request_without_tx_details(string blockParameter)
     {
         IBlockchainBridge? blockchainBridge = Substitute.For<IBlockchainBridge>();
-        TestRpcBlockchain ctx = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge).Build(MainnetSpecProvider.Instance);
+        using TestRpcBlockchain ctx = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge).Build(MainnetSpecProvider.Instance);
         await ctx.TestEthRpc("eth_getBlockByNumber", blockParameter, "false");
         blockchainBridge.Received(0).RecoverTxSenders(Arg.Any<Block>());
     }
@@ -2312,6 +2312,7 @@ public partial class EthRpcModuleTests
         receiptFinder.Get(Arg.Any<Hash256>()).Returns(receiptsTab);
         blockchainBridge.GetTxReceiptInfo(Arg.Any<Hash256>()).Returns((receipt, timestamp, new(UInt256.One), 0));
 
+        using TestRpcBlockchain replaced = ctx.Test;
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", tx.Hash!.ToString());
 
@@ -2422,6 +2423,7 @@ public partial class EthRpcModuleTests
         ITxSender txSender = Substitute.ForPartsOf<TxPoolSender>(ctx.Test.TxPool, ctx.Test.TxSealer,
             ctx.Test.NonceManager, ctx.Test.EthereumEcdsa, ctx.Test.ChainHeadInfoProvider.SpecProvider);
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        using TestRpcBlockchain replaced = ctx.Test;
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction))
@@ -2776,7 +2778,7 @@ public partial class EthRpcModuleTests
 
     public async Task Eth_create_access_list_sample(AccessListProvided accessListProvided, bool optimize, long loads, string expected)
     {
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc _) = GetTestAccessList(loads);
 
@@ -2795,7 +2797,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_createAccessList_cannot_exceed_gas_cap()
     {
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
         ulong gasCap = 60_000;
         test.RpcConfig.GasCap = gasCap;
 
@@ -3372,7 +3374,7 @@ public partial class EthRpcModuleTests
         TestSpecProvider specProvider = new(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
-        TestRpcBlockchain Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+        using TestRpcBlockchain Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
 
         Transaction testTx = Build.A.Transaction
           .WithType(TxType.SetCode)
@@ -3400,7 +3402,7 @@ public partial class EthRpcModuleTests
         TestSpecProvider specProvider = new(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
         Transaction setCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
@@ -3438,7 +3440,7 @@ public partial class EthRpcModuleTests
         TestSpecProvider specProvider = new(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
         Transaction invalidSetCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
@@ -3464,7 +3466,7 @@ public partial class EthRpcModuleTests
         TestSpecProvider specProvider = new(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
 
         const int BadYparity = 229;
         const int BadR = 123;

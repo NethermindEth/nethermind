@@ -13,13 +13,18 @@ namespace Nethermind.Db.Rocks.Config;
 
 public class PerTableDbConfig : IRocksDbConfig
 {
-    private readonly string _tableName;
+    private readonly string? _tableName;
     private readonly string? _columnName;
     private readonly IDbConfig _dbConfig;
     private readonly string[] _prefixes;
     private readonly string[] _reversedPrefixes;
 
-    public PerTableDbConfig(IDbConfig dbConfig, string dbName, string? columnName = null, bool validate = true)
+    /// <summary>Reads global options with optional per-table and column overrides.</summary>
+    /// <param name="dbConfig">The shared database configuration.</param>
+    /// <param name="dbName">The database name, or <see langword="null"/> for global-only defaults.</param>
+    /// <param name="columnName">The column name. Ignored when <paramref name="dbName"/> is null.</param>
+    /// <param name="validate">Whether to validate named database option declarations in debug builds.</param>
+    public PerTableDbConfig(IDbConfig dbConfig, string? dbName, string? columnName = null, bool validate = true)
     {
         _dbConfig = dbConfig;
         _tableName = dbName;
@@ -71,6 +76,11 @@ public class PerTableDbConfig : IRocksDbConfig
 
     private string[] GetPrefixes()
     {
+        if (_tableName is null)
+        {
+            return [];
+        }
+
         if (_tableName.StartsWith("State"))
         {
             return ["StateDb"];

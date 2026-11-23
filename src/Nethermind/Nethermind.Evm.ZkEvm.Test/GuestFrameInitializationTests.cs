@@ -21,7 +21,7 @@ namespace Nethermind.Evm.ZkEvm.Test;
 /// <summary>Enters a frame the way the dispatch loop does and records whether crediting its account reached the world state.</summary>
 /// <remarks>
 /// The guest drops the zero credit to an account whose code the frame runs, as that account is never empty; every other
-/// entry - a credit, an account without code, a creation, or a fork whose access list records the credit - still goes through.
+/// entry - a credit, an account without code or a creation - still goes through.
 /// </remarks>
 public class GuestFrameInitializationTests
 {
@@ -38,7 +38,11 @@ public class GuestFrameInitializationTests
     [TestCase(ExecutionType.CALL, 1, true, false, ExpectedResult = true)]
     [TestCase(ExecutionType.CALL, 0, false, false, ExpectedResult = true)]
     [TestCase(ExecutionType.CREATE, 0, true, false, ExpectedResult = true)]
-    [TestCase(ExecutionType.CALL, 0, true, true, ExpectedResult = true)]
+    [TestCase(ExecutionType.CALL, 0, true, true, ExpectedResult = false)]
+    [TestCase(ExecutionType.DELEGATECALL, 1, true, true, ExpectedResult = false)]
+    [TestCase(ExecutionType.CALL, 1, true, true, ExpectedResult = true)]
+    [TestCase(ExecutionType.CALL, 0, false, true, ExpectedResult = true)]
+    [TestCase(ExecutionType.CREATE, 0, true, true, ExpectedResult = true)]
     public bool Frame_entry_reaches_the_world_state(ExecutionType executionType, int value, bool hasCode, bool blockAccessList)
     {
         IReleaseSpec spec = blockAccessList ? Amsterdam.Instance : Osaka.Instance;

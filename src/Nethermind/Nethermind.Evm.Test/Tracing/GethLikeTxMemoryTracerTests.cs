@@ -193,7 +193,8 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.BLOCKHASH).Done, 22UL, GasCostOf.BlockHash).SetArgDisplayNames("BLOCKHASH"),
         new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 715UL,
             GasCostOf.ExtCodeEip150 + GasCostOf.Memory + GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY"),
-        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT"),
+        // Before Berlin, Geth prices the 5000 in its gas function, with the new-account charge for an empty beneficiary.
+        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT"),
     ];
 
     [Test]
@@ -234,6 +235,22 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
             Assert.That(trace.Failed, Is.EqualTo(true));
             Assert.That(trace.Entries[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
             Assert.That(trace.Entries[0].GasCost, Is.EqualTo(GasCostOf.VeryLow));
+        }
+    }
+
+    [TestCase(Instruction.ADD, "", "stack underflow (0 <=> 2)")]
+    [TestCase(Instruction.KECCAK256, "", "stack underflow (0 <=> 2)")]
+    [TestCase(Instruction.SELFDESTRUCT, "", "stack underflow (0 <=> 1)")]
+    [TestCase(Instruction.LOG4, "600060006000", "stack underflow (3 <=> 6)")]
+    public void Can_trace_stack_underflow_error_text(Instruction opcode, string pushes, string error)
+    {
+        byte[] code = [.. Bytes.FromHexString(pushes), (byte)opcode];
+
+        using GethLikeTxTrace trace = ExecuteAndTrace(code);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.EqualTo(true));
+            Assert.That(trace.Entries[^1].Error, Is.EqualTo(error));
         }
     }
 
@@ -942,6 +959,25 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         using JsonDocument document = JsonDocument.Parse(buffer.WrittenMemory);
         return document.RootElement.EnumerateArray().Select(e => e.Clone()).ToArray();
+    }
+
+    /// <summary>As in Geth's struct logger, an action rejected by its balance precheck leaves its opcode without an error.</summary>
+    [TestCase(Instruction.CALL)]
+    [TestCase(Instruction.CREATE)]
+    public void Rejected_action_leaves_no_error_on_its_opcode(Instruction operation)
+    {
+        Prepare code = operation == Instruction.CALL
+            ? Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, UInt256.MaxValue)
+            : Prepare.EvmCode.Create([(byte)Instruction.STOP], UInt256.MaxValue);
+        byte[] bytecode = code.Op(Instruction.POP).Op(Instruction.STOP).Done;
+        using GethLikeTxTrace trace = ExecuteAndTrace(bytecode);
+        JsonElement streamed = ExecuteStreamingTracerEntries(bytecode).Single(e => e.GetProperty("op").GetString() == operation.ToString());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries.Single(entry => entry.Opcode == operation.ToString()).Error, Is.Null, "memory tracer");
+            Assert.That(streamed.TryGetProperty("error", out _), Is.False, "streaming tracer");
+        }
     }
 
     private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, UInt256 expectedStackTop, int expectedStackCount)

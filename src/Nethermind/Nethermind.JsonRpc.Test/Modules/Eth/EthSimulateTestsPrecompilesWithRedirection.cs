@@ -26,7 +26,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
     [Test]
     public async Task Test_eth_simulate_create()
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         Transaction systemTransactionForModifiedVm = new()
         {
@@ -78,7 +78,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
     [Test]
     public async Task Test_eth_simulate_ecr_moved()
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         //The following opcodes code is based on the following contract compiled:
         /*
          function ecrecover(bytes32 hash, uint8 v, bytes32 r, bytes32 s) public  returns(address)

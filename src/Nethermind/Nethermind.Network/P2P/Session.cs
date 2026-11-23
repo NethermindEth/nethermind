@@ -11,7 +11,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
@@ -39,26 +38,24 @@ namespace Nethermind.Network.P2P
         private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new(concurrencyLevel: 1, capacity: 4);
 
         private readonly ILogger _logger;
-        private readonly ILogManager _logManager;
         private readonly DisconnectEventHandlers _disconnectedHandlers = new();
 
         private Node? _node;
-        private readonly IChannel _channel;
+        private readonly IRlpxConnection _connection;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
-        private IChannelHandlerContext? _context;
         private volatile ISessionActivityObserver? _activityObserver;
         private volatile bool _isChannelClosed;
 
         public Session(
             int localPort,
-            IChannel channel,
+            IRlpxConnection connection,
             IDisconnectsAnalyzer disconnectsAnalyzer,
             ILogManager logManager)
         {
             Direction = ConnectionDirection.In;
             State = SessionState.New;
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+            ArgumentNullException.ThrowIfNull(logManager);
+            _connection = connection ?? throw new ArgumentNullException(nameof(connection));
             _disconnectsAnalyzer = disconnectsAnalyzer;
             _logger = logManager.GetClassLogger<Session>();
             RemoteNodeId = null;
@@ -69,15 +66,15 @@ namespace Nethermind.Network.P2P
         public Session(
             int localPort,
             Node remoteNode,
-            IChannel channel,
+            IRlpxConnection connection,
             IDisconnectsAnalyzer disconnectsAnalyzer,
             ILogManager logManager)
         {
             State = SessionState.New;
             _node = remoteNode ?? throw new ArgumentNullException(nameof(remoteNode));
-            _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+            _connection = connection ?? throw new ArgumentNullException(nameof(connection));
             _disconnectsAnalyzer = disconnectsAnalyzer;
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            ArgumentNullException.ThrowIfNull(logManager);
             _logger = logManager.GetClassLogger<Session>();
             RemoteNodeId = remoteNode.Id;
             RemoteHost = remoteNode.Host;
@@ -90,7 +87,7 @@ namespace Nethermind.Network.P2P
         public bool IsClosing => State > SessionState.Initialized;
         private bool IsClosed => State > SessionState.DisconnectingProtocols;
         public bool IsChannelClosed => _isChannelClosed;
-        public bool IsOutboundBufferFull => _context?.Channel is { IsWritable: false };
+        public bool IsOutboundBufferFull => _packetSender is not null && !_connection.IsWritable;
         public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
         public PublicKey? RemoteNodeId { get; set; }
@@ -143,11 +140,7 @@ namespace Nethermind.Network.P2P
 
             if (_logger.IsTrace) TraceEnablingSnappy();
 
-            // since groups were used, we are on a different thread
-            _context.Channel.Pipeline.Get<ZeroNettyP2PHandler>()?.EnableSnappy();
-            ZeroPacketSplitter splitter = _context.Channel.Pipeline.Get<ZeroPacketSplitter>()
-                ?? throw new InvalidOperationException("Cannot enable Snappy without the outbound ZeroPacketSplitter.");
-            splitter.EnableSnappy(_logManager);
+            _connection.EnableSnappy();
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceEnablingSnappy() => _logger.Trace($"Enabling Snappy compression and disabling framing in {this:hide}");
@@ -287,11 +280,10 @@ namespace Nethermind.Network.P2P
 
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);
 
-        public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
+        public void Init(byte p2PVersion, IPacketSender packetSender)
         {
             if (_logger.IsTrace) TraceSessionOperation();
 
-            ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(packetSender);
 
             P2PVersion = p2PVersion;
@@ -307,7 +299,6 @@ namespace Nethermind.Network.P2P
                     ThrowInvalidSessionState();
                 }
 
-                _context = context;
                 _packetSender = packetSender;
                 State = SessionState.Initialized;
             }
@@ -559,34 +550,19 @@ namespace Nethermind.Network.P2P
 
         private async Task DisconnectAsync(DisconnectType disconnectType)
         {
-            //Possible in case of disconnect before p2p initialization
-            if (_context is null)
+            //in case pipeline did not get to p2p - no disconnect delay
+            if (_packetSender is not null && disconnectType == DisconnectType.Local)
             {
-                //in case pipeline did not get to p2p - no disconnect delay
-                try
-                {
-                    await _channel.DisconnectAsync();
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsTrace) TraceDisconnectError(e);
-                }
+                await Task.Delay(Timeouts.Disconnection);
             }
-            else
-            {
-                if (disconnectType == DisconnectType.Local)
-                {
-                    await Task.Delay(Timeouts.Disconnection);
-                }
 
-                try
-                {
-                    await _context.DisconnectAsync();
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsTrace) TraceDisconnectError(e);
-                }
+            try
+            {
+                await _connection.DisconnectAsync();
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsTrace) TraceDisconnectError(e);
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]

@@ -150,7 +150,8 @@ public class ValidateSubmissionHandler(
 
     private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, IReleaseSpec releaseSpec, out string? error)
     {
-        ShardBlobNetworkWrapper blobs = new(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs, releaseSpec.BlobProofVersion);
+        bool proofLengthsValid = ShardBlobNetworkWrapper.TryJoinProofs(blobsBundle.Proofs, out byte[]? proofs);
+        ShardBlobNetworkWrapper blobs = new(blobsBundle.Blobs, blobsBundle.Commitments, proofs ?? [], releaseSpec.BlobProofVersion);
 
         IBlobProofsVerifier verifier = IBlobProofsManager.For(releaseSpec.BlobProofVersion);
 
@@ -170,7 +171,7 @@ public class ValidateSubmissionHandler(
             }
         }
 
-        if (!verifier.ValidateLengths(blobs))
+        if (!proofLengthsValid || !verifier.ValidateLengths(blobs))
         {
             error = "Invalid blob lengths";
             return false;

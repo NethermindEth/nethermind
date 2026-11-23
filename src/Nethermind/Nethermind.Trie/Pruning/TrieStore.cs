@@ -315,13 +315,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         Hash256 keccak = node.Keccak ?? ThrowUnknownHash(node);
         TrieStoreDirtyNodesCache.Key key = new(address, path, keccak);
-        TrieNode cachedNodeCopy = shard.GetOrAdd(in key, new TrieStoreDirtyNodesCache.NodeRecord(node, blockNumber)).Node;
+        TrieNode cachedNodeCopy = shard.GetOrAdd(in key, new TrieStoreDirtyNodesCache.NodeRecord(node, blockNumber), out TrieNode? replaced).Node;
         if (!ReferenceEquals(cachedNodeCopy, node))
         {
             Metrics.ReplacedNodesCount++;
         }
         else
         {
+            // The persisted node this one took the place of has left the cache, so it stops being counted.
+            if (replaced is not null) shard.DecrementMemory(replaced);
             shard.IncrementMemory(node);
         }
 
@@ -1343,12 +1345,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
+        ClearCommitSetQueue();
         if (_logger.IsInfo) _logger.Info($"Saving all commit set took {Stopwatch.GetElapsedTime(start)} for {commitSetCount} commit sets.");
 
         start = Stopwatch.GetTimestamp();
 
-        // Double check
-        ClearCommitSetQueue();
         if (cancellationToken.IsCancellationRequested) return;
 
         // All persisted node including recommitted nodes between head and reorg depth must be removed so that
@@ -1364,11 +1365,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _dirtyNodesTasks[index] = Task.Run(() =>
             {
                 int persistedCount = dirtyNode.PersistAll(_nodeStorage, cancellationToken);
-                totalPersistedCount += persistedCount;
-            });
+                Interlocked.Add(ref totalPersistedCount, persistedCount);
+            }, CancellationToken.None);
         }
 
-        Task.WaitAll(_dirtyNodesTasks);
+        Task.WaitAll(_dirtyNodesTasks, CancellationToken.None);
 
         if (cancellationToken.IsCancellationRequested) return;
 

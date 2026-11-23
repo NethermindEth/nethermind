@@ -51,6 +51,7 @@ public class GethStyleTracer(
     IPrefixStateSeedSource prefixSeeds,
     IOverridableCodeInfoRepository codeInfoRepository,
     ILogManager logManager,
+    IPoSSwitcher poSSwitcher,
     IParallelBlockTracer? parallelTracer = null,
     GethStyleTracer.TraceCallRequestState? callRequestState = null
 ) : IGethStyleTracer
@@ -135,9 +136,8 @@ public class GethStyleTracer(
     private (BlockHeader Header, IReleaseSpec Spec) PrepareCallHeader(Block block, GethTraceOptions options)
     {
         BlockHeader header = block.Header.Clone();
-        // Taken before preprocessing restores IsPostMerge, which stored headers do not carry. Only ever set it:
-        // a chain such as Taiko keeps post-merge headers with a nonzero difficulty.
-        if (header.Difficulty == 0) header.IsPostMerge = true;
+        // Taken before preprocessing restores IsPostMerge, which stored headers do not carry.
+        poSSwitcher.RestorePostMergeForCall(header);
         options.BlockOverrides?.ApplyOverrides(header);
         if (options.NoBaseFee) header.BaseFeePerGas = UInt256.Zero;
         return (header, specProvider.GetSpec(header));
@@ -198,12 +198,14 @@ public class GethStyleTracer(
 
         public void SetBlockExecutionContext(in BlockExecutionContext context)
         {
+            // The spec of the call's overridden block: before London the call keeps the context's own PREVRANDAO.
+            Hash256? prevRandao = overrides?.PrevRandaoFor(context.Spec);
             if (blobBaseFee is { } fee)
             {
                 processor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(
-                    context.Header, context.Spec, overrides?.PrevRandao?.ValueHash256 ?? context.PrevRandao, fee));
+                    context.Header, context.Spec, prevRandao?.ValueHash256 ?? context.PrevRandao, fee));
             }
-            else if (overrides?.PrevRandao is { } prevRandao)
+            else if (prevRandao is not null)
             {
                 processor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandao(context.Header, context.Spec, prevRandao.ValueHash256));
             }
@@ -273,7 +275,7 @@ public class GethStyleTracer(
 
         block = new Block(block.Header.Clone(), BlockBody.WithOneTransactionOnly(tx));
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash, ExecutionCancellationToken = cancellationToken }, scope.Component.WorldState, specProvider);
+        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, scope.Component.WorldState, specProvider, null, cancellationToken);
         try
         {
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, blockTracer.WithCancellation(cancellationToken), cancellationToken);

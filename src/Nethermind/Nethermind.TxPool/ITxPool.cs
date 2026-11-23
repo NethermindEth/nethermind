@@ -69,6 +69,10 @@ namespace Nethermind.TxPool
             GetPendingLightBlobTransactionsBySender().TryGetValue(address, out Transaction[]? txs) ? txs : [];
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
+
+        /// <summary>Removes the gossip registration owned by this peer connection.</summary>
+        void RemovePeer(ITxPoolPeer peer);
+
         AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         /// <summary>
@@ -183,9 +187,9 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[]? proof);
         bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs);
+            out ReadOnlyMemory<byte> cellProofs);
         int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs);
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs);
         /// <summary>
         /// Gets the cell availability mask of a pending blob transaction without materializing blobs or cells.
         /// </summary>

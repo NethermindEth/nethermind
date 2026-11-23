@@ -322,14 +322,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 // As we can't add a new storage tries in parallel to the _storages Dict do it here
                 GetOrCreateStorage(address).EnsureStorageTree();
             }
+            else if (_storages.TryGetValue(address, out PerContractState? storage) && storage.WasCleared)
+            {
+                _toUpdateRoots[address] = true;
+                storage.EnsureStorageTree();
+            }
             else
             {
                 _toUpdateRoots.Remove(address);
-                if (_storages.TryGetValue(address, out PerContractState? storage))
-                {
-                    // BlockChange need to be kept to keep selfdestruct marker (via DefaultableDictionary) working.
-                    storage.RemoveStorageTree();
-                }
+                // BlockChange need to be kept to keep selfdestruct marker (via DefaultableDictionary) working.
+                storage?.RemoveStorageTree();
             }
         }
         toUpdateRoots.Clear();
