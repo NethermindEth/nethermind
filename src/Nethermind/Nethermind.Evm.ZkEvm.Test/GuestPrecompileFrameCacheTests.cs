@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -58,6 +59,26 @@ public class GuestPrecompileFrameCacheTests
         Assert.That(vm.FrameCache[1], Is.Null);
     }
 
+    /// <remarks>
+    /// Under EIP-158 a value-less call touches an existing empty target only when the precompile succeeds. On the
+    /// frame path a failed precompile reverts its touch.
+    /// </remarks>
+    [Test]
+    public void Value_less_precompile_call_touches_an_existing_empty_target(
+        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction op,
+        [Values] bool outOfGas)
+    {
+        PrecompileVirtualMachine vm = new();
+        vm.State.AccountExists(Identity).Returns(true);
+        vm.State.IsDeadAccount(Identity).Returns(true);
+
+        vm.Call(CallIdentity(op, outOfGas));
+
+        int touches = vm.State.ReceivedCalls().Count(static call =>
+            call.GetMethodInfo().Name == nameof(IWorldState.AddToBalanceAndCreateIfNotExists) && Identity.Equals(call.GetArguments()[0]));
+        Assert.That(touches, Is.EqualTo(outOfGas ? 0 : 1));
+    }
+
     /// <param name="op">The call; a CALL moves no value.</param>
     /// <param name="outOfGas">Forwards 1 gas, so identity fails and a frame it took is released on the hard-failure exit.</param>
     private static byte[] CallIdentity(Instruction op, bool outOfGas)
@@ -74,7 +95,7 @@ public class GuestPrecompileFrameCacheTests
     /// <summary>A virtual machine over an Osaka block whose code repository resolves <see cref="Identity"/> to the identity precompile.</summary>
     private sealed class PrecompileVirtualMachine : VirtualMachine<EthereumGasPolicy>
     {
-        private readonly IWorldState _state = Substitute.For<IWorldState>();
+        public IWorldState State { get; } = Substitute.For<IWorldState>();
 
         public PrecompileVirtualMachine()
             : base(Substitute.For<IBlockhashProvider>(), new SingleReleaseSpecProvider(Fork, BlockchainIds.Mainnet, BlockchainIds.Mainnet), LimboLogs.Instance)
@@ -93,7 +114,7 @@ public class GuestPrecompileFrameCacheTests
             using ExecutionEnvironment env = ExecutionEnvironment.Rent(new CodeInfo(code), Sender, Sender, Sender, 0, UInt256.Zero, default);
             using VmState<EthereumGasPolicy> transaction = VmState<EthereumGasPolicy>.RentTopLevel(
                 EthereumGasPolicy.FromULong(1_000_000), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default);
-            ExecuteTransaction<OffFlag>(transaction, _state, NullTxTracer.Instance);
+            ExecuteTransaction<OffFlag>(transaction, State, NullTxTracer.Instance);
         }
     }
 }

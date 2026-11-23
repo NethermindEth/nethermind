@@ -1460,20 +1460,25 @@ public class GuestDispatchDifferentialTests
             .. Call(op, noCode, 0x20, 0x20, 0, 0x20, value),
             // A non-zero input byte shows where the precompile reads and writes.
             (byte)Instruction.PUSH1, 0xff, (byte)Instruction.PUSH1, 0x10, (byte)Instruction.MSTORE,
-            .. Call(op, last, 0x10, 0x20, 0xe0, 0x20, value),
+            // A marker in the half of the input the output window keeps; the window cuts the precompile's output.
+            (byte)Instruction.PUSH1, 0xee, (byte)Instruction.PUSH1, 0x10, (byte)Instruction.MSTORE8,
+            .. Call(op, last, 0x10, 0x20, 0xe0, 0x10, value),
+            (byte)Instruction.RETURNDATASIZE,
             (byte)Instruction.STOP
         ];
         const ulong ample = 100_000;
         bool onFrameGas = target == CallTarget.Precompile;
-        ulong needed = ample - Run(ample, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository, onFrameGas: onFrameGas).GasLeft;
+        // A state-gas reservoir shows that a failed precompile call gives it back to the caller.
+        EthereumGasPolicy? Funded(ulong gas) => onFrameGas && spec.IsEip8037Enabled ? EthereumGasPolicy.FromULong(gas) with { StateReservoir = 1000 } : null;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(program), Table.Cancelable, spec, returnData: [], isStatic: isStatic, initial: Funded(ample), codeInfoRepository: repository, onFrameGas: onFrameGas).GasLeft;
 
         List<string> mismatches = [];
         // Ample gas too: only above the need does a call leave its frame gas to refund.
         foreach (ulong gas in Enumerable.Range(0, (int)needed + 1).Select(static gas => (ulong)gas).Append(ample))
         {
             if (mismatches.Count >= 5) break;
-            Outcome untraced = Run(gas, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository, onFrameGas: onFrameGas);
-            Outcome shared = Run(gas, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository, onFrameGas: onFrameGas);
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(program), Table.Untraced, spec, returnData: [], isStatic: isStatic, initial: Funded(gas), codeInfoRepository: repository, onFrameGas: onFrameGas);
+            Outcome shared = Run(gas, [], 0, new CodeInfo(program), Table.Cancelable, spec, returnData: [], isStatic: isStatic, initial: Funded(gas), codeInfoRepository: repository, onFrameGas: onFrameGas);
             if (target == CallTarget.Precompile)
             {
                 // The guest handler runs a value-less precompile call in the caller, with no frame snapshot; the shared
@@ -1487,7 +1492,7 @@ public class GuestDispatchDifferentialTests
                 mismatches.Add($"gas {gas}\n untraced {untraced}\n shared   {shared}");
         }
 
-        Outcome complete = Run(needed, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository, onFrameGas: onFrameGas);
+        Outcome complete = Run(needed, [], 0, new CodeInfo(program), Table.Untraced, spec, returnData: [], isStatic: isStatic, initial: Funded(needed), codeInfoRepository: repository, onFrameGas: onFrameGas);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mismatches, Is.Empty);
