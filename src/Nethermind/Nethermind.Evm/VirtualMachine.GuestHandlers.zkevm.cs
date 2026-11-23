@@ -3192,12 +3192,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary>
-        /// CALLDATACOPY, CODECOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, of bytes the source holds in
-        /// full into memory already written, with no call; an empty copy charges its base cost alone.
+        /// CALLDATACOPY, CODECOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, into memory already written,
+        /// with no call: bytes the source holds in full, or a copy of a word or more that ends at most a word past a
+        /// zero-extending source; an empty copy charges its base cost alone.
         /// </summary>
         /// <remarks>
-        /// With no call on its path, the handler saves no return address and reloads no dispatch register. Every other case
-        /// runs <see cref="ExecuteDataCopy{TSource}"/>, which also zero-fills, expands memory and falls back to the shared handler.
+        /// With no call on its path, the handler saves no return address and reloads no dispatch register. Other copies past
+        /// a zero-extending source run <see cref="ExecuteDataCopyPastSource{TSource}"/>. Every other case runs
+        /// <see cref="ExecuteDataCopy{TSource}"/>, which also zero-fills, expands memory and falls back to the shared handler.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -3241,10 +3243,110 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
+
+                // A copy of a word or more that ends at most a word past a zero-extending source, as a moving offset reads the
+                // end of the input: its last word is cleared and the bytes the source holds go over it. For a copy the source
+                // holds the difference wraps.
+                if (TSource.ZeroExtends && !EvmPooledMemory.IsSwizzled && (above | ((size | from | target) >> 32)) == 0 &&
+                    size >= EvmStack.WordSize && from + size - (ulong)source.Length - 1 < EvmStack.WordSize && Covers(gas, cost))
+                {
+                    ref byte range = ref AlignedMemory(ref state).TryGetWrittenRange(target, size);
+                    if (!Unsafe.IsNullRef(ref range))
+                    {
+                        gas -= (nuint)cost;
+                        ClearLastWord(ref range, size);
+                        uint copied = (uint)((ulong)source.Length - from);
+                        if (copied != 0)
+                            CopyFromSource<TSource>(ref range, source, from, copied);
+
+                        head -= 3;
+                        sp = ref Moved(ref sp, -3);
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint next = NextHandler(handlers, ref ip);
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                    }
+                }
+
+                if (TSource.ZeroExtends && !EvmPooledMemory.IsSwizzled && (above | ((size | from | target) >> 32)) == 0 && from + size > (ulong)source.Length)
+                {
+                    nint pastSource = Entry(&ExecuteDataCopyPastSource<TSource>);
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, pastSource);
+                }
             }
 
             nint general = Entry(&ExecuteDataCopy<TSource>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
+        }
+
+        /// <summary>
+        /// CALLDATACOPY or CODECOPY, as <typeparamref name="TSource"/> sources it, of bytes that run past the source into
+        /// memory already written: the bytes the source holds, then zeros.
+        /// </summary>
+        /// <remarks>
+        /// Entered from <see cref="ExecuteDataCopyIntoWritten{TSource}"/> alone, which has checked the stack holds the three
+        /// operands, each below 2^32, and that the copy runs past the source. A one-word copy that starts past the source
+        /// clears that word; the caller takes every other copy of a word or more with at most a word of zeros. Kept apart from
+        /// <see cref="ExecuteDataCopyIntoWritten{TSource}"/>, where its registers would cost every copy the source holds.
+        /// Every other case runs <see cref="ExecuteDataCopy{TSource}"/>.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteDataCopyPastSource<TSource>(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+            where TSource : struct, ICopySource
+        {
+            ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+            ulong size = Unsafe.Subtract(ref destination, 2 * LimbsPerWord);
+            ulong from = Unsafe.Subtract(ref destination, LimbsPerWord);
+            ulong target = destination;
+            ReadOnlySpan<byte> source = TSource.Read(ref stack, ref state);
+            ulong cost = VeryLowGasCost.GasCost + GasCostOf.Memory * ((size + (EvmStack.WordSize - 1)) >> 5);
+            if (size == 0 && Covers(gas, cost))
+            {
+                gas -= (nuint)cost;
+                goto Dispatch;
+            }
+
+            ref byte range = ref size != 0 && Covers(gas, cost) ? ref AlignedMemory(ref state).TryGetWrittenRange(target, size) : ref Unsafe.NullRef<byte>();
+            if (!Unsafe.IsNullRef(ref range))
+            {
+                gas -= (nuint)cost;
+                uint copied = from < (ulong)source.Length ? (uint)Math.Min(size, (ulong)source.Length - from) : 0;
+                uint zeros = (uint)size - copied;
+                if (zeros == EvmStack.WordSize && copied == 0)
+                {
+                    ClearLastWord(ref range, size);
+                }
+                else
+                {
+                    if (copied != 0)
+                        CopyFromSource<TSource>(ref range, source, from, copied);
+                    Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, zeros);
+                    // Reloaded rather than held across the call, where each would take a callee-saved register.
+                    handlers = state.OpcodeHandlers;
+                    code = ref stack.Code;
+                    sp = ref SlotAt(ref stack.Bottom, head);
+                }
+
+                goto Dispatch;
+            }
+
+            nint general = Entry(&ExecuteDataCopy<TSource>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
+
+        Dispatch:
+            head -= 3;
+            sp = ref Moved(ref sp, -3);
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = NextHandler(handlers, ref ip);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
         /// <summary>
@@ -3339,6 +3441,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
+        /// <summary>Zeroes the last 32 of the <paramref name="size"/> bytes at <paramref name="range"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ClearLastWord(ref byte range, ulong size) =>
+            MemoryMarshal.CreateSpan(ref Unsafe.Add(ref range, (nint)(size - EvmStack.WordSize)), EvmStack.WordSize).Clear();
+
         /// <summary>
         /// Copies <paramref name="length"/> bytes of <paramref name="source"/> from <paramref name="from"/> into memory at
         /// <paramref name="range"/>, in the memory layout.
@@ -3352,7 +3459,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             else if (EvmPooledMemory.IsSwizzled)
                 SwizzledMemory.Write(ref range, source.Slice((int)from, (int)length));
             else
-                Bytes.Copy(source.Slice((int)from, (int)length), MemoryMarshal.CreateSpan(ref range, (int)length));
+                // Every caller has checked that the source holds the bytes and the range takes them.
+                Bytes.Memmove(Unsafe.AsPointer(ref range), Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetReference(source), (nint)from)), length);
         }
 
         /// <summary>The bytes a copy to memory reads, as <see cref="ExecuteDataCopy{TSource}"/> runs it.</summary>
