@@ -122,8 +122,7 @@ public partial class StatelessBlockProcessingEnv(
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             new ExecutionRequestsProcessor(txProcessor),
-            blockAccessListManager,
-            leanProofVerifier
+            blockAccessListManager
         );
     }
 

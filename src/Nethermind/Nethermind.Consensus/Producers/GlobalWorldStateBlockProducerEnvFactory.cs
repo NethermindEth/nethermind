@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Evm.State;
@@ -28,6 +29,7 @@ namespace Nethermind.Consensus.Producers
             .AddScoped<TransactionProcessorAdapterFactory>(CreateBuildUpAdapter)
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
+            .AddDecorator<IBlockProcessor, DependencyProofBlockProcessor>()
             .AddScoped<IBlockchainProcessor, MainStateBlockBuildingChainProcessor>()
             .AddDecorator<IBlockchainProcessor, TracingProducedBlockProcessor>()
             .AddDecorator<IBlockchainProcessor, BlockBuildingTrackingProcessor>()
