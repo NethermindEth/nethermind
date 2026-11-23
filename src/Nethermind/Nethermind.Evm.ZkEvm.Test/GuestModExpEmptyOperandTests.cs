@@ -45,5 +45,13 @@ public class GuestModExpEmptyOperandTests
         return result.Data!.ToHexString();
     }
 
+    [TestCase("ff00ff", "ff00ff", ExpectedResult = true, TestName = "a base equal to the modulus")]
+    [TestCase("0000ff00ff", "ff00ff", ExpectedResult = true, TestName = "a base equal to the modulus but for leading zeros")]
+    [TestCase("ff01ff", "ff00ff", ExpectedResult = false, TestName = "a base that differs from the modulus inside")]
+    [TestCase("0001ff00ff", "ff00ff", ExpectedResult = false, TestName = "a base that differs from the modulus inside its padding")]
+    [TestCase("ff00", "ff00ff", ExpectedResult = false, TestName = "a base shorter than the modulus")]
+    public bool Base_equals_the_modulus_only_when_every_byte_matches(string @base, string modulus) =>
+        ModExpPrecompile.IsModulus(Bytes.FromHexString(@base), Bytes.FromHexString(modulus));
+
     private static byte[] Length(string hex) => ((UInt256)(ulong)(hex.Length / 2)).ToBigEndian();
 }
