@@ -30,6 +30,7 @@ public partial class DebugRpcModuleTests
     }
 
     [TestCase(null, "{}")]
+    [TestCase("null", "null")]
     [TestCase("\"abc\"", "\"abc\"")]
     [TestCase("true", "true")]
     [TestCase("1.50", "1.50")]

@@ -74,6 +74,7 @@ public record GethTraceOptions
     [JsonConverter(typeof(TransactionIndexConverter))]
     public ulong? TxIndex { get; init; }
 
+    [JsonConverter(typeof(TracerConfigConverter))]
     public JsonElement? TracerConfig { get; init; }
 
     public Dictionary<Address, AccountOverride>? StateOverrides { get; init; }
@@ -138,6 +139,25 @@ public record GethTraceOptions
 
         /// <inheritdoc/>
         public override void Write(Utf8JsonWriter writer, ulong value, JsonSerializerOptions options) => Nethermind.Serialization.Json.HexWriter.WriteUlongHexStringValue(writer, value);
+    }
+
+    /// <summary>Reads a tracer config as raw JSON, keeping an explicit <c>null</c> as a <see cref="JsonValueKind.Null"/> element.</summary>
+    /// <remarks>Geth passes the raw <c>tracerConfig</c> to a JavaScript tracer's <c>setup</c>, so an explicit <c>null</c> differs from an absent config.</remarks>
+    public sealed class TracerConfigConverter : JsonConverter<JsonElement?>
+    {
+        /// <inheritdoc/>
+        public override bool HandleNull => true;
+
+        /// <inheritdoc/>
+        public override JsonElement? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            JsonElement.ParseValue(ref reader);
+
+        /// <inheritdoc/>
+        public override void Write(Utf8JsonWriter writer, JsonElement? value, JsonSerializerOptions options)
+        {
+            if (value is { } config) config.WriteTo(writer);
+            else writer.WriteNullValue();
+        }
     }
 
     /// <summary>

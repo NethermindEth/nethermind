@@ -66,6 +66,7 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
         [JsonConverter(typeof(GethTraceOptions.TransactionIndexConverter))]
         public ulong? TxIndex { get; set; }
 
+        [JsonConverter(typeof(GethTraceOptions.TracerConfigConverter))]
         public JsonElement? TracerConfig { get; set; }
         public Dictionary<Address, AccountOverride>? StateOverrides { get; set; }
         public BlockOverride? BlockOverrides { get; set; }

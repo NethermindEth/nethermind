@@ -568,7 +568,7 @@ public class GethTraceOptionsDeserializationTests
             "tracer" => options.Tracer,
             "streamMode" => options.StreamMode,
             "txHash" => options.TxHash,
-            "tracerConfig" => options.TracerConfig,
+            "tracerConfig" => options.TracerConfig is { ValueKind: JsonValueKind.Null } ? null : options.TracerConfig,
             "stateOverrides" => options.StateOverrides,
             "blockOverrides" => options.BlockOverrides,
             _ => options.TxIndex
