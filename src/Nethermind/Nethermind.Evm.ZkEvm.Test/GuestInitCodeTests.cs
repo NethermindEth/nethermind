@@ -16,7 +16,6 @@ public class GuestInitCodeTests
 {
     private const byte JUMPDEST = (byte)Instruction.JUMPDEST;
     private const byte PUSH32 = (byte)Instruction.PUSH32;
-    private const int ExecutionPadding = 34;
 
     [Test]
     public void Init_code_at_one_call_depth_reuses_its_buffers()
@@ -53,7 +52,7 @@ public class GuestInitCodeTests
         CodeInfo codeInfo = CodeInfo.ForInitCode(code, callDepth);
 
         ReadOnlySpan<byte> execution = codeInfo.ExecutionCodeSpan;
-        ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), ExecutionPadding);
+        ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(execution.ToArray(), Is.EqualTo(code));
