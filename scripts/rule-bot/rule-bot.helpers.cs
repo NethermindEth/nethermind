@@ -1015,10 +1015,15 @@ static partial class RuleBot
 
     private static int PrecisionCommand(string labelsPath, string hitsPath, string id, string routeBPath)
     {
+        var routeB = LoadOr<RouteBState>(routeBPath);
+        if (routeB.Precision is not null)
+        {
+            routeB.Precision = null;
+            Save(routeBPath, routeB);
+        }
         var labels = LoadOr<List<Label>>(labelsPath);
         var count = Load<HitsFile>(hitsPath).Hits.Count(x => x.Id == id && x.Scope == "prod");
         var (truePositive, need, ok) = Precision(labels, count);
-        var routeB = LoadOr<RouteBState>(routeBPath);
         routeB.Precision = new(truePositive, labels.Count, need, ok);
         Save(routeBPath, routeB);
         Console.WriteLine($"precision: {truePositive}/{need} true positive -> {(ok ? "PASS" : "FAIL")} (gate {SampleMinTrue}/{SampleSize})");

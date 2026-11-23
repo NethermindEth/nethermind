@@ -448,6 +448,34 @@ var tests = new (string Name, Func<Task> Body)[]
         True(Precision(Labels(7, 0), 7).Ok);
         True(!Precision(Labels(6, 1), 7).Ok);
     })),
+    ("test_unreadable_labels_clear_earlier_precision", async () =>
+    {
+        string[] rows =
+        [
+            """{"file":"f.cs","line":"5","label":"false_positive"}""",
+            """{"file":"f.cs","line":true,"label":"false_positive"}""",
+            """{"file":7,"line":5,"label":"false_positive"}""",
+            """{"file":"f.cs","line":5,"label":1}""",
+        ];
+        foreach (var row in rows)
+        {
+            using var directory = new TempDirectory();
+            string In(string name) => Path.Combine(directory.Path, name);
+            var hit = """{"id":"NETH050","file":"f.cs","line":5,"col":1,"scope":"prod","msg":"m"}""";
+            File.WriteAllText(In("hits.json"), """{"counts":{"NETH050":{"prod":5,"test":0,"generated":0}},"solutions":["a.slnx"],"hits":[""" + string.Join(',', Enumerable.Repeat(hit, 5)) + "]}");
+            File.WriteAllText(In("gates.json"), "{}");
+            File.WriteAllText(In("catalog.json"), "{}");
+            File.WriteAllText(In("plan.json"), """{"measure_ids":[],"rejected_ids":{},"route_b":"unused","route_b_id":"NETH050","route_b_queue":[{"cluster":"unused","why":"w"}]}""");
+            File.WriteAllText(In("route_b.json"), """{"id":"NETH050","cluster":"unused","attempts":[],"analyzer":"src/Nethermind/Nethermind.Analyzers/X.cs","why":"w","summary":"s","guard_ok":true,"tests_ok":true,"red_ok":true,"precision":{"true_positive":5,"labelled":5,"needed":5,"ok":true}}""");
+            File.WriteAllText(In("labels.json"), $"[{string.Join(',', Enumerable.Repeat(row, 5))}]");
+            var code = 0;
+            await Quiet(async () => code = await Run(["precision", "--labels", In("labels.json"), "--hits", In("hits.json"), "--id", "NETH050", "--route-b", In("route_b.json")], default));
+            Equal(1, code);
+            await Quiet(() => Propose(directory.Path, true, null, default));
+            using var candidates = JsonDocument.Parse(File.ReadAllText(In("candidates.json")));
+            Equal("skip: precision sample failed", candidates.RootElement.GetProperty("decisions")[0].GetProperty("verdict").GetString());
+        }
+    }),
 
     ("test_ci_solutions_follow_build_workflows", Sync(() =>
     {
