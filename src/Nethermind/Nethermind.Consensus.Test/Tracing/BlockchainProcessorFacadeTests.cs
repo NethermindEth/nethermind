@@ -22,7 +22,7 @@ public class BlockchainProcessorFacadeTests
         Block block = Build.A.Block.TestObject;
         TxReceipt[] processorReceipts = [new()];
         IBlockProcessor processor = Substitute.For<IBlockProcessor>();
-        processor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+        processor.ProcessOne(Arg.Any<Block>(), Arg.Is<ProcessingOptions>(static o => o.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList)), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
             .Returns((block, processorReceipts));
         BlockchainProcessorFacade facade = new(processor, Substitute.For<ISpecProvider>(), []);
         Tracer tracer = new(Substitute.For<IStateReader>(), facade, facade);

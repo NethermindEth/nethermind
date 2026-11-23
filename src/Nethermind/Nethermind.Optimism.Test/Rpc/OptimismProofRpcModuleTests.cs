@@ -74,7 +74,10 @@ public class OptimismProofRpcModuleTests
 
         RlpDecoderKey key = new(typeof(TxReceipt), RlpDecoderKey.Trie);
         IRlpDecoder<TxReceipt> original = Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
+        RlpDecoderKey defaultKey = new(typeof(TxReceipt));
+        IRlpDecoder<TxReceipt> originalDefault = Rlp.GetDecoderOrThrow<TxReceipt>();
         Rlp.RegisterDecoder(key, trieDecoder);
+        Rlp.RegisterDecoder(defaultKey, new OptimismReceiptMessageDecoder());
         try
         {
             ProofRpcModule module = new(tracerEnv, Substitute.For<IBlockchainBridge>(), blockFinder, receiptFinder,
@@ -87,6 +90,7 @@ public class OptimismProofRpcModuleTests
         finally
         {
             Rlp.RegisterDecoder(key, original);
+            Rlp.RegisterDecoder(defaultKey, originalDefault);
         }
     }
 

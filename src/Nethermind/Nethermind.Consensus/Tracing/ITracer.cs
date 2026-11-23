@@ -22,7 +22,8 @@ namespace Nethermind.Consensus.Tracing
         /// <summary>Replays a block and returns the receipts from its chain's block processor.</summary>
         /// <remarks>
         /// The chain's own receipts tracer keeps Optimism deposit fields and EIP-8116 per-transaction gas
-        /// in the receipts used to build a proof.
+        /// in the receipts used to build a proof. The scope's block processor must build receipts:
+        /// <see cref="TransactionTraceBlockProcessor"/> returns none for this replay, so a caller checks the count.
         /// </remarks>
         TxReceipt[] TraceReceipts(Block block);
 
