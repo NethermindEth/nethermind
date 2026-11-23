@@ -477,6 +477,75 @@ var tests = new (string Name, Func<Task> Body)[]
         }
     }),
 
+    ("test_analyzer_result_keeps_analyzer_when_other_fields_are_mistyped", Sync(() =>
+    {
+        using var directory = new TempDirectory();
+        var path = Path.Combine(directory.Path, "analyzer-result.json");
+        File.WriteAllText(path, """{"analyzer":"a.cs\n","test_class":"T\n","skip":false,"summary":["x"],"extra":{"a":1}}""");
+        var result = LoadResult(path);
+        Equal("a.cs", Given(result, "analyzer"));
+        Equal("T", Given(result, "test_class"));
+        Equal<string?>(null, Given(result, "skip"));
+        Equal("""["x"]""", Given(result, "summary"));
+        File.WriteAllText(path, """{"skip":5,"summary":null}""");
+        result = LoadResult(path);
+        Equal("5", Given(result, "skip"));
+        Equal<string?>(null, Given(result, "summary"));
+        File.WriteAllText(path, "[1]");
+        True(LoadResult(path) is null);
+    })),
+
+    ("test_required_fields_reject_incomplete_rows", Sync(() =>
+    {
+        static bool Rejected<T>(string json)
+        {
+            try { Parse<T>(json); return false; }
+            catch (JsonException) { return true; }
+        }
+        True(Rejected<Comment>("{}"));
+        True(Rejected<Gate>("{}"));
+        True(Rejected<Hit>("{}"));
+        True(Rejected<RouteBState>("""{"cluster":null}"""));
+        True(!Rejected<RouteBState>("{}"));
+    })),
+
+    ("test_incomplete_inputs_stop_the_command", async () =>
+    {
+        using var directory = new TempDirectory();
+        string In(string name) => Path.Combine(directory.Path, name);
+        async Task<int> Code(params string[] args)
+        {
+            var code = 0;
+            await Quiet(async () => code = await Run(args, default));
+            return code;
+        }
+
+        File.WriteAllText(In("comments.json"), """{"since":"2026-05-25","comments":[{"id":11,"pr":1,"author":"a","bot":false,"path":"p.cs","line":3,"created":"2026-11-01T00:00:00Z","body":"b","url":"u"}]}""");
+        File.WriteAllText(In("prs.json"), """{"1":{"author":"z","threads":{"11":null}}}""");
+        Equal(1, await Code("findings", "--data", directory.Path));
+
+        const string Chosen = """{"decisions":[],"packages":[],"chosen":{"route":"A","cluster":"c","ids":["X"],"prod":5,"test":0,"slug":"s"}}""";
+        File.WriteAllText(In("candidates.json"), Chosen);
+        File.WriteAllText(In("hits.json"), """{"counts":{},"hits":[{"id":"X","file":"f.cs","line":1,"col":1,"scope":"prod","msg":"m"}]}""");
+        Equal(1, await Code("package", "--data", directory.Path));
+        File.WriteAllText(In("hits.json"), """{"counts":{},"hits":[{"id":"X","file":"f.cs","line":1,"col":1,"scope":"prod","msg":"m","solutions":["a.slnx"]}]}""");
+        Equal(0, await Code("package", "--data", directory.Path));
+
+        File.WriteAllText(In("gates.json"), """{"c":{"prs":1,"pass":true,"validity":1,"examples":[{"a":1}]}}""");
+        Equal(1, await Code("body", "--data", directory.Path, "--out", In("body.md")));
+        File.WriteAllText(In("gates.json"), """{"c":{"prs":1,"pass":true,"validity":1,"examples":[{"url":"u","author":"a"}]}}""");
+        Equal(0, await Code("body", "--data", directory.Path, "--out", In("body.md")));
+        foreach (var validity in new[] { "7", "1.5", "-0.5" })
+        {
+            File.WriteAllText(In("gates.json"), """{"c":{"prs":1,"pass":true,"validity":V,"examples":[]}}""".Replace("V", validity));
+            Equal(1, await Code("body", "--data", directory.Path, "--out", In("body.md")));
+        }
+
+        File.WriteAllText(In("plan.json"), """{"measure_ids":[],"route_b":"c","route_b_id":"NETH050","route_b_queue":null}""");
+        File.WriteAllText(In("gates.json"), "{}");
+        Equal(1, await Code("route-b", "--data", directory.Path));
+    }),
+
     ("test_ci_solutions_follow_build_workflows", Sync(() =>
     {
         var workflows = Path.Combine(repositoryRoot, ".github", "workflows");

@@ -15,13 +15,13 @@ sealed class BotExit(int code, string? message = null) : Exception(message)
 
 sealed record ApiUser(string? Login, string? Type);
 sealed record ApiComment(long Id, string PullRequestUrl, ApiUser? User, string? AuthorAssociation, long? InReplyToId, string Path, long? Line, long? OriginalLine, string CreatedAt, string Body, string HtmlUrl);
-sealed record Comment(long Id, long Pr, string Author, bool Bot, string? Association, long? ReplyTo, string Path, long? Line, string Created, string Body, string Url);
+sealed record Comment([property: JsonRequired] long Id, [property: JsonRequired] long Pr, [property: JsonRequired] string Author, bool Bot, string? Association, long? ReplyTo, string Path, long? Line, [property: JsonRequired] string Created, string Body, string Url);
 sealed record CommentFile(string Since, List<Comment> Comments);
 sealed record PrThreads(string Author, Dictionary<string, bool[]> Threads);
 sealed record ReviewThread(bool IsResolved, bool IsOutdated, List<(string Author, string Body)> Comments);
 sealed record Finding(long Pr, string Author, bool Bot, string Path, long? Line, string Created, string Body, string Url, string? Association, string Valid);
 sealed record Example(string Url, string Author, string Path, long? Line, string Body);
-sealed record Gate(long N, long Prs, long Commenters, long Human, long Valid, double Validity, List<string>? Fails, bool Pass, List<Example>? Examples = null);
+sealed record Gate(long N, [property: JsonRequired] long Prs, long Commenters, long Human, long Valid, double Validity, List<string>? Fails, [property: JsonRequired] bool Pass, List<Example>? Examples = null);
 sealed record RouteConfig(string Route, List<string> Ids, string? Why);
 sealed record CatalogEntry(bool Enforced);
 sealed record EditorRule(string Id, string Severity, string? Section, long Line);
@@ -41,7 +41,6 @@ sealed record Label(string? LabelName, string? File, long? Line, string? Reason)
 }
 sealed record PrecisionResult(long TruePositive, long Labelled, long Needed, bool Ok);
 sealed record Attempt(string Cluster, string Result);
-sealed record AnalyzerResult(string? TestClass, string? Analyzer, string? Summary, string? Skip);
 sealed record GraphQlAuthor(string? Login);
 sealed record GraphQlPageInfo(bool HasNextPage, string? EndCursor);
 sealed record GraphQlId(long DatabaseId);
@@ -52,7 +51,7 @@ sealed record GraphQlPr(GraphQlAuthor? Author, GraphQlThreads ReviewThreads);
 sealed record GraphQlData(Dictionary<string, GraphQlPr?> Repository);
 sealed record GraphQlResponse(GraphQlData Data, JsonElement? Errors);
 
-sealed record Hit(string Id, string File, long Line, long Col, string Scope, string Msg)
+sealed record Hit([property: JsonRequired] string Id, string File, long Line, long Col, [property: JsonRequired] string Scope, string Msg)
 {
     public string? Solution { get; set; }
     public List<string>? Solutions { get; set; }
@@ -62,7 +61,7 @@ sealed record Hit(string Id, string File, long Line, long Col, string Scope, str
 sealed class RouteBState
 {
     public string? Id { get; set; }
-    public string? Cluster { get; set; }
+    public string? Cluster { get; set => field = value ?? throw new JsonException("route_b cluster is null"); }
     public List<Attempt>? Attempts { get; set; }
     public string? Why { get; set; }
     public string? Analyzer { get; set; }
@@ -390,7 +389,7 @@ static partial class RuleBot
         foreach (var root in comments)
         {
             if (root.ReplyTo is not (null or 0) || !prs.TryGetValue(root.Pr.ToString(CultureInfo.InvariantCulture), out var pr) || root.Author == pr.Author) continue;
-            var state = pr.Threads.GetValueOrDefault(root.Id.ToString(CultureInfo.InvariantCulture)) ?? [false, false];
+            var state = pr.Threads.TryGetValue(root.Id.ToString(CultureInfo.InvariantCulture), out var known) ? known : [false, false];
             var chain = replies[root.Id].Prepend(root).Select(c => (c.Author, c.Body)).ToList();
             yield return new(root.Pr, root.Author, root.Bot || IsBot(root.Author), root.Path, root.Line, root.Created, root.Body, root.Url, root.Association, Classify(new(state[0], state[1], chain), pr.Author));
         }
@@ -671,7 +670,7 @@ static partial class RuleBot
     }
 
     internal static List<string> RebuildSet(HitsFile hits, IReadOnlyCollection<string> ids) =>
-        hits.Hits.Where(h => ids.Contains(h.Id) && h.Scope == "prod").SelectMany(h => h.Solutions ?? []).Distinct().Order(StringComparer.Ordinal).ToList();
+        hits.Hits.Where(h => ids.Contains(h.Id) && h.Scope == "prod").SelectMany(h => h.Solutions ?? throw new BotExit(1, $"package: hit without solutions: {h.Id}")).Distinct().Order(StringComparer.Ordinal).ToList();
 
     private static void PackageCommand(string data, string? githubOutput)
     {
@@ -1073,11 +1072,15 @@ static partial class RuleBot
         return ok ? 0 : 1;
     }
 
-    private static AnalyzerResult? LoadResult(string path)
+    internal static Dictionary<string, JsonElement>? LoadResult(string path)
     {
-        try { return Load<AnalyzerResult>(path); }
+        try { return Load<Dictionary<string, JsonElement>>(path); }
         catch (Exception failure) when (failure is not OperationCanceledException) { return null; }
     }
+
+    internal static string? Given(Dictionary<string, JsonElement>? result, string key) =>
+        result is null || !result.TryGetValue(key, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.False ? null
+        : (value.ValueKind == JsonValueKind.String ? value.GetString()! : value.GetRawText()).TrimEnd('\n');
 
     private static string LastLine(string path, Func<string, bool> matches) =>
         LenientUtf8.GetString(File.ReadAllBytes(path)).Split('\n').LastOrDefault(matches) ?? "";
@@ -1098,12 +1101,12 @@ static partial class RuleBot
         Console.WriteLine($"route-b: {cluster} generation exit {generation}");
 
         var result = LoadResult(resultPath);
-        var testClass = result?.TestClass ?? "";
-        var analyzer = result?.Analyzer ?? "";
+        var testClass = Given(result, "test_class") ?? "";
+        var analyzer = Given(result, "analyzer") ?? "";
         const string AnalyzerPrefix = "src/Nethermind/Nethermind.Analyzers/";
         if (!TestClassName().IsMatch(testClass) || !analyzer.StartsWith(AnalyzerPrefix, StringComparison.Ordinal) || !analyzer.AsSpan(AnalyzerPrefix.Length).EndsWith(".cs", StringComparison.Ordinal) || !File.Exists(analyzer) || (await Exec(["test", "-f", analyzer], false, token)).Code != 0)
         {
-            var skip = result?.Skip ?? "no analyzer produced";
+            var skip = Given(result, "skip") ?? "no analyzer produced";
             Console.WriteLine($"route-b: {cluster} skipped: {skip}");
             state.Attempts!.Add(new(cluster, $"skipped by the generator: {skip}"));
             Save(statePath, state);
@@ -1124,7 +1127,7 @@ static partial class RuleBot
         Console.WriteLine($"route-b: {id} ({cluster}) guard={Flag(guardOk)} tests={Flag(testsOk)} red={Flag(redOk)} :: {summary}");
         state.Attempts!.Add(new(cluster, $"guard {Flag(guardOk)}, tests {Flag(testsOk)}, red control {Flag(redOk)}"));
         (state.Cluster, state.Why, state.Analyzer, state.Summary, state.GuardOk, state.TestsOk, state.RedOk, state.TestsSummary, state.RedSummary) =
-            (cluster, entry.Why, analyzer, result?.Summary ?? "", guardOk, testsOk, redOk, summary, redSummary);
+            (cluster, entry.Why, analyzer, Given(result, "summary") ?? "", guardOk, testsOk, redOk, summary, redSummary);
         Save(statePath, state);
         return guardOk && testsOk && redOk;
     }
@@ -1133,7 +1136,7 @@ static partial class RuleBot
     {
         var plan = Load<PlanFile>(Path.Combine(data, "plan.json"));
         var gates = Load<Dictionary<string, Gate>>(Path.Combine(data, "gates.json"));
-        var queue = plan.RouteBQueue ?? [];
+        var queue = plan.RouteBQueue ?? throw new BotExit(1, "route-b: plan has no queue");
         var id = plan.RouteBId ?? "null";
         var statePath = Path.Combine(data, "route_b.json");
         var state = new RouteBState { Id = id, Cluster = queue.FirstOrDefault()?.Cluster ?? "null", Attempts = [] };
@@ -1158,6 +1161,7 @@ static partial class RuleBot
     {
         var chosen = Load<CandidatesFile>(Path.Combine(data, "candidates.json")).Chosen ?? throw new BotExit(1, "body: no chosen candidate");
         var gate = Load<Dictionary<string, Gate>>(Path.Combine(data, "gates.json"))[chosen.Cluster];
+        if (gate.Validity is not (>= 0 and <= 1)) throw new BotExit(1, "body: validity out of range");
         var routeB = LoadOr<RouteBState>(Path.Combine(data, "route_b.json"));
         var solutions = File.Exists(Path.Combine(data, "hits.json")) ? Load<HitsFile>(Path.Combine(data, "hits.json")).Solutions ?? [] : [];
         var head = string.IsNullOrEmpty(headRef) ? "master" : headRef;
@@ -1168,7 +1172,7 @@ static partial class RuleBot
         else lines.AddRange([$"Adds analyzer `{ids[0]}` ({Routes().GetValueOrDefault(chosen.Cluster)?.Why ?? chosen.Cluster}) and fixes the existing hits. No code fix provider is shipped.", ""]);
         var validity = (long)Math.Round(gate.Validity * 100, MidpointRounding.ToEven);
         lines.AddRange(["## Why", "", $"Reviewers keep asking for this by hand: in the last {WindowDays} days {gate.N} review comments on {gate.Prs} PRs from {gate.Commenters} people ({gate.Human} by humans) match this pattern; {validity}% were accepted as valid. Examples:", ""]);
-        lines.AddRange((gate.Examples ?? []).Take(3).Select(e => $"- {e.Url} ({e.Author})"));
+        lines.AddRange((gate.Examples ?? []).Take(3).Select(e => e.Url is null || e.Author is null ? throw new BotExit(1, "body: example without url or author") : $"- {e.Url} ({e.Author})"));
         lines.AddRange(["", "## Hits", "", $"Full Release build of every CI solution on `{head}` with the rule at warning ({string.Join(", ", solutions.Select(s => $"`{s}`"))}):", ""]);
         lines.Add($"- Production code: {chosen.Prod}, all fixed in this PR.");
         lines.Add(chosen.Test != 0 ? $"- Tests and benchmarks: {chosen.Test}, excluded through `.editorconfig` sections." : "- Tests and benchmarks: 0.");
