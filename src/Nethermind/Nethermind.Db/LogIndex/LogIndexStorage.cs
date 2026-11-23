@@ -327,7 +327,7 @@ namespace Nethermind.Db.LogIndex
                 return root;
             }
 
-            // Not restamped, so a kept index stays identifiable and a version 1 binary opens it without a reset.
+            // Not restamped, so a kept index stays identifiable.
             // The log index and the OTS address index both open their DB here, and this class cannot tell which one it
             // opened, so the message names the reset setting of each.
             if (versionBytes is [LegacyVersion])
