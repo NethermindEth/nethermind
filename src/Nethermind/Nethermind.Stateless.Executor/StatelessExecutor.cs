@@ -34,7 +34,7 @@ public static partial class StatelessExecutor
             ReadOnlySpan<byte> consumed = data[WitnessNode.EndPlacement(data)..];
             KeccakHash.DonateConsumedInput(consumed[WitnessCode.PlaceInConsumedInput(payload.Witness.Codes, consumed)..]);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsOutOfMemory(ex))
         {
             Debug.WriteLine(ex.Message);
             return output;
@@ -74,7 +74,7 @@ public static partial class StatelessExecutor
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsOutOfMemory(ex))
         {
             Debug.WriteLine(ex.Message);
         }
@@ -87,6 +87,15 @@ public static partial class StatelessExecutor
 
         return output;
     }
+
+    /// <summary>Returns whether <paramref name="exception"/> is running out of memory, which the validation result must not report.</summary>
+    /// <remarks>
+    /// Memory is a limit of the machine validating the block, not a property of the block, so a valid block can run out of it.
+    /// Reporting that as an invalid block would make the guest prove a valid block invalid; letting the exception through
+    /// aborts the run instead. The inner exception counts too, as decoders and initializers wrap what they catch.
+    /// </remarks>
+    private static bool IsOutOfMemory(Exception exception) =>
+        exception is OutOfMemoryException or { InnerException: OutOfMemoryException };
 
     /// <summary>Loads the KZG trusted setup the block's blob transactions need; the guest verifies none.</summary>
     static partial void InitializeKzg(IReleaseSpec spec);
