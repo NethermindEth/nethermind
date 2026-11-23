@@ -33,7 +33,7 @@ public class StartRpcJwtSecretTests
 
             StartRpc.ConfigureJwtSecret(new KeyStoreConfig { KeyStoreDirectory = keyStoreDirectory }, jsonRpcConfig, LimboLogs.Instance.GetClassLogger<StartRpcJwtSecretTests>());
 
-            Assert.That(jsonRpcConfig.JwtSecretFile, Is.EqualTo(Path.GetFullPath(workingDirectorySecret)));
+            Assert.That(jsonRpcConfig.JwtSecretFile, Is.EqualTo(Path.Join(Directory.GetCurrentDirectory(), keyStoreDirectory, "jwt-secret")));
         }
         finally
         {
