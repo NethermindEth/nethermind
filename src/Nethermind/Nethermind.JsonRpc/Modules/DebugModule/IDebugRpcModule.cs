@@ -44,10 +44,10 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions? options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Returns the full stack trace of the transaction at the given index of the block specified by number, tag or hash. The block that the parameter resolves to is the one traced, so a hash that is not on the canonical chain traces that block rather than the canonical one at the same height.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex, GethTraceOptions options = null, CancellationToken cancellationToken = default);
+    ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Returns the full stack trace of the transaction at the given index of the block with the specified hash. The block need not be on the canonical chain.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockHash, int txIndex, GethTraceOptions options = null, CancellationToken cancellationToken = default);
+    ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockHash, int txIndex, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Returns the full stack trace of all invoked opcodes of all transactions that were included in the block specified. The parent of the block must be present or it will fail.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
@@ -98,10 +98,10 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<JsonNode> debug_config();
 
     [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null, CancellationToken cancellationToken = default);
+    ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null, CancellationToken cancellationToken = default);
+    ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Sets the block number up to which receipts will be migrated to (Nethermind specific).")]
     Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to);
