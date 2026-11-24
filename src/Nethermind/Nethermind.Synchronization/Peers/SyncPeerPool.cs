@@ -227,7 +227,8 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
-        public int PriorityPeerCount;
+        private int _priorityPeerCount;
+        internal int PriorityPeerCount => Volatile.Read(ref _priorityPeerCount);
         public int InitializedPeersCount => InitializedPeers.Count();
         public int PeerMaxCount { get; }
         private int PriorityPeerMaxCount { get; }
@@ -263,7 +264,7 @@ namespace Nethermind.Synchronization.Peers
 
             if (syncPeer.IsPriority)
             {
-                Interlocked.Increment(ref PriorityPeerCount);
+                Interlocked.Increment(ref _priorityPeerCount);
                 Metrics.PriorityPeers = PriorityPeerCount;
             }
             if (_logger.IsTrace) TracePeerCount();
@@ -309,7 +310,7 @@ namespace Nethermind.Synchronization.Peers
 
             if (syncPeer.IsPriority)
             {
-                Interlocked.Decrement(ref PriorityPeerCount);
+                Interlocked.Decrement(ref _priorityPeerCount);
                 Metrics.PriorityPeers = PriorityPeerCount;
             }
             if (_logger.IsTrace) TracePeerCount();
@@ -344,7 +345,7 @@ namespace Nethermind.Synchronization.Peers
             if (_peers.TryGetValue(id, out PeerInfo peerInfo) && !peerInfo.SyncPeer.IsPriority)
             {
                 peerInfo.SyncPeer.IsPriority = true;
-                Interlocked.Increment(ref PriorityPeerCount);
+                Interlocked.Increment(ref _priorityPeerCount);
             }
         }
 
