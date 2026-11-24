@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Globalization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
 
@@ -15,9 +14,6 @@ internal static class ContentNegotiation
     public const string OctetStream = "application/octet-stream";
 
     public enum ResponseFormat { Json, Ssz }
-
-    /// <summary>Endpoint metadata: JSON is always served, SSZ only when <paramref name="Ssz"/>.</summary>
-    public sealed record ServedFormats(bool Ssz);
 
     /// <summary>
     /// Picks a response representation from the request's <c>Accept</c> header.
@@ -66,14 +62,6 @@ internal static class ContentNegotiation
         // only a wildcard matched both).
         return bestSszQ > bestJsonQ ? ResponseFormat.Ssz : ResponseFormat.Json;
     }
-
-    /// <summary>Marks endpoints whose <c>Accept</c> header must admit JSON, checked before their parameters are bound.</summary>
-    public static TBuilder ServesJson<TBuilder>(this TBuilder endpoints) where TBuilder : IEndpointConventionBuilder =>
-        endpoints.WithMetadata(new ServedFormats(Ssz: false));
-
-    /// <summary>Marks endpoints whose <c>Accept</c> header must admit JSON or SSZ, checked before their parameters are bound.</summary>
-    public static TBuilder ServesSszOrJson<TBuilder>(this TBuilder endpoints) where TBuilder : IEndpointConventionBuilder =>
-        endpoints.WithMetadata(new ServedFormats(Ssz: true));
 
     private static void SetQuality(double q, int specificity, ref double quality, ref int selectedSpecificity)
     {

@@ -6,6 +6,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -24,6 +25,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
     /// Only envelopes that passed verification are stored, so a pre-Gloas block has none, and the store checks that a record names the block it is keyed by.
     /// An envelope is served for any retained block, canonical or not, and whether or not fork choice treats its payload as present.
     /// </remarks>
+    [HttpGet("/eth/v1/beacon/execution_payload_envelopes/{blockId}"), Negotiated(Ssz = true)]
     public IResult ExecutionPayloadEnvelope(string blockId)
     {
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
@@ -63,6 +65,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
     /// The published operation is JSON only and its version enum stops at fulu; a Gloas block is served under
     /// <c>gloas</c> with the Gloas <c>Attestation</c> (consensus-specs v1.7.0-beta.2 gloas/beacon-chain.md), never under a fulu label.
     /// </remarks>
+    [HttpGet("/eth/v2/beacon/blocks/{blockId}/attestations"), Negotiated]
     public IResult BlockAttestations(string blockId)
     {
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
@@ -90,6 +93,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
             }).WithConsensusVersion(ctx.Spec, slot);
     }
 
+    [HttpGet("/eth/v1/beacon/genesis"), Negotiated]
     public IResult Genesis()
     {
         GenesisDto dto = new(
@@ -99,7 +103,8 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
         return ApiResults.Data(dto);
     }
 
-    public IResult HeaderList(string? parentRootRaw, string? slotRaw)
+    [HttpGet("/eth/v1/beacon/headers"), Negotiated]
+    public IResult HeaderList([FromQuery(Name = "parent_root")] string? parentRootRaw, [FromQuery(Name = "slot")] string? slotRaw)
     {
         if (parentRootRaw is not null)
         {
@@ -206,6 +211,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
         }
     }
 
+    [HttpGet("/eth/v1/beacon/headers/{blockId}"), Negotiated]
     public IResult HeaderById(string blockId)
     {
         if (!TryResolveHeader(ctx, blockId, out Hash256? root, out SignedBeaconBlockHeader? header, out int errorStatus, out string? errorMessage))
@@ -219,6 +225,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
             ResponseEnvelope.IsFinalized(ctx, header.Message!.Slot, root)).WithConsensusVersion(ctx.Spec, header.Message!.Slot);
     }
 
+    [HttpGet("/eth/v1/beacon/blocks/{blockId}/root"), Negotiated]
     public IResult BlockRoot(string blockId)
     {
         if (!IdResolver.TryResolveRoot(ctx, blockId, out Hash256? root, out int errorStatus, out string? errorMessage))
@@ -234,6 +241,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
             ResponseEnvelope.IsFinalized(ctx, slot, root)).WithConsensusVersion(ctx.Spec, slot);
     }
 
+    [HttpGet("/eth/v2/beacon/blocks/{blockId}"), Negotiated(Ssz = true)]
     public IResult BlockContent(string blockId)
     {
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))

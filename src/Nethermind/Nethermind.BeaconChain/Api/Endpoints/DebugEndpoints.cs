@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
@@ -21,6 +22,7 @@ internal sealed class DebugEndpoints(BeaconApiContext ctx)
     /// one entry per proto-array node, and the proposer boost root under <c>extra_data</c>, all
     /// from the importer's latest published <see cref="ForkChoiceSnapshot"/>.
     /// </summary>
+    [HttpGet("/eth/v1/debug/beacon/fork_choice"), HttpGet("/eth/v1/debug/fork_choice"), Negotiated]
     public IResult ForkChoice()
     {
         if (ctx.ForkChoiceSnapshot is not { } snapshot)
@@ -68,6 +70,7 @@ internal sealed class DebugEndpoints(BeaconApiContext ctx)
     /// Serves the node's persisted post-state: as the raw stored SSZ bytes (what lets another client
     /// checkpoint-sync from this node) or, decoded, as the beacon-api JSON representation.
     /// </summary>
+    [HttpGet("/eth/v2/debug/beacon/states/{stateId}"), Negotiated(Ssz = true)]
     public IResult State(string stateId) => ApiResults.SszOrJson(ssz: () => StateSsz(stateId), json: () => StateJson(stateId));
 
     private IResult StateSsz(string stateId)

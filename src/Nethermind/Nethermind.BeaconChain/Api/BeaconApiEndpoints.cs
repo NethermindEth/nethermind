@@ -6,9 +6,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Metadata;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Api.Endpoints;
 using Nethermind.Logging;
@@ -24,7 +24,6 @@ internal static class BeaconApiEndpoints
 
     /// <summary>Registers the endpoint groups and the view of <paramref name="ctx"/> each request reads, and configures parameter binding.</summary>
     public static void AddServices(IServiceCollection services, BeaconApiContext ctx) => services
-        .Configure<RouteHandlerOptions>(static options => options.ThrowOnBadRequest = true)
         .ConfigureHttpJsonOptions(static options => options.SerializerOptions.PropertyNameCaseInsensitive = false)
         .AddScoped(_ => ctx.ForRequest())
         .AddScoped<NodeEndpoints>()
@@ -32,7 +31,8 @@ internal static class BeaconApiEndpoints
         .AddScoped<BeaconEndpoints>()
         .AddScoped<BlobsEndpoint>()
         .AddScoped<BeaconStatesEndpoints>()
-        .AddScoped<DebugEndpoints>();
+        .AddScoped<DebugEndpoints>()
+        .AddSingleton(services => new EventsEndpoint(ctx, services.GetRequiredService<IHostApplicationLifetime>()));
 
     public static void UseMiddleware(WebApplication app, ILogManager logManager)
     {
@@ -74,11 +74,11 @@ internal static class BeaconApiEndpoints
         app.Use(NegotiateAsync);
     }
 
-    /// <summary>Checks the media types of a request to a <see cref="ContentNegotiation.ServedFormats"/> endpoint before its parameters are bound.</summary>
+    /// <summary>Checks the media types of a request to a <see cref="NegotiatedAttribute"/> endpoint before its parameters are bound.</summary>
     /// <remarks>An endpoint filter would run after binding, so a malformed parameter or body would hide an unacceptable <c>Accept</c> header.</remarks>
     private static async Task NegotiateAsync(HttpContext c, RequestDelegate next)
     {
-        if (c.GetEndpoint()?.Metadata is not { } metadata || metadata.GetMetadata<ContentNegotiation.ServedFormats>() is not { } served)
+        if (c.GetEndpoint()?.Metadata is not { } metadata || metadata.GetMetadata<NegotiatedAttribute>() is not { } negotiated)
         {
             await next(c);
             return;
@@ -86,7 +86,7 @@ internal static class BeaconApiEndpoints
 
         // Captured before the request is judged, so a node that cannot produce a view answers 500 whatever was asked.
         c.RequestServices.GetRequiredService<BeaconApiContext>();
-        if (ContentNegotiation.Negotiate(c, served.Ssz) is null)
+        if (ContentNegotiation.Negotiate(c, negotiated.Ssz) is null)
         {
             await ContentNegotiation.WriteNotAcceptable(c);
             return;

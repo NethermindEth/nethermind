@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
@@ -28,6 +29,7 @@ internal sealed class ConfigEndpoints(BeaconApiContext ctx)
         _ => null,
     };
 
+    [HttpGet("/eth/v1/config/deposit_contract"), Negotiated]
     public IResult DepositContract()
     {
         if (DepositContractAddress(ctx.Spec.ChainId) is not { } address)
@@ -46,6 +48,7 @@ internal sealed class ConfigEndpoints(BeaconApiContext ctx)
     /// Constants tables come from <see cref="SpecConstants.All"/>. <c>SECONDS_PER_SLOT</c>, which that config
     /// no longer lists, stays for tooling that still reads it.
     /// </remarks>
+    [HttpGet("/eth/v1/config/spec"), Negotiated]
     public IResult Spec()
     {
         BeaconChainSpec spec = ctx.Spec;
@@ -150,6 +153,7 @@ internal sealed class ConfigEndpoints(BeaconApiContext ctx)
         }
     }
 
+    [HttpGet("/eth/v1/config/fork_schedule"), Negotiated]
     public IResult ForkSchedule()
     {
         ForkScheduleEntry[] forks = ctx.Spec.Forks;

@@ -5,6 +5,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
@@ -29,7 +30,8 @@ internal sealed class BlobsEndpoint(BeaconApiContext ctx)
     /// A busy node answers 503 at once, as the state routes do: blobs.yaml lists no such status, and the response keeps the spec's
     /// <c>ErrorMessage</c> shape. A stored column whose cell count differs from the block's commitment count is damage, a 500.
     /// </remarks>
-    internal IResult GetBlobs(string blockId, string[] versionedHashes)
+    [HttpGet("/eth/v1/beacon/blobs/{blockId}"), Negotiated(Ssz = true)]
+    public IResult GetBlobs(string blockId, [FromQuery(Name = "versioned_hashes")] string[] versionedHashes)
     {
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {

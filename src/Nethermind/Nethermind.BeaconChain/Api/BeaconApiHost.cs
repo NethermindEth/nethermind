@@ -1,14 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Immutable;
 using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Api.Common;
@@ -50,9 +46,6 @@ public sealed class BeaconApiHost(
     DataColumnSidecarPool? columnPool = null,
     BeaconChainService? driver = null) : IAsyncDisposable
 {
-    /// <summary>Keeps routing from matching on <c>Content-Type</c>, which would hide a mismatch behind the fallback's 404.</summary>
-    private const string AnyContentType = "*/*";
-
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconApiHost>();
     private WebApplication? _app;
     private StateRequestLimiter? _stateLimiter;
@@ -80,7 +73,7 @@ public sealed class BeaconApiHost(
             app.Use(ValidateLoopbackRequest);
         app.Use(stateLimiter.InvokeAsync);
         BeaconApiEndpoints.UseMiddleware(app, logManager);
-        MapRoutes(app, ctx);
+        MapRoutes(app);
 
         await app.StartAsync(token);
         int port = new Uri(app.Urls.First()).Port;
@@ -98,56 +91,17 @@ public sealed class BeaconApiHost(
         if (_logger.IsInfo) _logger.Info($"Beacon API listening on http://{apiConfig.Host}:{port}");
     }
 
-    /// <summary>Maps every route onto its handler; the services of <see cref="BeaconApiEndpoints.AddServices"/> must be registered with the same <paramref name="ctx"/>.</summary>
-    internal static void MapRoutes(WebApplication app, BeaconApiContext ctx)
+    /// <summary>Maps the routes every endpoint service declares, which <see cref="BeaconApiEndpoints.AddServices"/> must have registered.</summary>
+    internal static void MapRoutes(WebApplication app)
     {
-        RouteGroupBuilder json = app.MapGroup("").ServesJson();
-        RouteGroupBuilder sszOrJson = app.MapGroup("").ServesSszOrJson();
-
-        app.MapGet("/eth/v1/node/health", (NodeEndpoints node, int? syncing_status) => node.Health(syncing_status));
-        json.MapGet("/eth/v1/node/version", NodeEndpoints.Version);
-        json.MapGet("/eth/v1/node/identity", (NodeEndpoints node) => node.Identity());
-        json.MapGet("/eth/v1/node/syncing", (NodeEndpoints node) => node.Syncing());
-        json.MapGet("/eth/v1/node/peer_count", (NodeEndpoints node) => node.PeerCount());
-        json.MapGet("/eth/v1/node/peers", (NodeEndpoints node, string[] state, string[] direction) => node.Peers(state, direction));
-        json.MapGet("/eth/v1/node/peers/{peer_id}", (NodeEndpoints node, string peer_id) => node.PeerById(peer_id));
-
-        json.MapGet("/eth/v1/config/spec", (ConfigEndpoints config) => config.Spec());
-        json.MapGet("/eth/v1/config/fork_schedule", (ConfigEndpoints config) => config.ForkSchedule());
-        json.MapGet("/eth/v1/config/deposit_contract", (ConfigEndpoints config) => config.DepositContract());
-
-        json.MapGet("/eth/v1/beacon/genesis", (BeaconEndpoints beacon) => beacon.Genesis());
-        json.MapGet("/eth/v1/beacon/headers", (BeaconEndpoints beacon, string? parent_root, string? slot) => beacon.HeaderList(parent_root, slot));
-        json.MapGet("/eth/v1/beacon/headers/{block_id}", (BeaconEndpoints beacon, string block_id) => beacon.HeaderById(block_id));
-        json.MapGet("/eth/v1/beacon/blocks/{block_id}/root", (BeaconEndpoints beacon, string block_id) => beacon.BlockRoot(block_id));
-        sszOrJson.MapGet("/eth/v2/beacon/blocks/{block_id}", (BeaconEndpoints beacon, string block_id) => beacon.BlockContent(block_id));
-        json.MapGet("/eth/v2/beacon/blocks/{block_id}/attestations", (BeaconEndpoints beacon, string block_id) => beacon.BlockAttestations(block_id));
-        sszOrJson.MapGet("/eth/v1/beacon/execution_payload_envelopes/{block_id}", (BeaconEndpoints beacon, string block_id) => beacon.ExecutionPayloadEnvelope(block_id));
-        sszOrJson.MapGet("/eth/v1/beacon/blobs/{block_id}", (BlobsEndpoint blobs, string block_id, string[] versioned_hashes) => blobs.GetBlobs(block_id, versioned_hashes));
-
-        json.MapGet("/eth/v1/beacon/states/{state_id}/fork", (BeaconStatesEndpoints states, string state_id) => states.Fork(state_id));
-        json.MapGet("/eth/v1/beacon/states/{state_id}/root", (BeaconStatesEndpoints states, string state_id) => states.Root(state_id));
-        json.MapGet("/eth/v1/beacon/states/{state_id}/finality_checkpoints", (BeaconStatesEndpoints states, string state_id) => states.FinalityCheckpoints(state_id));
-        json.MapGet("/eth/v1/beacon/states/{state_id}/validators", (BeaconStatesEndpoints states, string state_id, QueryValues id, QueryValues status) => states.Validators(state_id, id.Values, status.Values));
-        json.MapGet("/eth/v1/beacon/states/{state_id}/validators/{validator_id}", (BeaconStatesEndpoints states, string state_id, string validator_id) => states.ValidatorById(state_id, validator_id));
-        json.MapGet("/eth/v1/beacon/states/{state_id}/validator_balances", (BeaconStatesEndpoints states, string state_id, QueryValues id) => states.ValidatorBalances(state_id, id.Values));
-        json.MapPost("/eth/v1/beacon/states/{state_id}/validators", (BeaconStatesEndpoints states, string state_id, [FromBody] BeaconStatesEndpoints.ValidatorsRequestDto request) => states.ValidatorsPost(state_id, request)).Accepts<BeaconStatesEndpoints.ValidatorsRequestDto>(AnyContentType);
-        json.MapPost("/eth/v1/beacon/states/{state_id}/validator_balances", (BeaconStatesEndpoints states, string state_id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ImmutableArray<string> ids) => states.ValidatorBalancesPost(state_id, ids)).Accepts<string[]>(AnyContentType);
-        sszOrJson.MapPost("/eth/v1/beacon/states/{state_id}/validator_identities", (BeaconStatesEndpoints states, string state_id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ImmutableArray<string> ids) => states.ValidatorIdentities(state_id, ids)).Accepts<string[]>(AnyContentType);
-        json.MapGet("/eth/v1/beacon/states/{state_id}/committees", (BeaconStatesEndpoints states, string state_id, ulong? epoch, int? index, ulong? slot) => states.Committees(state_id, epoch, index, slot));
-        sszOrJson.MapGet("/eth/v1/beacon/states/{state_id}/pending_deposits", (BeaconStatesEndpoints states, string state_id) => states.PendingDeposits(state_id));
-        sszOrJson.MapGet("/eth/v1/beacon/states/{state_id}/pending_partial_withdrawals", (BeaconStatesEndpoints states, string state_id) => states.PendingPartialWithdrawals(state_id));
-        sszOrJson.MapGet("/eth/v1/beacon/states/{state_id}/pending_consolidations", (BeaconStatesEndpoints states, string state_id) => states.PendingConsolidations(state_id));
-        sszOrJson.MapGet("/eth/v1/beacon/states/{state_id}/proposer_lookahead", (BeaconStatesEndpoints states, string state_id) => states.ProposerLookahead(state_id));
-        json.MapGet("/eth/v1/beacon/states/{state_id}/randao", (BeaconStatesEndpoints states, string state_id, ulong? epoch) => states.Randao(state_id, epoch));
-        json.MapGet("/eth/v1/beacon/states/{state_id}/sync_committees", (BeaconStatesEndpoints states, string state_id, ulong? epoch) => states.SyncCommittees(state_id, epoch));
-
-        sszOrJson.MapGet("/eth/v2/debug/beacon/states/{state_id}", (DebugEndpoints debug, string state_id) => debug.State(state_id));
-        json.MapGet("/eth/v1/debug/beacon/fork_choice", (DebugEndpoints debug) => debug.ForkChoice());
-        json.MapGet("/eth/v1/debug/fork_choice", (DebugEndpoints debug) => debug.ForkChoice());
-
-        app.MapMethods("/eth/v1/validator/{**path}", ["GET", "POST"], ValidatorEndpoints.NotServed);
-        app.MapGet("/eth/v1/events", (HttpContext c) => EventsEndpoint.Stream(c, ctx, app.Lifetime.ApplicationStopping));
+        app.MapService(typeof(NodeEndpoints));
+        app.MapService(typeof(ConfigEndpoints));
+        app.MapService(typeof(BeaconEndpoints));
+        app.MapService(typeof(BlobsEndpoint));
+        app.MapService(typeof(BeaconStatesEndpoints));
+        app.MapService(typeof(DebugEndpoints));
+        app.MapService(typeof(ValidatorEndpoints));
+        app.MapService(typeof(EventsEndpoint));
 
         app.MapFallback(c => ApiErrors.Write(c, StatusCodes.Status404NotFound, "Unknown endpoint", c.RequestAborted));
     }

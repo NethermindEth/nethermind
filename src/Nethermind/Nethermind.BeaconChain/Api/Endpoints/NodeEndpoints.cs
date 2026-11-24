@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Multiformats.Base;
 using Multiformats.Hash;
 using Nethermind.BeaconChain.Api.Common;
@@ -19,7 +20,8 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
     /// <summary>Slots the head may lag the wall clock by and still count as caught up (health 200, is_syncing=false).</summary>
     private const long ReadySyncDistance = 1;
 
-    public IResult Health(int? syncingStatus)
+    [HttpGet("/eth/v1/node/health")]
+    public IResult Health([FromQuery(Name = "syncing_status")] int? syncingStatus)
     {
         if (syncingStatus is < 100 or > 599)
         {
@@ -38,8 +40,10 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
             ? syncingStatus ?? StatusCodes.Status206PartialContent : StatusCodes.Status200OK);
     }
 
+    [HttpGet("/eth/v1/node/version"), Negotiated]
     public static IResult Version() => ApiResults.Data(new VersionDto(BeaconP2P.ClientAgentVersion));
 
+    [HttpGet("/eth/v1/node/identity"), Negotiated]
     public IResult Identity()
     {
         if (ctx.P2P?.LocalPeerId is not { } peerId)
@@ -74,6 +78,7 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
         return ApiResults.Data(dto);
     }
 
+    [HttpGet("/eth/v1/node/syncing"), Negotiated]
     public IResult Syncing()
     {
         StatusMessageV2 status = ctx.StatusSource.CurrentStatus;
@@ -91,6 +96,7 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
         return ApiResults.Data(dto);
     }
 
+    [HttpGet("/eth/v1/node/peer_count"), Negotiated]
     public IResult PeerCount()
     {
         int disconnected = 0, connecting = 0, connected = 0, disconnecting = 0;
@@ -115,7 +121,8 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
     /// manager reports an empty list rather than an error - the same "zero rather than unavailable"
     /// choice <see cref="PeerCount"/> already makes for the same case.
     /// </summary>
-    public IResult Peers(string[] stateFilters, string[] directionFilters)
+    [HttpGet("/eth/v1/node/peers"), Negotiated]
+    public IResult Peers([FromQuery(Name = "state")] string[] stateFilters, [FromQuery(Name = "direction")] string[] directionFilters)
     {
         List<PeerConnectionState> states = [];
         foreach (string raw in stateFilters)
@@ -161,6 +168,7 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
 
     /// <summary><c>/eth/v1/node/peers/{peer_id}</c>: a single tracked peer, or 404 for an id this
     /// driver's peer manager (or the driver itself, when it has none) has no record of.</summary>
+    [HttpGet("/eth/v1/node/peers/{peer_id}"), Negotiated]
     public IResult PeerById(string peer_id)
     {
         if (peer_id.Length > 64 || peer_id.AsSpan().IndexOfAnyExcept("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz") >= 0
