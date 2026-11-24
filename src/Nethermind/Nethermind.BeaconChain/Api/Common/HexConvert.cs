@@ -49,6 +49,26 @@ internal static class HexConvert
         }
     }
 
+    /// <summary>Parses a 0x-prefixed 96-byte BLS signature.</summary>
+    public static bool TryParseSignature(string s, out BlsSignature signature)
+    {
+        signature = default;
+        if (string.IsNullOrEmpty(s) || !s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) || s.Length != 2 + BlsSignature.Length * 2)
+        {
+            return false;
+        }
+
+        try
+        {
+            signature = new BlsSignature(Bytes.FromHexString(s));
+            return true;
+        }
+        catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Encodes an SSZ bitvector (LSB-first within each byte) as a <c>0x</c>-prefixed hex string.</summary>
     public static string BitVectorToHex(BitArray bits)
     {

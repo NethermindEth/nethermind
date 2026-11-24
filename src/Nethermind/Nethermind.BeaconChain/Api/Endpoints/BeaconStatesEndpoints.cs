@@ -635,7 +635,7 @@ internal static class BeaconStatesEndpoints
 
     /// <summary>Reads a POST JSON body, writing the error response itself when it cannot.</summary>
     /// <returns><c>Ok</c> is false once an error has been written; <c>Value</c> is <c>null</c> only for an absent optional body; a JSON <c>null</c> body is 400.</returns>
-    private static async Task<(bool Ok, T? Value)> TryReadJsonBody<T>(HttpContext c, bool bodyRequired) where T : class
+    internal static async Task<(bool Ok, T? Value)> TryReadJsonBody<T>(HttpContext c, bool bodyRequired) where T : class
     {
         if (c.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody != true)
         {

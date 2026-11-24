@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using NSubstitute;
@@ -46,7 +47,7 @@ public class BeaconApiErrorMappingTests
         IBeaconChainStatusSource failingStatus = Substitute.For<IBeaconChainStatusSource>();
         failingStatus.CurrentHead.Throws(new InvalidOperationException(UnrelatedInternalDetail));
         BeaconApiEndpoints.MapAll(_pipeline, new BeaconApiContext(new BeaconChainConfig(), Spec, failingStatus, _host.Clock, _host.Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null));
+            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null, Substitute.For<IBeaconNodeValidatorApi>()));
         _pipeline.MapGet("/test/not-supported", (HttpContext _) => { throw new NotSupportedException(UnrelatedInternalDetail); });
         _pipeline.MapGet("/test/unsupported-fork", (HttpContext _) => { throw new UnsupportedForkException(new NotSupportedException(UnrelatedInternalDetail)); });
         _pipeline.MapGet("/test/fault-after-flush", FaultAfterFirstFlush);

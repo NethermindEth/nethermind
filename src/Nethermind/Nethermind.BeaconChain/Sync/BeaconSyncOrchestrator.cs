@@ -284,6 +284,9 @@ public sealed class BeaconSyncOrchestrator(
     internal sealed record GossipAttesterSlashingItem(AttesterSlashing Slashing, GossipVerdict? Verdict = null) : WorkItem;
     internal sealed record GossipGloasAttesterSlashingItem(AttesterSlashingGloas Slashing, GossipVerdict? Verdict = null) : WorkItem;
     internal sealed record GossipPayloadAttestationItem(PayloadAttestationMessage Message, GossipVerdict? Verdict = null) : WorkItem;
+
+    /// <summary>An unaggregated attestation already checked as <c>beacon_attestation_{subnet_id}</c> gossip and published; only fork choice is left.</summary>
+    internal sealed record GossipAttestationItem(Attestation Attestation) : WorkItem;
     internal sealed record SlotTickItem(ulong Slot) : WorkItem;
     internal sealed record PrepareSlotItem(ulong Slot) : WorkItem;
 
@@ -350,6 +353,8 @@ public sealed class BeaconSyncOrchestrator(
     internal ValueTask<bool> WaitForWorkAsync(CancellationToken token) => _work.Reader.WaitToReadAsync(token);
     /// <summary>The work items queued and not yet taken; for tests.</summary>
     internal int QueuedWorkCount => _work.Reader.Count;
+    /// <summary>The votes queued and not yet taken; for tests.</summary>
+    internal int QueuedVoteCount => _votes.Reader.Count;
     /// <summary>The by-root column fetches running off the worker; for tests.</summary>
     internal int ColumnFetchesInFlight => _columnFetchesInFlight.Count;
     /// <summary>The by-root ancestor fetches running off the worker, bounded by <see cref="MaxConcurrentAncestorFetches"/>; for tests.</summary>
@@ -871,6 +876,9 @@ public sealed class BeaconSyncOrchestrator(
                 }
 
                 Settle(payloadAttestation.Verdict, voteAccepted);
+                break;
+            case GossipAttestationItem attestation:
+                _importer!.OnGossipAttestation(attestation.Attestation);
                 break;
             // on_tick steps through every skipped slot, so only the newest tick of a backlog needs the per-slot work;
             // each older one would send another forkchoiceUpdated for the same head.
@@ -3030,6 +3038,10 @@ public sealed class BeaconSyncOrchestrator(
             }
         }
     }
+
+    /// <summary>Queues an attestation that passed the <c>beacon_attestation_{subnet_id}</c> gossip checks for fork choice on the worker, with the gossip votes.</summary>
+    /// <returns><c>false</c> when the vote queue is full and the attestation is dropped.</returns>
+    internal bool QueueGossipAttestation(Attestation attestation) => QueueVote(new GossipAttestationItem(attestation));
 
     private bool QueueVote(WorkItem vote)
     {

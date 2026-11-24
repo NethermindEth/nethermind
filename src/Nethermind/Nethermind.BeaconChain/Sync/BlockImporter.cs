@@ -38,6 +38,7 @@ public sealed class BlockImporter : IBlockImporter
     private static readonly StringLabel BodyAttestationRejected = new("body_attestation");
     private static readonly StringLabel BodyAttesterSlashingRejected = new("body_attester_slashing");
     private static readonly StringLabel GossipAggregateRejected = new("gossip_aggregate");
+    private static readonly StringLabel GossipAttestationRejected = new("gossip_attestation");
     private static readonly StringLabel GossipAttesterSlashingRejected = new("gossip_attester_slashing");
     private static readonly StringLabel GossipPayloadAttestationRejected = new("gossip_payload_attestation");
 
@@ -1328,6 +1329,22 @@ public sealed class BlockImporter : IBlockImporter
         {
             Metrics.BeaconChainForkChoiceRejections.Increment(GossipAggregateRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected Gloas gossip aggregate: {e.Message}");
+            return IsGossipRejection(e) ? false : null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool? OnGossipAttestation(Attestation attestation)
+    {
+        try
+        {
+            _runner.OnAttestation(attestation);
+            return true;
+        }
+        catch (Exception e)
+        {
+            Metrics.BeaconChainForkChoiceRejections.Increment(GossipAttestationRejected);
+            if (_logger.IsTrace) _logger.Trace($"Rejected gossip attestation: {e.Message}");
             return IsGossipRejection(e) ? false : null;
         }
     }

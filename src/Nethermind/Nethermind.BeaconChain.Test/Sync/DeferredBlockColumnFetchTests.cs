@@ -1469,6 +1469,7 @@ public class DeferredBlockColumnFetchTests
         public void OnFinalized(CheckpointRef finalized) => inner.OnFinalized(finalized);
         public bool? OnGossipAggregate(SignedAggregateAndProof aggregate) => inner.OnGossipAggregate(aggregate);
         public bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => inner.OnGossipAggregate(aggregate);
+        public bool? OnGossipAttestation(Attestation attestation) => inner.OnGossipAttestation(attestation);
         public bool? OnGossipAttesterSlashing(AttesterSlashing slashing) => inner.OnGossipAttesterSlashing(slashing);
         public bool? OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => inner.OnGossipAttesterSlashing(slashing);
         public bool? OnGossipPayloadAttestation(PayloadAttestationMessage message) => inner.OnGossipPayloadAttestation(message);

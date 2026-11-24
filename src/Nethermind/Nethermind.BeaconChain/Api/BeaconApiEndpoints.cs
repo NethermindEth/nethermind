@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Api.Endpoints;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Api;
@@ -25,6 +26,18 @@ internal static class BeaconApiEndpoints
             try
             {
                 await next(httpCtx);
+            }
+            catch (BeaconNodeApiException e) when (!httpCtx.RequestAborted.IsCancellationRequested)
+            {
+                // A refusal of the validator API is part of its contract, so its message is written for the caller.
+                await ApiErrors.Write(httpCtx, e.Error switch
+                {
+                    BeaconNodeApiError.InvalidRequest => StatusCodes.Status400BadRequest,
+                    BeaconNodeApiError.NotFound => StatusCodes.Status404NotFound,
+                    BeaconNodeApiError.NotSupported => StatusCodes.Status501NotImplemented,
+                    BeaconNodeApiError.NotReady => StatusCodes.Status503ServiceUnavailable,
+                    _ => StatusCodes.Status500InternalServerError,
+                }, e.Message);
             }
             catch (UnsupportedForkException e) when (!httpCtx.RequestAborted.IsCancellationRequested)
             {

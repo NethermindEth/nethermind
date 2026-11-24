@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Config;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
@@ -36,6 +37,7 @@ public sealed class BeaconApiHost(
     IEngineDriver engine,
     IProcessExitSource processExitSource,
     ILogManager logManager,
+    IBeaconNodeValidatorApi validatorApi,
     BeaconP2P? p2p = null,
     PeerManager? peerManager = null,
     BeaconDiscovery? discovery = null,
@@ -68,7 +70,7 @@ public sealed class BeaconApiHost(
         if (IsLoopbackHost(apiConfig.Host))
             app.Use(ValidateLoopbackRequest);
         app.Use(stateLimiter.InvokeAsync);
-        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, columnPool);
+        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, validatorApi, forkChoiceSnapshots, headSnapshots, columnPool);
         BeaconApiEndpoints.MapAll(app, ctx);
 
         await app.StartAsync(token);

@@ -1849,6 +1849,21 @@ public class BlockImporterTests
     }
 
     [Test]
+    public void Gossip_attestation_refused_by_fork_choice_is_counted()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        importer.OnSlotTick(2);
+        long refusedBefore = RefusedByForkChoice("gossip_attestation");
+
+        bool? accepted = importer.OnGossipAttestation(chain.Vote(1, UnknownBlockRoot));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(accepted, Is.Null, "a vote for a block fork choice does not hold is ignored, not rejected");
+        Assert.That(RefusedByForkChoice("gossip_attestation") - refusedBefore, Is.EqualTo(1), "the attestation reached fork choice, which refused its unknown head block");
+    }
+
+    [Test]
     public void Gossip_aggregates_naming_epochs_outside_the_window_walk_the_registry_at_most_the_slot_budget()
     {
         UnsignedChain chain = UnsignedChain.Create();

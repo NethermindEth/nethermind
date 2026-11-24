@@ -20,12 +20,14 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.DataAvailability;
 using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
+using NSubstitute;
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
 namespace Nethermind.BeaconChain.Test.Api;
@@ -260,7 +262,7 @@ public class BeaconApiBlobsTests : BeaconApiFixture
     {
         ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
         BeaconApiContext ctx = new(new BeaconChainConfig(), Spec, _host.StatusHolder, new SlotClock(Spec, time), _host.Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null);
+            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null, Substitute.For<IBeaconNodeValidatorApi>());
         using BlockingResponse first = new();
         using BlockingResponse second = new();
         Task firstRequest = BlobsEndpoint.GetBlobs(Request(first), SystematicRoot.ToString(), ctx);

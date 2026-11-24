@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Types;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -236,7 +237,7 @@ public class BeaconApiHostTests : BeaconApiFixture
         HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/validator/duties/proposer/12345");
         Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)501));
         JsonDocument body = await ReadJsonAsync(response);
-        Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("non-attesting"));
+        Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("not served"));
     }
 
     [Test]
@@ -420,7 +421,7 @@ public class BeaconApiHostTests : BeaconApiFixture
     {
         BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
         BeaconApiHost host = new(apiConfig, new BeaconChainConfig(), Spec, _host.StatusHolder, _host.Clock, _host.Store,
-            new LocalMetadataSource(), _engine, exitSource, LimboLogs.Instance);
+            new LocalMetadataSource(), _engine, exitSource, LimboLogs.Instance, Substitute.For<IBeaconNodeValidatorApi>());
 
         await host.StartAsync(CancellationToken.None);
         await host.DisposeAsync();

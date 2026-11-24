@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Api;
@@ -38,6 +39,7 @@ internal sealed record BeaconApiContext(
     BeaconP2P? P2P,
     PeerManager? PeerManager,
     BeaconDiscovery? Discovery,
+    IBeaconNodeValidatorApi ValidatorApi,
     ForkChoiceSnapshotHolder? ForkChoiceSnapshots = null,
     HeadSnapshotHolder? HeadSnapshots = null,
     DataColumnSidecarPool? ColumnPool = null)
