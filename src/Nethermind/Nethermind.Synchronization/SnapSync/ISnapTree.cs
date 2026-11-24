@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
@@ -38,24 +37,8 @@ public interface ISnapTree<in TEntry> : IDisposable where TEntry : ISnapEntry
     /// </summary>
     static void DoBulkSetAndUpdateRootHash<T>(PatriciaTree tree, IReadOnlyList<T> entries) where T : ISnapEntry
     {
-        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = ToBulkSetEntries(entries);
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = SnapProviderHelper.ToBulkSetEntries(entries);
         tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
         tree.UpdateRootHash(canBeParallel: true);
-    }
-
-    /// <summary>Converts entries to <see cref="PatriciaTree.BulkSetEntry"/>, tracking metrics.</summary>
-    static ArrayPoolListRef<PatriciaTree.BulkSetEntry> ToBulkSetEntries<T>(IReadOnlyList<T> entries) where T : ISnapEntry
-    {
-        ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
-        long totalBytes = 0;
-        for (int i = 0; i < entries.Count; i++)
-        {
-            T entry = entries[i];
-            byte[] rlpValue = entry.ToRlpValue();
-            bulkEntries.Add(new PatriciaTree.BulkSetEntry(entry.Path, rlpValue));
-            totalBytes += rlpValue.Length;
-        }
-        Interlocked.Add(ref Metrics.SnapStateSynced, totalBytes);
-        return bulkEntries;
     }
 }

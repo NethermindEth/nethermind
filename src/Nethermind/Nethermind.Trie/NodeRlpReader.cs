@@ -80,6 +80,7 @@ public readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
         49, 50, 51, 52, 53, 54, 55, 56, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
 
+    /// <summary>The RLP being read.</summary>
     public ReadOnlySpan<byte> Data => _data;
 
     /// <summary>Gets the prefix and payload lengths of the item at <paramref name="position"/>.</summary>
@@ -95,12 +96,15 @@ public readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SkipLength(scoped ref int position) => position += GetPrefixLength(_data[position]);
 
+    /// <summary>Whether the item at <paramref name="position"/> is a list.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsSequenceNext(int position) => _data[position] >= ListOffset;
 
+    /// <summary>Moves <paramref name="position"/> past the item there.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SkipItem(scoped ref int position) => position += PeekNextRlpLength(_data, position);
 
+    /// <summary>Moves <paramref name="position"/> past the <paramref name="count"/> items from there.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SkipItems(scoped ref int position, int count) => position = SkipItems(_data, position, count);
 
@@ -109,14 +113,17 @@ public readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
     public void ReadSequenceLength(scoped ref int position, out int contentLength)
         => position = ReadSequenceLength(_data, position, out contentLength);
 
+    /// <summary>Reads the string at <paramref name="position"/> without copying it, and moves past it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DecodeByteArraySpan(scoped ref int position, out ReadOnlySpan<byte> value)
         => position = DecodeByteArraySpan(_data, position, out value);
 
+    /// <summary>Reads the 32-byte hash at <paramref name="position"/> as an interned <see cref="Hash256"/>, and moves past it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DecodeKeccak(scoped ref int position, out Hash256 keccak)
         => position = DecodeKeccak(_data, position, out keccak);
 
+    /// <summary>Reads the 32-byte hash at <paramref name="position"/>, and moves past it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DecodeValueKeccakNonNull(scoped ref int position, out ValueHash256 keccak)
         => position = DecodeValueKeccakNonNull(_data, position, out keccak);
@@ -147,8 +154,12 @@ public readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
     /// <remarks>The node's items must fill the data, as they do for a node found by its hash or checked by <see cref="ValidateNode"/>.</remarks>
     public bool IsBranch => SeekItem(LeafOrExtensionItemCount) < _data.Length;
 
+    /// <summary>Whether the node is a leaf.</summary>
+    /// <remarks>As for <see cref="IsBranch"/>, the node's items must fill the data.</remarks>
     public bool IsLeaf => !IsBranch && HexPrefix.ReadHeader(KeyHexPrefix).IsLeaf;
 
+    /// <summary>Whether the node is an extension.</summary>
+    /// <remarks>As for <see cref="IsBranch"/>, the node's items must fill the data.</remarks>
     public bool IsExtension => !IsBranch && !IsLeaf;
 
     /// <summary>The key nibbles of a leaf or an extension; empty for a branch.</summary>

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
@@ -114,6 +115,22 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
+        /// <summary>Converts entries to <see cref="PatriciaTree.BulkSetEntry"/>, tracking metrics.</summary>
+        public static ArrayPoolListRef<PatriciaTree.BulkSetEntry> ToBulkSetEntries<T>(IReadOnlyList<T> entries) where T : ISnapEntry
+        {
+            ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkEntries = new(entries.Count);
+            long totalBytes = 0;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                T entry = entries[i];
+                byte[] rlpValue = entry.ToRlpValue();
+                bulkEntries.Add(new PatriciaTree.BulkSetEntry(entry.Path, rlpValue));
+                totalBytes += rlpValue.Length;
+            }
+            Interlocked.Add(ref Metrics.SnapStateSynced, totalBytes);
+            return bulkEntries;
+        }
+
         /// <param name="runStart">
         /// Where the consecutive ranges of a storage trie downloaded at <paramref name="expectedRootHash"/> begin, or
         /// <c>null</c> for the account trie, whose leaves are persisted whatever their path reaches, as flat keeps no full
@@ -207,11 +224,10 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 tree.BulkSetAndUpdateRootHash(entries);
             }
-            catch (TrieException e) when (e is MissingTrieNodeException or TrieNodeException)
+            catch (MissingTrieNodeException)
             {
                 // The tree holds only the proof nodes, so the bulk set loads a node only when an entry reaches a child
-                // the proof keeps as a hash, such as a leaf beside the range: the entries do not fit the proof. Patricia
-                // stores report the node they cannot load as a MissingTrieNodeException, flat ones as a TrieNodeException.
+                // the proof keeps as a hash, such as a leaf beside the range: the entries do not fit the proof.
                 return (AddRangeResult.InvalidProof, false);
             }
 

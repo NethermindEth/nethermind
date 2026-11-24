@@ -31,7 +31,8 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
 {
     private const int MaxPooledPerCategory = 16;
 
-    private static readonly ConcurrentQueue<PrivateNodeRecordBuffer>[] Pools = [.. Enum.GetValues<SizeCategory>().Select(static _ => new ConcurrentQueue<PrivateNodeRecordBuffer>())];
+    // One for each SizeCategory.
+    private static readonly ConcurrentQueue<PrivateNodeRecordBuffer>[] Pools = [new(), new(), new()];
 
     private PrivateNodeRecordBuffer? _buffer;
     private SizeCategory _sizeCategory;
@@ -63,7 +64,7 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
             _proofRootPointer = _root.Pointer;
         }
 
-        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSetEntries = ISnapTree<TEntry>.ToBulkSetEntries(entries);
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSetEntries = SnapProviderHelper.ToBulkSetEntries(entries);
         _root = NodeRecordBulkSet.BulkSet(this, address, _root, bulkSetEntries, canParallelize: true);
         RootHash = new Hash256(_root.Hash);
     }
