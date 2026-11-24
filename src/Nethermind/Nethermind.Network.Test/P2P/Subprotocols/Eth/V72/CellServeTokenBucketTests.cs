@@ -14,22 +14,29 @@ public class CellServeTokenBucketTests
     {
         DateTimeOffset now = DateTimeOffset.UnixEpoch;
         CellServeTokenBucket bucket = new(100, 10, now);
-        Assert.That(bucket.TryConsume(100, now), Is.True);
-        Assert.That(bucket.TryConsume(1, now), Is.False);
-
-        Assert.That(bucket.TryConsume(1, now.AddSeconds(-10)), Is.False);
-        Assert.That(bucket.TryConsume(1, now), Is.False);
+        AssertAvailable(100);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bucket.TryConsume(1, now.AddSeconds(-10)), Is.False);
+            Assert.That(bucket.TryConsume(1, now), Is.False);
+        }
 
         now = now.AddSeconds(1);
-        Assert.That(bucket.TryConsume(10, now), Is.True);
-        Assert.That(bucket.TryConsume(1, now), Is.False);
+        AssertAvailable(10);
 
         bucket.Refund(1000);
-        Assert.That(bucket.TryConsume(100, now), Is.True);
-        Assert.That(bucket.TryConsume(1, now), Is.False);
+        AssertAvailable(100);
 
         now = now.AddSeconds(1000);
-        Assert.That(bucket.TryConsume(100, now), Is.True);
-        Assert.That(bucket.TryConsume(1, now), Is.False);
+        AssertAvailable(100);
+
+        void AssertAvailable(int expected)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bucket.TryConsume(expected, now), Is.True);
+                Assert.That(bucket.TryConsume(1, now), Is.False);
+            }
+        }
     }
 }
