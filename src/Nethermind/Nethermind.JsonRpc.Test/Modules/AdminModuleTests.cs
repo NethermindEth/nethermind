@@ -384,6 +384,33 @@ public class AdminModuleTests
     }
 
     [Test]
+    public async Task AdminPeerMethods_ReturnTimeoutSourceToPool(
+        [Values("admin_addPeer", "admin_removePeer", "admin_addTrustedPeer", "admin_removeTrustedPeer")] string method)
+    {
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        try
+        {
+            await (method switch
+            {
+                "admin_addPeer" => _adminRpcModule.admin_addPeer(_enodeString),
+                "admin_removePeer" => _adminRpcModule.admin_removePeer(_enodeString),
+                "admin_addTrustedPeer" => _adminRpcModule.admin_addTrustedPeer(_enodeString),
+                _ => _adminRpcModule.admin_removeTrustedPeer(_enodeString),
+            });
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(timeout.DisposeCount, Is.Zero);
+                Assert.That(TimeoutTestHelper.WasReturned(timeout), Is.True);
+            }
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
     public async Task AdminUnsubscribe_AfterSubscribe_ReturnsTrue()
     {
         string serializedSub = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "peerEvents");
