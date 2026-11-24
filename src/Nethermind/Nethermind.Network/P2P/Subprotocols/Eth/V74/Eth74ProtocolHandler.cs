@@ -19,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Network.P2P.Subprotocols.Eth.V74.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
@@ -29,7 +28,9 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V74;
 
-/// <summary>EIP-8498 <c>eth/74</c>: <c>eth/73</c> plus the exchange of the EIP-8288 dependency proofs that neither headers nor bodies carry.</summary>
+/// <summary>EIP-8512 <c>eth/74</c>: <c>eth/72</c> plus the exchange of the EIP-8288 dependency proofs that neither headers nor bodies carry.</summary>
+/// <remarks>EIP-8512 extends EIP-8408's <c>eth/73</c>, whose indexed cell requests this client does not implement, so this
+/// handler is built on <c>eth/72</c> and exchanges cells only in the shared-mask forms.</remarks>
 public class Eth74ProtocolHandler(
     ISession session,
     IMessageSerializationService serializer,
@@ -44,12 +45,11 @@ public class Eth74ProtocolHandler(
     IChainHeadSpecProvider specProvider,
     IBlobCustodyTracker blobCustodyTracker,
     ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
-    ProofWrapperBroadcaster wrapperBroadcaster,
     IBlockFinder blockFinder,
     IDependencyProofStore proofStore,
     ITxGossipPolicy? transactionsGossipPolicy = null)
-    : Eth73ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo,
-        logManager, txPoolConfig, specProvider, blobCustodyTracker, sparseBlobPoolPeerRegistry, wrapperBroadcaster, transactionsGossipPolicy),
+    : Eth72ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo,
+        logManager, txPoolConfig, specProvider, blobCustodyTracker, sparseBlobPoolPeerRegistry, transactionsGossipPolicy),
     ISyncPeer, IStaticProtocolInfo
 {
     private static readonly Func<DependencyProofsMessage, int, DependencyProofsMessage> SelectProofs = static (message, _) => message;
@@ -81,7 +81,7 @@ public class Eth74ProtocolHandler(
         }
     }
 
-    /// <remarks>EIP-8498 asks for rate limiting against amplification. A request arriving with too long a backlog is answered
+    /// <remarks>EIP-8512 asks for rate limiting against amplification. A request arriving with too long a backlog is answered
     /// with no proofs, which its sender treats as unavailable and asks another peer for.</remarks>
     private async Task<DependencyProofsMessage> Handle(GetDependencyProofsMessage request, CancellationToken cancellationToken)
     {

@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V74;
 [Parallelizable(ParallelScope.All)]
 public class DependencyProofsMessageSerializerTests
 {
-    // EIP-8498: an unavailable proof and the empty proof of a block without dependencies both encode as 0x80.
+    // EIP-8512: an unavailable proof and the empty proof of a block without dependencies both encode as 0x80.
     [TestCase(new byte[0], "c4" + "2a" + "c280" + "80", TestName = "Empty_proof_is_0x80")]
     [TestCase(new byte[] { 0x01 }, "c4" + "2a" + "c201" + "80", TestName = "Single_byte_proof")]
     [TestCase(new byte[] { 0xaa, 0xbb }, "c6" + "2a" + "c4" + "82aabb" + "80", TestName = "Short_proof")]

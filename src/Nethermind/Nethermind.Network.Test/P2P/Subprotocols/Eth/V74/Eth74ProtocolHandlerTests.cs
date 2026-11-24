@@ -28,12 +28,10 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V74;
 using Nethermind.Network.P2P.Subprotocols.Eth.V74.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -42,10 +40,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V74;
 
-/// <summary>EIP-8498 <c>eth/74</c> dependency proof exchange.</summary>
+/// <summary>EIP-8512 <c>eth/74</c> dependency proof exchange.</summary>
 public class Eth74ProtocolHandlerTests
 {
-    private WrapperTestNode _node = null!;
     private ISession _session = null!;
     private IMessageSerializationService _serializer = null!;
     private List<P2PMessage> _delivered = null!;
@@ -57,12 +54,8 @@ public class Eth74ProtocolHandlerTests
     [SetUp]
     public void Setup()
     {
-        _node = new WrapperTestNode();
         IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
         _serializer = Build.A.SerializationService().WithEth72(specProvider)
-            .With(new NewProofWrapperHashesMessageSerializer())
-            .With(new GetProofWrappersMessageSerializer())
-            .With(new ProofWrappersMessageSerializer())
             .With(new GetDependencyProofsMessageSerializer())
             .With(new DependencyProofsMessageSerializer())
             .TestObject;
@@ -76,12 +69,13 @@ public class Eth74ProtocolHandlerTests
         syncServer.Head.Returns(genesis.Header);
         syncServer.Genesis.Returns(genesis.Header);
         BlobCustodyTracker custody = new();
-        _registry = new SparseBlobPoolPeerRegistry(_node.Pool, custody, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        _registry = new SparseBlobPoolPeerRegistry(txPool, custody, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
         _blockFinder = Substitute.For<IBlockFinder>();
         _proofStore = new DependencyProofStore(new TestMemDb());
         _handler = new Eth74ProtocolHandler(_session, _serializer, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
-            syncServer, RunImmediatelyScheduler.Instance, _node.Pool, Substitute.For<IGossipPolicy>(), new ForkInfo(specProvider, syncServer),
-            LimboLogs.Instance, Substitute.For<ITxPoolConfig>(), specProvider, custody, _registry, _node.Broadcaster, _blockFinder, _proofStore);
+            syncServer, RunImmediatelyScheduler.Instance, txPool, Substitute.For<IGossipPolicy>(), new ForkInfo(specProvider, syncServer),
+            LimboLogs.Instance, Substitute.For<ITxPoolConfig>(), specProvider, custody, _registry, _blockFinder, _proofStore);
         _handler.Init();
         using StatusMessage69 status = new() { ProtocolVersion = 74, GenesisHash = genesis.Hash!, LatestBlockHash = genesis.Hash! };
         Handle(status, 0);
@@ -94,7 +88,6 @@ public class Eth74ProtocolHandlerTests
         _handler.Dispose();
         _session.Dispose();
         _registry.Dispose();
-        _node.Dispose();
     }
 
     [Test]
@@ -104,11 +97,13 @@ public class Eth74ProtocolHandlerTests
         {
             Assert.That(_handler.Name, Is.EqualTo("eth74"));
             Assert.That(_handler.ProtocolVersion, Is.EqualTo(74));
-            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(0x1b));
+            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(0x18));
+            Assert.That(Eth74MessageCode.GetDependencyProofs, Is.EqualTo(0x16));
+            Assert.That(Eth74MessageCode.DependencyProofs, Is.EqualTo(0x17));
         }
     }
 
-    // EIP-8498: a stored proof is served; an unknown, pre-fork, pruned or dependency-free block gets the empty entry.
+    // EIP-8512: a stored proof is served; an unknown, pre-fork, pruned or dependency-free block gets the empty entry.
     [Test]
     public void Serves_proofs_from_the_store_and_the_empty_entry_when_unavailable()
     {
@@ -144,7 +139,32 @@ public class Eth74ProtocolHandlerTests
         Assert.That(Delivered<DependencyProofsMessage>().Single().Proofs, Has.Count.EqualTo(2));
     }
 
-    // EIP-8498 asks responders to rate limit: a burst beyond the per-peer backlog is answered with no proofs.
+    // The largest response this responder builds, entries just under the soft limit then one MAX_DEPENDENCY_PROOF_BYTES proof,
+    // fits the cap checked before decompression.
+    [Test]
+    public void Largest_response_fits_the_local_message_cap()
+    {
+        BlockHeader[] headers = [Committed(1, [1]), Committed(2, [2])];
+        _proofStore.Insert(headers[0].Number, headers[0].Hash!, new byte[Eth74Protocol.SoftResponseLimit - 5]);
+        _proofStore.Insert(headers[1].Number, headers[1].Hash!, new byte[Eip8288Constants.MaxAggregateProofBytes]);
+
+        using GetDependencyProofsMessage request = new(long.MaxValue, headers.Select(static h => h.Hash!).ToArray().ToPooledList(2));
+        Handle(request, Eth74MessageCode.GetDependencyProofs);
+
+        DependencyProofsMessage response = Delivered<DependencyProofsMessage>().Single();
+        IByteBuffer buffer = _serializer.ZeroSerialize(response);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.Proofs, Has.Count.EqualTo(2));
+                Assert.That(buffer.ReadableBytes - 1, Is.LessThanOrEqualTo(Eth74Protocol.LocalMaxResponseBytes));
+            }
+        }
+        finally { buffer.Release(); }
+    }
+
+    // EIP-8512 asks responders to rate limit: a burst beyond the per-peer backlog is answered with no proofs.
     [Test]
     public async Task Rate_limits_serving_per_peer()
     {

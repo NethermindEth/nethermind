@@ -700,7 +700,11 @@ public class SessionTests
     [TestCase(73, 0x0a, 16 * 1024 * 1024, false)]
     [TestCase(73, 0x15, 16 * 1024 * 1024, false)]
     [TestCase(72, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes + 1, false)]
-    public void Eth73_wrapper_messages_are_bounded_before_decompression(int version, int code, int length, bool exceeds)
+    // eth/74 does not extend eth/73: its DependencyProofs (0x17) is held to its own cap, not the GetProofWrappers one.
+    [TestCase(74, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes, false)]
+    [TestCase(74, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes + 1, true)]
+    [TestCase(74, 0x16, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes + 1, false)]
+    public void Wrapper_and_proof_messages_are_bounded_before_decompression(int version, int code, int length, bool exceeds)
     {
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);

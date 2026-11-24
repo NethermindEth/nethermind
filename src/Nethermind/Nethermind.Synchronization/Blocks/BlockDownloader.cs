@@ -716,7 +716,7 @@ namespace Nethermind.Synchronization.Blocks
             return result;
         }
 
-        /// <summary>Takes the EIP-8288 dependency proofs of a response, by EIP-8498 rules.</summary>
+        /// <summary>Takes the EIP-8288 dependency proofs of a response, by EIP-8512 rules.</summary>
         /// <remarks>An empty entry, or one past a response the soft limit cut short, is requested again without penalty; a
         /// non-empty proof not hashing to its header's <c>dependency_proof_hash</c> is a breach of protocol.</remarks>
         /// <returns>How many proofs were taken.</returns>

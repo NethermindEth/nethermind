@@ -8,7 +8,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V74.Messages;
 
-/// <summary>EIP-8498 <c>GetDependencyProofs</c>: the EIP-8288 dependency proofs of the given blocks.</summary>
+/// <summary>EIP-8512 <c>GetDependencyProofs</c>: the EIP-8288 dependency proofs of the given blocks.</summary>
 public class GetDependencyProofsMessage(IOwnedReadOnlyList<Hash256> blockHashes, bool generateRandomRequestId = true)
     : Eth66MessageBase(generateRandomRequestId)
 {
