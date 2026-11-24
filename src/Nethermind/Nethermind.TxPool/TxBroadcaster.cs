@@ -150,7 +150,7 @@ namespace Nethermind.TxPool
 
         private static MempoolTransaction PrecomputeBlobAnnouncement(MempoolTransaction tx) =>
             tx.Transaction.CarriesBlobs && tx.Transaction is not LightTransaction
-                ? tx with { Transaction = new LightTransaction(tx.Transaction), NetworkWrapper = null }
+                ? tx with { Transaction = new LightTransaction(tx), NetworkWrapper = null }
                 : tx;
 
         public void AnnounceOnce(ITxPoolPeer peer, Transaction[] txs)

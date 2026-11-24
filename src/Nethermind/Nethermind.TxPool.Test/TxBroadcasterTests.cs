@@ -271,11 +271,11 @@ public class TxBroadcasterTests
         RecordingTxPoolPeer secondPeer = new(TestItem.PublicKeyB);
         _broadcaster.AddPeer(firstPeer);
         _broadcaster.AddPeer(secondPeer);
-        Transaction tx = Build.A.Transaction
+        MempoolTransaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
             .SignedAndResolved()
-            .TestObject;
-        Transaction input = isPrecomputed ? new LightTransaction(tx) : tx;
+            .MempoolTestObject;
+        MempoolTransaction input = isPrecomputed ? new LightTransaction(tx) : tx;
 
         _broadcaster.Broadcast(input, isPersistent: true);
 
@@ -285,7 +285,12 @@ public class TxBroadcasterTests
         {
             Assert.That(firstAnnouncement, Is.TypeOf<LightTransaction>());
             Assert.That(secondAnnouncement, Is.SameAs(firstAnnouncement));
-            Assert.That(firstAnnouncement, isPrecomputed ? Is.SameAs(input) : Is.Not.SameAs(input));
+            Assert.That(firstAnnouncement, isPrecomputed ? Is.SameAs(input.Transaction) : Is.Not.SameAs(input.Transaction));
+
+            LightTransaction announced = (LightTransaction)firstAnnouncement;
+            Assert.That(announced.NetworkLength, Is.EqualTo(tx.GetLength()));
+            Assert.That(announced.BlobCellMask, Is.EqualTo(tx.NetworkWrapper!.GetAvailableCellMask()));
+            Assert.That(announced.ProofVersion, Is.EqualTo(tx.NetworkWrapper.Version));
         }
     }
 
