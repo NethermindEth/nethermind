@@ -254,6 +254,24 @@ public class NodeFilterTests
         Assert.That(filter, Is.SameAs(NodeFilter.AcceptAll));
     }
 
+    [Test]
+    public void Create_keeps_recent_connections_when_peer_target_is_zero()
+    {
+        NodeFilter filter = NodeFilter.Create(0, filterEnabled: true, subnetBucketing: false, currentIp: null);
+        IPAddress[] addresses =
+        [
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("192.0.2.2"),
+            IPAddress.Parse("192.0.2.3"),
+            IPAddress.Parse("192.0.2.4"),
+        ];
+        List<bool> accepted = [];
+        foreach (IPAddress address in addresses) accepted.Add(filter.TryAccept(address));
+        foreach (IPAddress address in addresses) accepted.Add(filter.TryAccept(address));
+
+        Assert.That(accepted, Is.EqualTo(new[] { true, true, true, true, false, false, false, false }));
+    }
+
     [TestCase("127.0.0.1", true, Description = "IPv4 loopback")]
     [TestCase("::1", true, Description = "IPv6 loopback")]
     [TestCase("10.0.0.1", true, Description = "RFC1918 10.x")]

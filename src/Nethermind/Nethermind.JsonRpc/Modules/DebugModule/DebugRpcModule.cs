@@ -244,7 +244,9 @@ public class DebugRpcModule(
 
         GethTraceOptions effective = (options ?? GethTraceOptions.Default) with
         {
-            NoBaseFee = !call.ShouldSetBaseFee()
+            NoBaseFee = !call.ShouldSetBaseFee(),
+            EnforceExecutionDeadline = options?.EnforceExecutionDeadline == true
+                || ContainsJavaScriptTracer(options?.Tracer, options?.TracerConfig)
         };
 
         UInt256? rejectedBlobBaseFee = GetRejectedTraceCallBlobBaseFee(tx, header!, effective);
@@ -280,10 +282,13 @@ public class DebugRpcModule(
         {
             return TracingFailed<GethLikeTxTrace>(ex);
         }
-        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
-            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(effective)))
+        catch (NativeTracerConfigException ex)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(effective))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
         catch (ArgumentException ex) when (effective.Tracer == "prestateTracer" && ex.Message == "cannot use diffMode with includeEmpty")
         {
@@ -368,6 +373,16 @@ public class DebugRpcModule(
 
     private static bool IsJavaScriptOrMuxTracer(GethTraceOptions? options) =>
         options?.Tracer is { Length: > 0 } tracer && (tracer == "muxTracer" || !GethLikeNativeTracerFactory.IsNativeTracer(tracer));
+
+    private static bool ContainsJavaScriptTracer(string? tracer, JsonElement? config)
+    {
+        if (tracer != GethLikeBlockMuxTracer.TracerName)
+            return tracer is { Length: > 0 } && !GethLikeNativeTracerFactory.IsNativeTracer(tracer);
+        if (config is not { ValueKind: JsonValueKind.Object }) return false;
+        foreach ((string name, JsonElement child) in GethLikeBlockMuxTracer.ParseConfig(config))
+            if (ContainsJavaScriptTracer(name, child)) return true;
+        return false;
+    }
 
     private bool CanStreamStructLogs(GethTraceOptions? options)
     {
@@ -520,10 +535,13 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, cancellationToken, WithBufferedLimit(options));
         }
-        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
-            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(options)))
+        catch (NativeTracerConfigException ex)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
         catch (InvalidTransactionException exception)
         {
@@ -558,10 +576,13 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
         }
-        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
-            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(options)))
+        catch (NativeTracerConfigException ex)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
         catch (InvalidTransactionException exception)
         {
@@ -602,10 +623,13 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, cancellationToken, WithBufferedLimit(options));
         }
-        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
-            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(options)))
+        catch (NativeTracerConfigException ex)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
         catch (InvalidTransactionException exception)
         {
@@ -657,9 +681,6 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null, CancellationToken cancellationToken = default)
     {
-        if (options?.ParsedTimeout.Error is not null && string.IsNullOrEmpty(options.Tracer))
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("invalid argument 1", ErrorCodes.InvalidParams);
-
         Block? block = TryGetBlockAndCheckState(blockRlp, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? blockError, requireCompleteInput: true);
         if (blockError is not null)
         {
@@ -693,13 +714,14 @@ public class DebugRpcModule(
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            or InvalidDataException { InnerException: NativeTracerConfigException }
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
-        catch (TraceDurationFormatException)
+        catch (TraceDurationFormatException exception)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("invalid argument 1", ErrorCodes.InvalidParams);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (GethTraceDeadlineException exception)
         {
@@ -778,6 +800,7 @@ public class DebugRpcModule(
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            or InvalidDataException { InnerException: NativeTracerConfigException }
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
@@ -838,6 +861,7 @@ public class DebugRpcModule(
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            or InvalidDataException { InnerException: NativeTracerConfigException }
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
@@ -890,7 +914,8 @@ public class DebugRpcModule(
         {
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
-        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException or TraceDurationFormatException
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            or InvalidDataException { InnerException: NativeTracerConfigException }
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);

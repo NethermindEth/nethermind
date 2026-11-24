@@ -1831,6 +1831,14 @@ namespace Nethermind.TxPool
             _newHeadLock.EnterReadLock();
             try
             {
+                // Disposal sets the flag under the write lock before detaching the handlers that release a pooled
+                // transaction's reservations. Answered like a syncing pool, as the sender is not at fault.
+                if (_isDisposed)
+                {
+                    Metrics.PendingTransactionsDiscarded++;
+                    PooledBlobBuffers.Return(tx);
+                    return AcceptTxResult.Syncing.WithMessage("Transaction pool is disposed.");
+                }
                 IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
                 // Observation and insertion share the head lock so an A -> B -> A transition cannot cross a validation publish unseen.
                 ObserveHeadSpec(headSpec);
@@ -3168,8 +3176,16 @@ namespace Nethermind.TxPool
 
         public async ValueTask DisposeAsync()
         {
-            if (_isDisposed) return;
-            _isDisposed = true;
+            _newHeadLock.EnterWriteLock();
+            try
+            {
+                if (_isDisposed) return;
+                _isDisposed = true;
+            }
+            finally
+            {
+                _newHeadLock.ExitWriteLock();
+            }
             _timer?.Dispose();
             await _cts.CancelAsync();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;

@@ -1564,7 +1564,57 @@ public class RetryCacheTests
     }
 
     [Test]
-    public async Task Announced_OverflowResourceIsNotPromotedWhenTrackedSlotBecomesAvailable()
+    public async Task Announced_OverflowResourceIsTrackedOnceAnnouncerHasFreeSlot()
+    {
+        ManualTimeProvider timeProvider = new();
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            timeProvider,
+            timeoutMs: CacheTimeoutMs,
+            token: cancellationTokenSource.Token,
+            maxPendingResourcesPerHandler: 1,
+            overflowRequestLimit: 1);
+
+        try
+        {
+            TestHandler source = new();
+            TestHandler other = new();
+            cache.Announced(1, source);
+            AnnounceResult overflow = cache.Announced(2, source);
+            cache.Received(1);
+
+            AnnounceResult sameHandler = cache.Announced(2, source);
+            AnnounceResult otherHandler = cache.Announced(2, other);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(overflow, Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(sameHandler, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(otherHandler, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(1));
+                Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+            }
+
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            Assert.That(() => source.HandleMessageCallCount + other.HandleMessageCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 10));
+
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => source.HandleMessageCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 10));
+                Assert.That(() => other.HandleMessageCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 10));
+            }
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Received_AfterOverflowResourceIsTracked_ReleasesLaterAnnouncerSlot()
     {
         using CancellationTokenSource cancellationTokenSource = new();
         RetryCache<ResourceRequestMessage, ResourceId> cache = new(
@@ -1578,20 +1628,73 @@ public class RetryCacheTests
         try
         {
             TestHandler source = new();
+            TestHandler laterAnnouncer = new();
             cache.Announced(1, source);
-            AnnounceResult overflow = cache.Announced(2, source);
-            cache.Received(1);
+            cache.Announced(2, source);
+            AnnounceResult promoted = cache.Announced(2, laterAnnouncer);
 
-            AnnounceResult sameHandler = cache.Announced(2, source);
-            AnnounceResult otherHandler = cache.Announced(2, new TestHandler());
+            cache.Received(1);
+            int trackedBeforeReceipt = cache.TrackedRequestsInUse;
+            int overflowBeforeReceipt = cache.OverflowRequestsInUse;
+            int pendingHandlersBeforeReceipt = cache.PendingHandlersInUse;
+            cache.Received(2);
+            AnnounceResult next = cache.Announced(3, laterAnnouncer);
 
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(promoted, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(trackedBeforeReceipt, Is.EqualTo(1));
+                Assert.That(overflowBeforeReceipt, Is.Zero);
+                Assert.That(pendingHandlersBeforeReceipt, Is.EqualTo(1));
+                Assert.That(next, Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(1));
+                Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+            }
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Announced_OverflowResourceIsRetriedWithLaterAnnouncers()
+    {
+        ManualTimeProvider timeProvider = new();
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            timeProvider,
+            timeoutMs: CacheTimeoutMs,
+            token: cancellationTokenSource.Token,
+            maxPendingResourcesPerHandler: 1,
+            overflowRequestLimit: 1);
+
+        try
+        {
+            TestHandler source = new();
+            TestHandler[] laterAnnouncers = [new(), new()];
+            AnnounceResult tracked = cache.Announced(1, source);
+            AnnounceResult overflow = cache.Announced(2, source);
+            AnnounceResult first = cache.Announced(2, laterAnnouncers[0]);
+            AnnounceResult second = cache.Announced(2, laterAnnouncers[1]);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracked, Is.EqualTo(AnnounceResult.RequestRequired));
                 Assert.That(overflow, Is.EqualTo(AnnounceResult.RequestRequired));
-                Assert.That(sameHandler, Is.EqualTo(AnnounceResult.Delayed));
-                Assert.That(otherHandler, Is.EqualTo(AnnounceResult.Delayed));
-                Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(1));
-                Assert.That(cache.OverflowRequestsInUse, Is.EqualTo(1));
+                Assert.That(first, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(second, Is.EqualTo(AnnounceResult.Delayed));
+            }
+
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            Assert.That(() => laterAnnouncers.Sum(static peer => peer.HandleMessageCallCount), Is.EqualTo(1).After(AssertTimeoutMs, 10));
+
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => laterAnnouncers.Sum(static peer => peer.HandleMessageCallCount), Is.EqualTo(2).After(AssertTimeoutMs, 10));
+                Assert.That(source.WasCalled, Is.False);
             }
         }
         finally

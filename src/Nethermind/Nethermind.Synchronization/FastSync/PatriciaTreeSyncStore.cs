@@ -16,6 +16,9 @@ public class PatriciaTreeSyncStore(INodeStorage nodeStorage, IStateBoundaryWrite
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) =>
         nodeStorage.KeyExists(address, path, hash);
 
+    // Nodes are keyed by hash too, so the node of another root never takes the place of one at the same path.
+    public void RemoveMismatchedNode(Hash256? address, in TreePath path, in ValueHash256 hash) { }
+
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data) =>
         nodeStorage.Set(address, path, hash, data);
 

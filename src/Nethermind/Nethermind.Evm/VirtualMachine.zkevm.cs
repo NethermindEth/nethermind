@@ -25,6 +25,27 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
         ExecuteTransactionCore<OffFlag>(vmState, worldState, txTracer);
 
+    private IWorldState? _guestSlotsSource;
+    private IGuestSlotStore? _guestSlots;
+
+    /// <summary>The world state as a <see cref="IGuestSlotStore"/>, or null when it is not one.</summary>
+    /// <remarks>Resolved once per world state: a type test against an interface walks the type's interfaces.</remarks>
+    internal IGuestSlotStore? GuestSlots
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            IWorldState worldState = _worldState;
+            if (!ReferenceEquals(worldState, _guestSlotsSource))
+            {
+                _guestSlots = worldState as IGuestSlotStore;
+                _guestSlotsSource = worldState;
+            }
+
+            return _guestSlots;
+        }
+    }
+
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
     private static OpcodeTable? _opcodeTable;

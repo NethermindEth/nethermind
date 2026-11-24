@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Threading;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -122,6 +127,89 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             for (int i = 0; i < 200; i++)
             {
                 feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
+            }
+        }
+
+        // The log is trimmed before each add, so it holds the new result and the 10 * AllowedInvalidResponses before
+        // it. Until a healthy peer's result is pushed out, it keeps a failing peer from being read as the only one;
+        // once it is out, the same failures read as a stale pivot.
+        [Test]
+        public void Result_of_another_peer_leaves_the_log_after_the_window()
+        {
+            PeerInfo offender = CreatePeer(TestItem.PublicKeyA);
+            PeerInfo healthy = CreatePeer(TestItem.PublicKeyB);
+            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
+
+            feed.AnalyzeResponsePerPeer(AddRangeResult.OK, healthy);
+            SyncResponseHandlingResult last = SyncResponseHandlingResult.OK;
+            for (int i = 0; i < 10 * AllowedInvalidResponses; i++)
+            {
+                last = feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, offender);
+            }
+
+            Assert.That(last, Is.EqualTo(SyncResponseHandlingResult.LesserQuality), "the healthy result is still in the log");
+            snapProvider.DidNotReceive().UpdatePivot();
+
+            last = feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, offender);
+
+            Assert.That(last, Is.EqualTo(SyncResponseHandlingResult.OK), "one more result pushes it out");
+            snapProvider.Received(1).UpdatePivot();
+        }
+
+        // A response that waits for the feed's lock while the log is full must decide on the trim only once it holds
+        // the lock: by then a pivot update can have cleared the log, and the results added since are not over the
+        // window. The test holds the feed's own lock, so the worker is parked before the clear and resumes after it.
+        [Test]
+        public void Response_waiting_for_the_lock_keeps_the_results_added_after_a_pivot_update()
+        {
+            PeerInfo peerA = CreatePeer(TestItem.PublicKeyA);
+            PeerInfo peerB = CreatePeer(TestItem.PublicKeyB);
+            PeerInfo peerC = CreatePeer(TestItem.PublicKeyC);
+            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
+            for (int i = 0; i <= 10 * AllowedInvalidResponses; i++)
+            {
+                feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peerA);
+            }
+
+            Lock syncLock = GetPrivateField<Lock>(feed, "_syncLock");
+            Exception? workerFailure = null;
+            Thread worker = new(() =>
+            {
+                try { feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peerC); }
+                catch (Exception e) { workerFailure = e; }
+            })
+            { IsBackground = true };
+
+            syncLock.Enter();
+            try
+            {
+                worker.Start();
+                Assert.That(SpinWait.SpinUntil(() => (worker.ThreadState & ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(30)),
+                    Is.True, "the worker parks on the feed's lock");
+
+                // The only peer keeps failing, which reads as a stale pivot and clears the log.
+                for (int i = 0; i <= AllowedInvalidResponses; i++)
+                {
+                    feed.AnalyzeResponsePerPeer(AddRangeResult.EmptyRange, peerA);
+                }
+
+                snapProvider.Received(1).UpdatePivot();
+                feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peerA);
+                feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peerB);
+            }
+            finally
+            {
+                syncLock.Exit();
+            }
+
+            Assert.That(worker.Join(TimeSpan.FromSeconds(30)), Is.True, "the worker finishes once the lock is free");
+            LinkedList<(PeerInfo peer, AddRangeResult result)> log = GetPrivateField<LinkedList<(PeerInfo peer, AddRangeResult result)>>(feed, "_resultLog");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(workerFailure, Is.Null);
+                Assert.That(log.Select(static entry => entry.peer), Is.EqualTo(new[] { peerC, peerB, peerA }), "newest first");
             }
         }
 
@@ -347,5 +435,8 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             syncPeer.Node.Returns(new Node(nodeId, "127.0.0.1", 30303));
             return new PeerInfo(syncPeer);
         }
+
+        private static T GetPrivateField<T>(Synchronization.SnapSync.SnapSyncFeed feed, string name) =>
+            (T)typeof(Synchronization.SnapSync.SnapSyncFeed).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(feed)!;
     }
 }
