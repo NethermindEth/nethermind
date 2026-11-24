@@ -157,7 +157,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                 return;
             }
 
-            if (slotChanges is null && ReadDeclaredStorageSlow(_parentReader!, in storageCell, out value)) return;
+            if (slotChanges is null && ReadDeclaredStorageSlow(in storageCell, out value)) return;
             _parentReader!.Get(in storageCell, out value);
             return;
         }
@@ -185,7 +185,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                 return;
             }
 
-            if (slotChanges is null && ReadDeclaredStorageSlow(_parentReader!, in storageCell, out value)) return;
+            if (slotChanges is null && ReadDeclaredStorageSlow(in storageCell, out value)) return;
             _parentReader!.GetOriginal(in storageCell, out value);
             return;
         }
@@ -216,10 +216,10 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private bool ReadDeclaredStorageSlow(IWorldState parentReader, in StorageCell cell, out UInt256 value)
+    private bool ReadDeclaredStorageSlow(in StorageCell cell, out UInt256 value)
     {
         value = default;
-        if (parentReader is not WorldState worldState) return false;
+        if (_parentWorldState is not { } worldState) return false;
         ref UInt256 cached = ref CollectionsMarshal.GetValueRefOrAddDefault(_pureReadValues, cell, out bool exists);
         // The concrete parent reads its own caches and cannot resize this worker's dictionary.
         if (!exists) worldState.GetPureReadStorage(in cell, out cached);
