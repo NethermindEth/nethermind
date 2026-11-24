@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -35,7 +36,6 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IDeferredBlockDataWriter>(CreateDeferredWriter)
             .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
             .Bind<IReceiptStorage, IReceiptMigrationStore>()
-            .Bind<IReceiptPruner, PersistentReceiptStorage>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig, IHeaderDecoder, ILogManager>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
@@ -68,6 +68,12 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .ExternallyOwned()
             .PreserveExistingDefaults();
 
+        builder.Register(ctx => ctx.Resolve<IReceiptStorage>() as IReceiptPruner
+                ?? throw new DependencyResolutionException("The configured receipt storage must implement IReceiptPruner or register a separate IReceiptPruner."))
+            .As<IReceiptPruner>()
+            .ExternallyOwned()
+            .PreserveExistingDefaults();
+
         builder.AddSingleton<ILogIndexBuilder, LogIndexBuilder>()
             .AddDecorator<ILogIndexConfig>((ctx, config) =>
             {
@@ -93,9 +99,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
 
         if (!receiptConfig.StoreReceipts)
         {
-            builder
-                .AddSingleton<IReceiptMigrationStore>(NullReceiptStorage.Instance)
-                .AddSingleton<IReceiptPruner>(NullReceiptStorage.Instance);
+            builder.AddSingleton<IReceiptMigrationStore>(NullReceiptStorage.Instance);
         }
     }
 
