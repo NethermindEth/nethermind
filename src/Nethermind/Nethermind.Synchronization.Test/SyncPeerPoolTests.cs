@@ -1089,6 +1089,23 @@ public class SyncPeerPoolTests
         Assert.That(result, Is.SameAs(requested));
     }
 
+    [Test, NonParallelizable]
+    public async Task Failed_refresh_releases_its_timeout_timer()
+    {
+        await using Context ctx = new();
+        ctx.Pool.Start();
+        SimpleSyncPeerMock[] peers = Enumerable.Range(0, 20).Select(static i => new SimpleSyncPeerMock(TestItem.PublicKeys[i])).ToArray();
+        foreach (SimpleSyncPeerMock peer in peers)
+            peer.SetHeaderFailure(new InvalidOperationException("Refresh failed"));
+
+        long before = Timer.ActiveCount;
+        foreach (SimpleSyncPeerMock peer in peers)
+            ctx.Pool.AddPeer(peer);
+
+        Assert.That(() => peers.All(static peer => peer.DisconnectRequested), Is.True.After(10_000, 10));
+        Assert.That(() => Timer.ActiveCount - before, Is.LessThan(peers.Length / 2).After(2_000, 20));
+    }
+
     private async Task<SimpleSyncPeerMock[]> SetupPeers(Context ctx, int count)
     {
         SimpleSyncPeerMock[] peers = new SimpleSyncPeerMock[count];

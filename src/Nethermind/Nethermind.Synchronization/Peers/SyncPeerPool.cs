@@ -606,60 +606,49 @@ namespace Nethermind.Synchronization.Peers
             if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {syncPeer.Node.ToString("s"):hide}");
 
             Task<BlockHeader?> getHeadHeaderTask = syncPeer.GetHeadBlockHeader(refreshTotalDiffTask.BlockHash ?? syncPeer.HeadHash, token);
-            CancellationTokenSource delaySource = new();
-            CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(delaySource.Token, token);
-            Task delayTask = Task.Delay(Timeouts.Eth, linkedSource.Token);
+            using CancellationTokenSource delaySource = CancellationTokenSource.CreateLinkedTokenSource(token);
+            Task delayTask = Task.Delay(Timeouts.Eth, delaySource.Token);
             Task firstToComplete = await Task.WhenAny(getHeadHeaderTask, delayTask);
-            await firstToComplete.ContinueWith(
-                t =>
+            delaySource.Cancel();
+            token.ThrowIfCancellationRequested();
+
+            if (firstToComplete == delayTask)
+            {
+                ReportRefreshFailed(syncPeer, "timeout", new TimeoutException());
+            }
+            else if (firstToComplete.IsFaulted)
+            {
+                ReportRefreshFailed(syncPeer, "faulted", firstToComplete.Exception);
+            }
+            else if (firstToComplete.IsCanceled)
+            {
+                _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncCancelled : NodeStatsEventType.SyncInitCancelled);
+                token.ThrowIfCancellationRequested();
+            }
+            else
+            {
+                BlockHeader? header = getHeadHeaderTask.Result;
+                if (header is null)
                 {
-                    try
-                    {
-                        if (firstToComplete == delayTask)
-                        {
-                            ReportRefreshFailed(syncPeer, "timeout", new TimeoutException());
-                        }
-                        else if (firstToComplete.IsFaulted)
-                        {
-                            ReportRefreshFailed(syncPeer, "faulted", t.Exception);
-                        }
-                        else if (firstToComplete.IsCanceled)
-                        {
-                            _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncCancelled : NodeStatsEventType.SyncInitCancelled);
-                            token.ThrowIfCancellationRequested();
-                        }
-                        else
-                        {
-                            delaySource.Cancel();
-                            BlockHeader? header = getHeadHeaderTask.Result;
-                            if (header is null)
-                            {
-                                ReportRefreshFailed(syncPeer, "null response");
-                                return;
-                            }
+                    ReportRefreshFailed(syncPeer, "null response");
+                    return;
+                }
 
-                            if (!HeaderValidator.ValidateHash(header))
-                            {
-                                ReportRefreshFailed(syncPeer, "invalid header hash");
-                                return;
-                            }
+                if (!HeaderValidator.ValidateHash(header))
+                {
+                    ReportRefreshFailed(syncPeer, "invalid header hash");
+                    return;
+                }
 
-                            if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node?.ToString("c"):hide} with head block {header.ToString(BlockHeader.Format.Short)}, total difficulty {header.TotalDifficulty}");
-                            if (!syncPeer.IsInitialized) _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
+                if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node?.ToString("c"):hide} with head block {header.ToString(BlockHeader.Format.Short)}, total difficulty {header.TotalDifficulty}");
+                if (!syncPeer.IsInitialized) _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
 
-                            if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer:hide} from {syncPeer.HeadNumber} to {header.Number}");
+                if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer:hide} from {syncPeer.HeadNumber} to {header.Number}");
 
-                            UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
+                UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
 
-                            SignalPeersChanged();
-                        }
-                    }
-                    finally
-                    {
-                        linkedSource.Dispose();
-                        delaySource.Dispose();
-                    }
-                }, token);
+                SignalPeersChanged();
+            }
         }
 
         /// <summary>
