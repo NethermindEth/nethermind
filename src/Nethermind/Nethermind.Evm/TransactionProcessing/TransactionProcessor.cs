@@ -55,10 +55,6 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         public static BlobBaseFeeCalculator Instance { get; } = new BlobBaseFeeCalculator();
 
-        public bool TryCalculateFeePerBlobGas(BlockHeader header, Transaction transaction,
-            ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas) =>
-            BlobGasCalculator.TryCalculateFeePerBlobGas(header, blobGasPriceUpdateFraction, out feePerBlobGas);
-
         public bool TryCalculateBlobFees(BlockHeader header, Transaction transaction,
             ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas, out UInt256 totalBlobBaseFee)
         {
@@ -231,13 +227,6 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer txTracer,
             ExecutionOptions options)
         {
-            const ExecutionOptions callFeeOptions = ExecutionOptions.SkipTransactionFees | ExecutionOptions.SkipLegacyGasPriceValidation;
-            if ((options & callFeeOptions) != 0 && (options & ExecutionOptions.CommitAndRestore) != ExecutionOptions.CommitAndRestore)
-            {
-                // Preserve exact-equality routes (system calls and block building) outside restoring RPC calls.
-                options &= ~callFeeOptions;
-            }
-
             if (options == ExecutionOptions.BuildUp)
             {
                 // No per-tx commit in block production; snapshot the tx start so a state-gas invariant violation can be
@@ -267,11 +256,13 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual SystemTransactionProcessor<TGasPolicy> CreateSystemTransactionProcessor() =>
             new(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
 
+        protected virtual bool UsesSystemTransactionProcessor(Transaction tx) => tx.IsSystem();
+
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             // Warmup keeps real fee/nonce semantics, so it must not route to the system processor.
-            TransactionResult result = tx.IsSystem() || opts == ExecutionOptions.SkipValidation
+            TransactionResult result = UsesSystemTransactionProcessor(tx) || opts == ExecutionOptions.SkipValidation
                 ? GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts)
                 : Execute(tx, tracer, opts);
 
@@ -376,9 +367,38 @@ namespace Nethermind.Evm.TransactionProcessing
             return ExecuteEvmTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee, preloadedCodeInfo, preloadedDelegationAddress);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsSimpleTransferFastPathCandidate(Transaction tx, bool isCodeOverridable)
-            => !isCodeOverridable && tx.AuthorizationList is null && !ForceSimpleTransferDisabled;
+        /// <summary>
+        /// Determines whether a transaction may use the empty-account simple-transfer optimization.
+        /// </summary>
+        /// <returns><c>true</c> when the optimization may be considered.</returns>
+        /// <remarks>
+        /// Specialized transaction processors can disable the optimization when their execution rules
+        /// require the full virtual-machine frame lifecycle.
+        /// </remarks>
+        protected virtual bool IsSimpleTransferFastPathCandidate(Transaction tx) =>
+            !ForceSimpleTransferDisabled && !_isCodeOverridable && tx.AuthorizationList is null;
+
+        /// <summary>
+        /// Resolves the code used to initialize a top-level transaction frame.
+        /// </summary>
+        /// <param name="codeInfoRepository">The repository associated with the transaction environment.</param>
+        /// <param name="codeSource">The transaction recipient.</param>
+        /// <param name="followDelegation">Whether the effective delegated code should be loaded.</param>
+        /// <param name="spec">The active release specification.</param>
+        /// <param name="delegationAddress">The delegation target encoded by the source account, if any.</param>
+        /// <returns>The code information used to create the top-level execution environment.</returns>
+        /// <remarks>
+        /// This hook resolves code for both the simple-transfer preload and the regular top-level frame
+        /// path. Under EIP-8037, it resolves the delegation designator only; the delegated target is loaded
+        /// after its delayed access charge. Frame transactions likewise resolve their delegated target directly.
+        /// </remarks>
+        protected virtual CodeInfo ResolveTopLevelCodeInfo(
+            ICodeInfoRepository codeInfoRepository,
+            Address codeSource,
+            bool followDelegation,
+            IReleaseSpec spec,
+            out Address? delegationAddress) =>
+            codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, spec, out delegationAddress);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress)
@@ -394,9 +414,9 @@ namespace Nethermind.Evm.TransactionProcessing
             preloadedCodeInfo = null;
             preloadedDelegationAddress = null;
             Address? recipient = tx.To;
-            if (recipient is null || !IsSimpleTransferFastPathCandidate(tx, _isCodeOverridable)) return null;
+            if (recipient is null || !IsSimpleTransferFastPathCandidate(tx)) return null;
 
-            preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: !spec.IsEip8037Enabled, spec, out preloadedDelegationAddress);
+            preloadedCodeInfo = ResolveTopLevelCodeInfo(_codeInfoRepository, recipient, followDelegation: !spec.IsEip8037Enabled, spec, out preloadedDelegationAddress);
             return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress) ? recipient : null;
         }
 
@@ -748,11 +768,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            // A restore run discards the fee payment, so skip it unless a tracer can see it. A fee-free call pays
-            // nothing but still reaches the overload with options, which a processor overrides to observe it.
-            if (!opts.HasFlag(ExecutionOptions.Restore) || tracer.IsObservingFeePayment || !ShouldChargeTransactionFees(opts))
+            // A restore run discards the fee payment, so skip it unless a tracer can see it.
+            if (!opts.HasFlag(ExecutionOptions.Restore) || tracer.IsObservingFeePayment)
             {
-                PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode, opts);
+                PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
             }
         }
 
@@ -941,8 +960,13 @@ namespace Nethermind.Evm.TransactionProcessing
             InvalidNonce,
             InvalidChainId,
             InvalidSignature,
-            InvalidAsCodeDeployed
+            InvalidAsCodeDeployed,
+            RejectedByPolicy
         }
+
+        /// <summary>Determines whether a valid authorization may access and update its authority.</summary>
+        /// <remarks>Called after signature validation and before the authority is warmed or read.</remarks>
+        protected virtual bool IsAuthorizationAllowed(Address authority, IReleaseSpec spec) => true;
 
         private AuthorizationTupleResult IsValidForExecution(
             AuthorizationTuple authorizationTuple,
@@ -971,6 +995,12 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (Logger.IsDebug) DebugLogInvalidAuthorization(authorizationTuple, "Bad signature.");
                 return AuthorizationTupleResult.InvalidSignature;
+            }
+
+            if (!IsAuthorizationAllowed(authorizationTuple.Authority, spec))
+            {
+                if (Logger.IsDebug) DebugLogInvalidAuthorization(authorizationTuple, "Authorization rejected by policy.");
+                return AuthorizationTupleResult.RejectedByPolicy;
             }
 
             accessTracker.WarmUp(authorizationTuple.Authority);
@@ -1216,33 +1246,8 @@ namespace Nethermind.Evm.TransactionProcessing
         protected static bool ShouldValidateGas(Transaction tx, ExecutionOptions opts)
             => !opts.HasFlag(ExecutionOptions.SkipValidation) || tx.MaxFeePerGas != 0UL || tx.MaxPriorityFeePerGas != 0UL;
 
-        private static bool HasRestoringCallOption(ExecutionOptions opts, ExecutionOptions option) =>
-            (opts & (ExecutionOptions.CommitAndRestore | option)) == (ExecutionOptions.CommitAndRestore | option);
-
-        /// <summary>Fee-free RPC options never affect consensus, tracing, simulation blocks or warmup.</summary>
-        protected static bool ShouldChargeTransactionFees(ExecutionOptions opts) =>
-            !HasRestoringCallOption(opts, ExecutionOptions.SkipTransactionFees);
-
-        private TransactionResult ValidateGasPrice(Transaction tx, ExecutionOptions opts, BlockHeader header, out UInt256 premiumPerGas)
-        {
-            premiumPerGas = UInt256.Zero;
-            bool validate = ShouldValidateGas(tx, opts) || (!ShouldChargeTransactionFees(opts) && tx.Supports1559);
-            if (validate && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
-            {
-                if (tx.Supports1559 || !HasRestoringCallOption(opts, ExecutionOptions.SkipLegacyGasPriceValidation))
-                {
-                    TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                    return TransactionResult.MaxFeePerGasBelowBaseFee(tx, header.BaseFeePerGas);
-                }
-                premiumPerGas = UInt256.Zero;
-            }
-            return TransactionResult.Ok;
-        }
-
         /// <remarks>
         /// Within <c>Execute</c>, the sender debit is deferred until the base <see cref="IncrementNonce"/> runs, so the sender account is written once.
-        /// When <see cref="ShouldChargeTransactionFees"/> is false, the base implementation validates the fee caps and the value
-        /// without reserving gas; an override adding its own charges must skip them likewise.
         /// </remarks>
         protected virtual TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
                 in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
@@ -1254,28 +1259,14 @@ namespace Nethermind.Evm.TransactionProcessing
             blobBaseFee = UInt256.Zero;
             UInt256 balance = WorldState.GetBalance(sender);
 
+            bool validate = ShouldValidateGas(tx, opts);
+
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            TransactionResult gasPriceResult = ValidateGasPrice(tx, opts, header, out premiumPerGas);
-            if (!gasPriceResult) return gasPriceResult;
-
-            if (!ShouldChargeTransactionFees(opts))
+            if (validate && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
             {
-                // Gas has no monetary cost, but the fee caps stay validated and the sender must still fund its value transfer.
-                premiumPerGas = UInt256.Zero;
-                if (tx.SupportsBlobs)
-                {
-                    // Compare the per-blob-gas cap only: the total blob fee is never charged here and may exceed 256 bits.
-                    if (!_blobBaseFeeCalculator.TryCalculateFeePerBlobGas(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
-                    {
-                        if (Logger.IsTrace) TraceLogInvalidTx(tx, $"BLOB_BASE_FEE_OVERFLOW: ({tx.SenderAddress})_BALANCE = {balance}");
-                        return RequiredBalanceExceeds256Bits(tx);
-                    }
-
-                    TransactionResult blobFeeCapResult = ValidateMaxFeePerBlobGas(tx, feePerBlobGas);
-                    if (!blobFeeCapResult) return blobFeeCapResult;
-                }
-
-                return balance < tx.ValueRef ? TransactionResult.InsufficientSenderBalance : TransactionResult.Ok;
+                TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
+                string errorDetail = $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}";
+                return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(errorDetail);
             }
 
             // mgval = gasLimit * effectiveGasPrice.
@@ -1320,8 +1311,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 // Compute actual blob fee and add to mgval.
-                TransactionResult blobFeeCapResult = ValidateMaxFeePerBlobGas(tx, header, spec, balance, out blobBaseFee);
-                if (!blobFeeCapResult) return blobFeeCapResult;
+                if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee))
+                {
+                    if (Logger.IsTrace) TraceLogInvalidTx(tx, $"BLOB_BASE_FEE_OVERFLOW: ({tx.SenderAddress})_BALANCE = {balance}");
+                    return RequiredBalanceExceeds256Bits(tx);
+                }
+
+                if (tx.MaxFeePerBlobGas < feePerBlobGas)
+                {
+                    TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
+                    return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance, BlockErrorMessages.InsufficientMaxFeePerBlobGas(tx.SenderAddress, tx.MaxFeePerBlobGas, feePerBlobGas));
+                }
 
                 if (UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment))
                 {
@@ -1349,28 +1349,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             if (!senderReservedGasPayment.IsZero) DebitSender(sender, in senderReservedGasPayment, spec);
-
-            return TransactionResult.Ok;
-        }
-
-        private TransactionResult ValidateMaxFeePerBlobGas(Transaction tx, BlockHeader header, IReleaseSpec spec, in UInt256 balance, out UInt256 blobBaseFee)
-        {
-            if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee))
-            {
-                if (Logger.IsTrace) TraceLogInvalidTx(tx, $"BLOB_BASE_FEE_OVERFLOW: ({tx.SenderAddress})_BALANCE = {balance}");
-                return RequiredBalanceExceeds256Bits(tx);
-            }
-
-            return ValidateMaxFeePerBlobGas(tx, feePerBlobGas);
-        }
-
-        private TransactionResult ValidateMaxFeePerBlobGas(Transaction tx, in UInt256 feePerBlobGas)
-        {
-            if (tx.MaxFeePerBlobGas < feePerBlobGas)
-            {
-                TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
-                return TransactionResult.WithDetail(TransactionResult.ErrorType.InsufficientSenderBalance, BlockErrorMessages.InsufficientMaxFeePerBlobGas(tx.SenderAddress, tx.MaxFeePerBlobGas, feePerBlobGas));
-            }
 
             return TransactionResult.Ok;
         }
@@ -1477,7 +1455,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: !spec.IsEip8037Enabled, spec, out delegationAddress);
+                    codeInfo = ResolveTopLevelCodeInfo(codeInfoRepository, recipient, followDelegation: !spec.IsEip8037Enabled, spec, out delegationAddress);
                 }
 
                 if (delegationAddress is not null)
@@ -1966,10 +1944,8 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
-        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode, ExecutionOptions opts)
+        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode)
         {
-            if (!ShouldChargeTransactionFees(opts)) return;
-
             UInt256 fees = premiumPerGas * spentGas;
 
             // Without EIP-8037 the destroy list is already finalized, so a destroyed beneficiary of a successful tx is paid
@@ -2139,7 +2115,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         private static bool ShouldRefundGas(Transaction tx, ExecutionOptions opts, in UInt256 gasPrice) =>
-            !gasPrice.IsZero && ShouldChargeTransactionFees(opts) && ShouldValidateGas(tx, opts);
+            !gasPrice.IsZero && ShouldValidateGas(tx, opts);
 
         private TransactionResult InvalidStateGasResult(Transaction tx, IReleaseSpec spec, bool restore, bool deleteCallerAccount, in UInt256 senderReservedGasPayment, TransactionResult error)
         {
@@ -2215,11 +2191,6 @@ namespace Nethermind.Evm.TransactionProcessing
             new(evmException: evmExceptionType, errorDescription: description ?? "");
 
         public static TransactionResult WithDetail(ErrorType errorType, string detail) => new(errorType, errorDescription: detail);
-
-        /// <summary>A fee cap below the block's base fee, naming the sender, the cap and the base fee.</summary>
-        public static TransactionResult MaxFeePerGasBelowBaseFee(Transaction tx, in UInt256 baseFee) =>
-            new(ErrorType.MaxFeePerGasBelowBaseFee, errorDescription:
-                $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {baseFee}");
 
         // A property rather than a static field: a struct holding a string cannot be preinitialized by ILC, so a
         // field would make every hot success return pay a class-constructor check in the zkVM guest.

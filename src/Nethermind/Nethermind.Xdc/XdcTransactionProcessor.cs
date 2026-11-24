@@ -45,11 +45,8 @@ internal class XdcTransactionProcessor(
         in UInt256 premiumPerGas,
         in UInt256 effectiveGasPrice,
         in UInt256 blobBaseFee,
-        int statusCode,
-        ExecutionOptions opts)
+        int statusCode)
     {
-        if (!ShouldChargeTransactionFees(opts)) return;
-
         IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
 
         // Randomize gas is charged in BuyGas but burned, not paid out: the reference client guards its
@@ -60,7 +57,7 @@ internal class XdcTransactionProcessor(
 
         if (!xdcSpec.IsTipTrc21FeeEnabled)
         {
-            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode, opts);
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
             return;
         }
 

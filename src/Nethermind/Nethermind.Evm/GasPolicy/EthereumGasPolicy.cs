@@ -33,6 +33,13 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasSpill;
     /// <summary>State gas spill repaid to execution gas and excluded from net spill accounting.</summary>
     public long StateGasSpillRefunded;
+    /// <summary>Execution gas left when the frame halted: before the failed charge, or before its gas was cleared.</summary>
+    /// <remarks>
+    /// Written only on failing and exceptional paths, never by a successful charge, so it is zero in a frame that has
+    /// not halted. A chain that meters what a halted frame used reads it when the frame completes; Ethereum never reads
+    /// it, and the halted frame's allocation is still consumed in full. Each frame's budget starts it at zero.
+    /// </remarks>
+    public ulong UnspentGasBeforeHalt;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
     public bool OutOfGas;
     /// <summary>When set, a state charge exceeding the reservoir halts rather than spilling into <see cref="Value"/> (EIP-8141: no EIP-8037 reservoir spill within a frame transaction).</summary>
@@ -79,7 +86,16 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ClearExecutionGas(ref EthereumGasPolicy gas) => gas.Value = 0;
+    public static void ClearExecutionGas(ref EthereumGasPolicy gas)
+    {
+        // A failed charge already zeroed Value and recorded what it left; clearing again must not overwrite that.
+        if (gas.Value != 0) gas.UnspentGasBeforeHalt = gas.Value;
+        gas.Value = 0;
+    }
+
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void OnFixedGasOutOfGas(ref EthereumGasPolicy gas, ulong unspentGas) => gas.UnspentGasBeforeHalt = unspentGas;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong GetRemainingGas(in EthereumGasPolicy gas) => gas.Value;
@@ -255,7 +271,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (!TMode.UseHotAndColdStorage(spec)) return true;
 
         // WarmUp first so the warm path skips IsPrecompile; precompiles are pre-warmed at tx start.
-        return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
+        return (accessTracker.WarmUp(address) && !accessTracker.IsPrewarmedPrecompile(address, spec)) switch
         {
             true => UpdateGas(ref gas, TColdCost.GasCost(spec)),
             false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
@@ -430,6 +446,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (GetRemainingGas(in gas) < gasCost)
         {
+            gas.UnspentGasBeforeHalt = gas.Value;
             gas.Value = 0;
             return false;
         }
@@ -532,6 +549,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (gas.Value < childGas)
         {
+            gas.UnspentGasBeforeHalt = gas.Value;
             gas.Value = 0;
             return false;
         }

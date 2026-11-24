@@ -85,7 +85,7 @@ public class SystemTransactionProcessor<TGasPolicy>(
 
     protected override void DecrementNonce(Transaction tx) { }
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode, ExecutionOptions opts) { }
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode) { }
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {

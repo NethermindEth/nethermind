@@ -538,7 +538,7 @@ public class BlockchainBridgeTests
         {
             OverrideCall.Call => bridge.Call(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, cancellationToken: CancellationToken.None).Error,
             OverrideCall.EstimateGas => bridge.EstimateGas(header, tx, 1, stateOverride, blobBaseFeeOverride, blockOverride, 0, cancellationToken: CancellationToken.None).Error,
-            OverrideCall.EstimateFrameGas => bridge.EstimateFrameGas(header, tx, [], [], 0, 1, null, stateOverride, blockOverride, false, CancellationToken.None, out _).Error,
+            OverrideCall.EstimateFrameGas => bridge.EstimateFrameGas(header, tx, [], [], 0, 1, null, stateOverride, blockOverride, CancellationToken.None, out _).Error,
             _ => throw new ArgumentOutOfRangeException(nameof(call))
         };
 

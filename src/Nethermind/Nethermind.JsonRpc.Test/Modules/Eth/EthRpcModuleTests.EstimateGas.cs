@@ -355,7 +355,7 @@ public partial class EthRpcModuleTests
         bool[] fill = [true, true];
         Dictionary<Address, AccountOverride>? stateOverride = withOverride ? new() { [TestItem.AddressB] = new AccountOverride { Balance = 1 } } : null;
 
-        Result<TxFrame[]> result = ctx.Test.Bridge.EstimateFrameGas(pruned, tx, fill, fill, 1_000_000, 150, null, stateOverride, null, false, default, out _);
+        Result<TxFrame[]> result = ctx.Test.Bridge.EstimateFrameGas(pruned, tx, fill, fill, 1_000_000, 150, null, stateOverride, null, default, out _);
 
         Assert.That(result.Error, Does.StartWith("No state available"));
     }

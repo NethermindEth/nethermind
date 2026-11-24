@@ -174,20 +174,16 @@ extension does not also set the redundant `Revert` exception marker.
 RPC tests exercise both the default and a container-registered `PrecompileOverridePolicy` with empty,
 balance, nonce, code, state and state-diff account overrides.
 
-Chains can independently select fee semantics for `eth_call` and `eth_createAccessList`
-by registering the immutable `Nethermind.Facade.RpcCallExecutionPolicy`. Its default values preserve
-existing Ethereum/geth behavior. Setting `chargeFees: false` skips gas purchase,
-monetary refunds and fee distribution, including EIP-8141 frame escrow and settlement,
-without creating balances, changing gas metering, or bypassing value affordability.
-Typed and blob fee caps are still validated. The independent
-`validateLegacyGasPriceAgainstBaseFee` flag does not disable typed fee-cap checks.
-These options apply only to those restoring calls, not estimates, traces, simulated
-blocks or consensus execution. `BuyGas` and `PayFees` overrides receive `ExecutionOptions`;
-forward them to the base implementation and use `ShouldChargeTransactionFees`
-for monetary side effects without skipping unrelated execution semantics.
+A chain can give `eth_call` fee semantics of its own by registering a
+`Nethermind.Facade.ICallTransactionProcessorDecorator`. The bridge passes the call's transaction processor
+through it for `eth_call` only (the call and its diagnostic rerun); estimates, access lists, traces, simulated
+blocks and consensus execution never see it. The chain's transaction processor implements the rule by overriding
+the fee steps `BuyGas`, `TryCalculatePremiumPerGas`, `PayRefund` and `PayFees`, switched on by the decorator for
+the duration of the call. Without a registered decorator `eth_call` behaves as on Ethereum.
 
-Direct fee-payment tests use `ExecutionOptions.None` for ordinary transaction
-semantics; restoring-call cases must pass their actual execution options.
+### Gas policy at exceptional exits
+
+`EthereumGasPolicy.UnspentGasBeforeHalt` records the execution gas remaining immediately before an exceptional halt. Traced and untraced execution must preserve the same value on the frame's policy. Fixed-gas dispatch bodies use a temporary policy for their fast path; on failure they copy the recorded halt gas back before returning. Plugins consuming child-frame completion therefore observe the same halt accounting with instruction tracing enabled or disabled.
 
 ## Getting help
 

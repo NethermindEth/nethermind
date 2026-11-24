@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
@@ -30,6 +31,9 @@ namespace Nethermind.Consensus.Tracing
         }
 
         public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, traceProcessor, traceOptions);
+
+        public TxReceipt[] TraceReceipts(Block block) =>
+            traceProcessor.ProcessWithReceipts(block, traceOptions | ProcessingOptions.ForceSequentialBlockAccessList, NullBlockTracer.Instance).Receipts;
 
         public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, executeOptions);
 

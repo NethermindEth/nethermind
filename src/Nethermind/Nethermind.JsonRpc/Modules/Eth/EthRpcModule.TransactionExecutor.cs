@@ -56,12 +56,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected virtual bool AcceptsZeroBlobFeeCap => true;
 
             /// <summary>
-            /// Whether the bridge runs the call under the chain's <see cref="RpcCallExecutionPolicy"/>, which then also
-            /// applies to filling its omitted frame gas limits.
-            /// </summary>
-            public virtual bool RunsUnderCallPolicy => false;
-
-            /// <summary>
             /// Whether the call is rejected for a field the fork it runs in lacks; a transaction to build is estimated
             /// as a call without this check.
             /// </summary>
@@ -152,8 +146,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override bool ValidatesFeeCapOrder => false;
 
-            public override bool RunsUnderCallPolicy => true;
-
             protected override ResultWrapper<HexBytes> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, NoBaseFee, token);
@@ -219,8 +211,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
             protected override bool ValidatesFeeCapOrder => false;
-
-            public override bool RunsUnderCallPolicy => true;
 
             // The fee fields follow the defaults of a transaction about to be sent, as in Geth.
             protected override bool AcceptsZeroBlobFeeCap => false;

@@ -387,12 +387,13 @@ public static partial class EvmInstructions
     /// and marks the executing account for destruction where the fork still allows it.
     /// </summary>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TTracingInst, TEip8037, TEip7708, TSpec>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    internal static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TTracingInst, TEip8037, TEip7708, TSpec, TOpcodeHooks>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
         where TSpec : struct, ISelfDestructSpec
+        where TOpcodeHooks : struct, IFlag
     {
         vm.MetricsCounters.IncrementSelfDestructs();
 
@@ -406,6 +407,11 @@ public static partial class EvmInstructions
             if (!TGasPolicy.TryConsumeSelfDestructGas(ref gas))
                 goto OutOfGas;
         }
+
+        // A machine with opcode hooks may run SELFDESTRUCT its own way once the constant charge above is paid. A static
+        // frame never reaches it: it fails write protection below, after the same charge.
+        if (TOpcodeHooks.IsActive && !vmState.IsStatic && vm.TryExecuteSelfDestruct(ref stack, ref gas, out EvmExceptionType hookResult))
+            return hookResult;
 
         // Pop the inheritor address from the stack; signal underflow if missing.
         Address? inheritor = stack.PopAddress(vm.AddressCache);

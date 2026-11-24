@@ -44,14 +44,16 @@ internal class TransactionProcessorEip7702Tests
         Initialize(spec);
     }
 
-    private void Initialize(IReleaseSpec spec)
+    private void Initialize(IReleaseSpec spec, Address? rejectedAuthority = null)
     {
         _specProvider = new TestSpecProvider(spec);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _transactionProcessor = rejectedAuthority is null
+            ? new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance)
+            : new AuthorizationPolicyTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance, rejectedAuthority);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
@@ -531,6 +533,68 @@ internal class TransactionProcessorEip7702Tests
             + Prague.Instance.GasCosts.BalanceCost
             + GasCostOf.WarmStateRead
             + GasCostOf.VeryLow));
+    }
+
+    [Test]
+    public void Execute_AuthorizationPolicyRejectionKeepsAuthorityColdAndAllowsLaterTuple([Values] bool rejectFirst)
+    {
+        Address rejectedAuthority = TestItem.AddressA;
+        Address allowedAuthority = TestItem.AddressB;
+        Address codeSource = TestItem.AddressC;
+        PrivateKey sender = TestItem.PrivateKeyD;
+        PrivateKey rejectedSigner = TestItem.PrivateKeyA;
+        PrivateKey allowedSigner = TestItem.PrivateKeyB;
+
+        _worldStateCloser.Dispose();
+        Initialize(Prague.Instance, rejectFirst ? rejectedAuthority : null);
+
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
+        _stateProvider.CreateAccount(rejectedAuthority, UInt256.One, 1);
+        _stateProvider.CreateAccount(allowedAuthority, UInt256.One, 1);
+        DeployCode(codeSource, Prepare.EvmCode
+            .PushData(rejectedAuthority)
+            .Op(Instruction.BALANCE)
+            .Done);
+
+        AuthorizationTuple[] authorizationList =
+        [
+            _ethereumEcdsa.Sign(rejectedSigner, _specProvider.ChainId, codeSource, 1),
+            _ethereumEcdsa.Sign(allowedSigner, _specProvider.ChainId, codeSource, 1),
+        ];
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(allowedAuthority)
+            .WithGasLimit(100_000)
+            .WithAuthorizationCode(authorizationList)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10_000_000)
+            .TestObject;
+
+        RefundAndGasTracer tracer = new();
+        _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+
+        ulong preRefundGas = GasCostOf.Transaction
+            + 2 * GasCostOf.NewAccount
+            + GasCostOf.VeryLow
+            + Prague.Instance.GasCosts.BalanceCost
+            + (rejectFirst ? GasCostOf.ColdAccountAccess : GasCostOf.WarmStateRead);
+        ulong authorizationRefund = rejectFirst
+            ? GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost
+            : 2 * (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost);
+        ulong expectedGas = preRefundGas - Math.Min(preRefundGas / RefundHelper.MaxRefundQuotientEIP3529, authorizationRefund);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasSpent, Is.EqualTo(expectedGas));
+            Assert.That(tracer.RefundAtFirstOperation, Is.EqualTo(rejectFirst ? GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost : 2 * (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost)));
+            Assert.That(_stateProvider.GetNonce(rejectedAuthority), Is.EqualTo(rejectFirst ? 1UL : 2UL));
+            Assert.That(Eip7702Constants.IsDelegatedCode(_stateProvider.GetCode(rejectedAuthority).ToArray()), Is.EqualTo(!rejectFirst));
+            Assert.That(Eip7702Constants.IsDelegatedCode(_stateProvider.GetCode(allowedAuthority).ToArray()), Is.True);
+        }
     }
 
     [Test]
@@ -1318,6 +1382,37 @@ internal class TransactionProcessorEip7702Tests
     {
         _stateProvider.CreateAccountIfNotExists(codeSource, 0);
         _stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, _specProvider.GetSpec(MainnetSpecProvider.PragueActivation));
+    }
+
+    private sealed class AuthorizationPolicyTransactionProcessor(
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider? specProvider,
+        IWorldState? worldState,
+        IVirtualMachine? virtualMachine,
+        ICodeInfoRepository? codeInfoRepository,
+        ILogManager? logManager,
+        Address rejectedAuthority)
+        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    {
+        protected override bool IsAuthorizationAllowed(Address authority, IReleaseSpec spec) => authority != rejectedAuthority;
+    }
+
+    private sealed class RefundAndGasTracer : CallOutputTracer
+    {
+        private long _refund;
+
+        public RefundAndGasTracer()
+        {
+            IsTracingInstructions = true;
+            IsTracingRefunds = true;
+        }
+
+        public long? RefundAtFirstOperation { get; private set; }
+
+        public override void ReportRefund(long refund) => _refund += refund;
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+            => RefundAtFirstOperation ??= _refund;
     }
 
     private sealed class InitialRefundTracer : TxTracer

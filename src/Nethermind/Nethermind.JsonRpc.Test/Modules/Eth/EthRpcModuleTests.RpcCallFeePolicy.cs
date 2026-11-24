@@ -9,11 +9,11 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -32,12 +32,15 @@ public partial class EthRpcModuleTests
     private const string FeePolicyLegacy = "\"gasPrice\":\"0x14\"";
     private const string FeePolicy1559 = "\"maxFeePerGas\":\"0x14\",\"maxPriorityFeePerGas\":\"0x3\"";
 
+    /// <summary>A context whose <c>eth_call</c> follows <paramref name="chargeFees"/> and <paramref name="validateLegacy"/>,
+    /// composed around the chain's processor as a plugin would; no call decorator when <paramref name="chargeFees"/> is null.</summary>
     private static Task<Context> FeePolicyContext(bool? chargeFees = false, bool validateLegacy = false,
         FeePolicyExecutions? executions = null, IReleaseSpec? spec = null) => Context.Create(new TestSpecProvider(spec ?? London.Instance), configurer: builder =>
     {
-        if (chargeFees.HasValue) builder.AddSingleton(new RpcCallExecutionPolicy(chargeFees.Value, validateLegacy));
-        if (executions is not null)
-            builder.AddDecorator<ITransactionProcessor>((_, inner) => new FeePolicyRecordingProcessor(inner, executions));
+        if (!chargeFees.HasValue) return;
+        RpcCallFeeDecorator decorator = new(chargeFees.Value, validateLegacy);
+        builder.AddScoped<ITransactionProcessor, RpcCallFeeTransactionProcessor>();
+        builder.AddSingleton<ICallTransactionProcessorDecorator>(executions is null ? decorator : new FeePolicyRecordingDecorator(decorator, executions));
     });
 
     private static JsonElement FeePolicyRequest(string fees = FeePolicyLegacy, string gas = "0x186a0", string value = "0x0") =>
@@ -132,66 +135,77 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task RpcCallFeePolicy_fee_cap_errors_match_node_without_policy(
+    public async Task RpcCallFeePolicy_fee_cap_validation_precedes_intrinsic_gas_and_invalid_opcode(
         [Values("0x0", "0x186a0")] string gas, [Values] bool priorityAboveCap,
         [Values] bool validateLegacy)
     {
-        using Context withoutPolicy = await FeePolicyContext(null);
         using Context ctx = await FeePolicyContext(false, validateLegacy);
         string fees = "\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"" + (priorityAboveCap ? "0x3" : "0x1") + "\"";
-        JsonElement request = FeePolicyRequest(fees, gas);
-        JToken response = await FeePolicyCall(ctx, request, FeePolicyState(code: "0xfe"), "0x64");
-        JToken reference = await FeePolicyCall(withoutPolicy, request, FeePolicyState(code: "0xfe"), "0x64");
-        string sender = new Address(FeePolicySender).ToString(withEip55Checksum: true);
-        // The tip check precedes intrinsic gas; the base-fee check is BuyGas's and follows it, under any policy.
+        JToken response = await FeePolicyCall(ctx, FeePolicyRequest(fees, gas), FeePolicyState(code: "0xfe"), "0x64");
         string expected = priorityAboveCap
-            ? $"{TxErrorMessages.TipAboveFeeCap}: address {sender}, maxPriorityFeePerGas: 3, maxFeePerGas: 2"
-            : gas == "0x0"
-                ? $"{TxErrorMessages.IntrinsicGasTooLow}: have 0"
-                : $"max fee per gas less than block base fee: address {sender}, maxFeePerGas: 2, baseFee: 100";
+            ? "max priority fee per gas higher than max fee per gas"
+            : "max fee per gas less than block base fee";
         using (Assert.EnterMultipleScope())
         {
+            Assert.That((int?)response["error"]?["code"], Is.EqualTo(-32000), response.ToString());
             Assert.That((string?)response["error"]?["message"], Does.Contain(expected), response.ToString());
+            if (priorityAboveCap)
+                Assert.That((string?)response["error"]?["message"], Does.Contain("maxPriorityFeePerGas: 3, maxFeePerGas: 2"), response.ToString());
+        }
+    }
+
+    [Test]
+    public async Task RpcCallFeePolicy_tip_above_fee_cap_error_matches_node_without_decorator(
+        [Values("0x0", "0x186a0")] string gas, [Values] bool validateLegacy)
+    {
+        using Context withoutDecorator = await FeePolicyContext(null);
+        using Context ctx = await FeePolicyContext(false, validateLegacy);
+        JsonElement request = FeePolicyRequest("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x3\"", gas);
+        JToken response = await FeePolicyCall(ctx, request, FeePolicyState(code: "0xfe"), "0x64");
+        JToken reference = await FeePolicyCall(withoutDecorator, request, FeePolicyState(code: "0xfe"), "0x64");
+        string sender = new Address(FeePolicySender).ToString(withEip55Checksum: true);
+        // The bridge's tip check runs before the decorated processor, so it is the same error with or without the decorator.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)response["error"]?["message"],
+                Does.Contain($"{TxErrorMessages.TipAboveFeeCap}: address {sender}, maxPriorityFeePerGas: 3, maxFeePerGas: 2"), response.ToString());
             Assert.That((int?)response["error"]?["code"], Is.EqualTo(-32000), response.ToString());
             Assert.That(response["error"]?.ToString(), Is.EqualTo(reference["error"]?.ToString()), reference.ToString());
         }
     }
 
     [Test]
-    public async Task RpcCallFeePolicy_system_sender_typed_call_matches_node_without_policy([Values] bool chargeFees, [Values] bool validateLegacy)
+    public async Task RpcCallFeePolicy_system_sender_typed_call_matches_node_without_decorator([Values] bool chargeFees, [Values] bool validateLegacy)
     {
         // A typed fee cap below the base fee: the system processor's BuyGas exempts this sender.
         JsonElement request = JsonSerializer.Deserialize<JsonElement>(
             $$"""{"from":"{{Address.SystemUser}}","to":"{{FeePolicyTarget}}","gas":"0x186a0","maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x0"}""");
         Dictionary<string, object> state = new() { [FeePolicyTarget] = new { balance = "0x7", code = FeePolicySnapshot } };
-        using Context withoutPolicy = await FeePolicyContext(null);
-        using Context withPolicy = await FeePolicyContext(chargeFees, validateLegacy);
-        JToken expected = await FeePolicyCall(withoutPolicy, request, state, "0x2");
+        using Context withoutDecorator = await FeePolicyContext(null);
+        using Context withDecorator = await FeePolicyContext(chargeFees, validateLegacy);
+        JToken expected = await FeePolicyCall(withoutDecorator, request, state, "0x2");
         Assert.That(expected["error"], Is.Null, expected.ToString());
-        AssertFeePolicyOutput(await FeePolicyCall(withPolicy, request, state, "0x2"), (string)expected["result"]!);
+        AssertFeePolicyOutput(await FeePolicyCall(withDecorator, request, state, "0x2"), (string)expected["result"]!);
     }
 
     [TestCase(0, true)]
     [TestCase(1, false)]
-    public async Task RpcCallFeePolicy_blob_fee_cap_is_compared_per_blob_gas_without_the_total_blob_fee(int baseFeeAboveCap, bool succeeds)
+    public async Task RpcCallFeePolicy_blob_fee_cap_is_compared_per_blob_gas_without_charging_the_blob_fee(int baseFeeAboveCap, bool succeeds)
     {
-        // 2^239 * 131072 blob gas exceeds 256 bits, which a fee-free call never charges.
-        UInt256 cap = UInt256.One << 239;
+        // The unfunded sender could not pay 131072 blob gas at the cap, which a fee-free call never charges.
+        UInt256 cap = 0x10;
         UInt256 blobBaseFee = cap + (UInt256)baseFeeAboveCap;
-        string capHex = "0x8" + new string('0', 59);
-        string blobBaseFeeHex = "0x8" + new string('0', 58) + baseFeeAboveCap;
         using Context ctx = await FeePolicyContext(spec: Cancun.Instance);
-        JsonElement request = FeePolicyRequest("\"maxFeePerGas\":\"0x14\",\"maxPriorityFeePerGas\":\"0x0\",\"maxFeePerBlobGas\":\"" + capHex
-            + "\",\"blobVersionedHashes\":[\"0x0122000000000000000000000000000000000000000000000000000000000000\"]");
+        JsonElement request = FeePolicyRequest("\"maxFeePerGas\":\"0x14\",\"maxPriorityFeePerGas\":\"0x0\",\"maxFeePerBlobGas\":\"0x10\""
+            + ",\"blobVersionedHashes\":[\"0x0122000000000000000000000000000000000000000000000000000000000000\"]");
         JToken response = JToken.Parse(await ctx.Test.TestEthRpc("eth_call", request, "latest", FeePolicyState(code: "0x00"),
-            new { baseFeePerGas = "0x1", blobBaseFee = blobBaseFeeHex }));
+            new { baseFeePerGas = "0x1", blobBaseFee = "0x" + blobBaseFee.ToString("x") }));
         if (succeeds) AssertFeePolicyOutput(response, "0x");
-        else Assert.That((string?)response["error"]?["message"], Does.Contain(BlockErrorMessages.InsufficientMaxFeePerBlobGas(new Address(FeePolicySender), cap, blobBaseFee)), response.ToString());
+        else Assert.That((string?)response["error"]?["message"], Does.Contain("max fee per blob gas less than block blob gas fee"), response.ToString());
     }
 
-    [TestCase(32)]
-    [TestCase(64)]
-    public async Task RpcCallFeePolicy_huge_legacy_price_does_not_multiply_fees_or_require_funding(int hexDigits)
+    [Test]
+    public async Task RpcCallFeePolicy_huge_legacy_price_does_not_multiply_fees_or_require_funding([Values(32, 64)] int hexDigits)
     {
         using Context ctx = await FeePolicyContext();
         string quantity = new('f', hexDigits);
@@ -224,80 +238,25 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task RpcCallFeePolicy_failure_text_rerun_keeps_options_and_restores_state([Values("eth_call", "eth_createAccessList")] string method)
+    public async Task RpcCallFeePolicy_failure_text_rerun_runs_through_the_decorator_and_restores_state()
     {
         FeePolicyExecutions executions = new();
         using Context ctx = await FeePolicyContext(executions: executions);
         _ = ctx.Test;
         executions.Options.Clear();
-        // SSTORE then INVALID forces the diagnostic rerun, not the REVERT shortcut.
-        Dictionary<string, object> state = FeePolicyState(code: "0x6001600055fe");
-        JToken response = method == "eth_call"
-            ? await FeePolicyCall(ctx, FeePolicyRequest(), state)
-            : JToken.Parse(await ctx.Test.TestEthRpc(method, FeePolicyRequest(), "latest", state));
-        // Without the policy's options the rerun stops at the gas purchase and leaves the bare VM error.
-        Assert.That((string?)(response["error"]?["message"] ?? response["result"]?["error"]), Does.Contain("invalid opcode: INVALID"), response.ToString());
-        ExecutionOptions[] options = executions.Options.ToArray();
-        Assert.That(options.Length, Is.GreaterThanOrEqualTo(2), "the real processor must execute the diagnostic rerun");
+        // SSTORE then INVALID forces the diagnostic rerun, not the REVERT shortcut. The unfunded sender makes either run
+        // fail on gas funds if it escaped the decorator.
+        JToken response = await FeePolicyCall(ctx, FeePolicyRequest(), FeePolicyState(code: "0x6001600055fe"));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(options, Is.All.EqualTo(options[0]));
-            Assert.That(options[0].HasFlag(ExecutionOptions.SkipTransactionFees), Is.True);
-            Assert.That(options[0].HasFlag(ExecutionOptions.SkipLegacyGasPriceValidation), Is.True);
+            Assert.That((string?)response["error"]?["message"], Does.Contain("invalid opcode"), response.ToString());
+            Assert.That(executions.Options, Is.EqualTo(new[]
+            {
+                ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp,
+                ExecutionOptions.CommitAndRestore,
+            }), "the call and its diagnostic rerun both run through the decorator");
         }
         AssertFeePolicyOutput(await FeePolicyCall(ctx, FeePolicyRequest(), FeePolicyState(code: "0x60005460005260206000f3")), FeePolicyWords(0));
-    }
-
-    [Test]
-    public async Task RpcCallFeePolicy_frame_gas_filling_follows_call_fee_semantics(
-        [Values("eth_call", "eth_createAccessList")] string method, [Values] bool chargeFees, [Values] bool explicitLimits)
-    {
-        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance),
-            configurer: builder => builder.AddSingleton(new RpcCallExecutionPolicy(chargeFees)));
-        FrameTransactionForRpc request = FrameGasRequest();
-        request.MaxFeePerGas = 1_000_000_000;
-        request.MaxPriorityFeePerGas = 1;
-        if (explicitLimits)
-        {
-            (request.Frames![0].ExecutionGas, request.Frames[0].StateGas) = (50_000, 0);
-            (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = (50_000, 200_000);
-        }
-        // The payer covers the sender frame's 1 wei transfer and none of the gas.
-        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"0x1"}}""")!;
-
-        JToken response = JToken.Parse(await ctx.Test.TestEthRpc(method, request, "latest", overrides));
-
-        // eth_call returns its output bytes; eth_createAccessList reports a failed run in its result object.
-        JToken? error = response["error"] ?? (response["result"] as JObject)?["error"];
-        if (chargeFees) Assert.That(error, Is.Not.Null, response.ToString());
-        else Assert.That(error, Is.Null, response.ToString());
-    }
-
-    /// <summary>Only <c>underCallPolicy</c> applies the call fee policy; the overload without it fills limits as an estimate.</summary>
-    [Test]
-    public async Task RpcCallFeePolicy_frame_gas_estimate_follows_call_fee_semantics_only_under_call_policy([Values(null, false, true)] bool? underCallPolicy)
-    {
-        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance),
-            configurer: builder => builder.AddSingleton(new RpcCallExecutionPolicy(chargeFees: false)));
-        FrameTransactionForRpc request = FrameGasRequest();
-        request.MaxFeePerGas = 1_000_000_000;
-        request.MaxPriorityFeePerGas = 1;
-        Transaction tx = request.ToCallTransaction(Eip8141Prototype.Instance, ctx.Test.RpcConfig.GasCap, validateFeeCapOrder: false).Data!;
-        tx.ChainId = ctx.Test.Bridge.GetChainId();
-        ulong gasCap = ctx.Test.RpcConfig.GasCap.EffectiveGasCap();
-        Func<ulong, UInt256>? maxFeeAt = request.PerGasBudget(tx, gasCap) is null ? null : maxGas => request.PerGasBudget(tx, maxGas)!.Value;
-        bool[] fill = [true, true];
-        // The payer covers the sender frame's 1 wei transfer and none of the gas.
-        Dictionary<Address, AccountOverride> stateOverride = new() { [request.From!] = new AccountOverride { Balance = 1 } };
-        BlockHeader header = ctx.Test.BlockTree.Head!.Header;
-        int errorMargin = ctx.Test.RpcConfig.EstimateErrorMargin;
-
-        Result<TxFrame[]> result = underCallPolicy is { } policy
-            ? ctx.Test.Bridge.EstimateFrameGas(header, tx, fill, fill, gasCap, errorMargin, maxFeeAt, stateOverride, null, policy, default, out _)
-            : ctx.Test.Bridge.EstimateFrameGas(header, tx, fill, fill, gasCap, errorMargin, maxFeeAt, stateOverride, null, default, out _);
-
-        if (underCallPolicy is true) Assert.That(result.Error, Is.Null);
-        else Assert.That(result.Error, Is.Not.Null);
     }
 
     [Test]
@@ -332,24 +291,15 @@ public partial class EthRpcModuleTests
         AssertFeePolicyOutput(await FeePolicyCall(ctx, request), FeePolicyWords(dynamicFees ? 4UL : 20UL, 1, 0, 0, 7, 0));
     }
 
+    /// <summary>The decorator applies to <c>eth_call</c> only: <c>eth_createAccessList</c> buys its gas as on a node without it.</summary>
     [Test]
-    public async Task RpcCallFeePolicy_access_list_follows_call_fee_semantics(
+    public async Task RpcCallFeePolicy_access_list_keeps_fee_semantics(
         [Values(null, true, false)] bool? chargeFees, [Values] bool dynamicFees)
     {
         using Context ctx = await FeePolicyContext(chargeFees, validateLegacy: true);
         JToken response = JToken.Parse(await ctx.Test.TestEthRpc("eth_createAccessList",
             FeePolicyRequest(dynamicFees ? FeePolicy1559 : FeePolicyLegacy), "latest", FeePolicyState()));
-        if (chargeFees is false)
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(response["error"], Is.Null, response.ToString());
-                Assert.That(response["result"]?["error"], Is.Null, response.ToString());
-                Assert.That((string?)response["result"]?["gasUsed"], Is.Not.EqualTo("0x0"), response.ToString());
-            }
-        }
-        else
-            Assert.That((string?)response["error"]?["message"], Does.Contain(TxErrorMessages.InsufficientFundsForGas), response.ToString());
+        Assert.That((string?)response["error"]?["message"], Does.Contain(TxErrorMessages.InsufficientFundsForGas), response.ToString());
     }
 
     [Test]
@@ -413,15 +363,21 @@ public partial class EthRpcModuleTests
         public List<ExecutionOptions> Options { get; } = [];
     }
 
-    private sealed class FeePolicyRecordingProcessor(ITransactionProcessor inner, FeePolicyExecutions executions) : ITransactionProcessor
+    private sealed class FeePolicyRecordingDecorator(ICallTransactionProcessorDecorator inner, FeePolicyExecutions executions)
+        : ICallTransactionProcessorDecorator
     {
-        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
-        {
-            executions.Options.Add(options);
-            return inner.Process(transaction, txTracer, options);
-        }
+        public ITransactionProcessor Decorate(ITransactionProcessor processor) => new Recording(inner.Decorate(processor), executions);
 
-        public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
-        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+        private sealed class Recording(ITransactionProcessor inner, FeePolicyExecutions executions) : ITransactionProcessor
+        {
+            public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
+            {
+                executions.Options.Add(options);
+                return inner.Process(transaction, txTracer, options);
+            }
+
+            public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+        }
     }
 }

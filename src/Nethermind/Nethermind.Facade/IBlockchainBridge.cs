@@ -75,18 +75,6 @@ namespace Nethermind.Facade
         Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
             Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted);
 
-        /// <inheritdoc cref="EstimateFrameGas(BlockHeader, Transaction, bool[], bool[], ulong, int, Func{ulong, UInt256}, Dictionary{Address, AccountOverride}, BlockOverride, CancellationToken, out bool)"/>
-        /// <param name="underCallPolicy">Whether the limits are filled for <see cref="Call"/> or <see cref="CreateAccessList"/>,
-        /// whose runs, the probes included, follow the chain's <see cref="RpcCallExecutionPolicy"/>.</param>
-        /// <remarks>
-        /// The default implementation ignores <paramref name="underCallPolicy"/> and runs the overload without it, so an
-        /// implementation that predates the parameter keeps filling the limits as it did before.
-        /// </remarks>
-        Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
-            Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, bool underCallPolicy,
-            CancellationToken cancellationToken, out bool executionReverted) =>
-            EstimateFrameGas(header, tx, fillExecution, fillState, gasCap, errorMargin, maxFeeAt, stateOverride, blockOverride, cancellationToken, out executionReverted);
-
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
 
         int NewBlockFilter();

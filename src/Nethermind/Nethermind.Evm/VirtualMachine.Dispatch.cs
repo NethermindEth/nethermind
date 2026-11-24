@@ -50,6 +50,41 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         SetExecutionGas(ref fixedGas, gas);
     }
 
+    /// <summary>Passes an out-of-gas halt of a <see cref="LoadFixedGas"/> body to the frame's policy.</summary>
+    /// <param name="frameGas">The frame's policy.</param>
+    /// <param name="unspentGas">The gas left when the failed charge was attempted; see the overloads below for fused bodies.</param>
+    /// <param name="exceptionType">How the body ended; anything but out of gas reports nothing.</param>
+    /// <remarks>Only on the exceptional exit; see <see cref="IGasPolicy{TSelf}.OnFixedGasOutOfGas"/>.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReportFixedGasHalt(ref TGasPolicy frameGas, ulong unspentGas, EvmExceptionType exceptionType)
+    {
+        if (exceptionType == EvmExceptionType.OutOfGas)
+            TGasPolicy.OnFixedGasOutOfGas(ref frameGas, unspentGas);
+    }
+
+    /// <summary>The gas left at the failed charge of a jump that started with <paramref name="gas"/> and may skip its JUMPDEST.</summary>
+    /// <remarks>
+    /// Either the jump's own charge failed, leaving all of <paramref name="gas"/>, or the skipped JUMPDEST's single unit
+    /// did, which only happens with nothing left.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong FusedJumpHaltGas<TCost>(ulong gas) where TCost : struct, GasPolicy.IGasCost =>
+        gas < TCost.GasCost ? gas : 0;
+
+    /// <summary>The gas left at the failed charge of a PUSH2 that started with <paramref name="gas"/> and may fuse a jump.</summary>
+    /// <param name="gas">The carried gas the PUSH2 started with.</param>
+    /// <param name="code">The frame's code.</param>
+    /// <param name="pc">The program counter the body halted with.</param>
+    /// <remarks>
+    /// The push's charge fails with all of <paramref name="gas"/> left. A fused jump's charge fails before the counter
+    /// moves, so it still follows the PUSH2 opcode, with the push paid. A skipped JUMPDEST or CALLDEST fails after the
+    /// counter moved past it, and only with nothing left.
+    /// </remarks>
+    private static ulong FusedPush2HaltGas(ulong gas, ref byte code, nint pc) =>
+        gas < GasPolicy.VeryLowGasCost.GasCost ? gas
+        : Unsafe.Add(ref code, pc - 1) == (byte)Instruction.PUSH2 ? gas - GasPolicy.VeryLowGasCost.GasCost
+        : 0;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]
         GetOpcodeHandlers<TTracingInst, TCancelable>()
@@ -126,8 +161,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         _opcodeHandlers = _filteredOpcodeHandlers!;
     }
 
-    private sealed unsafe class OpcodeTable
+    /// <param name="opcodeHooks">Whether the CALL, creation and SELFDESTRUCT handlers consult the machine's opcode hooks.</param>
+    private sealed unsafe class OpcodeTable(bool opcodeHooks)
     {
+        public OpcodeTable() : this(opcodeHooks: false) { }
+
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? NoTrace;
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? NoTraceCancelable;
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? Traced;
@@ -159,7 +197,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ? ref (TCancelable.IsActive ? ref TracedCancelable : ref Traced)
                     : ref (TCancelable.IsActive ? ref NoTraceCancelable : ref NoTrace);
 
-            return table ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec);
+            return table ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec, opcodeHooks);
         }
 
         /// <summary>Rebuilds both non-traced tables from whatever the JIT has promoted since the last build.</summary>
@@ -172,8 +210,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         public void RefreshNonTraced(IReleaseSpec spec)
         {
-            NoTrace = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
-            NoTraceCancelable = GenerateOpcodeHandlers<OffFlag, OnFlag>(spec);
+            NoTrace = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec, opcodeHooks);
+            NoTraceCancelable = GenerateOpcodeHandlers<OffFlag, OnFlag>(spec, opcodeHooks);
             System.Threading.Volatile.Write(ref _executionHandlers, null);
         }
     }

@@ -14,16 +14,6 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 internal sealed class UnpricedBlobFeeCalculator(ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator)
     : ITransactionProcessor.IBlobBaseFeeCalculator
 {
-    public bool TryCalculateFeePerBlobGas(BlockHeader header, Transaction transaction,
-        ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
-    {
-        if (!UnpricedCallTraceAdapter.HasUnpricedBlobs(transaction))
-            return blobBaseFeeCalculator.TryCalculateFeePerBlobGas(header, transaction, blobGasPriceUpdateFraction, out feePerBlobGas);
-
-        feePerBlobGas = UInt256.Zero;
-        return true;
-    }
-
     public bool TryCalculateBlobFees(BlockHeader header, Transaction transaction,
         ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas, out UInt256 totalBlobBaseFee)
     {
