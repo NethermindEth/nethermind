@@ -9,6 +9,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Legacy;
 using Nethermind.BeaconChain.Legacy.Era;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Config;
@@ -122,6 +123,43 @@ public class EraReplayTests
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(() => Replay(3), Throws.Nothing, "a recorded era is not replayed again");
         Assert.That(store.TryGetAnchor(out _, out _), Is.False, "only a replay that reaches Fulu stores an anchor");
+#else
+        Assert.Ignore("Only the minimal preset has eras short enough to replay here.");
+#endif
+    }
+
+    [Test]
+    public void Replay_that_reaches_Fulu_stores_its_finalized_block_as_the_anchor()
+    {
+#if MINIMAL_PRESET
+        BeaconChainSpec spec = FuluDriverSupport.FuluSpec;
+        string vector = Path.Combine(ConsensusSpecArchive.SuitePath(ConsensusPreset.Minimal, "fulu", "finality")!, "finality", "pyspec_tests", "finality_rule_3");
+        byte[] genesis = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(vector, "pre.ssz_snappy"));
+        byte[][] blocks = [.. Enumerable.Range(0, Directory.GetFiles(vector, "blocks_*").Length).Select(i => SszConsensusTestLoader.ReadSszSnappy(Path.Combine(vector, $"blocks_{i}.ssz_snappy")))];
+        LegacyChain chain = new(spec, genesis, new ForkChoiceStepDriver.FixedNewPayloadNotifier(ExecutionStatus.Optimistic), verifySignatures: false);
+        Hash256 genesisRoot = chain.ComputeStateRoot();
+        foreach (byte[] block in blocks)
+            chain.ApplyBlock(block);
+        chain.AdvanceTo(Presets.SlotsPerHistoricalRoot);
+        Hash256 finalizedRoot = chain.State.FinalizedCheckpoint!.Root!;
+        Assert.That(chain.State.FinalizedCheckpoint.Epoch, Is.Not.Zero, "fixture bug: the vector must finalize");
+        WriteEra(0, genesis, []);
+        WriteEra(1, genesis, blocks);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
+        EraReplayer replayer = new(spec, store, new EraReplayConfig { Directory = _directory.FullName }, LimboLogs.Instance);
+
+        replayer.Run(genesisRoot, default);
+
+        store.TryGetAnchor(out Hash256? anchor, out ulong slot);
+        Assert.That(anchor, Is.EqualTo(finalizedRoot));
+        store.TryGetForkedBlock(anchor!, out ForkedSignedBeaconBlock? anchorBlock);
+        store.TryGetState(anchor!, out byte[]? anchorState);
+        BeaconStateFulu.Decode(anchorState, out BeaconStateFulu state);
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(anchorBlock!.ComputeMessageRoot(), Is.EqualTo(finalizedRoot));
+        Assert.That(state.Slot, Is.EqualTo(slot), "the anchor state is the block's post-state");
+        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(((ForkedSignedBeaconBlock.OfFulu)anchorBlock).Block.Message!.StateRoot));
+        Assert.That(() => replayer.Run(genesisRoot, default), Throws.TypeOf<InvalidConfigurationException>(), "a database with an anchor is not replayed into");
 #else
         Assert.Ignore("Only the minimal preset has eras short enough to replay here.");
 #endif
