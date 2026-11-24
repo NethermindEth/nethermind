@@ -345,8 +345,11 @@ public class SyncPeerPoolTests
 
         Metrics.PriorityPeers = 0;
         Parallel.For(0, 20, _ => ctx.Pool.SetPeerPriority(peer.Id));
-        Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
-        Assert.That(Metrics.PriorityPeers, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+            Assert.That(Metrics.PriorityPeers, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -360,12 +363,18 @@ public class SyncPeerPoolTests
         ctx.Pool.SetPeerPriority(registered.Id);
 
         ctx.Pool.RemovePeer(duplicate);
-        Assert.That(ctx.Pool.PeerCount, Is.EqualTo(1));
-        Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PeerCount, Is.EqualTo(1));
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+        }
 
         ctx.Pool.RemovePeer(registered);
-        Assert.That(ctx.Pool.PeerCount, Is.Zero);
-        Assert.That(ctx.Pool.PriorityPeerCount, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PeerCount, Is.Zero);
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.Zero);
+        }
     }
 
     [Test]
