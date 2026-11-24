@@ -40,20 +40,23 @@ namespace Nethermind.Facade.Filters.Topics
                 return Accepts(entry.Topics);
             }
 
+            if (expressions.Length == 0)
+            {
+                return false;
+            }
+
             Span<byte> buffer = stackalloc byte[32];
             KeccaksIterator iterator = new(entry.TopicsRlp, buffer);
-            for (int i = 0; i < expressions.Length; i++)
+            // Any expression against any topic, as for materialised topics. Topics in the outer loop: the iterator
+            // only moves forward, and a topic stored without its leading zeros lives in the buffer until the next read.
+            while (iterator.TryGetNext(out Hash256StructRef keccak))
             {
-                if (iterator.TryGetNext(out Hash256StructRef keccak))
+                for (int i = 0; i < expressions.Length; i++)
                 {
                     if (expressions[i].Accepts(ref keccak))
                     {
                         return true;
                     }
-                }
-                else
-                {
-                    return false;
                 }
             }
 
