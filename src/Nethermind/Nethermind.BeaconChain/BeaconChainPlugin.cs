@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Diagnostics;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.Legacy.Era;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -94,6 +95,8 @@ public class BeaconChainModule : Module
             .AddDecorator<IEngineRpcModule, ExternalClInterceptingEngineRpcModule>()
             .AddColumnDatabase<BeaconChainDbColumns>("beaconChain")
             .AddStep(typeof(StartBeaconChain))
+            .AddSingleton<EraReplayer>()
+            .AddStep(typeof(RunEraReplay))
             ;
 
         // Gated separately: the API can be off while the driver runs, but not the reverse.
