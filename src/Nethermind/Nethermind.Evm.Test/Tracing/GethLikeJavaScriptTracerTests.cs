@@ -506,6 +506,63 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(trace, fault is null ? new[] { step } : new[] { step, fault });
     }
 
+    // A reversed or partly reversed salt reads differently from this one.
+    private const string DistinctSalt = "a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0";
+
+    // Each row pushes three sentinels and a salt with 32 distinct bytes, then CREATE2's other operands (value on top).
+    [TestCase("5f5f5ff500", 100000UL,
+        "step:CREATE2::0,0,0,$salt,f00d,cafe,beef|post:CREATE2::0,0,0,$salt,f00d,cafe,beef|step:STOP:4:beef|post:STOP:4:beef",
+        TestName = "Salted_create_success")]
+    [TestCase("5f5f683635c9adc5dea00000f500", 100000UL,
+        "step:CREATE2::3635c9adc5dea00000,0,0,$salt,f00d,cafe,beef|post:CREATE2::3635c9adc5dea00000,0,0,$salt,f00d,cafe,beef|step:STOP:4:beef|post:STOP:4:beef",
+        TestName = "Salted_create_rejected_for_balance_pushes_zero_onto_the_salt")]
+    [TestCase("600162ffffff5ff5", 100000UL,
+        "step:CREATE2:out of gas:0,ffffff,1,$salt,f00d,cafe,beef|post:CREATE2:out of gas:0,ffffff,1,$salt,f00d,cafe,beef",
+        TestName = "Salted_create_memory_cost_above_gas")]
+    [TestCase("6200c0015f5ff5", 100000UL,
+        "step:CREATE2:out of gas: max initcode size exceeded:0,0,c001,$salt,f00d,cafe,beef|post:CREATE2:out of gas: max initcode size exceeded:0,0,c001,$salt,f00d,cafe,beef",
+        TestName = "Salted_create_initcode_too_large")]
+    [TestCase("600163ffffffff5ff5", 100000UL,
+        "step:CREATE2:out of gas:0,ffffffff,1,$salt,f00d,cafe,beef|post:CREATE2:out of gas:0,ffffffff,1,$salt,f00d,cafe,beef",
+        TestName = "Salted_create_memory_range_beyond_the_cap")]
+    [TestCase("5f5f5ff5", 53017UL,
+        "step:CREATE2:out of gas:0,0,0,$salt,f00d,cafe,beef|post:CREATE2:out of gas:0,0,0,$salt,f00d,cafe,beef",
+        TestName = "Salted_create_below_its_static_cost")]
+    // EIP-8037: the gas covers the base charge the step reports, then the new account's state gas faults after the pop.
+    [TestCase("5f5f5ff500", 100000UL,
+        "step:CREATE2::0,0,0,$salt,f00d,cafe,beef|post:CREATE2::0,0,0,$salt,f00d,cafe,beef|fault:CREATE2:out of gas:0,0,0,$salt,f00d,cafe,beef",
+        true, TestName = "Salted_create_state_gas_fault_after_the_pop")]
+    public void Salted_create_callbacks_read_the_pushed_salt(string operands, ulong gasLimit, string expected, bool amsterdam = false)
+    {
+        const string userTracer = """
+            {
+                events: [],
+                record: function(phase, log) {
+                    var op = log.op.toNumber();
+                    if (log.getDepth() !== 1 || (op !== 0xf5 && op !== 0x00)) return;
+                    var stack = [];
+                    for (var i = 0; i < log.stack.length(); i++) stack.push(log.stack.peek(i).toString(16));
+                    this.events.push(phase + ":" + log.op.toString() + ":" + (op === 0x00
+                        ? log.stack.length() + ":" + log.stack.peek(3).toString(16)
+                        : (log.getError() || "") + ":" + stack.join(",")));
+                },
+                step: function(log) { this.record("step", log); },
+                postStep: function(log) { this.record("post", log); },
+                fault: function(log) { this.record("fault", log); },
+                result: function() { return this.events.join("|"); }
+            }
+            """;
+        byte[] code = Bytes.FromHexString("61beef61cafe61f00d7f" + DistinctSalt + operands);
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(userTracer);
+        (Block block, Transaction transaction) = PrepareTx(
+            amsterdam ? MainnetSpecProvider.AmsterdamActivation : MainnetSpecProvider.CancunActivation, gasLimit, code);
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, expected.Replace("$salt", DistinctSalt, StringComparison.Ordinal));
+    }
+
     [TestCase("600051", 3, "0", "aa", false)]
     [TestCase("60bb600052", 3, "0,187", "bb", true)]
     [TestCase("60bb600053", 3, "0,187", "bb", false)]
@@ -1062,6 +1119,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("5e", "S0:MCOPY(stack underflow (0 <=> 3)),P0:MCOPY", 0, TestName = "Callbacks_ordered_mcopy_stack_underflow")]
     [TestCase("a2", "S0:LOG2(stack underflow (0 <=> 4)),P0:LOG2", 0, TestName = "Callbacks_ordered_log2_stack_underflow")]
     [TestCase("f5", "S0:CREATE2(stack underflow (0 <=> 4)),P0:CREATE2", 0, TestName = "Callbacks_ordered_create2_stack_underflow")]
+    [TestCase("5f5f5ff5", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:PUSH0,P2:PUSH0,S3:CREATE2(stack underflow (3 <=> 4)),P3:CREATE2", 0, TestName = "Callbacks_ordered_create2_one_item_short")]
     [TestCase("ff", "S0:SELFDESTRUCT(stack underflow (0 <=> 1)),P0:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_self_destruct_stack_underflow")]
     [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256(out of gas),P6:KECCAK256", 0, TestName = "Callbacks_ordered_out_of_gas")]
     [TestCase("63ffffffff51", "S0:PUSH4,P0:PUSH4,S5:MLOAD(out of gas),P5:MLOAD", 0, TestName = "Callbacks_ordered_memory_out_of_gas")]
@@ -1357,6 +1415,30 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"0x60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400\",\"storage\":{}},\"0x76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":\"0xde0b6b3a7640000\",\"nonce\":0,\"code\":\"0x7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000\",\"storage\":{}},\"0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\":{\"balance\":\"0x0\",\"nonce\":0,\"code\":\"0x\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"0x\",\"storage\":{}}}"));
+    }
+
+    [Test]
+    public void prestate_tracer_names_the_create2_address()
+    {
+        byte[] salt = Bytes.FromHexString(DistinctSalt);
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer("prestateTracer_legacy"),
+                Prepare.EvmCode.Create2(initCode, salt, 0).Op(Instruction.POP).STOP().Done,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+
+        using JsonDocument result = JsonDocument.Parse(JsonSerializer.Serialize(traces.CustomTracerResult?.Value));
+        string created = Key(ContractAddress.From(Recipient, salt, initCode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.RootElement.EnumerateObject().Select(static account => account.Name),
+                Is.EquivalentTo(new[] { Key(Sender), Key(Recipient), created }));
+            Assert.That(result.RootElement.TryGetProperty(created, out JsonElement account) ? account.GetRawText() : null,
+                Is.EqualTo("""{"balance":"0x0","nonce":0,"code":"0x","storage":{}}"""));
+        }
+
+        static string Key(Address address) => address.ToString().ToLowerInvariant();
     }
 
     [Test]
