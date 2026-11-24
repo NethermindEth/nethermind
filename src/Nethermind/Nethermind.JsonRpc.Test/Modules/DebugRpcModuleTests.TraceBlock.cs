@@ -619,7 +619,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Specified_javascript_request_cancellation_interrupts_user_code(
-        [Values("construction", "setup", "step", "result", "result-getter", "toJSON")] string phase)
+        [Values("construction", "setup", "step", "result", "result-getter", "toJSON", "valueOf", "toString")] string phase)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using Engine engine = new(Prague.Instance);
@@ -637,8 +637,7 @@ public partial class DebugRpcModuleTests
             + "setup:function(){" + (phase == "setup" ? body : "") + "},"
             + "step:function(){" + (phase == "step" ? body : "") + "},"
             + "result:function(){" + (phase == "result" ? body : "") + "return "
-            + (phase == "result-getter" ? "{get value(){" + body + "return 1;}}"
-                : phase == "toJSON" ? "{toJSON:function(){" + body + "return 1;}}" : "{}") + ";}}";
+            + ResultSerializationHook(phase, body) + ";}}";
         OperationCanceledException failure = Assert.Catch<OperationCanceledException>(() =>
         {
             using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock, script, external: external.Token);
@@ -710,7 +709,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Specified_javascript_owned_interrupt_is_typed(
-        [Values("result", "step", "result-getter", "toJSON")] string callback, [Values] bool emptyScope)
+        [Values("result", "step", "result-getter", "toJSON", "valueOf", "toString")] string callback, [Values] bool emptyScope)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using Engine engine = new(Prague.Instance);
@@ -722,8 +721,7 @@ public partial class DebugRpcModuleTests
         using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
             "{fault:function(){},step:function(){" + (callback == "step" ? body : "")
                 + "},result:function(){" + (callback == "result" ? body : "") + "return "
-                + (callback == "result-getter" ? "{get value(){" + body + "return 1;}}"
-                    : callback == "toJSON" ? "{toJSON:function(){" + body + "return 1;}}" : "{}") + ";}}",
+                + ResultSerializationHook(callback, body) + ";}}",
             emptyScope ? new GethTraceDeadlineScope() : null);
         void Trace()
         {
@@ -4085,7 +4083,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Result_json_preserves_unrecoverable_failures(
-        [Values("host", "fatal", "cancellation", "interrupt")] string kind, [Values] bool getter)
+        [Values("host", "fatal", "cancellation", "interrupt")] string kind, [Values("result-getter", "toJSON", "valueOf", "toString")] string phase)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using Engine engine = new(Prague.Instance);
@@ -4098,7 +4096,7 @@ public partial class DebugRpcModuleTests
         };
         using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failResult=action;}}"))
             installer.InvokeMethod("install", fail);
-        string value = getter ? "{get value(){failResult();return 1;}}" : "{toJSON:function(){failResult();return 1;}}";
+        string value = ResultSerializationHook(phase, "failResult();");
         using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
             "{fault:function(){},result:function(){return " + value + ";}}", true);
         Exception failure = Assert.Catch(() => tracer.BuildResult())!;
@@ -4126,11 +4124,11 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Result_json_null_throw_is_a_script_failure([Values] bool getter, [Values] bool capture)
+    public async Task Result_json_null_throw_is_a_script_failure([Values("result-getter", "toJSON", "valueOf", "toString")] string phase, [Values] bool capture)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using Engine engine = new(Prague.Instance);
-        string value = getter ? "{get value(){throw null;}}" : "{toJSON:function(){throw null;}}";
+        string value = ResultSerializationHook(phase, "throw null;");
         using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
             "{fault:function(){},result:function(){return " + value + ";}}", capture);
         if (capture)
@@ -4146,13 +4144,13 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Result_json_preserves_input_abort_diagnostic([Values] bool getter, [Values] bool stack)
+    public async Task Result_json_preserves_input_abort_diagnostic([Values("result-getter", "toJSON", "valueOf", "toString")] string phase, [Values] bool stack)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using Engine engine = new(Prague.Instance);
         string invalidRead = stack ? "saved.stack.peek(-1)" : "saved.memory.slice(-1,1)";
         string body = "try{" + invalidRead + ";}catch(e){}return 'input abort was swallowed';";
-        string value = getter ? "{get value(){" + body + "}}" : "{toJSON:function(){" + body + "}}";
+        string value = ResultSerializationHook(phase, body);
         using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
             "{fault:function(){},step:function(log){this.saved=log;},result:function(){var saved=this.saved;return " + value + ";}}", true);
         tracer.SetOperationStack(default);
@@ -4180,13 +4178,11 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Result_json_script_failure_preserves_diagnostic([Values] bool getter, [Values] bool capture)
+    public async Task Result_json_script_failure_preserves_diagnostic([Values("result-getter", "toJSON", "valueOf", "toString")] string phase, [Values] bool capture)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using Engine engine = new(Prague.Instance);
-        string value = getter
-            ? "{get value(){throw Error('serialization failure');}}"
-            : "{toJSON:function(){throw Error('serialization failure');}}";
+        string value = ResultSerializationHook(phase, "throw Error('serialization failure');");
         using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
             "{fault:function(){},result:function(){return " + value + ";}}", capture);
         if (capture)
@@ -4230,6 +4226,33 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    private static string ResultSerializationHook(string phase, string body) => phase switch
+    {
+        "result-getter" => "{get value(){" + body + "return 1;}}",
+        "toJSON" => "{toJSON:function(){" + body + "return 1;}}",
+        "valueOf" => "({value:Object.assign(new Number(1),{valueOf:function(){" + body + "return 1;}})})",
+        "toString" => "({value:Object.assign(new String('x'),{toString:function(){" + body + "return 'x';}})})",
+        _ => "{}"
+    };
+
+    [Test]
+    public async Task Result_json_overdepth_does_not_read_deeper_getters([Values] bool array, [Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        string wrap = array ? "[o]" : "{a:o}";
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},result:function(){var o={get value(){throw Error('visited beyond limit');}};"
+                + "for(var i=1;i<4097;i++)o=" + wrap + ";return o;}}", capture);
+        if (capture)
+        {
+            using GethLikeTxTrace result = tracer.BuildResult();
+            Assert.That(result.TraceError, Is.EqualTo(JavaScriptResultDepthError));
+        }
+        else
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<JavaScriptTraceFailure>().With.Message.EqualTo(JavaScriptResultDepthError));
+    }
+
     private static IEnumerable<TestCaseData> ResultJsonSemanticsCases()
     {
         (string Name, string Expression, string Expected)[] cases =
@@ -4255,6 +4278,13 @@ public partial class DebugRpcModuleTests
             ("toStringTag_getter", "({get [Symbol.toStringTag](){throw Error('tag getter');},a:1})", "{\"a\":1}"),
             ("boxed_with_array_prototype", "Object.setPrototypeOf(new Number(7),Array.prototype)", "7"),
             ("array_replaced_by_box", "Object.assign([],{toJSON:function(){return new Number(7);}})", "7"),
+            ("probe_proxy_keys_once", "(function(){var n=0;return new Proxy({get a(){return n;}},{ownKeys:function(t){n++;return Reflect.ownKeys(t);}});})()", "{\"a\":1}"),
+            ("probe_proxy_toJSON_once", "(function(){var n=0;return new Proxy({a:1},{get:function(t,k){if(k==='toJSON')n++;return k==='a'?n:Reflect.get(t,k);}});})()", "{\"a\":1}"),
+            ("replacement_box_toJSON_once", "({toJSON:function(){return Object.assign(new Number(7),{toJSON:function(){throw Error('called twice');}});}})", "7"),
+            ("boxed_number_coercion_once", "(function(){var n=0,o=new Number(7);o.valueOf=function(){return ++n;};return {n:o};})()", "{\"n\":1}"),
+            ("boxed_string_coercion_once", "(function(){var n=0,o=new String('x');o.toString=function(){return 'item'+(++n);};return {s:o};})()", "{\"s\":\"item1\"}"),
+            ("raw_json_precision", "JSON.rawJSON('123456789012345678901234567890')", "123456789012345678901234567890"),
+            ("raw_json_exponent", "JSON.rawJSON('1e999')", "1e999"),
             ("boxed_number", "new Number(7)", "7"),
             ("boxed_boolean", "new Boolean(false)", "false"),
             ("boxed_string", "new String('hello')", "\"hello\""),

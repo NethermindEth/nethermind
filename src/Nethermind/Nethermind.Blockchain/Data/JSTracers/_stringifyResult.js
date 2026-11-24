@@ -14,22 +14,13 @@
     const has = Function.prototype.call.bind(WeakSet.prototype.has);
     const add = Function.prototype.call.bind(WeakSet.prototype.add);
     const remove = Function.prototype.call.bind(WeakSet.prototype.delete);
-    const brands = [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf];
+    const emptyPropertyList = [];
 
     function prepare(holder, key) {
         let item = holder[key];
         if (item !== null && (typeof item === 'object' || typeof item === 'function' || typeof item === 'bigint')) {
             const toJSON = item.toJSON;
             if (typeof toJSON === 'function') item = apply(toJSON, item, [key]);
-        }
-        if (item !== null && typeof item === 'object' && !isArray(item)) {
-            // Intrinsic brand checks do not run user coercion or Symbol.toStringTag getters.
-            for (let i = 0; i < brands.length; i++) {
-                let matched = false;
-                let unboxed;
-                try { unboxed = apply(brands[i], item, []); matched = true; } catch (_) { }
-                if (matched) return i === 0 ? +item : i === 1 ? toString(item) : unboxed;
-            }
         }
         return item;
     }
@@ -48,13 +39,18 @@
             if (omitted) {
                 if (!depth || frames[depth - 1].array) output += 'null';
             } else {
+                // The wrapper avoids a second toJSON call; the empty key list lets native stringify
+                // recognize boxed primitives without enumerating ordinary objects.
+                const primitiveJson = item !== null && typeof item === 'object' && !isArray(item)
+                    ? stringify({ toJSON: function () { return item; } }, emptyPropertyList)
+                    : undefined;
                 if (depth && !frames[depth - 1].array) {
                     const parent = frames[depth - 1];
                     if (!parent.first) output += ',';
                     parent.first = false;
                     output += stringify(key) + ':';
                 }
-                if (item !== null && typeof item === 'object') {
+                if (item !== null && typeof item === 'object' && (primitiveJson === undefined || primitiveJson === '{}')) {
                     if (depth >= maxDepth || has(active, item)) {
                         markDepth();
                         throw null;
@@ -68,7 +64,7 @@
                     frames[depth++] = { object: item, array: array, names: names, length: length, index: 0, first: true };
                     output += array ? '[' : '{';
                 } else {
-                    output += stringify(item);
+                    output += primitiveJson === undefined ? stringify(item) : primitiveJson;
                 }
             }
             while (depth) {
