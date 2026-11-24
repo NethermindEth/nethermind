@@ -186,12 +186,11 @@ namespace Nethermind.TxPool.Test
                 _blockTree.Head = Build.A.Block.WithNumber(1).TestObject;
             }
             _txPool = CreatePool();
-            _txPool.AcceptTxWhenNotSynced = true;
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            // A local transaction is accepted while syncing, so the hash is known to a syncing pool.
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
-            _txPool.AcceptTxWhenNotSynced = false;
             if (scenario == "discovery") _txPool.NewDiscovered += static (_, _) => { };
             ValueHash256 hash = scenario == "unknown" ? TestItem.KeccakH : tx.Hash!;
             long known = Metrics.PendingTransactionsKnown;
