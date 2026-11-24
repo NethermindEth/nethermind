@@ -297,8 +297,6 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
         [property: JsonPropertyName("genesis_validators_root")] string GenesisValidatorsRoot,
         [property: JsonPropertyName("genesis_fork_version")] string GenesisForkVersion);
 
-    private sealed record RootDto([property: JsonPropertyName("root")] string Root);
-
     private sealed record BeaconBlockHeaderDto(
         [property: JsonPropertyName("slot")] string Slot,
         [property: JsonPropertyName("proposer_index")] string ProposerIndex,

@@ -257,7 +257,7 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
         [property: JsonPropertyName("connected")] string Connected,
         [property: JsonPropertyName("disconnecting")] string Disconnecting);
 
-    // No shared BeaconApiJson helper produces a {"data": [...], "meta": {...}} shape (only a single
+    // No shared ApiResults helper produces a {"data": [...], "meta": {...}} shape (only a single
     // "data" value or the fork-versioned envelope), so this is written directly rather than reusing one.
     private sealed record PeerDto(
         [property: JsonPropertyName("peer_id")] string PeerId,

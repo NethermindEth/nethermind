@@ -259,7 +259,7 @@ public class BeaconApiBlobsTests : BeaconApiFixture
     public async Task Rebuilds_past_the_bound_are_refused_until_one_response_completes([Values(Json, OctetStream)] string accept)
     {
         ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
-        BeaconApiContext ctx = new(new BeaconChainConfig(), Spec, _host.StatusHolder, new SlotClock(Spec, time), _host.Store,
+        BeaconApiContext ctx = new(Spec, _host.StatusHolder, new SlotClock(Spec, time), _host.Store,
             new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null);
         using BlockingResponse first = new();
         using BlockingResponse second = new();

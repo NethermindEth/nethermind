@@ -22,16 +22,10 @@ internal static class BeaconApiEndpoints
     /// sentence, not whatever the codec put in its exception.</summary>
     internal const string UnsupportedForkMessage = "This node cannot decode the requested beacon state: its fork predates Electra, the first fork this driver decodes";
 
-    /// <summary>Registers the endpoint groups and the view of <paramref name="ctx"/> each request reads, and configures parameter binding.</summary>
+    /// <summary>Registers the view of <paramref name="ctx"/> each request reads, and configures parameter binding.</summary>
     public static void AddServices(IServiceCollection services, BeaconApiContext ctx) => services
         .ConfigureHttpJsonOptions(static options => options.SerializerOptions.PropertyNameCaseInsensitive = false)
         .AddScoped(_ => ctx.ForRequest())
-        .AddScoped<NodeEndpoints>()
-        .AddScoped<ConfigEndpoints>()
-        .AddScoped<BeaconEndpoints>()
-        .AddScoped<BlobsEndpoint>()
-        .AddScoped<BeaconStatesEndpoints>()
-        .AddScoped<DebugEndpoints>()
         .AddSingleton(services => new EventsEndpoint(ctx, services.GetRequiredService<IHostApplicationLifetime>()));
 
     public static void UseMiddleware(WebApplication app, ILogManager logManager)
@@ -94,9 +88,9 @@ internal static class BeaconApiEndpoints
 
         if (metadata.GetMetadata<IAcceptsMetadata>() is not null && c.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody == true)
         {
-            if (!ContentNegotiation.IsAcceptableContentType(c, ContentNegotiation.Json))
+            if (!ContentNegotiation.IsJsonContentType(c))
             {
-                await ContentNegotiation.WriteUnsupportedMediaType(c, ContentNegotiation.Json);
+                await ContentNegotiation.WriteUnsupportedMediaType(c);
                 return;
             }
 

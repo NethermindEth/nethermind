@@ -419,7 +419,7 @@ public class BeaconApiHostTests : BeaconApiFixture
     private async Task<WeakReference> StartAndDisposeHostAsync(NoOpProcessExitSource exitSource)
     {
         BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
-        BeaconApiHost host = new(apiConfig, new BeaconChainConfig(), Spec, _host.StatusHolder, _host.Clock, _host.Store,
+        BeaconApiHost host = new(apiConfig, Spec, _host.StatusHolder, _host.Clock, _host.Store,
             new LocalMetadataSource(), _engine, exitSource, LimboLogs.Instance);
 
         await host.StartAsync(CancellationToken.None);

@@ -29,7 +29,6 @@ namespace Nethermind.BeaconChain.Api;
 /// </summary>
 public sealed class BeaconApiHost(
     IBeaconApiConfig apiConfig,
-    IBeaconChainConfig chainConfig,
     BeaconChainSpec spec,
     IBeaconChainStatusSource statusSource,
     SlotClock slotClock,
@@ -65,7 +64,7 @@ public sealed class BeaconApiHost(
         builder.Logging.ClearProviders();
         builder.WebHost.UseKestrelCore().UseUrls($"http://{apiConfig.Host}:{apiConfig.Port}");
         builder.Services.AddRoutingCore();
-        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, columnPool);
+        BeaconApiContext ctx = new(spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, columnPool);
         BeaconApiEndpoints.AddServices(builder.Services, ctx);
 
         WebApplication app = builder.Build();
@@ -91,7 +90,7 @@ public sealed class BeaconApiHost(
         if (_logger.IsInfo) _logger.Info($"Beacon API listening on http://{apiConfig.Host}:{port}");
     }
 
-    /// <summary>Maps the routes every endpoint service declares, which <see cref="BeaconApiEndpoints.AddServices"/> must have registered.</summary>
+    /// <summary>Maps the routes every endpoint service declares; they depend on what <see cref="BeaconApiEndpoints.AddServices"/> registers.</summary>
     internal static void MapRoutes(WebApplication app)
     {
         app.MapService(typeof(NodeEndpoints));

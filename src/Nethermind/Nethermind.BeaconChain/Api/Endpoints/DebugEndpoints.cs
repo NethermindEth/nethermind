@@ -135,10 +135,6 @@ internal sealed class DebugEndpoints(BeaconApiContext ctx)
                 : BeaconJsonWriter.WriteBeaconStateAsync(s, state.Gloas!)).WithConsensusVersion(ctx.Spec, state.Slot);
     }
 
-    private sealed record CheckpointDto(
-        [property: JsonPropertyName("epoch")] string Epoch,
-        [property: JsonPropertyName("root")] string Root);
-
     // parent_root and execution_block_hash are required by the beacon-API Node schema, so a node
     // that has neither carries the zero root rather than omitting the field.
     private sealed record ForkChoiceNodeDto(

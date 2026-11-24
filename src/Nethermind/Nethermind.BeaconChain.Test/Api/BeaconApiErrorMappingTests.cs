@@ -44,7 +44,7 @@ public class BeaconApiErrorMappingTests
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         IBeaconChainStatusSource failingStatus = Substitute.For<IBeaconChainStatusSource>();
         failingStatus.CurrentHead.Throws(new InvalidOperationException(UnrelatedInternalDetail));
-        BeaconApiContext ctx = new(new BeaconChainConfig(), Spec, failingStatus, _host.Clock, _host.Store,
+        BeaconApiContext ctx = new(Spec, failingStatus, _host.Clock, _host.Store,
             new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null);
         BeaconApiEndpoints.AddServices(builder.Services, ctx);
         _pipeline = builder.Build();

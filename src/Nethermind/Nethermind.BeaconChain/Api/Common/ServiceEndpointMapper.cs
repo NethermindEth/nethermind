@@ -16,7 +16,7 @@ namespace Nethermind.BeaconChain.Api.Common;
 internal static class ServiceEndpointMapper
 {
     /// <summary>Maps each public method of <paramref name="service"/> once per <see cref="HttpMethodAttribute"/> it carries.</summary>
-    /// <remarks>Parameters are bound as for a minimal API; an instance method is called on the <paramref name="service"/> the request's scope resolves.</remarks>
+    /// <remarks>Parameters are bound as for a minimal API; an instance method is called on the registered <paramref name="service"/>, or on a new one built from the request's services.</remarks>
     public static void MapService(this IEndpointRouteBuilder app, Type service)
     {
         foreach (MethodInfo method in service.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
@@ -33,7 +33,7 @@ internal static class ServiceEndpointMapper
         RoutePattern pattern = RoutePatternFactory.Parse(route.Template!);
         RequestDelegateResult handler = RequestDelegateFactory.Create(
             method,
-            method.IsStatic ? null : c => c.RequestServices.GetRequiredService(service),
+            method.IsStatic ? null : c => ActivatorUtilities.GetServiceOrCreateInstance(c.RequestServices, service),
             new RequestDelegateFactoryOptions
             {
                 ServiceProvider = app.ServiceProvider,

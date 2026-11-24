@@ -173,9 +173,4 @@ internal sealed class ConfigEndpoints(BeaconApiContext ctx)
     private sealed record DepositContractDto(
         [property: JsonPropertyName("chain_id")] string ChainId,
         [property: JsonPropertyName("address")] string Address);
-
-    private sealed record ForkDto(
-        [property: JsonPropertyName("previous_version")] string PreviousVersion,
-        [property: JsonPropertyName("current_version")] string CurrentVersion,
-        [property: JsonPropertyName("epoch")] string Epoch);
 }

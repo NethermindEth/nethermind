@@ -755,22 +755,11 @@ internal sealed class BeaconStatesEndpoints(BeaconApiContext ctx)
         [property: JsonPropertyName("slot")] string Slot,
         [property: JsonPropertyName("validators")] string[] Validators);
 
-    private sealed record ForkDto(
-        [property: JsonPropertyName("previous_version")] string PreviousVersion,
-        [property: JsonPropertyName("current_version")] string CurrentVersion,
-        [property: JsonPropertyName("epoch")] string Epoch);
-
-    private sealed record RootDto([property: JsonPropertyName("root")] string Root);
-
     private sealed record RandaoDto([property: JsonPropertyName("randao")] string Randao);
 
     private sealed record SyncCommitteeDto(
         [property: JsonPropertyName("validators")] string[] Validators,
         [property: JsonPropertyName("validator_aggregates")] string[][] ValidatorAggregates);
-
-    private sealed record CheckpointDto(
-        [property: JsonPropertyName("epoch")] string Epoch,
-        [property: JsonPropertyName("root")] string Root);
 
     private sealed record FinalityCheckpointsDto(
         [property: JsonPropertyName("previous_justified")] CheckpointDto PreviousJustified,

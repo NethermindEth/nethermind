@@ -92,23 +92,15 @@ internal static class ContentNegotiation
         ApiErrors.Write(ctx, StatusCodes.Status406NotAcceptable,
             "No representation acceptable to the request's Accept header is available", ctx.RequestAborted);
 
-    /// <summary>Validates a request's <c>Content-Type</c> against the media types an endpoint accepts.</summary>
-    public static bool IsAcceptableContentType(HttpContext ctx, params ReadOnlySpan<string> accepted)
+    /// <summary>Whether a request's <c>Content-Type</c> is <see cref="Json"/>, whatever its parameters.</summary>
+    public static bool IsJsonContentType(HttpContext ctx)
     {
-        string? contentType = ctx.Request.ContentType;
-        if (string.IsNullOrEmpty(contentType)) return false;
-
+        ReadOnlySpan<char> contentType = ctx.Request.ContentType;
         int semicolon = contentType.IndexOf(';');
-        ReadOnlySpan<char> mediaType = (semicolon < 0 ? contentType.AsSpan() : contentType.AsSpan(0, semicolon)).Trim();
-        foreach (string candidate in accepted)
-        {
-            if (mediaType.Equals(candidate, StringComparison.OrdinalIgnoreCase)) return true;
-        }
-
-        return false;
+        return (semicolon < 0 ? contentType : contentType[..semicolon]).Trim().Equals(Json, StringComparison.OrdinalIgnoreCase);
     }
 
-    public static Task WriteUnsupportedMediaType(HttpContext ctx, string expected) =>
+    public static Task WriteUnsupportedMediaType(HttpContext ctx) =>
         ApiErrors.Write(ctx, StatusCodes.Status415UnsupportedMediaType,
-            $"Request Content-Type must be '{expected}'", ctx.RequestAborted);
+            $"Request Content-Type must be '{Json}'", ctx.RequestAborted);
 }

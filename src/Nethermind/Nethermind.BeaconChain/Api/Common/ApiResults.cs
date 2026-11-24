@@ -1,34 +1,42 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Spec;
 
 namespace Nethermind.BeaconChain.Api.Common;
 
-/// <summary>The results endpoint handlers return, each deferring to the shared response writers.</summary>
+/// <summary>The results endpoint handlers return.</summary>
 internal static class ApiResults
 {
     public static IResult Error(int statusCode, string message) =>
         Write(c => ApiErrors.Write(c, statusCode, message, c.RequestAborted));
 
-    public static IResult Data<T>(T data) =>
-        Write(c => BeaconApiJson.WriteDataAsync(c, data, c.RequestAborted));
-
     /// <summary>A JSON body that carries no beacon-api envelope.</summary>
-    public static IResult Json<T>(T body) =>
-        Write(c => BeaconApiJson.WriteAsync(c, body, c.RequestAborted));
+    public static IResult Json<T>(T body) => Write(c =>
+    {
+        c.Response.ContentType = ContentNegotiation.Json;
+        return JsonSerializer.SerializeAsync(c.Response.Body, body, BeaconApiJson.Options, c.RequestAborted);
+    });
+
+    public static IResult Data<T>(T data) => Json(new DataEnvelope<T>(data));
 
     public static IResult Envelope<T>(T data, bool executionOptimistic, bool finalized) =>
-        Write(c => BeaconApiJson.WriteEnvelopeAsync(c, data, executionOptimistic, finalized, c.RequestAborted));
+        Json(new FullEnvelope<T>(executionOptimistic, finalized, data));
 
-    /// <inheritdoc cref="BeaconApiJson.WriteVersionedEnvelopeAsync"/>
+    /// <summary>
+    /// Streams the fork-versioned envelope (<c>version</c>, <c>execution_optimistic</c>,
+    /// <c>finalized</c>, <c>data</c>) the v2 block and debug-state endpoints return, with
+    /// <paramref name="writeData"/> producing the <c>data</c> value through the shared writer.
+    /// </summary>
     public static IResult VersionedEnvelope(string version, bool executionOptimistic, bool finalized, Func<BeaconJsonStream, Task> writeData) =>
-        Write(c => BeaconApiJson.WriteVersionedEnvelopeAsync(c, version, executionOptimistic, finalized, writeData));
+        Write(c => WriteEnvelopeAsync(c, version, executionOptimistic, finalized, writeData));
 
-    /// <inheritdoc cref="BeaconApiJson.WriteStreamedEnvelopeAsync"/>
+    /// <summary>Streams the unversioned <c>execution_optimistic</c>, <c>finalized</c>, <c>data</c> envelope with <paramref name="writeData"/> producing the <c>data</c> value, so a large list is never buffered whole.</summary>
     public static IResult StreamedEnvelope(bool executionOptimistic, bool finalized, Func<BeaconJsonStream, Task> writeData) =>
-        Write(c => BeaconApiJson.WriteStreamedEnvelopeAsync(c, executionOptimistic, finalized, writeData));
+        Write(c => WriteEnvelopeAsync(c, null, executionOptimistic, finalized, writeData));
 
     public static IResult Ssz(byte[] ssz) => Write(c =>
     {
@@ -51,6 +59,28 @@ internal static class ApiResults
         c.Response.Headers[ResponseEnvelope.ConsensusVersionHeader] = ResponseEnvelope.ForkName(fork);
         return result.ExecuteAsync(c);
     });
+
+    private static async Task WriteEnvelopeAsync(HttpContext c, string? version, bool executionOptimistic, bool finalized, Func<BeaconJsonStream, Task> writeData)
+    {
+        c.Response.ContentType = ContentNegotiation.Json;
+        await using BeaconJsonStream stream = new(c.Response.BodyWriter, c.RequestAborted);
+        Utf8JsonWriter w = stream.Writer;
+        w.WriteStartObject();
+        if (version is not null) w.WriteString("version", version);
+        w.WriteBoolean("execution_optimistic", executionOptimistic);
+        w.WriteBoolean("finalized", finalized);
+        w.WritePropertyName("data");
+        await writeData(stream);
+        w.WriteEndObject();
+        await stream.FlushAsync();
+    }
+
+    private sealed record DataEnvelope<T>([property: JsonPropertyName("data")] T Data);
+
+    private sealed record FullEnvelope<T>(
+        [property: JsonPropertyName("execution_optimistic")] bool ExecutionOptimistic,
+        [property: JsonPropertyName("finalized")] bool Finalized,
+        [property: JsonPropertyName("data")] T Data);
 
     private sealed class WriteResult(Func<HttpContext, Task> write) : IResult
     {

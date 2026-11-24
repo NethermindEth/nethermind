@@ -22,13 +22,16 @@ internal sealed class EventsEndpoint(BeaconApiContext ctx, IHostApplicationLifet
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
     private static readonly string[] SupportedTopics = ["head", "finalized_checkpoint"];
 
+    private readonly EventCache _events = new();
+    private int _activeStreams;
+
     [HttpGet("/eth/v1/events")]
     public async Task Stream(HttpContext c)
     {
         CancellationToken stopping = lifetime.ApplicationStopping;
-        if (Interlocked.Increment(ref ctx.Events.ActiveStreams) > 32)
+        if (Interlocked.Increment(ref _activeStreams) > 32)
         {
-            Interlocked.Decrement(ref ctx.Events.ActiveStreams);
+            Interlocked.Decrement(ref _activeStreams);
             await ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable, "Too many event streams.", c.RequestAborted);
             return;
         }
@@ -36,13 +39,13 @@ internal sealed class EventsEndpoint(BeaconApiContext ctx, IHostApplicationLifet
         {
             using CancellationTokenSource streamLifetime = CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted, stopping);
             c.RequestAborted = streamLifetime.Token;
-            await StreamCore(c, ctx);
+            await StreamCore(c);
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested || c.RequestAborted.IsCancellationRequested) { }
-        finally { Interlocked.Decrement(ref ctx.Events.ActiveStreams); }
+        finally { Interlocked.Decrement(ref _activeStreams); }
     }
 
-    private static async Task StreamCore(HttpContext c, BeaconApiContext ctx)
+    private async Task StreamCore(HttpContext c)
     {
         string[] topics = c.Request.Query["topics"].ToString()
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -80,7 +83,7 @@ internal sealed class EventsEndpoint(BeaconApiContext ctx, IHostApplicationLifet
                 BeaconApiContext poll = ctx.ForRequest();
                 StatusMessageV2 status = poll.StatusSource.CurrentStatus;
                 if (wantsHead && status.HeadRoot != Hash256.Zero && status.HeadRoot != lastHead
-                    && ctx.Events.Head(poll, status.HeadRoot!, lastHeadSlot) is { } headEvent)
+                    && _events.Head(poll, status.HeadRoot!, lastHeadSlot) is { } headEvent)
                 {
                     lastHead = status.HeadRoot;
                     lastHeadSlot = status.HeadSlot;
@@ -154,7 +157,6 @@ internal sealed class EventsEndpoint(BeaconApiContext ctx, IHostApplicationLifet
 
     internal sealed class EventCache
     {
-        public int ActiveStreams;
         private readonly Lock _lock = new();
         private Hash256? _root;
         private HeadEventDto? _head;
