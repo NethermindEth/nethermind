@@ -16,13 +16,15 @@ internal static class TimeoutTestHelper
     }
 
     /// <summary>Whether a request rented <paramref name="timeout"/> and returned it for reuse.</summary>
-    internal static bool WasReturned(CancellationTokenSource timeout) => JsonRpcConfigExtension.EndTimeoutInFlow(timeout);
+    internal static bool WasReturned(CancellationTokenSource timeout) => JsonRpcConfigExtension.WasTimeoutReturnedInFlow(timeout);
 
     internal static void DisposeIfNotAlreadyObserved(TrackingCancellationTokenSource timeout)
     {
         // Only a source returned within the flow is held by nobody: one returned from another flow is in the shared pool,
         // where disposing it would fail the next rent anywhere in the process.
-        if (JsonRpcConfigExtension.EndTimeoutInFlow(timeout) && timeout.DisposeCount == 0)
+        bool returned = WasReturned(timeout);
+        JsonRpcConfigExtension.EndTimeoutInFlow();
+        if (returned && timeout.DisposeCount == 0)
         {
             timeout.Dispose();
         }
