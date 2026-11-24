@@ -631,6 +631,17 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     /// <inheritdoc/>
     public bool TryRequestCells(in ValueHash256 hash, BlobCellMask requestMask, PublicKey lastResortPeerId)
+        => TryRequestCells(hash, requestMask, lastResortPeerId, preferredPeer: null);
+
+    /// <summary>
+    /// Requests cells like the public overload. <paramref name="preferredPeer"/> is set only on the retry after a failed
+    /// proof check whose cells are kept; see <see cref="SelectPeer"/>.
+    /// </summary>
+    private bool TryRequestCells(
+        in ValueHash256 hash,
+        BlobCellMask requestMask,
+        PublicKey lastResortPeerId,
+        ISparseBlobPoolPeer? preferredPeer)
     {
         if (requestMask.IsEmpty || !_transactions.TryGetValue(hash, out TrackedSparseBlobTx? state))
         {
@@ -681,7 +692,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             // by the number of announcers. Reserving before sending deduplicates concurrent
             // requests for the same cells.
             while (!requestMask.IsEmpty
-                && SelectPeer(state, requestMask, lastResortPeerId, capacityLimitedPeers, out BlobCellMask sendMask) is { } peer)
+                && SelectPeer(state, requestMask, lastResortPeerId, preferredPeer, capacityLimitedPeers, out BlobCellMask sendMask) is { } peer)
             {
                 // The deadline is armed only on the empty->non-empty transition; extending it on
                 // every reservation would let a dead request's bits stay in flight indefinitely.
@@ -1463,13 +1474,16 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     /// Cell responses are all-or-nothing per transaction, so a peer asked for cells outside its
     /// announcement replies empty. Peers whose announcement covers the whole request are preferred;
     /// otherwise the request is trimmed to a partial announcer's mask and the caller keeps
-    /// selecting peers for the remainder. While cells from a failed proof check are kept for
-    /// attribution, the body peer is asked first when it covers the request.
+    /// selecting peers for the remainder. Only the retry after a failed proof check passes
+    /// <paramref name="preferredPeer"/>: while the failed cells are kept, the body peer is asked first
+    /// when its announcement covers the request and it is eligible, so that the retried cells and the
+    /// body come from one peer.
     /// </remarks>
     private ISparseBlobPoolPeer? SelectPeer(
         TrackedSparseBlobTx state,
         BlobCellMask requestMask,
         PublicKey lastResortPeerId,
+        ISparseBlobPoolPeer? preferredPeer,
         HashSet<PublicKey>? excludedPeers,
         out BlobCellMask sendMask)
     {
@@ -1479,18 +1493,17 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return null;
         }
 
-        // While cells from a failed check are kept, the body peer's own cells settle which side was wrong:
-        // they either verify against its proofs or fail as a same-source tuple.
-        if (state.UnattributedCells is not null
-            && state.TransactionPeer is { } transactionPeer
-            && state.Announcements.TryGetValue(transactionPeer.Id, out BlobCellMask transactionPeerMask)
-            && (transactionPeerMask & requestMask) == requestMask
-            && excludedPeers?.Contains(transactionPeer.Id) != true
-            && !state.AmbiguousFailureSources.Contains(transactionPeer.Id)
-            && !state.InFlightByPeer.ContainsKey(transactionPeer.Id)
-            && IsActivePeer(transactionPeer))
+        if (preferredPeer is not null
+            && state.UnattributedCells is not null
+            && ReferenceEquals(state.TransactionPeer, preferredPeer)
+            && state.Announcements.TryGetValue(preferredPeer.Id, out BlobCellMask preferredPeerMask)
+            && (preferredPeerMask & requestMask) == requestMask
+            && excludedPeers?.Contains(preferredPeer.Id) != true
+            && !state.AmbiguousFailureSources.Contains(preferredPeer.Id)
+            && !state.InFlightByPeer.ContainsKey(preferredPeer.Id)
+            && IsActivePeer(preferredPeer))
         {
-            return transactionPeer;
+            return preferredPeer;
         }
 
         ISparseBlobPoolPeer? lastResortPeer = null;
@@ -1848,6 +1861,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         PublicKey retryFallbackPeerId = cells.LastSourcePeerId;
         ISparseBlobPoolPeer? transactionRetryPeer = null;
+        ISparseBlobPoolPeer? retryPreferredPeer = null;
         ISparseBlobPoolPeer? peerToDisconnect = null;
         PublicKey? peerToRemove = null;
         string? disconnectDetails = null;
@@ -1897,7 +1911,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     && transactionPeer is not null
                     && ReferenceEquals(state.TransactionPeer, transactionPeer)
                     && IsActivePeer(transactionPeer);
-                if (!keepTransaction)
+                if (keepTransaction)
+                {
+                    retryPreferredPeer = transactionPeer;
+                }
+                else
                 {
                     transactionRetryPeer = SelectTransactionRetryPeer(cells, transactionPeer);
                     ReleaseTransaction(state);
@@ -1958,7 +1976,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
 
         transactionRetryPeer?.TrySendPooledTransactionRequest(hash);
-        TryRequestCells(hash, cells.CellMask, retryFallbackPeerId);
+        TryRequestCells(hash, cells.CellMask, retryFallbackPeerId, retryPreferredPeer);
         return null;
     }
 
