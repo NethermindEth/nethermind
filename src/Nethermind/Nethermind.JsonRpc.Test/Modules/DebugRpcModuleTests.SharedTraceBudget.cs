@@ -481,7 +481,10 @@ public partial class DebugRpcModuleTests
             new { timeout = "bad", streamMode = true });
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid argument 2\"},\"id\":67}"));
+            string expected = method == "debug_traceCall"
+                ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"time: invalid duration \"bad\""},"id":67}"""
+                : """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 2"},"id":67}""";
+            Assert.That(response, Is.EqualTo(expected));
             Assert.That(counter.Calls, Is.Zero);
         }
     }
@@ -523,7 +526,7 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That(parsed["result"], Is.Null);
                 Assert.That(parsed["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000));
-                Assert.That(parsed["error"]?["message"]?.Value<string>(), Does.Contain("Cannot parse 'bad'"));
+                Assert.That(parsed["error"]?["message"]?.Value<string>(), Does.Contain("time: invalid duration \"bad\""));
             }
             else
             {
