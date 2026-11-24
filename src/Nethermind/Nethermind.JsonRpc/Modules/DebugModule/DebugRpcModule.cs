@@ -208,7 +208,7 @@ public class DebugRpcModule(
         blockParameter = new BlockParameter(header!.Hash!);
 
         if (BlockchainBridge.GetUnsupportedBlockOverrideError(options?.BlockOverrides) is { } overrideError)
-            return ResultWrapper<GethLikeTxTrace>.Fail(overrideError, ErrorCodes.InvalidInput);
+            return ResultWrapper<GethLikeTxTrace>.Fail(overrideError, ErrorCodes.InvalidParams);
 
         // The call converts against the fork it runs in, which a block override can change.
         BlockHeader callHeader = options?.BlockOverrides?.ApplyTo(header) ?? header;
@@ -1352,10 +1352,10 @@ public class DebugRpcModule(
         }
 
         if (BlockchainBridge.GetUnsupportedBlockOverrideError(options?.BlockOverrides) is { } overrideError)
-            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(overrideError, ErrorCodes.InvalidInput);
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(overrideError, ErrorCodes.InvalidParams);
 
         if (bundles.Any(static b => b.BlockOverride?.Withdrawals is not null))
-            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput);
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
 
         if (StateOverrideValidation.GetStorageConflictError(options?.StateOverrides) is { } storageError)
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);

@@ -1696,9 +1696,9 @@ public partial class DebugRpcModuleTests
     {
         (string Json, string? Error, int? Code)[] cases =
         [
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidInput),
-            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput),
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidInput),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidParams),
+            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidParams),
             ("{\"beaconRoot\":null,\"withdrawals\":null}", null, null)
         ];
         foreach ((string json, string? error, int? code) in cases)
