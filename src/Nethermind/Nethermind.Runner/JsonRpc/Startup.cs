@@ -57,7 +57,7 @@ public class Startup : IStartup
     // stack must not be re-advertised through an error this endpoint serves unauthenticated.
     private const string RequestBodyTimeoutMessage = "Request body read timed out.";
 
-    private JsonRpcProcessor _jsonRpcProcessor = null!;
+    private IJsonRpcProcessor _jsonRpcProcessor = null!;
     private IJsonRpcService _jsonRpcService = null!;
     private IJsonRpcLocalStats _jsonRpcLocalStats = null!;
     private EthereumJsonSerializer _jsonSerializer = null!;
@@ -71,7 +71,7 @@ public class Startup : IStartup
     public Startup() { }
 
     internal Startup(
-        JsonRpcProcessor jsonRpcProcessor,
+        IJsonRpcProcessor jsonRpcProcessor,
         IJsonRpcService jsonRpcService,
         IJsonRpcLocalStats jsonRpcLocalStats,
         EthereumJsonSerializer jsonSerializer,
@@ -161,14 +161,14 @@ public class Startup : IStartup
         Configure(
             app,
             services.GetRequiredService<IWebHostEnvironment>(),
-            services.GetRequiredService<JsonRpcProcessor>(),
+            services.GetRequiredService<IJsonRpcProcessor>(),
             services.GetRequiredService<IJsonRpcService>(),
             services.GetRequiredService<IJsonRpcLocalStats>(),
             services.GetRequiredService<EthereumJsonSerializer>(),
             services.GetRequiredService<ApplicationLifetime>());
     }
 
-    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
 
         EthereumJsonSerializer.WarmupSerializer(
