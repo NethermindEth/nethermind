@@ -436,6 +436,27 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
+    [TestCase(true, SimulateErrorMessages.NullBlock)]
+    [TestCase(false, SimulateErrorMessages.NullCall)]
+    public async Task Simulate_executor_rejects_null_entries_built_in_code(bool nullBlock, string expectedError)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = nullBlock ? [null!] : [new BlockStateCall<TransactionForRpc> { Calls = [null!] }]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)result.Result, Is.False);
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result.Error, Is.EqualTo(expectedError));
+        }
+    }
+
     [TestCase(3, 2, "too many calls: 4 > 3", TestName = "Test_eth_simulateV1_total_calls_above_cap_returns_error")]
     [TestCase(4, 1, "too many calls in block: 2 > 1", TestName = "Test_eth_simulateV1_block_calls_above_cap_returns_error")]
     [TestCase(4, 2, null, TestName = "Test_eth_simulateV1_calls_at_caps_are_accepted")]
