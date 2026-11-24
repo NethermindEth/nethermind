@@ -705,7 +705,7 @@ namespace Nethermind.TxPool.Test
             // ObserveHeadSpec and InitializeValidatedSpec see Prague; the final startup check sees Osaka.
             changingSpecProvider.GetCurrentHeadSpec().Returns(Prague.Instance, Prague.Instance, Osaka.Instance);
             changingSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
-            ChainHeadInfoProvider headInfo = new(changingSpecProvider, _blockTree, _stateProvider);
+            ChainHeadInfoProvider headInfo = new(changingSpecProvider, _blockTree, _stateProvider, _blockProcessing);
 
             _txPool = CreatePool(
                 specProvider: new TestSpecProvider(Prague.Instance),
@@ -2652,7 +2652,7 @@ namespace Nethermind.TxPool.Test
                 callInfo.Arg<Address>() == missingSender ? throw MissingHeadState() : 0ul);
             _txPool = CreatePool(
                 specProvider: GetCancunSpecProvider(),
-                chainHeadInfoProvider: new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state));
+                chainHeadInfoProvider: new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state, _blockProcessing));
 
             // Nonces 1 and 2 leave a gap behind the account nonce, so the bucket update drops all four on the next
             // head. A second drop per sender takes the cached nonce, which must stay unknown for the missing sender
@@ -2693,7 +2693,7 @@ namespace Nethermind.TxPool.Test
             });
             _txPool = CreatePool(
                 specProvider: GetCancunSpecProvider(),
-                chainHeadInfoProvider: new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state));
+                chainHeadInfoProvider: new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state, _blockProcessing));
 
             // Nonces 1 to 3 leave a gap behind the account nonce, so the bucket update drops all three on the next head.
             Transaction[] txs = [.. Enumerable.Range(1, 3).Select(nonce => Build.A.Transaction
@@ -2732,7 +2732,7 @@ namespace Nethermind.TxPool.Test
             });
             _txPool = CreatePool(
                 specProvider: GetCancunSpecProvider(),
-                chainHeadInfoProvider: new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, stateReader));
+                chainHeadInfoProvider: new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, stateReader, _blockProcessing));
 
             // Nonce 1 leaves a gap behind the account nonce, so the bucket update drops both on the next head.
             Transaction[] txs = [.. new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB }.Select(key => Build.A.Transaction
@@ -7766,7 +7766,7 @@ namespace Nethermind.TxPool.Test
             ISpecProvider specProvider = KeyedNonceSpecProvider();
             CountingReadOnlyStateProvider counting = new(_stateProvider);
             _txPool = CreatePool(null, specProvider,
-                new ChainHeadInfoProvider(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, counting));
+                new ChainHeadInfoProvider(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, counting, _blockProcessing));
             Address sender = TestItem.PrivateKeyA.Address;
             _stateProvider.CreateAccount(sender, 100.Ether);
 
