@@ -33,7 +33,7 @@ using WebHost = Nethermind.JsonRpc.Hosting.WebHost;
 namespace Nethermind.Runner.Ethereum
 {
     public class JsonRpcRunner(
-        JsonRpcProcessor jsonRpcProcessor,
+        IJsonRpcProcessor jsonRpcProcessor,
         IJsonRpcUrlCollection jsonRpcUrlCollection,
         IWebSocketsManager webSocketsManager,
         IConfigProvider configurationProvider,
@@ -51,7 +51,7 @@ namespace Nethermind.Runner.Ethereum
         private readonly IConfigProvider _configurationProvider = configurationProvider;
         private readonly IRpcAuthentication _rpcAuthentication = rpcAuthentication;
         private readonly ILogManager _logManager = logManager;
-        private readonly JsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
+        private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
         private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection = jsonRpcUrlCollection;
         private readonly IWebSocketsManager _webSocketsManager = webSocketsManager;
         private WebHost? _webApp;

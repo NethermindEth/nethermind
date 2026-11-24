@@ -20,12 +20,19 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
         public Stack stack { get; set; } = new();
         public Memory memory { get; set; } = new();
         public Contract contract { get; set; } = null!;
+        // Geth exposes these through the get* methods only, so JSON.stringify(log) leaves them out.
+        [NoScriptAccess]
         public long pc { get; set; }
 
+        [NoScriptAccess]
         public ulong gas { get; set; }
+        [NoScriptAccess]
         public ulong? gasCost { get; set; }
+        [NoScriptAccess]
         public int depth { get; set; }
+        [NoScriptAccess]
         public long refund { get; set; }
+        [NoScriptAccess]
         public string? error { get; set; }
 
         public ulong getPC() => (ulong)pc;
@@ -42,6 +49,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
 
             private Opcode(Instruction value) => Value = value;
 
+            [NoScriptAccess]
             public Instruction Value { get; }
 
             internal static Opcode Of(Instruction value) => All[(byte)value];
@@ -92,6 +100,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
 
         public class Memory
         {
+            [NoScriptAccess]
             public TraceMemory MemoryTrace;
             internal Engine? InputErrorEngine { get; set; }
 
@@ -146,6 +155,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
             private readonly Address _address = address;
             private readonly ReadOnlyMemory<byte>? _input = input;
             private IJavaScriptObject? _valueConverted;
+            [NoScriptAccess]
             public Address Caller { get; } = caller;
 
             public ITypedArray<byte> getAddress() => _address.Bytes.ToTypedScriptArray();

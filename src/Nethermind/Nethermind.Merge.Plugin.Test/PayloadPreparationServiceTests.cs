@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -265,6 +266,24 @@ public class PayloadPreparationServiceTests
         }
     }
 
+    [Test]
+    [CancelAfter(30000)]
+    public void Improvement_logs_an_error_when_a_follow_up_improvement_throws()
+    {
+        TestErrorLogManager logManager = new();
+        using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory(), logManager);
+        InvalidOperationException failure = new();
+        // The first improvement starts from the empty block; the second one runs in the improvement loop.
+        service.BeforeImprove = improvement =>
+        {
+            if (improvement == 2) throw failure;
+        };
+
+        service.StartPreparingPayload(ParentHeader, Attributes);
+
+        Assert.That(() => logManager.Errors.Any(e => e.Exception == failure), Is.True.After(10000, 10));
+    }
+
     [TestCase(0, 10000)]
     [TestCase(1, 100)]
     [CancelAfter(30000)]
@@ -368,7 +387,7 @@ public class PayloadPreparationServiceTests
         }
     }
 
-    private static TestPayloadPreparationService CreateService(IBlockImprovementContextFactory factory)
+    private static TestPayloadPreparationService CreateService(IBlockImprovementContextFactory factory, ILogManager? logManager = null)
     {
         IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
         blockProducer
@@ -387,7 +406,7 @@ public class PayloadPreparationServiceTests
             txPool,
             factory,
             Substitute.For<ITimerFactory>(),
-            LimboLogs.Instance,
+            logManager ?? LimboLogs.Instance,
             TimePerSlot,
             TimeSpan.FromMilliseconds(1));
     }
