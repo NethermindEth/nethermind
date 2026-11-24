@@ -27,10 +27,10 @@ public static class Eth74Protocol
     public static readonly TimeSpan MaxServeBacklog = TimeSpan.FromSeconds(1);
 
     /// <summary>The largest valid <c>DependencyProofs</c> message data, checked before decompression.</summary>
-    /// <remarks>A responder adds no proof once the response reaches <see cref="SoftResponseLimit"/>, so the last one may take it
-    /// past the limit by at most one <c>MAX_DEPENDENCY_PROOF_BYTES</c> proof; the rest is RLP framing of up to
-    /// <see cref="MaxProofsPerRequest"/> entries, the request ID and the two list prefixes.</remarks>
-    public const int LocalMaxResponseBytes = SoftResponseLimit + Eip8288Constants.MaxAggregateProofBytes + MaxProofsPerRequest * 4 + 19;
+    /// <remarks>A responder adds no proof once its entries reach <see cref="SoftResponseLimit"/>, so the last one may take them
+    /// past the limit by at most one <c>MAX_DEPENDENCY_PROOF_BYTES</c> proof and its 4-byte prefix; the rest is the request ID
+    /// and the two list prefixes. Peers with a larger soft limit exceed this local cap.</remarks>
+    public const int LocalMaxResponseBytes = SoftResponseLimit + Eip8288Constants.MaxAggregateProofBytes + 4 + 19;
 
     /// <summary>Whether an advertised uncompressed size exceeds this client's cap for an <c>eth/74</c> message, checked before
     /// decompression.</summary>
