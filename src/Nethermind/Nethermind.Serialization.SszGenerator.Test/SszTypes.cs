@@ -633,6 +633,12 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public Bloom[] Blooms { get; set; }
 
         [SszList(2)]
+        public Address[] Addresses { get; set; }
+
+        [SszVector(2)]
+        public Address[] AddressVector { get; set; }
+
+        [SszList(2)]
         public PrimitiveEnum[] Enums { get; set; }
 
         [SszList(4)]

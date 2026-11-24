@@ -7,6 +7,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Nethermind.Core;
@@ -1122,18 +1123,26 @@ public class EncodingTest
             Reference = new TestBytes48(Enumerable.Repeat((byte)9, TestBytes48SszVectorTypeConverter.Length).ToArray()),
             Hashes = [TestItem.KeccakB, TestItem.KeccakC],
             Blooms = [Bloom.Empty, new Bloom(Enumerable.Repeat((byte)3, Bloom.ByteLength).ToArray())],
+            Addresses = [TestItem.AddressB, TestItem.AddressC],
+            AddressVector = [TestItem.AddressD, TestItem.AddressE],
             Enums = [PrimitiveEnum.Max, PrimitiveEnum.One],
             Bytes = Bytes.FromHexString("010203"),
         };
 
-        LeafContainer.RefReader reader = new(Encode(value));
+        byte[] encoded = Encode(value);
+        LeafContainer.RefReader reader = new(encoded);
 
         ValueHash256 hash = reader.Hash;
-        ValueAddress address = reader.Address;
+        ref readonly ValueAddress address = ref reader.Address;
+        ReadOnlySpan<ValueAddress> addresses = reader.Addresses;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(hash, Is.EqualTo(value.Hash.ValueHash256));
             Assert.That(address.ToAddress(), Is.EqualTo(value.Address));
+            Assert.That(Unsafe.AreSame(in encoded[ValueHash256.MemorySize], in Unsafe.As<ValueAddress, byte>(ref Unsafe.AsRef(in address))), Is.True, "address is not copied");
+            Assert.That(MemoryMarshal.AsBytes(addresses).Overlaps(encoded), Is.True, "addresses are not copied");
+            Assert.That(addresses.ToArray().Select(static item => item.ToAddress()), Is.EqualTo(value.Addresses));
+            Assert.That(reader.AddressVector.ToArray().Select(static item => item.ToAddress()), Is.EqualTo(value.AddressVector));
             Assert.That(reader.Bloom.ToArray(), Is.EqualTo(value.Bloom.Bytes.ToArray()));
             Assert.That(reader.Enum, Is.EqualTo(value.Enum));
             Assert.That(reader.Reference.ToArray(), Is.EqualTo(value.Reference.Data.ToArray()));

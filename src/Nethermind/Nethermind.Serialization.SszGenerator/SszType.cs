@@ -30,6 +30,7 @@ class SszType
                 CustomFeedTemplate = $"{converter.ConverterStaticMemberAccess}.Feed(ref {{0}}, {{1}});",
                 ReaderTypeReference = converter.ReaderTypeReference,
                 ReaderMethod = converter.ReaderMethod,
+                IsReadByRef = converter.IsReadByRef,
             });
         }
 
@@ -121,6 +122,9 @@ class SszType
 
     /// <inheritdoc cref="SszTypeConverterInfo.ReaderMethod"/>
     public string? ReaderMethod { get; init; }
+
+    /// <inheritdoc cref="SszTypeConverterInfo.IsReadByRef"/>
+    public bool IsReadByRef { get; init; }
 
     /// <summary>Whether a base type is itself an SSZ type, so this type's <c>RefReader</c> hides an inherited one.</summary>
     public bool HidesBaseRefReader { get; private set; }

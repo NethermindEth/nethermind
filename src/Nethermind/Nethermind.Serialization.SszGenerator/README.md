@@ -133,7 +133,8 @@ ulong item = reader.Test3[5];
 |---|---|
 | Container or compatible union | its `RefReader` |
 | Number, bool, enum or other unmanaged type | the value |
-| Type whose converter has `ValueFromSpan` | the type `ValueFromSpan` returns |
+| Type whose converter has `ValueFromSpan` | the type `ValueFromSpan` returns, as `ref readonly` if it does |
+| Collection of a type whose `ValueFromSpan` returns `ref readonly` | `ReadOnlySpan<T>` |
 | Other converter type, bitvector, bitlist (with its sentinel bit), byte collection, open type parameter | `ReadOnlySpan<byte>` |
 | Any other collection | `SszListReader<T>`, with `Count`, an indexer and `foreach` |
 
@@ -193,5 +194,7 @@ public static class MyBytes32SszVectorTypeConverter
 `Length` must be `public const int` with a positive value so the generator can calculate fixed offsets at compile time. Missing or invalid converter members are reported as `SSZ003` diagnostics during source generation.
 
 A converter for a type that is not unmanaged can also expose `public static TValue ValueFromSpan(ReadOnlySpan<byte> span)`, where `TValue` is an unmanaged counterpart such as `ValueHash256` for `Hash256`. `RefReader` properties then return `TValue` instead of raw bytes.
+
+If `TValue` has an alignment of 1 and its memory layout is its SSZ encoding, declare the method as `public static ref readonly TValue ValueFromSpan(ReadOnlySpan<byte> span)`. `RefReader` then returns references into the encoded bytes without copying.
 
 More examples in Nethermind.Serialization.SszGenerator.Test project.

@@ -29,6 +29,9 @@ internal sealed class SszTypeConverterInfo
     /// <summary>The converter method that reads <see cref="ReaderTypeReference"/> from a span.</summary>
     public string? ReaderMethod { get; init; }
 
+    /// <summary>Whether <see cref="ReaderMethod"/> returns a reference into the span, which requires an alignment of 1 and the wire layout.</summary>
+    public bool IsReadByRef { get; init; }
+
     public static IEnumerable<SszTypeConverterInfo> Find(Compilation compilation)
     {
         INamedTypeSymbol? basicTypeConverterAttribute = compilation.GetTypeByMetadataName("Nethermind.Serialization.Ssz.SszBasicTypeConverterAttribute`1");
@@ -183,10 +186,11 @@ internal sealed class SszTypeConverterInfo
             Kind = converterKind,
             ReaderTypeReference = readerType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             ReaderMethod = readerType is null ? null : $"{converterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{valueFromSpan?.Name ?? "FromSpan"}",
+            IsReadByRef = valueFromSpan is { ReturnsByRefReadonly: true },
         };
     }
 
-    // Optional: lets a reference-type target be read as its value-type counterpart without allocating.
+    // Optional: lets a target be read without allocating, as a value-type counterpart or as a reference into the span.
     private static IMethodSymbol? FindValueFromSpanMethod(INamedTypeSymbol converterType) =>
         converterType.GetMembers(ValueFromSpanMemberName)
             .OfType<IMethodSymbol>()

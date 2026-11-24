@@ -500,10 +500,17 @@ internal static partial class SszCodecHelpers
         return data.Slice(offset, DecodeSszOffset(data.Slice(nextOffsetPosition, SszOffsetSize)) - offset);
     }
 
-    internal static ReadOnlySpan<byte> ReadSszByteList(ReadOnlySpan<byte> data, ulong limit, string typeName, string fieldName)
+    internal static ReadOnlySpan<T> CastSszItems<T>(ReadOnlySpan<byte> data, int itemLength, string typeName)
+        where T : struct
     {
-        ValidateSszListLimit(data.Length, limit, typeName, fieldName);
-        return data;
+        ValidateSszMultipleOf(data.Length, itemLength, typeName);
+        return MemoryMarshal.Cast<byte, T>(data);
+    }
+
+    internal static ReadOnlySpan<T> ReadSszList<T>(ReadOnlySpan<T> items, ulong limit, string typeName, string fieldName)
+    {
+        ValidateSszListLimit(items.Length, limit, typeName, fieldName);
+        return items;
     }
 
     internal static Nethermind.Serialization.Ssz.SszListReader<T> ReadSszList<T>(Nethermind.Serialization.Ssz.SszListReader<T> items, ulong limit, string typeName, string fieldName)
@@ -1340,6 +1347,7 @@ internal static partial class SszCodecHelpers
     private static string ReaderTypeName(SszProperty property) => property switch
     {
         _ when IsReadAsBytes(property) => ReaderBytesTypeName,
+        { IsCollection: true, Type.IsReadByRef: true } => $"global::System.ReadOnlySpan<{ReaderItemTypeName(property.Type)}>",
         { IsCollection: true } => $"SszListReader<{ReaderItemTypeName(property.Type)}>",
         _ => ReaderItemTypeName(property.Type),
     };
@@ -1347,9 +1355,8 @@ internal static partial class SszCodecHelpers
     private static string ReadExpression(SszType decl, SszProperty property, string bytes)
     {
         string names = $"nameof({decl.TypeReferenceName}), nameof({property.Name})";
-        bool isBytes = IsReadAsBytes(property);
-        string items = !property.IsCollection || isBytes
-            ? bytes
+        string items = !property.IsCollection || IsReadAsBytes(property) ? bytes
+            : property.Type.IsReadByRef ? $"CastSszItems<{ReaderItemTypeName(property.Type)}>({bytes}, {property.Type.StaticLength}, \"{decl.TypeReferenceName}.{property.Name}\")"
             : $"new {ReaderTypeName(property)}({bytes}, {(property.Type.IsVariable ? 0 : property.Type.StaticLength)}, static item => {ReadItemExpression(property.Type, "item")})";
 
         return property.Kind switch
@@ -1357,16 +1364,19 @@ internal static partial class SszCodecHelpers
             Kind.BitVector => $"ReadSszBitVector({bytes}, {property.Length}, {names})",
             Kind.BitList => $"ReadSszBitList({bytes}, {property.Limit}UL, {names})",
             Kind.ProgressiveBitList => $"ReadSszBitList({bytes}, ulong.MaxValue, {names})",
-            Kind.List => $"{(isBytes ? "ReadSszByteList" : "ReadSszList")}({items}, {property.Limit}UL, {names})",
+            Kind.List => $"ReadSszList({items}, {property.Limit}UL, {names})",
             // The bytes of a vector of fixed-size items always have the exact length.
             Kind.Vector when property.Type.IsVariable => $"ReadSszVector({items}, {property.Length}, {names})",
             Kind.Vector or Kind.ProgressiveList => items,
-            _ => ReadItemExpression(property.Type, bytes),
+            _ => $"{(property.Type.IsReadByRef ? "ref " : "")}{ReadItemExpression(property.Type, bytes)}",
         };
     }
 
+    private static string ReaderPropertyDeclaration(SszProperty property) =>
+        $"public {(!property.IsCollection && property.Type.IsReadByRef ? "ref readonly " : "")}{ReaderTypeName(property)} {property.Name}";
+
     private static string ReaderProperty(SszType decl, SszProperty property, string bytes) =>
-        $"public {ReaderTypeName(property)} {property.Name} {{ get => {ReadExpression(decl, property, bytes)}; }}";
+        $"{ReaderPropertyDeclaration(property)} {{ get => {ReadExpression(decl, property, bytes)}; }}";
 
     private static string RefReaderCode(SszType decl)
     {
@@ -1386,7 +1396,7 @@ internal static partial class SszCodecHelpers
             {
                 string lengthCheck = member.IsVariable ? string.Empty : $"ValidateSszExactLength(data.Length, {1 + member.StaticLength}, nameof({decl.TypeReferenceName})); ";
                 validation.Add($"    case {selectorType}.{member.Name}: {lengthCheck}break;");
-                properties.Add($"public {ReaderTypeName(member)} {member.Name} {{ get {{ if (_data[0] != {member.SelectorValue}) ThrowInvalidSszData(nameof({decl.TypeReferenceName}), $\"{member.Name} is not the selected member, the selector is {{_data[0]}}.\"); return {ReadExpression(decl, member, "_data.Slice(1)")}; }} }}");
+                properties.Add($"{ReaderPropertyDeclaration(member)} {{ get {{ if (_data[0] != {member.SelectorValue}) ThrowInvalidSszData(nameof({decl.TypeReferenceName}), $\"{member.Name} is not the selected member, the selector is {{_data[0]}}.\"); return {ReadExpression(decl, member, "_data.Slice(1)")}; }} }}");
             }
             validation.Add($"    default: ThrowInvalidSszData(nameof({decl.TypeReferenceName}), $\"unsupported union selector {{data[0]}}.\"); break;");
             validation.Add("}");

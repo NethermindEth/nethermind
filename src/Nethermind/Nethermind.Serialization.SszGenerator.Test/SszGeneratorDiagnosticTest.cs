@@ -22,6 +22,7 @@ public class SszGeneratorDiagnosticTest
     [TestCase("public static int Length() ", "{ return 4; }", "=> 8;", "")]
     [TestCase("public static int Length() ", "=> 4;", "{ return 8; }", "")]
     [TestCase("public static int Value { get ", "=> 4;", "{ return 8; }", "} public static int Length() => Value;")]
+    [TestCase("static int four = 4, eight = 8; public static ref readonly int Value { get ", "=> ref four;", "{ return ref eight; }", "} public static int Length() => Value;")]
     [TestCase("public struct Holder { public int Value; public Holder(bool _) ", "=> Value = 4;", "{ Value = 8; }", "} public static int Length() => new Holder(true).Value;")]
     public void Preset_selection_preserves_expression_and_block_bodies(string member, string defaultBody, string alternateBody, string rest)
     {
