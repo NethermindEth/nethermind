@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
@@ -94,16 +95,7 @@ public static partial class StatelessExecutor
     /// Reporting that as an invalid block would make the guest prove a valid block invalid; letting the exception through
     /// aborts the run instead. Inner exceptions count too, at any depth, as decoders and initializers wrap what they catch.
     /// </remarks>
-    private static bool IsOutOfMemory(Exception? exception)
-    {
-        for (; exception is not null; exception = exception.InnerException)
-        {
-            if (exception is OutOfMemoryException)
-                return true;
-        }
-
-        return false;
-    }
+    private static bool IsOutOfMemory(Exception exception) => exception.IsOrWraps<OutOfMemoryException>();
 
     /// <summary>Loads the KZG trusted setup the block's blob transactions need; the guest verifies none.</summary>
     static partial void InitializeKzg(IReleaseSpec spec);
