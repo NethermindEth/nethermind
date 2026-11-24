@@ -104,11 +104,11 @@ public class Eth75ProtocolHandler(
         // Until EIP-8288 is enabled for local mempool validation, wrapper messages are ignored without penalty (EIP-8437).
         if (!wrapperBroadcaster.IsEnabled || Volatile.Read(ref _wrapperPeer) is not { } peer)
         {
-            ReportIn($"eth/75 wrapper message {message.PacketType} ignored without wrapper exchange", size);
+            ReportIn($"eth/{ProtocolVersion} wrapper message {message.PacketType} ignored without wrapper exchange", size);
             return true;
         }
         HandleWrapperMessage(peer, message);
-        ReportIn($"eth/75 wrapper message {message.PacketType}", size);
+        ReportIn($"eth/{ProtocolVersion} wrapper message {message.PacketType}", size);
         return true;
     }
 

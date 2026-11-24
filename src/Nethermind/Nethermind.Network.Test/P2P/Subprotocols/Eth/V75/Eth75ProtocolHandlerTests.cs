@@ -400,5 +400,10 @@ public class Eth75ProtocolHandlerTests
             ProofWrapperManifestsMessage manifests = Delivered<ProofWrapperManifestsMessage>().Single();
             Assert.That((manifests.RequestId, manifests.Manifests.Single()), Is.EqualTo((3L, new ProofWrapperManifest(hash, WrapperMetadata.Of(wrapper)))));
         }
+
+        // This node requests no manifests, so receiving them is a breach of protocol.
+        _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        Handle(eth76, Delivered<ProofWrapperManifestsMessage>().Single(), Eth76MessageCode.ProofWrapperManifests);
+        _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 }

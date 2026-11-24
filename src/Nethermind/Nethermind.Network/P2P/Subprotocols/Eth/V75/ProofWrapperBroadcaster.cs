@@ -561,10 +561,8 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
                 served.Add((entry, replace));
                 content += EntryLength(replace is null ? entry.Wrapper.Length : WrapperCompaction.CompactLength(entry.Wrapper, replace));
             }
-            // Beyond its serving budget a responder answers with an empty list. Each peer draws at most an equal split of the
-            // global budget, so serving stays bounded as peers are added and no peer can spend another's share.
-            double share = Math.Max(1.0, (double)_peers.Count * WrapperTransportLimits.ServeBytesPerSecond / WrapperTransportLimits.GlobalServeBytesPerSecond);
-            if (served.Count > 0 && !peer.Serving.TryBorrow(content * share)) served.Clear();
+            // Beyond its serving budget a responder answers with an empty list.
+            if (served.Count > 0 && !TryChargeServing(peer, content)) served.Clear();
             foreach ((WrapperStore.Entry entry, _) in served)
             {
                 peer.Exchanged.Add(entry.Announcement.Hash);
@@ -588,6 +586,15 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
         if (references > 0) WrapperMetrics.Record(WrapperEvent.ReferenceSent, references);
     }
 
+    /// <summary>Charges <paramref name="bytes"/> served to <paramref name="peer"/> against its serving budget.</summary>
+    /// <remarks>Each peer draws at most an equal split of the global budget, so serving stays bounded as peers are added and no
+    /// peer can spend another's share.</remarks>
+    private bool TryChargeServing(WrapperPeer peer, int bytes)
+    {
+        double share = Math.Max(1.0, (double)_peers.Count * WrapperTransportLimits.ServeBytesPerSecond / WrapperTransportLimits.GlobalServeBytesPerSecond);
+        return peer.Serving.TryBorrow(bytes * share);
+    }
+
     /// <summary>Returns the manifests of the requested wrappers this node offers and announced to <paramref name="peer"/>, in
     /// request order, adding none once the response reaches the soft response limit (<c>eth/76</c>).</summary>
     /// <remarks>Served manifests count toward the serving budget; beyond it the response is empty.</remarks>
@@ -607,19 +614,18 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
                 served.Add(new(wrapperHash, entry.Manifest));
                 content += Eth75Rlp.LengthOfList(1 + ValueHash256.MemorySize + entry.Manifest.Encoded.Length);
             }
-            double share = Math.Max(1.0, (double)_peers.Count * WrapperTransportLimits.ServeBytesPerSecond / WrapperTransportLimits.GlobalServeBytesPerSecond);
-            if (served.Count > 0 && !peer.Serving.TryBorrow(content * share)) served.Clear();
+            if (served.Count > 0 && !TryChargeServing(peer, content)) served.Clear();
             outbox.Send(peer, new ProofWrapperManifestsMessage(request.RequestId, [.. served]));
         }
         outbox.Flush();
     }
 
     /// <summary>This node requests no manifests, so any ProofWrapperManifests answers no request and is a violation.</summary>
-    internal void OnProofWrapperManifests(WrapperPeer peer, ProofWrapperManifestsMessage message)
+    internal void OnProofWrapperManifests(WrapperPeer peer)
     {
         Outbox outbox = new();
         lock (_gate)
-            if (!peer.Closed) Violation(peer, $"manifests for unissued request {message.RequestId}", outbox);
+            if (!peer.Closed) Violation(peer, "manifests for an unissued request", outbox);
         outbox.Flush();
     }
 

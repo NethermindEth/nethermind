@@ -1198,7 +1198,7 @@ public class ProofWrapperBroadcasterTests
         ProofWrapperManifestsMessage response = link.Sent<ProofWrapperManifestsMessage>().Single();
         Assert.That((response.RequestId, response.Manifests), Is.EqualTo((5L, new[] { new ProofWrapperManifest(hash, WrapperMetadata.Of(wrapper)) })));
 
-        node.Broadcaster.OnProofWrapperManifests(peer, response);
+        node.Broadcaster.OnProofWrapperManifests(peer);
         Assert.That(link.Penalties, Has.One.Contains("manifests"));
     }
 }
