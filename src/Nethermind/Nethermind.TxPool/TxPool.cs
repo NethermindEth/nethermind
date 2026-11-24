@@ -1020,7 +1020,6 @@ namespace Nethermind.TxPool
             if (previousBlock is not null)
             {
                 Metrics.TransactionsReorged += previousBlock.Transactions.Length;
-                bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Header).IsEip155Enabled;
                 Transaction[] txs = previousBlock.Transactions;
                 for (int i = 0; i < txs.Length; i++)
                 {
@@ -1032,7 +1031,7 @@ namespace Nethermind.TxPool
                     {
                         continue;
                     }
-                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
+                    SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
                 }
 
                 if (_blobReorgsSupportEnabled
@@ -1057,7 +1056,7 @@ namespace Nethermind.TxPool
 
                             blobTx.SenderAddress = senderAddress;
                         }
-                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
+                        SubmitTx(blobTx, TxHandlingOptions.None, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
                     }
                     if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
