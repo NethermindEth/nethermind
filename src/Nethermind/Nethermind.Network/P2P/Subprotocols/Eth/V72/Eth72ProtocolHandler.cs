@@ -131,8 +131,7 @@ public class Eth72ProtocolHandler(
     private int _sentCellRequestCount;
     private int _pendingCellRequestQueueCount;
     private int _sentCellRequestQueueCount;
-    private double _cellServeTokens;
-    private DateTimeOffset _cellServeTokensUpdatedAt;
+    private CellServeTokenBucket _cellServeTokens;
 
     /// <inheritdoc/>
     public override string Name => "eth72";
@@ -149,8 +148,7 @@ public class Eth72ProtocolHandler(
     {
         _requestRatioWarmupEndsAt = _timestamper.UtcNowOffset + RequestToAnnouncementWarmup;
         _cellRequestBurstRefilledAt = _requestRatioWarmupEndsAt;
-        _cellServeTokens = _cellServeTokenCapacity;
-        _cellServeTokensUpdatedAt = _timestamper.UtcNowOffset;
+        _cellServeTokens = new(_cellServeTokenCapacity, Math.Max(1, _maxCellsPerTransaction / CellServeRefillDivisor), _timestamper.UtcNowOffset);
         _handleCells = HandleCells;
         _sparseBlobPoolPeerRegistry.AddPeer(this);
         _txPool.NewPending += OnNewPending;
@@ -1132,19 +1130,7 @@ public class Eth72ProtocolHandler(
 
         lock (_cellStateLock)
         {
-            DateTimeOffset now = _timestamper.UtcNowOffset;
-            double elapsedSeconds = Math.Max(0, (now - _cellServeTokensUpdatedAt).TotalSeconds);
-            _cellServeTokens = Math.Min(
-                _cellServeTokenCapacity,
-                _cellServeTokens + elapsedSeconds * Math.Max(1, _maxCellsPerTransaction / CellServeRefillDivisor));
-            _cellServeTokensUpdatedAt = now;
-            if (_cellServeTokens < work)
-            {
-                return false;
-            }
-
-            _cellServeTokens -= work;
-            return true;
+            return _cellServeTokens.TryConsume(work, _timestamper.UtcNowOffset);
         }
     }
 
@@ -1152,7 +1138,7 @@ public class Eth72ProtocolHandler(
     {
         lock (_cellStateLock)
         {
-            _cellServeTokens = Math.Min(_cellServeTokenCapacity, _cellServeTokens + work);
+            _cellServeTokens.Refund(work);
         }
     }
 
