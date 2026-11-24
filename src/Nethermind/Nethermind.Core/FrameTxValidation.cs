@@ -791,11 +791,12 @@ public static class FrameTxValidation
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                              + signatureVerificationCost
                              + valueTransferCost
-                             + keyedNonceAccessCost
-                             + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction) : 0);
+                             + keyedNonceAccessCost;
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
-        intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
+        // Excluded from the EIP-7623 calldata floor.
+        intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero
+                       + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction) : 0);
 
         ulong standardGas = intrinsicGas.SaturatingAdd(totalFrameGas);
         ulong floorReservation = floorGas.SaturatingAdd(totalStateGas);

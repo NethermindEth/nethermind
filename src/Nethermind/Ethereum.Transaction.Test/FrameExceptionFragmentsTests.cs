@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Ethereum.Transaction.Test;
@@ -212,6 +214,58 @@ public class FrameExceptionFragmentsTests
         {
             Assert.That(message, Does.Contain(wording));
             Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
+    }
+
+    private static TxFrame SelfVerifyFrame() =>
+        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, UInt256.Zero, default);
+
+    private static IEnumerable<TestCaseData> DependencyFrameRuleCases()
+    {
+        static TestCaseData Case(string name, string expectedError, ulong gasLimit = Eip8288Constants.LeanSphincsVerificationGas,
+            UInt256 value = default, int claims = 1, Action<byte[]> mutateData = null, int extraBytes = 0, Address target = null,
+            bool inAtomicBatch = false)
+        {
+            byte[] data = new byte[claims * Eip8288Constants.DependencyTripleLength + extraBytes];
+            for (int i = 0; i < claims; i++) data[i * Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanSphincsScheme;
+            mutateData?.Invoke(data);
+            TxFrame dependencyFrame = new(FrameMode.DepVerify, FrameFlags.None, target, gasLimit, value, data);
+            TxFrame[] frames = inAtomicBatch
+                ? [SelfVerifyFrame(), new TxFrame(FrameMode.Sender, FrameFlags.AtomicBatch, TestItem.AddressB, 50_000, UInt256.Zero, default), dependencyFrame]
+                : [dependencyFrame, SelfVerifyFrame()];
+            return new TestCaseData(frames, expectedError).SetName($"Format covers {name}");
+        }
+
+        yield return Case("a dependency frame carrying value", FrameTxValidation.DependencyFrameShape, value: UInt256.One);
+        yield return Case("a dependency frame with a target", FrameTxValidation.DependencyFrameShape, target: TestItem.AddressB);
+        yield return Case("a dependency frame closing an atomic batch", FrameTxValidation.DependencyFrameInAtomicBatch, inAtomicBatch: true);
+        yield return Case("dependency data that is not a whole number of claims", FrameTxValidation.DependencyFrameDataLength, extraBytes: 1);
+        yield return Case("too many dependencies in one frame", FrameTxValidation.TooManyDependenciesPerFrame,
+            gasLimit: (Eip8288Constants.MaxDependenciesPerFrame + 1) * Eip8288Constants.LeanSphincsVerificationGas,
+            claims: Eip8288Constants.MaxDependenciesPerFrame + 1);
+        yield return Case("a dependency with nonzero padding", FrameTxValidation.DependencyPaddingNotZero, mutateData: static data => data[0] = 1);
+        yield return Case("a dependency scheme that is not enabled", FrameTxValidation.InvalidDependencyScheme, mutateData: static data => data[31] = 0x7f);
+        yield return Case("a dependency frame gas limit that is not the claims' verification gas", FrameTxValidation.DependencyFrameGasMismatch, gasLimit: 1);
+    }
+
+    [TestCaseSource(nameof(DependencyFrameRuleCases))]
+    public void Format_CoversTheEip8288DependencyFrameRules(TxFrame[] frames, string expectedError)
+    {
+        Nethermind.Core.Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = frames,
+            FrameSignatures = [],
+        };
+
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, Eip8288Prototype.Instance, out string error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wellFormed, Is.False);
+            Assert.That(error, Is.EqualTo(expectedError));
+            Assert.That(Covers(FrameExceptionFragments.Format, error), Is.True, error);
         }
     }
 

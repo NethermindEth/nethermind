@@ -659,7 +659,7 @@ public class FrameTxValidationTests
     }
 
     [Test]
-    public void TryCalculateGasBudget_Eip8288_ChargesDeclaredDependenciesInIntrinsicAndCalldataFloor(
+    public void TryCalculateGasBudget_Eip8288_ChargesDeclaredDependenciesInIntrinsicGasButNotTheCalldataFloor(
         [Values] bool floorEnabled, [Values] bool floorBinds, [Values(0, 1, 3)] int declarations)
     {
         IReleaseSpec disabled = ReleaseSpecSubstitute.Create();
@@ -683,9 +683,10 @@ public class FrameTxValidationTests
             Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, enabled, out ulong execution, out ulong state), Is.True);
 
             Assert.That(intrinsic, Is.EqualTo(baseIntrinsic + recursiveStarkGas));
-            Assert.That(floor, Is.EqualTo(baseFloor + (floorEnabled ? recursiveStarkGas : 0)));
-            Assert.That(max, Is.EqualTo(baseMax + recursiveStarkGas));
-            Assert.That(execution, Is.EqualTo(baseExecution + recursiveStarkGas));
+            Assert.That(floor, Is.EqualTo(baseFloor));
+            ulong expectedGrowth = floorEnabled && floorBinds ? 0 : recursiveStarkGas;
+            Assert.That(max, Is.EqualTo(baseMax + expectedGrowth));
+            Assert.That(execution, Is.EqualTo(baseExecution + expectedGrowth));
             Assert.That(state, Is.EqualTo(baseState));
             if (floorEnabled && floorBinds) Assert.That(max, Is.EqualTo(floor));
         }

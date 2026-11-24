@@ -231,8 +231,11 @@ public class BlockValidatorTests
         Assert.That(result, Is.True, error);
     }
 
+    // EIP-8288 MAX_DEPENDENCY_PROOF_BYTES, spelled out to pin the consensus value.
+    private const int MaxDependencyProofBytes = 1_048_576;
+
     [Test]
-    public void Eip8288_rejects_invalid_proof_size([Values(0, Eip8288Constants.MaxAggregateProofBytes + 1)] int length)
+    public void Eip8288_rejects_invalid_proof_size([Values(0, MaxDependencyProofBytes + 1)] int length)
     {
         (Block block, BlockHeader parent) = Eip8288Block();
         block.StarkProof = new byte[length];
@@ -249,12 +252,12 @@ public class BlockValidatorTests
         }
     }
 
-    // A proof at the local MaxAggregateProofBytes bound passes the length check but still requires full verification.
+    // A proof at EIP-8288's MAX_DEPENDENCY_PROOF_BYTES passes the length check but still requires full verification.
     [Test]
     public void Eip8288_proof_at_the_aggregate_bound_is_still_verified([Values] bool verdict)
     {
         (Block block, BlockHeader parent) = Eip8288Block();
-        block.StarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes];
+        block.StarkProof = new byte[MaxDependencyProofBytes];
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         FixedLeanProofVerifier verifier = new(verdict);
 

@@ -536,7 +536,7 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_CalldataFloorRetainsRecursiveChargeForEveryDeclaration(
+    public void Execute_CalldataFloorLeavesOutTheDependencyProofGas(
         [Values(0, 1, 3)] int declarations, [Values] bool eip7976)
     {
         _spec.IsEip8288Enabled = true;
@@ -548,7 +548,7 @@ public partial class FrameTxProcessorTests
         Transaction tx = FrameTx(0, frames);
         OverridableReleaseSpec withoutRecursiveCharge = new(_spec) { IsEip8288Enabled = false };
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, withoutRecursiveCharge, out _, out ulong baseFloor, out _), Is.True);
-        ulong expectedGas = baseFloor + (ulong)declarations * Eip8288Constants.LeanStarkVerificationGas;
+        ulong expectedGas = baseFloor;
         UInt256 balanceBefore = _stateProvider.GetBalance(Sender);
         TestAllTracerWithOutput tracer = new();
 
