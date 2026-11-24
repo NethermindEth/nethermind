@@ -74,7 +74,7 @@ public class RewardsTests
         Assert.That(balancesOf(state), Is.EqualTo(expected));
     }
 
-    private static ulong[] ExpectedBalances(ulong[] balances, (ulong[] Rewards, ulong[] Penalties)[] deltas)
+    internal static ulong[] ExpectedBalances(ulong[] balances, (ulong[] Rewards, ulong[] Penalties)[] deltas)
     {
         foreach ((ulong[] rewards, ulong[] penalties) in deltas)
         {
@@ -91,7 +91,7 @@ public class RewardsTests
         return balances;
     }
 
-    private static (ulong[] Rewards, ulong[] Penalties) DecodeDeltas(string path)
+    internal static (ulong[] Rewards, ulong[] Penalties) DecodeDeltas(string path)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(path);
         int rewardsOffset = BinaryPrimitives.ReadInt32LittleEndian(ssz);
