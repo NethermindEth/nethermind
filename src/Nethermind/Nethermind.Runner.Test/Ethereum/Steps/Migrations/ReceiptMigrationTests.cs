@@ -352,7 +352,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             public bool IsError => false;
         }
 
-        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptMigrationStore
+        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptMigrationStore outStorage) : IReceiptMigrationStore
         {
             public Hash256 FindBlockHash(Hash256 txHash) => inStorage.FindBlockHash(txHash);
 
