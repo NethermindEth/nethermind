@@ -1238,6 +1238,15 @@ public class EncodingTest
         }
     }
 
+    [TestCase(-1)]
+    [TestCase(3)]
+    public void Writer_rejects_popping_items_out_of_range(int popCount)
+    {
+        byte[] encoded = Encode(new SingleListContainer { Items = [1, 2] });
+        Assert.That(() => Write(output => new SingleListContainer.Writer(output, new(encoded)).PopAndPushItems(popCount, [])),
+            Throws.InstanceOf<ArgumentOutOfRangeException>());
+    }
+
     [TestCaseSource(nameof(WriterMisuseCases))]
     public void Writer_rejects_misuse(Action<SszWriter> misuse) =>
         Assert.That(() => Write(misuse), Throws.InvalidOperationException);
@@ -1591,6 +1600,48 @@ public class EncodingTest
         yield return ListCase("List items removed from the front", [2, 3], static items => items.Copy(1, 2));
         yield return ListCase("List emptied", [], static items => items.Copy(0, 0));
 
+        yield return QueueCase("Queue items pushed", 0, [9]);
+        yield return QueueCase("Queue items popped", 2, []);
+        yield return QueueCase("Queue items popped and pushed", 2, [9, 10]);
+        yield return QueueCase("Queue items all popped", 3, []);
+        yield return QueueCase("Queue items all replaced", 3, [9]);
+        yield return QueueCase("Queue unchanged", 0, []);
+        byte[] emptyLists = Encode(new DoubleListContainer { First = [], Second = [] });
+        yield return new("Queue items pushed to empty queues", Encode(new DoubleListContainer { First = [1], Second = [2, 3] }), output =>
+        {
+            using DoubleListContainer.Writer writer = new(output, new(emptyLists));
+            writer.PopAndPushFirst(0, [1]);
+            writer.PopAndPushSecond(0, [2, 3]);
+        });
+        byte[] progressive = Encode(new ProgressiveListContainer { Items = [1, 2] });
+        yield return new("Progressive queue items popped and pushed", Encode(new ProgressiveListContainer { Items = [2, 3] }), output =>
+        {
+            using ProgressiveListContainer.Writer writer = new(output, new(progressive));
+            writer.PopAndPushItems(1, [3]);
+        });
+
+        LeafContainer leaves = MakeLeafContainer();
+        byte[] leavesEncoded = Encode(leaves);
+        LeafContainer swapped = MakeLeafContainer();
+        Array.Reverse(swapped.Blooms);
+        Array.Reverse(swapped.Addresses);
+        Array.Reverse(swapped.Enums);
+        yield return new("Leaf queue items popped and pushed", Encode(swapped), output =>
+        {
+            using LeafContainer.Writer writer = new(output, new(leavesEncoded));
+            writer.CopyHash();
+            writer.CopyAddress();
+            writer.CopyBloom();
+            writer.CopyEnum();
+            writer.CopyReference();
+            writer.CopyHashes();
+            writer.CopyAddressVector();
+            writer.PopAndPushBlooms(1, [leaves.Blooms[0]]);
+            writer.PopAndPushAddresses(1, [leaves.Addresses[0]]);
+            writer.PopAndPushEnums(1, [leaves.Enums[0]]);
+            writer.CopyBytes();
+        });
+
         yield return Unchanged("LeafContainer unchanged", Encode(MakeLeafContainer()), static (output, encoded) =>
         {
             using LeafContainer.Writer writer = new(output, new(encoded));
@@ -1658,6 +1709,13 @@ public class EncodingTest
         {
             using DoubleListContainer.Writer writer = new(output, new(lists));
             using (SszListWriter<ulong> items = writer.BeginFirst()) write(items);
+            writer.CopySecond();
+        });
+
+        WriterCase QueueCase(string name, int popCount, ulong[] items) => new(name, Encode(new DoubleListContainer { First = [.. new ulong[] { 1, 2, 3 }[popCount..], .. items], Second = [4, 5] }), output =>
+        {
+            using DoubleListContainer.Writer writer = new(output, new(lists));
+            writer.PopAndPushFirst(popCount, items);
             writer.CopySecond();
         });
 
@@ -1764,6 +1822,13 @@ public class EncodingTest
         });
 
         yield return Misuse("Writer rejects copying a member without a source", static output => new FixedC.Writer(output).CopyFixed1());
+        yield return Misuse("Writer rejects popping and pushing without a source", static output => new SingleListContainer.Writer(output).PopAndPushItems(0, [1]));
+        yield return Misuse("Writer rejects popping and pushing twice", static output =>
+        {
+            SingleListContainer.Writer writer = new(output, new(Encode(new SingleListContainer { Items = [1] })));
+            writer.PopAndPushItems(0, [2]);
+            writer.PopAndPushItems(0, [3]);
+        });
         yield return Misuse("Writer rejects copying a member of a nested value without a source", static output =>
         {
             SszVariableListWriter<VariableC.Writer> items = new(output, 1, static (writer, source, hasSource) => hasSource ? new(writer, new(source)) : new(writer), VariableC.Encode([new VariableC { Fixed2 = [] }]));
@@ -1843,6 +1908,9 @@ public class EncodingTest
             items.Add([1, 2, 3]);
             items.Add([4, 5]);
         }))).SetName("Writer rejects items above the declared limit");
+        yield return new TestCaseData((Action)(() => Write(static output =>
+            new SingleListContainer.Writer(output, new(Encode(new SingleListContainer { Items = [1, 2, 3] }))).PopAndPushItems(0, [4, 5]))))
+            .SetName("Writer rejects pushing above the declared limit");
         yield return new TestCaseData((Action)(() => Write(static output => new NullableCompatibleUnionArrayPoolListContainer.Writer(output).BeginItems(3))))
             .SetName("Writer rejects an item count above the declared limit");
         yield return new TestCaseData((Action)(() => Write(static output => new FixedVectorContainer.Writer(output).WriteItems([new FixedC()]))))

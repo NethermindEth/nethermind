@@ -1527,6 +1527,12 @@ internal static partial class SszCodecHelpers
             yield return $"public {returnType} Begin{member.Name}({parameters}) {{ {Statements(validation, begin, $"return {result};")} }}";
         }
 
+        if (argument is { IsCollection: true, IsVariable: true, Type.IsVariable: false } && !IsReadAsBytes(argument))
+        {
+            string sourceCount = $"_source.{member.Name}.{(member.Type.IsReadByRef ? "Length" : "Count")}";
+            yield return $"public void PopAndPush{member.Name}(int popCount, {WriterArgumentTypeName(argument)} items) {{ if (!({source.Exists})) ThrowNoSszSource(nameof({member.Name})); using SszListWriter<{WriterItemTypeName(member.Type)}> list = Begin{member.Name}(); list.Copy(popCount, {sourceCount} - popCount); list.Add(items); }}";
+        }
+
         static string Statements(params string[] statements) => string.Join(" ", statements.Where(statement => statement.Length != 0));
     }
 
@@ -1554,7 +1560,8 @@ internal static partial class SszCodecHelpers
         return $@"    /// <summary>Writes the members of a value one by one to an <see cref=""SszWriter""/>, without encoding the whole value.</summary>
     /// <remarks>
     /// {(isUnion ? "Exactly one member has to be written." : "Every member has to be written once, first the fixed-size ones and then the variable-size ones, each in SSZ order.")}
-    /// A <c>Copy</c> method writes the bytes of the member in the source, without checking them.
+    /// A <c>Copy</c> method writes the bytes of the member in the source, without checking them. A <c>PopAndPush</c> method does so
+    /// for a list without its first items, and then appends others.
     /// A <c>Begin</c> method opens a nested writer, which mirrors the member in the source if there is one, and has to be complete
     /// and disposed before this one is used again.
     /// </remarks>

@@ -166,7 +166,7 @@ Members are written once each in the order of their bytes: first all fixed-size 
 |---|---|
 | Any | `WriteX(value)` writes the whole value, `CopyX()` copies its bytes from the source |
 | Variable-size container, compatible union or collection wrapper | `BeginX()` returns its `Writer` |
-| List of fixed-size items other than bytes | `BeginX()` returns `SszListWriter<T>` |
+| List of fixed-size items other than bytes | `BeginX()` returns `SszListWriter<T>`, `PopAndPushX(popCount, items)` drops the first items of the source's list and appends others |
 | List of variable-size items | `BeginX(count)` returns `SszVariableListWriter<TWriter>` |
 | Vector of variable-size items | `BeginX()` returns `SszVariableListWriter<TWriter>` |
 
@@ -175,15 +175,16 @@ A nested writer has to be complete and disposed before its parent is used again.
 To update an encoded value, pass a `RefReader` of it. Nested writers mirror the same part of it.
 
 ```csharp
-using MyClass.Writer writer = new(output, new MyClass.RefReader(encoded));
+MyClass.RefReader reader = new(encoded);
+using MyClass.Writer writer = new(output, reader);
 writer.CopyTest1();
 writer.CopyTest2();
 using SszListWriter<ulong> items = writer.BeginTest3();
-items.Copy(start: 1, count: 2);
+items.Copy(start: 1, count: reader.Test3.Count - 1);
 items.Add(40);
 ```
 
-Copied bytes are not validated. `SszVariableListWriter` also has `Copy(start, count)`, and `BeginItem(sourceIndex)` mirrors one item of the source.
+For a list that is used as a queue, `writer.PopAndPushTest3(1, [40])` does the same. Copied bytes are not validated. `SszVariableListWriter` also has `Copy(start, count)`, and `BeginItem(sourceIndex)` mirrors one item of the source.
 
 ## Fixed-size type converters
 
