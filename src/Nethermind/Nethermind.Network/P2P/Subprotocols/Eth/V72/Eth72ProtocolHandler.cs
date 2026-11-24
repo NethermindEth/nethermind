@@ -111,7 +111,6 @@ public class Eth72ProtocolHandler(
     private readonly Queue<CellStateKey> _sentCellRequestOrder = new();
     private readonly Lock _cellStateLock = new();
     private readonly int _maxCellsPerTransaction = GetMaxCellsPerTransaction(specProvider);
-    private readonly int _cellServeTokenCapacity = GetMaxCellsPerTransaction(specProvider) * CellServeBurstMultiplier;
     private static readonly byte[] EmptyCellMaskBytes = BlobCellMask.Empty.ToBytes();
     private readonly IBlobCustodyTracker _blobCustodyTracker = blobCustodyTracker;
     private readonly ISparseBlobPoolPeerRegistry _sparseBlobPoolPeerRegistry = EnsureNotNull(sparseBlobPoolPeerRegistry, nameof(sparseBlobPoolPeerRegistry));
@@ -148,7 +147,7 @@ public class Eth72ProtocolHandler(
     {
         _requestRatioWarmupEndsAt = _timestamper.UtcNowOffset + RequestToAnnouncementWarmup;
         _cellRequestBurstRefilledAt = _requestRatioWarmupEndsAt;
-        _cellServeTokens = new(_cellServeTokenCapacity, Math.Max(1, _maxCellsPerTransaction / CellServeRefillDivisor), _timestamper.UtcNowOffset);
+        _cellServeTokens = new(_maxCellsPerTransaction * CellServeBurstMultiplier, Math.Max(1, _maxCellsPerTransaction / CellServeRefillDivisor), _timestamper.UtcNowOffset);
         _handleCells = HandleCells;
         _sparseBlobPoolPeerRegistry.AddPeer(this);
         _txPool.NewPending += OnNewPending;
