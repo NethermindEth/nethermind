@@ -126,8 +126,8 @@ class SszType
     /// <inheritdoc cref="SszTypeConverterInfo.IsReadByRef"/>
     public bool IsReadByRef { get; init; }
 
-    /// <summary>Whether a base type is itself an SSZ type, so this type's <c>RefReader</c> hides an inherited one.</summary>
-    public bool HidesBaseRefReader { get; private set; }
+    /// <summary>Whether a base type is itself an SSZ type, so this type's <c>RefReader</c> and <c>Writer</c> hide inherited ones.</summary>
+    public bool HasSszBaseType { get; private set; }
 
     public bool HasCustomInlineCodec => CustomEncodeTemplate is not null;
     public IEnumerable<SszProperty>? CompatibleUnionMembers => Kind == Kind.CompatibleUnion ? Members?.Where(x => x.Name != SelectorPropertyName) : null;
@@ -201,9 +201,9 @@ class SszType
             result.FixedSectionLengthDeclaration = $"internal {modifier}static partial int GetSszFixedSectionLength()";
         }
 
-        for (INamedTypeSymbol? baseType = type.BaseType; baseType is not null && !result.HidesBaseRefReader; baseType = baseType.BaseType)
+        for (INamedTypeSymbol? baseType = type.BaseType; baseType is not null && !result.HasSszBaseType; baseType = baseType.BaseType)
         {
-            result.HidesBaseRefReader = HasAttribute(baseType, "SszContainerAttribute") || HasAttribute(baseType, "SszCompatibleUnionAttribute");
+            result.HasSszBaseType = HasAttribute(baseType, "SszContainerAttribute") || HasAttribute(baseType, "SszCompatibleUnionAttribute");
         }
 
         switch (result.Kind)

@@ -70,21 +70,22 @@ public readonly ref struct SszListReader<T> where T : allows ref struct
         {
             ArgumentOutOfRangeException.ThrowIfNegative(index);
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Count);
-            return _readItem(Slice(index));
+            return _readItem(Slice(index, 1));
         }
     }
 
     public Enumerator GetEnumerator() => new(this);
 
-    private ReadOnlySpan<byte> Slice(int index)
+    /// <summary>The bytes of <paramref name="count"/> consecutive items, at least one, which the caller has checked to exist.</summary>
+    internal ReadOnlySpan<byte> Slice(int index, int count)
     {
         if (_itemLength != 0)
         {
-            return _data.Slice(index * _itemLength, _itemLength);
+            return _data.Slice(index * _itemLength, count * _itemLength);
         }
 
         int start = ReadOffset(index);
-        int end = index + 1 == Count ? _data.Length : ReadOffset(index + 1);
+        int end = index + count == Count ? _data.Length : ReadOffset(index + count);
         return start >= Count * OffsetSize && start <= end && end <= _data.Length
             ? _data[start..end]
             : throw new InvalidDataException($"Invalid SSZ collection: item {index} spans [{start}, {end}) of {_data.Length} bytes.");

@@ -262,6 +262,19 @@ class SszProperty
     public int? Length { get; set; }
     public ulong? Limit { get; set; }
 
+    /// <summary>This member as a <c>Writer</c> method receives its value: not nullable, and a collection as a span.</summary>
+    public SszProperty AsWriterArgument() => new()
+    {
+        Name = Name,
+        Type = Type,
+        IsSpanLikeProperty = IsCollection,
+        IsReferenceType = IsReferenceType && !IsCollection,
+        Length = Length,
+        Limit = Limit,
+        IsProgressiveList = IsProgressiveList,
+        IsProgressiveBitList = IsProgressiveBitList,
+    };
+
     public bool IsCompatibleWith(SszProperty other, HashSet<(SszType, SszType)> visited)
     {
         if (Kind != other.Kind)

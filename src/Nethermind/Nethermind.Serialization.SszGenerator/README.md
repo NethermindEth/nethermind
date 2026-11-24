@@ -7,6 +7,7 @@ Allows to:
 - Decode
 - Merkleize
 - Read members of an encoded value without decoding it
+- Write a value member by member, copying the unchanged parts of an encoded one
 
 Supports vectors, lists, bitvectors, bitlists, compatible unions, progressive containers, progressive lists, etc.
 
@@ -139,6 +140,50 @@ ulong item = reader.Test3[5];
 | Any other collection | `SszListReader<T>`, with `Count`, an indexer and `foreach` |
 
 The constructor checks only the layout of its own value and throws `InvalidDataException` when it is invalid. Nested values, list limits and list items are checked when they are read, so reading some members does not prove that the whole value would decode.
+
+## Writing incrementally
+
+Each SSZ type also gets a nested `Writer` ref struct that writes a value to an `SszWriter` member by member, without measuring it first.
+
+```csharp
+using SszWriter output = new(chunkSize: 65536);
+using (MyClass.Writer writer = new(output))
+{
+    writer.WriteTest1(1);
+    writer.WriteTest2(test2);
+    using (SszListWriter<ulong> items = writer.BeginTest3())
+    {
+        items.Add(10);
+        items.Add([20, 30]);
+    }
+}
+ReadOnlySequence<byte> encoded = output.ToSequence();
+```
+
+Members are written once each in the order of their bytes: first all fixed-size members, then all variable-size ones, each in SSZ order.
+
+| Member | Methods |
+|---|---|
+| Any | `WriteX(value)` writes the whole value, `CopyX()` copies its bytes from the source |
+| Variable-size container, compatible union or collection wrapper | `BeginX()` returns its `Writer` |
+| List of fixed-size items other than bytes | `BeginX()` returns `SszListWriter<T>` |
+| List of variable-size items | `BeginX(count)` returns `SszVariableListWriter<TWriter>` |
+| Vector of variable-size items | `BeginX()` returns `SszVariableListWriter<TWriter>` |
+
+A nested writer has to be complete and disposed before its parent is used again. Otherwise the next use of the parent, or `ToSequence`, throws `InvalidOperationException`. `Dispose` itself does not throw.
+
+To update an encoded value, pass a `RefReader` of it. Nested writers mirror the same part of it.
+
+```csharp
+using MyClass.Writer writer = new(output, new MyClass.RefReader(encoded));
+writer.CopyTest1();
+writer.CopyTest2();
+using SszListWriter<ulong> items = writer.BeginTest3();
+items.Copy(start: 1, count: 2);
+items.Add(40);
+```
+
+Copied bytes are not validated. `SszVariableListWriter` also has `Copy(start, count)`, and `BeginItem(sourceIndex)` mirrors one item of the source.
 
 ## Fixed-size type converters
 

@@ -320,6 +320,9 @@ internal static partial class SszCodecHelpers
     internal static void ThrowInvalidSszValue(string typeName, string fieldName, string message) =>
         throw new InvalidDataException($"Invalid SSZ value for {typeName}.{fieldName}: {message}");
 
+    internal static void ThrowNoSszSource(string memberName) =>
+        throw new InvalidOperationException($"SSZ writer: there is no source to copy {memberName} from.");
+
     internal static void ValidateSszExactLength(int actualLength, int expectedLength, string typeName)
     {
         if (actualLength != expectedLength)
@@ -887,10 +890,8 @@ internal static partial class SszCodecHelpers
         }
     }
 
-    private static string StaticFieldEncodeStatement(SszProperty property, int staticOffset, string containerExpr)
+    private static string StaticFieldEncodeStatement(string destSpan, SszProperty property, string valueExpr)
     {
-        string destSpan = $"data.Slice({staticOffset}, {property.StaticLength})";
-        string valueExpr = $"{containerExpr}.{property.Name}";
         string encodedValueExpr = EncodeValueExpression(property, valueExpr);
 
         string statement;
@@ -1175,25 +1176,25 @@ internal static partial class SszCodecHelpers
         return $"UInt256 {rootName}; {MerkleizeRootAssignmentStatement(property, expression, rootName)} merkleizer.Feed({rootName});";
     }
 
-    private static string DynamicLength(SszType container, SszProperty m)
+    private static string DynamicLength(SszProperty m, string expression)
     {
         if ((m.Kind & (Kind.Collection | Kind.BitList | Kind.ProgressiveBitList)) != Kind.None && m.Type.Kind == Kind.Basic)
         {
             string length = m.Kind is Kind.BitList or Kind.ProgressiveBitList
-                ? $"(container.{m.Name} is not null ? container.{m.Name}.Length / 8 + 1 : 1)"
-                : $"({m.Type.StaticLength} * {(m.IsMemoryLikeProperty ? $"container.{m.Name}" : SpanExpression(m, $"container.{m.Name}"))}.Length)";
+                ? $"({expression} is not null ? {expression}.Length / 8 + 1 : 1)"
+                : $"({m.Type.StaticLength} * {(m.IsMemoryLikeProperty ? expression : SpanExpression(m, expression))}.Length)";
             return m.IsNullable && (m.Kind is Kind.List or Kind.ProgressiveList) && CanEncodeNullAsDefault(m)
-                ? $"(container.{m.Name} is null ? 0 : {length})"
+                ? $"({expression} is null ? 0 : {length})"
                 : length;
         }
 
         string call = m.IsCollection
-            ? $"{m.Type.StaticMemberAccess}.GetLength({SpanExpression(m, $"container.{m.Name}")})"
-            : $"{m.Type.StaticMemberAccess}.GetLength(container.{m.Name})";
+            ? $"{m.Type.StaticMemberAccess}.GetLength({SpanExpression(m, expression)})"
+            : $"{m.Type.StaticMemberAccess}.GetLength({expression})";
 
         // A null reference-typed property contributes zero bytes to the variable-length region —
         // matches the static-field encode's "skip on null" behaviour and keeps offsets consistent.
-        return m.IsNullable ? $"(container.{m.Name} is null ? 0 : {call})" : call;
+        return m.IsNullable ? $"({expression} is null ? 0 : {call})" : call;
     }
 
     private static string ByteArrayLiteral(byte[] value) => $"[{string.Join(", ", value)}]";
@@ -1378,6 +1379,27 @@ internal static partial class SszCodecHelpers
     private static string ReaderProperty(SszType decl, SszProperty property, string bytes) =>
         $"{ReaderPropertyDeclaration(property)} {{ get => {ReadExpression(decl, property, bytes)}; }}";
 
+    /// <summary>Where each member, or its offset, is in the fixed section of a container.</summary>
+    private static int[] FixedSectionPositions(SszProperty[] members)
+    {
+        int[] positions = new int[members.Length];
+        for (int i = 1; i < members.Length; i++) positions[i] = positions[i - 1] + members[i - 1].StaticLength;
+        return positions;
+    }
+
+    /// <summary>The expression for the bytes of <paramref name="member"/> in an encoded container.</summary>
+    private static string MemberBytes(SszProperty[] members, SszProperty member, string data)
+    {
+        int[] positions = FixedSectionPositions(members);
+        int index = Array.IndexOf(members, member);
+        if (!member.IsVariable) return $"{data}.Slice({positions[index]}, {member.StaticLength})";
+
+        int next = Array.FindIndex(members, index + 1, m => m.IsVariable);
+        return next < 0
+            ? $"SliceSszLastVariableField({data}, {positions[index]})"
+            : $"SliceSszVariableField({data}, {positions[index]}, {positions[next]})";
+    }
+
     private static string RefReaderCode(SszType decl)
     {
         List<string> validation = [];
@@ -1404,8 +1426,7 @@ internal static partial class SszCodecHelpers
         else
         {
             SszProperty[] members = decl.Members!;
-            int[] positions = new int[members.Length];
-            for (int i = 1; i < members.Length; i++) positions[i] = positions[i - 1] + members[i - 1].StaticLength;
+            int[] positions = FixedSectionPositions(members);
             int[] variablePositions = positions.Where((_, i) => members[i].IsVariable).ToArray();
 
             if (variablePositions.Length == 0)
@@ -1418,13 +1439,9 @@ internal static partial class SszCodecHelpers
                 validation.Add($"ValidateSszDynamicOffsets(data, {decl.StaticLength}, nameof({decl.TypeReferenceName}), [{string.Join(", ", variablePositions.Select(position => $"DecodeSszOffset(data.Slice({position}, {SszType.PointerLength}))"))}]);");
             }
 
-            for (int i = 0; i < members.Length; i++)
+            foreach (SszProperty member in members)
             {
-                int nextVariable = Array.IndexOf(variablePositions, positions[i]) + 1;
-                string bytes = !members[i].IsVariable ? $"_data.Slice({positions[i]}, {members[i].StaticLength})"
-                    : nextVariable == variablePositions.Length ? $"SliceSszLastVariableField(_data, {positions[i]})"
-                    : $"SliceSszVariableField(_data, {positions[i]}, {variablePositions[nextVariable]})";
-                properties.Add(ReaderProperty(decl, members[i], bytes));
+                properties.Add(ReaderProperty(decl, member, MemberBytes(members, member, "_data")));
             }
         }
 
@@ -1433,9 +1450,9 @@ internal static partial class SszCodecHelpers
     /// The constructor checks only the layout of this value. Nested values are checked when they are read, so reading some members
     /// does not prove that the whole value would decode.
     /// </remarks>
-    public {(decl.HidesBaseRefReader ? "new " : "")}readonly ref struct RefReader
+    public {(decl.HasSszBaseType ? "new " : "")}readonly ref struct RefReader
     {{
-        private readonly {ReaderBytesTypeName} _data;
+        internal readonly {ReaderBytesTypeName} _data;
 {Whitespace}
         public RefReader({ReaderBytesTypeName} data)
         {{
@@ -1443,6 +1460,133 @@ internal static partial class SszCodecHelpers
         }}
 {Whitespace}
 {Shift(2, properties)}
+    }}";
+    }
+
+    /// <summary>The type that a <c>Writer</c> method takes for the value of <paramref name="property"/>.</summary>
+    private static string WriterArgumentTypeName(SszProperty property) => property switch
+    {
+        { IsCollection: true } => $"scoped global::System.ReadOnlySpan<{WriterItemTypeName(property.Type)}>",
+        _ => WriterItemTypeName(property.Type),
+    };
+
+    private static string WriterItemTypeName(SszType type) =>
+        type is { Kind: Kind.Basic, EnumType: null } ? type.TypeReferenceName : type.StaticMemberAccess;
+
+    /// <summary>The return type, parameters and result of the method that opens a nested writer, or <c>null</c> when there is none to open.</summary>
+    /// <param name="source">The bytes to mirror, and the condition for there to be any.</param>
+    private static (string ReturnType, string Parameters, string Validation, string Result)? NestedWriter(SszType decl, SszProperty property, (string Bytes, string Exists) source)
+    {
+        // C# cannot name a nested type through a type parameter.
+        if (property.Type.IsTypeParameter || IsReadAsBytes(property)) return null;
+
+        string itemWriter = $"{property.Type.StaticMemberAccess}.Writer";
+        string itemReader = $"{property.Type.StaticMemberAccess}.RefReader";
+        string sourceBytes = $"{source.Exists} ? {source.Bytes} : default";
+        if (!property.IsCollection)
+        {
+            return property.IsVariable
+                ? (itemWriter, "", "", $"{source.Exists} ? new {itemWriter}(_writer, new {itemReader}({source.Bytes})) : new {itemWriter}(_writer)")
+                : null;
+        }
+
+        if (property.Type.IsVariable)
+        {
+            string count = property.Kind == Kind.Vector ? property.Length!.Value.ToString() : "count";
+            return ($"SszVariableListWriter<{itemWriter}>",
+                property.Kind == Kind.Vector ? "" : "int count",
+                property.Kind == Kind.List ? $"ValidateSszListLimit(count, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));" : "",
+                $"new(_writer, {count}, static (writer, source, hasSource) => hasSource ? new {itemWriter}(writer, new {itemReader}(source)) : new {itemWriter}(writer), {sourceBytes})");
+        }
+
+        if (!property.IsVariable) return null;
+
+        string limit = property.Kind == Kind.List ? $"{property.Limit}UL" : "ulong.MaxValue";
+        return ($"SszListWriter<{WriterItemTypeName(property.Type)}>", "", "",
+            $"new(_writer, {property.Type.StaticLength}, {limit}, static (span, items) => {{ {EncodeStatement("span", property, "items")} }}, {sourceBytes})");
+    }
+
+    /// <summary>The methods that write <paramref name="member"/>.</summary>
+    /// <param name="begin">Claims the member and writes what precedes its bytes.</param>
+    /// <param name="fixedSpan">Where a fixed-size member is encoded, or <c>null</c> when its bytes are appended.</param>
+    /// <param name="source">The bytes of the member in the source, and the condition for there to be any.</param>
+    private static IEnumerable<string> WriterMethods(SszType decl, SszProperty member, string begin, string? fixedSpan, (string Bytes, string Exists) source)
+    {
+        SszProperty argument = member.AsWriterArgument();
+        string encode = member.IsVariable
+            ? EncodeStatement("data", argument, "value")
+            : StaticFieldEncodeStatement("data", argument, "value");
+        string span = fixedSpan ?? $"_writer.Reserve({(member.IsVariable ? DynamicLength(argument, "value") : member.StaticLength)})";
+        string copy = fixedSpan is null ? $"_writer.Write({source.Bytes});" : $"{source.Bytes}.CopyTo({fixedSpan});";
+
+        yield return $"public void Write{member.Name}({WriterArgumentTypeName(argument)} value) {{ {Statements(ValidationStatement(decl, argument, "value"), begin, $"Span<byte> data = {span};", encode)} }}";
+        yield return $"public void Copy{member.Name}() {{ if (!({source.Exists})) ThrowNoSszSource(nameof({member.Name})); {begin} {copy} }}";
+
+        if (NestedWriter(decl, argument, source) is (string returnType, string parameters, string validation, string result))
+        {
+            yield return $"public {returnType} Begin{member.Name}({parameters}) {{ {Statements(validation, begin, $"return {result};")} }}";
+        }
+
+        static string Statements(params string[] statements) => string.Join(" ", statements.Where(statement => statement.Length != 0));
+    }
+
+    private static string WriterCode(SszType decl)
+    {
+        bool isUnion = decl.Kind == Kind.CompatibleUnion;
+        bool hasFixedSection = !isUnion && !decl.IsSszListItself;
+        SszProperty[] members = decl.CompatibleUnionMembers?.ToArray() ?? decl.Members!;
+        SszProperty[] writeOrder = [.. members.Where(m => !m.IsVariable), .. members.Where(m => m.IsVariable)];
+        int[] positions = FixedSectionPositions(members);
+
+        List<string> methods = [];
+        for (int i = 0; i < writeOrder.Length; i++)
+        {
+            SszProperty member = writeOrder[i];
+            string fixedSpan = $"_fixedSection.Slice({positions[Array.IndexOf(members, member)]}, {member.StaticLength})";
+            string claim = $"_id, {(isUnion ? 0 : i)}, nameof({member.Name})";
+            string begin = !hasFixedSection || !member.IsVariable ? $"_writer.BeginMember({claim});" : $"_writer.BeginVariableMember({claim}, {fixedSpan}, _start);";
+            if (isUnion) begin += $" _writer.Reserve(1)[0] = {member.SelectorValue};";
+            (string, string) source = isUnion ? ("_source._data.Slice(1)", $"_hasSource && _source.Selector == {decl.Selector!.Type.StaticMemberAccess}.{member.Name}")
+                : (hasFixedSection ? MemberBytes(members, member, "_source._data") : "_source._data", "_hasSource");
+            methods.AddRange(WriterMethods(decl, member, begin, hasFixedSection && !member.IsVariable ? fixedSpan : null, source));
+        }
+
+        return $@"    /// <summary>Writes the members of a value one by one to an <see cref=""SszWriter""/>, without encoding the whole value.</summary>
+    /// <remarks>
+    /// {(isUnion ? "Exactly one member has to be written." : "Every member has to be written once, first the fixed-size ones and then the variable-size ones, each in SSZ order.")}
+    /// A <c>Copy</c> method writes the bytes of the member in the source, without checking them.
+    /// A <c>Begin</c> method opens a nested writer, which mirrors the member in the source if there is one, and has to be complete
+    /// and disposed before this one is used again.
+    /// </remarks>
+    public {(decl.HasSszBaseType ? "new " : "")}readonly ref struct Writer
+    {{
+        private readonly SszWriter _writer;
+        private readonly int _id;
+        {(hasFixedSection ? "private readonly int _start;" : "")}
+        {(hasFixedSection ? "private readonly Span<byte> _fixedSection;" : "")}
+        private readonly RefReader _source;
+        private readonly bool _hasSource;
+{Whitespace}
+        public Writer(SszWriter writer)
+        {{
+            _writer = writer;
+            _id = writer.Open();
+            {(hasFixedSection ? "_start = writer.Length;" : "")}
+            {(hasFixedSection ? $"_fixedSection = writer.Reserve({decl.StaticLength});" : "")}
+        }}
+{Whitespace}
+        /// <param name=""writer"">Receives the bytes.</param>
+        /// <param name=""source"">The value to copy unchanged members from.</param>
+        public Writer(SszWriter writer, RefReader source) : this(writer)
+        {{
+            _source = source;
+            _hasSource = true;
+        }}
+{Whitespace}
+{Shift(2, methods)}
+{Whitespace}
+        /// <summary>Ends the value if it is complete.</summary>
+        public void Dispose() {{ _writer.Close(_id, {(isUnion ? 1 : members.Length)}); }}
     }}";
     }
 
@@ -1465,7 +1609,7 @@ internal static partial class SszCodecHelpers
                     }
                     else
                     {
-                        line = StaticFieldEncodeStatement(m, localStaticOffset, "container");
+                        line = StaticFieldEncodeStatement($"data.Slice({localStaticOffset}, {m.StaticLength})", m, $"container.{m.Name}");
                     }
                     localStaticOffset += m.StaticLength;
                     yield return line;
@@ -1544,7 +1688,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         }")}
 {Whitespace}
         {ValidationStatement(decl, variables[0], $"container.{variables[0].Name}")}
-        return {DynamicLength(decl, variables[0])};
+        return {DynamicLength(variables[0], $"container.{variables[0].Name}")};
     }}
 {Whitespace}
     public static int GetLength(ReadOnlySpan<{decl.TypeReferenceName}> container)
@@ -1716,6 +1860,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
     }}
 {Whitespace}
 {RefReaderCode(decl)}
+{Whitespace}
+{WriterCode(decl)}
 }}
 " :
 (decl.Kind == Kind.Container || decl.Kind == Kind.ProgressiveContainer) ?
@@ -1739,7 +1885,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
 {Shift(2, ValidationStatements(decl, decl.Members!, "container"))}
 {Whitespace}
         return {decl.StaticLength}{(variables.Any() ? "" : ";")}
-{Shift(4, variables.Select(m => $"+ {DynamicLength(decl, m)}"), ";")}
+{Shift(4, variables.Select(m => $"+ {DynamicLength(m, $"container.{m.Name}")}"), ";")}
     }}
 {Whitespace}
     public static int GetLength(ReadOnlySpan<{decl.TypeReferenceName}> container)
@@ -1773,7 +1919,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
 {Whitespace}
 {Shift(2, ValidationStatements(decl, decl.Members!, "container"))}
 {Whitespace}
-{Shift(2, variables.Select((_, i) => $"int offset{i + 1} = {(i == 0 ? decl.StaticLength : $"offset{i} + {DynamicLength(decl, variables[i - 1])}")};"))}
+{Shift(2, variables.Select((_, i) => $"int offset{i + 1} = {(i == 0 ? decl.StaticLength : $"offset{i} + {DynamicLength(variables[i - 1], $"container.{variables[i - 1].Name}")}")};"))}
 {Whitespace}
 {Shift(2, BuildStaticEncodeLines(decl))}
 {Whitespace}
@@ -1928,6 +2074,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
     }}
 {Whitespace}
 {RefReaderCode(decl)}
+{Whitespace}
+{WriterCode(decl)}
 }}
 " :
 // Compatible unions
@@ -1950,7 +2098,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
 {Shift(3, decl.CompatibleUnionMembers!.Select(m =>
 {
     string validation = ValidationStatement(decl, m, $"container.{m.Name}");
-    string length = m.IsVariable ? DynamicLength(decl, m) : m.StaticLength.ToString();
+    string length = m.IsVariable ? DynamicLength(m, $"container.{m.Name}") : m.StaticLength.ToString();
     return string.IsNullOrEmpty(validation)
         ? $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: return 1 + {length};"
         : $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: {validation} return 1 + {length};";
@@ -2152,6 +2300,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
     }}
 {Whitespace}
 {RefReaderCode(decl)}
+{Whitespace}
+{WriterCode(decl)}
 }}
 ");
             return GeneratedSourceHeader + result;
