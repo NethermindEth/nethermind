@@ -515,6 +515,10 @@ reaches the requested range. Shutdown cancels and joins the worker before
 closing its database.
 `safe` and `earliest` return `-32001`. The beacon light-client protocol supplies
 optimistic and finalized heads. Genesis falls outside the bounded history.
+`eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1`, and
+`debug_traceCall` use the same fresh authenticated optimistic head for
+`"pending"` and `"latest"`. For `debug_traceCall` across both full Nethermind and
+the light client, use `"latest"`.
 `eth_getTransactionCount(..., "pending")` starts at the latest authenticated
 nonce and advances over consecutive, affordable transactions this client has
 announced to execution peers. A frame transaction's fee counts against the sender

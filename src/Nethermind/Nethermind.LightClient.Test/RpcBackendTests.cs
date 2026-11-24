@@ -20,6 +20,7 @@ using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization;
 using NSubstitute;
@@ -32,6 +33,7 @@ public class RpcBackendTests
 {
     private static readonly Address AccountAddress = new("0x1234567890123456789012345678901234567890");
     private static readonly Hash256 BlockHash = Keccak.Compute("verified block");
+    private static readonly string[] EvmMethods = ["eth_call", "eth_estimateGas", "eth_createAccessList", "debug_traceCall", "eth_simulateV1"];
 
     [Test]
     public async Task Header_rpc_reuses_the_verified_header_without_fetching_a_body([Values] bool byHash)
@@ -785,6 +787,19 @@ public class RpcBackendTests
     }
 
     [Test]
+    public async Task Pending_evm_methods_use_the_authenticated_optimistic_head([ValueSource(nameof(EvmMethods))] string method)
+    {
+        using Provider provider = OptimisticProvider();
+        using EvmExecutor calls = new(provider, new SingleReleaseSpecProvider(Shanghai.Instance, 1, 1), NullLogManager.Instance);
+        using RpcBackend rpc = provider.CreateRpc(calls);
+        object call = new { to = AccountAddress.ToString(), gas = "0x186a0" };
+
+        await rpc.InvokeAsync(method, PendingEvmParameters(method, call), CancellationToken.None);
+
+        Assert.That(provider.LastQueriedHead, Is.EqualTo(provider.LatestHead));
+    }
+
+    [Test]
     public async Task Latest_without_an_authenticated_optimistic_head_errors()
     {
         using Provider provider = new(new Account(7, 123));
@@ -882,8 +897,8 @@ public class RpcBackendTests
         using Provider provider = new(new Account(7, 1_000_000_000),
             headNumber: key is null ? 10UL : 20_000_000UL, accountAddress: key?.Address)
         { CurrentSlot = 111 };
-        using EvmExecutor? calls = method is "eth_call" or "eth_estimateGas"
-            ? new(provider, MainnetSpecProvider.Instance, NullLogManager.Instance) : null;
+        using EvmExecutor? calls = EvmMethods.Contains(method)
+            ? new(provider, new SingleReleaseSpecProvider(Shanghai.Instance, 1, 1), NullLogManager.Instance) : null;
         using RpcBackend rpc = provider.CreateRpc(calls);
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
@@ -951,8 +966,8 @@ public class RpcBackendTests
         using Provider provider = new(new Account(7, 1_000_000_000),
             headNumber: key is null ? 10UL : 20_000_000UL, accountAddress: key?.Address)
         { CurrentSlot = 111 };
-        using EvmExecutor? calls = method is "eth_call" or "eth_estimateGas"
-            ? new(provider, MainnetSpecProvider.Instance, NullLogManager.Instance) : null;
+        using EvmExecutor? calls = EvmMethods.Contains(method)
+            ? new(provider, new SingleReleaseSpecProvider(Shanghai.Instance, 1, 1), NullLogManager.Instance) : null;
         TaskCompletionSource<VerifiedHead> recovery = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int waiting = 0;
         using RpcBackend rpc = provider.CreateRpc(calls, waitForLatestHead: cancellation =>
@@ -987,8 +1002,8 @@ public class RpcBackendTests
         object result = await survivor.WaitAsync(token);
 
         Assert.That(result, Is.Not.Null);
-        if (method is "eth_getBalance" or "eth_getTransactionCount" or "eth_getCode" or "eth_getStorageAt"
-            or "eth_getProof" or "eth_call" or "eth_estimateGas" or "eth_sendRawTransaction")
+        if (calls is not null || method is "eth_getBalance" or "eth_getTransactionCount" or "eth_getCode" or "eth_getStorageAt"
+            or "eth_getProof" or "eth_sendRawTransaction")
             Assert.That(provider.LastQueriedHead, Is.EqualTo(fresh));
         else
             Assert.That(provider.Requests, Does.Contain(("header", (Hash256?)fresh.BlockHash)));
@@ -1045,6 +1060,8 @@ public class RpcBackendTests
             yield return new(method, Parameters(call));
             yield return new(method, Parameters(call, "latest"));
         }
+        foreach (string method in EvmMethods)
+            yield return new(method, PendingEvmParameters(method, call));
         yield return new("eth_getBlockByNumber", Parameters("latest", false));
         yield return new("eth_getBlockTransactionCountByNumber", Parameters("latest"));
         yield return new("eth_getTransactionByBlockNumberAndIndex", Parameters("latest", "0x0"));
@@ -1062,6 +1079,13 @@ public class RpcBackendTests
         byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
         yield return new("eth_sendRawTransaction", Parameters("0x" + Convert.ToHexString(encoded).ToLowerInvariant()));
     }
+
+    private static JsonElement PendingEvmParameters(string method, object call) => method switch
+    {
+        "debug_traceCall" => Parameters(call, "pending", new { tracer = "callTracer" }),
+        "eth_simulateV1" => Parameters(new { blockStateCalls = new[] { new { calls = new[] { call } } } }, "pending"),
+        _ => Parameters(call, "pending"),
+    };
 
     private static IEnumerable<TestCaseData> PinnedDataRequests()
     {

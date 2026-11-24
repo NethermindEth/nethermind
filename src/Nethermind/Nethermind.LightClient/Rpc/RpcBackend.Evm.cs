@@ -38,7 +38,7 @@ internal sealed partial class RpcBackend
     private async Task<T> WithCallHeadAsync<T>(JsonElement block, Func<EvmExecutor, VerifiedHead, Task<T>> execute, CancellationToken token)
     {
         if (calls is null) throw new RpcException(-32601, "Method is not supported by the verified RPC.");
-        (VerifiedHead head, bool historical) = block.ValueKind == JsonValueKind.Undefined
+        (VerifiedHead head, bool historical) = block.ValueKind == JsonValueKind.Undefined || IsPendingTag(block)
             ? (await LatestHeadAsync(token), false) : await ResolveStateHeadAsync(block, token);
         try { return await execute(calls, head); }
         finally { if (historical) _historicalStateRequests.Release(); }
