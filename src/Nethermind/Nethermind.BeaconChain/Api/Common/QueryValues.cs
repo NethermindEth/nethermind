@@ -3,19 +3,28 @@
 
 using System.Reflection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.BeaconChain.Api.Common;
 
 /// <summary>A repeatable query parameter, with comma-joined values split the same way multiple <c>key=</c> occurrences would be.</summary>
-internal readonly record struct QueryValues(List<string> Values)
+internal readonly record struct QueryValues(IReadOnlyList<string> Values)
 {
     /// <summary>Binds the query parameter named after <paramref name="parameter"/>.</summary>
+    /// <remarks>The values are pooled and returned once the response completes, so a streamed result may still read them.</remarks>
     public static ValueTask<QueryValues> BindAsync(HttpContext context, ParameterInfo parameter)
     {
-        List<string> values = [];
-        foreach (string? raw in context.Request.Query[parameter.Name!])
+        StringValues raws = context.Request.Query[parameter.Name!];
+        ArrayPoolList<string> values = [with(raws.Count)];
+        context.Response.RegisterForDispose(values);
+        foreach (string? raw in raws)
         {
-            if (raw is not null) values.AddRange(raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            foreach (Range range in raw.AsSpan().Split(','))
+            {
+                ReadOnlySpan<char> part = raw.AsSpan()[range].Trim();
+                if (!part.IsEmpty) values.Add(part.ToString());
+            }
         }
 
         return new(new QueryValues(values));

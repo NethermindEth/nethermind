@@ -287,9 +287,9 @@ internal sealed class BeaconStatesEndpoints(BeaconApiContext ctx)
     /// <summary>beacon-APIs v5.0.0-alpha.2 <c>postStateValidators</c>: the GET filters carried in a JSON body, without the URI length limit.</summary>
     [HttpPost("/eth/v1/beacon/states/{stateId}/validators"), Negotiated]
     public IResult ValidatorsPost(string stateId, [FromBody] ValidatorsRequestDto request) =>
-        FilteredValidators(stateId, [.. request.Ids ?? []], [.. request.Statuses ?? []]);
+        FilteredValidators(stateId, request.Ids ?? [], request.Statuses ?? []);
 
-    private IResult FilteredValidators(string stateId, List<string> idFilters, List<string> statusFilters)
+    private IResult FilteredValidators(string stateId, IReadOnlyList<string> idFilters, IReadOnlyList<string> statusFilters)
     {
         if (statusFilters.Count > 13 || new HashSet<string>(statusFilters, StringComparer.Ordinal).Count != statusFilters.Count)
             return ApiResults.Error(StatusCodes.Status400BadRequest, "Validator statuses must be unique.");
@@ -442,7 +442,7 @@ internal sealed class BeaconStatesEndpoints(BeaconApiContext ctx)
     public IResult ValidatorBalancesPost(string stateId, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ImmutableArray<string> ids) =>
         FilteredValidatorBalances(stateId, ToIdFilters(ids));
 
-    private IResult FilteredValidatorBalances(string stateId, List<string> idFilters)
+    private IResult FilteredValidatorBalances(string stateId, IReadOnlyList<string> idFilters)
     {
         if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
@@ -531,12 +531,12 @@ internal sealed class BeaconStatesEndpoints(BeaconApiContext ctx)
     }
 
     /// <summary>The ids of an optional JSON array body; an absent body binds to a default array and selects nothing.</summary>
-    private static List<string> ToIdFilters(ImmutableArray<string> ids) => ids.IsDefault ? [] : [.. ids];
+    private static IReadOnlyList<string> ToIdFilters(ImmutableArray<string> ids) => ids.IsDefault ? [] : ids;
 
     /// <summary>Resolves request ids to distinct registry indices in first-seen order, dropping well-formed ids that name no validator.</summary>
     /// <remarks>An index and a pubkey naming one validator count once, so repeated ids cannot multiply the response.</remarks>
     /// <param name="indices"><c>null</c> when <paramref name="ids"/> is empty, which selects every validator.</param>
-    private static bool TryResolveIndices(BeaconApiContext ctx, ApiState state, List<string> ids, out List<int>? indices, out string? invalidId)
+    private static bool TryResolveIndices(BeaconApiContext ctx, ApiState state, IReadOnlyList<string> ids, out List<int>? indices, out string? invalidId)
     {
         indices = null;
         invalidId = null;
@@ -697,11 +697,12 @@ internal sealed class BeaconStatesEndpoints(BeaconApiContext ctx)
         return true;
     }
 
-    private static bool MatchesAny(string status, List<string> filters)
+    private static bool MatchesAny(string status, IReadOnlyList<string> filters)
     {
-        foreach (string filter in filters)
+        // Runs per validator, where a foreach over the interface would allocate an enumerator each time.
+        for (int i = 0; i < filters.Count; i++)
         {
-            if (ValidatorStatus.MatchesFilter(status, filter)) return true;
+            if (ValidatorStatus.MatchesFilter(status, filters[i])) return true;
         }
 
         return false;

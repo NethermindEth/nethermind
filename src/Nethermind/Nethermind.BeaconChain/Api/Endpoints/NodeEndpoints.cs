@@ -166,23 +166,23 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
         return ApiResults.Json(new PeersEnvelopeDto(filtered, new PeersMetaDto(filtered.Count)));
     }
 
-    /// <summary><c>/eth/v1/node/peers/{peer_id}</c>: a single tracked peer, or 404 for an id this
+    /// <summary><c>/eth/v1/node/peers/{peerId}</c>: a single tracked peer, or 404 for an id this
     /// driver's peer manager (or the driver itself, when it has none) has no record of.</summary>
-    [HttpGet("/eth/v1/node/peers/{peer_id}"), Negotiated]
-    public IResult PeerById(string peer_id)
+    [HttpGet("/eth/v1/node/peers/{peerId}"), Negotiated]
+    public IResult PeerById(string peerId)
     {
-        if (peer_id.Length > 64 || peer_id.AsSpan().IndexOfAnyExcept("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz") >= 0
-            || !Multihash.TryParse(peer_id, MultibaseEncoding.Base58Btc, out Multihash hash)
+        if (peerId.Length > 64 || peerId.AsSpan().IndexOfAnyExcept("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz") >= 0
+            || !Multihash.TryParse(peerId, MultibaseEncoding.Base58Btc, out Multihash hash)
             || (int)hash.Code is not (0 or 18)
             || ((int)hash.Code == 18 ? hash.Length != 32 : hash.Length is < 1 or > 42)
-            || !new PeerId(peer_id).Bytes.AsSpan().SequenceEqual(hash.ToBytes()))
+            || !new PeerId(peerId).Bytes.AsSpan().SequenceEqual(hash.ToBytes()))
         {
-            return ApiResults.Error(StatusCodes.Status400BadRequest, $"Invalid peer ID: {peer_id}");
+            return ApiResults.Error(StatusCodes.Status400BadRequest, $"Invalid peer ID: {peerId}");
         }
 
-        if (ctx.PeerManager is null || !ctx.PeerManager.TryGetPeer(peer_id, out PeerRecord peer))
+        if (ctx.PeerManager is null || !ctx.PeerManager.TryGetPeer(peerId, out PeerRecord peer))
         {
-            return ApiResults.Error(StatusCodes.Status404NotFound, $"No known peer '{peer_id}'.");
+            return ApiResults.Error(StatusCodes.Status404NotFound, $"No known peer '{peerId}'.");
         }
 
         return ApiResults.Data(ToPeerDto(peer));
