@@ -339,7 +339,7 @@ public class PayloadPreparationServiceTests
         producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.PrepareEmptyBlock, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<Block?>(empty));
         // A build past its last cancellation check finishes anyway.
-        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>())
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>(), Arg.Any<CancellationToken>())
             .Returns(build);
         relay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
             .Returns(new BoostPayloadAttributes { Timestamp = Attributes.Timestamp, PrevRandao = Attributes.PrevRandao, SuggestedFeeRecipient = Attributes.SuggestedFeeRecipient });
@@ -374,6 +374,9 @@ public class PayloadPreparationServiceTests
         blockProducer
             .BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<Block?>(Build.A.Block.TestObject));
+        blockProducer
+            .BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Block?>(Build.A.Block.TestObject));
 
         ITxPool txPool = Substitute.For<ITxPool>();
         // The improvement loop only rebuilds once new transactions have arrived.
@@ -394,8 +397,11 @@ public class PayloadPreparationServiceTests
             Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(1));
 
     private static Task<Block?> BuildCall(IBlockProducer producer, IBlockProducer.Flags flags, Action<CancellationToken>? onToken = null) =>
-        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), flags,
-            onToken is null ? Arg.Any<CancellationToken>() : Arg.Do(onToken));
+        flags == IBlockProducer.Flags.None
+            ? producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), flags,
+                onToken is null ? Arg.Any<CancellationToken>() : Arg.Do(onToken), Arg.Any<CancellationToken>())
+            : producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), flags,
+                onToken is null ? Arg.Any<CancellationToken>() : Arg.Do(onToken));
 
     [Test]
     [CancelAfter(30000)]
@@ -498,6 +504,8 @@ public class PayloadPreparationServiceTests
     {
         IBlockProducer producer = Substitute.For<IBlockProducer>();
         producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
+            .Returns(Build.A.Block.WithNumber(1).TestObject);
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>(), Arg.Any<CancellationToken>())
             .Returns(Build.A.Block.WithNumber(1).TestObject);
         using TestPayloadPreparationService service = CreateService(producer);
         FieldInfo shutdownField = typeof(PayloadPreparationService).GetField("_shutdown", BindingFlags.NonPublic | BindingFlags.Instance)!;
