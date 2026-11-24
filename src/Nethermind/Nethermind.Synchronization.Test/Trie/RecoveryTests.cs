@@ -128,8 +128,9 @@ public class RecoveryTests
     }
 
     [Test]
-    public async Task can_recover_eth66()
+    public async Task can_recover_from_peer_serving_node_data([Values(EthVersions.Eth66, EthVersions.Eth67)] byte protocolVersion)
     {
+        _syncPeerEth66.ProtocolVersion.Returns(protocolVersion);
         using IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
         AssertRecoveredNode(response);
     }

@@ -27,7 +27,6 @@ using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
