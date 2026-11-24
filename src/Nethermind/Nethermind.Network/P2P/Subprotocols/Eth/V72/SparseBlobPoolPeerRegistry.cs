@@ -401,9 +401,17 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                         state.Cells = null;
                     }
                 }
+                else if ((state.Submitting || state.ApplyingRecordedCells)
+                    && state.Cells is { } busyCells
+                    && HasSource(busyCells, peerId))
+                {
+                    // The cells are in use and cannot be stripped now. Remembered so that a failed check never keeps
+                    // them for attribution under this key, which a later session may hold by then.
+                    (state.EndedCellSources ??= []).Add(peerId);
+                }
 
-                // Not gated by Submitting: a submission reads the kept cells only after it has succeeded, under
-                // this lock, so a source stripped here is never blamed in place of a later session.
+                // Not gated by Submitting: the kept cells are read only under this lock, when a submission has
+                // succeeded, so every source left in them belongs to the session registered at that point.
                 if (state.UnattributedCells is { } unattributedCells
                     && unattributedCells.TryRemoveSource(peerId, out PendingCellsBuffer? remainingUnattributedCells))
                 {
@@ -1853,15 +1861,14 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
                 // A failed proof check cannot tell a wrong proof from a wrong cell. Keep the first failed cells
                 // until a later check verifies cells at the same indices, which shows whether they were wrong.
-                bool keepUnattributedCells = proofCheckFailed
+                PendingCellsBuffer? keptCells = null;
+                if (proofCheckFailed
                     && firstFailure
                     && !removeState
                     && state.UnattributedCells is null
-                    && state.Cells is not null;
-                if (keepUnattributedCells)
+                    && state.Cells is { } failedCells)
                 {
-                    state.UnattributedCells = state.Cells;
-                    state.UnattributedCellsExpiresAt = _timestamper.UtcNowOffset + EarlyCellsTtl;
+                    keptCells = RemoveEndedSources(state.Hash, failedCells, state.EndedCellSources);
                 }
                 else
                 {
@@ -1869,9 +1876,16 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 }
 
                 state.Cells = null;
+                state.EndedCellSources = null;
+                bool keepUnattributedCells = keptCells is not null;
+                if (keptCells is { } unattributedCells)
+                {
+                    state.UnattributedCells = unattributedCells;
+                    state.UnattributedCellsExpiresAt = _timestamper.UtcNowOffset + EarlyCellsTtl;
+                }
 
-                // Its own cells for the same indices then settle which side was wrong, so the body stays
-                // while its peer is still connected.
+                // The retry asks the body peer first for the failed columns, so the body stays while its peer
+                // is still connected.
                 bool keepTransaction = keepUnattributedCells
                     && transactionPeer is not null
                     && ReferenceEquals(state.TransactionPeer, transactionPeer)
@@ -1954,11 +1968,57 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <summary>
+    /// Removes the sources whose session ended while <paramref name="cells"/> were in use, and releases their bytes.
+    /// Must be called under <c>state.Lock</c>.
+    /// </summary>
+    /// <returns>The remaining cells, or <c>null</c> when none remain and all their bytes were released.</returns>
+    private PendingCellsBuffer? RemoveEndedSources(ValueHash256 hash, PendingCellsBuffer cells, List<PublicKey>? endedSources)
+    {
+        if (endedSources is null)
+        {
+            return cells;
+        }
+
+        for (int i = 0; i < endedSources.Count; i++)
+        {
+            if (!cells.TryRemoveSource(endedSources[i], out PendingCellsBuffer? remaining))
+            {
+                continue;
+            }
+
+            if (remaining is not { } retained || !TryReplaceCellsAccounting(hash, cells, retained))
+            {
+                ReleaseCells(hash, cells);
+                return null;
+            }
+
+            cells = retained;
+        }
+
+        return cells;
+    }
+
+    private static bool HasSource(in PendingCellsBuffer cells, PublicKey peerId)
+    {
+        for (int i = 0; i < cells.Sources.Length; i++)
+        {
+            if (cells.Sources[i].PeerId == peerId)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Resolves the registered session of every source of <paramref name="cells"/>. Must be called under <c>state.Lock</c>.
     /// </summary>
     /// <remarks>
-    /// Peer cleanup strips a session's cells from the kept buffer before a new session under the same key is
-    /// registered, so a source still present here belongs to the registered session, if any.
+    /// Every source of the kept cells was sent by the session registered now, if any: cells of a session that ended
+    /// while they were in use by a submission are dropped when they are kept (<see cref="RemoveEndedSources"/>), and
+    /// after that peer cleanup strips a session's cells from the kept buffer before another session under the same key
+    /// is registered.
     /// </remarks>
     private ISparseBlobPoolPeer?[] GetRegisteredSources(in PendingCellsBuffer cells)
     {
@@ -2943,6 +3003,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         /// <summary>Cells of the first failed proof check, kept until verified cells show whether they were wrong.</summary>
         public PendingCellsBuffer? UnattributedCells { get; set; }
         public DateTimeOffset UnattributedCellsExpiresAt { get; set; }
+        /// <summary>Sources of <see cref="Cells"/> whose session ended while the cells were in use and could not be stripped.</summary>
+        public List<PublicKey>? EndedCellSources { get; set; }
         public DateTimeOffset? AdmissionDueAt { get; set; }
         public int AmbiguousValidationFailures { get; set; }
         public int AmbiguousCellValidationFailures { get; set; }
