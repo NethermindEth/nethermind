@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
@@ -3682,7 +3683,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         Block head = ctx.Test.BlockTree.Head!;
-        ctx.Test.Bridge.DeleteBlockAccessList(head.Number, head.Hash!);
+        ctx.Test.Container.Resolve<IBlockAccessListStore>().Delete(head.Number, head.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessList", head.Hash!);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
     }
@@ -3693,7 +3694,7 @@ public partial class EthRpcModuleTests
         const long number = 3;
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         Hash256 blockHash = ctx.Test.BlockTree.FindLevel(number)!.BlockInfos[0].BlockHash;
-        ctx.Test.Bridge.DeleteBlockAccessList(number, blockHash);
+        ctx.Test.Container.Resolve<IBlockAccessListStore>().Delete(number, blockHash);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessList", "0x3");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
     }

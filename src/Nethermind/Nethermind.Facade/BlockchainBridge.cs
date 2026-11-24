@@ -65,8 +65,7 @@ namespace Nethermind.Facade
         IRpcLogFinder logFinder,
         IBlockAccessListStore balStore,
         ISpecProvider specProvider,
-        IBlocksConfig blocksConfig,
-        IMiningConfig miningConfig)
+        IBlocksConfig blocksConfig)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
@@ -78,8 +77,6 @@ namespace Nethermind.Facade
                 return blockTree.Head;
             }
         }
-
-        public bool IsMining { get; } = miningConfig.Enabled;
 
         private bool TryGetCanonicalTransaction(
             Hash256 txHash,
@@ -783,10 +780,6 @@ namespace Nethermind.Facade
 
         public MemoryManager<byte>? GetBlockAccessListRlp(ulong blockNumber, Hash256 blockHash)
             => balStore.GetRlp(blockNumber, blockHash);
-
-        // for testing
-        public void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash)
-            => balStore.Delete(blockNumber, blockHash);
 
         public Witness GenerateExecutionWitness(BlockHeader parent, Block block) =>
             GenerateExecutionWitness(parent, block, NullBlockTracer.Instance);

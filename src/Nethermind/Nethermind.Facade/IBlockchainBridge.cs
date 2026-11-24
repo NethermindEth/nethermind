@@ -26,7 +26,6 @@ namespace Nethermind.Facade
     public interface IBlockchainBridge : ILogFinder, ISimulateBridge
     {
         Block HeadBlock { get; }
-        bool IsMining { get; }
         void RecoverTxSenders(Block block);
         Address? RecoverTxSender(Transaction tx);
 
@@ -40,12 +39,7 @@ namespace Nethermind.Facade
 
         /// <summary>Gets the transaction at <paramref name="index"/> of a stored block, decoding no other transaction.</summary>
         /// <returns>False when the block body is not stored; true otherwise, with a null transaction for an index past the end.</returns>
-        bool TryGetStoredTransaction(BlockHeader header, int index, out Transaction? transaction, out int transactionCount)
-        {
-            transaction = null;
-            transactionCount = 0;
-            return false;
-        }
+        bool TryGetStoredTransaction(BlockHeader header, int index, out Transaction? transaction, out int transactionCount);
 
         CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
         CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, ulong gasCap = 0, bool noBaseFee = false, CancellationToken cancellationToken = default);
@@ -107,6 +101,5 @@ namespace Nethermind.Facade
 
         ReadOnlyBlockAccessList? GetBlockAccessList(ulong blockNumber, Hash256 blockHash);
         MemoryManager<byte>? GetBlockAccessListRlp(ulong blockNumber, Hash256 blockHash);
-        void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash);
     }
 }
