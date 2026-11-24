@@ -270,6 +270,33 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
         }
 
+        [Test]
+        public async Task Failed_explicit_migration_is_logged_and_does_not_fail_the_next_run()
+        {
+            IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
+            chainLevelInfoRepository.LoadLevel(Arg.Any<ulong>()).Returns(_ => throw new InvalidOperationException("Test failure"));
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
+            CollectingLogger logger = new();
+
+            ReceiptMigration migration = new(
+                new TestReceiptStorage(new InMemoryReceiptStorage(), new InMemoryReceiptStorage()),
+                Substitute.For<IBlockTree>(),
+                syncModeSelector,
+                chainLevelInfoRepository,
+                new ReceiptConfig { StoreReceipts = true, ReceiptsMigration = true },
+                new TestMemColumnsDb<ReceiptsColumns>(),
+                Substitute.For<IReceiptsRecovery>(),
+                new OneLoggerLogManager(new ILogger(logger)));
+
+            await migration.Run(0, 1);
+            await migration._migrationTask!;
+            await migration.Run(0, 1);
+            await migration._migrationTask!;
+
+            Assert.That(logger.Errors, Has.Count.EqualTo(2));
+        }
+
         [TestCaseSource(nameof(PointerTrackerScenarios))]
         public void MigrationPointerTracker_advances_pointer_only_across_contiguously_completed_blocks(
             ulong to, ulong[] completionOrder, ulong[] expectedPointerAfterEachCompletion)
@@ -339,17 +366,18 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
         private sealed class CollectingLogger : InterfaceLogger
         {
             public List<string> Warnings { get; } = [];
+            public List<string> Errors { get; } = [];
 
             public void Info(string text) { }
             public void Warn(string text) => Warnings.Add(text);
             public void Debug(string text) { }
             public void Trace(string text) { }
-            public void Error(string text, Exception ex = null) { }
+            public void Error(string text, Exception ex = null) => Errors.Add(text);
             public bool IsInfo => false;
             public bool IsWarn => true;
             public bool IsDebug => false;
             public bool IsTrace => false;
-            public bool IsError => false;
+            public bool IsError => true;
         }
 
         private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptMigrationStore

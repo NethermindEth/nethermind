@@ -71,20 +71,28 @@ namespace Nethermind.Init.Steps.Migrations
         // Actually start running it.
         public async Task<bool> Run(ulong from, ulong to)
         {
-            _cancellationTokenSource?.Cancel();
-            try
-            {
-                await (_migrationTask ?? Task.CompletedTask);
-            }
-            catch (OperationCanceledException)
-            {
-            }
+            CancellationTokenSource cancellationTokenSource = new();
+            CancellationToken token = cancellationTokenSource.Token;
+            CancellationTokenSource? previousCancellationTokenSource = Interlocked.Exchange(ref _cancellationTokenSource, cancellationTokenSource);
+            previousCancellationTokenSource?.Cancel();
+            await (_migrationTask ?? Task.CompletedTask);
+            previousCancellationTokenSource?.Dispose();
 
-            _cancellationTokenSource = new CancellationTokenSource();
             _migrationTask = Task.Run(async () =>
             {
-                await _syncModeSelector.WaitUntilMode(CanMigrate, _cancellationTokenSource.Token);
-                RunMigration(from, to, false, _cancellationTokenSource.Token);
+                try
+                {
+                    await _syncModeSelector.WaitUntilMode(CanMigrate, token);
+                    RunMigration(from, to, false, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Receipt migration cancelled");
+                }
+                catch (Exception e)
+                {
+                    _logger.Error("Error running receipt migration", e);
+                }
             });
             return _receiptConfig.StoreReceipts && _receiptConfig.ReceiptsMigration;
         }
