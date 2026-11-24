@@ -75,20 +75,9 @@ namespace Nethermind.Consensus.Producers
 
         private async Task StopLoopAsync()
         {
-            try
+            using (_loopCancellationTokenSource)
             {
-                await _loopCancellationTokenSource.CancelAsync();
-            }
-            finally
-            {
-                try
-                {
-                    if (_loopTask is not null) await _loopTask;
-                }
-                finally
-                {
-                    _loopCancellationTokenSource.Dispose();
-                }
+                await Task.WhenAll(_loopCancellationTokenSource.CancelAsync(), _loopTask ?? Task.CompletedTask);
             }
         }
     }
