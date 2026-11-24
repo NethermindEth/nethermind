@@ -1882,8 +1882,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 state.AmbiguousValidationFailures++;
                 removeState = state.AmbiguousValidationFailures >= MaxAmbiguousValidationFailures;
 
-                // A failed proof check cannot tell a wrong proof from a wrong cell. Keep the first failed cells
-                // until a later check verifies cells at the same indices, which shows whether they were wrong.
+                // A failed proof check of a body and cells from different peers cannot tell a wrong proof from a
+                // wrong cell. When it is the state's first ambiguous failure, keep the failed cells until a later
+                // admitted tuple verifies cells at the same indices, which shows whether they were wrong.
                 PendingCellsBuffer? keptCells = null;
                 if (proofCheckFailed
                     && firstFailure
@@ -3070,7 +3071,10 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         public ISparseBlobPoolPeer? TransactionPeer { get; set; }
         public int TransactionBytes { get; set; }
         public PendingCellsBuffer? Cells { get; set; }
-        /// <summary>Cells of the first failed proof check, kept until verified cells show whether they were wrong.</summary>
+        /// <summary>
+        /// Cells of a failed proof check that was the state's first ambiguous failure, kept until verified cells show
+        /// whether they were wrong, or until <see cref="UnattributedCellsExpiresAt"/>.
+        /// </summary>
         public PendingCellsBuffer? UnattributedCells { get; set; }
         public DateTimeOffset UnattributedCellsExpiresAt { get; set; }
         /// <summary>Sources of <see cref="Cells"/> whose session ended while the cells were in use and could not be stripped.</summary>
