@@ -27,6 +27,7 @@ using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -60,7 +61,8 @@ public class NativeProofWrapperBroadcasterTests
         }
     }
 
-    private static async Task<Context> Create()
+    /// <summary>Connects over <paramref name="version"/>; recursive wrappers travel only on <c>eth/76</c>.</summary>
+    private static async Task<Context> Create(byte version = EthVersions.Eth75)
     {
         BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder =>
             builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance)));
@@ -68,11 +70,11 @@ public class NativeProofWrapperBroadcasterTests
         session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 1000, true));
         session.RemoteNodeId.Returns(TestItem.PublicKeyA);
         session.HasAgreedCapability(Arg.Any<Capability>())
-            .Returns(call => call.Arg<Capability>().ProtocolCode == Protocol.Eth && call.Arg<Capability>().Version == EthVersions.Eth75);
+            .Returns(call => call.Arg<Capability>().ProtocolCode == Protocol.Eth && call.Arg<Capability>().Version == version);
         IProtocolHandler? handler = null;
         foreach (IProtocolHandlerFactory factory in chain.Container.Resolve<IProtocolHandlerFactory[]>())
-            if (factory.ProtocolCode == Protocol.Eth && factory.TryCreate(session, EthVersions.Eth75, out handler)) break;
-        Assert.That(handler, Is.TypeOf<Eth75ProtocolHandler>());
+            if (factory.ProtocolCode == Protocol.Eth && factory.TryCreate(session, version, out handler)) break;
+        Assert.That(handler, Is.InstanceOf<Eth75ProtocolHandler>().And.Property(nameof(IProtocolHandler.ProtocolVersion)).EqualTo(version));
         Context context = new(chain, session, (Eth75ProtocolHandler)handler!);
         session.When(s => s.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
             .Do(call => context.Disconnects.Enqueue(call.Arg<string>()));
@@ -80,6 +82,8 @@ public class NativeProofWrapperBroadcasterTests
         Route<NewProofWrapperHashesMessage>(context);
         Route<GetProofWrappersMessage>(context);
         Route<ProofWrappersMessage>(context);
+        Route<NewProofWrapperHashesMessage76>(context);
+        Route<GetProofWrappersMessage76>(context);
         return context;
     }
 
@@ -150,13 +154,12 @@ public class NativeProofWrapperBroadcasterTests
     }
 
     [Test]
-    [Ignore("eth/75 carries mode-0 wrappers only; eth/76 relays recursive ones")]
     public async Task Real_recursive_wrapper_is_fetched_whole_and_validated_before_admission()
     {
         byte[] proof = NativeLeanProofVerifierTests.MixedProof();
         Assert.That(proof.Length, Is.LessThanOrEqualTo(Eip8288Constants.MaxAggregateProofBytes), "the pinned guest proof fits MaxAggregateProofBytes");
-        using Context source = await Create();
-        using Context target = await Create();
+        using Context source = await Create(EthVersions.Eth76);
+        using Context target = await Create(EthVersions.Eth76);
         Channel<WireMessage> toTarget = Channel.CreateUnbounded<WireMessage>(), toSource = Channel.CreateUnbounded<WireMessage>();
         Task targetReader = Connect(source, target, toTarget), sourceReader = Connect(target, source, toSource);
         source.Handler.Init();
