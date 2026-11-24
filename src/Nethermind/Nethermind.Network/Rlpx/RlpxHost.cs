@@ -59,7 +59,7 @@ namespace Nethermind.Network.Rlpx
         private readonly NodeFilter _nodeFilter;
         private readonly IPrivilegedIpProvider _privilegedIpProvider;
         private readonly NetworkListenerState _listenerState;
-        private readonly ConcurrentDictionary<Guid, SessionActivitySubscription> _sessionActivitySubscriptions = new();
+        private readonly ConcurrentDictionary<Guid, Session> _trackedSessions = new();
         private readonly ConcurrentDictionary<IChannel, byte> _activeChannels = new();
         private readonly Lock _activeChannelsLock = new();
         private bool _closingActiveChannels;
@@ -438,19 +438,11 @@ namespace Nethermind.Network.Rlpx
         public event EventHandler<SessionEventArgs> SessionCreated;
         public event SessionDisconnectedEventHandler SessionDisconnected;
 
-        internal SessionActivitySubscription TrackSessionActivity(Session session)
+        internal void TrackSessionActivity(Session session)
         {
             ArgumentNullException.ThrowIfNull(session);
-
-            if (_sessionActivitySubscriptions.TryRemove(session.SessionId, out SessionActivitySubscription? existingSubscription))
-            {
-                existingSubscription.Detach();
-            }
-
-            SessionActivitySubscription subscription = new(this, session);
-            _sessionActivitySubscriptions[session.SessionId] = subscription;
-            subscription.Attach();
-            return subscription;
+            _trackedSessions[session.SessionId] = session;
+            session.SetActivityObserver(this);
         }
 
         /// <summary>
@@ -705,46 +697,23 @@ namespace Nethermind.Network.Rlpx
                 await closingTask;
             }
 
-            // Detach subscriptions and dispose any sessions that weren't disconnected during shutdown.
-            // Sessions whose Disconnected event fired are already disposed via OnSessionDisconnected.
-            foreach (KeyValuePair<Guid, SessionActivitySubscription> kvp in _sessionActivitySubscriptions)
+            // Sessions already disconnected during shutdown were removed by the activity observer.
+            foreach (KeyValuePair<Guid, Session> entry in _trackedSessions)
             {
-                kvp.Value.DisconnectAndDispose();
-            }
-
-            _sessionActivitySubscriptions.Clear();
-
-            if (_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");
-        }
-
-        internal sealed class SessionActivitySubscription(RlpxHost rlpxHost, Session session)
-        {
-            private readonly RlpxHost _rlpxHost = rlpxHost;
-            private readonly Session _session = session;
-
-            public void Attach() => _session.SetActivityObserver(_rlpxHost);
-
-            public void Detach()
-            {
-                DetachSession();
-                _rlpxHost._sessionActivitySubscriptions.TryRemove(_session.SessionId, out _);
-            }
-
-            public void DetachSession() => _session.SetActivityObserver(null);
-
-            public void DisconnectAndDispose()
-            {
+                Session session = entry.Value;
                 try
                 {
-                    _session.MarkDisconnected(DisconnectReason.AppClosing, DisconnectType.Local, "shutdown");
+                    session.MarkDisconnected(DisconnectReason.AppClosing, DisconnectType.Local, "shutdown");
                 }
                 catch (InvalidOperationException e)
                 {
-                    // Session may already be disposed or in a state that doesn't allow disposal
-                    ILogger logger = _rlpxHost._logger;
-                    if (logger.IsDebug) logger.Debug($"Could not disconnect {_session:hide} on shutdown: {e.Message}");
+                    if (_logger.IsDebug) _logger.Debug($"Could not disconnect {session:hide} on shutdown: {e.Message}");
                 }
             }
+
+            _trackedSessions.Clear();
+
+            if (_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");
         }
 
         void ISessionActivityObserver.OnSessionActivity(Session session)
@@ -755,12 +724,12 @@ namespace Nethermind.Network.Rlpx
 
         void ISessionActivityObserver.OnSessionDisconnected(Session session, DisconnectEventArgs args)
         {
-            if (!_sessionActivitySubscriptions.TryRemove(session.SessionId, out SessionActivitySubscription? subscription))
+            if (!_trackedSessions.TryRemove(session.SessionId, out _))
             {
                 return;
             }
 
-            subscription.DetachSession();
+            session.SetActivityObserver(null);
             _sessionMonitor.RemoveSession(session);
             try
             {
