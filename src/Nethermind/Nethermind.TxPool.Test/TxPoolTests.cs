@@ -1604,6 +1604,25 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Disposed_pool_rejects_submissions()
+        {
+            _txPool = CreatePool();
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(TxGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            await _txPool.DisposeAsync();
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Syncing));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+            }
+        }
+
+        [Test]
         public void should_add_valid_transactions_recovering_its_address()
         {
             _txPool = CreatePool();

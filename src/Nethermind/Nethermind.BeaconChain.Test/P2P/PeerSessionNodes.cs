@@ -41,9 +41,10 @@ internal static class PeerSessionNodes
         EarliestAvailableSlot = AnchorSlot,
     };
 
-    public static Node Create(IBeaconChainStatusSource? served = null, byte[]? privateKey = null, Lazy<IBeaconSyncPeerPool>? peerPool = null)
+    public static Node Create(IBeaconChainStatusSource? served = null, byte[]? privateKey = null, Lazy<IBeaconSyncPeerPool>? peerPool = null,
+        int? quicPort = null, TimeProvider? identifyTime = null)
     {
-        BeaconChainConfig config = new() { P2PPort = 0 };
+        BeaconChainConfig config = new() { P2PPort = 0, QuicPort = quicPort.GetValueOrDefault() };
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default) { CurrentStatus = Status };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         if (privateKey is not null)
@@ -52,14 +53,17 @@ internal static class PeerSessionNodes
         }
 
         BeaconP2P p2p = new(config, Spec, store, served ?? statusHolder, new LocalMetadataSource(),
-            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LoopbackTrace.NewNode() ?? LimboLogs.Instance, peerPool: peerPool);
+            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LoopbackTrace.NewNode() ?? LimboLogs.Instance, quicPort, peerPool: peerPool)
+        {
+            IdentifyTime = identifyTime ?? TimeProvider.System,
+        };
         return new Node(p2p, statusHolder, config);
     }
 
     // Both sides open identify streams as the session starts, exercising multiplexer stream retention.
-    public static async Task<ISession> DialAsync(BeaconP2P from, BeaconP2P to, CancellationToken token)
+    public static async Task<ISession> DialAsync(BeaconP2P from, BeaconP2P to, CancellationToken token, bool quic = false)
     {
-        ISession session = await from.DialPeerAsync(LoopbackAddress(to), token);
+        ISession session = await from.DialPeerAsync(LoopbackAddress(to, quic), token);
         if (!await HasIdentifiedSessionAsync(from, to.LocalPeerId!, token) || !await HasIdentifiedSessionAsync(to, from.LocalPeerId!, token))
         {
             Assert.Fail("a node closed the session before its identify completed");
@@ -123,11 +127,12 @@ internal static class PeerSessionNodes
         }
     }
 
-    public static Multiaddress LoopbackAddress(BeaconP2P node) => Multiaddress.Decode(LoopbackAddressText(node));
+    public static Multiaddress LoopbackAddress(BeaconP2P node, bool quic = false) => Multiaddress.Decode(LoopbackAddressText(node, quic: quic));
 
-    public static string LoopbackAddressText(BeaconP2P node, bool withPeerId = true)
+    public static string LoopbackAddressText(BeaconP2P node, bool withPeerId = true, bool quic = false)
     {
-        string address = node.ListenAddresses.First().ToString().Replace("0.0.0.0", "127.0.0.1");
+        string address = node.ListenAddresses.First(address => address.ToString().Contains(quic ? "/quic-v1" : "/tcp/", StringComparison.Ordinal))
+            .ToString().Replace("0.0.0.0", "127.0.0.1");
         int peerIdAt = address.IndexOf("/p2p/", StringComparison.Ordinal);
         if (peerIdAt >= 0)
         {
@@ -206,5 +211,29 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
         protected override Task ConnectedTo(ISession session, bool isDialer) => pingOnDial && isDialer
             ? session.DialAsync<PingProtocol>()
             : Task.CompletedTask;
+    }
+}
+
+internal sealed class StallingMetadataProtocol : ISessionProtocol
+{
+    public string Id => "/eth2/beacon_chain/req/metadata/3/ssz_snappy";
+    public TaskCompletionSource Requested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task DialAsync(IChannel downChannel, ISessionContext context) => throw new InvalidOperationException("The fixture only receives requests.");
+
+    public async Task ListenAsync(IChannel downChannel, ISessionContext context)
+    {
+        Requested.TrySetResult();
+        await downChannel;
+    }
+}
+
+internal sealed class UnansweredIdentifyProtocol(bool unsupported, IProtocolStackSettings settings) : IdentifyProtocol(settings), ISessionListenerProtocol, IProtocol
+{
+    internal TaskCompletionSource Requested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public new string Id => unsupported ? "/test/not-identify/1.0.0" : base.Id;
+    public new async Task ListenAsync(IChannel downChannel, ISessionContext context)
+    {
+        Requested.TrySetResult();
+        await downChannel;
     }
 }

@@ -10,3 +10,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc")]
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc.Test")]
+[assembly: InternalsVisibleTo("Nethermind.LightClient")]

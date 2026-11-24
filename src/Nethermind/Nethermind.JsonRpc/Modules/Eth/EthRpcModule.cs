@@ -40,7 +40,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -115,7 +114,6 @@ public partial class EthRpcModule(
     private int _syncRequests;
 
     private ResultWrapper<ulong>? _chainIdResponse;
-    readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
     public ResultWrapper<string> eth_protocolVersion()
     {
@@ -1491,17 +1489,8 @@ public partial class EthRpcModule(
             ? ResultWrapper<IEnumerable<ReceiptForRpc>?>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
             : ResultWrapper<IEnumerable<ReceiptForRpc>?>.Fail($"failed to get receipts for block #{block.Number}", ErrorCodes.ResourceNotFound);
 
-    public ResultWrapper<JsonNode> eth_config()
-    {
-        ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
-
-        return ResultWrapper<JsonNode>.Success(JsonSerializer.SerializeToNode(new ForkConfigSummary
-        {
-            Current = ForkConfigFactory.Create(forks.Current, _specProvider),
-            Next = ForkConfigFactory.Create(forks.Next, _specProvider),
-            Last = ForkConfigFactory.Create(forks.Last, _specProvider)
-        }, TypeInfoJsonSerializer.GetTypeInfo<ForkConfigSummary>(UnchangedDictionaryKeyOptions))!);
-    }
+    public ResultWrapper<JsonNode> eth_config() =>
+        ResultWrapper<JsonNode>.Success(ForkConfigFactory.CreateSummary(forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header), _specProvider));
 
     public ResultWrapper<AccountAccessForRpc[]?> eth_getBlockAccessList(BlockParameter blockParameter)
     {

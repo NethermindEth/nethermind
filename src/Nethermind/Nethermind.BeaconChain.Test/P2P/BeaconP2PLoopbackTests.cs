@@ -3,9 +3,12 @@
 
 using System.Collections;
 using System.Diagnostics;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using Autofac;
+using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Multiformats.Address.Net;
 using Nethermind.BeaconChain.DataAvailability;
@@ -15,12 +18,15 @@ using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Test.P2P.ReqResp;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Logging;
+using Nethermind.Network.Libp2p;
 using NSubstitute;
 using NSubstitute.Core;
 
@@ -56,52 +62,106 @@ public class BeaconP2PLoopbackTests
     }
 
     [Test]
+    [CancelAfter(30_000)]
+    public async Task Disposal_closes_inflight_connections_and_rejects_session_admission_after_its_snapshot(
+        [Values] bool sharedHost, CancellationToken token)
+    {
+        await using ServiceProvider? services = sharedHost ? new ServiceCollection().AddLibp2p().BuildServiceProvider() : null;
+        await using BeaconP2P? beacon = sharedHost ? null : PeerSessionNodes.Create().P2P;
+        if (beacon is not null) await beacon.StartAsync(token);
+        LocalPeer peer = beacon?.LocalPeerForTest! ?? (LocalPeer)services!.GetRequiredService<IPeerFactory>().Create();
+        IProtocolStackSettings settings = (IProtocolStackSettings)typeof(LocalPeer)
+            .GetField("_protocolStackSettings", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(peer)!;
+        ProtocolRef protocol = settings.TopProtocols![0];
+        LocalPeer.Session opening = new(peer);
+        opening.State.RemoteAddress = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{new Identity().PeerId}");
+        peer.CreateConnection(protocol, opening, isListener: false, activity: null);
+        Assert.That(peer.Sessions, Is.Empty, "fixture: the connection has not reached session admission");
+        TaskCompletionSource cancelling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim release = new();
+        using CancellationTokenRegistration hold = opening.Closed.Register(() =>
+        {
+            cancelling.TrySetResult();
+            release.Wait(token);
+        });
+        Task disposing = Task.Run(async () => await peer.DisposeAsync(), token);
+        try
+        {
+            await cancelling.Task.WaitAsync(token);
+            LocalPeer.Session late = new(peer);
+            late.State.RemoteAddress = opening.State.RemoteAddress;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disposing.IsCompleted, Is.False, "fixture: disposal has snapshotted connections and is still draining");
+                Assert.That(opening.Closed.IsCancellationRequested, Is.True, "disposal also closes pre-admission connections");
+                Assert.That(() => peer.UpgradeToSession(opening, protocol, isListener: false, activity: null), Throws.TypeOf<ChannelClosedException>());
+                Assert.That(() => peer.CreateConnection(protocol, late, isListener: false, activity: null), Throws.TypeOf<ChannelClosedException>());
+                Assert.That(late.Closed.IsCancellationRequested, Is.True);
+                Assert.That(peer.Sessions, Is.Empty, "no late session or identify callback is admitted");
+            }
+        }
+        finally
+        {
+            release.Set();
+            await disposing.WaitAsync(token);
+            await peer.DisposeAsync();
+        }
+    }
+
+    [Test]
     [CancelAfter(90_000)]
     public async Task A_host_disposed_during_a_dial_leaves_no_session_open([Values] bool callerStopsWaiting, CancellationToken token)
     {
-        await using BeaconP2P server = PeerSessionNodes.Create().P2P;
+        UnansweredIdentifyProtocol? identify = null;
+        await using PlainPeer server = await PlainPeer.StartAsync(settings => identify = new UnansweredIdentifyProtocol(false, settings), token);
         BeaconP2P client = PeerSessionNodes.Create().P2P;
-        await server.StartAsync(token);
-        await client.StartAsync(token);
-        LocalPeer serverPeer = server.LocalPeerForTest!;
-        LocalPeer clientPeer = client.LocalPeerForTest!;
-        Multiaddress address = PeerSessionNodes.LoopbackAddress(server);
+        LocalPeer? clientPeer = null;
+        Task<ISession>? dial = null, remaining = null;
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
-        Task<ISession> dial = client.DialPeerAsync(address, caller.Token);
-        Task<ISession> remaining = dial;
-        if (callerStopsWaiting)
+        try
         {
-            remaining = client.LocalPeerForTest!.DialAsync(address, token);
-            await caller.CancelAsync();
-        }
-
-        bool inFlight = !remaining.IsCompleted;
-        await client.DisposeAsync();
-        Assert.That(inFlight, Is.True, "fixture: disposal began before the dial finished");
-        foreach (Task<ISession> waiter in new[] { dial, remaining })
-        {
-            try
+            await client.StartAsync(token);
+            clientPeer = client.LocalPeerForTest!;
+            dial = client.DialPeerAsync(server.Address, caller.Token);
+            await identify!.Requested.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
+            remaining = dial;
+            if (callerStopsWaiting)
             {
-                await waiter;
+                remaining = clientPeer.DialAsync(server.Address, token);
+                await caller.CancelAsync();
             }
-            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            using (Assert.EnterMultipleScope())
             {
+                Assert.That(remaining.IsCompleted, Is.False, "fixture: identify keeps the dial in flight until disposal");
+                Assert.That(SessionCount(clientPeer), Is.GreaterThan(0), "fixture: the dialer created its session before disposal");
+                Assert.That(SessionCount(server.Peer), Is.GreaterThan(0), "fixture: the remote created its session before disposal");
             }
         }
-
-        // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
-        // a session left open was still open after 40 s.
-        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
-        bounded.CancelAfter(TimeSpan.FromSeconds(45));
-        while (serverPeer.Sessions.Count > 0 && !bounded.IsCancellationRequested)
+        finally
         {
-            await Task.Delay(50, CancellationToken.None);
+            try { await client.DisposeAsync(); }
+            finally
+            {
+                foreach (Task<ISession>? waiter in new[] { dial, remaining })
+                {
+                    if (waiter is not null) await ((Task)waiter).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                }
+            }
         }
+        token.ThrowIfCancellationRequested();
 
+        await PeerSessionNodes.WaitUntilAsync(() => SessionCount(clientPeer!) == 0 && SessionCount(server.Peer) == 0,
+            "disposing the dialer left a local or remote session open", token, TimeSpan.FromSeconds(45), pollDelayMilliseconds: 50);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(clientPeer.Sessions, Is.Empty, "disposal prevents a late dial from admitting a session");
-            Assert.That(serverPeer.Sessions, Is.Empty, "the dial finished after disposal and its session stayed open");
+            Assert.That(SessionCount(clientPeer!), Is.Zero, "the disposed dialer left a session open");
+            Assert.That(SessionCount(server.Peer), Is.Zero, "the remote retained the session after dialer disposal");
+            Assert.That(client.IdentifyTimeoutsForTest, Is.Zero, "disposal closes the in-flight dial before the identify timeout");
+        }
+
+        static int SessionCount(LocalPeer peer)
+        {
+            lock (peer.Sessions) return peer.Sessions.Count;
         }
     }
 
@@ -151,7 +211,7 @@ public class BeaconP2PLoopbackTests
         Assert.That(async () => await client.DialPeerAsync(address, abandoned.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the caller stops waiting");
     }
 
-    /// <summary>Disposal closes the TCP listener: the library closes it only on the start token, and its peer disposal closes sessions alone.</summary>
+    /// <summary>Disposal releases the TCP listener without requiring caller cancellation.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_disposed_host_no_longer_accepts_TCP_connections(CancellationToken token)
@@ -294,6 +354,53 @@ public class BeaconP2PLoopbackTests
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(codes, Is.All.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable), "requests exceeding the shared host budget are served after refill");
         Assert.That(elapsed.Elapsed, Is.GreaterThanOrEqualTo(TimeSpan.FromSeconds(2)), "five peer budgets require refilling the four-peer host bucket");
+    }
+
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Metadata_advertisement_and_wire_match_the_host_role([Values] bool lightClient, CancellationToken token)
+    {
+        const string metadataV2 = "/eth2/beacon_chain/req/metadata/2/ssz_snappy";
+        const string metadataV3 = "/eth2/beacon_chain/req/metadata/3/ssz_snappy";
+        Node server = CreateNode(lightClient: lightClient);
+        MetaDataV3 local = server.MetadataSource.Current;
+        local.SeqNumber = 0x0807060504030201;
+        local.Attnets![0] = true;
+        local.Attnets[8] = true;
+        local.Attnets[63] = true;
+        local.Syncnets![3] = true;
+        local.CustodyGroupCount = lightClient ? 0ul : 128ul;
+        Node client = CreateNode(lightClient: true);
+        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await hosts.StartAsync(token, server.P2P, client.P2P);
+        ISession session = await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token);
+        BeaconP2P.SessionInfo info = await client.P2P.GetSessionInfoAsync(session, token);
+        Assert.That(info.Identify, Is.Not.Null, "the advertised protocols came from the remote identify response");
+
+        if (lightClient)
+            Assert.That(async () => await session.DialAsync<MetaDataProtocolV3, Uint64Request, MetaDataV3>(new(0), token),
+                Throws.TypeOf<ChannelClosedException>(), "an optimistic metadata v3 proposal must be refused even without consulting identify");
+        else
+            Assert.That(async () => await session.DialAsync<MetaDataProtocolV2, Uint64Request, MetaDataV2>(new(0), token),
+                Throws.TypeOf<ChannelClosedException>(), "full-node metadata negotiation is unchanged");
+
+        string served = lightClient ? metadataV2 : metadataV3;
+        (byte[] response, _) = await TrailingRequestBytesLoopbackTests.RequestAsync(server.P2P, served, [], halfClose: true, token);
+        using MemoryStream stream = new(response);
+        ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(stream, contextBytesLength: 0, maxSize: 25, token);
+        byte[] expected = [1, 2, 3, 4, 5, 6, 7, 8, 1, 1, 0, 0, 0, 0, 0, 128, 8];
+        if (!lightClient) expected = [.. expected, 128, 0, 0, 0, 0, 0, 0, 0];
+        byte[] decoded = lightClient
+            ? MetaDataV2.Encode(await session.DialAsync<MetaDataProtocolV2, Uint64Request, MetaDataV2>(new(0), token))
+            : MetaDataV3.Encode(await client.P2P.RequestMetaDataAsync(session, token));
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(info.Identify!.Protocols, Does.Contain(served));
+        Assert.That(info.Identify.Protocols, Does.Not.Contain(lightClient ? metadataV3 : metadataV2));
+        Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.Success));
+        Assert.That(chunk?.Payload, Is.EqualTo(expected), "Altair metadata is exactly 17 bytes and never claims custody; full nodes retain Fulu's 25-byte metadata");
+        Assert.That(decoded, Is.EqualTo(expected), "light clients can still query full-node metadata v3, and v2 responses decode canonically");
+        Assert.That(stream.Position, Is.EqualTo(stream.Length), "one success chunk and no trailing data");
     }
 
     [Test]
@@ -539,7 +646,7 @@ public class BeaconP2PLoopbackTests
 
     private record Node(BeaconP2P P2P, BeaconChainStore Store, BeaconChainStatusHolder StatusHolder, LocalMetadataSource MetadataSource, BeaconChainConfig Config, DataColumnSidecarPool Pool);
 
-    private static Node CreateNode(BeaconChainSpec? spec = null)
+    private static Node CreateNode(BeaconChainSpec? spec = null, bool lightClient = false)
     {
         spec ??= Spec;
         BeaconChainConfig config = new() { P2PPort = 0 };
@@ -547,7 +654,8 @@ public class BeaconP2PLoopbackTests
         BeaconChainStatusHolder statusHolder = new(spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
         DataColumnSidecarPool pool = new();
-        BeaconP2P p2p = new(config, spec, store, statusHolder, metadataSource, pool, new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
+        BeaconP2P p2p = new(config, spec, store, statusHolder, metadataSource, pool, new ExecutionPayloadEnvelopePool(), LimboLogs.Instance,
+            lightClientRequests: lightClient);
         return new Node(p2p, store, statusHolder, metadataSource, config, pool);
     }
 }

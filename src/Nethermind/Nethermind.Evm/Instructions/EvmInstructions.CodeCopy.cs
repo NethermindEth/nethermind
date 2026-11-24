@@ -267,7 +267,7 @@ public static partial class EvmInstructions
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
-        if (!TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address))
+        if (!TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, address))
             goto OutOfGas;
 
         // EIP-8038 charges an extra warm access for the second DB read EXTCODECOPY performs.
@@ -362,7 +362,7 @@ public static partial class EvmInstructions
             : 0;
 
         // Charge gas for accessing the account's state.
-        bool gasAvailable = TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address);
+        bool gasAvailable = TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, address);
 
         // EIP-8038 charges an extra warm access for the second DB read EXTCODESIZE performs.
         if (gasAvailable && Eip8038.IsActive)

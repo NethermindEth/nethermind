@@ -12,7 +12,7 @@ namespace Nethermind.TxPool;
 /// Validates the blob sidecar a transaction travels with in its mempool form.
 /// </summary>
 /// <remarks>Blob proofs are verified separately by <see cref="Filters.BlobProofsTxFilter"/>.</remarks>
-internal static class MempoolBlobTxValidator
+public static class MempoolBlobTxValidator
 {
     public static ValidationResult IsWellFormed(Transaction transaction, ShardBlobNetworkWrapper? wrapper, IReleaseSpec releaseSpec)
     {

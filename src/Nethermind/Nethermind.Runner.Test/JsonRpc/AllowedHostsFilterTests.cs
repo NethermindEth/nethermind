@@ -16,8 +16,8 @@ using Microsoft.Extensions.Primitives;
 using Nethermind.Config;
 using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Hosting;
 using Nethermind.Logging;
-using Nethermind.Runner.JsonRpc;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -137,9 +137,9 @@ public class AllowedHostsFilterTests
         services.AddSingleton(server);
         services.AddSingleton<IApplicationBuilderFactory, ApplicationBuilderFactory>();
         services.AddSingleton<IStartupFilter, AnsweringStartupFilter>();
-        await using ServiceProvider serviceProvider = services.BuildServiceProvider();
+        ServiceProvider serviceProvider = services.BuildServiceProvider();
 
-        WebHost webHost = new(serviceProvider, new ConfigurationBuilder().Build(), Substitute.For<IStartup>(), LimboLogs.Instance);
+        await using WebHost webHost = new(serviceProvider, new ConfigurationBuilder().Build(), Substitute.For<IStartup>(), LimboLogs.Instance);
         RequestDelegate application = webHost.BuildApplication();
 
         DefaultHttpContext context = new()
