@@ -22,9 +22,13 @@ internal struct CellServeTokenBucket(int capacity, int tokensPerSecond, DateTime
     /// <returns><see langword="true"/> if the tokens were taken; otherwise, <see langword="false"/>.</returns>
     public bool TryConsume(int work, DateTimeOffset now)
     {
-        double elapsedSeconds = Math.Max(0, (now - _updatedAt).TotalSeconds);
-        _tokens = Math.Min(capacity, _tokens + elapsedSeconds * tokensPerSecond);
-        _updatedAt = now;
+        if (now > _updatedAt)
+        {
+            double elapsedSeconds = (now - _updatedAt).TotalSeconds;
+            _tokens = Math.Min(capacity, _tokens + elapsedSeconds * tokensPerSecond);
+            _updatedAt = now;
+        }
+
         if (_tokens < work)
         {
             return false;

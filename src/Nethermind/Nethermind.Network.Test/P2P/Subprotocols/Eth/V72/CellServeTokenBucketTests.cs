@@ -17,6 +17,9 @@ public class CellServeTokenBucketTests
         Assert.That(bucket.TryConsume(100, now), Is.True);
         Assert.That(bucket.TryConsume(1, now), Is.False);
 
+        Assert.That(bucket.TryConsume(1, now.AddSeconds(-10)), Is.False);
+        Assert.That(bucket.TryConsume(1, now), Is.False);
+
         now = now.AddSeconds(1);
         Assert.That(bucket.TryConsume(10, now), Is.True);
         Assert.That(bucket.TryConsume(1, now), Is.False);
