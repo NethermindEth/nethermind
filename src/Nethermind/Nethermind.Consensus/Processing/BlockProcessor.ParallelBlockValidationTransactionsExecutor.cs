@@ -46,7 +46,6 @@ public partial class BlockProcessor
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
         private int _pooledSlotsInUse;
-        private ArrayPoolList<long>? _txTimings;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -63,21 +62,13 @@ public partial class BlockProcessor
 
             ClearTransactionProcessedEvents();
             _pendingTransactionProcessedEvents?.EnsureCapacity(block.Transactions.Length);
-            _txTimings = PerTxTimingCollector.Prepare(block.Transactions.Length);
-            try
-            {
-                return !ZkEvmFlag.IsActive && !block.IsGenesis && balManager.ParallelExecutionEnabled
-                    ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
-                    : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
-            }
-            finally
-            {
-                // The collector snapshot owns the list after the block, so the executor must not keep it.
-                _txTimings = null;
-            }
+            ArrayPoolList<long>? txTimings = PerTxTimingCollector.Prepare(block.Transactions.Length);
+            return !ZkEvmFlag.IsActive && !block.IsGenesis && balManager.ParallelExecutionEnabled
+                ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token, txTimings)
+                : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token, txTimings);
         }
 
-        private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+        private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token, ArrayPoolList<long>? txTimings)
         {
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
             bool shouldValidateBal = shouldValidate
@@ -103,7 +94,7 @@ public partial class BlockProcessor
                     BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalExecutionGas, totalStateGas);
                 }
 
-                ProcessTransaction(txProcessor, stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, _txTimings);
+                ProcessTransaction(txProcessor, stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, txTimings);
                 totalExecutionGas = receiptsTracer.CumulativeExecutionGasUsed;
                 totalStateGas = receiptsTracer.BlockStateGasUsed;
 
@@ -132,7 +123,7 @@ public partial class BlockProcessor
             return [.. receiptsTracer.TxReceipts];
         }
 
-        private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer outerReceiptsTracer, CancellationToken token)
+        private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer outerReceiptsTracer, CancellationToken token, ArrayPoolList<long>? txTimings)
         {
             using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
             int len = block.Transactions.Length;
@@ -192,7 +183,7 @@ public partial class BlockProcessor
                             ? new ParallelOptions { MaxDegreeOfParallelism = ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism, CancellationToken = token }
                             : ParallelUnbalancedWork.DefaultOptions,
                         new ParallelTxLoopState(block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults,
-                            specProvider, _txExecutionOrder, isBlockProcessingThread, _txTimings, incrementalValidation, executedGas, rejection.Token),
+                            specProvider, _txExecutionOrder, isBlockProcessingThread, txTimings, incrementalValidation, executedGas, rejection.Token),
                         static (i, state) =>
                         {
                             // Block already rejected — executing the rest cannot change the outcome.
