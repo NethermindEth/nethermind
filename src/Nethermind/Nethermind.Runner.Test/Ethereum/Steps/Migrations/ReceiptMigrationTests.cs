@@ -279,15 +279,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
             CollectingLogger logger = new();
 
-            ReceiptMigration migration = new(
-                new TestReceiptStorage(new InMemoryReceiptStorage(), new InMemoryReceiptStorage()),
-                Substitute.For<IBlockTree>(),
-                syncModeSelector,
-                chainLevelInfoRepository,
-                new ReceiptConfig { StoreReceipts = true, ReceiptsMigration = true },
-                new TestMemColumnsDb<ReceiptsColumns>(),
-                Substitute.For<IReceiptsRecovery>(),
-                new OneLoggerLogManager(new ILogger(logger)));
+            ReceiptMigration migration = CreateExplicitMigration(chainLevelInfoRepository, syncModeSelector, new OneLoggerLogManager(new ILogger(logger)));
 
             await migration.Run(0, 1);
             await migration._migrationTask!;
@@ -296,6 +288,60 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             Assert.That(logger.Errors, Has.Count.EqualTo(2));
         }
+
+        [Test]
+        public async Task Overlapping_explicit_migrations_join_the_previous_run_before_replacing_it()
+        {
+            TaskCompletionSource<CancellationToken> firstToken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource finishFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+            selector.WaitUntilMode(Arg.Any<Func<SyncMode, bool>>(), Arg.Any<CancellationToken>()).Returns(call =>
+                firstToken.TrySetResult(call.Arg<CancellationToken>()) ? finishFirst.Task : Task.CompletedTask);
+            IChainLevelInfoRepository levels = Substitute.For<IChainLevelInfoRepository>();
+            ReceiptMigration migration = CreateExplicitMigration(levels, selector, LimboLogs.Instance);
+            await migration.Run(1, 1);
+            Task first = migration._migrationTask!;
+            CancellationToken token = await firstToken.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            TaskCompletionSource cancelling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim resumeCancellation = new();
+            using CancellationTokenRegistration registration = token.Register(() =>
+            {
+                cancelling.SetResult();
+                resumeCancellation.Wait(TimeSpan.FromSeconds(10));
+            });
+
+            Task<bool> second = Task.Run(() => migration.Run(2, 2));
+            Task<bool> third;
+            try
+            {
+                await cancelling.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                finishFirst.SetResult();
+                await first.WaitAsync(TimeSpan.FromSeconds(10));
+
+                third = migration.Run(3, 3);
+                Assert.That(third.IsCompleted, Is.False);
+            }
+            finally
+            {
+                finishFirst.TrySetResult();
+                resumeCancellation.Set();
+            }
+
+            await Task.WhenAll(second, third).WaitAsync(TimeSpan.FromSeconds(10));
+            await migration._migrationTask!.WaitAsync(TimeSpan.FromSeconds(10));
+            levels.Received(1).LoadLevel(3);
+        }
+
+        private static ReceiptMigration CreateExplicitMigration(IChainLevelInfoRepository levels, ISyncModeSelector selector, ILogManager logManager) =>
+            new(new TestReceiptStorage(new InMemoryReceiptStorage(), new InMemoryReceiptStorage()),
+                Substitute.For<IBlockTree>(),
+                selector,
+                levels,
+                new ReceiptConfig { StoreReceipts = true, ReceiptsMigration = true },
+                new TestMemColumnsDb<ReceiptsColumns>(),
+                Substitute.For<IReceiptsRecovery>(),
+                logManager);
 
         [TestCaseSource(nameof(PointerTrackerScenarios))]
         public void MigrationPointerTracker_advances_pointer_only_across_contiguously_completed_blocks(

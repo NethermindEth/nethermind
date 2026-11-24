@@ -25,6 +25,7 @@ namespace Nethermind.Init.Steps.Migrations
     public class ReceiptMigration : IDatabaseMigration, IReceiptsMigration
     {
         private readonly ILogger _logger;
+        private readonly SemaphoreSlim _migrationGate = new(1, 1);
         private CancellationTokenSource? _cancellationTokenSource;
         internal Task? _migrationTask;
 
@@ -71,31 +72,41 @@ namespace Nethermind.Init.Steps.Migrations
         // Actually start running it.
         public async Task<bool> Run(ulong from, ulong to)
         {
-            CancellationTokenSource cancellationTokenSource = new();
-            CancellationToken token = cancellationTokenSource.Token;
-            CancellationTokenSource? previousCancellationTokenSource = Interlocked.Exchange(ref _cancellationTokenSource, cancellationTokenSource);
-            previousCancellationTokenSource?.Cancel();
-            await (_migrationTask ?? Task.CompletedTask);
-            previousCancellationTokenSource?.Dispose();
-
-            _migrationTask = Task.Run(async () =>
+            await _migrationGate.WaitAsync();
+            try
             {
-                try
-                {
-                    await _syncModeSelector.WaitUntilMode(CanMigrate, token);
-                    RunMigration(from, to, false, token);
-                }
-                catch (OperationCanceledException) when (token.IsCancellationRequested)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Receipt migration cancelled");
-                }
-                catch (Exception e)
-                {
-                    _logger.Error("Error running receipt migration", e);
-                }
-            });
+                _cancellationTokenSource?.Cancel();
+                await (_migrationTask ?? Task.CompletedTask);
+                _cancellationTokenSource?.Dispose();
+
+                _cancellationTokenSource = new CancellationTokenSource();
+                CancellationToken token = _cancellationTokenSource.Token;
+                _migrationTask = Task.Run(() => RunExplicitMigration(from, to, token));
+            }
+            finally
+            {
+                _migrationGate.Release();
+            }
             return _receiptConfig.StoreReceipts && _receiptConfig.ReceiptsMigration;
         }
+
+        private async Task RunExplicitMigration(ulong from, ulong to, CancellationToken token)
+        {
+            try
+            {
+                await _syncModeSelector.WaitUntilMode(CanMigrate, token);
+                RunMigration(from, to, false, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug("Receipt migration cancelled");
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error running receipt migration", e);
+            }
+        }
+
         public async Task Run(CancellationToken cancellationToken)
         {
             if (_receiptConfig.StoreReceipts)
