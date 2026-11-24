@@ -338,8 +338,6 @@ public partial class VirtualMachine<TGasPolicy>(
     public void AddOpCodes(int count) => OpCodeCount += count;
     internal ExecutionMetricsCounters MetricsCounters;
 
-    public void FlushMetricsCounters() => MetricsCounters.Flush();
-
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
     /// or a failure condition is reached. This method handles both precompiled contracts and regular
@@ -399,6 +397,8 @@ public partial class VirtualMachine<TGasPolicy>(
         _previousCallOutputWindowLength = 0;
         nuint previousCallOutputLength = 0;
         RunFrames<TTracingInst>(baseDepth: 0, ref previousCallOutputLength, out TransactionSubstate substate);
+        Metrics.IncrementOpCodes(OpCodeCount);
+        MetricsCounters.Flush();
         return substate;
     }
 
