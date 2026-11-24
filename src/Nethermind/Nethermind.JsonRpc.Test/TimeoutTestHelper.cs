@@ -22,9 +22,7 @@ internal static class TimeoutTestHelper
     {
         // Only a source returned within the flow is held by nobody: one returned from another flow is in the shared pool,
         // where disposing it would fail the next rent anywhere in the process.
-        bool returned = WasReturned(timeout);
-        JsonRpcConfigExtension.EndTimeoutInFlow();
-        if (returned && timeout.DisposeCount == 0)
+        if (JsonRpcConfigExtension.EndTimeoutInFlow(timeout) && timeout.DisposeCount == 0)
         {
             timeout.Dispose();
         }
