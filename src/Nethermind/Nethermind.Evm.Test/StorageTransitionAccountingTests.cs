@@ -512,31 +512,28 @@ public sealed class StorageTransitionAccountingTests
             ref ProbeGasPolicy gas,
             IReleaseSpec spec,
             ref readonly StackAccessTracker accessTracker,
-            bool isTracingAccess,
             Address address,
             Address? delegated) =>
             EthereumGasPolicy.TryConsumeAccountAccessGasWithDelegation(
-                ref gas._inner, spec, in accessTracker, isTracingAccess, address, delegated);
+                ref gas._inner, spec, in accessTracker, address, delegated);
 
         public static bool TryConsumeAccountAccessGas(
             ref ProbeGasPolicy gas,
             IReleaseSpec spec,
             ref readonly StackAccessTracker accessTracker,
-            bool isTracingAccess,
             Address address,
             AccountAccessKind kind = AccountAccessKind.Default) =>
             EthereumGasPolicy.TryConsumeAccountAccessGas(
-                ref gas._inner, spec, in accessTracker, isTracingAccess, address, kind);
+                ref gas._inner, spec, in accessTracker, address, kind);
 
         public static bool TryConsumeStorageAccessGas(
             ref ProbeGasPolicy gas,
             ref readonly StackAccessTracker accessTracker,
-            bool isTracingAccess,
             in StorageCell storageCell,
             StorageAccessType storageAccessType,
             IReleaseSpec spec) =>
             EthereumGasPolicy.TryConsumeStorageAccessGas(
-                ref gas._inner, in accessTracker, isTracingAccess, in storageCell, storageAccessType, spec);
+                ref gas._inner, in accessTracker, in storageCell, storageAccessType, spec);
 
         public static bool UpdateMemoryCost(
             ref ProbeGasPolicy gas,
