@@ -56,20 +56,19 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>, 
     }
 
     /// <inheritdoc/>
+    /// <remarks>As in Geth, a step that halts exceptionally carries its error and a zero gas cost.</remarks>
     public override void ReportOperationError(EvmExceptionType error)
     {
-        if (CurrentTraceEntry?.Opcode == "INVALID")
-        {
-            CurrentTraceEntry.GasCost = 0;
+        if (CurrentTraceEntry is null || IsRejectedActionPrecheck(error))
             return;
-        }
-        if (error == EvmExceptionType.BadInstruction && CurrentTraceEntry is not null)
+
+        if (error == EvmExceptionType.BadInstruction && _actionOnlyDetailReported)
         {
-            CurrentTraceEntry.GasCost = 0;
-            if (_actionOnlyDetailReported)
-                CurrentTraceEntry.Opcode = OpcodeJsonNames.GetUndefinedName(_opcode);
+            CurrentTraceEntry.Opcode = OpcodeJsonNames.GetUndefinedName(_opcode);
+            CurrentTraceEntry.Error ??= $"invalid opcode: {CurrentTraceEntry.Opcode}";
         }
-        if (!IsExecutionFault(error, _opcode)) base.ReportOperationError(error);
+        base.ReportOperationError(error);
+        CurrentTraceEntry.GasCost = 0;
     }
 
     /// <remarks>

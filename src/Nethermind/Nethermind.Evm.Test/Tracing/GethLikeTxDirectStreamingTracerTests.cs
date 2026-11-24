@@ -78,19 +78,20 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(logs[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
-            Assert.That(logs[0].GasCost, Is.EqualTo(GasCostOf.VeryLow));
+            Assert.That(logs[0].GasCost, Is.Zero);
         }
     }
 
+    /// <remarks>As in Geth, a step that runs out of gas reports a zero cost.</remarks>
     [TestCaseSource(typeof(GethLikeTxMemoryTracerTests), nameof(GethLikeTxMemoryTracerTests.OutOfGasOperations))]
-    public void Streams_full_cost_of_out_of_gas_operation(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    public void Streams_zero_cost_of_out_of_gas_operation(byte[] code, ulong gasAfterIntrinsic, ulong _)
     {
         List<StructLog> logs = StreamLogs(code, GethTraceOptions.Default, GasCostOf.Transaction + gasAfterIntrinsic);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(logs[^1].Error, Is.EqualTo("out of gas"));
-            Assert.That(logs[^1].GasCost, Is.EqualTo(expectedGasCost));
+            Assert.That(logs[^1].GasCost, Is.Zero);
         }
     }
 

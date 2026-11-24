@@ -55,9 +55,11 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private string? _pendingError;
     private long _pendingRefund;
     private bool _gasCostAlreadySet;
-    private bool _gasCostReported;
     private ulong? _calculatedGasCost;
+    private string? _gasError;
     private string? _stackFailure;
+    private byte _immediate;
+    private int _stackHead;
     private bool _pendingStorageTouched;
 
     private UInt256[]? _stackBuffer;
@@ -121,8 +123,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _pendingError = null;
         _pendingRefund = 0;
         _gasCostAlreadySet = false;
-        _gasCostReported = false;
         _calculatedGasCost = null;
+        _gasError = null;
         _stackFailure = null;
         _pendingStorageTouched = false;
         ResetRefund();
@@ -162,11 +164,12 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _pendingGas = gas;
         _pendingGasCost = 0;
         _pendingDepth = env.GetGethTraceDepth();
+        _immediate = ReadEip8024Immediate(opcode, pc, in env);
         _pendingError = null;
         _pendingRefund = CurrentRefund;
         _gasCostAlreadySet = false;
-        _gasCostReported = false;
         _calculatedGasCost = null;
+        _gasError = null;
         _stackFailure = null;
         _pendingStorageTouched = false;
         _pendingStorageMap = null;
@@ -190,7 +193,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         {
             _pendingGasCost = gasCost;
             _gasCostAlreadySet = true;
-            _gasCostReported = true;
         }
     }
 
@@ -198,11 +200,16 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth)
     {
         _calculatedGasCost = gasCost;
-        _stackFailure = GetStackFailure(stackHead, stackInputs, stackGrowth);
+        _stackHead = stackHead;
+        _stackFailure = GetStackFailure(_pendingOpcode, stackHead, stackInputs, stackGrowth);
     }
 
     /// <inheritdoc/>
-    public void ReportOperationReady(ulong gasCost, string? error) => _calculatedGasCost = gasCost;
+    public void ReportOperationReady(ulong gasCost, string? error)
+    {
+        _calculatedGasCost = gasCost;
+        _gasError = error;
+    }
 
     /// <inheritdoc/>
     public override void ReportActionErrorDetails(string error)
@@ -223,24 +230,19 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
             ReportActionErrorDetails(error);
     }
 
+    /// <inheritdoc/>
+    /// <remarks>As in Geth, a step that halts exceptionally carries its error and a zero gas cost.</remarks>
     public override void ReportOperationError(EvmExceptionType error)
     {
         if (!_hasPendingOpcode || IsRejectedActionPrecheck(error)) return;
-        if (_pendingOpcode == Instruction.INVALID)
+        if (error == EvmExceptionType.BadInstruction && _actionOnlyDetailReported)
         {
-            _pendingGasCost = 0;
-            return;
+            _pendingUndefined = true;
+            _pendingError ??= $"invalid opcode: {OpcodeJsonNames.GetUndefinedName(_pendingOpcode)}";
         }
-        if (error == EvmExceptionType.BadInstruction)
-        {
-            _pendingGasCost = 0;
-            _pendingUndefined = _actionOnlyDetailReported;
-        }
-        // As in Geth, an opcode that runs out of gas reports the cost it could not pay rather than the gas it had.
-        if (error == EvmExceptionType.OutOfGas && !_gasCostReported && _calculatedGasCost is ulong gasCost)
-            _pendingGasCost = gasCost;
-        if (error == EvmExceptionType.OutOfGas) _pendingError ??= _stackFailure;
-        if (!IsExecutionFault(error, _pendingOpcode)) _pendingError ??= GetErrorDescription(error);
+        _pendingError ??= GetStepError(error, _pendingOpcode, _immediate, _stackHead, _stackFailure, _pendingGas,
+            _calculatedGasCost, _gasError);
+        _pendingGasCost = 0;
     }
 
     /// <inheritdoc/>
