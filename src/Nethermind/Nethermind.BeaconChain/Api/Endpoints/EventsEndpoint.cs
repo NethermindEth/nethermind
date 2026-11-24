@@ -3,7 +3,6 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.ForkChoice;
@@ -20,10 +19,7 @@ internal static class EventsEndpoint
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
     private static readonly string[] SupportedTopics = ["head", "finalized_checkpoint"];
 
-    public static void Map(WebApplication app, BeaconApiContext ctx) =>
-        app.MapGet("/eth/v1/events", (HttpContext c) => Stream(c, ctx, app.Lifetime.ApplicationStopping));
-
-    private static async Task Stream(HttpContext c, BeaconApiContext ctx, CancellationToken stopping)
+    public static async Task Stream(HttpContext c, BeaconApiContext ctx, CancellationToken stopping)
     {
         if (Interlocked.Increment(ref ctx.Events.ActiveStreams) > 32)
         {

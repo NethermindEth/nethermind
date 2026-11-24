@@ -3,9 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
@@ -18,20 +16,12 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// </summary>
 internal sealed class DebugEndpoints(BeaconApiContext ctx)
 {
-    public static void Map(WebApplication app)
-    {
-        app.MapGet("/eth/v2/debug/beacon/states/{state_id}", (DebugEndpoints debug, string state_id) => debug.State(state_id)).ServesSszOrJson();
-        RouteGroupBuilder json = app.MapGroup("").ServesJson();
-        json.MapGet("/eth/v1/debug/beacon/fork_choice", (DebugEndpoints debug) => debug.ForkChoice());
-        json.MapGet("/eth/v1/debug/fork_choice", (DebugEndpoints debug) => debug.ForkChoice());
-    }
-
     /// <summary>
     /// The beacon-api <c>getDebugForkChoice</c> shape (no <c>data</c> envelope): the checkpoints,
     /// one entry per proto-array node, and the proposer boost root under <c>extra_data</c>, all
     /// from the importer's latest published <see cref="ForkChoiceSnapshot"/>.
     /// </summary>
-    private IResult ForkChoice()
+    public IResult ForkChoice()
     {
         if (ctx.ForkChoiceSnapshot is not { } snapshot)
         {
@@ -78,7 +68,7 @@ internal sealed class DebugEndpoints(BeaconApiContext ctx)
     /// Serves the node's persisted post-state: as the raw stored SSZ bytes (what lets another client
     /// checkpoint-sync from this node) or, decoded, as the beacon-api JSON representation.
     /// </summary>
-    private IResult State(string stateId) => ApiResults.SszOrJson(ssz: () => StateSsz(stateId), json: () => StateJson(stateId));
+    public IResult State(string stateId) => ApiResults.SszOrJson(ssz: () => StateSsz(stateId), json: () => StateJson(stateId));
 
     private IResult StateSsz(string stateId)
     {

@@ -5,9 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -21,25 +19,12 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// <summary><c>/eth/v1/beacon/*</c>: genesis, headers (by id, slot or parent), block root, block content as SSZ or JSON, the block's attestations, and Gloas execution payload envelopes.</summary>
 internal sealed class BeaconEndpoints(BeaconApiContext ctx)
 {
-    public static void Map(WebApplication app)
-    {
-        RouteGroupBuilder json = app.MapGroup("").ServesJson();
-        json.MapGet("/eth/v1/beacon/genesis", (BeaconEndpoints beacon) => beacon.Genesis());
-        json.MapGet("/eth/v1/beacon/headers", (BeaconEndpoints beacon, string? parent_root, string? slot) => beacon.HeaderList(parent_root, slot));
-        json.MapGet("/eth/v1/beacon/headers/{block_id}", (BeaconEndpoints beacon, string block_id) => beacon.HeaderById(block_id));
-        json.MapGet("/eth/v1/beacon/blocks/{block_id}/root", (BeaconEndpoints beacon, string block_id) => beacon.BlockRoot(block_id));
-        json.MapGet("/eth/v2/beacon/blocks/{block_id}/attestations", (BeaconEndpoints beacon, string block_id) => beacon.BlockAttestations(block_id));
-        RouteGroupBuilder sszOrJson = app.MapGroup("").ServesSszOrJson();
-        sszOrJson.MapGet("/eth/v2/beacon/blocks/{block_id}", (BeaconEndpoints beacon, string block_id) => beacon.BlockContent(block_id));
-        sszOrJson.MapGet("/eth/v1/beacon/execution_payload_envelopes/{block_id}", (BeaconEndpoints beacon, string block_id) => beacon.ExecutionPayloadEnvelope(block_id));
-    }
-
     /// <summary>beacon-APIs v5.0.0-alpha.2 <c>getSignedExecutionPayloadEnvelope</c>: the verified envelope stored for a Gloas block, as JSON or SSZ.</summary>
     /// <remarks>
     /// Only envelopes that passed verification are stored, so a pre-Gloas block has none, and the store checks that a record names the block it is keyed by.
     /// An envelope is served for any retained block, canonical or not, and whether or not fork choice treats its payload as present.
     /// </remarks>
-    private IResult ExecutionPayloadEnvelope(string blockId)
+    public IResult ExecutionPayloadEnvelope(string blockId)
     {
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
@@ -78,7 +63,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
     /// The published operation is JSON only and its version enum stops at fulu; a Gloas block is served under
     /// <c>gloas</c> with the Gloas <c>Attestation</c> (consensus-specs v1.7.0-beta.2 gloas/beacon-chain.md), never under a fulu label.
     /// </remarks>
-    private IResult BlockAttestations(string blockId)
+    public IResult BlockAttestations(string blockId)
     {
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
@@ -105,7 +90,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
             }).WithConsensusVersion(ctx.Spec, slot);
     }
 
-    private IResult Genesis()
+    public IResult Genesis()
     {
         GenesisDto dto = new(
             ctx.Spec.GenesisTime.ToString(),
@@ -114,7 +99,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
         return ApiResults.Data(dto);
     }
 
-    private IResult HeaderList(string? parentRootRaw, string? slotRaw)
+    public IResult HeaderList(string? parentRootRaw, string? slotRaw)
     {
         if (parentRootRaw is not null)
         {
@@ -221,7 +206,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
         }
     }
 
-    private IResult HeaderById(string blockId)
+    public IResult HeaderById(string blockId)
     {
         if (!TryResolveHeader(ctx, blockId, out Hash256? root, out SignedBeaconBlockHeader? header, out int errorStatus, out string? errorMessage))
         {
@@ -234,7 +219,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
             ResponseEnvelope.IsFinalized(ctx, header.Message!.Slot, root)).WithConsensusVersion(ctx.Spec, header.Message!.Slot);
     }
 
-    private IResult BlockRoot(string blockId)
+    public IResult BlockRoot(string blockId)
     {
         if (!IdResolver.TryResolveRoot(ctx, blockId, out Hash256? root, out int errorStatus, out string? errorMessage))
         {
@@ -249,7 +234,7 @@ internal sealed class BeaconEndpoints(BeaconApiContext ctx)
             ResponseEnvelope.IsFinalized(ctx, slot, root)).WithConsensusVersion(ctx.Spec, slot);
     }
 
-    private IResult BlockContent(string blockId)
+    public IResult BlockContent(string blockId)
     {
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {

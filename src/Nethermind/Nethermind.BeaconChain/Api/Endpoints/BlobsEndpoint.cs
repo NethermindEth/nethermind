@@ -4,7 +4,6 @@
 using System.IO;
 using System.Text.Json;
 using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.DataAvailability;
@@ -24,9 +23,6 @@ internal sealed class BlobsEndpoint(BeaconApiContext ctx)
 {
     /// <summary>The most blob rebuilds that run at once; each reads up to half of a block's columns and may run cell recovery per blob.</summary>
     internal const int MaxConcurrentRebuilds = 2;
-
-    public static void Map(WebApplication app) =>
-        app.MapGet("/eth/v1/beacon/blobs/{block_id}", (BlobsEndpoint blobs, string block_id, string[] versioned_hashes) => blobs.GetBlobs(block_id, versioned_hashes)).ServesSszOrJson();
 
     /// <summary>Serves the block's blobs, all of them or those named by <c>versioned_hashes</c>, in the block's commitment order, as JSON or SSZ.</summary>
     /// <remarks>

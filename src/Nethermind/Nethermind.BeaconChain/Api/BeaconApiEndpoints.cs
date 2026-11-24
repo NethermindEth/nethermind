@@ -15,7 +15,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Api;
 
-/// <summary>Wires every endpoint group onto the host, plus the shared error/500 safety net.</summary>
+/// <summary>The services behind the endpoints, and the middleware every request passes: content negotiation and the shared error/500 safety net.</summary>
 internal static class BeaconApiEndpoints
 {
     /// <summary>The whole of what an unauthenticated caller learns about an undecodable state: a fixed
@@ -34,10 +34,9 @@ internal static class BeaconApiEndpoints
         .AddScoped<BeaconStatesEndpoints>()
         .AddScoped<DebugEndpoints>();
 
-    /// <summary>Maps every endpoint group; the services of <see cref="AddServices"/> must be registered with the same <paramref name="ctx"/>.</summary>
-    public static void MapAll(WebApplication app, BeaconApiContext ctx)
+    public static void UseMiddleware(WebApplication app, ILogManager logManager)
     {
-        ILogger logger = ctx.LogManager.GetClassLogger(typeof(BeaconApiEndpoints));
+        ILogger logger = logManager.GetClassLogger(typeof(BeaconApiEndpoints));
 
         app.Use(async (httpCtx, next) =>
         {
@@ -73,17 +72,6 @@ internal static class BeaconApiEndpoints
         });
 
         app.Use(NegotiateAsync);
-
-        NodeEndpoints.Map(app);
-        ConfigEndpoints.Map(app);
-        BeaconEndpoints.Map(app);
-        BlobsEndpoint.Map(app);
-        BeaconStatesEndpoints.Map(app);
-        DebugEndpoints.Map(app);
-        ValidatorEndpoints.Map(app, ctx);
-        EventsEndpoint.Map(app, ctx);
-
-        app.MapFallback(c => ApiErrors.Write(c, StatusCodes.Status404NotFound, "Unknown endpoint", c.RequestAborted));
     }
 
     /// <summary>Checks the media types of a request to a <see cref="ContentNegotiation.ServedFormats"/> endpoint before its parameters are bound.</summary>

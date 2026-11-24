@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
@@ -15,14 +13,6 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// <summary><c>/eth/v1/config/*</c>: spec constants, fork schedule, deposit contract.</summary>
 internal sealed class ConfigEndpoints(BeaconApiContext ctx)
 {
-    public static void Map(WebApplication app)
-    {
-        RouteGroupBuilder json = app.MapGroup("").ServesJson();
-        json.MapGet("/eth/v1/config/spec", (ConfigEndpoints config) => config.Spec());
-        json.MapGet("/eth/v1/config/fork_schedule", (ConfigEndpoints config) => config.ForkSchedule());
-        json.MapGet("/eth/v1/config/deposit_contract", (ConfigEndpoints config) => config.DepositContract());
-    }
-
     /// <summary>The network config's <c>DEPOSIT_CONTRACT_ADDRESS</c>, or <c>null</c> for a chain this driver has no network config for.</summary>
     /// <remarks>
     /// From consensus-specs v1.7.0-beta.4 <c>configs/mainnet.yaml</c> and the eth-clients <c>hoodi</c> and
@@ -38,7 +28,7 @@ internal sealed class ConfigEndpoints(BeaconApiContext ctx)
         _ => null,
     };
 
-    private IResult DepositContract()
+    public IResult DepositContract()
     {
         if (DepositContractAddress(ctx.Spec.ChainId) is not { } address)
         {
@@ -56,7 +46,7 @@ internal sealed class ConfigEndpoints(BeaconApiContext ctx)
     /// Constants tables come from <see cref="SpecConstants.All"/>. <c>SECONDS_PER_SLOT</c>, which that config
     /// no longer lists, stays for tooling that still reads it.
     /// </remarks>
-    private IResult Spec()
+    public IResult Spec()
     {
         BeaconChainSpec spec = ctx.Spec;
         Dictionary<string, object> data = [with(SpecValues.Mainnet.Count + SpecConstants.All.Count + 4)];
@@ -160,7 +150,7 @@ internal sealed class ConfigEndpoints(BeaconApiContext ctx)
         }
     }
 
-    private IResult ForkSchedule()
+    public IResult ForkSchedule()
     {
         ForkScheduleEntry[] forks = ctx.Spec.Forks;
         ForkDto[] data = new ForkDto[forks.Length];

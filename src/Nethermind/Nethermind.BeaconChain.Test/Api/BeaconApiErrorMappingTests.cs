@@ -48,7 +48,8 @@ public class BeaconApiErrorMappingTests
             new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null);
         BeaconApiEndpoints.AddServices(builder.Services, ctx);
         _pipeline = builder.Build();
-        BeaconApiEndpoints.MapAll(_pipeline, ctx);
+        BeaconApiEndpoints.UseMiddleware(_pipeline, LimboLogs.Instance);
+        BeaconApiHost.MapRoutes(_pipeline, ctx);
         _pipeline.MapGet("/test/not-supported", (HttpContext _) => { throw new NotSupportedException(UnrelatedInternalDetail); });
         _pipeline.MapGet("/test/unsupported-fork", (HttpContext _) => { throw new UnsupportedForkException(new NotSupportedException(UnrelatedInternalDetail)); });
         _pipeline.MapGet("/test/fault-after-flush", FaultAfterFirstFlush);
