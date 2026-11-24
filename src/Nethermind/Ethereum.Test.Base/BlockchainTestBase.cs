@@ -416,7 +416,8 @@ public abstract partial class BlockchainTestBase
         using NUnit.Framework.Internal.TestExecutionContext.IsolatedContext isolatedContext = new();
         try
         {
-            Result<string> payloadResult = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, processingQueue, genesisHash, [],
+            List<string> witnessDifferences = [];
+            Result<string> payloadResult = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, processingQueue, genesisHash, witnessDifferences,
                 new RejectionRecorder(rejections), MatchExpectedExceptions, finalizeHeads: false, firstRejections);
             test.Pre = pre;
             test.PostState = ApplyStateDiff(pre, test.PostStateDiff);
@@ -430,6 +431,7 @@ public abstract partial class BlockchainTestBase
                 differences = RunAssertions(test, headBlock, stateProvider);
             }
 
+            differences.AddRange(witnessDifferences);
             bool testPassed = differences.Count == 0;
             return new EthereumTestResult(name, test.ForkName, testPassed)
             {
@@ -447,8 +449,10 @@ public abstract partial class BlockchainTestBase
 
     private static Dictionary<Address, AccountState> ApplyStateDiff(Dictionary<Address, AccountState> pre, Dictionary<Address, AccountState?>? diff)
     {
+        if (diff is null || diff.Count == 0) return pre;
+
         Dictionary<Address, AccountState> post = pre.ToDictionary();
-        foreach ((Address address, AccountState? account) in diff ?? [])
+        foreach ((Address address, AccountState? account) in diff)
         {
             if (account is null)
                 post.Remove(address);
@@ -708,7 +712,12 @@ public abstract partial class BlockchainTestBase
     /// </returns>
     private static async Task<Result<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, IBlockProcessingQueue processingQueue, Hash256 initialHeadHash, List<string> witnessDifferences, RejectionRecorder rejectionRecorder, bool matchExpectedExceptions, bool finalizeHeads = true, Dictionary<Hash256, string>? firstRejections = null)
     {
-        if (newPayloads is null || newPayloads.Length == 0) return Result<string>.Success("");
+        if (newPayloads is null || newPayloads.Length == 0)
+        {
+            if (!finalizeHeads)
+                await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, EngineApiVersions.Fcu.V1, initialHeadHash, finalize: false);
+            return Result<string>.Success("");
+        }
 
         if (!int.TryParse(newPayloads[0].ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString(), out int initialFcuVersion))
             throw new FormatException($"Invalid ForkChoiceUpdatedVersion: '{newPayloads[0].ForkChoiceUpdatedVersion}'");

@@ -14,6 +14,7 @@ using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
@@ -152,7 +153,7 @@ public class BlockchainTestJsonOutputTests
     [Test]
     public async Task Every_path_argument_runs_in_one_results_array([Values("blocktest", "enginetest")] string command)
     {
-        string directory = Path.Combine(_directory, "directory");
+        string directory = Path.Combine(_directory, EngineXFixtures.PreAllocDirectory);
         Directory.CreateDirectory(directory);
         File.Move(WriteOneBlockFixture().Path, Path.Combine(directory, "one_block.json"));
         (string stdout, string stderr) = await RunNethtestWithArgs(command, "--input", WriteFixture(), directory, "--jsonout", "--neverTrace");
@@ -454,6 +455,7 @@ public class BlockchainTestJsonOutputTests
 
         string fixture = WriteEngineXGroup(genesis,
             ("two_blocks", [first, second], [], second.Hash, "{}"),
+            ("empty", [], [], genesis.Hash, "{}"),
             ("sibling", [sibling], [], sibling.Hash, "{}"),
             ("rejected", [skipped], [skipped.Hash], genesis.Hash, "{}"),
             ("rejected_again", [skipped], [skipped.Hash], genesis.Hash, "{}"),
@@ -462,13 +464,44 @@ public class BlockchainTestJsonOutputTests
 
         using JsonDocument document = JsonDocument.Parse(stdout);
         Dictionary<string, JsonElement> results = document.RootElement.EnumerateArray().ToDictionary(static result => result.GetProperty("name").GetString()!);
-        Assert.That(results.Keys, Is.EquivalentTo(new[] { "two_blocks", "sibling", "rejected", "rejected_again", "unmet_diff" }), $"stderr was: {Trim(stderr)}");
+        Assert.That(results.Keys, Is.EquivalentTo(new[] { "two_blocks", "empty", "sibling", "rejected", "rejected_again", "unmet_diff" }), $"stderr was: {Trim(stderr)}");
         using (Assert.EnterMultipleScope())
         {
-            foreach (string name in new[] { "two_blocks", "sibling", "rejected", "rejected_again" })
+            foreach (string name in new[] { "two_blocks", "empty", "sibling", "rejected", "rejected_again" })
                 Assert.That(results[name].GetProperty("pass").GetBoolean(), Is.True, $"{name}: {results[name]}");
             Assert.That(results["unmet_diff"].GetProperty("pass").GetBoolean(), Is.False, "the post-state diff is checked");
             Assert.That(results["rejected_again"].GetProperty("rejections")[0].GetProperty("error").GetString(), Does.StartWith("InvalidBlockNumber: "));
+        }
+    }
+
+    [Test]
+    public async Task Engine_x_reports_a_mismatching_execution_witness()
+    {
+        string source = Path.Combine(AppContext.BaseDirectory, "Fixtures", "bal_code_changes_blocktest.json");
+        JsonObject fixture = JsonNode.Parse(File.ReadAllText(source))!.AsObject().Single().Value!.AsObject();
+        TestBlockJson entry = _serializer.Deserialize<TestBlockJson>(fixture["blocks"]![0]!.ToJsonString())!;
+        Block block = Rlp.Decode<Block>(Bytes.FromHexString(entry.Rlp!));
+        Assert.That(BlockAccessListAccountJson.TryDeliver(block, entry.BlockAccessList!), Is.True);
+        GetPayloadV6Result built = new(block, 0, new BlobsBundleV2(block), [], shouldOverrideBuilder: false);
+        string payload = _serializer.Serialize(built.ExecutionPayload);
+
+        string groups = Directory.CreateDirectory(Path.Combine(_directory, EngineXFixtures.PreAllocDirectory)).FullName;
+        File.WriteAllText(Path.Combine(groups, "0x01.json"), $$"""{ "genesis": {{fixture["genesisBlockHeader"]}}, "pre": {{fixture["pre"]}} }""");
+        string file = Path.Combine(_directory, "witness.json");
+        File.WriteAllText(file, $$"""
+            { "witness": { "network": "Amsterdam", "preHash": "0x01", "lastblockhash": "{{block.Hash}}",
+              "postStateHash": "{{block.StateRoot}}", "engineNewPayloads": [
+                { "params": [{{payload}}, [], "{{block.Header.ParentBeaconBlockRoot}}", []], "newPayloadVersion": "5",
+                  "forkchoiceUpdatedVersion": "4", "executionWitness": { "state": [], "codes": [], "headers": [] } }
+              ] } }
+            """);
+
+        (string stdout, _) = await RunNethtest(file, "--engineXTest");
+        JsonElement result = SingleResult(stdout);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("pass").GetBoolean(), Is.False);
+            Assert.That(result.GetProperty("error").GetString(), Does.Contain("witness state"));
         }
     }
 

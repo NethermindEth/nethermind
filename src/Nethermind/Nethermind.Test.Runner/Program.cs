@@ -269,7 +269,7 @@ internal class Program
         int exitCode = 0;
         while (inputs.Count > 0)
         {
-            List<string>? files = CollectFiles(inputs, chunk, failOnUnreadablePath: isBlockTest || isEngineTest || isEngineXTest || isEngineReorgTest);
+            List<string>? files = CollectFiles(inputs, chunk, failOnUnreadablePath: isBlockTest || isEngineTest || isEngineXTest || isEngineReorgTest, skipPreAlloc: isEngineXTest);
             if (files is null)
             {
                 // Each stdin line is its own batch, so a bad path fails only its line and the session reads on.
@@ -336,7 +336,7 @@ internal class Program
     /// cannot be read, or any file found under a directory cannot be read, after naming each on stderr; other test
     /// types skip a missing path.
     /// </summary>
-    private static List<string>? CollectFiles(List<string> paths, string? chunk, bool failOnUnreadablePath)
+    private static List<string>? CollectFiles(List<string> paths, string? chunk, bool failOnUnreadablePath, bool skipPreAlloc)
     {
         List<string> result = [];
         bool allReadable = true;
@@ -344,7 +344,7 @@ internal class Program
         {
             if (!failOnUnreadablePath)
             {
-                result.AddRange(FixtureFiles(path));
+                result.AddRange(FixtureFiles(path, skipPreAlloc));
                 continue;
             }
 
@@ -358,7 +358,7 @@ internal class Program
             try
             {
                 // A file found under a directory counts like a named one, so every file is opened before any runs.
-                foreach (string file in FixtureFiles(path))
+                foreach (string file in FixtureFiles(path, skipPreAlloc))
                 {
                     if (CanRead(file)) result.Add(file);
                     else allReadable = false;
@@ -390,7 +390,7 @@ internal class Program
         }
     }
 
-    private static List<string> FixtureFiles(string path)
+    private static List<string> FixtureFiles(string path, bool skipPreAlloc)
     {
         List<string> result = [];
         if (File.Exists(path))
@@ -403,7 +403,7 @@ internal class Program
             {
                 // blockchain_tests_engine_x pre-allocation groups are read through the tests that name them.
                 if (!file.Contains("/.meta/") && !file.Contains("\\.meta\\")
-                    && !file.Contains($"/{EngineXFixtures.PreAllocDirectory}/") && !file.Contains($"\\{EngineXFixtures.PreAllocDirectory}\\"))
+                    && !(skipPreAlloc && (file.Contains($"/{EngineXFixtures.PreAllocDirectory}/") || file.Contains($"\\{EngineXFixtures.PreAllocDirectory}\\"))))
                     result.Add(file);
             }
 

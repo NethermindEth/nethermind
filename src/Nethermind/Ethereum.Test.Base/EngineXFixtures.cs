@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Serialization.Json;
@@ -28,13 +27,14 @@ public static class EngineXFixtures
     public const string PreAllocDirectory = "pre_alloc";
 
     private static readonly EthereumJsonSerializer _serializer = new();
+    private static readonly char[] _invalidGroupNameChars = [.. Path.GetInvalidFileNameChars(), '\\'];
 
     /// <summary>Groups the tests of <paramref name="files"/> by pre-allocation group, in order of first appearance.</summary>
     /// <returns>The groups, and a failed test for each file that could not be indexed or whose group file is missing.</returns>
     public static (List<EngineXGroup> Groups, List<FailedToLoadTest> Failures) Index(IEnumerable<string> files)
     {
-        Dictionary<string, (string PreAllocFile, List<EngineXTestRef> Tests)> groups = [];
-        List<string> order = [];
+        Dictionary<(string Directory, string PreHash), List<EngineXTestRef>> indexedGroups = [];
+        List<EngineXGroup> groups = [];
         List<FailedToLoadTest> failures = [];
         Dictionary<string, string?> preAllocDirectories = [];
 
@@ -50,30 +50,33 @@ public static class EngineXFixtures
                 // Every group is checked before any test is added, so a file with a missing group runs none of its tests.
                 foreach ((string preHash, _) in tests)
                 {
-                    string preAllocFile = Path.Combine(preAllocDirectory, preHash + ".json");
-                    if (!groups.ContainsKey(preHash) && !File.Exists(preAllocFile))
-                        throw new FileNotFoundException($"Pre-allocation group {preHash} not found.", preAllocFile);
+                    if (!indexedGroups.ContainsKey((preAllocDirectory, preHash)))
+                    {
+                        string preAllocFile = Path.Combine(preAllocDirectory, preHash + ".json");
+                        if (!File.Exists(preAllocFile))
+                            throw new FileNotFoundException($"Pre-allocation group {preHash} not found.", preAllocFile);
+                    }
                 }
 
                 foreach ((string preHash, EngineXTestRef testRef) in tests)
                 {
-                    if (!groups.TryGetValue(preHash, out (string PreAllocFile, List<EngineXTestRef> Tests) group))
+                    if (!indexedGroups.TryGetValue((preAllocDirectory, preHash), out List<EngineXTestRef>? members))
                     {
-                        group = (Path.Combine(preAllocDirectory, preHash + ".json"), []);
-                        groups[preHash] = group;
-                        order.Add(preHash);
+                        members = [];
+                        indexedGroups.Add((preAllocDirectory, preHash), members);
+                        groups.Add(new EngineXGroup(preHash, Path.Combine(preAllocDirectory, preHash + ".json"), members));
                     }
 
-                    group.Tests.Add(testRef);
+                    members.Add(testRef);
                 }
             }
-            catch (Exception e) when (e is IOException or JsonException or InvalidDataException)
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
             {
                 failures.Add(new FailedToLoadTest { Name = file, LoadFailure = e.Message });
             }
         }
 
-        return ([.. order.Select(preHash => new EngineXGroup(preHash, groups[preHash].PreAllocFile, groups[preHash].Tests))], failures);
+        return (groups, failures);
     }
 
     /// <summary>Parses the tests in the byte range <paramref name="testRef"/> names, applying the fixture exclusions.</summary>
@@ -164,10 +167,14 @@ public static class EngineXFixtures
                     reader.Skip();
             }
 
-            tests.Add((preHash ?? throw new InvalidDataException($"Test {testName} in {file} has no preHash."),
+            if (string.IsNullOrEmpty(preHash) || preHash.IndexOfAny(_invalidGroupNameChars) >= 0)
+                throw new InvalidDataException($"Test {testName} in {file} has a missing or invalid preHash.");
+            tests.Add((preHash,
                 new EngineXTestRef(file, offset, checked((int)(reader.BytesConsumed - offset)))));
         }
 
+        if (reader.Read())
+            throw new InvalidDataException($"Unexpected data after the fixture object in {file}.");
         return tests;
     }
 

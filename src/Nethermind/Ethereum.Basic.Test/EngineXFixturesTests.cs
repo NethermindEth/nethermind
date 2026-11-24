@@ -65,10 +65,10 @@ public class EngineXFixturesTests
     }
 
     [Test]
-    public void Index_fails_a_file_whose_pre_hash_is_not_a_string()
+    public void Index_rejects_an_invalid_group_name([Values("1", "\"./0x01\"")] string invalidPreHash)
     {
         WritePreAlloc("0x01");
-        string file = WriteTests("a.json", TestJson("a1", "\"0x01\""), TestJson("a2", "1"));
+        string file = WriteTests("a.json", TestJson("a1", "\"0x01\""), TestJson("a2", invalidPreHash));
 
         (List<EngineXGroup> groups, List<FailedToLoadTest> failures) = EngineXFixtures.Index([file]);
 
@@ -76,6 +76,38 @@ public class EngineXFixturesTests
         {
             Assert.That(groups, Is.Empty);
             Assert.That(failures.Select(static failure => failure.Name), Is.EqualTo(new[] { file }));
+        }
+    }
+
+    [Test]
+    public void Index_reports_trailing_data_as_a_load_failure()
+    {
+        WritePreAlloc("0x01");
+        string file = WriteFixture("a.json", ("a1", "0x01"));
+        File.AppendAllText(file, "{}");
+        (List<EngineXGroup> groups, List<FailedToLoadTest> failures) = EngineXFixtures.Index([file]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(groups, Is.Empty);
+            Assert.That(failures.Single().Name, Is.EqualTo(file));
+        }
+    }
+
+    [Test]
+    public void Index_checks_each_fixture_roots_own_group_file()
+    {
+        WritePreAlloc("0x01");
+        string first = WriteFixture("a.json", ("a1", "0x01"));
+        string secondRoot = Directory.CreateDirectory(Path.Combine(_root, "other")).FullName;
+        Directory.CreateDirectory(Path.Combine(secondRoot, EngineXFixtures.PreAllocDirectory));
+        string second = Path.Combine(secondRoot, "b.json");
+        File.Copy(first, second);
+
+        (List<EngineXGroup> groups, List<FailedToLoadTest> failures) = EngineXFixtures.Index([first, second]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(groups.Single().Tests.Single().File, Is.EqualTo(first));
+            Assert.That(failures.Single().Name, Is.EqualTo(second));
         }
     }
 
