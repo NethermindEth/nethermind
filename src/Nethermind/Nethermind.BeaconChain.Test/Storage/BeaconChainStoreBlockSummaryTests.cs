@@ -448,7 +448,7 @@ public class BeaconChainStoreBlockSummaryTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(found, Is.True);
         Assert.That(_store.TryGetStoredBlock(FuluRoot, out _), Is.False, "a root that is not stored");
-        Assert.That(stored.Ssz, Is.EqualTo(SignedBeaconBlockCodec.Encode(block, Sepolia)));
+        Assert.That(stored.Ssz.ToArray(), Is.EqualTo(SignedBeaconBlockCodec.Encode(block, Sepolia)));
         Assert.That((stored.Slot, stored.IsGloas), Is.EqualTo((block.Slot, gloas)));
         Assert.That(stored.ParentRoot, Is.EqualTo(parentRoot));
         Assert.That(stored.Signature, Is.EqualTo(signature));
@@ -459,6 +459,10 @@ public class BeaconChainStoreBlockSummaryTests
             Assert.That(stored.Bid.BlockHash, Is.EqualTo(bid.BlockHash.ValueHash256));
             Assert.That(stored.Bid.ExecutionRequestsRoot, Is.EqualTo(bid.ExecutionRequestsRoot.ValueHash256));
             Assert.That(stored.Bid.BuilderIndex, Is.EqualTo(bid.BuilderIndex));
+        }
+        else
+        {
+            Assert.That(() => stored.Bid.BuilderIndex, Throws.InvalidOperationException);
         }
     }
 

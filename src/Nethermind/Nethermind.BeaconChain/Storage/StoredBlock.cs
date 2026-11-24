@@ -13,7 +13,7 @@ namespace Nethermind.BeaconChain.Storage;
 /// </remarks>
 internal readonly struct StoredBlock(byte[] ssz, ulong slot, bool isGloas)
 {
-    public byte[] Ssz => ssz;
+    public ReadOnlySpan<byte> Ssz => ssz;
     public ulong Slot => slot;
 
     /// <summary>Whether the block has the Gloas shape, so that <see cref="Bid"/> can be read.</summary>
@@ -21,7 +21,12 @@ internal readonly struct StoredBlock(byte[] ssz, ulong slot, bool isGloas)
 
     public Hash256 ParentRoot => (isGloas ? Gloas.Message.ParentRoot : Fulu.Message.ParentRoot).ToHash256();
     public BlsSignature Signature => isGloas ? Gloas.Signature : Fulu.Signature;
-    public ExecutionPayloadBid.RefReader Bid => Gloas.Message.Body.SignedExecutionPayloadBid.Message;
+
+    /// <exception cref="InvalidOperationException">The block does not have the Gloas shape.</exception>
+    public ExecutionPayloadBid.RefReader Bid => isGloas
+        ? Gloas.Message.Body.SignedExecutionPayloadBid.Message
+        : throw new InvalidOperationException("Only a Gloas block carries an execution payload bid");
+
     public int BlobCommitmentCount => isGloas ? Bid.BlobKzgCommitments.Length : Fulu.Message.Body.BlobKzgCommitments.Length;
 
     private SignedBeaconBlock.RefReader Fulu => new(ssz);

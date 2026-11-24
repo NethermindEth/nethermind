@@ -95,7 +95,7 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
         return blocks;
     }
 
-    protected Task WriteBlockChunkAsync(Stream stream, ulong slot, byte[] ssz, CancellationTokenSource cts)
+    protected Task WriteBlockChunkAsync(Stream stream, ulong slot, ReadOnlySpan<byte> ssz, CancellationTokenSource cts)
     {
         cts.CancelAfter(RespTimeout);
         return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, ContextBytesFor(slot), ssz, cts.Token);

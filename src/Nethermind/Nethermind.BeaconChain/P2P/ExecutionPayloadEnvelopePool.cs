@@ -215,9 +215,15 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
                 return false;
             }
 
-            link = block.IsGloas
-                ? new BlockLink(block.Slot, block.ParentRoot, true, block.Bid.BlockHash.ToHash256(), block.Bid.ParentBlockHash.ToHash256())
-                : new BlockLink(block.Slot, block.ParentRoot, false, null, null);
+            if (block.IsGloas)
+            {
+                ExecutionPayloadBid.RefReader bid = block.Bid;
+                link = new BlockLink(block.Slot, block.ParentRoot, true, bid.BlockHash.ToHash256(), bid.ParentBlockHash.ToHash256());
+            }
+            else
+            {
+                link = new BlockLink(block.Slot, block.ParentRoot, false, null, null);
+            }
         }
         catch (Exception e) when (e is BeaconStateException or InvalidDataException)
         {

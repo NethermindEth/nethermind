@@ -1179,9 +1179,12 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 return EnvelopeBlockLookup.NotHeld;
             }
 
-            block = stored.IsGloas
-                ? new EnvelopeBlock(true, stored.Slot, stored.Bid.BuilderIndex, stored.Bid.BlockHash.ToHash256(), stored.Bid.ExecutionRequestsRoot.ToHash256())
-                : EnvelopeBlock.NotGloas;
+            block = EnvelopeBlock.NotGloas;
+            if (stored.IsGloas)
+            {
+                ExecutionPayloadBid.RefReader bid = stored.Bid;
+                block = new EnvelopeBlock(true, stored.Slot, bid.BuilderIndex, bid.BlockHash.ToHash256(), bid.ExecutionRequestsRoot.ToHash256());
+            }
         }
         catch (Exception e) when (e is BeaconStateException or InvalidDataException)
         {
