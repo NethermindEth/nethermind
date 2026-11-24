@@ -67,9 +67,6 @@ public sealed class BeaconNodeValidatorApi(
     BlockAttestationPool blockAttestationPool,
     PubkeyCache pubkeys) : IBeaconNodeValidatorApi
 {
-    /// <summary>Slots the head may lag the wall clock by and still count as synced, as <c>/eth/v1/node/syncing</c> counts them.</summary>
-    private const ulong ReadySyncDistance = 1;
-
     /// <summary>The longest a submitted aggregate waits for the worker's verdict: a third of a slot, so an aggregate due two thirds into its slot is still published within it.</summary>
     private readonly TimeSpan _aggregateVerdictTimeout = TimeSpan.FromMilliseconds(spec.SecondsPerSlot * 1000 * GloasTiming.AttestationDueBps / Presets.BasisPoints);
 
@@ -624,7 +621,9 @@ public sealed class BeaconNodeValidatorApi(
         ulong headSlot = head?.Status.HeadSlot ?? 0;
         ulong wallSlot = slotClock.CurrentSlot;
         ulong distance = wallSlot > headSlot ? wallSlot - headSlot : 0;
-        return new SyncingStatus(headSlot, distance, head is null || distance > ReadySyncDistance, head is not { ExecutionInSync: true }, !engine.IsAvailable);
+        // Missed slots leave a synced head behind the wall clock, so only a head more than an epoch behind is still syncing,
+        // as BeaconSyncOrchestrator.IsForkchoiceHeadCatchingUp judges it.
+        return new SyncingStatus(headSlot, distance, head is null || distance > spec.SlotsPerEpoch, head is not { ExecutionInSync: true }, !engine.IsAvailable);
     }
 
     /// <summary>The published head and its Fulu post-state, frozen for one call.</summary>
