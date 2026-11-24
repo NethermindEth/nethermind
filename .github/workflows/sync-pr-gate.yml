@@ -3,6 +3,7 @@ name: Sync PR Gate (Hoodi)
 on:
   pull_request:
     branches: [master]
+    types: [opened, synchronize, reopened, ready_for_review]
     # Syncs Hoodi with the PR's Docker image on a GCP VM per entry, so it only runs when the
     # PR can change that image or this gate. Not a required check, so skipping leaves no pending status.
     paths:
@@ -18,6 +19,7 @@ on:
       - 'global.json'
       - '.github/workflows/sync-pr-gate.yml'
       - '.github/workflows/sync-pr-gate-hoodi.yml'
+      - '.github/actions/gcp-runner/**'
 
 concurrency:
   group: sync-pr-${{ github.event.pull_request.number }}
@@ -32,7 +34,7 @@ permissions:
 
 jobs:
   select-consensus:
-    if: github.event.pull_request.head.repo.fork == false
+    if: github.event.pull_request.head.repo.fork == false && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -56,7 +58,7 @@ jobs:
 
   sync-hoodi:
     name: "Sync hoodi (${{ matrix.mode }}${{ matrix.consensus == 'Embedded' && ', embedded CL' || '' }})"
-    if: github.event.pull_request.head.repo.fork == false
+    if: github.event.pull_request.head.repo.fork == false && github.event.pull_request.draft == false
     needs: select-consensus
     strategy:
       fail-fast: false

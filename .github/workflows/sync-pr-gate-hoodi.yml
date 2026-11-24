@@ -41,15 +41,17 @@ jobs:
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
           repositories: "nethermind"
 
-      # Same shape as Hoodi in scripts/config/testnet-matrix.json.
+      # This gate exists to cover arm64. C4A bundles two Local SSDs and only boots from Hyperdisk.
       - name: Create a Runner
         uses: ./.github/actions/gcp-runner
         with:
           action: create
           runner_label: ${{ inputs.runner_label }}
           github_token: ${{ steps.gh-app.outputs.token }}
-          machine_type: c3d-standard-8-lssd
-          local_ssd_count: 1
+          machine_type: c4a-standard-8-lssd
+          local_ssd_count: 2
+          boot_disk_type: hyperdisk-balanced
+          image_family: ubuntu-2404-lts-arm64
           provisioning_model: SPOT
           max_run_duration: 4h
           zones: ${{ vars.GCP_ZONES }}
