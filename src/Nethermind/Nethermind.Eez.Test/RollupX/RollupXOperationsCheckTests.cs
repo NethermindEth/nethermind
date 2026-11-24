@@ -55,6 +55,31 @@ public class RollupXOperationsCheckTests
     }
 
     [Test]
+    public void Verify_RetainedIntermediate_MatchesCanonicalBytes([Values(TxType.Legacy, TxType.EIP1559)] TxType type,
+        [Values("matching", "changed", "omitted", "outbound")] string scenario)
+    {
+        Transaction transaction = User(1, type);
+        EezStatelessBlockResult block = Result([transaction], []);
+        if (scenario == "outbound")
+            block.Receipts[0].Logs = [new LogEntry(EezConstants.RollupXEezl2Address, [], [OutboundEvent.Signature])];
+        EezStatelessBlockResult terminal = Result([], [-1]);
+        OperationsRun run = scenario switch
+        {
+            "changed" => Run(User(2, type)),
+            "omitted" => Run(),
+            _ => Run(transaction),
+        };
+        OperationsPayload operations = OperationsPayload.Decode(OperationsPayload.Encode([run, Run()]));
+        EezChainRules rules = EezChainRules.Rollup0;
+        ValidatedRollupXBlock preceding = ValidatedRollupXBlock.Capture(block, Rlp.Encode(block.Block), rules, 1, default);
+
+        if (scenario == "matching")
+            Assert.That(() => RollupXOperationsCheck.Verify(operations, [preceding], terminal, default, rules), Throws.Nothing);
+        else
+            Assert.That(() => RollupXOperationsCheck.Verify(operations, [preceding], terminal, default, rules), Throws.TypeOf<EezSettlementException>());
+    }
+
+    [Test]
     public void Verify_MissingOrdinaryTransaction_RejectsCount([Values] bool terminal)
     {
         EezStatelessBlockResult block = Result([User(1)], terminal ? [0] : []);

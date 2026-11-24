@@ -6,9 +6,11 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Google.Protobuf;
 using Grpc.Core;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Eez.Prove;
 using Nethermind.Eez.Prove.V2;
 
@@ -263,21 +265,30 @@ internal sealed class StreamingSession
             if (settlementBytes <= 0) throw new ArgumentOutOfRangeException(nameof(frameBytes));
             if (settlementBytes > (_rules.ChargesWireFrames ? _limits.MaxBytes - _bytes : _limits.MaxBytes))
                 throw Error(StatusCode.ResourceExhausted, "session settlement limit exceeded");
-            BlockWitness[] blocks = new BlockWitness[last - first + 1];
-            int[] checkpoints = _nativeProfile is null ? [] : new int[blocks.Length];
-            for (int i = 0; i < blocks.Length; i++)
-            {
-                blocks[i] = _blocks[first + i].Data.Clone();
-                if (_nativeProfile is not null) checkpoints[i] = _blocks[first + i].NativeHistoryLength;
-            }
             Begin predecessor = new()
             {
                 RollupId = _anchor.RollupId,
                 AnchorNumber = finalize.FromBlock - 1,
-                AnchorHash = blocks[0].ParentHash,
+                AnchorHash = _blocks[first].Data.ParentHash,
                 AnchorStateRoot = PreStateRoot(first),
             };
-            _pending = new SessionOperation(this, binding, requestId, finalize.Clone(), blocks, predecessor, _nativeProfile, _nativeHistory, checkpoints) { TerminalTimestamp = _blocks[last].Timestamp };
+            if (_nativeProfile is null)
+            {
+                BlockWitness[] blocks = new BlockWitness[last - first + 1];
+                for (int index = 0; index < blocks.Length; index++)
+                    blocks[index] = _blocks[first + index].Data.Clone();
+                _pending = new SessionOperation(this, binding, requestId, finalize.Clone(), blocks, predecessor)
+                { TerminalTimestamp = _blocks[last].Timestamp };
+            }
+            else
+            {
+                BlockWitness terminal = _blocks[last].Data.Clone();
+                Finalize selection = finalize.Clone();
+                ArrayPoolList<ValidatedRollupXBlock> blocks = [with(last - first + 1)];
+                for (int index = first; index <= last; index++) blocks.Add(_blocks[index].NativeBlock.GetValueOrDefault());
+                _pending = new SessionOperation(this, binding, requestId, selection, terminal, predecessor, _nativeProfile, _nativeHistory!, blocks)
+                { TerminalTimestamp = _blocks[last].Timestamp };
+            }
             return _pending;
         }
     }
@@ -291,7 +302,8 @@ internal sealed class StreamingSession
             if (executed.Number != block.Number || executed.Hash != block.Hash || executed.ParentHash != block.ParentHash ||
                 executed.PreStateRoot != operation.PreStateRoot || executed.PostStateRoot.Length != 32)
                 throw Error(StatusCode.FailedPrecondition, "executed block differs from admitted block");
-            if (operation.Duplicate < 0 && _rules.HasNativeHistory != (executed.NativeHistory is not null))
+            if (operation.Duplicate < 0 && (_rules.HasNativeHistory != (executed.NativeHistory is not null)
+                || _rules.HasNativeHistory != executed.NativeBlock.HasValue))
                 throw Error(StatusCode.FailedPrecondition, "execution did not validate the session L1 evidence");
             if (operation.Duplicate >= 0)
             {
@@ -307,7 +319,7 @@ internal sealed class StreamingSession
                         throw Error(StatusCode.FailedPrecondition, "executed L1 checkpoint differs from admitted evidence");
                 }
                 int historyLength = executed.NativeHistory?.Count ?? 0;
-                _blocks.Add(new RetainedBlock(block, executed.PostStateRoot, operation.Size, operation.WitnessItems, historyLength, executed.Timestamp));
+                _blocks.Add(new RetainedBlock(block, executed.PostStateRoot, operation.Size, operation.WitnessItems, historyLength, executed.Timestamp, executed.NativeBlock));
                 if (_rules.HasNativeHistory)
                 {
                     _nativeHistory = executed.NativeHistory;
@@ -453,13 +465,15 @@ internal sealed class StreamingSession
         left.State.Equals(right.State) && left.Codes.Equals(right.Codes) && left.Keys.Equals(right.Keys)
         && left.Headers.Equals(right.Headers) && left.L1HeadersRlp.Equals(right.L1HeadersRlp);
 
-    private sealed record RetainedBlock(BlockWitness Data, ByteString PostStateRoot, long Size, long WitnessItems, int NativeHistoryLength, ulong Timestamp);
+    private sealed record RetainedBlock(BlockWitness Data, ByteString PostStateRoot, long Size, long WitnessItems,
+        int NativeHistoryLength, ulong Timestamp, ValidatedRollupXBlock? NativeBlock);
 }
 
 internal readonly record struct SessionBinding(Guid Attachment, ulong Epoch);
 internal sealed record ExecutedStreamingBlock(ulong Number, ByteString Hash, ByteString ParentHash, ByteString PreStateRoot, ByteString PostStateRoot, NativeStreamingEvidence? NativeHistory = null)
 {
     internal ulong Timestamp { get; init; }
+    internal ValidatedRollupXBlock? NativeBlock { get; init; }
 }
 internal sealed record StreamingSessionLimits(int MaxBlocks, long MaxBytes, long MaxWitnessItems)
 {

@@ -25,25 +25,46 @@ internal static class RollupXSettlementVerifier
         IReadOnlyList<EezStatelessBlockResult> window, EezSettlementContext context, EezChainRules rules,
         NativeOfflineContext offline, CancellationToken cancellation)
     {
+        OperationsPayload operations = VerifyNativeSuffix(stream, window[^1], context, rules, offline);
+        return VerifyCore(batch, stream, window, context.RollupId, cancellation, rules, operations);
+    }
+
+    internal static RollupXObservationClaim[] VerifyNative(PostBatch batch, NativeStream stream,
+        ReadOnlySpan<ValidatedRollupXBlock> preceding, EezStatelessBlockResult terminal, ValueHash256 parentHash,
+        EezSettlementContext context, EezChainRules rules, NativeOfflineContext offline, CancellationToken cancellation)
+    {
+        OperationsPayload operations = VerifyNativeSuffix(stream, terminal, context, rules, offline);
+        RollupXOperationsCheck.Verify(operations, preceding, terminal, cancellation, rules);
+        return VerifyClaims(batch, stream, terminal, parentHash, context.RollupId, cancellation, rules, operations.Version);
+    }
+
+    private static OperationsPayload VerifyNativeSuffix(NativeStream stream, EezStatelessBlockResult terminal,
+        EezSettlementContext context, EezChainRules rules, NativeOfflineContext offline)
+    {
         if (!rules.UsesNativeContract || offline.RollupId != context.RollupId)
             throw Invalid("Native settlement profile differs from execution.");
         OperationsPayload operations = OperationsPayload.Decode(stream.Operations);
         NativeTransactions groups = NativeTransactions.Parse(stream.Messages, context, operations.Version);
-        EezStatelessBlockResult terminal = window[^1];
         int ordinary = RollupXCheckpointPlan.Create(terminal.Block).OrdinaryTransactions;
         if (groups.HasActions)
             groups.VerifyNativeSuffix(terminal, ordinary, new ProducingSlice(0, groups.GroupCount), offline.LiveSource(), rules);
-        return VerifyCore(batch, stream, window, context.RollupId, cancellation, rules, operations);
+        return operations;
     }
 
     internal static RollupXObservationClaim[] VerifyCore(PostBatch batch, NativeStream stream,
         IReadOnlyList<EezStatelessBlockResult> window, ulong rollupId, CancellationToken cancellation, EezChainRules? nativeRules, OperationsPayload operations)
     {
         RollupXOperationsCheck.Verify(operations, window, cancellation, nativeRules);
-        RollupUpdate[] updates = RollupUpdateChain.Verify(batch, rollupId, window[0].Block.ParentHash!.ValueHash256, window[^1].Hash.ValueHash256);
-        EezStatelessBlockResult terminal = window[^1];
+        return VerifyClaims(batch, stream, window[^1], window[0].Block.ParentHash!.ValueHash256, rollupId, cancellation, nativeRules, operations.Version);
+    }
+
+    private static RollupXObservationClaim[] VerifyClaims(PostBatch batch, NativeStream stream,
+        EezStatelessBlockResult terminal, ValueHash256 parentHash, ulong rollupId,
+        CancellationToken cancellation, EezChainRules? nativeRules, OperationsVersion version)
+    {
+        RollupUpdate[] updates = RollupUpdateChain.Verify(batch, rollupId, parentHash, terminal.Hash.ValueHash256);
         RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(terminal.Block);
-        Verification verification = new(batch, updates, terminal, plan, rollupId, cancellation, nativeRules, operations.Version);
+        Verification verification = new(batch, updates, terminal, plan, rollupId, cancellation, nativeRules, version);
         bool inbound = false;
         int index = 0;
         while (index < stream.Messages.Length)

@@ -64,31 +64,33 @@ internal sealed class NativeOfflineFinalizer
             throw Rejected();
         Finalize selection = operation.Finalize ?? throw new InvalidOperationException("not a finalization operation");
         SettlementInput settlement = selection.Settlement ?? throw Invalid();
-        BlockWitness[] blocks = operation.CopyBlocks();
-        ReadOnlySpan<int> checkpoints = operation.NativeCheckpoints;
-        if (blocks.Length == 0 || checkpoints.Length != blocks.Length) throw Rejected();
+        ReadOnlySpan<ValidatedRollupXBlock> blocks = operation.NativeBlocks;
+        BlockWitness terminalInput = operation.NativeTerminal ?? throw Rejected();
+        if (blocks.IsEmpty) throw Rejected();
         try
         {
-            NativeStreamingEvidence history = retained.Prefix(checkpoints[^1]);
+            ref readonly ValidatedRollupXBlock terminalBlock = ref blocks[^1];
+            NativeStreamingEvidence history = retained.Prefix(terminalBlock.L1CheckpointLength);
             PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(settlement.AbiCalldata.Span);
             NativeOfflineContext offline = Context(batch, settlement.PostingContext, history);
-            for (int index = 0; index < checkpoints.Length; index++) history.VerifyPrefix(checkpoints[index], offline.Anchor);
             ulong eligibility = offline.Anchor.TargetTimestamp ?? history.Endpoint.Timestamp;
             Begin predecessor = operation.Predecessor ?? throw Rejected();
+            ValueHash256 parentHash = new(predecessor.AnchorHash.Span);
+            ValidateBlocks(blocks, predecessor, history, cancellation);
+            if (blocks[0].ParentTimestamp != _profile.Genesis.Rules.Schedule!.Timestamp(predecessor.AnchorNumber) ||
+                predecessor.AnchorNumber == 0 && parentHash != _profile.Genesis.GenesisHash) throw Rejected();
             ValidateRange(predecessor.AnchorNumber, selection.ToBlock, eligibility, false, offline);
             RollupXSettlementInput input = RollupXSettlementInput.Decode(settlement, _context, _profile.L1.Specs, cancellation,
                 offline, eligibility, batch, _profile.L1);
-            using AdmittedWindow window = ToWindow(blocks, selection);
-            EezStatelessBlockResult[] executed = Execute(operation, window, history, cancellation);
-            BlockHeader parent = executed[0].Parent;
-            if (parent.Timestamp != _profile.Genesis.Rules.Schedule!.Timestamp(parent.Number) ||
-                parent.Number == 0 && parent.Hash?.ValueHash256 != _profile.Genesis.GenesisHash) throw Rejected();
-            ValidateRange(parent.Number, executed[^1].Block.Number, eligibility, input.Stream.Messages.Length != 0, offline);
-            RollupXObservationClaim[] observations = RollupXSettlementVerifier.VerifyNative(input.Batch, input.Stream, executed,
-                _context, _profile.Genesis.Rules, offline, cancellation);
+            using Witness witness = WindowAssembler.ToL2Witness(terminalInput.Witness);
+            EezStatelessBlock terminalWitness = new(terminalInput.Rlp.ToByteArray(), witness);
+            EezStatelessBlockResult terminal = ReplayTerminal(terminalWitness, in terminalBlock, history, cancellation);
+            ValidateRange(predecessor.AnchorNumber, terminal.Block.Number, eligibility, input.Stream.Messages.Length != 0, offline);
+            RollupXObservationClaim[] observations = RollupXSettlementVerifier.VerifyNative(input.Batch, input.Stream, blocks[..^1], terminal,
+                parentHash, _context, _profile.Genesis.Rules, offline, cancellation);
             if (observations.Length != 0)
-                history.CreateObservationReplay(_profile.Genesis, _logs).Verify(window.Blocks[^1], executed[^1], observations, cancellation);
-            if (!offline.UsesCore) ValidateAcceptedRoot(parent, executed[^1], offline.AcceptedL2BlockHash);
+                history.CreateObservationReplay(_profile.Genesis, _logs).Verify(terminalWitness, terminal, observations, cancellation);
+            if (!offline.UsesCore) ValidateAcceptedRoot(parentHash, terminal, offline.AcceptedL2BlockHash);
             ValueHash256 publicInputs = RollupXPostBatchProfile.PublicInputsHash(input.Batch, _context.RollupId,
                 _context.VerificationKey, input.BlobHashes, offline.CustomData);
             cancellation.ThrowIfCancellationRequested();
@@ -129,27 +131,35 @@ internal sealed class NativeOfflineFinalizer
             _context.RollupId, pin.Root, in anchor, history.Endpoint);
     }
 
-    private EezStatelessBlockResult[] Execute(SessionOperation operation, AdmittedWindow window, NativeStreamingEvidence history,
-        CancellationToken cancellation)
+    private static void ValidateBlocks(ReadOnlySpan<ValidatedRollupXBlock> blocks, Begin predecessor,
+        NativeStreamingEvidence history, CancellationToken cancellation)
     {
-        Begin predecessor = operation.Predecessor ?? throw Rejected();
-        EezStatelessBlockResult[] executed = new EezStatelessBlockResult[window.Blocks.Length];
-        EezStatelessExecutor executor = history.CreateExecutor(_profile.Genesis, _logs);
-        for (int index = 0; index < executed.Length; index++)
+        ulong parentNumber = predecessor.AnchorNumber;
+        ValueHash256 parentHash = new(predecessor.AnchorHash.Span);
+        ValueHash256 parentState = new(predecessor.AnchorStateRoot.Span);
+        foreach (ref readonly ValidatedRollupXBlock block in blocks)
         {
             cancellation.ThrowIfCancellationRequested();
-            int[] positions = index == executed.Length - 1
-                ? RollupXCheckpointPlan.Create(Rlp.Decode<Block>(window.Blocks[index].Rlp) ?? throw Rejected()).Positions.ToArray()
-                : [];
-            EezStatelessBlockResult result = executor.Execute([window.Blocks[index]], positions)[0];
-            Hash256 parentHash = index == 0 ? new Hash256(predecessor.AnchorHash.Span) : executed[index - 1].Hash;
-            Hash256 parentState = index == 0 ? new Hash256(predecessor.AnchorStateRoot.Span) : executed[index - 1].PostStateRoot;
-            if (result.Block.Number != window.FromBlock + (ulong)index || result.Hash != window.Claims[index].Hash ||
-                result.Block.ParentHash != parentHash || result.PreStateRoot != parentState ||
-                !Rlp.Encode(result.Block).AsSpan().SequenceEqual(window.Blocks[index].Rlp)) throw Rejected();
-            executed[index] = result;
+            if (parentNumber == ulong.MaxValue || block.Number != parentNumber + 1 || block.ParentNumber != parentNumber ||
+                block.ParentHash != parentHash || block.PreStateRoot != parentState) throw Rejected();
+            history.VerifyPrefix(block.L1CheckpointLength, block.L1CheckpointHash);
+            parentNumber = block.Number;
+            parentHash = block.Hash;
+            parentState = block.PostStateRoot;
         }
-        return executed;
+    }
+
+    private EezStatelessBlockResult ReplayTerminal(EezStatelessBlock witness, in ValidatedRollupXBlock block,
+        NativeStreamingEvidence history, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(Rlp.Decode<Block>(witness.Rlp) ?? throw Rejected());
+        EezStatelessExecutor executor = history.CreateExecutor(_profile.Genesis, _logs);
+        EezStatelessBlockResult result = executor.Execute([witness], plan.Positions)[0];
+        if (result.Block.Number != block.Number || result.Hash.ValueHash256 != block.Hash ||
+            result.Block.ParentHash?.ValueHash256 != block.ParentHash || result.PreStateRoot.ValueHash256 != block.PreStateRoot ||
+            !Rlp.Encode(result.Block).AsSpan().SequenceEqual(witness.Rlp)) throw Rejected();
+        return result;
     }
 
     private void ValidateRange(ulong parentNumber, ulong terminalNumber, ulong eligibility, bool hasActions, NativeOfflineContext offline)
@@ -161,34 +171,12 @@ internal sealed class NativeOfflineFinalizer
             hasActions && (kind == RollupXAnchorKind.CatchUp || offline.Anchor.TargetTimestamp is null)) throw Rejected();
     }
 
-    private static void ValidateAcceptedRoot(BlockHeader parent, EezStatelessBlockResult terminal, ValueHash256 accepted)
+    private static void ValidateAcceptedRoot(ValueHash256 parentHash, EezStatelessBlockResult terminal, ValueHash256 accepted)
     {
-        if (parent.Hash?.ValueHash256 == accepted) return;
+        if (parentHash == accepted) return;
         foreach (EezTransactionCheckpoint checkpoint in terminal.Checkpoints)
             if (checkpoint.BlockHash.ValueHash256 == accepted) return;
         throw Rejected();
-    }
-
-    private static AdmittedWindow ToWindow(BlockWitness[] blocks, Finalize selection)
-    {
-        EezStatelessBlock[] witnessed = new EezStatelessBlock[blocks.Length];
-        (Hash256 Hash, Hash256 ParentHash)[] claims = new (Hash256, Hash256)[blocks.Length];
-        int count = 0;
-        try
-        {
-            for (; count < blocks.Length; count++)
-            {
-                BlockWitness block = blocks[count];
-                witnessed[count] = new(block.Rlp.ToByteArray(), WindowAssembler.ToL2Witness(block.Witness));
-                claims[count] = (new Hash256(block.Hash.Span), new Hash256(block.ParentHash.Span));
-            }
-            return new AdmittedWindow(selection.FromBlock, selection.ToBlock, [], witnessed, claims);
-        }
-        catch
-        {
-            for (int index = 0; index < count; index++) witnessed[index].Witness.Dispose();
-            throw;
-        }
     }
 
     private static RpcException Rejected() => new(new Status(StatusCode.FailedPrecondition, "RollupX settlement validation rejected"));

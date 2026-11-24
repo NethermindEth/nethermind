@@ -3,8 +3,10 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Google.Protobuf;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Eez.Prove;
 using Nethermind.Eez.Prove.V2;
 
@@ -17,14 +19,16 @@ internal sealed class SessionOperation : IDisposable
     private Finalize? _finalize;
     private BlockWitness[] _blocks = [];
     private Begin? _predecessor;
-    private int[] _nativeCheckpoints = [];
     private NativeStreamingEvidence? _nativeHistory;
+    private ArrayPoolList<ValidatedRollupXBlock>? _nativeBlocks;
+    private BlockWitness? _nativeTerminal;
 
     internal ulong TerminalTimestamp { get; init; }
     internal NativeStreamingProfile? NativeProfile { get; }
     internal NativeStreamingEvidence? NativeHistory => _nativeHistory;
     internal int NativeHistoryLength { get; }
-    internal ReadOnlySpan<int> NativeCheckpoints => _nativeCheckpoints;
+    internal ReadOnlySpan<ValidatedRollupXBlock> NativeBlocks => _nativeBlocks is { } blocks ? blocks.AsSpan() : default;
+    internal BlockWitness? NativeTerminal => _nativeTerminal;
     internal ExecutedStreamingBlock? ReusedBlock { get; }
     internal SessionBinding Binding { get; }
     internal ulong RequestId { get; }
@@ -61,7 +65,7 @@ internal sealed class SessionOperation : IDisposable
     }
 
     internal SessionOperation(StreamingSession session, SessionBinding binding, ulong requestId, Finalize finalize,
-        BlockWitness[] blocks, Begin predecessor, NativeStreamingProfile? nativeProfile = null, NativeStreamingEvidence? nativeHistory = null, int[]? nativeCheckpoints = null)
+        BlockWitness[] blocks, Begin predecessor)
     {
         _session = session;
         Binding = binding;
@@ -69,10 +73,17 @@ internal sealed class SessionOperation : IDisposable
         _finalize = finalize;
         _blocks = blocks;
         _predecessor = predecessor;
+    }
+
+    internal SessionOperation(StreamingSession session, SessionBinding binding, ulong requestId, Finalize finalize,
+        BlockWitness terminal, Begin predecessor, NativeStreamingProfile nativeProfile, NativeStreamingEvidence nativeHistory,
+        ArrayPoolList<ValidatedRollupXBlock> nativeBlocks)
+        : this(session, binding, requestId, finalize, [], predecessor)
+    {
+        _nativeTerminal = terminal;
         NativeProfile = nativeProfile;
         _nativeHistory = nativeHistory;
-        NativeHistoryLength = nativeHistory?.Count ?? 0;
-        _nativeCheckpoints = nativeCheckpoints ?? [];
+        _nativeBlocks = nativeBlocks;
     }
 
     internal BlockWitness[] CopyBlocks()
@@ -90,7 +101,9 @@ internal sealed class SessionOperation : IDisposable
         _finalize = null;
         _blocks = [];
         _predecessor = null;
-        _nativeCheckpoints = [];
+        _nativeBlocks?.Dispose();
+        _nativeBlocks = null;
+        _nativeTerminal = null;
         _nativeHistory = null;
     }
 

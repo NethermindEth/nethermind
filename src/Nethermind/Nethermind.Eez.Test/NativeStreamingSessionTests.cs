@@ -104,7 +104,7 @@ public sealed class NativeStreamingSessionTests(int version)
     }
 
     [Test]
-    public async Task Finalize_CurrentNativeCapture_UsesVersionedUnsignedPinRules([Values] bool unrelatedPin)
+    public async Task Finalize_CurrentNativeCapture_UsesVersionedUnsignedPinRules([Values("original", "unrelated pin", "wrong L1 prefix")] string scenario)
     {
         using JsonDocument identity = JsonDocument.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "identity.json")));
         JsonElement fields = identity.RootElement;
@@ -137,13 +137,19 @@ public sealed class NativeStreamingSessionTests(int version)
                 Block = new ProveBlock { Data = block.Clone() }
             };
             SessionOperation append = connection.Dispatch(frame).Operation!;
-            try { previous = connection.CommitBlock(append, _executor.Execute(append, CancellationToken.None)); }
+            try
+            {
+                ExecutedStreamingBlock executed = _executor.Execute(append, CancellationToken.None);
+                if (scenario == "wrong L1 prefix" && ReferenceEquals(block, _blocks[0]))
+                    executed = executed with { NativeBlock = executed.NativeBlock!.Value with { L1CheckpointHash = TestItem.KeccakA.ValueHash256 } };
+                previous = connection.CommitBlock(append, executed);
+            }
             finally { connection.FinishOperation(append); }
         }
         ClientFrame request = _frames[^1].Clone();
         request.SessionId = previous.SessionId;
         request.Epoch = previous.Epoch;
-        if (unrelatedPin)
+        if (scenario == "unrelated pin")
         {
             PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(request.Finalize.Settlement.AbiCalldata.Span);
             request.Finalize.Settlement.AbiCalldata = ByteString.CopyFrom(EezCalldata.EncodePostAndVerifyBatch(batch with
@@ -156,7 +162,7 @@ public sealed class NativeStreamingSessionTests(int version)
         SessionOperation operation = dispatched.Operation!;
         try
         {
-            if (unrelatedPin && version != 7)
+            if (scenario == "wrong L1 prefix" || scenario == "unrelated pin" && version != 7)
             {
                 RpcException? rejected = await Assert.ThrowsAsync<RpcException>(() => finalizer.Finalize(operation, CancellationToken.None));
                 Assert.That(rejected!.StatusCode, Is.EqualTo(StatusCode.FailedPrecondition));

@@ -32,7 +32,7 @@ public readonly record struct OutboundEvent(int TransactionIndex, int LogIndex, 
             for (int logIndex = 0; logs is not null && logIndex < logs.Length; logIndex++)
             {
                 LogEntry log = logs[logIndex];
-                if (log.Address == manager && log.Topics is [{ } topic, ..] && topic == Signature)
+                if (Matches(log, manager))
                 {
                     events.Add(Decode(transactionIndex, logIndex, log));
                 }
@@ -41,6 +41,20 @@ public readonly record struct OutboundEvent(int TransactionIndex, int LogIndex, 
 
         return events.ToArray();
     }
+
+    internal static bool Contains(TxReceipt[] receipts, Address manager)
+    {
+        foreach (TxReceipt receipt in receipts)
+        {
+            LogEntry[]? logs = receipt.Logs;
+            for (int index = 0; logs is not null && index < logs.Length; index++)
+                if (Matches(logs[index], manager)) return true;
+        }
+        return false;
+    }
+
+    private static bool Matches(LogEntry log, Address manager) =>
+        log.Address == manager && log.Topics is [{ } topic, ..] && topic == Signature;
 
     private static OutboundEvent Decode(int transactionIndex, int logIndex, LogEntry log)
     {

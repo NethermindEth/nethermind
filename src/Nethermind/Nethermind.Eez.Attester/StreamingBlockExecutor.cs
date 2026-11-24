@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Eez.Prove;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
@@ -65,15 +66,20 @@ internal sealed class StreamingBlockExecutor
         }
 
         cancellation.ThrowIfCancellationRequested();
-        ExecutedStreamingBlock executed = new(result.Block.Number, ByteString.CopyFrom(result.Hash.Bytes),
-            ByteString.CopyFrom(result.Parent.Hash!.Bytes), ByteString.CopyFrom(result.PreStateRoot.Bytes), ByteString.CopyFrom(result.PostStateRoot.Bytes), history)
-        { Timestamp = result.Block.Timestamp };
-        if (executed.Number != block.Number || executed.Hash != block.Hash || executed.ParentHash != block.ParentHash ||
-            executed.PreStateRoot != operation.PreStateRoot || !Rlp.Encode(result.Block).AsSpan().SequenceEqual(block.Rlp.Span))
+        if (result.Block.Number != block.Number || !result.Hash.Bytes.SequenceEqual(block.Hash.Span) ||
+            !result.Parent.Hash!.Bytes.SequenceEqual(block.ParentHash.Span) ||
+            !result.PreStateRoot.Bytes.SequenceEqual(operation.PreStateRoot.Span) ||
+            !Rlp.Encode(result.Block).AsSpan().SequenceEqual(block.Rlp.Span))
         {
             throw new RpcException(new Status(StatusCode.FailedPrecondition, "executed block differs from admitted block"));
         }
 
-        return executed;
+        return new ExecutedStreamingBlock(block.Number, block.Hash, block.ParentHash, operation.PreStateRoot,
+            ByteString.CopyFrom(result.PostStateRoot.Bytes), history)
+        {
+            Timestamp = result.Block.Timestamp,
+            NativeBlock = history is null ? null : ValidatedRollupXBlock.Capture(result, block.Rlp.Memory, _nativeProfile!.Genesis.Rules,
+                history.Count, history.Count == 0 ? default : history.Endpoint.Hash),
+        };
     }
 }

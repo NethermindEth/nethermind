@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Eez.Prove;
@@ -48,11 +49,12 @@ internal sealed class NativeStreamingEvidence
 
     internal void VerifyAnchor(in NativeEvidenceAnchor anchor) => _headers.VerifyAnchor(in anchor);
 
-    internal void VerifyPrefix(int count, in NativeEvidenceAnchor anchor)
+    internal void VerifyPrefix(int count, ValueHash256 expectedHash)
     {
         if (count <= 0 || count > Count) throw NativeL1Header.Invalid("invalid selected block L1 checkpoint");
         ulong number = Endpoint.Number - (ulong)(Count - count);
-        _headers.VerifyOrigin(number, _headers.At(number).Hash, in anchor);
+        if (_headers.At(number).Hash != expectedHash)
+            throw NativeL1Header.Invalid("selected L1 checkpoint differs from validated execution");
     }
 
     internal RollupXObservationReplay CreateObservationReplay(NativeGenesisSnapshot profile, ILogManager logs) => new(profile, _headers, logs);

@@ -16,21 +16,41 @@ internal static class RollupXOperationsCheck
         CancellationToken token = default, EezChainRules? nativeRules = null)
     {
         token.ThrowIfCancellationRequested();
-        if (window.Count == 0 || operations.BlockCount != window.Count)
+        if (window.Count == 0)
+            throw new EezSettlementException("The operations do not cover the selected execution window.");
+        Verify(operations, window[^1], window, default, token, nativeRules);
+    }
+
+    internal static void Verify(OperationsPayload operations, ReadOnlySpan<ValidatedRollupXBlock> preceding,
+        EezStatelessBlockResult terminal, CancellationToken token, EezChainRules rules) =>
+        Verify(operations, terminal, null, preceding, token, rules);
+
+    private static void Verify(OperationsPayload operations, EezStatelessBlockResult terminal,
+        IReadOnlyList<EezStatelessBlockResult>? window, ReadOnlySpan<ValidatedRollupXBlock> preceding,
+        CancellationToken token, EezChainRules? nativeRules)
+    {
+        token.ThrowIfCancellationRequested();
+        int count = window?.Count ?? preceding.Length + 1;
+        if (operations.BlockCount != count)
             throw new EezSettlementException("The operations do not cover the selected execution window.");
 
-        RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(window[^1].Block);
-        plan.Validate(window[^1].Checkpoints);
+        RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(terminal.Block);
+        plan.Validate(terminal.Checkpoints);
         int index = 0;
         foreach (OperationsRun run in operations.Runs())
         {
             for (uint offset = 0; offset < run.Blocks; offset++)
             {
                 token.ThrowIfCancellationRequested();
-                EezStatelessBlockResult result = window[index];
-                bool terminal = index == window.Count - 1;
-                if (!terminal) VerifyIntermediate(result, nativeRules);
-                VerifyBlock(run, result.Block, terminal ? plan.OrdinaryTransactions : result.Block.Transactions.Length, token, nativeRules);
+                if (index == count - 1)
+                    VerifyBlock(run, terminal.Block, plan.OrdinaryTransactions, token, nativeRules);
+                else if (window is not null)
+                {
+                    EezStatelessBlockResult result = window[index];
+                    VerifyIntermediate(result, nativeRules);
+                    VerifyBlock(run, result.Block, result.Block.Transactions.Length, token, nativeRules);
+                }
+                else VerifyBlock(run, in preceding[index], token);
                 index++;
             }
         }
@@ -54,18 +74,41 @@ internal static class RollupXOperationsCheck
         }
     }
 
-    internal static void VerifyIntermediate(EezStatelessBlockResult result, EezChainRules? nativeRules = null)
+    private static void VerifyBlock(OperationsRun run, in ValidatedRollupXBlock block, CancellationToken token)
+    {
+        VerifyIntermediate(block.Failure, block.Number);
+        if (run.Beneficiary != block.Beneficiary || !run.ExtraData.Span.SequenceEqual(block.ExtraData.Span))
+            throw new EezSettlementException($"The operations publish different header inputs for block {block.Number}.");
+        if (!block.MatchesTransactions(run.Transactions, token))
+            throw new EezSettlementException($"The operations publish different transactions for block {block.Number}.");
+    }
+
+    internal static void VerifyIntermediate(EezStatelessBlockResult result, EezChainRules? nativeRules = null) =>
+        VerifyIntermediate(CheckIntermediate(result, nativeRules), result.Block.Number);
+
+    internal static IntermediateFailure CheckIntermediate(EezStatelessBlockResult result, EezChainRules? nativeRules)
     {
         for (int index = 0; index < result.Block.Transactions.Length; index++)
         {
             Transaction transaction = result.Block.Transactions[index];
             if (!IsHistory(transaction, index, nativeRules) && (transaction.IsEezSystemTransaction() ||
                 transaction.SenderAddress == (nativeRules?.SystemAddress ?? EezConstants.SystemAddress)))
-                throw new EezSettlementException($"Intermediate block {result.Block.Number} contains a system transaction.");
+                return IntermediateFailure.SystemTransaction;
         }
-        if (OutboundEvent.Observe(result.Receipts, EezConstants.RollupXEezl2Address).Length != 0)
-            throw new EezSettlementException($"Intermediate block {result.Block.Number} contains an outbound event.");
+        return OutboundEvent.Contains(result.Receipts, EezConstants.RollupXEezl2Address)
+            ? IntermediateFailure.OutboundEvent
+            : IntermediateFailure.None;
     }
+
+    private static void VerifyIntermediate(IntermediateFailure failure, ulong number)
+    {
+        if (failure == IntermediateFailure.SystemTransaction)
+            throw new EezSettlementException($"Intermediate block {number} contains a system transaction.");
+        if (failure == IntermediateFailure.OutboundEvent)
+            throw new EezSettlementException($"Intermediate block {number} contains an outbound event.");
+    }
+
+    internal enum IntermediateFailure : byte { None, SystemTransaction, OutboundEvent }
     private static bool IsHistory(Transaction transaction, int position, EezChainRules? rules) =>
         position == 0 && rules?.UsesNativeContract == true && transaction is NativeHistoryTransaction && transaction.HasSystemTransactionFields(rules);
 }
