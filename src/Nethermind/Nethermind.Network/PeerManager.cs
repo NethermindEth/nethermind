@@ -619,7 +619,7 @@ namespace Nethermind.Network
 
                 if (preCandidate.Node.Port == 0)
                 {
-                    _currentSelection.Counters.Increment(ActivePeerSelectionCounter.FilteredByZeroPort.ToString());
+                    _currentSelection.Counters.Increment(nameof(ActivePeerSelectionCounter.FilteredByZeroPort));
                     continue;
                 }
 
@@ -633,7 +633,7 @@ namespace Nethermind.Network
 
                 if (preCandidate.Stats.FailedCompatibilityValidation.HasValue)
                 {
-                    _currentSelection.Counters.Increment(ActivePeerSelectionCounter.Incompatible.ToString());
+                    _currentSelection.Counters.Increment(nameof(ActivePeerSelectionCounter.Incompatible));
                     _currentSelection.Incompatible.Add(preCandidate);
                     continue;
                 }
