@@ -284,14 +284,13 @@ public class RocksDbFactory : IDbFactory
             .ToList();
 
         long totalRead = 0;
-        Parallel.ForEach(fileMetadataEntries, (task) =>
+        Parallel.ForEach(fileMetadataEntries, static () => new byte[512.KiB], (task, _, buffer) =>
         {
             string fullPath = Path.Join(basePath, task.metadata.FileName);
             _logger.Info($"{(totalRead * 100 / (double)totalSize):00.00}% Warming up file {fullPath}");
 
             try
             {
-                byte[] buffer = new byte[512.KiB];
                 using FileStream stream = File.OpenRead(fullPath);
                 int readCount = buffer.Length;
                 while (readCount == buffer.Length)
@@ -310,7 +309,9 @@ public class RocksDbFactory : IDbFactory
                 // Something unusual, but nothing noteworthy.
                 _logger.Warn($"Exception warming up {fullPath} {e}");
             }
-        });
+
+            return buffer;
+        }, static _ => { });
     }
 
     private readonly struct FileMetadataByLevelThenNewestComparer : IComparer<(FileMetadata metadata, DateTime creationTime)>
