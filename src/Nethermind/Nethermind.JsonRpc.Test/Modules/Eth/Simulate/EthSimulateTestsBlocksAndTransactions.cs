@@ -126,26 +126,38 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
     }
 
-    [TestCase("null", SimulateErrorMessages.NullBlock)]
-    [TestCase("{\"calls\":[null]}", SimulateErrorMessages.NullCall)]
-    public async Task Simulate_rejects_null_blocks_and_calls(string blockStateCall, string expectedMessage)
+    private const string ConflictingStorage = "\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"state\":{},\"stateDiff\":{}}}";
+    private const string MixedFeeCalls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gasPrice\":\"0x1\",\"maxFeePerGas\":\"0x2\"}]";
+
+    [TestCase("null", "{}")]
+    [TestCase("""{"calls":[null]}""", """{"calls":[{}]}""")]
+    public async Task Simulate_treats_null_entries_as_empty_objects(string blockStateCall, string equivalentCall)
     {
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        JsonElement payload = SimulatePayloadJson(blockStateCall);
 
-        string response = await chain.TestEthRpc("eth_simulateV1", payload, "latest");
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(blockStateCall), "latest");
+
+        string expected = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(equivalentCall), "latest");
+
+        Assert.That(response, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Rpc_rejects_null_storage_override_values([Values("state", "stateDiff")] string field, [Values] bool simulate)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        string stateOverrides = $$"""
+            {"0xc100000000000000000000000000000000000000": {"{{field}}": {"{{Hash256.Zero}}": null} } }
+            """;
+
+        string response = simulate
+            ? await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson("{\"stateOverrides\":" + stateOverrides + "}"), "latest")
+            : await chain.TestEthRpc("eth_call", ParseJson("""{"to":"0xc100000000000000000000000000000000000000"}"""), "latest", ParseJson(stateOverrides));
 
         using JsonDocument document = JsonDocument.Parse(response);
         JsonElement error = document.RootElement.GetProperty("error");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
-            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo(expectedMessage), response);
-        }
+        Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
     }
-
-    private const string ConflictingStorage = "\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"state\":{},\"stateDiff\":{}}}";
-    private const string MixedFeeCalls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gasPrice\":\"0x1\",\"maxFeePerGas\":\"0x2\"}]";
 
     [TestCase("{" + ConflictingStorage + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides in a block without calls")]
     [TestCase("{" + ConflictingStorage + "," + Calls + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides")]
@@ -421,6 +433,27 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That((bool)result.Result, Is.False);
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
             Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.EmptyBlockStateCalls));
+        }
+    }
+
+    [TestCase(true, SimulateErrorMessages.NullBlock)]
+    [TestCase(false, SimulateErrorMessages.NullCall)]
+    public async Task Simulate_executor_rejects_null_entries_built_in_code(bool nullBlock, string expectedError)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = nullBlock ? [null!] : [new BlockStateCall<TransactionForRpc> { Calls = [null!] }]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)result.Result, Is.False);
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result.Error, Is.EqualTo(expectedError));
         }
     }
 
