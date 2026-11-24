@@ -30,7 +30,7 @@ public sealed partial class CodeInfo
             : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
 
     /// <summary>The buffers that the creation frames at each call depth run their init code from.</summary>
-    private static InitCodeBuffers[]? s_initCodeBuffers;
+    private static InitCodeBuffers[]? _initCodeBuffers;
 
     /// <summary>A bitmap to clear and take as <see cref="IncrementalJumpBitmap"/> instead of allocating one, or <see langword="null"/>.</summary>
     private readonly long[]? _jumpBitmapBuffer;
@@ -47,15 +47,16 @@ public sealed partial class CodeInfo
     /// The guest never frees memory, and a block can run thousands of creations of large init code for little gas: a copy
     /// of each and of its jump bitmap took the whole heap in the benchmark blocks of tests-zkevm-benchmark v21.0.7. Each
     /// call depth runs one frame at a time, and nothing reads the code of a creation frame once it returns, so a creation
-    /// takes over the buffers of the last one at its depth. They grow to a power of two, so init codes that keep growing
-    /// allocate at most twice the largest one.
+    /// takes over the buffers of the last one at its depth. Their capacities are powers of two, so the code buffers a depth
+    /// allocates add up to less than twice the largest capacity, which is less than four times the largest init code run
+    /// at that depth. Each buffer also holds the execution padding and comes with a bitmap of a bit per byte of its capacity.
     /// </remarks>
     internal static partial CodeInfo ForInitCode(ReadOnlyMemory<byte> initCode, int callDepth)
     {
         int length = initCode.Length;
         if (length == 0) return new CodeInfo(initCode);
 
-        ref InitCodeBuffers buffers = ref (s_initCodeBuffers ??= new InitCodeBuffers[VirtualMachineStatics.MaxCallDepth + 1])[callDepth];
+        ref InitCodeBuffers buffers = ref (_initCodeBuffers ??= new InitCodeBuffers[VirtualMachineStatics.MaxCallDepth + 1])[callDepth];
         byte[]? code = buffers.Code;
         if (code is null || code.Length - ExecutionPadding < length)
         {
