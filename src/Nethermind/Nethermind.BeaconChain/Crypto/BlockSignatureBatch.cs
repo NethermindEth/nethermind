@@ -97,6 +97,11 @@ public sealed class BlockSignatureBatch
 
     /// <summary>Verifies a signature now when <paramref name="deferral"/> is <c>null</c>, otherwise defers it.</summary>
     /// <returns><c>false</c> when the signature is refused now; <c>true</c> when it is valid or deferred.</returns>
+    internal static bool Verify(G1Affine publicKey, BlsSignature signature, Hash256 signingRoot, Deferral? deferral) =>
+        Verify(BlsSignatureVerifier.Instance, publicKey, signature, signingRoot, deferral);
+
+    /// <summary>Verifies a signature now with <paramref name="verifier"/> when <paramref name="deferral"/> is <c>null</c>, otherwise defers it.</summary>
+    /// <returns><c>false</c> when the signature is refused now; <c>true</c> when it is valid or deferred.</returns>
     internal static bool Verify(ISignatureVerifier verifier, G1Affine publicKey, BlsSignature signature, Hash256 signingRoot, Deferral? deferral) =>
         !publicKey.IsInf()
         && (deferral is null

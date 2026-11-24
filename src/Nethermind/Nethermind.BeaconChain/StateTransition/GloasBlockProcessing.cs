@@ -274,7 +274,7 @@ public static partial class GloasBlockProcessing
             if (!state.CanBuilderCoverBid(builderIndex, amount))
                 throw new BeaconStateException($"Builder {builderIndex} cannot cover a bid of {amount}");
             const string invalidSignature = "Invalid execution payload bid signature";
-            if (verifySignature && !VerifyExecutionPayloadBidSignature(state, signedBid, spec.SignatureVerifier, batch?.Defer(invalidSignature)))
+            if (verifySignature && !VerifyExecutionPayloadBidSignature(state, signedBid, pubkeys.SignatureVerifier, batch?.Defer(invalidSignature)))
                 throw new BeaconStateException(invalidSignature);
         }
 

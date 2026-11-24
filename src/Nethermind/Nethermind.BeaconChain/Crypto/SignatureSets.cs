@@ -235,5 +235,4 @@ public static class SignatureSets
 
         return participantCount;
     }
-
 }
