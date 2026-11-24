@@ -240,13 +240,10 @@ public class BlockchainTestJsonOutputTests
         }
     }
 
-    /// <summary>
-    /// A failing fixture exits 0, which the nethtest workflow relies on; a file that cannot be loaded is named on stderr
-    /// only, never in the results, and exits 2 after the other files have run and been reported.
-    /// </summary>
+    /// <summary>A failing fixture exits 0, or 3 with <c>--exit-code</c>; an unloadable file exits 2 either way.</summary>
     [Test]
-    public async Task Only_a_fixture_file_that_cannot_be_loaded_changes_the_exit_status(
-        [Values("blocktest", "enginetest")] string command, [Values] bool withUnloadableFile)
+    public async Task Only_a_fixture_file_that_cannot_be_loaded_changes_the_exit_status_without_the_exit_code_flag(
+        [Values("blocktest", "enginetest")] string command, [Values] bool withUnloadableFile, [Values] bool exitCodeFlag)
     {
         List<string> paths = [WriteFixture()];
         string unloadable = Path.Combine(_directory, "not_json.json");
@@ -256,7 +253,8 @@ public class BlockchainTestJsonOutputTests
             paths.Add(unloadable);
         }
 
-        (string stdout, string stderr, int exitCode) = await NethtestProcess.RunWithExitCode([command, .. paths, "--jsonout", "--neverTrace"]);
+        string[] flags = exitCodeFlag ? ["--exit-code"] : [];
+        (string stdout, string stderr, int exitCode) = await NethtestProcess.RunWithExitCode([command, .. paths, "--jsonout", "--neverTrace", .. flags]);
 
         using JsonDocument results = JsonDocument.Parse(stdout);
         JsonElement failing = results.RootElement.EnumerateArray().Single(static r => r.GetProperty("name").GetString() == "more_than_8_differences");
@@ -264,7 +262,7 @@ public class BlockchainTestJsonOutputTests
         {
             Assert.That(failing.GetProperty("pass").GetBoolean(), Is.False, "the fixture has to fail, otherwise this test proves nothing");
             Assert.That(results.RootElement.GetArrayLength(), Is.EqualTo(1), $"stdout was: {Trim(stdout)}");
-            Assert.That(exitCode, Is.EqualTo(withUnloadableFile ? 2 : 0), $"stderr was: {Trim(stderr)}");
+            Assert.That(exitCode, Is.EqualTo(withUnloadableFile ? 2 : exitCodeFlag ? 3 : 0), $"stderr was: {Trim(stderr)}");
             if (withUnloadableFile)
                 Assert.That(stderr, Does.Contain(unloadable));
         }
