@@ -172,10 +172,31 @@ public partial record BeaconChainSpec
     /// <exception cref="InvalidConfigurationException">The execution schedule has no beacon genesis time, activates a
     /// fork off an epoch boundary or out of order, changes blob parameters between Prague and Osaka, or schedules
     /// Amsterdam without a usable Gloas fork version.</exception>
-    public static BeaconChainSpec ForExecution(ISpecProvider execution, string? gloasForkVersion = null, IEnumerable<ulong>? blobScheduleTimestamps = null)
+    public static BeaconChainSpec ForExecution(ISpecProvider execution, string? gloasForkVersion = null, IEnumerable<ulong>? blobScheduleTimestamps = null) =>
+        ForExecution(BeaconNetwork.ForChainId(execution.ChainId), execution, gloasForkVersion, blobScheduleTimestamps);
+
+    /// <summary>The spec of the network <paramref name="networkConfigFile"/> defines, with its fork timing read from <paramref name="execution"/>.</summary>
+    /// <remarks>
+    /// Resolved as <see cref="ForExecution(ISpecProvider, string?, IEnumerable{ulong}?)"/> resolves a built-in network, with the
+    /// file standing in for the built-in definition; the file must then agree with the spec that results (see <see cref="BeaconNetworkConfig"/>).
+    /// </remarks>
+    /// <param name="networkConfigFile"><c>BeaconChain.NetworkConfigFile</c>: the network's consensus <c>config.yaml</c>, beside its <c>genesis.ssz</c>.</param>
+    /// <param name="execution">The execution-layer fork schedule.</param>
+    /// <param name="gloasForkVersion"><c>BeaconChain.GloasForkVersion</c>, or <c>null</c> for the file's <c>GLOAS_FORK_VERSION</c>.</param>
+    /// <param name="blobScheduleTimestamps">The activation timestamps of the chainspec's <c>blobSchedule</c> entries, or <c>null</c>.</param>
+    /// <exception cref="InvalidConfigurationException">The file or its <c>genesis.ssz</c> is unreadable or contradicts the resolved spec, or
+    /// <see cref="ForExecution(ISpecProvider, string?, IEnumerable{ulong}?)"/> refuses the execution schedule.</exception>
+    public static BeaconChainSpec ForNetworkConfig(string networkConfigFile, ISpecProvider execution, string? gloasForkVersion, IEnumerable<ulong>? blobScheduleTimestamps)
     {
-        BeaconNetwork network = BeaconNetwork.ForChainId(execution.ChainId);
-        ulong genesisTime = execution.BeaconChainGenesisTimestamp
+        BeaconNetworkConfig config = BeaconNetworkConfig.Load(networkConfigFile, execution.ChainId);
+        BeaconChainSpec spec = ForExecution(config.Network, execution, gloasForkVersion, blobScheduleTimestamps);
+        config.ThrowIfContradicts(spec, execution.BeaconChainGenesisTimestamp);
+        return spec;
+    }
+
+    private static BeaconChainSpec ForExecution(BeaconNetwork network, ISpecProvider execution, string? gloasForkVersion, IEnumerable<ulong>? blobScheduleTimestamps)
+    {
+        ulong genesisTime = network.GenesisTime ?? execution.BeaconChainGenesisTimestamp
             ?? throw Conflict("The execution chainspec has no beaconChainGenesisTimestamp; the beacon chain fork schedule is derived from it.");
         ulong epochSeconds = network.SecondsPerSlot * network.SlotsPerEpoch;
 

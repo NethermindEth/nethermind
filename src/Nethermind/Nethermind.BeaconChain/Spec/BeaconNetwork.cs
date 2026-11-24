@@ -12,11 +12,12 @@ namespace Nethermind.BeaconChain.Spec;
 /// <remarks>
 /// Fork timing (genesis time, the Capella-onward fork epochs and the blob schedule) is not held here:
 /// <see cref="BeaconChainSpec.ForExecution"/> reads it from the execution chainspec, so a fork date is set in one place.
+/// A network loaded by <see cref="BeaconNetworkConfig"/> holds only its <see cref="GenesisTime"/>, which a devnet chainspec lacks.
 /// </remarks>
 internal sealed partial record BeaconNetwork
 {
     public required ulong ChainId { get; init; }
-    public required string CheckpointSyncUrl { get; init; }
+    public required string? CheckpointSyncUrl { get; init; }
     public required string[] Bootnodes { get; init; }
     public required ulong SecondsPerSlot { get; init; }
     public required ulong SlotsPerEpoch { get; init; }
@@ -29,6 +30,8 @@ internal sealed partial record BeaconNetwork
     public required byte[] GloasForkVersion { get; init; }
     /// <summary>Whether <see cref="GloasForkVersion"/> is the network's published version, so it may activate without an override.</summary>
     public bool GloasForkVersionConfirmed { get; init; }
+    /// <summary>The genesis time of a network read from its own genesis state, or <c>null</c> for one whose chainspec carries <c>beaconChainGenesisTimestamp</c>.</summary>
+    public ulong? GenesisTime { get; init; }
 
     public static BeaconNetwork Mainnet { get; } = new()
     {

@@ -15,6 +15,7 @@
   <ItemGroup>
     <PackageReference Include="Nethermind.Crypto.Bls" />
     <PackageReference Include="Snappier" />
+    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 
   <ItemGroup>

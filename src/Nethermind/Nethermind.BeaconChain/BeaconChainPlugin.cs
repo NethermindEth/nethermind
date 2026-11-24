@@ -59,7 +59,10 @@ public class BeaconChainModule : Module
             .AddSingleton<BeaconChainSpec, ISpecProvider, IBeaconChainConfig, ChainSpec>((specProvider, chainConfig, chainSpec) =>
             {
                 BeaconPresetSelection.Initialize(specProvider.ChainId);
-                BeaconChainSpec spec = BeaconChainSpec.ForExecution(specProvider, chainConfig.GloasForkVersion, chainSpec.Parameters.BlobSchedule?.Select(static entry => entry.Timestamp));
+                IEnumerable<ulong>? blobScheduleTimestamps = chainSpec.Parameters.BlobSchedule?.Select(static entry => entry.Timestamp);
+                BeaconChainSpec spec = chainConfig.NetworkConfigFile is { } networkConfigFile
+                    ? BeaconChainSpec.ForNetworkConfig(networkConfigFile, specProvider, chainConfig.GloasForkVersion, blobScheduleTimestamps)
+                    : BeaconChainSpec.ForExecution(specProvider, chainConfig.GloasForkVersion, blobScheduleTimestamps);
                 ValidatePreset(spec);
                 return spec;
             })

@@ -7,8 +7,11 @@ namespace Nethermind.BeaconChain;
 
 public interface IBeaconChainConfig : IConfig
 {
-    [ConfigItem(Description = "Whether to enable the embedded beacon chain consensus driver. Supports Mainnet, Sepolia, Hoodi, Gnosis and Chiado, selected by the execution layer's configured network, without an external consensus client.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to enable the embedded beacon chain consensus driver. Supports Mainnet, Sepolia, Hoodi, Gnosis and Chiado, selected by the execution layer's configured network, and any other network given by `NetworkConfigFile`, without an external consensus client.", DefaultValue = "false")]
     bool Enabled { get; set; }
+
+    [ConfigItem(Description = "The path to the consensus `config.yaml` of a network that is not built in, such as a local devnet. Its directory must also hold the network's `genesis.ssz`, which gives the genesis time and genesis validators root. The fork versions and the Altair and Bellatrix epochs come from the file; the later fork epochs and the blob schedule follow the execution chainspec (see Init.ChainSpecPath) and the file must agree with them. A value in the file that contradicts the chainspec, the execution chain id or a constant of this release fails startup; keys this release does not use are ignored. Such a network has no default bootnodes or checkpoint sync provider: set `Bootnodes` or `StaticPeers`, and `CheckpointSyncUrl` or `CheckpointStateFile`. When unset, the execution chain id selects a built-in network.", DefaultValue = "null")]
+    string? NetworkConfigFile { get; set; }
 
     [ConfigItem(Description = "Use the Fast Confirmation Rule for the execution layer's safe block tag, as required by consensus-specs v1.7.0-beta.4. Assumes slot synchrony and at most 25% Byzantine stake; falls back to finalized when confirmation conditions fail. Enabled by default; when disabled, safe follows the justified checkpoint. Does not change finalized.", DefaultValue = "true")]
     bool EnableFastConfirmation { get; set; }
