@@ -5,6 +5,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Services;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -46,6 +47,12 @@ namespace Nethermind.Consensus.Clique
                     cfg.Epoch = param.Epoch;
 
                     return cfg;
+                })
+
+                .AddDecorator<ISyncConfig>(static (_, syncConfig) =>
+                {
+                    syncConfig.NeedToWaitForHeader = true;
+                    return syncConfig;
                 })
 
                 .AddSingleton<ISnapshotManager, SnapshotManager>()
