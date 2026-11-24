@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
@@ -93,6 +94,28 @@ public class StateTestLogsHashTests
             Assert.That(logsChecked.Pass, Is.True, logsChecked.Error);
             Assert.That(logsCheckedTracer.BuildResult().Entries, Is.Not.Empty);
             Assert.That(serializer.Serialize(logsCheckedTracer.BuildResult()), Is.EqualTo(serializer.Serialize(rootOnlyTracer.BuildResult())));
+        }
+    }
+
+    [Test]
+    public async Task Nethtest_exits_3_when_a_state_test_fails_only_with_the_exit_code_flag([Values] bool fixtureMatches, [Values] bool exitCodeFlag)
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"{Path.GetRandomFileName()}.json");
+        File.WriteAllText(path, Log1NonEmptyMem("Byzantium", fixtureMatches ? Log1LogsHash : EmptyLogsHash));
+        try
+        {
+            string[] flags = exitCodeFlag ? ["--exit-code"] : [];
+            (string stdout, string stderr, int exitCode) = await NethtestProcess.RunWithExitCode(["--stateTest", "--input", path, "--neverTrace", .. flags]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stdout, Does.Contain("\"pass\": " + (fixtureMatches ? "true" : "false")), stdout);
+                Assert.That(exitCode, Is.EqualTo(exitCodeFlag && !fixtureMatches ? 3 : 0), stderr);
+            }
+        }
+        finally
+        {
+            File.Delete(path);
         }
     }
 
