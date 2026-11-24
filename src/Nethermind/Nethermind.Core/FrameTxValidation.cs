@@ -794,7 +794,7 @@ public static class FrameTxValidation
                              + keyedNonceAccessCost;
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
-        // EIP-8288 adds the dependency proof gas to the intrinsic gas only, so the calldata floor leaves it out.
+        // Excluded from the EIP-7623 calldata floor.
         intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero
                        + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction) : 0);
 

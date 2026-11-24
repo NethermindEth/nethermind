@@ -140,7 +140,6 @@ public static class WrapperBodies
         else
         {
             ReadOnlySpan<byte> proof = content.ReadBytes();
-            // The dependency proof bound applies to every aggregate proof before decoding or verification.
             if (proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes) throw new RlpException("Aggregate proof is empty or exceeds the proof size bound");
             verificationBytes = proof.Length;
             work = (long)Eip8288Constants.LeanStarkVerificationGas;

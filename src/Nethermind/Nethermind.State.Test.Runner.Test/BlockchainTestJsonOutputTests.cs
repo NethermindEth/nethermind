@@ -240,10 +240,7 @@ public class BlockchainTestJsonOutputTests
         }
     }
 
-    /// <summary>
-    /// A failing fixture exits 0 unless <c>--exit-code</c> is given, then 3; a file that cannot be loaded is named on stderr
-    /// only, never in the results, and exits 2 after the other files have run and been reported, with or without the flag.
-    /// </summary>
+    /// <summary>A failing fixture exits 0, or 3 with <c>--exit-code</c>; an unloadable file exits 2 either way.</summary>
     [Test]
     public async Task Only_a_fixture_file_that_cannot_be_loaded_changes_the_exit_status_without_the_exit_code_flag(
         [Values("blocktest", "enginetest")] string command, [Values] bool withUnloadableFile, [Values] bool exitCodeFlag)

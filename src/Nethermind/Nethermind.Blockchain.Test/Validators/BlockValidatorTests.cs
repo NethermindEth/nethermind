@@ -231,7 +231,7 @@ public class BlockValidatorTests
         Assert.That(result, Is.True, error);
     }
 
-    // EIP-8288 MAX_DEPENDENCY_PROOF_BYTES, spelled out so the tests pin the consensus value rather than follow the constant.
+    // EIP-8288 MAX_DEPENDENCY_PROOF_BYTES, spelled out to pin the consensus value.
     private const int MaxDependencyProofBytes = 1_048_576;
 
     [Test]

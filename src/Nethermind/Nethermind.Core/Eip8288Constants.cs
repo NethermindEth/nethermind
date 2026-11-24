@@ -49,12 +49,8 @@ public static class Eip8288Constants
     /// <summary>Maximum encoded native direct witness or proof buffer the pinned backend accepts, such as a mode-0 leanSTARK proof.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
 
-    /// <summary>EIP-8288 <c>MAX_DEPENDENCY_PROOF_BYTES</c> (1 MiB): the bound on a block's serialized dependency proof, and
-    /// Nethermind's bound on every other serialized recursive aggregate proof of the pinned <see cref="AggregatedVk"/> guest,
-    /// including a private recursive input, in wrappers and inclusion lists, checked before proof hashing, decoding or
-    /// verification.</summary>
-    /// <remarks>Applying the block bound to every aggregate keeps the prover from producing or accepting a proof no block could
-    /// carry. The leanSPHINCS guest's measured 236–278 KB proofs (about 259 KB with mixed dependencies) leave ample margin.</remarks>
+    /// <summary>EIP-8288 <c>MAX_DEPENDENCY_PROOF_BYTES</c> (1 MiB), also applied to every other aggregate proof (wrappers,
+    /// inclusion lists) so none is produced or accepted that a block could not carry.</summary>
     public const int MaxAggregateProofBytes = 1_048_576;
 
     /// <summary>EIP-8288 <c>MAX_IL_PROOF_BYTES</c> (1.25 MiB): the bound on an inclusion list's serialized SSZ

@@ -176,12 +176,8 @@ internal class Program
         }
     }
 
-    /// <summary>
-    /// The exit status of a block or engine test run that could not run all of its input: a path that does not exist
-    /// or cannot be read, or a fixture file that cannot be loaded, which still leaves the other files to run.
-    /// </summary>
-    /// <remarks>A fixture that runs and fails still exits 0 unless <see cref="Options.ExitCode"/> is set, and this status
-    /// takes precedence over <see cref="FailedTestExitCode"/>.</remarks>
+    /// <summary>Exit status of a block or engine test run with an unreadable path or unloadable fixture file; other files still run.</summary>
+    /// <remarks>Takes precedence over <see cref="FailedTestExitCode"/>.</remarks>
     private const int IncompleteInputExitCode = 2;
 
     /// <summary>The exit status, with <see cref="Options.ExitCode"/>, of a run in which any test failed, in every test mode.</summary>
