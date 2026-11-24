@@ -1457,9 +1457,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 && state.Cells is null
                 && state.InFlightByPeer.Count == 0
                 && !state.Submitted
-                && !state.Submitting)
+                && !state.Submitting
+                && TryRemoveTrackedState(hash, state))
             {
-                TryRemoveTrackedState(hash, state);
+                // Kept failed cells do not keep the state alive, so they are released with it.
+                ReleaseUnattributedCells(state);
             }
         }
 
