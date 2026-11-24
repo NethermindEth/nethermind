@@ -199,9 +199,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
             // Only first-time additions are journaled; an entry staged by an already committed
             // transaction must stay in the batch even if a later frame re-inserts and reverts.
-            bool journalCode = !_codeBatchAlternate.ContainsKey(codeHash);
-
-            _codeBatchAlternate[codeHash] = code.AsArray();
+            CollectionsMarshal.GetValueRefOrAddDefault(_codeBatchAlternate, codeHash, out bool alreadyStaged) = code.AsArray();
+            bool journalCode = !alreadyStaged;
 
             _blockCodeInsertFilter.Set(codeHash);
             inserted = true;
