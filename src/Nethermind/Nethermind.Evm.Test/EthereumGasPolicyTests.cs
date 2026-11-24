@@ -260,7 +260,6 @@ public class EthereumGasPolicyTests
         [Values] bool eip8038,
         [Values] bool hotAndCold,
         [Values] bool prewarm,
-        [Values] bool tracingAccess,
         [Values(AccountAccessKind.Default, AccountAccessKind.SelfDestructBeneficiary)] AccountAccessKind kind,
         [Values(0UL, 100UL, 2600UL, 10000UL)] ulong availableGas)
     {
@@ -274,15 +273,15 @@ public class EthereumGasPolicyTests
         }
         EthereumGasPolicy dynamicGas = EthereumGasPolicy.FromULong(availableGas);
         EthereumGasPolicy specializedGas = EthereumGasPolicy.FromULong(availableGas);
-        bool expected = EthereumGasPolicy.TryConsumeAccountAccessGas(ref dynamicGas, spec, in dynamicTracker, tracingAccess, TestItem.AddressC, kind);
+        bool expected = EthereumGasPolicy.TryConsumeAccountAccessGas(ref dynamicGas, spec, in dynamicTracker, TestItem.AddressC, kind);
         spec.ClearReceivedCalls();
 
         bool actual = (hotAndCold, eip8038) switch
         {
-            (true, true) => EthereumGasPolicy.TryConsumeAccountAccessGas<OnFlag, OnFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
-            (true, false) => EthereumGasPolicy.TryConsumeAccountAccessGas<OnFlag, OffFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
-            (false, true) => EthereumGasPolicy.TryConsumeAccountAccessGas<OffFlag, OnFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
-            (false, false) => EthereumGasPolicy.TryConsumeAccountAccessGas<OffFlag, OffFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
+            (true, true) => EthereumGasPolicy.TryConsumeAccountAccessGas<OnFlag, OnFlag>(ref specializedGas, spec, in specializedTracker, TestItem.AddressC, kind),
+            (true, false) => EthereumGasPolicy.TryConsumeAccountAccessGas<OnFlag, OffFlag>(ref specializedGas, spec, in specializedTracker, TestItem.AddressC, kind),
+            (false, true) => EthereumGasPolicy.TryConsumeAccountAccessGas<OffFlag, OnFlag>(ref specializedGas, spec, in specializedTracker, TestItem.AddressC, kind),
+            (false, false) => EthereumGasPolicy.TryConsumeAccountAccessGas<OffFlag, OffFlag>(ref specializedGas, spec, in specializedTracker, TestItem.AddressC, kind),
         };
 
         using (Assert.EnterMultipleScope())
@@ -300,7 +299,6 @@ public class EthereumGasPolicyTests
         [Values] bool eip8038,
         [Values] bool hotAndCold,
         [Values] bool prewarm,
-        [Values] bool tracingAccess,
         [Values(StorageAccessType.SLOAD, StorageAccessType.SSTORE)] StorageAccessType kind,
         [Values(0UL, 100UL, 2099UL, 2100UL)] ulong availableGas)
     {
@@ -315,15 +313,15 @@ public class EthereumGasPolicyTests
         }
         EthereumGasPolicy dynamicGas = EthereumGasPolicy.FromULong(availableGas);
         EthereumGasPolicy specializedGas = EthereumGasPolicy.FromULong(availableGas);
-        bool expected = EthereumGasPolicy.TryConsumeStorageAccessGas(ref dynamicGas, in dynamicTracker, tracingAccess, in cell, kind, spec);
+        bool expected = EthereumGasPolicy.TryConsumeStorageAccessGas(ref dynamicGas, in dynamicTracker, in cell, kind, spec);
         spec.ClearReceivedCalls();
 
         bool actual = (hotAndCold, eip8038) switch
         {
-            (true, true) => EthereumGasPolicy.TryConsumeStorageAccessGas<OnFlag, OnFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
-            (true, false) => EthereumGasPolicy.TryConsumeStorageAccessGas<OnFlag, OffFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
-            (false, true) => EthereumGasPolicy.TryConsumeStorageAccessGas<OffFlag, OnFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
-            (false, false) => EthereumGasPolicy.TryConsumeStorageAccessGas<OffFlag, OffFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
+            (true, true) => EthereumGasPolicy.TryConsumeStorageAccessGas<OnFlag, OnFlag>(ref specializedGas, in specializedTracker, in cell, kind, spec),
+            (true, false) => EthereumGasPolicy.TryConsumeStorageAccessGas<OnFlag, OffFlag>(ref specializedGas, in specializedTracker, in cell, kind, spec),
+            (false, true) => EthereumGasPolicy.TryConsumeStorageAccessGas<OffFlag, OnFlag>(ref specializedGas, in specializedTracker, in cell, kind, spec),
+            (false, false) => EthereumGasPolicy.TryConsumeStorageAccessGas<OffFlag, OffFlag>(ref specializedGas, in specializedTracker, in cell, kind, spec),
         };
 
         using (Assert.EnterMultipleScope())

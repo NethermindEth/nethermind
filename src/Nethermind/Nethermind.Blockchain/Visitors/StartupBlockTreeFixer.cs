@@ -146,6 +146,7 @@ namespace Nethermind.Blockchain.Visitors
             }
 
             if (!_suggestBlocks) return BlockVisitOutcome.None;
+            if (_currentLevel?.MainChainBlock is { } mainChainBlock && mainChainBlock.BlockHash != block.Hash) return BlockVisitOutcome.None;
 
             Task waitSuggestQueue = _blockTreeSuggestPacer.WaitForQueue(block.Number, cancellationToken);
 

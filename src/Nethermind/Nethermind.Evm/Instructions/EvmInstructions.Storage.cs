@@ -442,7 +442,7 @@ public static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         ulong traceStorageAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
-        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, in storageCell, StorageAccessType.SSTORE, spec))
         {
             if (TTracingInst.IsActive)
                 vm.TraceOperationReady(0, "out of gas: not enough gas for slot access");
@@ -590,7 +590,7 @@ public static partial class EvmInstructions
         // Charge gas based on whether this is a cold or warm storage access before reading
         // the slot; BAL records the read only once the access cost is covered.
         ulong traceStorageAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
-        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, in storageCell, StorageAccessType.SSTORE, spec))
         {
             if (TTracingInst.IsActive)
                 vm.TraceOperationReady(0, "out of gas: not enough gas for slot access");
@@ -882,7 +882,7 @@ public static partial class EvmInstructions
 
         ulong traceGasCost = TTracingInst.IsActive && vm.IsTracingOperationStart ? vm.GetStorageLoadTraceGasCost(in storageCell) : 0;
         // Charge additional gas based on whether the storage cell is hot or cold.
-        bool gasAvailable = TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec);
+        bool gasAvailable = TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, in storageCell, StorageAccessType.SLOAD, spec);
         if (TTracingInst.IsActive)
             vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
         if (!gasAvailable)

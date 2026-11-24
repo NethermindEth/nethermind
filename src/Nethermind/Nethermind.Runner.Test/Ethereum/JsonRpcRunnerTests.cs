@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Hosting;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum;
@@ -30,13 +31,13 @@ public class JsonRpcRunnerTests
     [TestCase("LOCALHOST", "http://LOCALHOST:8545")]
     [TestCase("*", "http://*:8545")]
     [TestCase("+", "http://+:8545")]
-    public async Task GetListenUrls_keeps_hosts_Kestrel_binds_explicitly(string host, string expected) =>
-        Assert.That(await JsonRpcRunner.GetListenUrls([CreateUrl(host, 8545)], ResolveNodeLan, CancellationToken.None), Is.EqualTo(new[] { expected }));
+    public async Task ResolveAsync_keeps_hosts_Kestrel_binds_explicitly(string host, string expected) =>
+        Assert.That(await JsonRpcListenUrls.ResolveAsync([CreateUrl(host, 8545)], ResolveNodeLan, CancellationToken.None), Is.EqualTo(new[] { expected }));
 
     [Test]
-    public async Task GetListenUrls_binds_host_name_to_each_resolved_address() =>
+    public async Task ResolveAsync_binds_host_name_to_each_resolved_address() =>
         Assert.That(
-            await JsonRpcRunner.GetListenUrls([CreateUrl("node.lan", 8545), CreateUrl("node.lan", 8551)], ResolveNodeLan, CancellationToken.None),
+            await JsonRpcListenUrls.ResolveAsync([CreateUrl("node.lan", 8545), CreateUrl("node.lan", 8551)], ResolveNodeLan, CancellationToken.None),
             Is.EqualTo(new[]
             {
                 "http://10.0.8.103:8545",
@@ -46,29 +47,29 @@ public class JsonRpcRunnerTests
             }));
 
     [Test]
-    public void GetListenUrls_throws_when_host_name_cannot_be_resolved([Values] bool lookupThrows) =>
+    public void ResolveAsync_throws_when_host_name_cannot_be_resolved([Values] bool lookupThrows) =>
         Assert.That(
-            () => JsonRpcRunner.GetListenUrls(
+            () => JsonRpcListenUrls.ResolveAsync(
                 [CreateUrl("node.lan", 8545)],
                 lookupThrows ? static (_, _) => throw new SocketException((int)SocketError.HostNotFound) : static (_, _) => Task.FromResult<IPAddress[]>([]),
                 CancellationToken.None),
             Throws.InvalidOperationException.With.Message.Contains("node.lan"));
 
     [Test]
-    public void GetListenUrls_throws_when_host_name_resolves_to_unspecified_address([Values("0.0.0.0", "::", "::ffff:0.0.0.0")] string unspecified) =>
+    public void ResolveAsync_throws_when_host_name_resolves_to_unspecified_address([Values("0.0.0.0", "::", "::ffff:0.0.0.0")] string unspecified) =>
         Assert.That(
-            () => JsonRpcRunner.GetListenUrls(
+            () => JsonRpcListenUrls.ResolveAsync(
                 [CreateUrl("node.lan", 8545)],
                 (_, _) => Task.FromResult<IPAddress[]>([IPAddress.Parse("10.0.8.103"), IPAddress.Parse(unspecified)]),
                 CancellationToken.None),
             Throws.InvalidOperationException.With.Message.Contains("unspecified"));
 
     [Test]
-    public async Task GetListenUrls_passes_cancellation_to_lookup()
+    public async Task ResolveAsync_passes_cancellation_to_lookup()
     {
         using CancellationTokenSource cts = new();
         TaskCompletionSource lookupStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<string[]> lookup = JsonRpcRunner.GetListenUrls(
+        Task<string[]> lookup = JsonRpcListenUrls.ResolveAsync(
             [CreateUrl("node.lan", 8545)],
             async (_, token) =>
             {

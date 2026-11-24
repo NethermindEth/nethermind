@@ -77,6 +77,16 @@ public abstract class PyspecSyncBlockchainTestFixture<TSelf>() : PyspecLinuxX64B
         PyspecLoader.LoadCases<BlockchainTest, TSelf>("blockchain_tests_sync", "SyncBlockchainTests");
 }
 
+// Engine reorg fixtures: a payload DAG driven by a branching script of Engine API and JSON-RPC steps.
+public abstract class PyspecEngineReorgBlockchainTestFixture<TSelf>() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
+{
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(PyspecTestRef testRef) => Assert.That((await RunEngineReorgTest(PyspecLoader.LoadTest<EngineReorgTest>(testRef))).Pass, Is.True);
+
+    public static IEnumerable<TestCaseData> LoadTests() =>
+        PyspecLoader.LoadCases<EngineReorgTest, TSelf>("blockchain_tests_engine_reorg", "EngineReorgBlockchainTests");
+}
+
 // Bogota engine-payload fixtures ship in their own release archive, hence the override below.
 public abstract class PyspecBogotaEngineBlockchainTestFixture() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
 {

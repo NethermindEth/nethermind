@@ -201,20 +201,17 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     static abstract bool TryConsumeAccountAccessGasWithDelegation(ref TSelf gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         Address address,
         Address? delegated);
 
     static abstract bool TryConsumeAccountAccessGas(ref TSelf gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         Address address,
         AccountAccessKind kind = AccountAccessKind.Default);
 
     static abstract bool TryConsumeStorageAccessGas(ref TSelf gas,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec);
@@ -222,20 +219,20 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     /// <summary>Charges storage access using the selected fork flags.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref TSelf gas,
-        ref readonly StackAccessTracker accessTracker, bool isTracingAccess,
+        ref readonly StackAccessTracker accessTracker,
         in StorageCell storageCell, StorageAccessType storageAccessType, IReleaseSpec spec)
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IFlag =>
-        TSelf.TryConsumeStorageAccessGas(ref gas, in accessTracker, isTracingAccess, in storageCell, storageAccessType, spec);
+        TSelf.TryConsumeStorageAccessGas(ref gas, in accessTracker, in storageCell, storageAccessType, spec);
 
     /// <summary>Charges account access using the selected fork flags.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref TSelf gas, IReleaseSpec spec,
-        ref readonly StackAccessTracker accessTracker, bool isTracingAccess, Address address,
+        ref readonly StackAccessTracker accessTracker, Address address,
         AccountAccessKind kind = AccountAccessKind.Default)
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IFlag =>
-        TSelf.TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, kind);
+        TSelf.TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, address, kind);
 
     /// <summary>Reserves CALL gas using the selected EIP-150 mode.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

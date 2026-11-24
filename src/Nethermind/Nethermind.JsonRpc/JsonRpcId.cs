@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Text;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -85,6 +86,23 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
 
     /// <summary>Gets whether this value represents an explicit JSON null ID.</summary>
     public bool IsNull => _kind == JsonRpcIdKind.Null;
+
+    internal int GetEncodedLength()
+    {
+        if (_rawValue is not null) return _rawValue.Length;
+        Span<byte> formatted = stackalloc byte[32];
+        if (_kind == JsonRpcIdKind.Long)
+        {
+            Utf8Formatter.TryFormat(_longValue, formatted, out int length);
+            return length;
+        }
+        if (_kind == JsonRpcIdKind.Decimal)
+        {
+            Utf8Formatter.TryFormat(_decimalValue, formatted, out int length);
+            return length;
+        }
+        return "null"u8.Length;
+    }
 
     internal static JsonRpcId FromValidatedRawStringToken(ReadOnlySpan<byte> rawToken)
     {

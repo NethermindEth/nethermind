@@ -3,9 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+
+[assembly: InternalsVisibleTo("Nethermind.LightClient")]
 
 namespace Nethermind.JsonRpc.Modules;
 

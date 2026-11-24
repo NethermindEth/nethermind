@@ -1771,7 +1771,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         Address recovered = new(output.AsSpan(output.Length - Address.Size));
-        if (!TGasPolicy.TryConsumeAccountAccessGas(ref state.Gas, spec, in state.AccessTracker, IsTracingAccess, recovered)
+        if (!TGasPolicy.TryConsumeAccountAccessGas(ref state.Gas, spec, in state.AccessTracker, recovered)
             || !TGasPolicy.UpdateGas(ref state.Gas, GasCostOf.WarmStateRead)
             || (spec.IsEip8279Enabled && !TryMeterBalAddress(recovered)))
         {
@@ -2170,7 +2170,7 @@ public partial class VirtualMachine<TGasPolicy>(
         if (!Spec.UseHotAndColdStorage)
             return baseCost + extraCost;
 
-        bool isCold = !IsTracingAccess && VmState.AccessTracker.IsCold(address) && !VmState.AccessTracker.IsPrewarmedPrecompile(address, Spec);
+        bool isCold = VmState.AccessTracker.IsCold(address) && !VmState.AccessTracker.IsPrewarmedPrecompile(address, Spec);
         ulong accessCost = isCold
             ? Spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess
             : GasCostOf.WarmStateRead;
@@ -2183,7 +2183,7 @@ public partial class VirtualMachine<TGasPolicy>(
         if (!Spec.UseHotAndColdStorage)
             return Spec.GasCosts.SLoadCost;
 
-        return !IsTracingAccess && VmState.AccessTracker.IsCold(in cell)
+        return VmState.AccessTracker.IsCold(in cell)
             ? Spec.IsEip8038Enabled ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad
             : GasCostOf.WarmStateRead;
     }
