@@ -845,6 +845,17 @@ public class SyncPeerPoolTests
     }
 
     [Test]
+    public async Task Allocate_after_disposal_rejects_even_an_available_peer()
+    {
+        Context ctx = new();
+        await SetupPeers(ctx, 1);
+        await ctx.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 0));
+    }
+
+    [Test]
     public async Task Dispose_while_waiting_does_not_hang()
     {
         Context ctx = new();
