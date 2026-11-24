@@ -4,6 +4,7 @@
 using System;
 using System.IO.Abstractions;
 using System.Linq;
+using Nethermind.Logging;
 
 namespace Nethermind.Db.FullPruning
 {
@@ -15,6 +16,7 @@ namespace Nethermind.Db.FullPruning
         private readonly IDbFactory _dbFactory;
         private readonly IFileSystem _fileSystem;
         private readonly string _path;
+        private readonly ILogger _logger;
         private int _index; // current index of the inner db
 
         /// <summary>
@@ -23,11 +25,14 @@ namespace Nethermind.Db.FullPruning
         /// <param name="dbFactory">Inner real db factory.</param>
         /// <param name="fileSystem">File system.</param>
         /// <param name="path">Main DB path.</param>
-        public FullPruningInnerDbFactory(IDbFactory dbFactory, IFileSystem fileSystem, string path)
+        /// <param name="logManager">Log manager.</param>
+        public FullPruningInnerDbFactory(IDbFactory dbFactory, IFileSystem fileSystem, string path, ILogManager logManager)
         {
             _dbFactory = dbFactory;
             _fileSystem = fileSystem;
             _path = path;
+            _logger = logManager.GetClassLogger<FullPruningInnerDbFactory>();
+            FinishInterruptedDeletes(path);
             _index = GetStartingIndex(path); // we need to read the current state of inner DB's
         }
 
@@ -99,6 +104,52 @@ namespace Nethermind.Db.FullPruning
             // so we skip tracking these indexed sub-DBs to avoid stale references after pruning.
             dbSettings.SkipMetricsTracking = true;
             return dbSettings;
+        }
+
+        private void FinishInterruptedDeletes(string path)
+        {
+            string fullPath = _dbFactory.GetFullDbPath(new DbSettings(string.Empty, path));
+            IDirectoryInfo directory = _fileSystem.DirectoryInfo.New(fullPath);
+            if (!directory.Exists) return;
+
+            if (DeleteFilesIfMarked(directory))
+            {
+                foreach (IFileInfo marker in directory.EnumerateFiles(DbSettings.DeletingMarkerFileName))
+                {
+                    marker.Delete();
+                }
+
+                LogFinishedDelete(directory);
+            }
+
+            foreach (IDirectoryInfo subDirectory in directory.EnumerateDirectories())
+            {
+                if (int.TryParse(subDirectory.Name, out int index) && index >= 0 && DeleteFilesIfMarked(subDirectory))
+                {
+                    subDirectory.Delete(true);
+                    LogFinishedDelete(subDirectory);
+                }
+            }
+        }
+
+        private void LogFinishedDelete(IDirectoryInfo directory)
+        {
+            if (_logger.IsInfo) _logger.Info($"Deleted the rest of the database at {directory.FullName}. An earlier stop interrupted its deletion.");
+        }
+
+        private static bool DeleteFilesIfMarked(IDirectoryInfo directory)
+        {
+            if (!directory.EnumerateFiles(DbSettings.DeletingMarkerFileName).Any()) return false;
+
+            foreach (IFileInfo file in directory.EnumerateFiles())
+            {
+                if (file.Name != DbSettings.DeletingMarkerFileName)
+                {
+                    file.Delete();
+                }
+            }
+
+            return true;
         }
 
         /// <summary>

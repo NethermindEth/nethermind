@@ -522,19 +522,7 @@ namespace Ethereum.Test.Base
             List<BlockchainTest> testsByName = [];
             foreach ((string testName, BlockchainTestJson testSpec) in testsInFile)
             {
-                string[] transitionInfo = testSpec.Network.Split("At");
-                string[] networks = transitionInfo[0].Split("To");
-
-                testSpec.EthereumNetwork = WithZeroNonceStorageAccounts(LoadSpec(networks[0], testSpec.Config?.BlobSchedule), testSpec.Config);
-                if (transitionInfo.Length > 1)
-                {
-                    if (TryParseTerminalTotalDifficulty(transitionInfo[1], out UInt256 terminalTotalDifficulty))
-                        testSpec.TransitionTerminalTotalDifficulty = terminalTotalDifficulty;
-                    else
-                        testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = WithZeroNonceStorageAccounts(LoadSpec(TransitionTarget(networks[0], networks[1]), testSpec.Config?.BlobSchedule), testSpec.Config);
-                }
-
+                ResolveNetworks(testSpec);
                 (string name, string category) = GetNameAndCategory(testName);
                 BlockchainTest test = Convert(name, category, testSpec);
                 test.FixtureId = testName;
@@ -542,6 +530,48 @@ namespace Ethereum.Test.Base
             }
 
             return testsByName;
+        }
+
+        public static IEnumerable<BlockchainTest> ConvertToEngineReorgTests(ReadOnlySpan<byte> json)
+        {
+            List<BlockchainTest> tests = [];
+            foreach ((string testName, EngineReorgTestJson testSpec) in _serializer.Deserialize<Dictionary<string, EngineReorgTestJson>>(json))
+            {
+                ResolveNetworks(testSpec);
+                (string name, string category) = GetNameAndCategory(testName);
+                tests.Add(new EngineReorgTest
+                {
+                    Name = name,
+                    Category = category,
+                    FixtureId = testName,
+                    ForkName = testSpec.Network,
+                    Network = testSpec.EthereumNetwork,
+                    NetworkAfterTransition = testSpec.EthereumNetworkAfterTransition,
+                    TransitionForkActivation = testSpec.TransitionForkActivation,
+                    GenesisBlockHeader = testSpec.GenesisBlockHeader,
+                    Pre = testSpec.Pre,
+                    ReorgBlocks = testSpec.Blocks ?? [],
+                    Steps = testSpec.Steps ?? [],
+                });
+            }
+
+            return tests;
+        }
+
+        private static void ResolveNetworks(BlockchainTestJson testSpec)
+        {
+            string[] transitionInfo = testSpec.Network.Split("At");
+            string[] networks = transitionInfo[0].Split("To");
+
+            testSpec.EthereumNetwork = WithZeroNonceStorageAccounts(LoadSpec(networks[0], testSpec.Config?.BlobSchedule), testSpec.Config);
+            if (transitionInfo.Length > 1)
+            {
+                if (TryParseTerminalTotalDifficulty(transitionInfo[1], out UInt256 terminalTotalDifficulty))
+                    testSpec.TransitionTerminalTotalDifficulty = terminalTotalDifficulty;
+                else
+                    testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
+                testSpec.EthereumNetworkAfterTransition = WithZeroNonceStorageAccounts(LoadSpec(TransitionTarget(networks[0], networks[1]), testSpec.Config?.BlobSchedule), testSpec.Config);
+            }
         }
 
         private static IReleaseSpec WithZeroNonceStorageAccounts(IReleaseSpec spec, ConfigJson? config) =>

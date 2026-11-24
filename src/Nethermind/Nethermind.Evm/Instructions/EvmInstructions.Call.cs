@@ -182,8 +182,7 @@ public static partial class EvmInstructions
         }
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.IsTracingAccess, codeSource))
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, codeSource))
         {
             goto OutOfGasTraced;
         }
@@ -195,7 +194,7 @@ public static partial class EvmInstructions
 
         if (TSpec.UseHotAndColdStorage && delegated is not null)
         {
-            if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
+            if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, delegated))
                 goto OutOfGasTraced;
 
             // EIP-8279: the delegation target enters the block access list on the transaction's first touch.
@@ -372,7 +371,7 @@ public static partial class EvmInstructions
 
         if (hasValueTransfer && !TGasPolicy.UpdateGas(ref gas, TSpec.IsEip8038Enabled ? Eip8038Constants.AccountWrite : GasCostOf.CallValue))
             goto OutOfGas;
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, target))
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, target))
             goto OutOfGas;
 
         // EIP-8279: meter the target's block access list entry.
