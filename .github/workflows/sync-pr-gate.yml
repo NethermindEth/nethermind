@@ -1,7 +1,9 @@
 name: Sync PR Gate (Hoodi)
 
 on:
-  pull_request:
+  # pull_request_target runs master's copy of this file and of the gcp-runner action, so only reviewed
+  # code can use the GCP spawner identity. PR code runs only on the VM, which cannot impersonate it.
+  pull_request_target:
     branches: [master]
     types: [opened, synchronize, reopened, ready_for_review]
     # Syncs Hoodi with the PR's Docker image on GCP VMs, so it only runs when the
@@ -129,6 +131,7 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           repositories: "nethermind,post-merge-smoke-tests"
+          permission-contents: read
 
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -162,7 +165,8 @@ jobs:
           # Pinned to 1.26: Go 1.27 breaks sedge's abigen build (cockroachdb/swiss has no go1.27 case)
           go-version: '1.26'
           check-latest: true
-          cache: true
+          # A pull_request_target run saves caches to master's scope, and this job runs PR code.
+          cache: false
 
       - name: Set up .NET for CI scripts
         uses: actions/setup-dotnet@v6
@@ -172,15 +176,7 @@ jobs:
         with:
           python-version: "3.X"
 
-      - name: Cache Sedge binary
-        id: cache-sedge
-        uses: actions/cache@v5
-        with:
-          path: sedge/build/sedge
-          key: sedge-core-${{ runner.arch }}
-
       - name: Install Sedge
-        if: steps.cache-sedge.outputs.cache-hit != 'true'
         env:
           # proxy.golang.org serves large module zips as a redirect to storage.googleapis.com,
           # unreachable from the sync runners; `|` falls back to direct on any error, not just 404/410
