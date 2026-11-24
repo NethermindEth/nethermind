@@ -129,6 +129,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
                 Assert.That(_handler.Name, Is.EqualTo("eth66"));
                 Assert.That(_handler.ProtocolVersion, Is.EqualTo(66));
+                Assert.That(_handler.CanGetNodeData, Is.True);
                 Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
                 Assert.That(_handler.IncludeInTxPool, Is.True);
                 Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));

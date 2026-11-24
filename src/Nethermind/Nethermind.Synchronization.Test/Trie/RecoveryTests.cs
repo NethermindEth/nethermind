@@ -70,6 +70,7 @@ public class RecoveryTests
 
         _syncPeerEth66 = Substitute.For<ISyncPeer>();
         _syncPeerEth66.ProtocolVersion.Returns(EthVersions.Eth66);
+        _syncPeerEth66.CanGetNodeData.Returns(true);
         _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Hash256>>(l => l.Contains(_hash)), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp })));
         _peerEth66 = new(_syncPeerEth66);

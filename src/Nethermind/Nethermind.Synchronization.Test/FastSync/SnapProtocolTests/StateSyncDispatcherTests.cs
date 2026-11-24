@@ -67,6 +67,7 @@ public class StateSyncDispatcherTests
         ISyncPeer peer = Substitute.For<ISyncPeer>();
         peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)));
         peer.ProtocolVersion.Returns((byte)66);
+        peer.CanGetNodeData.Returns(true);
         peer.IsInitialized.Returns(true);
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
         peer.HeadNumber.Returns(ChainLength - 1);

@@ -50,6 +50,15 @@ public class XdcProtocolValidatorTests
         session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 
+    [Test]
+    public void Every_xdc_version_serves_node_data([Values(XdcProtocolVersions.Legacy, XdcProtocolVersions.Xdc165)] byte version)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        Assert.That(CreateHandler(version, session).CanGetNodeData, Is.True);
+    }
+
     private static ISession Validate(byte negotiatedVersion, byte statusVersion, out bool valid)
     {
         ISession session = Substitute.For<ISession>();

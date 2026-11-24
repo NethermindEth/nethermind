@@ -54,6 +54,7 @@ public class SyncPeerPoolTests
 
         public Hash256 HeadHash { get; set; } = null!;
         public byte ProtocolVersion { get; set; }
+        public bool CanGetNodeData => ProtocolVersion < EthVersions.Eth67;
         public string ProtocolCode { get; } = null!;
         public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);
         public string ClientId { get; } = description;
