@@ -253,7 +253,6 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
     AcceptTxResult ITxPool.ValidateTxForBlobSampling(Transaction tx) => AcceptTxResult.Invalid;
     void ITxPool.ForgetRejectedBlobTransaction(Hash256 hash) { }
     bool ITxPool.ForgetInvalidBlobProofs(Hash256 hash) => false;
-    bool ITxPool.TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) => false;
     BlobCellMergeResult ITxPool.MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) =>
         BlobCellMergeResult.TransactionUnavailable;
     Transaction? ITxPool.GetBestTx() => null;

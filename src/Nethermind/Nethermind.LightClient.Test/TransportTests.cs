@@ -5120,7 +5120,7 @@ public class TransportTests
         if (version == ProofVersion.V1)
         {
             byte[] hash = transaction.BlobVersionedHashes[1]!;
-            bool foundBlob = pool.TryGetBlobAndProofV1(hash, out byte[]? blob, out ReadOnlyMemory<byte> flatProofs);
+            bool foundBlob = relay.TryGetBlobAndProofV1(hash, out byte[]? blob, out ReadOnlyMemory<byte> flatProofs);
             bool foundCells = pool.TryGetBlobCellsAndProofsV1(hash, BlobCellMask.FromIndices([0, 127]),
                 out BlobCellMask mask, out byte[][]? cells, out byte[][]? selectedProofs);
             ShardBlobNetworkWrapper partial = new([], [wrapper.Commitments[1]], wrapper.GetProofs(128, 128).ToArray(), version, mask, cells);
@@ -5152,7 +5152,7 @@ public class TransportTests
             {
                 Assert.That(blob, Is.SameAs(sourceWrapper.Blobs[1]));
                 Assert.That(proof, Is.EqualTo(wrapper.GetProofs(1).ToArray()));
-                Assert.That(pool.TryGetBlobAndProofV1(transaction.BlobVersionedHashes[1]!, out _, out _), Is.False);
+                Assert.That(relay.TryGetBlobAndProofV1(transaction.BlobVersionedHashes[1]!, out _, out _), Is.False);
             }
         }
         bool removed = pool.RemoveTransaction(transaction.Hash);
