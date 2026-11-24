@@ -60,8 +60,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string SealEngineType => Core.SealEngineType.Taiko;
 
     public IModule Module => new TaikoModule();
-
-    public Type ApiType => typeof(TaikoNethermindApi);
 }
 
 public class TaikoModule : Module
@@ -71,7 +69,6 @@ public class TaikoModule : Module
         base.Load(builder);
 
         builder
-            .AddSingleton<NethermindApi, TaikoNethermindApi>()
             .AddModule(new BaseMergePluginModule())
             .AddModule(new TaikoSynchronizerModule())
 
