@@ -118,9 +118,9 @@ public partial class Rlp
                                 _decoderBuilder[key] = instance ??= (IRlpDecoder)(decoder
                                     ?? throw new InvalidOperationException($"Could not create decoder {type}."));
                             }
-                            catch (Exception)
+                            catch (Exception e)
                             {
-                                throw new ArgumentException($"Unable to set decoder for {key}, because {type} decoder has no suitable constructor.");
+                                throw new ArgumentException($"Unable to set decoder for {key}, because {type} decoder has no suitable constructor.", e);
                             }
                         }
                         else
