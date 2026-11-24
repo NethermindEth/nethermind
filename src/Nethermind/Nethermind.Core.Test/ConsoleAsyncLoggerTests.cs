@@ -19,24 +19,38 @@ public class ConsoleAsyncLoggerTests
         TextWriter originalError = Console.Error;
         using GatedWriter error = new();
         Console.SetError(error);
+        ConsoleAsyncLogger logger = new(LogLevel.Info);
         try
         {
-            ConsoleAsyncLogger logger = new(LogLevel.Info);
             logger.Info("first");
             Assert.That(error.WriteStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
             logger.Info("second");
             logger.Info("third");
 
-            // Holds the consumer in its first write until Flush has completed adding.
-            Task release = Task.Delay(TimeSpan.FromMilliseconds(100)).ContinueWith(_ => error.Release.Set());
-            logger.Flush();
-            release.Wait();
+            Task flush = Task.Run(logger.Flush);
+            try
+            {
+                Assert.That(() => logger.Info("flush probe"), Throws.InvalidOperationException.After(10_000, 10));
+            }
+            finally
+            {
+                error.Release.Set();
+                flush.GetAwaiter().GetResult();
+            }
 
             Assert.That(error.ToString(), Does.Contain("first").And.Contain("second").And.Contain("third"));
         }
         finally
         {
-            Console.SetError(originalError);
+            error.Release.Set();
+            try
+            {
+                logger.Flush();
+            }
+            finally
+            {
+                Console.SetError(originalError);
+            }
         }
     }
 
