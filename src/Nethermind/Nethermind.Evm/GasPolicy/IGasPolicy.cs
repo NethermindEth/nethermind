@@ -37,6 +37,17 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
     /// <summary>Zeros execution gas without changing state-gas accounting.</summary>
     static abstract void ClearExecutionGas(ref TSelf gas);
 
+    /// <summary>Tells a frame's policy that fixed-cost opcodes run on the carried execution gas alone ran out of gas.</summary>
+    /// <param name="gas">The policy of the frame the opcodes ran in.</param>
+    /// <param name="unspentGas">The execution gas left when the failed charge was attempted.</param>
+    /// <remarks>
+    /// Dispatch runs fixed-cost opcodes, alone or fused with their successor, on a local policy holding only the execution
+    /// gas, and drops it when they halt; a policy that records halts learns of this one here. Called only on that
+    /// out-of-gas exit. The default does nothing, so dispatch compiles the call away.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void OnFixedGasOutOfGas(ref TSelf gas, ulong unspentGas) { }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong CombineBlockGas(ulong blockExecutionGas, ulong blockStateGas) => Math.Max(blockExecutionGas, blockStateGas);
 

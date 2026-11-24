@@ -347,6 +347,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     LoadFixedGas(out TGasPolicy localGas, gas);
                     exceptionType = ExecuteUntracedPush2<TOpcode>(ref stack, ref localGas, ref state, ref pc, ref opCodeCount);
+                    if (exceptionType == EvmExceptionType.OutOfGas) ReportFixedGasHalt(ref state.Gas, FusedPush2HaltGas(gas, ref stack.Code, pc), exceptionType);
                     gas = GetExecutionGas(ref localGas);
                 }
                 else
@@ -361,6 +362,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     LoadFixedGas(out TGasPolicy localGas, gas);
                     exceptionType = EvmInstructions.InstructionJumpCore<TGasPolicy, OffFlag>(
                         ref stack, ref localGas, null!, ref pc, ref opCodeCount);
+                    if (exceptionType == EvmExceptionType.OutOfGas) ReportFixedGasHalt(ref state.Gas, FusedJumpHaltGas<GasPolicy.JumpGasCost>(gas), exceptionType);
                     gas = GetExecutionGas(ref localGas);
                 }
                 else
@@ -429,6 +431,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     exceptionType = TOpcode.Execute(ref stack, ref localGas, state.Vm, ref pc);
                 else
                     exceptionType = TOpcode.Execute(ref stack, ref localGas, null!, ref pc);
+                if (exceptionType == EvmExceptionType.OutOfGas) ReportFixedGasHalt(ref state.Gas, gas, exceptionType);
                 gas = GetExecutionGas(ref localGas);
             }
             else
@@ -561,7 +564,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             LoadFixedGas(out TGasPolicy localGas, gas);
             if (!TOpcode.TryConsumeGas(ref localGas))
+            {
+                ReportFixedGasHalt(ref state.Gas, gas, EvmExceptionType.OutOfGas);
                 return ExitOpcode(ref state, carriesExecutionGas: true, GetExecutionGas(ref localGas), pc, opCodeCount, EvmExceptionType.OutOfGas);
+            }
 
             EvmExceptionType stackFailure = CheckedStackFailure<TOpcode>(in stack);
             if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && stackFailure == EvmExceptionType.StackUnderflow)
@@ -609,6 +615,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 LoadFixedGas(out TGasPolicy localGas, gas);
                 exceptionType = EvmInstructions.InstructionJumpIfCore(ref stack, ref localGas, ref pc, ref opCodeCount);
+                if (exceptionType == EvmExceptionType.OutOfGas) ReportFixedGasHalt(ref state.Gas, FusedJumpHaltGas<GasPolicy.JumpIGasCost>(gas), exceptionType);
                 gas = GetExecutionGas(ref localGas);
             }
             else

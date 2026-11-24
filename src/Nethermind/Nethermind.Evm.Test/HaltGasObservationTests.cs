@@ -3,8 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Autofac;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -18,8 +18,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
@@ -27,14 +25,13 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// Verifies that a chain that meters what a halted frame used can do so with a gas policy of its own, while
-/// <see cref="EthereumGasPolicy"/> keeps no record of halts.
+/// Verifies <see cref="EthereumGasPolicy.UnspentGasBeforeHalt"/>: the execution gas a halted frame had left, recorded
+/// only on failing paths, including the fixed-cost charges the untraced dispatch runs outside the frame's policy.
 /// </summary>
-/// <remarks>
-/// The dispatch carries execution gas outside the frame's policy for <see cref="EthereumGasPolicy"/> only. Under any other
-/// policy every charge runs on the frame's policy, so the policy sees each failed charge, fixed costs included.
-/// </remarks>
-public sealed class HaltGasObservationTests
+/// <param name="traced">Whether the transaction runs traced, so every charge runs on the frame's policy.</param>
+[TestFixture(false)]
+[TestFixture(true)]
+public sealed class HaltGasObservationTests(bool traced)
 {
     private static readonly Address Child = new("0x00000000000000000000000000000000000000c7");
     private const ulong ChildGas = 10;
@@ -48,20 +45,9 @@ public sealed class HaltGasObservationTests
     [SetUp]
     public void SetUp()
     {
-        ChainSpec chainSpec = new()
-        {
-            Parameters = new ChainParameters(),
-            Allocations = [],
-            Genesis = Build.A.Block.WithBlobGasUsed(0).TestObject,
-        };
-        IConfigProvider configProvider = TestStateBackend.ApplyDefaultBackend(new ConfigProvider());
-
         _container = new ContainerBuilder()
-            .AddModule(new PseudoNethermindModule(chainSpec, configProvider, LimboLogs.Instance))
-            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, nameof(HaltGasObservationTests)))
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance))
-            .AddScoped<IVirtualMachine<HaltObservingGasPolicy>, HaltObservingVirtualMachine>()
-            .AddScoped<ITransactionProcessor, TransactionProcessor<HaltObservingGasPolicy>>()
+            .AddModule(new TestNethermindModule(Prague.Instance))
+            .AddScoped<IVirtualMachine, HaltObservingVirtualMachine>()
             .Build();
         _scope = _container.BeginLifetimeScope(builder =>
             builder.AddSingleton<IWorldStateScopeProvider>(_container.Resolve<IWorldStateManager>().GlobalWorldState));
@@ -82,6 +68,7 @@ public sealed class HaltGasObservationTests
     /// <param name="unspent">The gas the child had left when it halted.</param>
     [TestCase("6001600160016001", EvmExceptionType.OutOfGas, 1UL, TestName = "Fixed cost out of gas")]
     [TestCase("600162010000" + "52", EvmExceptionType.OutOfGas, 1UL, TestName = "Memory expansion out of gas after the static cost")]
+    [TestCase("56", EvmExceptionType.StackUnderflow, 2UL, TestName = "Fixed-cost opcode failing its stack check after its charge")]
     [TestCase("6001" + "0c", EvmExceptionType.BadInstruction, 7UL, TestName = "Undefined opcode, a halt that clears no gas")]
     public void Halted_child_reports_the_gas_it_had_left(string childCode, EvmExceptionType halt, ulong unspent)
     {
@@ -97,6 +84,54 @@ public sealed class HaltGasObservationTests
 
         Assert.That(machine.Halts, Is.EqualTo(new[] { (EvmExceptionType.OutOfGas, 1UL), (EvmExceptionType.OutOfGas, 1UL) }));
     }
+
+    [Test]
+    public void A_completed_child_records_no_halt()
+    {
+        HaltObservingVirtualMachine machine = Execute(Bytes.FromHexString("600160015000"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(machine.Halts, Is.Empty);
+            Assert.That(machine.CompletedWithoutHaltRecord, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Successful_charges_leave_the_record_untouched()
+    {
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(100_000);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EthereumGasPolicy.UpdateGas(ref gas, 3), Is.True);
+            Assert.That(EthereumGasPolicy.TryConsumeCallValueTransfer(ref gas), Is.True);
+            Assert.That(EthereumGasPolicy.TryReserveChildGas(ref gas, (UInt256)1_000, Prague.Instance, out _), Is.True);
+            Assert.That(gas.UnspentGasBeforeHalt, Is.Zero);
+        }
+    }
+
+    [TestCase(0UL, 1UL)]
+    [TestCase(97UL, 100UL)]
+    public void Failed_charge_records_the_unspent_gas_without_refunding_it(ulong remaining, ulong cost)
+    {
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(remaining);
+
+        Assert.That(EthereumGasPolicy.UpdateGas(ref gas, cost), Is.False);
+        EthereumGasPolicy.ClearExecutionGas(ref gas);
+        EthereumGasPolicy parent = EthereumGasPolicy.FromULong(10);
+        EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in gas);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in gas), Is.Zero);
+            Assert.That(gas.UnspentGasBeforeHalt, Is.EqualTo(remaining), "a later clearing keeps what the failed charge recorded");
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in parent), Is.EqualTo(10UL));
+            Assert.That(EthereumGasPolicy.CreateChildFrameGas(ref gas, 100).UnspentGasBeforeHalt, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void The_record_fits_the_policy_in_seven_words() =>
+        Assert.That(Unsafe.SizeOf<EthereumGasPolicy>(), Is.EqualTo(56));
 
     private HaltObservingVirtualMachine Execute(byte[] childCode, bool secondCall = false)
     {
@@ -121,123 +156,30 @@ public sealed class HaltGasObservationTests
             .WithBeneficiary(TestItem.AddressD).WithBlobGasUsed(0).WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(TestItem.KeccakG).WithSlotNumber(0).TestObject;
 
+        ITxTracer tracer = traced ? new TestAllTracerWithOutput() : NullTxTracer.Instance;
         TransactionResult result = _scope.Resolve<ITransactionProcessor>()
-            .Execute(transaction, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+            .Execute(transaction, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
         Assert.That(result.TransactionExecuted, Is.True);
-        return (HaltObservingVirtualMachine)_scope.Resolve<IVirtualMachine<HaltObservingGasPolicy>>();
+        return (HaltObservingVirtualMachine)_scope.Resolve<IVirtualMachine>();
     }
 
-    /// <summary>Records, for each child that halts, the gas the child had left when it halted.</summary>
+    /// <summary>Records, for each child that halts, the gas the child had left, as a chain metering halted frames would.</summary>
     private sealed class HaltObservingVirtualMachine(
         IBlockhashProvider blockHashProvider,
         ISpecProvider specProvider,
         ILogManager logManager)
-        : VirtualMachine<HaltObservingGasPolicy>(blockHashProvider, specProvider, logManager)
+        : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine
     {
         public List<(EvmExceptionType Halt, ulong Unspent)> Halts { get; } = [];
+        public int CompletedWithoutHaltRecord { get; private set; }
 
-        protected override void OnChildFrameCompleted(VmState<HaltObservingGasPolicy> childState, EvmExceptionType exceptionType,
+        protected override void OnChildFrameCompleted(VmState<EthereumGasPolicy> childState, EvmExceptionType exceptionType,
             bool shouldRevert, ReadOnlyMemory<byte> output)
         {
             if (exceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert))
-                Halts.Add((exceptionType, HaltObservingGasPolicy.GetRemainingGas(in childState.Gas) + childState.Gas.UnspentGasBeforeHalt));
+                Halts.Add((exceptionType, childState.Gas.Value + childState.Gas.UnspentGasBeforeHalt));
+            else if (childState.Gas.UnspentGasBeforeHalt == 0)
+                CompletedWithoutHaltRecord++;
         }
-    }
-
-    /// <summary><see cref="EthereumGasPolicy"/> that also keeps the execution gas a failed charge or a clearing found.</summary>
-    private struct HaltObservingGasPolicy : IGasPolicy<HaltObservingGasPolicy>
-    {
-        private EthereumGasPolicy _inner;
-
-        /// <summary>The execution gas left when a charge failed or the gas was cleared; zero for a frame that did not halt.</summary>
-        public ulong UnspentGasBeforeHalt;
-
-        private HaltObservingGasPolicy(EthereumGasPolicy inner) => _inner = inner;
-
-        /// <summary>Applies <paramref name="charged"/>, the result of a charge, keeping what it left unspent when it failed.</summary>
-        private static bool Observe(ref HaltObservingGasPolicy gas, ulong before, bool charged)
-        {
-            if (!charged && before != 0) gas.UnspentGasBeforeHalt = before;
-            return charged;
-        }
-
-        public static HaltObservingGasPolicy FromULong(ulong value) => new(EthereumGasPolicy.FromULong(value));
-
-        public static ulong GetRemainingGas(in HaltObservingGasPolicy gas) => EthereumGasPolicy.GetRemainingGas(in gas._inner);
-
-        public static void ClearExecutionGas(ref HaltObservingGasPolicy gas)
-        {
-            if (gas._inner.Value != 0) gas.UnspentGasBeforeHalt = gas._inner.Value;
-            EthereumGasPolicy.ClearExecutionGas(ref gas._inner);
-        }
-
-        public static bool TryConsumeSelfDestructGas(ref HaltObservingGasPolicy gas) =>
-            Observe(ref gas, gas._inner.Value, EthereumGasPolicy.TryConsumeSelfDestructGas(ref gas._inner));
-
-        public static void Refund(ref HaltObservingGasPolicy gas, in HaltObservingGasPolicy childGas) =>
-            EthereumGasPolicy.Refund(ref gas._inner, in childGas._inner);
-
-        public static bool TryConsumeAccountAccessGasWithDelegation(ref HaltObservingGasPolicy gas, IReleaseSpec spec,
-            ref readonly StackAccessTracker accessTracker, Address address, Address? delegated) =>
-            Observe(ref gas, gas._inner.Value,
-                EthereumGasPolicy.TryConsumeAccountAccessGasWithDelegation(ref gas._inner, spec, in accessTracker, address, delegated));
-
-        public static bool TryConsumeAccountAccessGas(ref HaltObservingGasPolicy gas, IReleaseSpec spec,
-            ref readonly StackAccessTracker accessTracker, Address address, AccountAccessKind kind = AccountAccessKind.Default) =>
-            Observe(ref gas, gas._inner.Value, EthereumGasPolicy.TryConsumeAccountAccessGas(ref gas._inner, spec, in accessTracker, address, kind));
-
-        public static bool TryConsumeStorageAccessGas(ref HaltObservingGasPolicy gas, ref readonly StackAccessTracker accessTracker,
-            in StorageCell storageCell, StorageAccessType storageAccessType, IReleaseSpec spec) =>
-            Observe(ref gas, gas._inner.Value,
-                EthereumGasPolicy.TryConsumeStorageAccessGas(ref gas._inner, in accessTracker, in storageCell, storageAccessType, spec));
-
-        public static bool UpdateMemoryCost(ref HaltObservingGasPolicy gas, in UInt256 position, in UInt256 length, ref EvmPooledMemory memory) =>
-            Observe(ref gas, gas._inner.Value, EthereumGasPolicy.UpdateMemoryCost(ref gas._inner, in position, in length, ref memory));
-
-        public static bool UpdateGas(ref HaltObservingGasPolicy gas, ulong gasCost) =>
-            Observe(ref gas, gas._inner.Value, EthereumGasPolicy.UpdateGas(ref gas._inner, gasCost));
-
-        public static bool TryConsumeStateAndExecutionGas(ref HaltObservingGasPolicy gas, long stateGasCost, ulong executionGasCost) =>
-            Observe(ref gas, gas._inner.Value, EthereumGasPolicy.TryConsumeStateAndExecutionGas(ref gas._inner, stateGasCost, executionGasCost));
-
-        public static void UpdateGasUp(ref HaltObservingGasPolicy gas, ulong refund) => EthereumGasPolicy.UpdateGasUp(ref gas._inner, refund);
-
-        public static bool TryConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref HaltObservingGasPolicy gas, IReleaseSpec spec)
-            where TEip8037 : struct, IFlag
-            where TIsSlotCreation : struct, IFlag =>
-            Observe(ref gas, gas._inner.Value, EthereumGasPolicy.TryConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref gas._inner, spec));
-
-        public static bool TryConsumeCallValueTransfer(ref HaltObservingGasPolicy gas) =>
-            Observe(ref gas, gas._inner.Value, EthereumGasPolicy.TryConsumeCallValueTransfer(ref gas._inner));
-
-        public static bool TryConsumeCallValueTransferEip2780(ref HaltObservingGasPolicy gas) =>
-            Observe(ref gas, gas._inner.Value, EthereumGasPolicy.TryConsumeCallValueTransferEip2780(ref gas._inner));
-
-        public static bool TryConsumeNewAccountCreation<TEip8037>(ref HaltObservingGasPolicy gas)
-            where TEip8037 : struct, IFlag =>
-            Observe(ref gas, gas._inner.Value, EthereumGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas._inner));
-
-        public static bool TryConsumeLogEmission(ref HaltObservingGasPolicy gas, ulong topicCount, ulong dataSize) =>
-            Observe(ref gas, gas._inner.Value, EthereumGasPolicy.TryConsumeLogEmission(ref gas._inner, topicCount, dataSize));
-
-        public static HaltObservingGasPolicy Max(in HaltObservingGasPolicy a, in HaltObservingGasPolicy b) =>
-            new(EthereumGasPolicy.Max(in a._inner, in b._inner));
-
-        public static IntrinsicGas<HaltObservingGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
-        {
-            IntrinsicGas<EthereumGasPolicy> inner = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, blockGasLimit);
-            return new(new(inner.Standard), new(inner.FloorGas));
-        }
-
-        public static bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in HaltObservingGasPolicy intrinsicGas, IReleaseSpec spec,
-            out HaltObservingGasPolicy available, bool capExecutionGas = true)
-        {
-            bool result = EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsicGas._inner, spec, out EthereumGasPolicy inner, capExecutionGas);
-            available = new(inner);
-            return result;
-        }
-
-        public static bool TryConsumeDataCopyGas(ref HaltObservingGasPolicy gas, IReleaseSpec spec, bool isExternalCode, ulong words) =>
-            Observe(ref gas, gas._inner.Value, EthereumGasPolicy.TryConsumeDataCopyGas(ref gas._inner, spec, isExternalCode, words));
     }
 }
