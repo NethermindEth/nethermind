@@ -34,6 +34,8 @@ public class Metrics
     internal static ulong NewPayloadMillisecondsCount;
     internal static ulong ForkchoiceUpdatedCallsCount;
     internal static ulong WorkerFaultsCount;
+    internal static ulong ValidatorAttestationsSubmittedCount;
+    internal static ulong ValidatorSignerFailuresCount;
     private static long _headSlotDelay;
     private static int _peerCount;
     private static long _lastBlockImportMs;
@@ -131,4 +133,13 @@ public class Metrics
     [GaugeMetric]
     [Description("Embedded driver stopped after a fault (1) or external consensus client takeover (2); zero until either event, reset by a restart.")]
     public static int BeaconChainDriverStopped { get; set; }
+    [CounterMetric]
+    [Description("Attestations of the configured validators that the node accepted and published.")]
+    public static ulong BeaconChainValidatorAttestationsSubmitted { get => Volatile.Read(ref ValidatorAttestationsSubmittedCount); set => Volatile.Write(ref ValidatorAttestationsSubmittedCount, value); }
+    [KeyIsLabel("reason")]
+    [Description("Attester duties of the configured validators that published no attestation, by closed-cardinality reason.")]
+    public static ConcurrentDictionary<StringLabel, long> BeaconChainValidatorAttestationsSkipped { get; } = new();
+    [CounterMetric]
+    [Description("Signing requests the remote signer refused or did not answer.")]
+    public static ulong BeaconChainValidatorSignerFailures { get => Volatile.Read(ref ValidatorSignerFailuresCount); set => Volatile.Write(ref ValidatorSignerFailuresCount, value); }
 }
