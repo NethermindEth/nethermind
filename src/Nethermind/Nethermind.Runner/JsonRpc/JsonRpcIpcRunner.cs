@@ -45,7 +45,7 @@ namespace Nethermind.Runner.JsonRpc
             {
                 if (_logger.IsInfo) _logger.Info($"Starting the JSON-RPC over an IPC service: {_path:hide}");
 
-                Task.Factory.StartNew(_ => StartServer(_path, cancellationToken), cancellationToken, TaskCreationOptions.LongRunning);
+                _ = Task.Run(() => StartServer(_path, cancellationToken), cancellationToken);
             }
         }
 
@@ -72,7 +72,7 @@ namespace Nethermind.Runner.JsonRpc
             }
             catch (Exception ex)
             {
-                // The task from Task.Factory.StartNew is discarded, so this is the only place the failure surfaces
+                // The task from Task.Run is discarded, so this is the only place the failure surfaces
                 if (_logger.IsError) _logger.Error("IPC server stopped accepting connections.", ex);
             }
 
@@ -81,7 +81,7 @@ namespace Nethermind.Runner.JsonRpc
                 socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
                 socket.SendTimeout = _jsonRpcConfig.Timeout;
 
-                _ = Task.Run(async () => await HandleIpcConnection(socket, cancellationToken), CancellationToken.None);
+                _ = Task.Run(() => HandleIpcConnection(socket, cancellationToken), CancellationToken.None);
             }
         }
 
