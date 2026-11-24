@@ -451,14 +451,14 @@ namespace Nethermind.Synchronization.Peers
                     {
                         UpgradeAllocations();
                         // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
-                        if (syncPeer.TotalDifficulty is { } syncPeerTD && syncPeerTD == _blockTree.BestSuggestedHeader?.TotalDifficulty &&
-                            syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
+                        if (NotifyPeerBlock is { } notifyPeerBlock && syncPeer.TotalDifficulty is { } syncPeerTD &&
+                            _blockTree.BestSuggestedHeader is { } best && syncPeerTD == best.TotalDifficulty && syncPeer.HeadHash != best.Hash)
                         {
-                            Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash!, BlockTreeLookupOptions.None);
+                            Block block = _blockTree.FindBlock(best.Hash!, BlockTreeLookupOptions.None);
                             if (block is not null) // can be null if fast syncing headers only
                             {
                                 if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {syncPeer:hide}");
-                                NotifyPeerBlock?.Invoke(this, new PeerBlockNotificationEventArgs(syncPeer, block));
+                                notifyPeerBlock(this, new PeerBlockNotificationEventArgs(syncPeer, block));
                             }
                         }
                     }
