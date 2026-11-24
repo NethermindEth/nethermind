@@ -11,6 +11,7 @@ namespace Nethermind.Consensus.Producers
     public class BuildBlocksInALoop : IBlockProductionTrigger, IAsyncDisposable
     {
         private readonly CancellationTokenSource _loopCancellationTokenSource = new();
+        private readonly Lock _loopTaskLock = new();
         private Task? _loopTask;
         protected ILogger Logger { get; }
 
@@ -29,7 +30,7 @@ namespace Nethermind.Consensus.Producers
         {
             if (_loopTask is null)
             {
-                lock (_loopCancellationTokenSource)
+                lock (_loopTaskLock)
                 {
                     _loopTask ??= Task.Run(ProducerLoop, _loopCancellationTokenSource.Token).ContinueWith(t =>
                     {
@@ -72,6 +73,8 @@ namespace Nethermind.Consensus.Producers
             {
                 await _loopTask;
             }
+
+            _loopCancellationTokenSource.Dispose();
         }
     }
 }
