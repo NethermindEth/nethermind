@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.ComponentModel;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Ssz;
 
@@ -17,77 +18,46 @@ namespace Nethermind.Serialization.Ssz;
 /// <param name="chunkSize">The minimum size of each array, in bytes.</param>
 public sealed class SszWriter(int chunkSize) : IDisposable
 {
-    private readonly int _chunkSize = chunkSize > 0 ? chunkSize : throw new ArgumentOutOfRangeException(nameof(chunkSize));
-    private Chunk? _first;
-    private Chunk? _last;
+    private readonly SszChunks _bytes = new(chunkSize);
+    private readonly SszNesting _nesting = new();
 
-    /// <summary>The open writers from the outermost, after a sentinel that stands for no writer.</summary>
-    private (int Id, int Written)[] _open = new (int, int)[8];
-    private int _depth;
-    private int _lastId;
+    /// <summary>Receives the hash trees of the written value, or <c>null</c> to not hash it.</summary>
+    public SszTreeWriter? Trees { get; init; }
 
     /// <summary>The number of bytes written.</summary>
-    public int Length { get; private set; }
+    public int Length => _bytes.Length;
 
     /// <summary>Appends <paramref name="size"/> contiguous bytes, which the caller has to fill.</summary>
     /// <remarks>When the current array has no room for them, it ends where it is and a new array is started.</remarks>
-    public Span<byte> Reserve(int size)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(size);
-        Length = checked(Length + size);
-        Chunk chunk = _last is { } last && size <= last.Free ? last : AddChunk(Math.Max(size, _chunkSize));
-        return chunk.Reserve(size);
-    }
+    public Span<byte> Reserve(int size) => _bytes.Reserve(size);
 
     /// <summary>Appends a copy of <paramref name="bytes"/>, which may be split between arrays.</summary>
-    public void Write(scoped ReadOnlySpan<byte> bytes)
-    {
-        while (!bytes.IsEmpty)
-        {
-            int count = Math.Min(bytes.Length, _last is { Free: > 0 } last ? last.Free : _chunkSize);
-            bytes[..count].CopyTo(Reserve(count));
-            bytes = bytes[count..];
-        }
-    }
+    public void Write(scoped ReadOnlySpan<byte> bytes) => _bytes.Write(bytes);
 
     /// <summary>The written bytes, valid until this writer is disposed or written to.</summary>
     /// <exception cref="InvalidOperationException">A writer is still open, so the bytes are incomplete.</exception>
     public ReadOnlySequence<byte> ToSequence()
     {
-        EnsureInnermost(0, "the output");
-        if (_first is null || _last is null) return ReadOnlySequence<byte>.Empty;
-        _last.End();
-        return new ReadOnlySequence<byte>(_first, 0, _last, _last.Memory.Length);
+        _nesting.EnsureInnermost(0, "the output");
+        return _bytes.ToSequence();
     }
 
     /// <summary>Returns the arrays to the pool, which invalidates every span and sequence taken from this writer.</summary>
     public void Dispose()
     {
-        for (Chunk? chunk = _first; chunk is not null; chunk = chunk.NextChunk) chunk.Return();
-        _first = _last = null;
-        Length = 0;
-        _depth = 0;
+        _bytes.Dispose();
+        _nesting.Reset();
     }
 
     /// <summary>Opens a writer, which has to be closed before the writer that it is nested in is used again.</summary>
     /// <returns>The id of the writer.</returns>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public int Open()
-    {
-        if (++_depth == _open.Length) Array.Resize(ref _open, _depth * 2);
-        _open[_depth] = (++_lastId, 0);
-        return _lastId;
-    }
+    public int Open() => _nesting.Open();
 
     /// <summary>Checks that the member at <paramref name="index"/> is the next one for the writer <paramref name="id"/> to write.</summary>
     /// <exception cref="InvalidOperationException">The member is out of order, or a nested writer is open.</exception>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public void BeginMember(int id, int index, string name)
-    {
-        EnsureInnermost(id, name);
-        if (_open[_depth].Written != index) ThrowOutOfOrder(name);
-        _open[_depth].Written++;
-    }
+    public void BeginMember(int id, int index, string name) => _nesting.BeginMember(id, index, name);
 
     /// <inheritdoc cref="BeginMember"/>
     /// <remarks>Also writes the offset of the member, whose bytes start at the end of the written ones.</remarks>
@@ -109,68 +79,16 @@ public sealed class SszWriter(int chunkSize) : IDisposable
     /// makes the next use of its parent, or <see cref="ToSequence"/>, throw.
     /// </remarks>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public void Close(int id, int count)
-    {
-        if (_open[_depth] == (id, count)) _depth--;
-    }
+    /// <returns>Whether the writer was closed.</returns>
+    public bool Close(int id, int count) => _nesting.Close(id, count);
 
-    /// <summary>Closes the writer <paramref name="id"/>, however many items it has written.</summary>
-    internal void Close(int id)
-    {
-        if (_open[_depth].Id == id) _depth--;
-    }
+    /// <summary>Hashes the bytes from <paramref name="start"/> to the end.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public void Hash(int start, SszHasher hash, out UInt256 root) => _bytes.Hash(start, hash, out root);
 
-    /// <returns>The number of items that the writer <paramref name="id"/> has written, including these.</returns>
-    internal int AddItems(int id, int count)
-    {
-        EnsureInnermost(id, "an item");
-        return _open[_depth].Written = checked(_open[_depth].Written + count);
-    }
+    /// <inheritdoc cref="SszNesting.Close(int)"/>
+    internal bool Close(int id) => _nesting.Close(id);
 
-    private void EnsureInnermost(int id, string name)
-    {
-        if (_open[_depth].Id != id) ThrowNotInnermost(name);
-    }
-
-    private static void ThrowNotInnermost(string name) =>
-        throw new InvalidOperationException($"SSZ writer: {name} cannot be accessed while a nested writer is open or incomplete, or after its own writer is closed.");
-
-    private static void ThrowOutOfOrder(string name) =>
-        throw new InvalidOperationException($"SSZ writer: {name} is out of order. Every member is written once, first the fixed-size ones and then the variable-size ones, each in SSZ order.");
-
-    private Chunk AddChunk(int size)
-    {
-        Chunk chunk = new(size);
-        if (_last is null) _first = chunk;
-        else _last.EndBefore(chunk);
-        return _last = chunk;
-    }
-
-    private sealed class Chunk(int size) : ReadOnlySequenceSegment<byte>
-    {
-        private readonly byte[] _array = ArrayPool<byte>.Shared.Rent(size);
-        private int _used;
-
-        public int Free => _array.Length - _used;
-
-        public Chunk? NextChunk { get; private set; }
-
-        public Span<byte> Reserve(int length)
-        {
-            Span<byte> reserved = _array.AsSpan(_used, length);
-            _used += length;
-            return reserved;
-        }
-
-        public void End() => Memory = _array.AsMemory(0, _used);
-
-        public void EndBefore(Chunk next)
-        {
-            End();
-            Next = NextChunk = next;
-            next.RunningIndex = RunningIndex + _used;
-        }
-
-        public void Return() => ArrayPool<byte>.Shared.Return(_array);
-    }
+    /// <inheritdoc cref="SszNesting.AddItems"/>
+    internal int AddItems(int id, int count) => _nesting.AddItems(id, count);
 }

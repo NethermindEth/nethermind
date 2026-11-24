@@ -31,6 +31,7 @@ class SszProperty
             HasCollectionAsSpan = collection?.HasAsSpan ?? false,
             CanConstructCollectionFromReadOnlySpan = collection?.CanConstructFromReadOnlySpan ?? false,
             CollectionTypeReferenceName = collection?.TypeReferenceName,
+            IsMarkedWithTree = HasAttribute(attributes, nameof(SszHashTreeAttribute)),
         };
 
         if (itemType is not null
@@ -203,6 +204,12 @@ class SszProperty
     public bool HasCollectionAsSpan { get; init; }
     public bool CanConstructCollectionFromReadOnlySpan { get; init; }
     public string? CollectionTypeReferenceName { get; init; }
+    /// <summary>Whether the property has <see cref="SszHashTreeAttribute"/>.</summary>
+    public bool IsMarkedWithTree { get; init; }
+
+    /// <summary>Whether the value has a hash tree of its own.</summary>
+    public bool HasTree => IsCollection ? IsMarkedWithTree : Type.HasTree;
+
     public int? FieldIndex { get; set; }
     public byte? SelectorValue { get; set; }
     public bool IsProgressiveList { get; set; }
@@ -262,6 +269,9 @@ class SszProperty
     public int? Length { get; set; }
     public ulong? Limit { get; set; }
 
+    /// <summary>Whether the items of this collection are packed into chunks, or are chunks themselves, so that its encoding is its leaves.</summary>
+    public bool IsPacked => Type.Kind == Kind.Basic && (Type.IsSszBasicType || Type.StaticLength == 32);
+
     /// <summary>This member as a <c>Writer</c> method receives its value: not nullable, and a collection as a span.</summary>
     public SszProperty AsWriterArgument() => new()
     {
@@ -273,6 +283,7 @@ class SszProperty
         Limit = Limit,
         IsProgressiveList = IsProgressiveList,
         IsProgressiveBitList = IsProgressiveBitList,
+        IsMarkedWithTree = IsMarkedWithTree,
     };
 
     public bool IsCompatibleWith(SszProperty other, HashSet<(SszType, SszType)> visited)

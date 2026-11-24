@@ -317,6 +317,20 @@ public class SszGeneratorDiagnosticTest
         Assert.That(diagnostic.GetMessage(), Does.Contain("Multiple SSZ converters"));
     }
 
+    [TestCase("[SszContainer, SszHashTree] public partial struct Bad { [SszHashTree] public ulong Value { get; set; } }", "only a list or vector property can", TestName = "SszHashTree on a basic member reports diagnostic")]
+    [TestCase("[SszContainer, SszHashTree] public partial struct Bad { [SszList(8), SszHashTree] public BitArray Value { get; set; } }", "only a list or vector property can", TestName = "SszHashTree on a bitlist reports diagnostic")]
+    [TestCase("[SszContainer, SszHashTree] public partial struct Bad { [SszHashTree] public Inner Value { get; set; } } [SszContainer, SszHashTree] public partial struct Inner { public ulong Value { get; set; } }", "only a list or vector property can", TestName = "SszHashTree on a container member reports diagnostic")]
+    [TestCase("[SszContainer] public partial struct Bad { [SszList(8), SszHashTree] public ulong[] Value { get; set; } }", "Bad has to be marked too", TestName = "SszHashTree on a list of an unmarked container reports diagnostic")]
+    [TestCase("[SszContainer(isCollectionItself: true), SszHashTree] public partial struct Bad { [SszList(8)] public ulong[] Value { get; set; } }", "mark its property", TestName = "SszHashTree on a collection wrapper reports diagnostic")]
+    [TestCase("[SszCompatibleUnion, SszHashTree] public partial struct Bad { public Kind Selector { get; set; } public ulong Value { get; set; } } public enum Kind : byte { Value = 1 }", "a compatible union has no hash tree", TestName = "SszHashTree on a union reports diagnostic")]
+    public void Invalid_hash_tree_placement_reports_diagnostic(string declaration, string message)
+    {
+        string source = "using System.Collections; using Nethermind.Serialization.Ssz; " + declaration;
+        CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        Diagnostic diagnostic = GetSsz003Diagnostic(source, parseOptions, nameof(Invalid_hash_tree_placement_reports_diagnostic));
+        Assert.That(diagnostic.GetMessage(), Does.Contain(message));
+    }
+
     [Test]
     public void Bitlist_with_limit_beyond_int_range_reports_diagnostic()
     {

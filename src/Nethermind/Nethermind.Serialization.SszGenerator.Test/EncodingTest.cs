@@ -45,6 +45,17 @@ public class EncodingTest
                 Assert.That(decoded.Tail, Is.EqualTo(value.Tail));
                 Assert.That(reader.Head.Values.Count, Is.EqualTo(count));
                 Assert.That(ToArray(reader.Tail, static item => item), Is.EqualTo(value.Tail));
+                PresetContainer.Merkleize(value, out UInt256 expectedRoot);
+                PresetContainer.MerkleizeEncoded(encoded, out UInt256 encodedRoot);
+                Assert.That(encodedRoot, Is.EqualTo(expectedRoot));
+                Assert.That(WriteTree(output => PresetContainer.WriteTree(output, new(encoded))).Root, Is.EqualTo(expectedRoot));
+                AssertWrites(Case("preset", value, output =>
+                {
+                    using PresetContainer.Writer writer = new(output, new(encoded), new(TreeOf(value)));
+                    writer.CopyHead();
+                    using SszListWriter<ulong> tail = writer.BeginTail();
+                    tail.Copy(0, 4);
+                }), chunkSize: 64);
                 Assert.That(Write(output =>
                 {
                     using PresetContainer.Writer writer = new(output);
@@ -1213,13 +1224,364 @@ public class EncodingTest
         Assert.That(() => new SingleListContainer.RefReader(Encode(new SingleListContainer { Items = [1, 2] })).Items[index],
             Throws.InstanceOf<ArgumentOutOfRangeException>());
 
+    [TestCaseSource(nameof(MerkleizeEncodedCases))]
+    public void MerkleizeEncoded_matches_Merkleize(byte[] encoded, UInt256 expected, SszHasher merkleizeEncoded)
+    {
+        merkleizeEncoded(encoded, out UInt256 root);
+        Assert.That(root, Is.EqualTo(expected));
+    }
+
+    [TestCase(false, 7)]
+    [TestCase(false, 40)]
+    [TestCase(true, 0)]
+    public void Tree_of_any_leaf_count_matches_Merkleize(bool progressive, int depth)
+    {
+        SszTreeItems items = ChunkItems(progressive, depth, isList: false);
+        for (int count = 0; count <= 90; count++)
+        {
+            UInt256[] leaves = MakeLeaves(count);
+            (byte[] tree, UInt256 root) = WriteTree(output => AddLeaves(output, items, leaves));
+            UInt256 expectedRoot;
+            if (progressive) Merkle.MerkleizeProgressive(out expectedRoot, leaves);
+            else Merkle.Merkleize(out expectedRoot, leaves, 1UL << depth);
+            SszTreeReader reader = new(tree, 0, items.Shape);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root, Is.EqualTo(expectedRoot), $"root of {count} leaves");
+                Assert.That(reader.LeafCount, Is.EqualTo(count));
+                Assert.That(tree, Has.Length.EqualTo(items.Shape.Length(count)));
+                for (int i = 0; i < count; i++) Assert.That(reader[i], Is.EqualTo(leaves[i]), $"leaf {i} of {count}");
+            }
+        }
+    }
+
+    [Test]
+    public void Tree_nodes_are_in_post_order()
+    {
+        UInt256[] l = MakeLeaves(5);
+        UInt256 a = HashConcat(l[0], l[1]);
+        UInt256 b = HashConcat(l[2], l[3]);
+        (byte[] five, _) = WriteTree(output => AddLeaves(output, ChunkItems(progressive: false, 40, isList: true), l));
+        (byte[] full, UInt256 fullRoot) = WriteTree(output => AddLeaves(output, ChunkItems(progressive: false, 2, isList: false), l[..4]));
+        (byte[] progressive, _) = WriteTree(output => AddLeaves(output, ChunkItems(progressive: true, 0, isList: true), l));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(five, Is.EqualTo(EncodeNodes(5, l[0], l[1], a, l[2], l[3], b, HashConcat(a, b), l[4])));
+            Assert.That(full, Is.EqualTo(EncodeNodes(4, l[0], l[1], a, l[2], l[3], b)), "does not store its own hash");
+            Assert.That(fullRoot, Is.EqualTo(HashConcat(a, b)));
+            Assert.That(progressive, Is.EqualTo(EncodeNodes(5, l[0], l[1], l[2], HashConcat(l[1], l[2]), l[3], l[4], HashConcat(l[3], l[4]),
+                HashConcat(HashConcat(l[1], l[2]), HashConcat(l[3], l[4])))));
+        }
+
+        static byte[] EncodeNodes(int leafCount, params ReadOnlySpan<UInt256> nodes) =>
+            [.. BitConverter.GetBytes(leafCount), .. MemoryMarshal.AsBytes(nodes)];
+    }
+
+    [TestCase(false, 6)]
+    [TestCase(true, 0)]
+    public void Tree_of_copied_runs_matches_a_new_tree(bool progressive, int depth)
+    {
+        SszTreeItems items = ChunkItems(progressive, depth, isList: true);
+        UInt256[] source = MakeLeaves(30);
+        UInt256[] added = MakeLeaves(40)[30..];
+        byte[] encoded = MemoryMarshal.AsBytes(source.AsSpan()).ToArray();
+        (byte[] sourceTree, _) = WriteTree(output => AddLeaves(output, items, source));
+
+        for (int prefix = 0; prefix <= 9; prefix++)
+        {
+            for (int start = 0; start <= source.Length; start++)
+            {
+                for (int count = 0; count <= source.Length - start; count++)
+                {
+                    UInt256[] expected = [.. added[..prefix], .. source[start..(start + count)], added[9]];
+                    (byte[] tree, UInt256 root) = WriteTree(output => AddLeaves(output, items, expected));
+                    (byte[] copiedTree, UInt256 copiedRoot) = WriteTree(output =>
+                    {
+                        using SszListTreeWriter writer = new(output, items, new SszTreeReader(sourceTree, 0, items.Shape));
+                        writer.Add(MemoryMarshal.AsBytes(added.AsSpan(0, prefix)));
+                        writer.Copy(start, count, encoded);
+                        writer.Add(MemoryMarshal.AsBytes(added.AsSpan(9)));
+                    });
+                    Assert.That((copiedRoot, copiedTree.AsSpan().SequenceEqual(tree)), Is.EqualTo((root, true)), $"{prefix} leaves, then [{start}, {start + count})");
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void Tree_of_packed_items_matches_a_new_tree([Values] bool progressive, [Values] bool withSourceTree, [Range(0, 9)] int seed)
+    {
+        Random random = new(seed);
+        SszTreeItems items = new(new SszTreeShape(progressive ? 0 : 38, progressive, 0), sizeof(ulong), true, null, null, default);
+        ulong[] source = Enumerable.Range(0, random.Next(200)).Select(static i => (ulong)i + 1).ToArray();
+        byte[] encoded = MemoryMarshal.AsBytes(source.AsSpan()).ToArray();
+        (byte[] sourceTree, _) = WriteTree(output => AddAll(output, items, encoded));
+
+        List<ulong> expected = [];
+        (byte[] tree, UInt256 root) = WriteTree(output =>
+        {
+            using SszListTreeWriter writer = new(output, items, withSourceTree ? new SszTreeReader(sourceTree, 0, items.Shape) : default);
+            for (int i = random.Next(12); i >= 0; i--)
+            {
+                int start = random.Next(source.Length + 1);
+                int count = random.Next(source.Length - start + 1);
+                writer.Copy(start, count, encoded);
+                expected.AddRange(source.AsSpan(start, count));
+                ulong[] added = new ulong[random.Next(6)];
+                writer.Add(MemoryMarshal.AsBytes(added.AsSpan()));
+                expected.AddRange(added);
+            }
+        });
+
+        (byte[] newTree, UInt256 newRoot) = WriteTree(output => AddAll(output, items, MemoryMarshal.AsBytes(CollectionsMarshal.AsSpan(expected)).ToArray()));
+        UInt256 expectedRoot;
+        if (progressive) Merkle.MerkleizeProgressive(out expectedRoot, MemoryMarshal.AsBytes(CollectionsMarshal.AsSpan(expected)));
+        else Merkle.Merkleize(out expectedRoot, MemoryMarshal.AsBytes(CollectionsMarshal.AsSpan(expected)), 1UL << 38);
+        Merkle.MixIn(ref expectedRoot, expected.Count);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newRoot, Is.EqualTo(expectedRoot));
+            Assert.That(root, Is.EqualTo(expectedRoot));
+            Assert.That(tree, Is.EqualTo(newTree));
+        }
+
+        static void AddAll(SszTreeWriter output, SszTreeItems items, byte[] encoded)
+        {
+            using SszListTreeWriter writer = new(output, items, default);
+            writer.AddAll(encoded);
+        }
+    }
+
+    // A wrong hash in the source can only end up in the new tree if it is copied.
+    [Test]
+    public void Tree_copies_the_nodes_of_unchanged_leaves([Values] bool copyRun)
+    {
+        SszTreeItems items = ChunkItems(progressive: false, 40, isList: true);
+        UInt256[] leaves = MakeLeaves(8);
+        (byte[] source, _) = WriteTree(output => AddLeaves(output, items, leaves));
+        const int parentOfFirstTwo = 2;
+        const int parentOfLastTwo = 12;
+        Span<UInt256> sourceNodes = MemoryMarshal.Cast<byte, UInt256>(source.AsSpan(sizeof(int)));
+        sourceNodes[parentOfFirstTwo] = sourceNodes[parentOfLastTwo] = 1234;
+
+        (byte[] tree, _) = WriteTree(output =>
+        {
+            using SszListTreeWriter writer = new(output, items, new SszTreeReader(source, 0, items.Shape));
+            if (copyRun) writer.Copy(0, 7, MemoryMarshal.AsBytes(leaves.AsSpan()));
+            else writer.Add(MemoryMarshal.AsBytes(leaves.AsSpan(0, 7)));
+            writer.Add(MemoryMarshal.AsBytes(MakeLeaves(9).AsSpan(8)));
+        });
+
+        UInt256[] nodes = MemoryMarshal.Cast<byte, UInt256>(tree.AsSpan(sizeof(int))).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodes[parentOfFirstTwo], Is.EqualTo((UInt256)1234), "parent of unchanged leaves");
+            Assert.That(nodes[parentOfLastTwo], Is.Not.EqualTo((UInt256)1234), "parent of a changed leaf");
+        }
+    }
+
+    [Test]
+    public void Tree_survives_random_updates([Range(0, 9)] int seed, [Values] bool withTree)
+    {
+        Random random = new(seed);
+        List<ulong> basic = [];
+        List<FixedC> composite = [];
+        (byte[] Ssz, byte[] Tree) basicState = ([], TreeOf(new HugeLimitBasicList { Items = [] }));
+        (byte[] Ssz, byte[] Tree) compositeState = ([], TreeOf(new HugeLimitCompositeList { Items = [] }));
+
+        for (int round = 0; round < 12; round++)
+        {
+            (int start, int count)[] runs = [.. Enumerable.Range(0, random.Next(4)).Select(_ =>
+            {
+                int start = random.Next(basic.Count + 1);
+                return (start, random.Next(basic.Count - start + 1));
+            })];
+            ulong[] added = [.. Enumerable.Range(0, random.Next(40)).Select(_ => (ulong)random.Next())];
+
+            basicState = Update(basicState, (output, ssz, tree) =>
+            {
+                using HugeLimitBasicList.Writer writer = new(output, new(ssz), tree);
+                using SszListWriter<ulong> items = writer.BeginItems();
+                foreach ((int start, int count) in runs) items.Copy(start, count);
+                items.Add(added);
+            });
+            compositeState = UpdateComposite(compositeState, (output, ssz, tree) =>
+            {
+                using HugeLimitCompositeList.Writer writer = new(output, new(ssz), tree);
+                using SszListWriter<FixedC> items = writer.BeginItems();
+                foreach ((int start, int count) in runs) items.Copy(start, count);
+                foreach (ulong item in added) items.Add(new FixedC { Fixed1 = item });
+            });
+
+            basic = [.. runs.SelectMany(run => basic.GetRange(run.start, run.count)), .. added];
+            composite = [.. runs.SelectMany(run => composite.GetRange(run.start, run.count)), .. added.Select(static item => new FixedC { Fixed1 = item })];
+            HugeLimitBasicList expectedBasic = new() { Items = [.. basic] };
+            HugeLimitCompositeList expectedComposite = new() { Items = [.. composite] };
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(basicState.Ssz, Is.EqualTo(Encode(expectedBasic)));
+                Assert.That(basicState.Tree, Is.EqualTo(TreeOf(expectedBasic)));
+                Assert.That(compositeState.Ssz, Is.EqualTo(Encode(expectedComposite)));
+                Assert.That(compositeState.Tree, Is.EqualTo(TreeOf(expectedComposite)));
+            }
+        }
+
+        (byte[], byte[]) Update((byte[] Ssz, byte[] Tree) state, UpdateBasic update)
+        {
+            using SszTreeWriter trees = new(64);
+            using SszWriter output = new(64) { Trees = trees };
+            update(output, state.Ssz, withTree ? new(new SszTreeReader(state.Tree, 0, HugeLimitBasicList.RefTreeReader.TreeShape)) : default);
+            return (output.ToSequence().ToArray(), trees.ToSequence().ToArray());
+        }
+
+        (byte[], byte[]) UpdateComposite((byte[] Ssz, byte[] Tree) state, UpdateCompositeList update)
+        {
+            using SszTreeWriter trees = new(64);
+            using SszWriter output = new(64) { Trees = trees };
+            update(output, state.Ssz, withTree ? new(new SszTreeReader(state.Tree, 0, HugeLimitCompositeList.RefTreeReader.TreeShape)) : default);
+            return (output.ToSequence().ToArray(), trees.ToSequence().ToArray());
+        }
+    }
+
+    private delegate void UpdateBasic(SszWriter output, byte[] ssz, HugeLimitBasicList.RefTreeReader tree);
+
+    private delegate void UpdateCompositeList(SszWriter output, byte[] ssz, HugeLimitCompositeList.RefTreeReader tree);
+
+    // A wrong hash in the source can only end up in the new tree if it is copied.
+    [Test]
+    public void Tree_of_an_unchanged_member_is_copied()
+    {
+        ComplexStruct value = MakeComplexStruct();
+        byte[] encoded = Encode(value);
+        byte[] source = TreeOf(value);
+        UInt256 leaf = new(17, 18, 19);
+        int position = source.AsSpan().IndexOf(MemoryMarshal.AsBytes(new ReadOnlySpan<UInt256>(in leaf)));
+        source.AsSpan(position, 32).Fill(0xAB);
+
+        (byte[] tree, _) = WriteTree(output =>
+        {
+            using ComplexStruct.TreeWriter writer = new(output, new ComplexStruct.RefTreeReader(source));
+            WriteChangedTree(writer, value, encoded);
+        });
+
+        Assert.That(tree.AsSpan().IndexOf(source.AsSpan(position, 32)), Is.GreaterThanOrEqualTo(0));
+    }
+
+    [Test]
+    public void TreeWriter_updates_a_tree()
+    {
+        ComplexStruct value = MakeComplexStruct();
+        byte[] encoded = Encode(value);
+        byte[] source = TreeOf(value);
+        ComplexStruct changed = MakeComplexStruct();
+        changed.Test1 = 100;
+        changed.VariableCList = [value.VariableCList[2], new VariableC { Fixed1 = 101, Fixed2 = value.VariableCList[0].Fixed2 }, new VariableC { Fixed1 = 102, Fixed2 = [103] }];
+        Merkleize(changed, out UInt256 expectedRoot);
+
+        (byte[] tree, UInt256 root) = WriteTree(output =>
+        {
+            using ComplexStruct.TreeWriter writer = new(output, new ComplexStruct.RefTreeReader(source));
+            WriteChangedTree(writer, value, encoded);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(expectedRoot));
+            Assert.That(tree, Is.EqualTo(TreeOf(changed)));
+        }
+    }
+
+    private static void WriteChangedTree(ComplexStruct.TreeWriter writer, ComplexStruct value, byte[] encoded)
+    {
+        writer.WriteTest1(BitConverter.GetBytes(100UL));
+        writer.CopyTest2();
+        writer.CopyFixedC();
+        writer.CopyFixedCVec();
+        writer.CopyBitVec();
+        writer.CopyTest3();
+        writer.CopyVariableC();
+        writer.CopyFixedCList();
+        writer.CopyVariableCVec();
+        using (SszVariableListTreeWriter<VariableC.TreeWriter> items = writer.BeginVariableCList())
+        {
+            byte[] sourceItems = VariableC.Encode(value.VariableCList);
+            items.Copy(2, 1, sourceItems);
+            using (VariableC.TreeWriter item = items.BeginItem(0))
+            {
+                item.WriteFixed1(BitConverter.GetBytes(101UL));
+                item.CopyFixed2();
+            }
+            using (VariableC.TreeWriter item = items.BeginItem())
+            {
+                item.WriteFixed1(BitConverter.GetBytes(102UL));
+                using SszListTreeWriter numbers = item.BeginFixed2();
+                numbers.Add(BitConverter.GetBytes(103UL));
+            }
+        }
+        writer.CopyTest2Union();
+        writer.CopyTest2UnionVec();
+        writer.CopyTest2UnionList();
+        writer.CopyBitList2();
+    }
+
+    [TestCaseSource(nameof(TreeMisuseCases))]
+    public void TreeWriter_rejects_misuse(Action<SszTreeWriter> misuse) =>
+        Assert.That(() => WriteTree(misuse), Throws.InvalidOperationException);
+
+    [TestCaseSource(nameof(TreeCases))]
+    public void WriteTree_matches_Merkleize(byte[] encoded, UInt256 expected, Action<SszTreeWriter, byte[]> writeTree, int chunkSize)
+    {
+        using SszTreeWriter output = new(chunkSize);
+        writeTree(output, encoded);
+        Assert.That(output.Root, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void RefTreeReader_reads_every_tree()
+    {
+        ComplexStruct value = MakeComplexStruct();
+        (byte[] trees, _) = WriteTree(output => ComplexStruct.WriteTree(output, new(Encode(value))));
+        ComplexStruct.RefTreeReader reader = new(trees);
+        NestedProgressiveListContainer nested = new() { Items = [new() { Items = [new() { Fixed1 = 1, Fixed2 = [2, 3] }] }, new() { Items = [] }] };
+        (byte[] nestedTrees, _) = WriteTree(output => NestedProgressiveListContainer.WriteTree(output, new(Encode(nested))));
+        NestedProgressiveListContainer.RefTreeReader nestedReader = new(nestedTrees);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.Test1Root, Is.EqualTo((UInt256)value.Test1));
+            Assert.That(reader.FixedCRoot, Is.EqualTo(Root(value.FixedC)));
+            Assert.That(reader.Test2.LeafCount, Is.EqualTo(3), "10 numbers");
+            Assert.That(reader.Test3[0], Is.EqualTo(new UInt256(12, 13)));
+            Assert.That(reader.FixedCList[0], Is.EqualTo(Root(value.FixedCList[0])));
+            Assert.That(reader.VariableCRoot, Is.EqualTo(Root(value.VariableC)));
+            Assert.That(reader.VariableC.Fixed1Root, Is.EqualTo((UInt256)value.VariableC.Fixed1));
+            Assert.That(reader.VariableC.Fixed2[0], Is.EqualTo(new UInt256(17, 18, 19)));
+            Assert.That(reader.VariableCList.Count, Is.EqualTo(value.VariableCList.Length));
+            Assert.That(reader.VariableCList.Root(0), Is.EqualTo(Root(value.VariableCList[0])));
+            Assert.That(reader.VariableCList[0].Fixed2[0], Is.EqualTo(new UInt256(22, 23)));
+            Assert.That(reader.VariableCList[1].Fixed2.LeafCount, Is.Zero);
+            Assert.That(reader.VariableCList[2].Fixed2[0], Is.EqualTo((UInt256)24));
+            Assert.That(reader.Test2UnionVec[3], Is.EqualTo(Root(value.Test2UnionVec![3])));
+            Assert.That(nestedReader.Items[0].Items[0].Fixed2[0], Is.EqualTo(new UInt256(2, 3)));
+            Assert.That(nestedReader.Items[1].Items.Count, Is.Zero);
+        }
+
+        static UInt256 Root<T>(T value) where T : ISszCodec<T>
+        {
+            Merkleize(value, out UInt256 root);
+            return root;
+        }
+    }
+
     [Test]
     public void Writer_matches_Encode([ValueSource(nameof(WriterCases))] WriterCase testCase, [Values(1, 64, 65536)] int chunkSize) =>
-        Assert.That(Write(testCase.Write, chunkSize), Is.EqualTo(testCase.Expected));
+        AssertWrites(testCase, chunkSize);
 
     [Test]
     public void Writer_copies_unchanged_parts([ValueSource(nameof(WriterCopyCases))] WriterCase testCase, [Values(1, 64, 65536)] int chunkSize) =>
-        Assert.That(Write(testCase.Write, chunkSize), Is.EqualTo(testCase.Expected));
+        AssertWrites(testCase, chunkSize);
 
     [TestCase(-1, 1)]
     [TestCase(0, -1)]
@@ -1229,11 +1591,14 @@ public class EncodingTest
     {
         byte[] fixedItems = Encode(new SingleListContainer { Items = [1, 2] });
         byte[] variableItems = ByteListItself.Encode([new() { Bytes = [1] }, new() { Bytes = [2] }]);
+        byte[] vectorItems = new byte[32];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(() => Write(output => new SingleListContainer.Writer(output, new(fixedItems)).BeginItems().Copy(start, count)),
                 Throws.InstanceOf<ArgumentOutOfRangeException>());
-            Assert.That(() => Write(output => new SszVariableListWriter<ByteListItself.Writer>(output, 4, OpenByteList, variableItems).Copy(start, count)),
+            Assert.That(() => Write(output => new FixedVectorContainer.Writer(output, new(vectorItems)).BeginItems().Copy(start, count)),
+                Throws.InstanceOf<ArgumentOutOfRangeException>());
+            Assert.That(() => Write(output => new SszVariableListWriter<ByteListItself.Writer>(output, 4, OpenByteList, variableItems, default).Copy(start, count)),
                 Throws.InstanceOf<ArgumentOutOfRangeException>());
         }
     }
@@ -1344,6 +1709,21 @@ public class EncodingTest
     private static void Merkleize<T>(T value, out UInt256 root) where T : ISszCodec<T> =>
         T.Merkleize(value, out root);
 
+    private static void AssertWrites(WriterCase testCase, int chunkSize)
+    {
+        using SszTreeWriter trees = new(chunkSize);
+        using SszWriter output = new(chunkSize) { Trees = trees };
+        testCase.Write(output);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Write(testCase.Write, chunkSize), Is.EqualTo(testCase.Expected), "without hashing");
+            Assert.That(output.ToSequence().ToArray(), Is.EqualTo(testCase.Expected));
+            Assert.That(trees.Root, Is.EqualTo(testCase.ExpectedRoot));
+            Assert.That(trees.ToSequence().ToArray(), Is.EqualTo(testCase.ExpectedTree));
+        }
+    }
+
     private static byte[] Write(Action<SszWriter> write, int chunkSize = 64)
     {
         using SszWriter output = new(chunkSize);
@@ -1351,15 +1731,165 @@ public class EncodingTest
         return output.ToSequence().ToArray();
     }
 
-    public sealed record WriterCase(string Name, byte[] Expected, Action<SszWriter> Write)
+    private static IEnumerable<TestCaseData> MerkleizeEncodedCases()
+    {
+        yield return Case(MakeComplexStruct(), ComplexStruct.MerkleizeEncoded);
+        yield return Case(MakeLeafContainer(), LeafContainer.MerkleizeEncoded);
+        yield return Case(new FixedC { Fixed1 = 1, Fixed2 = 2 }, FixedC.MerkleizeEncoded);
+        yield return Case(new ProgressiveContainerSample { Head = 1, Tail = 2 }, ProgressiveContainerSample.MerkleizeEncoded);
+        yield return Case(new ShadowDerived { A = 3, X = 4 }, ShadowDerived.MerkleizeEncoded);
+        yield return Case(new GenericContainerOwner { Inner = new() { Head = 5, Value = new() { Fixed1 = 6, Fixed2 = [7] } } }, GenericContainerOwner.MerkleizeEncoded);
+        yield return Case(new NullableVariableChildContainer { Child = new() { Items = [1, 2] } }, NullableVariableChildContainer.MerkleizeEncoded);
+        yield return Case(new ByteListItself { Bytes = [4, 5] }, ByteListItself.MerkleizeEncoded);
+        yield return Case(new ByteListItself { Bytes = [] }, ByteListItself.MerkleizeEncoded);
+        yield return Case(new WrappedByteVectorItem { Bytes = Enumerable.Repeat((byte)3, TestBytes48SszVectorTypeConverter.Length).ToArray() }, WrappedByteVectorItem.MerkleizeEncoded);
+        yield return Case(MakeCurrentValue(7), CompatibleNumberUnion.MerkleizeEncoded);
+        yield return Case(new CompatibleNullableVectorUnion { Selector = CompatibleNullableVectorUnionSelector.Items, Items = [MakeBytes48(1), MakeBytes48(2)] }, CompatibleNullableVectorUnion.MerkleizeEncoded);
+        yield return Case(new ConverterContainer { FixedBytes = new(1), FixedBytesVector = [new(2), new(3)], Hash = TestItem.KeccakA, HashVector = [TestItem.KeccakB, TestItem.KeccakC] }, ConverterContainer.MerkleizeEncoded);
+        yield return Case(new ConverterItemListContainer { Items = [MakeBytes48(1), MakeBytes48(2), MakeBytes48(3)] }, ConverterItemListContainer.MerkleizeEncoded);
+        yield return Case(new SignedPrimitiveCollectionContainer { Bools = [true, false, true], Ints = [-1, 2], Longs = [-3], Wides = [1, UInt128.MaxValue] }, SignedPrimitiveCollectionContainer.MerkleizeEncoded);
+        yield return Case(new PrimitiveEnumVectorContainer { Items = [PrimitiveEnum.Max, PrimitiveEnum.One, PrimitiveEnum.Two] }, PrimitiveEnumVectorContainer.MerkleizeEncoded);
+        yield return Case(new HugeLimitBasicList { Items = [1, 2, 3, 4, 5] }, HugeLimitBasicList.MerkleizeEncoded);
+        yield return Case(new HugeLimitCompositeList { Items = [new FixedC { Fixed1 = 1 }, new FixedC { Fixed2 = 2 }] }, HugeLimitCompositeList.MerkleizeEncoded);
+        yield return Case(new ProgressiveListContainer { Items = [1, 2, 3] }, ProgressiveListContainer.MerkleizeEncoded);
+        yield return Case(new NestedProgressiveListContainer { Items = [new() { Items = [new() { Fixed1 = 1, Fixed2 = [2, 3] }] }, new() { Items = [] }] }, NestedProgressiveListContainer.MerkleizeEncoded);
+        foreach (int length in (int[])[0, 1, 7, 8, 9, 255, 256, 257])
+        {
+            yield return Case(new ProgressiveBitlistContainer { Bits = new BitArray(length, true) }, ProgressiveBitlistContainer.MerkleizeEncoded);
+        }
+        foreach (int length in (int[])[0, 1, 7, 8, 9, 10])
+        {
+            ComplexStruct complex = MakeComplexStruct();
+            complex.BitList2 = new BitArray(length, true);
+            yield return Case(complex, ComplexStruct.MerkleizeEncoded);
+        }
+
+        static TestCaseData Case<T>(T value, SszHasher merkleizeEncoded) where T : ISszCodec<T>
+        {
+            Merkleize(value, out UInt256 root);
+            byte[] encoded = Encode(value);
+            return new TestCaseData(encoded, root, merkleizeEncoded).SetArgDisplayNames(typeof(T).Name, $"{encoded.Length} bytes");
+        }
+    }
+
+    private static IEnumerable<TestCaseData> TreeCases()
+    {
+        foreach (int chunkSize in (int[])[1, 64, 65536])
+        {
+            yield return Case(MakeComplexStruct());
+            yield return Case(MakeLeafContainer());
+            yield return Case(new ProgressiveContainerSample { Head = 1, Tail = 2 });
+            yield return Case(new ProgressiveListContainer { Items = [1, 2, 3, 4, 5, 6] });
+            yield return Case(new ProgressiveListContainer { Items = [] });
+            yield return Case(new ShadowDerived { A = 3, X = 4 });
+            yield return Case(new GenericContainer<VariableC> { Head = 5, Value = new() { Fixed1 = 6, Fixed2 = [7] } });
+            yield return Case(new NullableVariableChildContainer { Child = new() { Items = [1, 2] } });
+            yield return Case(new NestedProgressiveListContainer { Items = [new() { Items = [new() { Fixed1 = 1, Fixed2 = [2, 3] }] }, new() { Items = [] }] });
+            yield return Case(new HugeLimitBasicList { Items = [1, 2, 3, 4, 5] });
+            yield return Case(new HugeLimitCompositeList { Items = [new FixedC { Fixed1 = 1 }, new FixedC { Fixed2 = 2 }] });
+            yield return Case(new FixedVectorContainer { Items = [new FixedC { Fixed1 = 1 }, new FixedC { Fixed2 = 2 }] });
+            yield return Case(new ConverterItemListContainer { Items = [MakeBytes48(1), MakeBytes48(2), MakeBytes48(3)] });
+            yield return Case(new FixedTreeItemList { Items = [MakeFixedTreeItem(1), MakeFixedTreeItem(2)] });
+
+            TestCaseData Case<T>(T value) where T : ISszCodec<T>
+            {
+                Merkleize(value, out UInt256 root);
+                byte[] encoded = Encode(value);
+                return new TestCaseData(encoded, root, TreeWriters[typeof(T)], chunkSize).SetArgDisplayNames(typeof(T).Name, $"{encoded.Length} bytes", $"{chunkSize}-byte chunks");
+            }
+        }
+    }
+
+    private static IEnumerable<TestCaseData> TreeMisuseCases()
+    {
+        yield return Misuse("TreeWriter rejects a member out of order", static output => new ProgressiveContainerSample.TreeWriter(output).WriteTail(new byte[8]));
+        yield return Misuse("TreeWriter rejects copying without a source", static output => new ProgressiveContainerSample.TreeWriter(output).CopyHead());
+        yield return Misuse("TreeWriter rejects copying a tree without a source", static output => new ProgressiveListContainer.TreeWriter(output).CopyItems());
+        yield return Misuse("TreeWriter rejects a member while a nested writer is open", static output =>
+        {
+            DoubleListContainer.TreeWriter writer = new(output);
+            writer.BeginFirst();
+            writer.WriteSecond([]);
+        });
+        yield return Misuse("TreeWriter rejects reading the output of an incomplete tree", static output =>
+        {
+            using ProgressiveContainerSample.TreeWriter writer = new(output);
+            writer.WriteHead(new byte[8]);
+        });
+        yield return Misuse("TreeWriter rejects a member after it is closed", static output =>
+        {
+            ProgressiveListContainer.TreeWriter writer = new(output);
+            writer.WriteItems([]);
+            writer.Dispose();
+            writer.WriteItems([]);
+        });
+
+        static TestCaseData Misuse(string name, Action<SszTreeWriter> misuse) => new TestCaseData(misuse).SetName(name);
+    }
+
+    private static FixedTreeItem MakeFixedTreeItem(ulong value) =>
+        new() { Value = value, Values = Enumerable.Range(0, 8).Select(i => value + (ulong)i).ToArray() };
+
+    private static UInt256[] MakeLeaves(int count) =>
+        // Some zero leaves, whose parents have a known hash.
+        Enumerable.Range(0, count).Select(static i => i % 11 is 4 or 5 ? UInt256.Zero : new UInt256((ulong)i + 1, 0, 0, 7)).ToArray();
+
+    private static SszTreeItems ChunkItems(bool progressive, int depth, bool isList) =>
+        new(new SszTreeShape(depth, progressive, 0), 32, isList, null, null, default);
+
+    private static void AddLeaves(SszTreeWriter output, SszTreeItems items, UInt256[] leaves)
+    {
+        using SszListTreeWriter writer = new(output, items, default);
+        writer.AddAll(MemoryMarshal.AsBytes(leaves.AsSpan()));
+    }
+
+    private static (byte[] Trees, UInt256 Root) WriteTree(Action<SszTreeWriter> write, int chunkSize = 64)
+    {
+        using SszTreeWriter output = new(chunkSize);
+        write(output);
+        return (output.ToSequence().ToArray(), output.Root);
+    }
+
+    private static TestBytes48 MakeBytes48(byte value) => new(Enumerable.Repeat(value, TestBytes48SszVectorTypeConverter.Length).ToArray());
+
+    public sealed record WriterCase(string Name, byte[] Expected, UInt256 ExpectedRoot, byte[] ExpectedTree, Action<SszWriter> Write)
     {
         public override string ToString() => Name;
     }
 
+    private static WriterCase Case<T>(string name, T value, Action<SszWriter> write) where T : ISszCodec<T>
+    {
+        Merkleize(value, out UInt256 root);
+        return new(name, Encode(value), root, TreeOf(value), write);
+    }
+
+    /// <summary>The hash tree of <paramref name="value"/>, empty when its type has none.</summary>
+    private static byte[] TreeOf<T>(T value) where T : ISszCodec<T> =>
+        TreeWriters.TryGetValue(typeof(T), out Action<SszTreeWriter, byte[]>? writeTree) ? WriteTree(output => writeTree(output, Encode(value))).Trees : [];
+
+    private static readonly Dictionary<Type, Action<SszTreeWriter, byte[]>> TreeWriters = new()
+    {
+        [typeof(ComplexStruct)] = static (output, encoded) => ComplexStruct.WriteTree(output, new(encoded)),
+        [typeof(LeafContainer)] = static (output, encoded) => LeafContainer.WriteTree(output, new(encoded)),
+        [typeof(ProgressiveContainerSample)] = static (output, encoded) => ProgressiveContainerSample.WriteTree(output, new(encoded)),
+        [typeof(ProgressiveListContainer)] = static (output, encoded) => ProgressiveListContainer.WriteTree(output, new(encoded)),
+        [typeof(ShadowDerived)] = static (output, encoded) => ShadowDerived.WriteTree(output, new(encoded)),
+        [typeof(GenericContainer<VariableC>)] = static (output, encoded) => GenericContainer<VariableC>.WriteTree(output, new(encoded)),
+        [typeof(NullableVariableChildContainer)] = static (output, encoded) => NullableVariableChildContainer.WriteTree(output, new(encoded)),
+        [typeof(NestedProgressiveListContainer)] = static (output, encoded) => NestedProgressiveListContainer.WriteTree(output, new(encoded)),
+        [typeof(HugeLimitBasicList)] = static (output, encoded) => HugeLimitBasicList.WriteTree(output, new(encoded)),
+        [typeof(HugeLimitCompositeList)] = static (output, encoded) => HugeLimitCompositeList.WriteTree(output, new(encoded)),
+        [typeof(FixedVectorContainer)] = static (output, encoded) => FixedVectorContainer.WriteTree(output, new(encoded)),
+        [typeof(ConverterItemListContainer)] = static (output, encoded) => ConverterItemListContainer.WriteTree(output, new(encoded)),
+        [typeof(FixedTreeItemList)] = static (output, encoded) => FixedTreeItemList.WriteTree(output, new(encoded)),
+        [typeof(DoubleListContainer)] = static (output, encoded) => DoubleListContainer.WriteTree(output, new(encoded)),
+        [typeof(PresetContainer)] = static (output, encoded) => PresetContainer.WriteTree(output, new(encoded)),
+    };
+
     private static IEnumerable<WriterCase> WriterCases()
     {
         ComplexStruct complex = MakeComplexStruct();
-        yield return new("ComplexStruct values", Encode(complex), output =>
+        yield return Case("ComplexStruct values", complex, output =>
         {
             using ComplexStruct.Writer writer = new(output);
             WriteFixedMembers(writer, complex);
@@ -1373,10 +1903,18 @@ public class EncodingTest
             writer.WriteTest2UnionList(complex.Test2UnionList);
             writer.WriteBitList2(complex.BitList2!);
         });
-        yield return new("ComplexStruct nested writers", Encode(complex), output =>
+        yield return Case("ComplexStruct nested writers", complex, output =>
         {
             using ComplexStruct.Writer writer = new(output);
-            WriteFixedMembers(writer, complex);
+            writer.WriteTest1(complex.Test1);
+            using (SszVectorWriter<ulong> items = writer.BeginTest2())
+            {
+                items.Add(complex.Test2.AsSpan(0, 9));
+                items.Add(complex.Test2[9]);
+            }
+            writer.WriteFixedC(complex.FixedC);
+            using (SszVectorWriter<FixedC> items = writer.BeginFixedCVec()) items.Add(complex.FixedCVec);
+            writer.WriteBitVec(complex.BitVec!);
             using (SszListWriter<ulong> items = writer.BeginTest3())
             {
                 items.Add(complex.Test3[0]);
@@ -1405,7 +1943,7 @@ public class EncodingTest
         });
 
         LeafContainer leaves = MakeLeafContainer();
-        yield return new("LeafContainer", Encode(leaves), output =>
+        yield return Case("LeafContainer", leaves, output =>
         {
             using LeafContainer.Writer writer = new(output);
             writer.WriteHash(leaves.Hash);
@@ -1425,51 +1963,51 @@ public class EncodingTest
         });
 
         // Declared as Tail, Head; the field indices reverse the order.
-        yield return new("Progressive container", Encode(new ProgressiveContainerSample { Head = 1, Tail = 2 }), static output =>
+        yield return Case("Progressive container", new ProgressiveContainerSample { Head = 1, Tail = 2 }, static output =>
         {
             using ProgressiveContainerSample.Writer writer = new(output);
             writer.WriteHead(1);
             writer.WriteTail(2);
         });
-        yield return new("Progressive list", Encode(new ProgressiveListContainer { Items = [1, 2, 3] }), static output =>
+        yield return Case("Progressive list", new ProgressiveListContainer { Items = [1, 2, 3] }, static output =>
         {
             using ProgressiveListContainer.Writer writer = new(output);
             using SszListWriter<ulong> items = writer.BeginItems();
             items.Add([1, 2, 3]);
         });
-        yield return new("Progressive bitlist", Encode(new ProgressiveBitlistContainer { Bits = MakeSampleBits10() }), static output =>
+        yield return Case("Progressive bitlist", new ProgressiveBitlistContainer { Bits = MakeSampleBits10() }, static output =>
         {
             using ProgressiveBitlistContainer.Writer writer = new(output);
             writer.WriteBits(MakeSampleBits10());
         });
-        yield return new("Derived container", Encode(new ShadowDerived { A = 3, X = 4 }), static output =>
+        yield return Case("Derived container", new ShadowDerived { A = 3, X = 4 }, static output =>
         {
             using ShadowDerived.Writer writer = new(output);
             writer.WriteA(3);
             writer.WriteX(4);
         });
-        yield return new("Generic container", Encode(new GenericContainerOwner { Inner = new() { Head = 5, Value = new() { Fixed1 = 6, Fixed2 = [7] } } }), static output =>
+        yield return Case("Generic container", new GenericContainerOwner { Inner = new() { Head = 5, Value = new() { Fixed1 = 6, Fixed2 = [7] } } }, static output =>
         {
             using GenericContainerOwner.Writer writer = new(output);
             using GenericContainer<VariableC>.Writer inner = writer.BeginInner();
             inner.WriteHead(5);
             inner.WriteValue(new() { Fixed1 = 6, Fixed2 = [7] });
         });
-        yield return new("Nested class", Encode(new NullableVariableChildContainer { Child = new() { Items = [1, 2] } }), static output =>
+        yield return Case("Nested class", new NullableVariableChildContainer { Child = new() { Items = [1, 2] } }, static output =>
         {
             using NullableVariableChildContainer.Writer writer = new(output);
             using NullableVariableChild.Writer child = writer.BeginChild();
             child.WriteItems([1, 2]);
         });
-        yield return new("Collection itself", Encode(new ByteListItself { Bytes = [4, 5] }), static output =>
+        yield return Case("Collection itself", new ByteListItself { Bytes = [4, 5] }, static output =>
         {
             using ByteListItself.Writer writer = new(output);
             writer.WriteBytes([4, 5]);
         });
-        yield return new("Nested collections", Encode(new NestedProgressiveListContainer
+        yield return Case("Nested collections", new NestedProgressiveListContainer
         {
             Items = [new() { Items = [new() { Fixed1 = 1, Fixed2 = [2, 3] }, new() { Fixed1 = 4, Fixed2 = [] }] }, new() { Items = [] }, new() { Items = [new() { Fixed1 = 5, Fixed2 = [6] }] }],
-        }), static output =>
+        }, static output =>
         {
             using NestedProgressiveListContainer.Writer writer = new(output);
             using SszVariableListWriter<ProgressiveVarTestStructList.Writer> lists = writer.BeginItems(3);
@@ -1482,8 +2020,28 @@ public class EncodingTest
             using (ProgressiveVarTestStructList.Writer list = lists.BeginItem()) list.BeginItems(0).Dispose();
             using (ProgressiveVarTestStructList.Writer list = lists.BeginItem()) list.WriteItems([new() { Fixed1 = 5, Fixed2 = [6] }]);
         });
-        yield return new("Union", Encode(MakeCurrentValue(7)), static output => WriteUnion(new(output), MakeCurrentValue(7)));
-        yield return new("Empty lists", Encode(new DoubleListContainer { First = [], Second = [] }), static output =>
+        yield return Case("Union", MakeCurrentValue(7), static output => WriteUnion(new(output), MakeCurrentValue(7)));
+        HashOnlyOwner owner = new() { Child = new() { Fixed1 = 1, Fixed2 = [2, 3] }, Children = [new() { Fixed1 = 4, Fixed2 = [5] }, new() { Fixed1 = 6, Fixed2 = [] }] };
+        yield return Case("Members with a tree in a container without", owner, output =>
+        {
+            using HashOnlyOwner.Writer writer = new(output);
+            WriteVariableC(writer.BeginChild(), owner.Child);
+            using SszVariableListWriter<VariableC.Writer> items = writer.BeginChildren(2);
+            foreach (VariableC item in owner.Children) WriteVariableC(items.BeginItem(), item);
+        });
+        FixedTreeItemList fixedItems = new() { Items = [MakeFixedTreeItem(1), MakeFixedTreeItem(2)] };
+        yield return Case("Fixed-size items with a tree", fixedItems, output =>
+        {
+            using FixedTreeItemList.Writer writer = new(output);
+            using SszListWriter<FixedTreeItem> items = writer.BeginItems();
+            items.Add(fixedItems.Items);
+        });
+        yield return Case("Collection itself with a tree", new HugeLimitCompositeList { Items = [new FixedC { Fixed1 = 1 }, new FixedC { Fixed2 = 2 }] }, static output =>
+        {
+            using HugeLimitCompositeList.Writer writer = new(output);
+            writer.WriteItems([new FixedC { Fixed1 = 1 }, new FixedC { Fixed2 = 2 }]);
+        });
+        yield return Case("Empty lists", new DoubleListContainer { First = [], Second = [] }, static output =>
         {
             using DoubleListContainer.Writer writer = new(output);
             writer.BeginFirst().Dispose();
@@ -1491,13 +2049,17 @@ public class EncodingTest
         });
     }
 
-    private static IEnumerable<WriterCase> WriterCopyCases()
+    private static IEnumerable<WriterCase> WriterCopyCases() =>
+        CopyCases(withTree: true).Concat(CopyCases(withTree: false).Select(static testCase => testCase with { Name = $"{testCase.Name}, no source tree" }));
+
+    private static IEnumerable<WriterCase> CopyCases(bool withTree)
     {
         ComplexStruct complex = MakeComplexStruct();
         byte[] source = Encode(complex);
-        yield return new("ComplexStruct unchanged", source, output =>
+        byte[] sourceTree = TreeOf(complex);
+        yield return Case("ComplexStruct unchanged", complex, output =>
         {
-            using ComplexStruct.Writer writer = new(output, new(source));
+            using ComplexStruct.Writer writer = new(output, new(source), withTree ? new(sourceTree) : default);
             CopyFixedMembers(writer);
             writer.CopyTest3();
             writer.CopyVariableC();
@@ -1512,14 +2074,25 @@ public class EncodingTest
 
         ComplexStruct fixedChanged = MakeComplexStruct();
         fixedChanged.Test1 = 100;
+        fixedChanged.Test2[4] = 101;
+        fixedChanged.FixedCVec = [.. fixedChanged.FixedCVec[1..], new FixedC { Fixed1 = 102 }];
         fixedChanged.BitVec = new BitArray(10, true);
-        yield return new("ComplexStruct with changed fixed-size members", Encode(fixedChanged), output =>
+        yield return Case("ComplexStruct with changed fixed-size members", fixedChanged, output =>
         {
-            using ComplexStruct.Writer writer = new(output, new(source));
+            using ComplexStruct.Writer writer = new(output, new(source), withTree ? new(sourceTree) : default);
             writer.WriteTest1(100);
-            writer.CopyTest2();
+            using (SszVectorWriter<ulong> items = writer.BeginTest2())
+            {
+                items.Copy(0, 4);
+                items.Add(101);
+                items.Copy(5, 5);
+            }
             writer.CopyFixedC();
-            writer.CopyFixedCVec();
+            using (SszVectorWriter<FixedC> items = writer.BeginFixedCVec())
+            {
+                items.Copy(1, 9);
+                items.Add(new FixedC { Fixed1 = 102 });
+            }
             writer.WriteBitVec(fixedChanged.BitVec);
             writer.CopyTest3();
             writer.CopyVariableC();
@@ -1539,9 +2112,9 @@ public class EncodingTest
         changed.VariableCVec = [.. complex.VariableCVec[1..], new VariableC { Fixed1 = 103, Fixed2 = [104, 105] }];
         changed.VariableCList = [complex.VariableCList[2], new VariableC { Fixed1 = complex.VariableCList[0].Fixed1, Fixed2 = [23] }, complex.VariableCList[1]];
         changed.Test2Union = MakeCurrentValue(106);
-        yield return new("ComplexStruct with changed nested values", Encode(changed), output =>
+        yield return Case("ComplexStruct with changed nested values", changed, output =>
         {
-            using ComplexStruct.Writer writer = new(output, new(source));
+            using ComplexStruct.Writer writer = new(output, new(source), withTree ? new(sourceTree) : default);
             CopyFixedMembers(writer);
             writer.WriteTest3([]);
             using (VariableC.Writer child = writer.BeginVariableC())
@@ -1586,6 +2159,7 @@ public class EncodingTest
 
         // A list that is in front of another one, so a change of its length moves the offset of the other one.
         byte[] lists = Encode(new DoubleListContainer { First = [1, 2, 3], Second = [4, 5] });
+        byte[] listsTree = TreeOf(new DoubleListContainer { First = [1, 2, 3], Second = [4, 5] });
         yield return ListCase("List item replaced", [1, 9, 3], static items =>
         {
             items.Copy(0, 1);
@@ -1607,28 +2181,31 @@ public class EncodingTest
         yield return QueueCase("Queue items all replaced", 3, [9]);
         yield return QueueCase("Queue unchanged", 0, []);
         byte[] emptyLists = Encode(new DoubleListContainer { First = [], Second = [] });
-        yield return new("Queue items pushed to empty queues", Encode(new DoubleListContainer { First = [1], Second = [2, 3] }), output =>
+        byte[] emptyTree = TreeOf(new DoubleListContainer { First = [], Second = [] });
+        yield return Case("Queue items pushed to empty queues", new DoubleListContainer { First = [1], Second = [2, 3] }, output =>
         {
-            using DoubleListContainer.Writer writer = new(output, new(emptyLists));
+            using DoubleListContainer.Writer writer = new(output, new(emptyLists), withTree ? new(emptyTree) : default);
             writer.PopAndPushFirst(0, [1]);
             writer.PopAndPushSecond(0, [2, 3]);
         });
         byte[] progressive = Encode(new ProgressiveListContainer { Items = [1, 2] });
-        yield return new("Progressive queue items popped and pushed", Encode(new ProgressiveListContainer { Items = [2, 3] }), output =>
+        byte[] progressiveTree = TreeOf(new ProgressiveListContainer { Items = [1, 2] });
+        yield return Case("Progressive queue items popped and pushed", new ProgressiveListContainer { Items = [2, 3] }, output =>
         {
-            using ProgressiveListContainer.Writer writer = new(output, new(progressive));
+            using ProgressiveListContainer.Writer writer = new(output, new(progressive), withTree ? new(progressiveTree) : default);
             writer.PopAndPushItems(1, [3]);
         });
 
         LeafContainer leaves = MakeLeafContainer();
         byte[] leavesEncoded = Encode(leaves);
+        byte[] leavesTree = TreeOf(leaves);
         LeafContainer swapped = MakeLeafContainer();
         Array.Reverse(swapped.Blooms);
         Array.Reverse(swapped.Addresses);
         Array.Reverse(swapped.Enums);
-        yield return new("Leaf queue items popped and pushed", Encode(swapped), output =>
+        yield return Case("Leaf queue items popped and pushed", swapped, output =>
         {
-            using LeafContainer.Writer writer = new(output, new(leavesEncoded));
+            using LeafContainer.Writer writer = new(output, new(leavesEncoded), withTree ? new(leavesTree) : default);
             writer.CopyHash();
             writer.CopyAddress();
             writer.CopyBloom();
@@ -1642,9 +2219,45 @@ public class EncodingTest
             writer.CopyBytes();
         });
 
-        yield return Unchanged("LeafContainer unchanged", Encode(MakeLeafContainer()), static (output, encoded) =>
+        FixedTreeItemList fixedItems = new() { Items = [MakeFixedTreeItem(1), MakeFixedTreeItem(2), MakeFixedTreeItem(3)] };
+        byte[] fixedItemsEncoded = Encode(fixedItems);
+        byte[] fixedItemsTree = TreeOf(fixedItems);
+        yield return Case("Fixed-size items with a tree", new FixedTreeItemList { Items = [MakeFixedTreeItem(2), MakeFixedTreeItem(3), MakeFixedTreeItem(4), MakeFixedTreeItem(1)] }, output =>
         {
-            using LeafContainer.Writer writer = new(output, new(encoded));
+            using FixedTreeItemList.Writer writer = new(output, new(fixedItemsEncoded), withTree ? new(fixedItemsTree) : default);
+            using SszListWriter<FixedTreeItem> items = writer.BeginItems();
+            items.Copy(1, 2);
+            items.Add(MakeFixedTreeItem(4));
+            items.Copy(0, 1);
+        });
+        FixedVectorContainer vector = new() { Items = [new FixedC { Fixed1 = 1 }, new FixedC { Fixed2 = 2 }] };
+        byte[] vectorEncoded = Encode(vector);
+        byte[] vectorTree = TreeOf(vector);
+        yield return Case("Vector item replaced", new FixedVectorContainer { Items = [new FixedC { Fixed1 = 1 }, new FixedC { Fixed2 = 3 }] }, output =>
+        {
+            using FixedVectorContainer.Writer writer = new(output, new(vectorEncoded), withTree ? new(vectorTree) : default);
+            using SszVectorWriter<FixedC> items = writer.BeginItems();
+            items.Copy(0, 1);
+            items.Add(new FixedC { Fixed2 = 3 });
+        });
+        NullableVariableChildContainer parent = new() { Child = new() { Items = [1, 2] } };
+        byte[] parentEncoded = Encode(parent);
+        byte[] parentTree = TreeOf(parent);
+        yield return Case("Member without a tree in a container with one", new NullableVariableChildContainer { Child = new() { Items = [2, 3] } }, output =>
+        {
+            using NullableVariableChildContainer.Writer writer = new(output, new(parentEncoded), withTree ? new(parentTree) : default);
+            using NullableVariableChild.Writer child = writer.BeginChild();
+            child.PopAndPushItems(1, [3]);
+        });
+        yield return Unchanged("Collection itself with a tree unchanged", new HugeLimitBasicList { Items = [1, 2, 3, 4, 5] }, (output, encoded, tree) =>
+        {
+            using HugeLimitBasicList.Writer writer = new(output, new(encoded), withTree ? new(new SszTreeReader(tree, 0, HugeLimitBasicList.RefTreeReader.TreeShape)) : default);
+            writer.CopyItems();
+        });
+
+        yield return Unchanged("LeafContainer unchanged", MakeLeafContainer(), (output, encoded, tree) =>
+        {
+            using LeafContainer.Writer writer = new(output, new(encoded), withTree ? new(tree) : default);
             writer.CopyHash();
             writer.CopyAddress();
             writer.CopyBloom();
@@ -1657,46 +2270,48 @@ public class EncodingTest
             writer.CopyEnums();
             writer.CopyBytes();
         });
-        yield return Unchanged("Progressive container unchanged", Encode(new ProgressiveContainerSample { Head = 1, Tail = 2 }), static (output, encoded) =>
+        yield return Unchanged("Progressive container unchanged", new ProgressiveContainerSample { Head = 1, Tail = 2 }, (output, encoded, tree) =>
         {
-            using ProgressiveContainerSample.Writer writer = new(output, new(encoded));
+            using ProgressiveContainerSample.Writer writer = new(output, new(encoded), withTree ? new(tree) : default);
             writer.CopyHead();
             writer.CopyTail();
         });
-        yield return Unchanged("Derived container unchanged", Encode(new ShadowDerived { A = 3, X = 4 }), static (output, encoded) =>
+        yield return Unchanged("Derived container unchanged", new ShadowDerived { A = 3, X = 4 }, (output, encoded, tree) =>
         {
-            using ShadowDerived.Writer writer = new(output, new(encoded));
+            using ShadowDerived.Writer writer = new(output, new(encoded), withTree ? new(tree) : default);
             writer.CopyA();
             writer.CopyX();
         });
-        yield return Unchanged("Generic container unchanged", Encode(new GenericContainerOwner { Inner = new() { Head = 5, Value = new() { Fixed1 = 6, Fixed2 = [7] } } }), static (output, encoded) =>
+        yield return Unchanged("Generic container unchanged", new GenericContainerOwner { Inner = new() { Head = 5, Value = new() { Fixed1 = 6, Fixed2 = [7] } } }, (output, encoded, tree) =>
         {
             using GenericContainerOwner.Writer writer = new(output, new(encoded));
             using GenericContainer<VariableC>.Writer inner = writer.BeginInner();
             inner.CopyHead();
             inner.CopyValue();
         });
-        yield return Unchanged("Collection itself unchanged", Encode(new ByteListItself { Bytes = [4, 5] }), static (output, encoded) =>
+        yield return Unchanged("Collection itself unchanged", new ByteListItself { Bytes = [4, 5] }, (output, encoded, tree) =>
         {
             using ByteListItself.Writer writer = new(output, new(encoded));
             writer.CopyBytes();
         });
-        yield return Unchanged("Union unchanged", Encode(MakeCurrentValue(7)), static (output, encoded) =>
+        yield return Unchanged("Union unchanged", MakeCurrentValue(7), (output, encoded, tree) =>
         {
             using CompatibleNumberUnion.Writer writer = new(output, new(encoded));
             writer.CopyCurrentValue();
         });
 
-        byte[] nested = Encode(new NestedProgressiveListContainer
+        NestedProgressiveListContainer nestedValue = new()
         {
             Items = [new() { Items = [new() { Fixed1 = 1, Fixed2 = [2, 3] }, new() { Fixed1 = 4, Fixed2 = [] }] }, new() { Items = [] }],
-        });
-        yield return new("Nested collections", Encode(new NestedProgressiveListContainer
+        };
+        byte[] nested = Encode(nestedValue);
+        byte[] nestedTree = TreeOf(nestedValue);
+        yield return Case("Nested collections", new NestedProgressiveListContainer
         {
             Items = [new() { Items = [] }, new() { Items = [new() { Fixed1 = 4, Fixed2 = [] }, new() { Fixed1 = 5, Fixed2 = [6] }] }],
-        }), output =>
+        }, output =>
         {
-            using NestedProgressiveListContainer.Writer writer = new(output, new(nested));
+            using NestedProgressiveListContainer.Writer writer = new(output, new(nested), withTree ? new(nestedTree) : default);
             using SszVariableListWriter<ProgressiveVarTestStructList.Writer> lists = writer.BeginItems(2);
             lists.Copy(1, 1);
             using ProgressiveVarTestStructList.Writer list = lists.BeginItem(0);
@@ -1705,21 +2320,26 @@ public class EncodingTest
             WriteVariableC(items.BeginItem(), new() { Fixed1 = 5, Fixed2 = [6] });
         });
 
-        WriterCase ListCase(string name, ulong[] expected, WriteList write) => new(name, Encode(new DoubleListContainer { First = expected, Second = [4, 5] }), output =>
+        WriterCase ListCase(string name, ulong[] expected, WriteList write) => Case(name, new DoubleListContainer { First = expected, Second = [4, 5] }, output =>
         {
-            using DoubleListContainer.Writer writer = new(output, new(lists));
+            using DoubleListContainer.Writer writer = new(output, new(lists), withTree ? new(listsTree) : default);
             using (SszListWriter<ulong> items = writer.BeginFirst()) write(items);
             writer.CopySecond();
         });
 
-        WriterCase QueueCase(string name, int popCount, ulong[] items) => new(name, Encode(new DoubleListContainer { First = [.. new ulong[] { 1, 2, 3 }[popCount..], .. items], Second = [4, 5] }), output =>
+        WriterCase QueueCase(string name, int popCount, ulong[] items) => Case(name, new DoubleListContainer { First = [.. new ulong[] { 1, 2, 3 }[popCount..], .. items], Second = [4, 5] }, output =>
         {
-            using DoubleListContainer.Writer writer = new(output, new(lists));
+            using DoubleListContainer.Writer writer = new(output, new(lists), withTree ? new(listsTree) : default);
             writer.PopAndPushFirst(popCount, items);
             writer.CopySecond();
         });
 
-        static WriterCase Unchanged(string name, byte[] encoded, Action<SszWriter, byte[]> copy) => new(name, encoded, output => copy(output, encoded));
+        static WriterCase Unchanged<T>(string name, T value, Action<SszWriter, byte[], byte[]> copy) where T : ISszCodec<T>
+        {
+            byte[] encoded = Encode(value);
+            byte[] tree = TreeOf(value);
+            return Case(name, value, output => copy(output, encoded, tree));
+        }
     }
 
     private delegate void WriteList(SszListWriter<ulong> items);
@@ -1733,7 +2353,7 @@ public class EncodingTest
         writer.CopyBitVec();
     }
 
-    private static ByteListItself.Writer OpenByteList(SszWriter writer, ReadOnlySpan<byte> source, bool hasSource) => new(writer);
+    private static ByteListItself.Writer OpenByteList(SszWriter writer, ReadOnlySpan<byte> source, bool hasSource, SszTreeWriter? trees, SszTreeReader sourceTree) => new(writer);
 
     // Takes a copy of the writer, which shares its progress with the original.
     private static void WriteFixedMembers(ComplexStruct.Writer writer, ComplexStruct value)
@@ -1804,19 +2424,25 @@ public class EncodingTest
         });
         yield return Misuse("Writer rejects more items than declared", static output =>
         {
-            SszVariableListWriter<ByteListItself.Writer> items = new(output, 1, OpenByteList, default);
+            SszVariableListWriter<ByteListItself.Writer> items = new(output, 1, OpenByteList, default, default);
             using (ByteListItself.Writer item = items.BeginItem()) item.WriteBytes([1]);
             items.BeginItem();
         });
         yield return Misuse("Writer rejects fewer items than declared", static output =>
         {
-            using SszVariableListWriter<ByteListItself.Writer> items = new(output, 2, OpenByteList, default);
+            using SszVariableListWriter<ByteListItself.Writer> items = new(output, 2, OpenByteList, default, default);
             using ByteListItself.Writer item = items.BeginItem();
             item.WriteBytes([1]);
         });
+        yield return Misuse("Writer rejects fewer vector items than the length", static output =>
+        {
+            using FixedVectorContainer.Writer writer = new(output);
+            using SszVectorWriter<FixedC> items = writer.BeginItems();
+            items.Add(new FixedC());
+        });
         yield return Misuse("Writer rejects the next item while the previous one is open", static output =>
         {
-            SszVariableListWriter<ByteListItself.Writer> items = new(output, 2, OpenByteList, default);
+            SszVariableListWriter<ByteListItself.Writer> items = new(output, 2, OpenByteList, default, default);
             items.BeginItem();
             items.BeginItem();
         });
@@ -1831,7 +2457,7 @@ public class EncodingTest
         });
         yield return Misuse("Writer rejects copying a member of a nested value without a source", static output =>
         {
-            SszVariableListWriter<VariableC.Writer> items = new(output, 1, static (writer, source, hasSource) => hasSource ? new(writer, new(source)) : new(writer), VariableC.Encode([new VariableC { Fixed2 = [] }]));
+            SszVariableListWriter<VariableC.Writer> items = new(output, 1, static (writer, source, hasSource, _, _) => hasSource ? new(writer, new(source)) : new(writer), VariableC.Encode([new VariableC { Fixed2 = [] }]), default);
             items.BeginItem().CopyFixed1();
         });
         yield return Misuse("Writer rejects copying a union member that the source does not have", static output =>
@@ -1900,6 +2526,27 @@ public class EncodingTest
             .SetName("RefReader rejects compatible union trailing bytes");
         yield return new TestCaseData((Action)(() => _ = new CompatibleNumberUnion.RefReader(CompatibleNumberUnion.Encode(MakeCurrentValue(1))).PreviousValue))
             .SetName("RefReader rejects reading a compatible union member that is not selected");
+        foreach ((string name, Action<byte[]> hash) in ((string, Action<byte[]>)[])
+        [
+            ("MerkleizeEncoded", static encoded => DoubleListContainer.MerkleizeEncoded(encoded, out _)),
+            ("WriteTree", static encoded => WriteTree(output => DoubleListContainer.WriteTree(output, new(encoded)))),
+        ])
+        {
+            yield return new TestCaseData((Action)(() => hash([8, 0, 0, 0, 48, 0, 0, 0, .. new byte[40]])))
+                .SetName($"{name} rejects lists above the declared limit");
+            yield return new TestCaseData((Action)(() => hash([8, 0, 0, 0, 9, 0, 0, 0, 1])))
+                .SetName($"{name} rejects a list with a partial item");
+            yield return new TestCaseData((Action)(() => hash([8, 0, 0, 0, 7, 0, 0, 0])))
+                .SetName($"{name} rejects offsets that are out of order");
+        }
+        yield return new TestCaseData((Action)(() => ByteListItself.MerkleizeEncoded(new byte[4], out _)))
+            .SetName("MerkleizeEncoded rejects byte lists above the declared limit");
+        yield return new TestCaseData((Action)(() => ProgressiveBitlistContainer.MerkleizeEncoded(Bytes.FromHexString("0400000000"), out _)))
+            .SetName("MerkleizeEncoded rejects bitlists without a sentinel bit");
+        yield return new TestCaseData((Action)(() => CompatibleNumberUnion.MerkleizeEncoded([99], out _)))
+            .SetName("MerkleizeEncoded rejects unknown compatible union selector");
+        yield return new TestCaseData((Action)(() => NullableCompatibleUnionVectorContainer.MerkleizeEncoded([4, 0, 0, 0, 4, 0, 0, 0, .. CompatibleNumberUnion.Encode(MakeCurrentValue(1))], out _)))
+            .SetName("MerkleizeEncoded rejects vectors with the wrong length");
         yield return new TestCaseData((Action)(() => Write(static output => new SingleListContainer.Writer(output).WriteItems([1, 2, 3, 4, 5]))))
             .SetName("Writer rejects lists above the declared limit");
         yield return new TestCaseData((Action)(() => Write(static output =>
@@ -1915,6 +2562,8 @@ public class EncodingTest
             .SetName("Writer rejects an item count above the declared limit");
         yield return new TestCaseData((Action)(() => Write(static output => new FixedVectorContainer.Writer(output).WriteItems([new FixedC()]))))
             .SetName("Writer rejects vectors with the wrong length");
+        yield return new TestCaseData((Action)(() => Write(static output => new FixedVectorContainer.Writer(output).BeginItems().Add([new(), new(), new()]))))
+            .SetName("Writer rejects vector items above the length");
         yield return new TestCaseData((Action)(() => Write(static output => new BitVectorContainer.Writer(output).WriteBits(new BitArray(9)))))
             .SetName("Writer rejects bitvectors with the wrong length");
     }

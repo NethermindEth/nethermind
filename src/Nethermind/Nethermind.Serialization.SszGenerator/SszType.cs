@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Nethermind.Serialization.Ssz;
 
 class SszType
 {
@@ -129,6 +130,12 @@ class SszType
     /// <summary>Whether a base type is itself an SSZ type, so this type's <c>RefReader</c> and <c>Writer</c> hide inherited ones.</summary>
     public bool HasSszBaseType { get; private set; }
 
+    /// <summary>Whether values of this type have a hash tree of their own.</summary>
+    public bool HasTree { get; private set; }
+
+    /// <summary>Whether a base type has a hash tree too, so this type's <c>RefTreeReader</c> and <c>TreeWriter</c> hide inherited ones.</summary>
+    public bool HasTreeBaseType { get; private set; }
+
     public bool HasCustomInlineCodec => CustomEncodeTemplate is not null;
     public IEnumerable<SszProperty>? CompatibleUnionMembers => Kind == Kind.CompatibleUnion ? Members?.Where(x => x.Name != SelectorPropertyName) : null;
     public SszProperty? Selector => Members?.FirstOrDefault(x => x.Name == SelectorPropertyName);
@@ -201,9 +208,10 @@ class SszType
             result.FixedSectionLengthDeclaration = $"internal {modifier}static partial int GetSszFixedSectionLength()";
         }
 
-        for (INamedTypeSymbol? baseType = type.BaseType; baseType is not null && !result.HasSszBaseType; baseType = baseType.BaseType)
+        for (INamedTypeSymbol? baseType = type.BaseType; baseType is not null; baseType = baseType.BaseType)
         {
-            result.HasSszBaseType = HasAttribute(baseType, "SszContainerAttribute") || HasAttribute(baseType, "SszCompatibleUnionAttribute");
+            result.HasSszBaseType |= HasAttribute(baseType, "SszContainerAttribute") || HasAttribute(baseType, "SszCompatibleUnionAttribute");
+            result.HasTreeBaseType |= HasAttribute(baseType, nameof(SszHashTreeAttribute));
         }
 
         switch (result.Kind)
@@ -229,7 +237,34 @@ class SszType
             result.IsSszListItself = GetIsCollectionItselfValue(type);
         }
 
+        result.HasTree = GetHasTree(type, result);
         return result;
+    }
+
+    private static bool GetHasTree(ITypeSymbol type, SszType result)
+    {
+        bool isMarked = HasAttribute(type, nameof(SszHashTreeAttribute));
+        if (isMarked && (result.IsSszListItself || result.Kind == Kind.CompatibleUnion))
+        {
+            throw new InvalidOperationException($"{result.Name} cannot be marked with SszHashTree: {(result.IsSszListItself ? "it is a collection wrapper, mark its property" : "a compatible union has no hash tree")}.");
+        }
+
+        foreach (SszProperty member in result.Members ?? [])
+        {
+            if (!member.IsMarkedWithTree) continue;
+
+            if (!member.IsCollection)
+            {
+                throw new InvalidOperationException($"{result.Name}.{member.Name} cannot be marked with SszHashTree: only a list or vector property can, and a container type.");
+            }
+
+            if (!isMarked && !result.IsSszListItself)
+            {
+                throw new InvalidOperationException($"{result.Name}.{member.Name} is marked with SszHashTree, so {result.Name} has to be marked too.");
+            }
+        }
+
+        return isMarked || (result.IsSszListItself && result.Members![0].IsMarkedWithTree);
     }
 
     public bool IsCompatibleWith(SszType other, HashSet<(SszType, SszType)>? visited = null)

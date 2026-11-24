@@ -63,6 +63,14 @@ public class SszPresetAttribute(Type selectorType, string selectorMember) : Attr
 [AttributeUsage(AttributeTargets.Property)]
 public class SszProgressiveBitlistAttribute : Attribute;
 
+/// <summary>Marks a container type, or a list or vector property, whose intermediate hashes are kept in a hash tree.</summary>
+/// <remarks>
+/// A collection can be marked only when its container is, because that has the pointer to it. Anything that is not marked is a leaf,
+/// hashed from its SSZ bytes. For a collection wrapper, mark its property.
+/// </remarks>
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Property, Inherited = false)]
+public class SszHashTreeAttribute : Attribute;
+
 /// <summary>
 /// Marks a property that the SSZ source generator should skip entirely.
 /// Use this on domain properties whose type the generator cannot handle

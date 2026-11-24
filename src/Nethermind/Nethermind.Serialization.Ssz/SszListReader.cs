@@ -4,8 +4,12 @@
 using System;
 using System.Buffers.Binary;
 using System.IO;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Ssz;
+
+/// <summary>Merkleizes one encoded SSZ value.</summary>
+public delegate void SszHasher(ReadOnlySpan<byte> encoded, out UInt256 root);
 
 /// <summary>Reads one SSZ collection item from its encoded bytes.</summary>
 public delegate T SszItemReader<T>(ReadOnlySpan<byte> item) where T : allows ref struct;

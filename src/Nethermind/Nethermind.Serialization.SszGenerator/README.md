@@ -8,6 +8,7 @@ Allows to:
 - Merkleize
 - Read members of an encoded value without decoding it
 - Write a value member by member, copying the unchanged parts of an encoded one
+- Keep the intermediate hashes of an encoded value, and update them with it
 
 Supports vectors, lists, bitvectors, bitlists, compatible unions, progressive containers, progressive lists, etc.
 
@@ -167,6 +168,7 @@ Members are written once each in the order of their bytes: first all fixed-size 
 | Any | `WriteX(value)` writes the whole value, `CopyX()` copies its bytes from the source |
 | Variable-size container, compatible union or collection wrapper | `BeginX()` returns its `Writer` |
 | List of fixed-size items other than bytes | `BeginX()` returns `SszListWriter<T>`, `PopAndPushX(popCount, items)` drops the first items of the source's list and appends others |
+| Vector of fixed-size items other than bytes | `BeginX()` returns `SszVectorWriter<T>` |
 | List of variable-size items | `BeginX(count)` returns `SszVariableListWriter<TWriter>` |
 | Vector of variable-size items | `BeginX()` returns `SszVariableListWriter<TWriter>` |
 
@@ -185,6 +187,55 @@ items.Add(40);
 ```
 
 For a list that is used as a queue, `writer.PopAndPushTest3(1, [40])` does the same. Copied bytes are not validated. `SszVariableListWriter` also has `Copy(start, count)`, and `BeginItem(sourceIndex)` mirrors one item of the source.
+
+## Hash trees
+
+A hash tree blob keeps the intermediate hashes of an encoded value, so that a changed value can be hashed without hashing its unchanged parts. Only what is marked with `SszHashTree` is in it:
+
+```csharp
+[SszContainer, SszHashTree]
+public partial class State
+{
+    public Checkpoint Finalized { get; set; }      // not marked: hashed from its SSZ bytes
+
+    [SszList(1_099_511_627_776), SszHashTree]
+    public Validator[] Validators { get; set; }    // a tree over the hashes of the items
+}
+```
+
+Mark a container on its type, and a list or vector on its property. The container of a marked collection has to be marked too. Items of a marked list have a tree each only when their type is marked.
+
+| Operation | How |
+|---|---|
+| SSZ to hash, of any type | `State.MerkleizeEncoded(ssz, out UInt256 root)` |
+| SSZ to tree and hash | `State.WriteTree(trees, new State.RefReader(ssz))`, then `trees.Root` |
+| SSZ, tree and changes to new SSZ, tree and hash | a `Writer` whose `SszWriter` has `Trees` |
+
+```csharp
+using SszTreeWriter trees = new(chunkSize: 65536);
+using SszWriter output = new(chunkSize: 65536) { Trees = trees };
+using (State.Writer writer = new(output, new State.RefReader(ssz), new State.RefTreeReader(tree)))
+{
+    writer.CopyFinalized();
+    using SszListWriter<Validator> items = writer.BeginValidators();
+    items.Copy(0, 100);
+    items.Add(changed);
+    items.Copy(101, rest);
+}
+```
+
+`RefTreeReader` reads a tree: `XRoot` is the hash of every member, `X` the tree of a member that has one. `TreeWriter` writes a tree from encoded members, without writing the SSZ.
+
+The blob is a sequence of trees, each after the trees that it points to, the tree of the value itself last:
+
+```
+tree := leaf-count u32 | nodes 32 bytes each | offsets u32 each
+```
+
+- Leaves are the members, items or 32-byte chunks that are present. Padding is not stored.
+- Nodes are in post-order, and only those whose leaves are all present. Five leaves are stored as `l0 l1 a l2 l3 b c l4`, so an aligned run of leaves is one block together with all nodes between them.
+- A tree does not store its own hash. The leaf that points to it has it, and `SszTreeWriter.Root` has the one of the value.
+- An offset is the distance back from its tree to an inner tree, so a tree and everything below it is one block that can be copied as it is. A container has one per marked member, fixed-size members first; a list of marked items has one per leaf.
 
 ## Fixed-size type converters
 

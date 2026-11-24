@@ -47,3 +47,6 @@ public class SszPresetAttribute(Type selectorType, string selectorMember) : Attr
 
 [AttributeUsage(AttributeTargets.Property)]
 public class SszProgressiveBitlistAttribute : Attribute;
+
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Property, Inherited = false)]
+public class SszHashTreeAttribute : Attribute;

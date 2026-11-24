@@ -21,30 +21,30 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public static bool Alternate { get; set; }
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial class PresetVector
     {
-        [SszVector(4, AlternateLength = 2)]
+        [SszVector(4, AlternateLength = 2), SszHashTree]
         public ulong[] Values { get; set; } = [];
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial class PresetContainer
     {
         public PresetVector Head { get; set; } = new();
-        [SszList(8, AlternateLimit = 4)]
+        [SszList(8, AlternateLimit = 4), SszHashTree]
         public ulong[] Tail { get; set; } = [];
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial struct ComplexStruct
     {
         public ulong Test1 { get; set; }
 
-        [SszVector(10)]
+        [SszVector(10), SszHashTree]
         public ulong[] Test2 { get; set; }
 
-        [SszList(10)]
+        [SszList(10), SszHashTree]
         public ulong[] Test3 { get; set; }
         public FixedC FixedC { get; set; }
         public VariableC VariableC { get; set; }
@@ -53,19 +53,19 @@ namespace Nethermind.Serialization.SszGenerator.Test
         [SszVector(10)]
         public FixedC[] FixedCVec { get; set; }
 
-        [SszList(10)]
+        [SszList(10), SszHashTree]
         public FixedC[] FixedCList { get; set; }
 
 
-        [SszVector(10)]
+        [SszVector(10), SszHashTree]
         public VariableC[] VariableCVec { get; set; }
 
-        [SszList(10)]
+        [SszList(10), SszHashTree]
         public VariableC[] VariableCList { get; set; }
 
         public CompatibleNumberUnion Test2Union { get; set; }
 
-        [SszVector(10)]
+        [SszVector(10), SszHashTree]
         public CompatibleNumberUnion[]? Test2UnionVec { get; set; }
 
         [SszList(10)]
@@ -105,18 +105,18 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong[]? Items { get; set; }
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial class NullableVariableChildContainer
     {
         public NullableVariableChild? Child { get; set; }
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial struct VariableC
     {
         public ulong Fixed1 { get; set; }
 
-        [SszList(10)]
+        [SszList(10), SszHashTree]
         public ulong[]? Fixed2 { get; set; }
     }
 
@@ -252,10 +252,10 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ArrayPoolList<ulong>? Items { get; set; }
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial struct DoubleListContainer
     {
-        [SszList(4)]
+        [SszList(4), SszHashTree]
         public ulong[]? First { get; set; }
 
         [SszList(4)]
@@ -351,10 +351,10 @@ namespace Nethermind.Serialization.SszGenerator.Test
         Max = uint.MaxValue,
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial struct FixedVectorContainer
     {
-        [SszVector(2)]
+        [SszVector(2), SszHashTree]
         public FixedC[]? Items { get; set; }
     }
 
@@ -418,10 +418,10 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public byte[]? Bytes { get; set; }
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial struct ConverterItemListContainer
     {
-        [SszList(4)]
+        [SszList(4), SszHashTree]
         public TestBytes48[]? Items { get; set; }
     }
 
@@ -542,7 +542,7 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public TestBytes48[]? Items { get; set; }
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial struct ProgressiveContainerSample
     {
         [SszField(2)]
@@ -552,10 +552,10 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong Head { get; set; }
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial struct ProgressiveListContainer
     {
-        [SszProgressiveList]
+        [SszProgressiveList, SszHashTree]
         public ulong[]? Items { get; set; }
     }
 
@@ -569,14 +569,14 @@ namespace Nethermind.Serialization.SszGenerator.Test
     [SszContainer(isCollectionItself: true)]
     public partial struct ProgressiveVarTestStructList
     {
-        [SszProgressiveList]
+        [SszProgressiveList, SszHashTree]
         public VariableC[]? Items { get; set; }
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial struct NestedProgressiveListContainer
     {
-        [SszProgressiveList]
+        [SszProgressiveList, SszHashTree]
         public ProgressiveVarTestStructList[]? Items { get; set; }
     }
 
@@ -604,20 +604,20 @@ namespace Nethermind.Serialization.SszGenerator.Test
         Items = 1,
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial class ShadowBase
     {
         public ulong A { get; set; }
         public ulong X { get; set; }
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial class ShadowDerived : ShadowBase
     {
         public new uint X { get; set; }
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial struct LeafContainer
     {
         public Hash256 Hash { get; set; }
@@ -626,26 +626,26 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public PrimitiveEnum Enum { get; set; }
         public TestBytes48 Reference { get; set; }
 
-        [SszVector(2)]
+        [SszVector(2), SszHashTree]
         public Hash256[] Hashes { get; set; }
 
-        [SszList(2)]
+        [SszList(2), SszHashTree]
         public Bloom[] Blooms { get; set; }
 
-        [SszList(2)]
+        [SszList(2), SszHashTree]
         public Address[] Addresses { get; set; }
 
         [SszVector(2)]
         public Address[] AddressVector { get; set; }
 
-        [SszList(2)]
+        [SszList(2), SszHashTree]
         public PrimitiveEnum[] Enums { get; set; }
 
-        [SszList(4)]
+        [SszList(4), SszHashTree]
         public byte[] Bytes { get; set; }
     }
 
-    [SszContainer]
+    [SszContainer, SszHashTree]
     public partial class GenericContainer<T> where T : ISszCodec<T>, new()
     {
         public ulong Head { get; set; }
@@ -658,18 +658,45 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public GenericContainer<VariableC> Inner { get; set; } = new();
     }
 
+    [SszContainer, SszHashTree]
+    public partial struct FixedTreeItem
+    {
+        public ulong Value { get; set; }
+
+        [SszVector(8), SszHashTree]
+        public ulong[] Values { get; set; }
+    }
+
+    /// <summary>A list of fixed-size items that have a tree each.</summary>
+    [SszContainer, SszHashTree]
+    public partial struct FixedTreeItemList
+    {
+        [SszList(16), SszHashTree]
+        public FixedTreeItem[] Items { get; set; }
+    }
+
+    /// <summary>A container without a tree that has members with one.</summary>
+    [SszContainer]
+    public partial struct HashOnlyOwner
+    {
+        public VariableC Child { get; set; }
+
+        [SszList(4)]
+        public VariableC[] Children { get; set; }
+    }
+
     [SszContainer(isCollectionItself: true)]
     public partial struct HugeLimitBasicList
     {
         // VALIDATOR_REGISTRY_LIMIT-sized list (2^40), exceeds int.MaxValue
-        [SszList(1_099_511_627_776)]
+        [SszList(1_099_511_627_776), SszHashTree]
         public ulong[] Items { get; set; }
     }
 
     [SszContainer(isCollectionItself: true)]
     public partial struct HugeLimitCompositeList
     {
-        [SszList(1_099_511_627_776)]
+        [SszList(1_099_511_627_776), SszHashTree]
         public FixedC[] Items { get; set; }
     }
 
