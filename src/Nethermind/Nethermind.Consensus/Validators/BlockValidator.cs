@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -29,15 +28,13 @@ public class BlockValidator(
     IHeaderValidator? headerValidator,
     IUnclesValidator? unclesValidator,
     ISpecProvider? specProvider,
-    ILogManager? logManager,
-    ILeanProofVerifier leanProofVerifier)
+    ILogManager? logManager)
     : IBlockValidator
 {
     private readonly IHeaderValidator _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
     private readonly ITxValidator _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
     private readonly IUnclesValidator _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier));
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
@@ -105,7 +102,7 @@ public class BlockValidator(
     }
 
     /// <summary>EIP-8288 block validity: the header commitments must match the block's dependencies and any <c>dependency_proof</c>
-    /// received with it, which must verify against the fork's <c>AGGREGATED_VK</c>.</summary>
+    /// received with it. <see cref="DependencyProofBlockValidator"/> verifies the proof.</summary>
     /// <remarks>A block committing to a nonempty proof it does not carry fails last with
     /// <see cref="BlockErrorMessages.MissingDependencyProof"/>, which is not invalidity (EIPs#12549).</remarks>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
@@ -142,18 +139,9 @@ public class BlockValidator(
             return false;
         }
 
-        byte[]? proof = block.StarkProof ?? (recursiveStark.DependencyProofHash == Keccak.OfAnEmptyString ? [] : null);
-        if (proof is null)
+        if (block.StarkProof is null && recursiveStark.DependencyProofHash != Keccak.OfAnEmptyString)
         {
             error = BlockErrorMessages.MissingDependencyProof;
-            return false;
-        }
-
-        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256,
-                proof))
-        {
-            error = BlockErrorMessages.InvalidRecursiveStark;
-            if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
             return false;
         }
 

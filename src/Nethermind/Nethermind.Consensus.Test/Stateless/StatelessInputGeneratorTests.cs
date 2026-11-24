@@ -14,6 +14,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Test.ProofAggregation;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -30,12 +31,14 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Init;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
@@ -189,6 +192,58 @@ public class StatelessInputGeneratorTests
         using Witness witness = EmptyWitness([Rlp.Encode(parent).Bytes]);
 
         Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance), _leanProofVerifier), Is.False);
+    }
+
+    // EIP-8288: the executor builds its block validator by hand, so it must add the dependency proof check itself.
+    [Test]
+    public void Direct_execution_rejects_a_missing_or_failing_dependency_proof([Values] bool proofMissing)
+    {
+        TestSpecProvider specProvider = new(Eip8288Prototype.Instance);
+        (Block block, Witness witness, _) = CreateBlock(amsterdam: true);
+        using (witness)
+        {
+            Transaction dependencyTx = DependencyTx(specProvider.ChainId);
+            byte[] proof = [1];
+            Block suggested = block.WithReplacedBody(new BlockBody([dependencyTx], [], block.Withdrawals));
+            suggested.Header.TxRoot = TxTrie.CalculateRoot(suggested.Transactions);
+            suggested.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof),
+                new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(suggested, FrameTxSigHash.ComputeValue)));
+            suggested.StarkProof = proofMissing ? null : proof;
+            suggested.Header.Hash = suggested.Header.CalculateHash();
+            FakeLeanProofVerifier verifier = new(false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(StatelessExecutor.Execute(suggested, witness, specProvider, verifier), Is.False);
+                Assert.That(verifier.VerificationCalls, Is.EqualTo(proofMissing ? 0 : 1));
+            }
+        }
+    }
+
+    private static Transaction DependencyTx(ulong chainId)
+    {
+        TxFrame[] frames =
+        [
+            new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, executionGasLimit: FrameTxTestFrames.PrefixFrameGas,
+                stateGasLimit: 0, UInt256.Zero, default),
+            new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero,
+                Eip8288Dependencies.Serialize([new FrameDependency(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256)])),
+        ];
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = chainId,
+            SenderAddress = TestItem.PrivateKeyB.Address,
+            NonceKeys = [],
+            Frames = frames,
+            GasLimit = FrameTxValidation.TotalGasLimit(frames),
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
+        };
+        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
     }
 
     [Test]

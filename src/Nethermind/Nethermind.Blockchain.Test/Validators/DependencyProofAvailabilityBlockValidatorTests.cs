@@ -1,15 +1,24 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Config;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Init.Modules;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -86,6 +95,57 @@ public class DependencyProofAvailabilityBlockValidatorTests
         }
     }
 
+    // The proof store join wraps the dependency proof check in the module, so the proof verified is the stored one.
+    [Test]
+    public void Module_verifies_the_stored_proof_of_a_block_received_without_it([Values] bool verdict)
+    {
+        Block block = Build.A.Block.WithNumber(10).WithTransactions(DependencyTx()).TestObject;
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(Proof),
+            new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        block.Header.Hash = block.Header.CalculateHash();
+        DependencyProofStore store = new(new TestMemDb());
+        store.Insert(block.Number, block.Hash!, Proof);
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8288Enabled.Returns(true);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        ProofRecordingVerifier verifier = new(verdict);
+
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new BlockProcessingModule(new InitConfig(), new BlocksConfig()));
+        builder.RegisterInstance(new RecordingValidator()).As<IBlockValidator>();
+        builder.RegisterInstance(specProvider).As<ISpecProvider>();
+        builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
+        builder.RegisterInstance(store).As<IDependencyProofStore>();
+        builder.RegisterInstance(Substitute.For<IBlockTree>()).As<IBlockTree>();
+        builder.RegisterInstance(verifier).As<ILeanProofVerifier>();
+        using IContainer container = builder.Build();
+
+        bool valid = container.Resolve<IBlockValidator>().ValidateSuggestedBlock(block, Build.A.BlockHeader.TestObject, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(verdict), error);
+            Assert.That(error, Is.EqualTo(verdict ? null : BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(verifier.VerifiedProof, Is.EqualTo(Proof));
+        }
+    }
+
+    private static Transaction DependencyTx()
+    {
+        byte[] depData = new byte[Eip8288Constants.DependencyTripleLength];
+        depData[31] = Eip8288Constants.LeanSphincsScheme;
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, depData)],
+            FrameSignatures = [],
+        };
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
+
     private static DependencyProofAvailabilityBlockValidator Create(IBlockValidator inner, IDependencyProofStore store) =>
         new(inner, store, Substitute.For<IBlockTree>());
 
@@ -95,6 +155,24 @@ public class DependencyProofAvailabilityBlockValidatorTests
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(Proof), Keccak.Compute("deps"));
         block.Header.Hash = block.Header.CalculateHash();
         return (block, new DependencyProofStore(new TestMemDb()));
+    }
+
+    private sealed class ProofRecordingVerifier(bool result) : ILeanProofVerifier
+    {
+        public byte[]? VerifiedProof { get; private set; }
+
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
+
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+        {
+            VerifiedProof = proof.ToArray();
+            return result;
+        }
+
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) =>
+            throw new NotSupportedException();
     }
 
     /// <summary>Fails with <see cref="Error"/> unless the block carries a proof, recording the proof it was given.</summary>
