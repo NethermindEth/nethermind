@@ -120,7 +120,7 @@ public partial class Rlp
                             }
                             catch (Exception e)
                             {
-                                throw new ArgumentException($"Unable to set decoder for {key}, because {type} decoder has no suitable constructor.", e);
+                                throw new ArgumentException($"Unable to create decoder {type} for {key}.", e);
                             }
                         }
                         else
