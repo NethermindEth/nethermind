@@ -208,22 +208,22 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
             return true;
         }
 
-        ForkedSignedBeaconBlock? block;
         try
         {
-            if (!store!.TryGetForkedBlock(root, out block))
+            if (!store!.TryGetStoredBlock(root, out StoredBlock block))
             {
                 return false;
             }
+
+            link = block.IsGloas
+                ? new BlockLink(block.Slot, block.ParentRoot, true, block.Bid.BlockHash.ToHash256(), block.Bid.ParentBlockHash.ToHash256())
+                : new BlockLink(block.Slot, block.ParentRoot, false, null, null);
         }
         catch (Exception e) when (e is BeaconStateException or InvalidDataException)
         {
             throw new Eth2ReqRespException($"Unreadable stored block {root}: {e.Message}", ReqRespFraming.ResponseCode.ServerError);
         }
 
-        link = block is ForkedSignedBeaconBlock.OfGloas { Block.Message.Body.SignedExecutionPayloadBid.Message: { } bid }
-            ? new BlockLink(block.Slot, block.ParentRoot, true, bid.BlockHash, bid.ParentBlockHash)
-            : new BlockLink(block.Slot, block.ParentRoot, false, null, null);
         _links.Set(root, link);
         return true;
     }

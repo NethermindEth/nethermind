@@ -1172,23 +1172,23 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         }
 
         // A corrupt record reads as a held non-Gloas block; any other store fault is a node failure and surfaces through Handle as a REJECT.
-        ForkedSignedBeaconBlock? forked;
         try
         {
-            if (!store.TryGetForkedBlock(blockRoot, out forked))
+            if (!store.TryGetStoredBlock(blockRoot, out StoredBlock stored))
             {
                 return EnvelopeBlockLookup.NotHeld;
             }
+
+            block = stored.IsGloas
+                ? new EnvelopeBlock(true, stored.Slot, stored.Bid.BuilderIndex, stored.Bid.BlockHash.ToHash256(), stored.Bid.ExecutionRequestsRoot.ToHash256())
+                : EnvelopeBlock.NotGloas;
         }
         catch (Exception e) when (e is BeaconStateException or InvalidDataException)
         {
             if (_logger.IsWarn) _logger.Warn($"Unreadable stored block {blockRoot} named by an execution payload envelope: {e.Message}");
-            forked = null;
+            block = EnvelopeBlock.NotGloas;
         }
 
-        block = forked is ForkedSignedBeaconBlock.OfGloas { Block.Message: { Body.SignedExecutionPayloadBid.Message: { } bid } gloas }
-            ? new EnvelopeBlock(true, gloas.Slot, bid.BuilderIndex, bid.BlockHash, bid.ExecutionRequestsRoot)
-            : EnvelopeBlock.NotGloas;
         _envelopeBlocks.Set(blockRoot, block);
         return EnvelopeBlockLookup.Found;
     }

@@ -7,6 +7,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Common;
@@ -87,9 +88,9 @@ internal static class ResponseEnvelope
         foreach (Hash256 child in children)
         {
             if (!ExecutionOptimistic(ctx, child)
-                && ctx.Store.TryGetForkedBlock(child, out ForkedSignedBeaconBlock? childBlock)
-                && childBlock is ForkedSignedBeaconBlock.OfGloas { Block.Message.Body.SignedExecutionPayloadBid.Message.ParentBlockHash: { } builtOn }
-                && builtOn == payloadHash)
+                && ctx.Store.TryGetStoredBlock(child, out StoredBlock childBlock)
+                && childBlock.IsGloas
+                && childBlock.Bid.ParentBlockHash == payloadHash)
             {
                 return false;
             }
