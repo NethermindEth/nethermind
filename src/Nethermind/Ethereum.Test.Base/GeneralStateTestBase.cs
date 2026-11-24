@@ -290,8 +290,8 @@ namespace Ethereum.Test.Base
         private static void CommitToPlaceholderDependencyProof(Block block)
         {
             List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
-            block.StarkProof = dependencies.Count == 0 ? [] : PlaceholderDependencyProof;
-            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
+            block.DependencyProof = dependencies.Count == 0 ? [] : PlaceholderDependencyProof;
+            block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
         }
 
         private static readonly byte[] PlaceholderDependencyProof = [0];
@@ -307,10 +307,10 @@ namespace Ethereum.Test.Base
             public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) =>
                 inner.VerifyLeanStark(in dataHash, in verificationKey, witness);
 
-            public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => true;
+            public bool VerifyDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => true;
 
-            public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) =>
-                inner.ProveRecursiveStark(in depsHash, aggregatedVk, input);
+            public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) =>
+                inner.ProveDependencyProof(in depsHash, aggregatedVk, input);
         }
     }
 }
