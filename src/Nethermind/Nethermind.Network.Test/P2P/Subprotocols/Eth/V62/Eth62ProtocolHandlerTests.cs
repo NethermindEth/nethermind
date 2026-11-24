@@ -136,16 +136,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Should_stop_notifying_about_new_blocks_and_new_block_hashes_if_in_PoS()
-        {
-            _gossipPolicy.CanGossipBlocks.Returns(false);
-
-            RecreateHandler(init: false);
-
-            _syncManager.Received().StopNotifyingPeersAboutNewBlocks();
-        }
-
-        [Test]
         public void Can_broadcast_a_block([Values(SendBlockMode.HashOnly, SendBlockMode.FullBlock, (SendBlockMode)99)] SendBlockMode mode)
         {
             Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;

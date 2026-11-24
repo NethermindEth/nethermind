@@ -1952,7 +1952,6 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         public ulong LowestBlock => Volatile.Read(ref _head).Number;
         public void HintBlock(Hash256 hash, ulong number, ISyncPeer receivedFrom) { }
         public void AddNewBlock(Block block, ISyncPeer node) { }
-        public void StopNotifyingPeersAboutNewBlocks() { }
         public TxReceipt[]? GetReceipts(Hash256 blockHashes) => null;
         public bool TryAppendReceipts(Hash256 blockHash, IRlpDecoder<TxReceipt> decoder, bool withBloom, ArrayPoolList<byte> destination) => false;
         public System.Buffers.MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash) => null;
