@@ -139,6 +139,31 @@ public class Eth74ProtocolHandlerTests
         Assert.That(Delivered<DependencyProofsMessage>().Single().Proofs, Has.Count.EqualTo(2));
     }
 
+    // The largest response this responder builds, entries just under the soft limit then one MAX_DEPENDENCY_PROOF_BYTES proof,
+    // fits the cap checked before decompression.
+    [Test]
+    public void Largest_response_fits_the_local_message_cap()
+    {
+        BlockHeader[] headers = [Committed(1, [1]), Committed(2, [2])];
+        _proofStore.Insert(headers[0].Number, headers[0].Hash!, new byte[Eth74Protocol.SoftResponseLimit - 5]);
+        _proofStore.Insert(headers[1].Number, headers[1].Hash!, new byte[Eip8288Constants.MaxAggregateProofBytes]);
+
+        using GetDependencyProofsMessage request = new(long.MaxValue, headers.Select(static h => h.Hash!).ToArray().ToPooledList(2));
+        Handle(request, Eth74MessageCode.GetDependencyProofs);
+
+        DependencyProofsMessage response = Delivered<DependencyProofsMessage>().Single();
+        IByteBuffer buffer = _serializer.ZeroSerialize(response);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.Proofs, Has.Count.EqualTo(2));
+                Assert.That(buffer.ReadableBytes - 1, Is.LessThanOrEqualTo(Eth74Protocol.LocalMaxResponseBytes));
+            }
+        }
+        finally { buffer.Release(); }
+    }
+
     // EIP-8512 asks responders to rate limit: a burst beyond the per-peer backlog is answered with no proofs.
     [Test]
     public async Task Rate_limits_serving_per_peer()
