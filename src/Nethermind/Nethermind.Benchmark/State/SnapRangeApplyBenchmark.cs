@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -22,6 +23,7 @@ using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.SnapSync;
+using NSubstitute;
 
 namespace Nethermind.Benchmarks.State;
 
@@ -61,8 +63,11 @@ public class SnapRangeApplyBenchmark
     [Benchmark]
     public void ApplyRanges()
     {
-        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        FlatFactory factory = new(new RocksDbPersistence(db, NullLogManager.Instance, NullTrieNodeLog.Instance));
+        // Without pruning, releasing a snapshot does not scan the whole database, which no real database does.
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new(neverPrune: true);
+        FlatSnapTrieFactory factory = new(
+            new RocksDbPersistence(db, NullLogManager.Instance, NullTrieNodeLog.Instance),
+            Substitute.For<IPersistenceManager>(), db, new MemDb(), new SyncConfig(), NullLogManager.Instance);
         foreach (Func<ISnapTrieFactory, AddRangeResult> addRange in _addRanges)
         {
             AddRangeResult result = addRange(factory);
@@ -162,14 +167,4 @@ public class SnapRangeApplyBenchmark
     }
 
     private static byte[][] Copy(IByteArrayList? proofs) => proofs is null ? [] : [.. Enumerable.Range(0, proofs.Count).Select(i => proofs[i].ToArray())];
-
-    /// <summary>Creates the flat snap trees as <see cref="FlatSnapTrieFactory"/> does, without its sync lifecycle.</summary>
-    private sealed class FlatFactory(IPersistence persistence) : ISnapTrieFactory
-    {
-        public ISnapTree<PathWithAccount> CreateStateTree() =>
-            new FlatSnapStateTree(persistence.CreateReader(ReaderFlags.Sync), persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL), enableDoubleWriteCheck: false);
-
-        public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath) =>
-            new FlatSnapStorageTree(persistence.CreateReader(ReaderFlags.Sync), persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL), accountPath.ToCommitment(), enableDoubleWriteCheck: false);
-    }
 }
