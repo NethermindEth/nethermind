@@ -87,11 +87,10 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
         /// <remarks>Deliberately narrower than the tracer-requirement test the non-frame path uses: a frame
         /// transaction reads its own logs from an ASSERT frame (EIP-7906), which no tracer flag describes.
-        /// A cancellation wrapper that traces nothing of its own is looked through.</remarks>
+        /// The run is unobserved when the tracer traces nothing, whatever wraps it.</remarks>
         private protected static bool ShouldSuppressLogs(ExecutionOptions opts, ITxTracer tracer) =>
             opts.HasFlag(ExecutionOptions.Warmup)
-            && (ReferenceEquals(tracer, NullTxTracer.Instance)
-                || tracer is CancellationTxTracer { InnerTracer: NullTxTracer } && !tracer.IsTracing);
+            && !tracer.IsTracing && !tracer.IsTracingState && !tracer.IsTracingStorage;
 
         private protected static RefundResult InvalidStateGas(ILogger logger, string message)
         {

@@ -488,11 +488,15 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    // Nobody observes a prewarm, so its logs are never materialised; a cancellation wrapper that traces receipts observes them.
-    [TestCase(false, false, true, TestName = "Warmup_NullTracer_SuppressesLogs")]
-    [TestCase(true, false, true, TestName = "Warmup_CancellableNullTracer_SuppressesLogs")]
-    [TestCase(true, true, false, TestName = "Warmup_CancellableReceiptTracer_KeepsLogs")]
-    public void Warmup_SuppressesLogsOnlyWithoutAnObservingTracer(bool cancellable, bool tracingReceipt, bool suppressed)
+    public enum WarmupTracer { Null, Cancellable, CancellableReceipt, CancellableState, Composite }
+
+    // Nobody observes a prewarm, so its logs are never materialised; a wrapper that traces receipts or state observes them.
+    [TestCase(WarmupTracer.Null, true, TestName = "Warmup_NullTracer_SuppressesLogs")]
+    [TestCase(WarmupTracer.Cancellable, true, TestName = "Warmup_CancellableNullTracer_SuppressesLogs")]
+    [TestCase(WarmupTracer.CancellableReceipt, false, TestName = "Warmup_CancellableReceiptTracer_KeepsLogs")]
+    [TestCase(WarmupTracer.CancellableState, false, TestName = "Warmup_CancellableStateTracer_KeepsLogs")]
+    [TestCase(WarmupTracer.Composite, true, TestName = "Warmup_CompositeNullTracer_SuppressesLogs")]
+    public void Warmup_SuppressesLogsOnlyWithoutAnObservingTracer(WarmupTracer kind, bool suppressed)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
@@ -500,7 +504,14 @@ public partial class FrameTxProcessorTests
         EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine,
             new EthereumCodeInfoRepository(_stateProvider), LimboLogs.Instance);
         Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
-        ITxTracer tracer = cancellable ? new CancellationTxTracer(NullTxTracer.Instance) { IsTracingReceipt = tracingReceipt } : NullTxTracer.Instance;
+        ITxTracer tracer = kind switch
+        {
+            WarmupTracer.Null => NullTxTracer.Instance,
+            WarmupTracer.Cancellable => new CancellationTxTracer(NullTxTracer.Instance),
+            WarmupTracer.CancellableReceipt => new CancellationTxTracer(NullTxTracer.Instance) { IsTracingReceipt = true },
+            WarmupTracer.CancellableState => new CancellationTxTracer(NullTxTracer.Instance) { IsTracingState = true },
+            _ => new CompositeTxTracer(NullTxTracer.Instance)
+        };
 
         TransactionResult result = processor.Warmup(tx, new BlockExecutionContext(block.Header, Spec), tracer);
 
