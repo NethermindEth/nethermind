@@ -152,6 +152,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
             .AddSingleton<IManualBlockProductionTrigger, BuildBlocksWhenRequested>()
             .AddSingleton<IBlockProducer>(static ctx => ResolveBlockProductionFactory<IBlockProducerFactory>(ctx).InitBlockProducer())
+            .AddSingleton<IBlockProducerRunner>(CreateBlockProducerRunner)
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
                 new GasPriceOracle(
@@ -180,9 +181,6 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(metered.PublishMetrics);
             return metered;
         });
-
-        // Consensus factories own runner disposal, including runners wrapped by the Merge factory.
-        builder.Register(CreateBlockProducerRunner).SingleInstance().ExternallyOwned();
 
         builder.AddSingleton<IMainStateBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>();
 

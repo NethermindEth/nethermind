@@ -21,7 +21,6 @@ internal sealed class CliqueBlockProducerFactory(
     ISealer sealer,
     ICliqueConfig cliqueConfig,
     IBlockTree blockTree,
-    IDisposableStack disposeStack,
     ILogManager logManager)
     : IBlockProducerFactory, IBlockProducerRunnerFactory
 {
@@ -44,9 +43,8 @@ internal sealed class CliqueBlockProducerFactory(
             logManager);
     }
 
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-    {
-        CliqueBlockProducerRunner runner = new(
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) =>
+        new CliqueBlockProducerRunner(
             blockTree,
             timestamper,
             cryptoRandom,
@@ -54,7 +52,4 @@ internal sealed class CliqueBlockProducerFactory(
             (CliqueBlockProducer)blockProducer,
             cliqueConfig,
             logManager);
-        disposeStack.Push(runner);
-        return runner;
-    }
 }

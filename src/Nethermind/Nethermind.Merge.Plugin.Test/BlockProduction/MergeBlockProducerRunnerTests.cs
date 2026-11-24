@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -24,6 +25,20 @@ public class MergeBlockProducerRunnerTests
 
         await preMergeRunner.Received(1).StopAsync();
         await postMergeRunner.Received(1).StopAsync();
+    }
+
+    [Test]
+    public async Task Disposing_the_merge_runner_releases_its_inner_runners_once()
+    {
+        IBlockProducerRunner preMerge = Substitute.For<IBlockProducerRunner, IDisposable>();
+        IBlockProducerRunner postMerge = Substitute.For<IBlockProducerRunner, IAsyncDisposable>();
+        MergeBlockProducerRunner runner = CreateRunner(preMerge, postMerge, terminalBlockReached: false);
+
+        await runner.DisposeAsync();
+        await runner.DisposeAsync();
+
+        ((IDisposable)preMerge).Received(1).Dispose();
+        await ((IAsyncDisposable)postMerge).Received(1).DisposeAsync();
     }
 
     private static MergeBlockProducerRunner CreateRunner(

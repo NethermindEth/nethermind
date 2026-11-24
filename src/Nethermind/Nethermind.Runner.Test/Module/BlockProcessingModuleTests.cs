@@ -43,6 +43,6 @@ public class BlockProcessingModuleTests
             }
         }
 
-        ((IDisposable)runner).DidNotReceive().Dispose();
+        ((IDisposable)runner).Received(enabled ? 1 : 0).Dispose();
     }
 }
