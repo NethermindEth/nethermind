@@ -111,7 +111,7 @@ public class SnapRangeApplyBenchmark
             ValueHash256[] paths;
             if (storage)
             {
-                (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
+                (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList proofs) =
                     server.GetStorageRanges(stateRoot, [owner], start, ValueKeccak.MaxValue, rangeBytes, CancellationToken.None);
                 PathWithStorageSlot[] entries = slots.Count == 0 ? [] : [.. slots[0]];
                 proof = Copy(proofs);
@@ -166,5 +166,5 @@ public class SnapRangeApplyBenchmark
         return ranges;
     }
 
-    private static byte[][] Copy(IByteArrayList? proofs) => proofs is null ? [] : [.. Enumerable.Range(0, proofs.Count).Select(i => proofs[i].ToArray())];
+    private static byte[][] Copy(IByteArrayList proofs) => proofs is null ? [] : [.. Enumerable.Range(0, proofs.Count).Select(i => proofs[i].ToArray())];
 }
