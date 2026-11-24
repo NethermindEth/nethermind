@@ -29,6 +29,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     }
 
     private bool _isTarget;
+    private Transaction? _targetTransaction;
     private bool _suppressed;
     internal bool IsComplete { get; private set; }
     internal IBlockTracer Inner => _inner;
@@ -147,6 +148,8 @@ public sealed class TransactionTraceBoundary : IBlockTracer
         HasExecuted = false;
         _isTarget = false;
         _suppressed = false;
+        _targetTransaction = (uint)KnownIndex < (uint)block.Transactions.Length && block.Transactions[KnownIndex].Hash == _transactionHash
+            ? block.Transactions[KnownIndex] : null;
         _inner.StartNewBlockTrace(block);
     }
 
@@ -155,7 +158,9 @@ public sealed class TransactionTraceBoundary : IBlockTracer
         // Reward placeholders have no transaction and must reach the inner tracer even during a reward-only pass.
         _suppressed = SkipsTransactions && tx is not null;
         if (_suppressed) return NullTxTracer.Instance;
-        _isTarget = _transactionHash is not null && tx?.Hash == _transactionHash;
+        _isTarget = _targetTransaction is not null
+            ? ReferenceEquals(tx, _targetTransaction)
+            : _transactionHash is not null && tx?.Hash == _transactionHash;
         return _inner.StartNewTxTrace(tx);
     }
 

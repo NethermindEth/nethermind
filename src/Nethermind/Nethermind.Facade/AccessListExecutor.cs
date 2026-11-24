@@ -37,9 +37,8 @@ internal static class AccessListExecutor
         int addressCount = FillAddressesToOptimize(addressBuffer, nonceSource, header, tx, optimize, precompiles, ecdsa, chainId);
         if (addressCount < addressBuffer.Length) Array.Resize(ref addressBuffer, addressCount);
 
-        // Tracing access charges every account and slot a run touches as warm, so a branch that depends on gas can
-        // go another way than in a transaction carrying the list. The optimized list is instead collected, as Geth
-        // does, from what opcodes name in runs that pay the real access costs.
+        // The optimized list is collected from what opcodes name, so it leaves out the accounts the EVM warms
+        // without an opcode naming them, such as delegation targets and created contracts.
         AccessTxTracer? accessTracer = optimize ? null : new(addressBuffer);
         OpcodeAccessListTracer? opcodeTracer = optimize ? new(addressBuffer) : null;
         AccessList? previousAccessList = tx.AccessList;

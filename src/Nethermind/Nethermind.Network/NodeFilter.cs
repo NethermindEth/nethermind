@@ -50,7 +50,7 @@ public sealed class NodeFilter
     /// Creates a <see cref="NodeFilter"/> from common parameters, returning <see cref="AcceptAll"/> when disabled.
     /// </summary>
     public static NodeFilter Create(int maxActivePeers, bool filterEnabled, bool subnetBucketing, IPAddress? currentIp)
-        => filterEnabled ? new NodeFilter(maxActivePeers * 4, !subnetBucketing, currentIp) : AcceptAll;
+        => filterEnabled ? new NodeFilter(Math.Max(4, maxActivePeers * 4), !subnetBucketing, currentIp) : AcceptAll;
 
     /// <summary>
     /// Creates an exact-match filter with a custom timeout window.
