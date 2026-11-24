@@ -488,7 +488,12 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    public enum WarmupTracer { Null, Cancellable, CancellableReceipt, CancellableState, Composite }
+    public enum WarmupTracer { Null, Cancellable, CancellableReceipt, CancellableState, Composite, CollectingLogs }
+
+    private sealed class LogCollectingTracer : TxTracer
+    {
+        public override bool IsCollectingLogs => true;
+    }
 
     // Nobody observes a prewarm, so its logs are never materialised; a wrapper that traces receipts or state observes them.
     [TestCase(WarmupTracer.Null, true, TestName = "Warmup_NullTracer_SuppressesLogs")]
@@ -496,6 +501,7 @@ public partial class FrameTxProcessorTests
     [TestCase(WarmupTracer.CancellableReceipt, false, TestName = "Warmup_CancellableReceiptTracer_KeepsLogs")]
     [TestCase(WarmupTracer.CancellableState, false, TestName = "Warmup_CancellableStateTracer_KeepsLogs")]
     [TestCase(WarmupTracer.Composite, true, TestName = "Warmup_CompositeNullTracer_SuppressesLogs")]
+    [TestCase(WarmupTracer.CollectingLogs, false, TestName = "Warmup_LogCollectingTracer_KeepsLogs")]
     public void Warmup_SuppressesLogsOnlyWithoutAnObservingTracer(WarmupTracer kind, bool suppressed)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
@@ -510,7 +516,9 @@ public partial class FrameTxProcessorTests
             WarmupTracer.Cancellable => new CancellationTxTracer(NullTxTracer.Instance),
             WarmupTracer.CancellableReceipt => new CancellationTxTracer(NullTxTracer.Instance) { IsTracingReceipt = true },
             WarmupTracer.CancellableState => new CancellationTxTracer(NullTxTracer.Instance) { IsTracingState = true },
-            _ => new CompositeTxTracer(NullTxTracer.Instance)
+            WarmupTracer.Composite => new CompositeTxTracer(NullTxTracer.Instance),
+            WarmupTracer.CollectingLogs => new LogCollectingTracer(),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
 
         TransactionResult result = processor.Warmup(tx, new BlockExecutionContext(block.Header, Spec), tracer);

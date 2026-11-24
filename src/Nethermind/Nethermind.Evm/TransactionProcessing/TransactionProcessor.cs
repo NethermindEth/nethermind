@@ -90,7 +90,7 @@ namespace Nethermind.Evm.TransactionProcessing
         /// The run is unobserved when the tracer traces nothing, whatever wraps it.</remarks>
         private protected static bool ShouldSuppressLogs(ExecutionOptions opts, ITxTracer tracer) =>
             opts.HasFlag(ExecutionOptions.Warmup)
-            && !tracer.IsTracing && !tracer.IsTracingState && !tracer.IsTracingStorage;
+            && !tracer.IsTracing && !tracer.IsTracingState && !tracer.IsTracingStorage && !tracer.IsCollectingLogs;
 
         private protected static RefundResult InvalidStateGas(ILogger logger, string message)
         {
