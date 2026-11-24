@@ -146,7 +146,7 @@ High blast radius — expect 20+ files. Key areas:
 5. `Nethermind.Evm/TransactionProcessing/GasConsumed.cs` — struct expansion
 6. `Nethermind.Evm/Instructions/EvmInstructions.Storage.cs` — SSTORE cost/refund changes
 7. `Nethermind.Evm/Tracing/ITxTracer.cs` — if `GasConsumed` struct shape changes, all ~20 tracer implementations must update
-8. L2 compatibility: `Nethermind.Optimism/OptimismTransactionProcessor.cs`, `Nethermind.Taiko/TaikoTransactionProcessor.cs`
+8. L2 compatibility: `Nethermind.Taiko/TaikoTransactionProcessor.cs`
 
 ### Receipt format changes
 
