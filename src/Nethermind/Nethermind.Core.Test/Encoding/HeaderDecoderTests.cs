@@ -42,14 +42,17 @@ public class HeaderDecoderTests
         Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
     }
 
-    [Test]
-    public void Can_encode_decode_with_recursive_stark()
+    // EIPs#12549: dependency_proof_hash and block_deps_hash are appended as two flat 32-byte fields; a block without
+    // dependencies commits to the empty proof, keccak256 of the empty byte string.
+    [TestCase(new byte[] { 1, 2, 3, 4 })]
+    [TestCase(new byte[0])]
+    public void Can_encode_decode_with_recursive_stark(byte[] proof)
     {
         BlockHeader header = Build.A.BlockHeader
             .WithMixHash(Keccak.Compute("mix_hash"))
             .WithNonce(1000)
             .TestObject;
-        header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(new byte[] { 1, 2, 3, 4 }), Keccak.Compute("deps"));
+        header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(proof), Keccak.Compute("deps"));
 
         HeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header);
@@ -69,8 +72,11 @@ public class HeaderDecoderTests
         Assert.That(decoded.DependencyProofCommitment, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(Keccak.Compute(new byte[] { 1, 2, 3, 4 })));
+            Assert.That(decoded.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(Keccak.Compute(proof)));
             Assert.That(decoded.DependencyProofCommitment.BlockDepsHash, Is.EqualTo(Keccak.Compute("deps")));
+            if (proof.Length == 0)
+                Assert.That(decoded.DependencyProofCommitment.DependencyProofHash,
+                    Is.EqualTo(new Hash256("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")));
         }
 
         decoded.Hash = decoded.CalculateHash();

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -245,27 +244,6 @@ public class InvalidChainTrackerTest
         }
 
         AssertInvalid(hashes[1]);
-    }
-
-    // EIP-8288: a processed block whose stark_proof does not match stark_proof_hash had the wrong body; it is requested again
-    // and its hash is not marked invalid, unless its header commits an empty statement to a nonempty proof (EIPs#12479).
-    [TestCase(null, false, false)]
-    [TestCase(new byte[] { 2 }, false, false)]
-    [TestCase(new byte[] { 1 }, false, true)]
-    [TestCase(new byte[] { 2 }, true, true)]
-    public void Processor_invalidation_skips_a_body_with_a_mismatched_stark_proof(byte[]? proof, bool noDependencies, bool invalid)
-    {
-        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
-        _tracker.SetupBlockchainProcessorInterceptor(queue);
-        Block block = Build.A.Block.WithParent(Build.A.BlockHeader.TestObject).TestObject;
-        block.Header.DependencyProofCommitment = new(Keccak.Compute(new byte[] { 1 }),
-            noDependencies ? new Hash256(Eip8288Dependencies.ComputeDepsHash([])) : TestItem.KeccakA);
-        block.Header.Hash = block.Header.CalculateHash();
-        block.DependencyProof = proof;
-
-        queue.InvalidBlock += Raise.EventWith(new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = block });
-
-        Assert.That(_tracker.IsOnKnownInvalidChain(block.Hash!, out _), Is.EqualTo(invalid));
     }
 
     private void AssertValid(Hash256 hash) =>

@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Logging;
 using System.Diagnostics.CodeAnalysis;
 
@@ -49,7 +50,8 @@ public class InvalidBlockInterceptor(
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
-            if (ShouldNotTrackInvalidation(block))
+            // A dependency proof that is not available yet does not make the block invalid (EIP-8288).
+            if (error == BlockErrorMessages.MissingDependencyProof || ShouldNotTrackInvalidation(block))
             {
                 if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
                 return result;

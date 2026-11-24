@@ -1225,7 +1225,7 @@ public partial class EngineModuleTests
                 withdrawals,
                 ArrayMemoryManager.From([0x01, 0x02, 0x03])),
             null,
-            PayloadBodiesV2DirectResponse.CreatePayloadBody([], null, null)
+            PayloadBodiesV2DirectResponse.CreatePayloadBody(Array.Empty<Transaction>(), null, null)
         ];
 
         using PayloadBodiesV2DirectResponse response = new(items);

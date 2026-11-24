@@ -52,9 +52,10 @@ public class BlockForRpcWireFormatTests
     public void Block_response_keeps_its_wire_format(string fixture, BlockForRpc block) =>
         JsonFixture.AssertMatches(typeof(BlockForRpcWireFormatTests).Assembly, fixture, Serialize(block));
 
-    // EIP-8288: the recursive STARK commitments are header fields; the proof is body data, given with full transactions only.
+    // EIP-8288: dependency_proof_hash and block_deps_hash are header fields; the dependency proof is not part of the block and
+    // not returned, even with full transactions.
     [Test]
-    public void Block_response_carries_the_recursive_stark_commitment_and_proof([Values] bool full)
+    public void Block_response_carries_the_recursive_stark_commitment_but_not_the_proof([Values] bool full)
     {
         Block block = Build.A.Block.WithNumber(3).TestObject;
         block.DependencyProof = [0xab, 0xcd];
@@ -64,9 +65,10 @@ public class BlockForRpcWireFormatTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(json, Does.Contain($"\"starkProofHash\":\"{TestItem.KeccakA}\""));
+            Assert.That(json, Does.Contain($"\"dependencyProofHash\":\"{TestItem.KeccakA}\""));
             Assert.That(json, Does.Contain($"\"blockDepsHash\":\"{TestItem.KeccakB}\""));
-            Assert.That(json.Contains("\"starkProof\":\"0xabcd\""), Is.EqualTo(full));
+            Assert.That(json, Does.Not.Contain("\"dependencyProof\""));
+            Assert.That(json, Does.Not.Contain("starkProof"));
         }
     }
 

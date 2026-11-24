@@ -12,7 +12,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public sealed class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager logManager, IBlockAccessListStore balStore, IBlockStore blockStore)
+public sealed class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager logManager, IBlockAccessListStore balStore, IBlockStore blockStore, IDependencyProofStore proofStore)
     : IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>
 {
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByHashV2Handler));
@@ -35,6 +35,7 @@ public sealed class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogMa
                 results[i] = PayloadBodiesHandlerHelper.CreatePayloadBodyV2(
                     blockStore,
                     balStore,
+                    proofStore,
                     blockTree.FindHeader(blockHash, PayloadBodiesHandlerHelper.HashLookupOptions),
                     blockHash);
             }

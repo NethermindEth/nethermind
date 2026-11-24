@@ -86,9 +86,9 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.Position = position;
             if (position != headerCheck)
             {
-                Hash256 starkProofHash = decoderContext.DecodeKeccak() ?? throw new RlpException("Missing EIP-8288 proof hash.");
+                Hash256 dependencyProofHash = decoderContext.DecodeKeccak() ?? throw new RlpException("Missing EIP-8288 dependency proof hash.");
                 Hash256 blockDepsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
-                blockHeader.DependencyProofCommitment = new DependencyProofCommitment(starkProofHash, blockDepsHash);
+                blockHeader.DependencyProofCommitment = new DependencyProofCommitment(dependencyProofHash, blockDepsHash);
                 position = decoderContext.Position;
             }
 

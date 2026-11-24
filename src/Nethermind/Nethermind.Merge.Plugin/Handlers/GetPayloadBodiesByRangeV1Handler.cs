@@ -12,7 +12,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public sealed class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IBlockStore blockStore, ILogManager logManager)
+public sealed class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IBlockStore blockStore, IDependencyProofStore proofStore, ILogManager logManager)
     : IGetPayloadBodiesByRangeV1Handler
 {
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeV1Handler));
@@ -47,6 +47,7 @@ public sealed class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IBloc
         {
             results[i - start] = PayloadBodiesHandlerHelper.CreatePayloadBodyV1(
                 blockStore,
+                proofStore,
                 blockTree.FindHeader(i, PayloadBodiesHandlerHelper.RangeLookupOptions));
         }
 

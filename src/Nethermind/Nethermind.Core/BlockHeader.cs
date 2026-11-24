@@ -98,10 +98,10 @@ public class BlockHeader
     public ulong? ExcessBlobGas { get; set; }
     public ulong? SlotNumber { get; set; }
 
-    /// <summary>EIP-8288 commitments to the body proof and the block's transaction dependencies.</summary>
+    /// <summary>EIP-8288 header fields <c>dependency_proof_hash</c> and <c>block_deps_hash</c>.</summary>
     [JsonPropertyName("recursiveStark")]
     public DependencyProofCommitment? DependencyProofCommitment { get; set; }
-    public bool HasBody => DependencyProofCommitment is not null || (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
+    public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
                            || (BlockAccessListHash is not null && BlockAccessListHash != Keccak.OfAnEmptySequenceRlp);

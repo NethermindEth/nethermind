@@ -139,8 +139,8 @@ internal static class GetPayloadDirectResponseWriter
         // Proof fields are present only on EIP-8288 payloads.
         if (block.Header.DependencyProofCommitment is not null)
         {
-            writer.Write(",\"starkProof\":"u8);
-            WriteHexString(writer, block.DependencyProof ?? throw new InvalidOperationException("Missing block proof body"), chunked: true);
+            writer.Write(",\"dependencyProof\":"u8);
+            WriteHexString(writer, block.DependencyProof ?? throw new InvalidOperationException("Missing block dependency proof"), chunked: true);
         }
 
         writer.Write("}"u8);

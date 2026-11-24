@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -29,15 +28,13 @@ public class BlockValidator(
     IHeaderValidator? headerValidator,
     IUnclesValidator? unclesValidator,
     ISpecProvider? specProvider,
-    ILogManager? logManager,
-    ILeanProofVerifier leanProofVerifier)
+    ILogManager? logManager)
     : IBlockValidator
 {
     private readonly IHeaderValidator _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
     private readonly ITxValidator _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
     private readonly IUnclesValidator _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier));
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
@@ -104,11 +101,10 @@ public class BlockValidator(
                ValidateDependencyProof(block, spec, ref errorMessage);
     }
 
-    /// <summary>
-    /// EIP-8288 block validity: the header <c>recursive_stark</c> must be present, its
-    /// <c>block_deps_hash</c> must commit to the block's transaction dependencies, and the recursive
-    /// STARK must verify against the block fork's <c>AGGREGATED_VK</c>, or be empty when there are none.
-    /// </summary>
+    /// <summary>EIP-8288 block validity: the header commitments must match the block's dependencies and any <c>dependency_proof</c>
+    /// received with it. <see cref="DependencyProofBlockValidator"/> verifies the proof.</summary>
+    /// <remarks>A block committing to a nonempty proof it does not carry fails last with
+    /// <see cref="BlockErrorMessages.MissingDependencyProof"/>, which is not invalidity (EIPs#12549).</remarks>
     private bool ValidateDependencyProof(Block block, IReleaseSpec spec, ref string? error)
     {
         DependencyProofCommitment? recursiveStark = block.Header.DependencyProofCommitment;
@@ -119,17 +115,16 @@ public class BlockValidator(
             return false;
         }
 
-        if (recursiveStark is null || block.DependencyProof is null)
+        if (recursiveStark is null)
         {
-            error = BlockErrorMessages.MissingDependencyProof;
+            error = BlockErrorMessages.MissingDependencyProofCommitment;
             if (_logger.IsWarn) _logger.Warn($"Missing recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
             return false;
         }
 
-        // A mismatched proof means a wrong body, which body download already rejects against the header. Should one reach here,
-        // the invalid-chain trackers skip it (DependencyProofMatchesCommitment), so the block hash is not marked invalid.
-        if (block.DependencyProof.Length > Eip8288Constants.MaxAggregateProofBytes
-            || !DependencyProofMatchesCommitment(block.Header, block.Body))
+        if (block.DependencyProof is not null
+            && (block.DependencyProof.Length > Eip8288Constants.MaxAggregateProofBytes
+                || Keccak.Compute(block.DependencyProof) != recursiveStark.DependencyProofHash))
         {
             error = BlockErrorMessages.InvalidDependencyProof;
             return false;
@@ -144,11 +139,9 @@ public class BlockValidator(
             return false;
         }
 
-        if (!DependencyProofAggregator.CheckDependencyProof(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256,
-                block.DependencyProof))
+        if (block.DependencyProof is null && recursiveStark.DependencyProofHash != Keccak.OfAnEmptyString)
         {
-            error = BlockErrorMessages.InvalidDependencyProof;
-            if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
+            error = BlockErrorMessages.MissingDependencyProof;
             return false;
         }
 
@@ -540,26 +533,9 @@ public class BlockValidator(
             return false;
         }
 
-        if (!DependencyProofMatchesCommitment(header, toBeValidated))
-        {
-            error = toBeValidated.DependencyProof is null
-                ? BlockErrorMessages.MissingDependencyProof : BlockErrorMessages.InvalidDependencyProof;
-            return false;
-        }
-
         error = null;
         return true;
     }
-
-    /// <summary>Whether <paramref name="body"/> carries the <c>stark_proof</c> its header commits to.</summary>
-    /// <remarks>EIP-8288: a body whose <c>stark_proof</c> does not hash to <c>stark_proof_hash</c> is not the body of this block. It is
-    /// discarded and requested again, and the block is not marked invalid.
-    /// A header committing an empty statement to a nonempty proof is invalid whatever body is served (EIPs#12479), so no body
-    /// is blamed for it.</remarks>
-    public static bool DependencyProofMatchesCommitment(BlockHeader header, BlockBody body) =>
-        header.DependencyProofCommitment is { } commitment
-            ? !commitment.HasValidShape || body.DependencyProof is { } proof && Keccak.Compute(proof) == commitment.DependencyProofHash
-            : body.DependencyProof is null;
 
     public bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {

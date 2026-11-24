@@ -176,7 +176,7 @@ public class ExecutionPayloadV4Tests
             Withdrawals = [],
             BlobGasUsed = 0,
             ExcessBlobGas = 0,
-            StarkProof = [],
+            DependencyProof = [],
         };
         PayloadAttributes attributes = new()
         {
@@ -233,7 +233,7 @@ public class ExecutionPayloadV4Tests
             BlobGasUsed = 0,
             ExcessBlobGas = 0,
             SlotNumber = 0,
-            StarkProof = proof,
+            DependencyProof = proof,
         };
 
         if (hasDependencies)
@@ -273,7 +273,7 @@ public class ExecutionPayloadV4Tests
             GasLimit = 30_000_000,
             ReceiptsRoot = Keccak.EmptyTreeHash,
             StateRoot = Keccak.EmptyTreeHash,
-            StarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
+            DependencyProof = new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
         };
 
         Result<Block> result = payload.TryGetBlock();
@@ -281,7 +281,7 @@ public class ExecutionPayloadV4Tests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.IsError, Is.True);
-            Assert.That(result.Error, Does.Contain(nameof(ExecutionPayloadV3.StarkProof)));
+            Assert.That(result.Error, Does.Contain(nameof(ExecutionPayloadV3.DependencyProof)));
         }
     }
 
@@ -302,11 +302,12 @@ public class ExecutionPayloadV4Tests
         EthereumJsonSerializer serializer = new();
         ExecutionPayloadV4 deserialized = serializer.Deserialize<ExecutionPayloadV4>(serializer.Serialize(payload))!;
 
-        Assert.That(deserialized.StarkProof, Is.EqualTo(proof));
+        Assert.That(deserialized.DependencyProof, Is.EqualTo(proof));
         JsonObject json = JsonSerializer.SerializeToNode(payload, EthereumJsonSerializer.JsonOptions)!.AsObject();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(json.ContainsKey("starkProof"), Is.True);
+            Assert.That(json.ContainsKey("dependencyProof"), Is.True);
+            Assert.That(json.ContainsKey("starkProof"), Is.False);
             Assert.That(json.ContainsKey("recursiveStarkProof"), Is.False);
             Assert.That(json.ContainsKey("recursiveStarkBlockDepsHash"), Is.False);
             Assert.That(deserialized.TryGetBlock().Data!.Header.DependencyProofCommitment!.BlockDepsHash, Is.EqualTo(depsHash));
@@ -322,7 +323,7 @@ public class ExecutionPayloadV4Tests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(payload.StarkProof, Is.Null);
+            Assert.That(payload.DependencyProof, Is.Null);
             Assert.That(payload.TryGetBlock().Data!.Header.DependencyProofCommitment, Is.Null);
         }
     }

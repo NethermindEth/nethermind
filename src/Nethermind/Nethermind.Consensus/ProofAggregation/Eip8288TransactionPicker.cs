@@ -105,10 +105,9 @@ internal sealed class Eip8288TransactionPicker : BlockProcessor.IBlockProduction
         return false;
     }
 
-    /// <summary>The body bytes kept for the EIP-8288 <c>stark_proof</c> once the block carries dependencies.</summary>
-    /// <remarks>The proof counts toward the EIP-7934 RLP block size and the CL payload but is attached only after packing,
-    /// so the largest admissible proof, the local <see cref="Eip8288Constants.MaxAggregateProofBytes"/> bound, is reserved
-    /// out of the transaction byte budget, measured against an empty <c>stark_proof</c> in place.</remarks>
+    /// <summary>The payload bytes kept for the EIP-8288 <c>dependency_proof</c> once the block carries dependencies.</summary>
+    /// <remarks>The proof is outside the RLP block (EIPs#12549) but inside the CL payload and attached only after packing, so the
+    /// largest admissible proof is reserved out of the byte budget against the CL gossip limit.</remarks>
     private static int DependencyProofReserve(BlockToProduce block, Transaction candidate) =>
         block.LeanProduction.ProofInputs.Count != 0 || Eip8288Dependencies.IsDependencyBearing(candidate)
             ? MaxDependencyProofLength

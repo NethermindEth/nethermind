@@ -17,35 +17,46 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class BlockDecoderTests
 {
+    // EIPs#12549: the dependency proof is in neither header nor body, so the block encoding is the same with or without it,
+    // and a block encoding that carries one after the withdrawals is malformed.
     [TestCase(0)]
     [TestCase(65536)]
-    [TestCase(Eip8288Constants.MaxAggregateProofBytes)]
-    public void Block_roundtrip_preserves_proof_body(int size)
+    public void Block_encoding_omits_the_dependency_proof(int size)
     {
         Block block = Build.A.Block.WithWithdrawals(0).TestObject;
-        block.DependencyProof = new byte[size];
-        block.Header.DependencyProofCommitment = new(Keccak.Compute(block.DependencyProof), Keccak.Compute("deps"));
+        block.Header.DependencyProofCommitment = new(Keccak.Compute(new byte[size]), Keccak.Compute("deps"));
         BlockDecoder decoder = new();
+        byte[] withoutProof = decoder.Encode(block).Bytes;
+        block.DependencyProof = new byte[size];
         byte[] encoded = decoder.Encode(block).Bytes;
         RlpReader reader = new(encoded);
         Block decoded = decoder.DecodeGuardNotNull(ref reader);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(decoded.DependencyProof, Is.EqualTo(block.DependencyProof));
-            Assert.That(decoded.Header.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(block.Header.DependencyProofCommitment.DependencyProofHash));
-            Assert.That(decoded.IsBodyMissing, Is.False);
-            Assert.That(reader.Position, Is.EqualTo(encoded.Length));
-            Assert.That(new Block(block.Header).IsBodyMissing, Is.True);
-        }
         ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, encoded, RlpBehaviors.None)!.Value;
         try
         {
-            Assert.That(recovery.Header.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(block.Header.DependencyProofCommitment.DependencyProofHash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded, Is.EqualTo(withoutProof));
+                Assert.That(decoded.DependencyProof, Is.Null);
+                Assert.That(decoded.Header.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(block.Header.DependencyProofCommitment.DependencyProofHash));
+                Assert.That(recovery.Header.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(block.Header.DependencyProofCommitment.DependencyProofHash));
+                Assert.That(() => DecodeWithTrailingProof(decoder, block, new byte[size]), Throws.InstanceOf<RlpException>());
+            }
         }
         finally
         {
             recovery.Dispose();
         }
+    }
+
+    private static Block DecodeWithTrailingProof(BlockDecoder decoder, Block block, byte[] proof)
+    {
+        byte[] encoded = decoder.Encode(block).Bytes;
+        RlpReader reader = new(encoded);
+        reader.ReadSequenceLength();
+        byte[] malformed = Rlp.Encode(new Rlp(encoded[reader.Position..]), Rlp.Encode(proof)).Bytes;
+        RlpReader malformedReader = new(malformed);
+        return decoder.DecodeGuardNotNull(ref malformedReader);
     }
 
     private static readonly Block[] _scenarios = BuildScenarios();

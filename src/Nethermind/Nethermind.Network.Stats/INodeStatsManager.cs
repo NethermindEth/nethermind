@@ -32,7 +32,8 @@ namespace Nethermind.Stats
         Bodies,
         Receipts,
         SnapRanges,
-        BlockAccessLists
+        BlockAccessLists,
+        DependencyProofs
     }
 
     public enum RequestType
@@ -41,7 +42,8 @@ namespace Nethermind.Stats
         Bodies,
         Receipts,
         SnapRanges,
-        BlockAccessLists
+        BlockAccessLists,
+        DependencyProofs
     }
 
     public static class NodeStatsManagerExtension

@@ -43,8 +43,7 @@ public class BlockValidatorTests
             headerValidator,
             Substitute.For<IUnclesValidator>(),
             Substitute.For<ISpecProvider>(),
-            LimboLogs.Instance,
-            Substitute.For<ILeanProofVerifier>());
+            LimboLogs.Instance);
     }
 
 
@@ -63,8 +62,7 @@ public class BlockValidatorTests
             new HeaderValidator(blockTree, Always.Valid, specProvider, LimboLogs.Instance),
             Always.Valid,
             specProvider,
-            LimboLogs.Instance,
-            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+            LimboLogs.Instance);
 
         Block parent = Build.A.Block.WithDifficulty(1).TestObject;
         Block block = Build.A.Block.WithParent(parent).WithDifficulty(2).TestObject;
@@ -88,7 +86,7 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_WithdrawalsMissingAfterShanghai_IsRejected([Values] bool validateHashes)
     {
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Shanghai.Instance);
-        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).WithWithdrawals(null).TestObject;
 
@@ -152,12 +150,14 @@ public class BlockValidatorTests
 
         CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(error, Is.EqualTo(BlockErrorMessages.MissingDependencyProof));
+        Assert.That(error, Is.EqualTo(BlockErrorMessages.MissingDependencyProofCommitment));
     }
 
+    // EIPs#12549: a proof received with the block must hash to dependency_proof_hash before the verifier runs. A block
+    // committing to a nonempty proof it does not carry is never valid: its proof is not available yet.
     [TestCase(true)]
     [TestCase(false)]
-    public void Eip8288_rejects_missing_or_mismatched_body_before_verification(bool missing)
+    public void Eip8288_rejects_mismatched_proof_before_verification_and_a_missing_one_as_unavailable(bool missing)
     {
         (Block block, BlockHeader parent) = Eip8288Block();
         block.Header.DependencyProofCommitment = new(Keccak.Compute(new byte[] { 1 }), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
@@ -169,6 +169,28 @@ public class BlockValidatorTests
             Assert.That(error, Is.EqualTo(missing ? BlockErrorMessages.MissingDependencyProof : BlockErrorMessages.InvalidDependencyProof));
             Assert.That(verifier.RecursiveCalls, Is.Zero);
         }
+    }
+
+    // A block committing to the empty proof needs none to be validated, so a dependency-free block synced without one is valid.
+    [Test]
+    public void Eip8288_validates_a_block_committing_to_the_empty_proof_without_it()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block(withDependency: false);
+        block.Header.DependencyProofCommitment = new(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+        block.DependencyProof = null;
+
+        Assert.That(CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error), Is.True, error);
+    }
+
+    [Test]
+    public void Eip8288_checks_the_deps_hash_of_a_block_without_its_proof()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(new byte[] { 1 }), Keccak.Compute("wrong"));
+
+        CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(error, Does.StartWith("InvalidBlockDepsHash"));
     }
 
     [Test]
@@ -184,13 +206,16 @@ public class BlockValidatorTests
     }
 
     [Test]
-    public void Eip8288_rejects_block_when_recursive_stark_fails_verification()
+    public void Eip8288_rejects_block_when_recursive_stark_fails_verification([Values] bool orphaned)
     {
         (Block block, BlockHeader parent) = Eip8288Block();
         block.DependencyProof = [1];
         block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        DependencyProofBlockValidator sut = CreateEip8288Validator(new FixedLeanProofVerifier(false));
 
-        CreateEip8288Validator(new FixedLeanProofVerifier(false)).ValidateSuggestedBlock(block, parent, out string? error);
+        string? error;
+        if (orphaned) sut.ValidateOrphanedBlock(block, out error);
+        else sut.ValidateSuggestedBlock(block, parent, out error);
 
         Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidDependencyProof));
     }
@@ -226,6 +251,8 @@ public class BlockValidatorTests
             Assert.That(decoded.Header.CalculateHash(), Is.EqualTo(block.Header.Hash));
         }
 
+        // The proof travels apart from the RLP block, as the execution payload or eth/74 delivers it.
+        decoded.DependencyProof = block.DependencyProof;
         bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(decoded, parent, out string? error);
 
         Assert.That(result, Is.True, error);
@@ -303,6 +330,37 @@ public class BlockValidatorTests
         }
     }
 
+    [Test]
+    public void Eip8288_decorator_leaves_validation_before_activation_untouched([Values] bool carriesProof, [Values] bool orphaned)
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        if (carriesProof)
+        {
+            block.DependencyProof = [1];
+            block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), Keccak.OfAnEmptyString);
+        }
+
+        ISpecProvider specProvider = Eip8288SpecProvider(enabled: false);
+        BlockValidator inner = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        FixedLeanProofVerifier verifier = new(false);
+        DependencyProofBlockValidator sut = new(inner, verifier, specProvider, LimboLogs.Instance);
+
+        bool expected = Validate(inner, out string? expectedError);
+        bool result = Validate(sut, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected, Is.EqualTo(!carriesProof), expectedError);
+            Assert.That(result, Is.EqualTo(expected));
+            Assert.That(error, Is.EqualTo(expectedError));
+            Assert.That(verifier.RecursiveCalls, Is.Zero);
+        }
+
+        bool Validate(IBlockValidator validator, out string? validationError) => orphaned
+            ? validator.ValidateOrphanedBlock(block, out validationError)
+            : validator.ValidateSuggestedBlock(block, parent, out validationError);
+    }
+
     private static (Block Block, BlockHeader Parent) Eip8288Block(bool withDependency = true)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
@@ -343,13 +401,21 @@ public class BlockValidatorTests
         return depTx;
     }
 
-    private static BlockValidator CreateEip8288Validator(ILeanProofVerifier verifier, bool enabled = true)
+    private static DependencyProofBlockValidator CreateEip8288Validator(ILeanProofVerifier verifier, bool enabled = true)
+    {
+        ISpecProvider specProvider = Eip8288SpecProvider(enabled);
+        return new DependencyProofBlockValidator(
+            new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance),
+            verifier, specProvider, LimboLogs.Instance);
+    }
+
+    private static ISpecProvider Eip8288SpecProvider(bool enabled)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8288Enabled.Returns(enabled);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
-        return new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, verifier);
+        return specProvider;
     }
 
     private sealed class FixedLeanProofVerifier(bool result) : ILeanProofVerifier
@@ -374,7 +440,7 @@ public class BlockValidatorTests
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(header).TestObject;
-        BlockValidator validator = new(Always.Valid, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)), LimboLogs.Instance, Substitute.For<ILeanProofVerifier>());
+        BlockValidator validator = new(Always.Valid, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)), LimboLogs.Instance);
 
         validator.ValidateSuggestedBlock(block, header, out _);
 
@@ -391,7 +457,7 @@ public class BlockValidatorTests
         };
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));
 
-        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithParent(parent).TestObject, parent, out _);
         Assert.That(noiseRemoved, Is.True);
@@ -406,7 +472,7 @@ public class BlockValidatorTests
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = new TestSpecProvider(Frontier.Instance);
 
-        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Invalid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Invalid, specProvider, LimboLogs.Instance);
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block
@@ -445,25 +511,17 @@ public class BlockValidatorTests
         return _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body);
     }
 
-    [TestCase(false, null, true)]
-    [TestCase(false, new byte[0], false)]
-    [TestCase(true, null, false)]
-    [TestCase(true, new byte[0], false)]
-    [TestCase(true, new byte[] { 2 }, false)]
-    [TestCase(true, new byte[] { 1 }, true)]
-    public void ValidateBodyAgainstHeader_binds_proof_presence_and_hash(bool commitmentPresent, byte[]? proof, bool expected)
+    // EIPs#12549: the block body carries no dependency proof, so body validation does not look at it.
+    [TestCase(false, null)]
+    [TestCase(true, null)]
+    [TestCase(true, new byte[] { 2 })]
+    public void ValidateBodyAgainstHeader_ignores_the_dependency_proof(bool commitmentPresent, byte[]? proof)
     {
         Block block = Build.A.Block.TestObject;
         block.Header.DependencyProofCommitment = commitmentPresent ? new(Keccak.Compute(new byte[] { 1 }), TestItem.KeccakA) : null;
         block.DependencyProof = proof;
 
-        bool valid = _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(valid, Is.EqualTo(expected));
-            Assert.That(error, expected ? Is.Null : Is.Not.Null);
-        }
+        Assert.That(_blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error), Is.True, error);
     }
 
     [Test]
@@ -531,7 +589,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        return new BlockValidator(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+        return new BlockValidator(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
     }
 
     private static IEnumerable<TestCaseData> BadSuggestedBlocks()
@@ -619,7 +677,7 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock, BlockHeader parent, ISpecProvider specProvider, string expectedError)
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
 
         sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
@@ -1018,7 +1076,7 @@ public class BlockValidatorTests
 
     private static BlockValidator AmsterdamSut(ITxValidator? tx = null) =>
         new(tx ?? new TxValidator(TestBlockchainIds.ChainId), Always.Valid, Always.Valid,
-            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance, Substitute.For<ILeanProofVerifier>());
+            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
 
     private static void AssertValidation(bool expected, bool actual, string? error, string failPrefix)
     {

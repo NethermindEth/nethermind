@@ -101,13 +101,16 @@ public partial class StatelessBlockProcessingEnv(
         );
 
         HeaderValidator headerValidator = new(statelessBlockTree, sealValidator, specProvider, logManager);
-        BlockValidator blockValidator = new(
-            new TxValidator(specProvider.ChainId),
-            headerValidator,
-            new UnclesValidator(statelessBlockTree, headerValidator, logManager),
+        DependencyProofBlockValidator blockValidator = new(
+            new BlockValidator(
+                new TxValidator(specProvider.ChainId),
+                headerValidator,
+                new UnclesValidator(statelessBlockTree, headerValidator, logManager),
+                specProvider,
+                logManager),
+            leanProofVerifier,
             specProvider,
-            logManager,
-            leanProofVerifier
+            logManager
         );
 
         return new BlockProcessor(

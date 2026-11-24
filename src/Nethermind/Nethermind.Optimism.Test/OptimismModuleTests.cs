@@ -5,15 +5,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL;
@@ -242,6 +250,43 @@ public class OptimismModuleTests
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.IsIntrinsicGasError, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidTxSignature));
+        }
+    }
+
+    // EIP-8288: the dependency proof check is a decorator over whichever block validator a plugin registers.
+    [Test]
+    public void Dependency_proof_check_applies_over_the_optimism_block_validator([Values] bool emptyProof)
+    {
+        IOptimismReleaseSpec spec = OptimismReleaseSpecSubstitute.Create();
+        spec.IsEip8288Enabled.Returns(true);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        ChainSpec chainSpec = new()
+        {
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
+        };
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new BlockProcessingModule(new InitConfig(), new BlocksConfig()));
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig()));
+        builder.RegisterInstance(specProvider).As<ISpecProvider>();
+        builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
+        builder.RegisterInstance(Always.Valid).As<IHeaderValidator>();
+        builder.RegisterInstance(Substitute.For<IBlockTree>()).As<IBlockTree>().As<IBlockFinder>();
+        builder.RegisterInstance(Substitute.For<IDependencyProofStore>()).As<IDependencyProofStore>();
+        builder.RegisterInstance(Substitute.For<IPoSSwitcher>()).As<IPoSSwitcher>();
+        builder.RegisterInstance(Substitute.For<ILeanProofVerifier>()).As<ILeanProofVerifier>();
+        using IContainer container = builder.Build();
+
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithWithdrawals(null).TestObject;
+        block.DependencyProof = emptyProof ? [] : [1];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+        bool isValid = container.Resolve<IBlockValidator>().ValidateSuggestedBlock(block, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.EqualTo(emptyProof), error);
+            Assert.That(error, Is.EqualTo(emptyProof ? null : BlockErrorMessages.InvalidDependencyProof));
         }
     }
 }
