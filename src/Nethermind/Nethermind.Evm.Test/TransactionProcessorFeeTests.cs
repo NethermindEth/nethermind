@@ -576,7 +576,10 @@ public class TransactionProcessorFeeTests
     }
 }
 
-/// <summary>Verifies the fee semantics that <see cref="ExecutionOptions"/> select for a restoring call.</summary>
+/// <summary>
+/// Verifies that a chain can give <c>eth_call</c> fee rules of its own through the processor's overridable fee steps,
+/// composed by an <see cref="Facade.ICallTransactionProcessorDecorator"/>, while consensus execution keeps its own.
+/// </summary>
 public class TransactionProcessorCallFeeTests
 {
     private IContainer _container = null!;
@@ -610,8 +613,8 @@ public class TransactionProcessorCallFeeTests
         _container.Dispose();
     }
 
-    private const ExecutionOptions FeeFreeCall = ExecutionOptions.CommitAndRestore
-        | ExecutionOptions.SkipTransactionFees | ExecutionOptions.SkipLegacyGasPriceValidation;
+    /// <summary>The options <c>eth_call</c> runs its transaction with; unlike a restoring run, they reach the fee payment.</summary>
+    private const ExecutionOptions EthCall = ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp;
     private static readonly byte[] FeeContextCode = Convert.FromHexString("3a6000524860205233316040524760605260806000f3");
 
     [Test]
@@ -619,11 +622,9 @@ public class TransactionProcessorCallFeeTests
     {
         ObservingFeeProcessor processor = CreateObservingFeeProcessor();
         Transaction tx = FeeCallTransaction(TestItem.AddressA, typed, 10, value: 7);
-        BlockHeader header = FeeCallHeader();
         CallOutputTracer tracer = new();
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(header, _spec));
-        TransactionResult result = processor.Process(tx, tracer, FeeFreeCall);
+        TransactionResult result = RunCall(processor, tx, tracer, EthCall);
 
         using (Assert.EnterMultipleScope())
         {
@@ -632,15 +633,13 @@ public class TransactionProcessorCallFeeTests
             Assert.That(ReadFeeWord(tracer, 1), Is.EqualTo((UInt256)2));
             Assert.That(ReadFeeWord(tracer, 2), Is.EqualTo(1.Ether - 7));
             Assert.That(ReadFeeWord(tracer, 3), Is.EqualTo((UInt256)130));
-            Assert.That(processor.GasPurchases, Is.Zero);
-            Assert.That(processor.FeePayments, Is.Zero, "the fee distribution a processor overrides is not reached");
+            Assert.That(processor.GasPurchased, Is.EqualTo(UInt256.Zero));
             Assert.That(processor.RefundsPaid, Is.EqualTo(UInt256.Zero));
+            Assert.That(processor.FeePayments, Is.EqualTo(1), "a fee-free call still reaches the fee payment a chain overrides");
             Assert.That(processor.SenderAfterFees, Is.EqualTo(1.Ether - 7));
             Assert.That(processor.BeneficiaryAfterFees, Is.EqualTo(UInt256.Zero));
             Assert.That(processor.CollectorAfterFees, Is.EqualTo(UInt256.Zero));
-            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether));
-            Assert.That(_stateProvider.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)123));
-            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(0UL));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)130));
         }
     }
 
@@ -654,18 +653,15 @@ public class TransactionProcessorCallFeeTests
         Transaction tx = FeeCallTransaction(TestItem.AddressD, typed, price);
         CallOutputTracer tracer = new();
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(FeeCallHeader(), _spec));
-        TransactionResult result = processor.Process(tx, tracer, FeeFreeCall);
+        TransactionResult result = RunCall(processor, tx, tracer, ExecutionOptions.CommitAndRestore);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(TransactionResult.Ok));
             Assert.That(ReadFeeWord(tracer, 0), Is.EqualTo(typed ? (UInt256)5 : price));
             Assert.That(ReadFeeWord(tracer, 2), Is.EqualTo(UInt256.Zero));
-            Assert.That(processor.GasPurchases, Is.Zero);
+            Assert.That(processor.GasPurchased, Is.EqualTo(UInt256.Zero));
             Assert.That(processor.RefundsPaid, Is.EqualTo(UInt256.Zero));
-            Assert.That(processor.BeneficiaryAfterFees, Is.EqualTo(UInt256.Zero));
-            Assert.That(processor.CollectorAfterFees, Is.EqualTo(UInt256.Zero));
             Assert.That(_stateProvider.AccountExists(TestItem.AddressD), Is.False);
         }
     }
@@ -680,8 +676,7 @@ public class TransactionProcessorCallFeeTests
         Transaction tx = FeeCallTransaction(TestItem.AddressD, typed: false, 10, value);
         CallOutputTracer tracer = new();
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(FeeCallHeader(), _spec));
-        TransactionResult result = processor.Process(tx, tracer, FeeFreeCall);
+        TransactionResult result = RunCall(processor, tx, tracer, ExecutionOptions.CommitAndRestore);
 
         using (Assert.EnterMultipleScope())
         {
@@ -702,48 +697,54 @@ public class TransactionProcessorCallFeeTests
     {
         ObservingFeeProcessor processor = CreateObservingFeeProcessor();
         Transaction tx = FeeCallTransaction(TestItem.AddressA, typed: false, 1);
-        ExecutionOptions options = ExecutionOptions.CommitAndRestore
-            | (chargeFees ? ExecutionOptions.None : ExecutionOptions.SkipTransactionFees)
-            | (validateLegacy ? ExecutionOptions.None : ExecutionOptions.SkipLegacyGasPriceValidation);
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(FeeCallHeader(), _spec));
-        TransactionResult result = processor.Process(tx, NullTxTracer.Instance, options);
+        TransactionResult result = RunCall(processor, tx, NullTxTracer.Instance, ExecutionOptions.CommitAndRestore, chargeFees, validateLegacy);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Error, Is.EqualTo(validateLegacy ? TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee : TransactionResult.ErrorType.None));
-            Assert.That(processor.GasPurchases, Is.EqualTo(chargeFees ? 1 : 0));
+            Assert.That(processor.GasPurchased > 0, Is.EqualTo(chargeFees && !validateLegacy));
             Assert.That(processor.RefundsPaid > 0, Is.EqualTo(chargeFees && !validateLegacy));
             Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether));
         }
     }
 
     [Test]
-    public void Fee_free_call_keeps_typed_base_fee_validation([Values(0UL, 1UL)] ulong feeCap)
+    public void Fee_free_call_keeps_typed_base_fee_validation([Values(0UL, 1UL)] ulong feeCap, [Values] bool throughDecorator)
     {
         ObservingFeeProcessor processor = CreateObservingFeeProcessor();
         Transaction tx = FeeCallTransaction(TestItem.AddressD, typed: true, feeCap);
         tx.GasPrice = 0;
-        processor.SetBlockExecutionContext(new BlockExecutionContext(FeeCallHeader(), _spec));
 
-        TransactionResult result = processor.Process(tx, NullTxTracer.Instance, FeeFreeCall);
+        TransactionResult result;
+        if (throughDecorator)
+        {
+            result = RunCall(processor, tx, NullTxTracer.Instance, ExecutionOptions.CommitAndRestore);
+        }
+        else
+        {
+            // The processor's own rule, behind the decorator's early check.
+            using IDisposable _ = RpcCallFeeTransactionProcessor.BeginCall(chargeFees: false, validateLegacyGasPrice: false);
+            processor.SetBlockExecutionContext(new BlockExecutionContext(FeeCallHeader(), _spec));
+            result = processor.Process(tx, NullTxTracer.Instance, ExecutionOptions.CommitAndRestore);
+        }
 
         Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
     }
 
     [Test]
-    public void Fee_free_options_do_not_leak_to_the_next_consensus_transaction()
+    public void Fee_free_call_does_not_leak_to_the_next_consensus_transaction()
     {
         ObservingFeeProcessor processor = CreateObservingFeeProcessor();
-        processor.SetBlockExecutionContext(new BlockExecutionContext(FeeCallHeader(), _spec));
-        Assert.That(processor.Process(FeeCallTransaction(TestItem.AddressD, false, 10), NullTxTracer.Instance, FeeFreeCall), Is.EqualTo(TransactionResult.Ok));
+        Assert.That(RunCall(processor, FeeCallTransaction(TestItem.AddressD, false, 10), NullTxTracer.Instance, ExecutionOptions.CommitAndRestore),
+            Is.EqualTo(TransactionResult.Ok));
 
         Transaction tx = FeeCallTransaction(TestItem.AddressA, typed: false, 10);
         Assert.That(processor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit), Is.EqualTo(TransactionResult.Ok));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(processor.GasPurchases, Is.EqualTo(1));
+            Assert.That(processor.GasPurchased, Is.GreaterThan(UInt256.Zero));
             Assert.That(processor.FeePayments, Is.EqualTo(1));
             Assert.That(processor.RefundsPaid, Is.GreaterThan(UInt256.Zero));
             Assert.That(processor.BeneficiaryAfterFees, Is.GreaterThan(UInt256.Zero));
@@ -753,24 +754,12 @@ public class TransactionProcessorCallFeeTests
         }
     }
 
-    [Test]
-    public void Call_fee_flags_are_ignored_outside_restoring_calls(
-        [Values(ExecutionOptions.Commit, ExecutionOptions.SkipValidation, ExecutionOptions.SkipValidationAndCommit,
-            ExecutionOptions.BuildUp, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation)] ExecutionOptions options)
+    private TransactionResult RunCall(ObservingFeeProcessor processor, Transaction tx, ITxTracer tracer, ExecutionOptions options,
+        bool chargeFees = false, bool validateLegacyGasPrice = false)
     {
-        ObservingFeeProcessor processor = CreateObservingFeeProcessor();
-        processor.SetBlockExecutionContext(new BlockExecutionContext(FeeCallHeader(), _spec));
-        ExecutionOptions misplacedFlags = ExecutionOptions.SkipTransactionFees | ExecutionOptions.SkipLegacyGasPriceValidation;
-
-        TransactionResult result = processor.Process(FeeCallTransaction(TestItem.AddressA, false, 10), NullTxTracer.Instance, options | misplacedFlags);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(TransactionResult.Ok));
-            // The exact SkipValidation route is a system call, whose original fee semantics are no-op.
-            Assert.That(processor.GasPurchases, Is.EqualTo(options == ExecutionOptions.SkipValidation ? 0 : 1));
-            Assert.That(processor.RefundsPaid > 0, Is.EqualTo(options != ExecutionOptions.SkipValidation));
-        }
+        ITransactionProcessor call = new RpcCallFeeDecorator(chargeFees, validateLegacyGasPrice).Decorate(processor);
+        call.SetBlockExecutionContext(new BlockExecutionContext(FeeCallHeader(), _spec));
+        return call.Process(tx, tracer, options);
     }
 
     private ObservingFeeProcessor CreateObservingFeeProcessor()
@@ -793,6 +782,7 @@ public class TransactionProcessorCallFeeTests
     private static UInt256 ReadFeeWord(CallOutputTracer tracer, int index) =>
         new(tracer.ReturnValue.AsSpan(index * 32, 32), isBigEndian: true);
 
+    /// <summary>Observes what the fee steps actually moved, whichever rules the run had.</summary>
     private sealed class ObservingFeeProcessor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider specProvider,
@@ -800,9 +790,9 @@ public class TransactionProcessorCallFeeTests
         IVirtualMachine virtualMachine,
         ICodeInfoRepository codeInfoRepository,
         ILogManager logManager)
-        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+        : RpcCallFeeTransactionProcessor(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
     {
-        public int GasPurchases { get; private set; }
+        public UInt256 GasPurchased { get; private set; }
         public int FeePayments { get; private set; }
         public UInt256 RefundsPaid { get; private set; }
         public UInt256 SenderAfterFees { get; private set; }
@@ -812,23 +802,16 @@ public class TransactionProcessorCallFeeTests
         protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
             in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
         {
-            GasPurchases++;
-            return base.BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+            TransactionResult result = base.BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+            if (result) GasPurchased += senderReservedGasPayment;
+            return result;
         }
 
         protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
         {
-            RefundsPaid += refundAmount;
+            UInt256 before = WorldState.GetBalance(tx.SenderAddress!);
             base.PayRefund(tx, refundAmount, spec);
-        }
-
-        protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-            in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode, ExecutionOptions opts)
-        {
-            base.PayFees(tx, header, spec, tracer, in substate, spentGas, in premiumPerGas, in effectiveGasPrice, in blobBaseFee, statusCode, opts);
-            SenderAfterFees = WorldState.GetBalance(tx.SenderAddress!);
-            BeneficiaryAfterFees = WorldState.GetBalance(header.GasBeneficiary!);
-            CollectorAfterFees = spec.FeeCollector is null ? UInt256.Zero : WorldState.GetBalance(spec.FeeCollector);
+            RefundsPaid += WorldState.GetBalance(tx.SenderAddress!) - before;
         }
 
         protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
@@ -836,6 +819,9 @@ public class TransactionProcessorCallFeeTests
         {
             FeePayments++;
             base.PayFees(tx, header, spec, tracer, in substate, spentGas, in premiumPerGas, in effectiveGasPrice, in blobBaseFee, statusCode);
+            SenderAfterFees = WorldState.GetBalance(tx.SenderAddress!);
+            BeneficiaryAfterFees = WorldState.GetBalance(header.GasBeneficiary!);
+            CollectorAfterFees = spec.FeeCollector is null ? UInt256.Zero : WorldState.GetBalance(spec.FeeCollector);
         }
     }
 }

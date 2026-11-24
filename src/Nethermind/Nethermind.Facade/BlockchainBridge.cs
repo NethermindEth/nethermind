@@ -67,11 +67,10 @@ namespace Nethermind.Facade
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
         IMiningConfig miningConfig,
-        RpcCallExecutionPolicy? rpcCallExecutionPolicy = null)
+        ICallTransactionProcessorDecorator? callProcessorDecorator = null)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
-        private readonly ExecutionOptions? _callExecutionOptions = rpcCallExecutionPolicy?.Options;
 
         public Block? HeadBlock
         {
@@ -299,25 +298,19 @@ namespace Nethermind.Facade
 
         private CallOutput RunCall(IWorldState nonceSource, ITransactionProcessor txProcessor, BlockHeader header, Transaction tx, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
+            if (callProcessorDecorator is not null) txProcessor = callProcessorDecorator.Decorate(txProcessor);
             CallOutputTracer tracer = new();
             BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
             TransactionResult result = TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap
                 ? tipAboveFeeCap
-                : _callExecutionOptions is { } policyOptions
-                    ? tx.Supports1559 && tx.MaxFeePerGas < header.BaseFeePerGas
-                        ? TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail("max fee per gas less than block base fee")
-                        : TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken), policyOptions)
-                    : TryCall(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
+                : TryCall(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
 
             string? error = result.GetErrorMessage(tracer.Error);
             if (result.TransactionExecuted && error is not null && result.EvmExceptionType is not EvmExceptionType.Revert)
             {
-                // A call without a policy keeps its changes, so the rerun that names the failure must start from the
-                // state the call started from. A policy call restored it already.
-                if (_callExecutionOptions is null)
-                    nonceSource.Reset(resetBlockChanges: false);
-                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText,
-                    _callExecutionOptions ?? ExecutionOptions.CommitAndRestore))
+                // The call keeps its changes, so the rerun that names the failure must start from the state the call started from.
+                nonceSource.Reset(resetBlockChanges: false);
+                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText))
                 {
                     error = failureText;
                 }
@@ -559,24 +552,6 @@ namespace Nethermind.Facade
             {
                 txProcessor.SetBlockExecutionContext(in blockContext);
                 return txProcessor.Process(transaction, tracer, ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp);
-            }
-            catch (InsufficientBalanceException)
-            {
-                return TransactionResult.InsufficientSenderBalance;
-            }
-        }
-
-        /// <summary>Runs <paramref name="transaction"/> as a restoring call with a chain's <see cref="RpcCallExecutionPolicy"/>.</summary>
-        /// <remarks>
-        /// The policy's fee options apply only to a restoring call, so a chain that registers one keeps the restore
-        /// that <see cref="TryCall"/> skips.
-        /// </remarks>
-        private static TransactionResult TryCallAndRestore(ITransactionProcessor txProcessor, Transaction transaction, in BlockExecutionContext blockContext, ITxTracer tracer, ExecutionOptions options)
-        {
-            try
-            {
-                txProcessor.SetBlockExecutionContext(in blockContext);
-                return txProcessor.Process(transaction, tracer, options);
             }
             catch (InsufficientBalanceException)
             {

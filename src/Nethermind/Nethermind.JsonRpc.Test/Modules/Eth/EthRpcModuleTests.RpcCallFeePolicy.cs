@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Messages;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -29,12 +30,15 @@ public partial class EthRpcModuleTests
     private const string FeePolicyLegacy = "\"gasPrice\":\"0x14\"";
     private const string FeePolicy1559 = "\"maxFeePerGas\":\"0x14\",\"maxPriorityFeePerGas\":\"0x3\"";
 
+    /// <summary>A context whose <c>eth_call</c> follows <paramref name="chargeFees"/> and <paramref name="validateLegacy"/>,
+    /// composed around the chain's processor as a plugin would; no call decorator when <paramref name="chargeFees"/> is null.</summary>
     private static Task<Context> FeePolicyContext(bool? chargeFees = false, bool validateLegacy = false,
         FeePolicyExecutions? executions = null) => Context.Create(new TestSpecProvider(London.Instance), configurer: builder =>
     {
-        if (chargeFees.HasValue) builder.AddSingleton(new RpcCallExecutionPolicy(chargeFees.Value, validateLegacy));
-        if (executions is not null)
-            builder.AddDecorator<ITransactionProcessor>((_, inner) => new FeePolicyRecordingProcessor(inner, executions));
+        if (!chargeFees.HasValue) return;
+        RpcCallFeeDecorator decorator = new(chargeFees.Value, validateLegacy);
+        builder.AddScoped<ITransactionProcessor, RpcCallFeeTransactionProcessor>();
+        builder.AddSingleton<ICallTransactionProcessorDecorator>(executions is null ? decorator : new FeePolicyRecordingDecorator(decorator, executions));
     });
 
     private static JsonElement FeePolicyRequest(string fees = FeePolicyLegacy, string gas = "0x186a0", string value = "0x0") =>
@@ -182,22 +186,23 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task RpcCallFeePolicy_failure_text_rerun_keeps_options_and_restores_state()
+    public async Task RpcCallFeePolicy_failure_text_rerun_runs_through_the_decorator_and_restores_state()
     {
         FeePolicyExecutions executions = new();
         using Context ctx = await FeePolicyContext(executions: executions);
         _ = ctx.Test;
         executions.Options.Clear();
-        // SSTORE then INVALID forces the diagnostic rerun, not the REVERT shortcut.
+        // SSTORE then INVALID forces the diagnostic rerun, not the REVERT shortcut. The unfunded sender makes either run
+        // fail on gas funds if it escaped the decorator.
         JToken response = await FeePolicyCall(ctx, FeePolicyRequest(), FeePolicyState(code: "0x6001600055fe"));
-        Assert.That((string?)response["error"]?["message"], Does.Contain("invalid opcode"), response.ToString());
-        ExecutionOptions[] options = executions.Options.ToArray();
-        Assert.That(options.Length, Is.GreaterThanOrEqualTo(2), "the real processor must execute the diagnostic rerun");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(options, Is.All.EqualTo(options[0]));
-            Assert.That(options[0].HasFlag(ExecutionOptions.SkipTransactionFees), Is.True);
-            Assert.That(options[0].HasFlag(ExecutionOptions.SkipLegacyGasPriceValidation), Is.True);
+            Assert.That((string?)response["error"]?["message"], Does.Contain("invalid opcode"), response.ToString());
+            Assert.That(executions.Options, Is.EqualTo(new[]
+            {
+                ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp,
+                ExecutionOptions.CommitAndRestore,
+            }), "the call and its diagnostic rerun both run through the decorator");
         }
         AssertFeePolicyOutput(await FeePolicyCall(ctx, FeePolicyRequest(), FeePolicyState(code: "0x60005460005260206000f3")), FeePolicyWords(0));
     }
@@ -295,15 +300,21 @@ public partial class EthRpcModuleTests
         public List<ExecutionOptions> Options { get; } = [];
     }
 
-    private sealed class FeePolicyRecordingProcessor(ITransactionProcessor inner, FeePolicyExecutions executions) : ITransactionProcessor
+    private sealed class FeePolicyRecordingDecorator(ICallTransactionProcessorDecorator inner, FeePolicyExecutions executions)
+        : ICallTransactionProcessorDecorator
     {
-        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
-        {
-            executions.Options.Add(options);
-            return inner.Process(transaction, txTracer, options);
-        }
+        public ITransactionProcessor Decorate(ITransactionProcessor processor) => new Recording(inner.Decorate(processor), executions);
 
-        public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
-        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+        private sealed class Recording(ITransactionProcessor inner, FeePolicyExecutions executions) : ITransactionProcessor
+        {
+            public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
+            {
+                executions.Options.Add(options);
+                return inner.Process(transaction, txTracer, options);
+            }
+
+            public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+        }
     }
 }

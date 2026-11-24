@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -2364,7 +2365,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_blob_tx_rejected_when_maxFeePerBlobGas_below_block_blobBaseFee([Values] bool chargeFees)
     {
         // ExcessBlobGas of 10_000_000 produces blobBaseFee ≈ 20 via fake_exponential(1, 10_000_000, 3338477).
-        // maxFeePerBlobGas=0xa (10) is below that, so the tx must be rejected, also when the call policy charges no fees.
+        // maxFeePerBlobGas=0xa (10) is below that, so the tx must be rejected, also when eth_call charges no fees.
         ISpecProvider specProvider = new TestSpecProvider(Cancun.Instance);
         Block[] blocks = [Build.A.Block.WithNumber(0).WithExcessBlobGas(10_000_000ul).TestObject];
         BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
@@ -2374,7 +2375,8 @@ public partial class EthRpcModuleTests
             .Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(specProvider);
-                builder.AddSingleton(new RpcCallExecutionPolicy(chargeFees));
+                builder.AddScoped<ITransactionProcessor, RpcCallFeeTransactionProcessor>();
+                builder.AddSingleton<ICallTransactionProcessorDecorator>(new RpcCallFeeDecorator(chargeFees, validateLegacyGasPrice: true));
             });
 
         object? tx = JsonSerializer.Deserialize<object>(
