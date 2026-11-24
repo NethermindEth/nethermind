@@ -46,7 +46,7 @@ public class PruningTrieStoreModule : Module
             // Special case for state db with pruning trie state.
             .AddKeyedSingleton<IDb>(DbNames.State, (ctx) =>
             {
-                // A container without an init config keeps the factory-type check alone, as before the mode was read.
+                // Without an init config, only the factory type decides.
                 bool memDbMode = _memDbMode ?? (ctx.ResolveOptional<IInitConfig>()?.DiagnosticMode == DiagnosticMode.MemDb);
                 IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
                 IDbFactory dbFactory = ctx.Resolve<IDbFactory>();
