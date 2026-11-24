@@ -1792,7 +1792,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             ("empty_end_4097", ChainScript("mix", 4097, "empty"), null),
             ("array_5000", ChainScript("arr", 5000, "scalar"), null),
             ("cyclic_object", "var o = {}; o.self = o; return o;", null),
-            ("cyclic_object_after_scalars", "var o = {n: 1, s: 'x', z: null, t: true, d: 0.1, l: 3000000000, w: {value: 2n}}; o.self = o; return o;", null),
+            ("cyclic_object_after_scalars", "var o = {n: 1, s: 'x', z: null, t: true, d: 0.1, l: 3000000000, w: bigInt('2')}; o.self = o; return o;", null),
             ("cyclic_array", "var a = []; a.push(a); return a;", null),
             ("mutual_cycle", "var a = {}; var b = [a]; a.b = b; return a;", null),
         ];
@@ -1948,18 +1948,13 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("({Outer: {Inner: {DUP1: 1}}, lower: [{PUSH1: 2}], mIxEd: {LOG2: [3]}})", """{"Outer":{"Inner":{"DUP1":1}},"lower":[{"PUSH1":2}],"mIxEd":{"LOG2":[3]}}""")]
     [TestCase("({b: 1, 2: 'x', a: 3, 1: 'y'})", """{"1":"y","2":"x","b":1,"a":3}""")]
     [TestCase("""({'a"b': 1, 'ł': 2, '': 3, 'tab\t': 4, '<&>': 5})""", """{"a\"b":1,"ł":2,"":3,"tab\t":4,"<&>":5}""")]
-    [TestCase("null", "null")]
+    [TestCase("null", "{}")]
     [TestCase("undefined", "{}")]
     [TestCase("({a: null})", """{"a":null}""")]
     [TestCase("({a: undefined, b: 1})", """{"b":1}""")]
     [TestCase("[null, 1]", "[null,1]")]
-    [TestCase("[undefined, 1]", "[{},1]")]
-    [TestCase("(function(){ var a = [1]; a[3] = 4; return a; })()", "[1,{},{},4]")]
-    [TestCase("({value: 5n})", "\"5\"")]
-    [TestCase("({value: 5n, other: 1})", "\"5\"")]
-    [TestCase("({other: 1, value: 5n})", "\"5\"")]
-    [TestCase("({x: {value: 5n, other: {deep: 1}}})", """{"x":"5"}""")]
-    [TestCase("({value: -123456789012345678901234567890n})", "\"-123456789012345678901234567890\"")]
+    [TestCase("[undefined, 1]", "[null,1]")]
+    [TestCase("(function(){ var a = [1]; a[3] = 4; return a; })()", "[1,null,null,4]")]
     [TestCase("({value: 5, other: 1})", """{"value":5,"other":1}""")]
     [TestCase("({value: undefined, a: 1})", """{"a":1}""")]
     [TestCase("({error: undefined, a: 1})", """{"a":1}""")]
@@ -1975,23 +1970,23 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("1e21", "1E+21")]
     [TestCase("0.1", "0.1")]
     [TestCase("({z: -0})", """{"z":0}""")]
-    [TestCase("[1e-7, 5e-324, 1.7976931348623157e308]", "[1E-07,5E-324,1.7976931348623157E+308]")]
+    [TestCase("[1e-7, 5e-324, 1.7976931348623157e308]", "[1e-7,5e-324,1.7976931348623157e+308]")]
     [TestCase("''", "\"\"")]
     [TestCase("new Uint8Array([1, 2, 3])", """{"0":1,"1":2,"2":3}""")]
     [TestCase("new Uint8Array([])", "{}")]
     [TestCase("new Uint8Array([7, 1, 255, 8]).subarray(1, 3)", """{"0":1,"1":255}""")]
     [TestCase("({a: new Uint8Array([1])})", """{"a":{"0":1}}""")]
-    [TestCase("new Uint16Array([256, 1])", """{"0":0,"1":1,"2":1,"3":0}""")]
-    [TestCase("new Int32Array([-1])", """{"0":255,"1":255,"2":255,"3":255}""")]
-    [TestCase("new Float64Array([1.5])", """{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":248,"7":63}""")]
-    [TestCase("new DataView(new Uint8Array([1, 2, 3]).buffer, 1)", """{"0":2,"1":3}""")]
-    [TestCase("function(){}", "{}")]
-    [TestCase("(function(){ var f = function(){}; f.x = 1; return f; })()", """{"x":1}""")]
-    [TestCase("({f: () => 1, a: 1})", """{"f":{},"a":1}""")]
-    [TestCase("new Date(0)", "{}")]
-    [TestCase("({d: new Date(0)})", """{"d":{}}""")]
+    [TestCase("new Uint16Array([256, 1])", """{"0":256,"1":1}""")]
+    [TestCase("new Int32Array([-1])", """{"0":-1}""")]
+    [TestCase("new Float64Array([1.5])", """{"0":1.5}""")]
+    [TestCase("new DataView(new Uint8Array([1, 2, 3]).buffer, 1)", "{}")]
+    [TestCase("function(){}", "null")]
+    [TestCase("(function(){ var f = function(){}; f.x = 1; return f; })()", "null")]
+    [TestCase("({f: () => 1, a: 1})", """{"a":1}""")]
+    [TestCase("new Date(0)", "\"1970-01-01T00:00:00.000Z\"")]
+    [TestCase("({d: new Date(0)})", """{"d":"1970-01-01T00:00:00.000Z"}""")]
     [TestCase("/ab+c/g", "{}")]
-    [TestCase("({toJSON: function(){ return 'J'; }, a: 1})", """{"toJSON":{},"a":1}""")]
+    [TestCase("({toJSON: function(){ return 'J'; }, a: 1})", "\"J\"")]
     [TestCase("(function(){ var a = [1]; a.x = 2; return a; })()", "[1]")]
     [TestCase("({ get a() { return 1; }, b: 2 })", """{"a":1,"b":2}""")]
     [TestCase("(function(){ var o = { get a() { o.b = 2; return 1; }, b: 1 }; return o; })()", """{"a":1,"b":2}""")]
@@ -1999,16 +1994,19 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("(function(){ var s = [1]; return [s, s]; })()", "[[1],[1]]")]
     [TestCase("(function(){ var s = {x: [1]}; var l = [s]; return {a: s, b: s, c: [l, l]}; })()", """{"a":{"x":[1]},"b":{"x":[1]},"c":[[{"x":[1]}],[{"x":[1]}]]}""")]
     [TestCase("[new Map([[1, 2]]), new Set([1]), new WeakMap(), Promise.resolve(1), new Error('e')]", "[{},{},{},{},{}]")]
-    [TestCase("[Symbol('s'), {[Symbol('k')]: 1, a: 2}, {a: Symbol('v')}]", """[{},{"a":2},{}]""")]
+    [TestCase("[Symbol('s'), {[Symbol('k')]: 1, a: 2}, {a: Symbol('v')}]", """[null,{"a":2},{}]""")]
     [TestCase("[new Number(1), new String('ab'), new Boolean(false)]", """[1,"ab",false]""")]
     [TestCase("(function(){ var o = Object.create(null); o.a = 1; return o; })()", """{"a":1}""")]
     [TestCase("Object.defineProperty({a: 1}, 'hidden', {value: 2, enumerable: false})", """{"a":1}""")]
-    [TestCase("Object.create({inherited: 1})", """{"inherited":1}""")]
+    [TestCase("Object.create({inherited: 1})", "{}")]
     [TestCase("(function(){ class K { constructor(){ this.a = 1; } get g(){ return 2; } } return new K(); })()", """{"a":1}""")]
     [TestCase("new Proxy({a: 1}, {})", """{"a":1}""")]
     [TestCase("(function(){ return arguments; })(1, 2)", """{"0":1,"1":2}""")]
     [TestCase("Object.freeze({a: 1, value: undefined})", """{"a":1}""")]
-    [TestCase("({value: {toString: function(){ return 'x'; }}})", """{"value":{"toString":{}}}""")]
+    [TestCase("({value: {toString: function(){ return 'x'; }}})", """{"value":{}}""")]
+    [TestCase("[-Infinity]", "[null]")]
+    [TestCase("new Uint8Array([1, 2]).buffer", "{}")]
+    [TestCase("({b: new Uint8Array([1, 2]).buffer})", """{"b":{}}""")]
     public void Javascript_result_rendering_keeps_its_bytes(string expression, string expected)
     {
         using GethLikeJavaScriptTxTracer tracer = CreateResultTracer("return " + expression + ";", capture: false);
@@ -2028,7 +2026,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace trace = tracer.BuildResult();
 
         Assert.That(ResultJson(trace), Is.EqualTo(
-            "[\"q\\\"b\\\\s/\\n\\t" + U + "0001<>&'" + U + "2028\",\"zażółć " + U + "D83E" + U + "DD84 日本\",\"" + U + "FFFDx\"]"));
+            "[\"q\\\"b\\\\s/\\n\\t" + U + "0001<>&'\u2028\",\"zażółć " + char.ConvertFromUtf32(0x1F984) + " 日本\",\"" + U + "d800x\"]"));
     }
 
     [Test]
@@ -2040,17 +2038,19 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(ResultJson(trace), Is.EqualTo("[\"" + string.Concat(Enumerable.Repeat("ab", 50000)) + "\",\"" + string.Concat(Enumerable.Repeat("\\\"\\n", 20000)) + "\"]"));
     }
 
-    [TestCase("NaN", typeof(JsonException), "The value 'NaN' is not a valid JSON number.")]
-    [TestCase("[-Infinity]", typeof(JsonException), "The value '-Infinity' is not a valid JSON number.")]
-    [TestCase("({ get a() { throw new Error('getter boom'); } })", typeof(ScriptEngineException), "The V8 runtime cannot perform the requested operation because a script exception is pending")]
-    [TestCase("[{ get a() { throw new Error('nested getter boom'); } }]", typeof(ScriptEngineException), "The V8 runtime cannot perform the requested operation because a script exception is pending")]
-    [TestCase("new Uint8Array([1, 2]).buffer", typeof(NotSupportedException), "Microsoft.ClearScript.V8.V8ScriptItem+V8ArrayBuffer Path: $.")]
-    [TestCase("({b: new Uint8Array([1, 2]).buffer})", typeof(NotSupportedException), "Microsoft.ClearScript.V8.V8ScriptItem+V8ArrayBuffer")]
+    [TestCase("NaN", typeof(InvalidDataException), "json: unsupported value: NaN")]
+    [TestCase("({ get a() { throw new Error('getter boom'); } })", typeof(InvalidDataException), "Error: getter boom")]
+    [TestCase("[{ get a() { throw new Error('nested getter boom'); } }]", typeof(InvalidDataException), "Error: nested getter boom")]
+    [TestCase("({value: 5n})", typeof(InvalidDataException), "TypeError: Do not know how to serialize a BigInt")]
+    [TestCase("({value: 5n, other: 1})", typeof(InvalidDataException), "TypeError: Do not know how to serialize a BigInt")]
+    [TestCase("({other: 1, value: 5n})", typeof(InvalidDataException), "TypeError: Do not know how to serialize a BigInt")]
+    [TestCase("({x: {value: 5n, other: {deep: 1}}})", typeof(InvalidDataException), "TypeError: Do not know how to serialize a BigInt")]
+    [TestCase("({value: -123456789012345678901234567890n})", typeof(InvalidDataException), "TypeError: Do not know how to serialize a BigInt")]
     public void Javascript_result_rendering_keeps_its_failures(string expression, Type exception, string message)
     {
         using GethLikeJavaScriptTxTracer tracer = CreateResultTracer("return " + expression + ";", capture: false);
 
-        Assert.That(() => tracer.BuildResult(), Throws.TypeOf(exception).With.Message.StartWith(message));
+        Assert.That(() => tracer.BuildResult(), Throws.TypeOf(exception).With.Message.EqualTo(message));
     }
 
     private static IEnumerable<TestCaseData> ScalarNumberHandlingCases()

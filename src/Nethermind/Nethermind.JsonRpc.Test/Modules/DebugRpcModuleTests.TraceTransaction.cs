@@ -145,6 +145,53 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_trace_javascript_result_json_semantics(
+        [Values("debug_traceCall", "debug_traceTransaction", "debug_traceBlockByNumber")] string method, [Values] bool mux)
+    {
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        const string tracer = "{fault:function(){},result:function(){return {date:new Date('2020-01-02T03:04:05.000Z'),"
+            + "nested:{n:7,toJSON:function(key){return this.n+':'+key;}},array:[undefined,NaN,function(){}],omitted:function(){}};}}";
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        object[] parameters = method switch
+        {
+            "debug_traceCall" => [new { to = TestItem.AddressC.ToString() }, "latest", options],
+            "debug_traceTransaction" => [transaction.Hash!, options],
+            _ => [context.Blockchain.BlockTree.Head!.Number, options]
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        JToken? result = method == "debug_traceBlockByNumber" ? json["result"]?[0]?["result"] : json["result"];
+        if (mux) result = result?[tracer];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(result, Is.EqualTo(JToken.Parse("""{"date":"2020-01-02T03:04:05.000Z","nested":"7:nested","array":[null,null,null]}""")).Using(JToken.EqualityComparer), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_javascript_toJSON_failure_preserves_diagnostic([Values] bool mux)
+    {
+        using Context context = await Context.Create();
+        const string tracer = "{fault:function(){},result:function(){return {toJSON:function(){throw Error('serialization failure');}};}}";
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Does.Contain("serialization failure"), response);
+        }
+    }
+
+    [Test]
     public async Task Debug_single_trace_javascript_callback_errors_keep_their_message(
         [Values("debug_traceCall", "debug_traceTransaction")] string method,
         [Values("setup", "step", "fault", "enter", "exit", "result")] string callback, [Values] bool mux)

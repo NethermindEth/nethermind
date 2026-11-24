@@ -45,6 +45,7 @@ internal sealed partial class TracerRuntime : IDisposable
     private const string TracersPath = "Data/JSTracers/";
     private const string Extension = ".js";
     private const string BigIntegerJavaScript = "_bigInteger.js";
+    private const string StringifyResultJavaScript = "_stringifyResult.js";
     private const string CreateUint8ArrayCode = "(function (U) {return function (length) {return new U(length);};})(Uint8Array)";
 
     // PublicationOnly does not cache a failed load, so a later request retries it instead of rethrowing it for the process lifetime.
@@ -84,6 +85,11 @@ internal sealed partial class TracerRuntime : IDisposable
             : throw new FileNotFoundException($"JavaScript tracer helper '{BigIntegerJavaScript}' is missing from {TracersPath}"));
 
     public V8Script CreateUint8Array => GetScript(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode);
+
+    internal V8Script StringifyResult => GetScript(StringifyResultJavaScript,
+        _builtInSources.Value.TryGetValue(StringifyResultJavaScript, out string? code)
+            ? code
+            : throw new FileNotFoundException($"JavaScript tracer helper '{StringifyResultJavaScript}' is missing from {TracersPath}"));
 
     /// <summary>
     /// Compiles the tracer given as inline code or as the name of a tracer shipped under <c>Data/JSTracers</c>.

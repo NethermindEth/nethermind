@@ -12,6 +12,7 @@ using Microsoft.ClearScript.V8;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Serialization.Json;
 #pragma warning disable CS0162 // Unreachable code detected
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
@@ -32,6 +33,7 @@ public partial class Engine : IDisposable
     private readonly bool _ownsRuntime;
 
     private ScriptObject? _nullThrowInvoker;
+    private ScriptObject? _resultStringifier;
     private NullThrowObserver? _availableNullThrowObserver;
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
@@ -126,6 +128,7 @@ public partial class Engine : IDisposable
 
         _bigInteger = V8Engine.Evaluate(_runtime.BigInteger);
         _createUint8Array = V8Engine.Evaluate(_runtime.CreateUint8Array);
+        _resultStringifier = (ScriptObject)V8Engine.Evaluate(_runtime.StringifyResult);
     }
 
     /// <summary>
@@ -242,6 +245,7 @@ public partial class Engine : IDisposable
         {
             try
             {
+                _resultStringifier?.Dispose();
                 _nullThrowInvoker?.Dispose();
             }
             finally
@@ -311,14 +315,30 @@ public partial class Engine : IDisposable
     [GeneratedRegex(@"\A[A-Za-z_$][A-Za-z0-9_$]*\z")]
     private static partial Regex IdentifierRegex();
 
+    internal string StringifyResult(object value, int maxDepth, out bool observedNullThrow)
+    {
+        observedNullThrow = false;
+        ThrowIfInterrupted();
+        bool exceededDepth = false;
+        try
+        {
+            return (string)InvokeCapturingNull(Undefined.Value, _resultStringifier!, value, maxDepth, true,
+                out observedNullThrow, (Action)(() => exceededDepth = true), true)!;
+        }
+        catch (ScriptEngineException exception) when (exceededDepth && JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow))
+        {
+            throw new JavaScriptResultDepthException(maxDepth);
+        }
+    }
+
     // Capture the intrinsic before user code runs; strict frames hide the per-call marker from caller introspection.
     internal void PrepareNullThrowCapture() => _nullThrowInvoker ??= (ScriptObject)V8Engine.Evaluate("""
         (function () {
             'use strict';
             const apply = Reflect.apply;
-            return function (receiver, callback, markNull, first, second, hasSecond) {
+            return function (receiver, callback, markNull, first, second, hasSecond, third, hasThird) {
                 try {
-                    return apply(callback, receiver, hasSecond ? [first, second] : [first]);
+                    return apply(callback, receiver, hasThird ? [first, second, third] : hasSecond ? [first, second] : [first]);
                 } catch (error) {
                     if (error === null) markNull();
                     throw error;
@@ -327,13 +347,14 @@ public partial class Engine : IDisposable
         })()
         """);
 
-    internal object? InvokeCapturingNull(object receiver, ScriptObject callback, object? first, object? second, bool hasSecond, out bool observedNullThrow)
+    internal object? InvokeCapturingNull(object receiver, ScriptObject callback, object? first, object? second, bool hasSecond,
+        out bool observedNullThrow, object? third = null, bool hasThird = false)
     {
         observedNullThrow = false;
         NullThrowObserver observer = Interlocked.Exchange(ref _availableNullThrowObserver, null) ?? new();
         try
         {
-            return _nullThrowInvoker!.Invoke(false, receiver, callback, observer.MarkNull, first, second, hasSecond);
+            return _nullThrowInvoker!.Invoke(false, receiver, callback, observer.MarkNull, first, second, hasSecond, third, hasThird);
         }
         catch
         {
