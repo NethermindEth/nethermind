@@ -35,7 +35,7 @@ sealed record HitsFile(Dictionary<string, HitCounts> Counts, List<Hit> Hits, Lis
 sealed record Decision(string Cluster, string Id, string Route, long Prod, long Test, string Verdict);
 sealed record Package(string Route, string Cluster, List<string> Ids, long Prod, long Test, string? Analyzer = null, string Slug = "", List<long>? OpenPrs = null);
 sealed record CandidatesFile(List<Decision> Decisions, List<Package> Packages, List<long>? BotOpenPrs, Package? Chosen);
-sealed record Label(string? LabelName, string? File, long? Line, string? Reason)
+sealed record Label(string? LabelName, string? File, long? Line, string? Reason, bool? MatchesWhy = null)
 {
     [JsonPropertyName("label")] public string? LabelName { get; init; } = LabelName;
 }
@@ -1021,7 +1021,7 @@ static partial class RuleBot
     internal static (int TruePositive, int Need, bool Ok) Precision(IReadOnlyList<Label> labels, int hitCount)
     {
         var need = Math.Min(SampleSize, hitCount);
-        var truePositive = labels.Count(l => l.LabelName == "true_positive");
+        var truePositive = labels.Count(l => l.LabelName == "true_positive" && l.MatchesWhy == true);
         var ok = need > 0 && labels.Count == need && (need == SampleSize ? truePositive >= SampleMinTrue : truePositive == need);
         return (truePositive, need, ok);
     }
@@ -1197,7 +1197,7 @@ static partial class RuleBot
         {
             lines.AddRange(["", "## Analyzer checks", "",
                 $"- Tests: {routeB.TestsSummary ?? "pass"}. With `Initialize` replaced by a no-op the tests fail ({routeB.RedSummary ?? "red control"}).",
-                $"- Precision: {Show(routeB.Precision?.TruePositive)}/{Show(routeB.Precision?.Needed)} random production hits labelled true positive by a separate review pass (gate {SampleMinTrue}/{SampleSize}).",
+                $"- Precision: {Show(routeB.Precision?.TruePositive)}/{Show(routeB.Precision?.Needed)} random production hits labelled true positive for the stated reason by a separate review pass (gate {SampleMinTrue}/{SampleSize}).",
                 $"- `{Unshipped}` gets one appended row, so a `*.md` code owner has to approve.", "",
                 "<details><summary>Precision sample</summary>", ""]);
             foreach (var label in LoadOr<List<Label>>(Path.Combine(data, "labels.json")))

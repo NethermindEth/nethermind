@@ -474,6 +474,12 @@ var tests = new (string Name, Func<Task> Body)[]
         True(Precision(Labels(7, 0), 7).Ok);
         True(!Precision(Labels(6, 1), 7).Ok);
     })),
+    ("test_precision_counts_only_labels_that_match_the_stated_why", Sync(() =>
+    {
+        True(!Precision(Parse<List<Label>>(string.Concat("[", string.Join(',', Enumerable.Repeat("""{"label":"true_positive","matches_why":false}""", 7)), "]")), 7).Ok);
+        True(!Precision(Parse<List<Label>>(string.Concat("[", string.Join(',', Enumerable.Repeat("""{"label":"true_positive"}""", 7)), "]")), 7).Ok);
+        Equal((18, 20, true), Precision([.. Labels(18, 0), .. Parse<List<Label>>("""[{"label":"true_positive","matches_why":false},{"label":"true_positive","matches_why":false}]""")], 40));
+    })),
     ("test_unreadable_labels_clear_earlier_precision", async () =>
     {
         string[] rows =
@@ -790,7 +796,7 @@ static class RuleBotTestSupport
         JsonSerializer.Serialize(new[] { new BotPr(number, state, head, created, closed) }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
     internal static List<Label> Labels(int truePositive, int falsePositive) =>
-        [.. Enumerable.Repeat("true_positive", truePositive).Concat(Enumerable.Repeat("false_positive", falsePositive)).Select(label => new Label(label, null, null, null))];
+        Parse<List<Label>>(JsonSerializer.Serialize(Enumerable.Repeat("true_positive", truePositive).Concat(Enumerable.Repeat("false_positive", falsePositive)).Select(label => new { label, matches_why = true })));
 
     internal const string RouteBResult = """{"test_class": "FooTests", "analyzer": "src/Nethermind/Nethermind.Analyzers/Foo.cs", "summary": "ok"}""";
 

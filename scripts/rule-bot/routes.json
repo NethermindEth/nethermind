@@ -87,7 +87,7 @@
  "arraypool": {
   "route": "B",
   "ids": [],
-  "why": "Rent without Return in finally needs a new analyzer"
+  "why": "A pooled list used only inside one method should be the stack-only ArrayPoolListRef<T> instead of ArrayPoolList<T>"
  },
  "skip": {
   "route": "B",

@@ -6,4 +6,6 @@ Below are hits of the rule in production code as JSON, each with file, line and 
 
 {{SAMPLE}}
 
-Write {{RESULT}} as a JSON array with one object per hit, in the same order: {"file": "...", "line": N, "label": "true_positive" | "false_positive", "reason": "<one short sentence>"}. Do not change any file in the repository.
+Also decide for each hit whether the problem the rule reports there is the one stated above, not a different problem the analyzer happens to check (matches_why). If the rule as written reports something other than the stated problem, set matches_why to false for every hit and say so in the reason.
+
+Write {{RESULT}} as a JSON array with one object per hit, in the same order: {"file": "...", "line": N, "label": "true_positive" | "false_positive", "matches_why": true | false, "reason": "<one short sentence>"}. Do not change any file in the repository.
