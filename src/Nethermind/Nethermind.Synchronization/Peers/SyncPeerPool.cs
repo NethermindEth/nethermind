@@ -630,7 +630,6 @@ namespace Nethermind.Synchronization.Peers
                         }
                         else
                         {
-                            delaySource.Cancel();
                             BlockHeader? header = getHeadHeaderTask.Result;
                             if (header is null)
                             {
@@ -656,6 +655,7 @@ namespace Nethermind.Synchronization.Peers
                     }
                     finally
                     {
+                        delaySource.Cancel();
                         linkedSource.Dispose();
                         delaySource.Dispose();
                     }
