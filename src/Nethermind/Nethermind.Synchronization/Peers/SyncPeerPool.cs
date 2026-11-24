@@ -227,7 +227,7 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
-        private readonly Lock _priorityPeerCountLock = new();
+        private readonly Lock _peerMembershipLock = new();
         private int _priorityPeerCount;
         internal int PriorityPeerCount => Volatile.Read(ref _priorityPeerCount);
         public int InitializedPeersCount => InitializedPeers.Count();
@@ -256,17 +256,13 @@ namespace Nethermind.Synchronization.Peers
             }
 
             PeerInfo peerInfo = new(syncPeer, _allocationAllowances);
-            if (!_peers.TryAdd(syncPeer.Node.Id, peerInfo))
+            lock (_peerMembershipLock)
             {
-                return;
+                if (!_peers.TryAdd(syncPeer.Node.Id, peerInfo)) return;
+                if (syncPeer.IsPriority) Metrics.PriorityPeers = ++_priorityPeerCount;
             }
 
             UpdatePeerCountMetric(peerInfo.PeerClientType, 1);
-
-            if (syncPeer.IsPriority)
-            {
-                UpdatePriorityPeerCount(1);
-            }
             if (_logger.IsTrace) TracePeerCount();
 
             BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -300,18 +296,15 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            if (!_peers.TryRemove(id, out _))
+            lock (_peerMembershipLock)
             {
-                // possible if sync failed - we remove peer and eventually initiate disconnect, which calls remove peer again
-                return;
+                // Overlapping sessions can advertise the same node ID. Only the registered session owns the entry.
+                if (!_peers.TryGetValue(id, out PeerInfo peerInfo) || !ReferenceEquals(peerInfo.SyncPeer, syncPeer)) return;
+                _peers.TryRemove(id, out _);
+                if (syncPeer.IsPriority) Metrics.PriorityPeers = --_priorityPeerCount;
             }
 
             UpdatePeerCountMetric(syncPeer.ClientType, -1);
-
-            if (syncPeer.IsPriority)
-            {
-                UpdatePriorityPeerCount(-1);
-            }
             if (_logger.IsTrace) TracePeerCount();
 
             if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? initCancelTokenSource))
@@ -339,20 +332,13 @@ namespace Nethermind.Synchronization.Peers
         internal bool RefreshCancellationIs(PublicKey id, CancellationTokenSource expected) =>
             _refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? current) && ReferenceEquals(current, expected);
 
-        private void UpdatePriorityPeerCount(int change)
-        {
-            lock (_priorityPeerCountLock)
-            {
-                Metrics.PriorityPeers = _priorityPeerCount += change;
-            }
-        }
-
         public void SetPeerPriority(PublicKey id)
         {
-            if (_peers.TryGetValue(id, out PeerInfo peerInfo) && !peerInfo.SyncPeer.IsPriority)
+            lock (_peerMembershipLock)
             {
+                if (!_peers.TryGetValue(id, out PeerInfo peerInfo) || peerInfo.SyncPeer.IsPriority) return;
                 peerInfo.SyncPeer.IsPriority = true;
-                UpdatePriorityPeerCount(1);
+                Metrics.PriorityPeers = ++_priorityPeerCount;
             }
         }
 

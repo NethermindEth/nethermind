@@ -344,9 +344,28 @@ public class SyncPeerPoolTests
         Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(0));
 
         Metrics.PriorityPeers = 0;
-        ctx.Pool.SetPeerPriority(peer.Id);
+        Parallel.For(0, 20, _ => ctx.Pool.SetPeerPriority(peer.Id));
         Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
         Assert.That(Metrics.PriorityPeers, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Removing_a_duplicate_session_preserves_the_registered_priority_peer()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+        SimpleSyncPeerMock registered = peers[0];
+        SimpleSyncPeerMock duplicate = new(registered.Id);
+        ctx.Pool.AddPeer(duplicate);
+        ctx.Pool.SetPeerPriority(registered.Id);
+
+        ctx.Pool.RemovePeer(duplicate);
+        Assert.That(ctx.Pool.PeerCount, Is.EqualTo(1));
+        Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+
+        ctx.Pool.RemovePeer(registered);
+        Assert.That(ctx.Pool.PeerCount, Is.Zero);
+        Assert.That(ctx.Pool.PriorityPeerCount, Is.Zero);
     }
 
     [Test]
