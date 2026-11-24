@@ -584,6 +584,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(serialized, Is.EqualTo(expectedResult));
         }
 
+        [TestCase("logs", "0", "expected a filter object")]
+        [TestCase("logs", "[]", "expected a filter object")]
+        [TestCase("logs", "\"0\"", "expected a filter object")]
+        [TestCase("transactionReceipts", "true", "expected an object with transactionHashes")]
+        [TestCase("transactionReceipts", "[]", "expected an object with transactionHashes")]
+        public async Task Subscription_with_a_filter_of_another_kind_returns_invalid_params(string subscriptionName, string args, string reason)
+        {
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", subscriptionName, args);
+            Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 1: {{reason}}"},"id":67}"""));
+        }
+
         [TestCase("0x12")]
         [TestCase("0x")]
         [TestCase("0x00000000000000000000000000000000000000000000000000000000000000")]

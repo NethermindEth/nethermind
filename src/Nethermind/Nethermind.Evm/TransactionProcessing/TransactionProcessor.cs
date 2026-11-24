@@ -256,11 +256,13 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual SystemTransactionProcessor<TGasPolicy> CreateSystemTransactionProcessor() =>
             new(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
 
+        protected virtual bool UsesSystemTransactionProcessor(Transaction tx) => tx.IsSystem();
+
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             // Warmup keeps real fee/nonce semantics, so it must not route to the system processor.
-            TransactionResult result = tx.IsSystem() || opts == ExecutionOptions.SkipValidation
+            TransactionResult result = UsesSystemTransactionProcessor(tx) || opts == ExecutionOptions.SkipValidation
                 ? GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts)
                 : Execute(tx, tracer, opts);
 
@@ -1421,7 +1423,6 @@ namespace Nethermind.Evm.TransactionProcessing
                             ref gasAvailable,
                             spec,
                             in accessTracker,
-                            isTracingAccess: false,
                             delegationAddress);
 
                         if (topFrameOutOfGas)
@@ -1991,7 +1992,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ulong spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
 
-            if (ShouldRefundGas(tx, opts, in gasPrice))
+            if (ShouldRefundGas(tx, opts, in gasPrice) && (spec.IsEip8037Enabled || substate.ShouldRevert || substate.IsError || !substate.DestroyListContains(tx.SenderAddress)))
                 PayRefund(tx, (tx.GasLimit - spentGasAfterFloor) * gasPrice, spec);
 
             return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, (ulong)blockStateGas, Math.Max(spentGas, floorGasLong), refund > 0 ? (ulong)refund : 0);
