@@ -711,8 +711,6 @@ namespace Nethermind.Network.Rlpx
                 }
             }
 
-            _trackedSessions.Clear();
-
             if (_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");
         }
 

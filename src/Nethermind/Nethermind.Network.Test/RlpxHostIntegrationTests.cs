@@ -88,6 +88,38 @@ public class RlpxHostIntegrationTests
         }
     }
 
+    [Test]
+    public async Task Shutdown_preserves_cleanup_of_a_disconnect_already_in_progress()
+    {
+        await using IContainer container = CreateFilterContainer(filterEnabled: true, subnetBucketing: false);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        Session session = CreateInitializedSession(IPAddress.Loopback);
+        host.TrackSessionActivity(session);
+        int notifications = 0;
+        host.SessionDisconnected += (_, _, _) => Interlocked.Increment(ref notifications);
+
+        TaskCompletionSource disconnecting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim finish = new();
+        session.Disconnecting += (_, _) =>
+        {
+            disconnecting.SetResult();
+            finish.Wait();
+        };
+        Task disconnect = Task.Run(() => session.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "remote closed"));
+        try
+        {
+            await disconnecting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await host.Shutdown();
+        }
+        finally
+        {
+            finish.Set();
+            await disconnect;
+        }
+
+        Assert.That(notifications, Is.EqualTo(1));
+    }
+
     private static Session CreateInitializedSession(IPAddress remoteIp)
     {
         Session session = new(30303, new Node(TestItem.PublicKeyA, remoteIp.ToString(), 30303), Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
