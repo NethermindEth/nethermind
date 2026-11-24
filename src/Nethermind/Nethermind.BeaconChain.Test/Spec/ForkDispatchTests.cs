@@ -220,6 +220,26 @@ public class ForkDispatchTests
     }
 
     [Test]
+    public async Task Checkpoint_state_version_of_a_fork_after_gloas_is_refused_by_name()
+    {
+        byte[] laterVersion = Bytes.FromHexString("0x08000000");
+        BeaconChainSpec spec = CheckpointSpec();
+        spec = spec with { Forks = [.. spec.Forks, new(laterVersion, spec.GloasForkEpoch + 1)] };
+        BeaconStateGloas state = ForkCrossingChain.Instance.First.PostState.Clone();
+        state.Fork = new Fork { PreviousVersion = state.Fork!.PreviousVersion, CurrentVersion = laterVersion, Epoch = state.Fork.Epoch };
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(state, new ForkedSignedBeaconBlock.OfGloas(ForkCrossingChain.Instance.First.Block));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, spec, store, LimboLogs.Instance);
+
+        NotSupportedException ex = (await Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None)))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain("scheduled after Gloas"));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
+    }
+
+    [Test]
     public void Block_import_takes_the_shape_of_each_fork_at_its_slot_and_refuses_the_other([ValueSource(nameof(Forks))] BeaconFork fork)
     {
         ulong slot = FirstSlot(fork);

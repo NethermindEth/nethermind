@@ -2230,7 +2230,7 @@ public sealed class ForkChoiceRunner
             return requireHeld ? GetHeldBlockState(checkpoint.Root) : GetBlockState(checkpoint.Root);
 
         // Only a copy is asked for, so a Fulu block state that has to be regenerated is not held for this.
-        ForkedBeaconState state = AdvanceCopy(checkpoint.Root, blockSlot, startSlot, IsGloasSlot(startSlot) ? BeaconFork.Gloas : BeaconFork.Fulu, requireHeld);
+        ForkedBeaconState state = AdvanceCopy(checkpoint.Root, blockSlot, startSlot, _spec.ForkAtEpoch(checkpoint.Epoch), requireHeld);
         // The epoch transitions above can apply pending deposits and grow the registry.
         ExtendPubkeys(ValidatorsOf(state));
         return state;

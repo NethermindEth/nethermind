@@ -365,7 +365,9 @@ public class CheckpointSync(
                 }
 
                 // By version identity, not activation epoch: Fulu and Gloas may activate in the same epoch.
-                BeaconFork versionFork = currentVersion.AsSpan().SequenceEqual(spec.GloasForkVersion) ? BeaconFork.Gloas : BeaconFork.Fulu;
+                BeaconFork versionFork = currentVersion.AsSpan().SequenceEqual(spec.GloasForkVersion) ? BeaconFork.Gloas
+                    : entry.Epoch < spec.GloasForkEpoch || entry.Epoch == spec.FuluForkEpoch ? BeaconFork.Fulu
+                    : throw new NotSupportedException($"Checkpoint state fork version {currentVersion.ToHexString(true)} belongs to a fork scheduled after Gloas, which this driver does not support. {remedy}");
                 if (versionFork != state.Fork)
                 {
                     throw new InvalidDataException($"Checkpoint state at slot {state.Slot} carries the {versionFork} fork version {currentVersion.ToHexString(true)}, but its slot belongs to the {state.Fork} fork. {remedy}");
