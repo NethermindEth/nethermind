@@ -292,12 +292,7 @@ public class RocksDbFactory : IDbFactory
             try
             {
                 using FileStream stream = File.OpenRead(fullPath);
-                int readCount = buffer.Length;
-                while (readCount == buffer.Length)
-                {
-                    readCount = stream.Read(buffer);
-                    Interlocked.Add(ref totalRead, readCount);
-                }
+                Interlocked.Add(ref totalRead, ReadForWarmup(stream, buffer));
             }
             catch (FileNotFoundException)
             {
@@ -312,6 +307,17 @@ public class RocksDbFactory : IDbFactory
 
             return buffer;
         }, static _ => { });
+    }
+
+    internal static long ReadForWarmup(Stream stream, byte[] buffer)
+    {
+        long bytesRead = 0;
+        int count;
+        while ((count = stream.Read(buffer)) != 0)
+        {
+            bytesRead += count;
+        }
+        return bytesRead;
     }
 
     private readonly struct FileMetadataByLevelThenNewestComparer : IComparer<(FileMetadata metadata, DateTime creationTime)>
