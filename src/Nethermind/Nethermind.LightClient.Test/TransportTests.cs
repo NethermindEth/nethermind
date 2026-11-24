@@ -210,10 +210,13 @@ public class TransportTests
 
     [Test]
     [CancelAfter(30_000)]
-    public async Task Payload_shutdown_cancels_waiters_and_joins_unwinding_owners([Values] bool externalStop, CancellationToken token)
+    public async Task Payload_shutdown_cancels_waiters_and_joins_unwinding_owners([Values] bool externalStop,
+        [Values] bool independentDownload, CancellationToken token)
     {
         using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
         PayloadCache<int> cache = new(static _ => 1024, stopping.Token);
+        Hash256 retained = Keccak.Compute("retained payload");
+        cache.SetVerified(retained, 17);
         TaskCompletionSource<int> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         async Task<int> Fetch(CancellationToken cancellation)
@@ -222,14 +225,22 @@ public class TransportTests
             return await release.Task;
         }
         Task<int>[] active = Enumerable.Range(0, PayloadCache<int>.MaxDownloads)
-            .Select(i => cache.GetAsync(Keccak.Compute($"stopping payload {i}"), Fetch, token)).ToArray();
-        Task<int> queued = cache.GetAsync(Keccak.Compute("stopping queued payload"), Fetch, token);
+            .Select(i => cache.GetAsync(Keccak.Compute($"stopping payload {i}"), Fetch, token, independentDownload)).ToArray();
+        Task<int> queued = cache.GetAsync(Keccak.Compute("stopping queued payload"), Fetch, token, independentDownload);
         try
         {
-            if (externalStop) await stopping.CancelAsync();
+            if (externalStop)
+            {
+                await stopping.CancelAsync();
+                Assert.That(cache.TryGetValue(retained, out _), Is.False);
+            }
             Task shutdown = cache.DisposeAsync().AsTask();
             await canceled.Task.WaitAsync(token);
-            Assert.That(shutdown.IsCompleted, Is.False, "owners retain their data until they finish unwinding");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(shutdown.IsCompleted, Is.False, "owners retain their data until they finish unwinding");
+                Assert.That(cache.TryGetValue(retained, out _), Is.False);
+            }
             await Assert.CatchAsync<OperationCanceledException>(async () => await queued);
             foreach (Task<int> caller in active)
                 await Assert.CatchAsync<OperationCanceledException>(async () => await caller);
@@ -591,6 +602,131 @@ public class TransportTests
     }
 
     [Test]
+    [CancelAfter(5000)]
+    public async Task Consensus_header_lookup_retries_after_execution_recovers([Values] bool noPeers, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        ExecutionPeer peer = peers.Ordered[0];
+        Hash256 hash = peers.Header.Hash!;
+        if (noPeers) peers.Pool.RemovePeer(peer.SyncPeer);
+        else peer.BeforeResponse = static (_, cancellation) => Task.Delay(Timeout.InfiniteTimeSpan, cancellation);
+
+        Task<BlockHeader> stalled = peers.Transport.GetConsensusHeaderAsync(hash, token);
+        if (!noPeers) await peers.Started.Reader.ReadAsync(token);
+        peers.Clock.Advance(TimeSpan.FromMilliseconds(2999));
+        Assert.That(stalled.IsCompleted, Is.False);
+        peers.Clock.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.That(async () => await stalled.WaitAsync(token), Throws.TypeOf<ExecutionDataUnavailableException>());
+
+        if (noPeers) peers.Pool.AddPeer(peer.SyncPeer);
+        else peer.BeforeResponse = null;
+        BlockHeader recovered = await peers.Transport.GetConsensusHeaderAsync(hash, token);
+        BlockHeader retained = await peers.Transport.GetHeaderByHashAsync(hash, token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovered.Hash, Is.EqualTo(hash));
+            Assert.That(retained.Hash, Is.EqualTo(hash));
+            Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { noPeers ? 1 : 2 }));
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
+    }
+
+    [Test]
+    [CancelAfter(5000)]
+    public async Task Consensus_header_lookup_can_finish_while_an_rpc_lookup_for_the_same_hash_is_stalled(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        ExecutionPeer peer = peers.Ordered[0];
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peer.BeforeResponse = (_, cancellation) => release.Task.WaitAsync(cancellation);
+        Hash256 hash = peers.Header.Hash!;
+        Task<BlockHeader> stalled = peers.Transport.GetHeaderByHashAsync(hash, token);
+        try
+        {
+            await peers.Started.Reader.ReadAsync(token);
+            peer.BeforeResponse = null;
+
+            BlockHeader published = await peers.Transport.GetConsensusHeaderAsync(hash, token);
+            BlockHeader retained = await peers.Transport.GetHeaderByHashAsync(hash, token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(published.Hash, Is.EqualTo(hash));
+                Assert.That(retained.Hash, Is.EqualTo(hash));
+                Assert.That(stalled.IsCompleted, Is.False);
+                Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 2 }));
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            await ((Task)stalled).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(5000)]
+    public async Task Consensus_header_lookup_retries_with_the_next_supplier_after_two_stalled_peers(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(3);
+        foreach (ExecutionPeer peer in peers.Ordered.Take(2))
+            peer.BeforeResponse = static (_, stopping) => Task.Delay(Timeout.Infinite, stopping);
+        Hash256 hash = peers.Header.Hash!;
+
+        Task<BlockHeader> stalled = peers.Transport.GetConsensusHeaderAsync(hash, token);
+        await peers.Started.Reader.ReadAsync(token);
+        await peers.Started.Reader.ReadAsync(token);
+        Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 1, 1, 0 }));
+
+        peers.Clock.Advance(TimeSpan.FromSeconds(3));
+        await Assert.ThrowsAsync<ExecutionDataUnavailableException>(async () => await stalled.WaitAsync(token));
+
+        BlockHeader recovered = await peers.Transport.GetConsensusHeaderAsync(hash, token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovered.Hash, Is.EqualTo(hash));
+            Assert.That(peers.Counts(AllocationContexts.Headers)[2], Is.EqualTo(1));
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
+    }
+
+    [Test]
+    [CancelAfter(5000)]
+    public async Task Consensus_header_lookup_shares_work_and_isolates_caller_cancellation([Values] bool cancelFirst,
+        CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        using CancellationTokenSource firstCaller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peers.Ordered[0].BeforeResponse = (_, stopping) => release.Task.WaitAsync(stopping);
+        Hash256 hash = peers.Header.Hash!;
+
+        Task<BlockHeader> first = peers.Transport.GetConsensusHeaderAsync(hash, firstCaller.Token);
+        await peers.Started.Reader.ReadAsync(token);
+        Task<BlockHeader> second = peers.Transport.GetConsensusHeaderAsync(hash, token);
+        if (cancelFirst)
+        {
+            await firstCaller.CancelAsync();
+            await Assert.CatchAsync<OperationCanceledException>(async () => await first);
+        }
+        release.SetResult();
+
+        BlockHeader published = await second;
+        BlockHeader retained = await peers.Transport.GetHeaderByHashAsync(hash, token);
+        using (Assert.EnterMultipleScope())
+        {
+            if (!cancelFirst)
+            {
+                BlockHeader alsoPublished = await first;
+                Assert.That(alsoPublished.Hash, Is.EqualTo(hash));
+                Assert.That(alsoPublished, Is.Not.SameAs(published));
+            }
+            Assert.That(published.Hash, Is.EqualTo(hash));
+            Assert.That(retained.Hash, Is.EqualTo(hash));
+            Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 1 }));
+        }
+    }
+
+    [Test]
     [CancelAfter(30_000)]
     public async Task Header_cache_preserves_values_without_RLP_roundtrip([Values] bool explicitZeroBaseFee, CancellationToken token)
     {
@@ -620,9 +756,14 @@ public class TransportTests
 
         BlockHeader repeated = await peers.Transport.GetHeaderByHashAsync(hash, token);
         await peers.Transport.GetHeaderByHashAsync(hash, token);
+        peers.Transport.UpdateHead(new(2, original.Number, hash, original.StateRoot!), original.Timestamp);
+        ISyncServer server = Services(peers.Transport).Resolve<ISyncServer>();
+        using IOwnedReadOnlyList<byte> advertised = server.FindHeadersRlp(hash, 1, 0, false);
 
         using (Assert.EnterMultipleScope())
         {
+            if (explicitZeroBaseFee) Assert.That(advertised, Is.Empty);
+            else Assert.That(Keccak.Compute(advertised.AsSpan()), Is.EqualTo(hash));
             Assert.That(repeated.Hash, Is.EqualTo(hash));
             Assert.That(repeated.BaseFeePerGas, Is.EqualTo(original.BaseFeePerGas));
             Assert.That(repeated.WithdrawalsRoot, Is.EqualTo(original.WithdrawalsRoot));
@@ -3353,6 +3494,35 @@ public class TransportTests
     }
 
     [Test]
+    [CancelAfter(5000)]
+    public async Task Execution_peer_can_fetch_the_advertised_authenticated_headers([Values] bool includeHeader, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        ISyncServer server = Services(peers.Transport).Resolve<ISyncServer>();
+        BlockHeader previous = peers.Chain[^2];
+        Hash256 previousHash = previous.Hash!;
+        await peers.Transport.GetConsensusHeaderAsync(previousHash, token);
+        peers.Transport.UpdateHead(new(1, previous.Number, previousHash, previous.StateRoot!), previous.Timestamp);
+
+        Hash256 advertisedHash = peers.Head.BlockHash;
+        if (includeHeader) await peers.Transport.GetConsensusHeaderAsync(advertisedHash, token);
+        peers.Transport.UpdateHead(peers.Head, peers.Header.Timestamp);
+
+        using IOwnedReadOnlyList<byte> advertised = server.FindHeadersRlp(advertisedHash, 1, 0, false);
+        using IOwnedReadOnlyList<byte> prior = server.FindHeadersRlp(previousHash, 2, 0, true);
+        using IOwnedReadOnlyList<byte> noHeaders = server.FindHeadersRlp(advertisedHash, 0, 0, false);
+        using (Assert.EnterMultipleScope())
+        {
+            if (includeHeader) Assert.That(Keccak.Compute(advertised.AsSpan()), Is.EqualTo(advertisedHash));
+            else Assert.That(advertised, Is.Empty);
+            Assert.That(server.FindHash(peers.Head.Number), Is.EqualTo(includeHeader ? advertisedHash : null));
+            Assert.That(server.FindHash(previous.Number), Is.EqualTo(previousHash));
+            Assert.That(Keccak.Compute(prior.AsSpan()), Is.EqualTo(previousHash));
+            Assert.That(noHeaders, Is.Empty);
+        }
+    }
+
+    [Test]
     [CancelAfter(30_000)]
     public async Task Empty_bytecode_replies_preserve_the_supplier_and_do_not_populate_the_cache(CancellationToken token)
     {
@@ -5279,6 +5449,7 @@ public class TransportTests
 
         Assert.That(server.Head, Is.SameAs(server.Genesis));
         using MemoryManager<byte>? genesisRlp = server.FindBlockRlp(expected);
+        using IOwnedReadOnlyList<byte> genesisHeaderRlp = server.FindHeadersRlp(expected, 1, 0, false);
         Assert.That(genesisRlp, Is.Not.Null);
         Block? genesis = Rlp.Decode<Block>(genesisRlp!.Memory.Span);
         Assert.That(genesis, Is.Not.Null);
@@ -5287,6 +5458,7 @@ public class TransportTests
             Assert.That(server.Head!.Number, Is.Zero);
             Assert.That(server.Head.CalculateHash(), Is.EqualTo(expected));
             Assert.That(server.Genesis.Hash, Is.EqualTo(expected));
+            Assert.That(Keccak.Compute(genesisHeaderRlp.AsSpan()), Is.EqualTo(expected));
             Assert.That(genesis!.Header.Hash, Is.EqualTo(expected));
             Assert.That(genesis.Header.CalculateHash(), Is.EqualTo(expected));
             Assert.That(genesis.Header.StateRoot, Is.EqualTo(server.Genesis.StateRoot));
