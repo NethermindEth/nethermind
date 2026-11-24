@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Features;
-using Microsoft.Extensions.Primitives;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Routing;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -22,7 +24,7 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// <summary>
 /// <c>/eth/v1/beacon/states/*</c>: fork, root, finality checkpoints, validators, committees, the pending queues and the proposer lookahead.
 /// </summary>
-internal static class BeaconStatesEndpoints
+internal sealed class BeaconStatesEndpoints(BeaconApiContext ctx)
 {
     private const int MaxValidatorIds = 64;
 
@@ -33,45 +35,46 @@ internal static class BeaconStatesEndpoints
 
     /// <summary>altair/validator.md <c>SYNC_COMMITTEE_SUBNET_COUNT</c>.</summary>
     private const int SyncCommitteeSubnetCount = 4;
-    public static void Map(WebApplication app, BeaconApiContext ctx)
+
+    /// <summary>Keeps routing from matching on <c>Content-Type</c>, which would hide a mismatch behind the fallback's 404.</summary>
+    private const string AnyContentType = "*/*";
+
+    public static void Map(WebApplication app)
     {
-        app.MapGet("/eth/v1/beacon/states/{state_id}/fork", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, Fork));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/root", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, Root));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/finality_checkpoints", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, FinalityCheckpoints));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/validators", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, Validators));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/validators/{validator_id}", (HttpContext c, string state_id, string validator_id) => ValidatorById(c, state_id, validator_id, ctx.ForRequest()));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/validator_balances", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, ValidatorBalances));
-        app.MapPost("/eth/v1/beacon/states/{state_id}/validators", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, ValidatorsPost));
-        app.MapPost("/eth/v1/beacon/states/{state_id}/validator_balances", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, ValidatorBalancesPost));
-        app.MapPost("/eth/v1/beacon/states/{state_id}/validator_identities", (HttpContext c, string state_id) => ValidatorIdentities(c, state_id, ctx.ForRequest()));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/committees", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, Committees));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/pending_deposits", (HttpContext c, string state_id) =>
-            StateList(c, state_id, ctx.ForRequest(), static spec => spec.ElectraForkEpoch, static s => s.PendingDeposits!, static items => PendingDeposit.Encode(items), BeaconJsonWriter.WritePendingDepositsAsync));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/pending_partial_withdrawals", (HttpContext c, string state_id) =>
-            StateList(c, state_id, ctx.ForRequest(), static spec => spec.ElectraForkEpoch, static s => s.PendingPartialWithdrawals!, static items => PendingPartialWithdrawal.Encode(items), BeaconJsonWriter.WritePendingPartialWithdrawalsAsync));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/pending_consolidations", (HttpContext c, string state_id) =>
-            StateList(c, state_id, ctx.ForRequest(), static spec => spec.ElectraForkEpoch, static s => s.PendingConsolidations!, static items => PendingConsolidation.Encode(items), BeaconJsonWriter.WritePendingConsolidationsAsync));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/proposer_lookahead", (HttpContext c, string state_id) =>
-            StateList(c, state_id, ctx.ForRequest(), static spec => spec.FuluForkEpoch, static s => s.ProposerLookahead!, static items => MemoryMarshal.AsBytes(items.AsSpan()).ToArray(), BeaconJsonWriter.WriteUIntArrayValueAsync));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/randao", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, Randao));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/sync_committees", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, SyncCommittees));
+        RouteGroupBuilder json = app.MapGroup("").ServesJson();
+        json.MapGet("/eth/v1/beacon/states/{state_id}/fork", (BeaconStatesEndpoints states, string state_id) => states.Fork(state_id));
+        json.MapGet("/eth/v1/beacon/states/{state_id}/root", (BeaconStatesEndpoints states, string state_id) => states.Root(state_id));
+        json.MapGet("/eth/v1/beacon/states/{state_id}/finality_checkpoints", (BeaconStatesEndpoints states, string state_id) => states.FinalityCheckpoints(state_id));
+        json.MapGet("/eth/v1/beacon/states/{state_id}/validators", (BeaconStatesEndpoints states, string state_id, QueryValues id, QueryValues status) => states.Validators(state_id, id.Values, status.Values));
+        json.MapGet("/eth/v1/beacon/states/{state_id}/validators/{validator_id}", (BeaconStatesEndpoints states, string state_id, string validator_id) => states.ValidatorById(state_id, validator_id));
+        json.MapGet("/eth/v1/beacon/states/{state_id}/validator_balances", (BeaconStatesEndpoints states, string state_id, QueryValues id) => states.ValidatorBalances(state_id, id.Values));
+        json.MapPost("/eth/v1/beacon/states/{state_id}/validators", (BeaconStatesEndpoints states, string state_id, [FromBody] ValidatorsRequestDto request) => states.ValidatorsPost(state_id, request)).Accepts<ValidatorsRequestDto>(AnyContentType);
+        json.MapPost("/eth/v1/beacon/states/{state_id}/validator_balances", (BeaconStatesEndpoints states, string state_id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ImmutableArray<string> ids) => states.ValidatorBalancesPost(state_id, ids)).Accepts<string[]>(AnyContentType);
+        json.MapGet("/eth/v1/beacon/states/{state_id}/committees", (BeaconStatesEndpoints states, string state_id, ulong? epoch, int? index, ulong? slot) => states.Committees(state_id, epoch, index, slot));
+        json.MapGet("/eth/v1/beacon/states/{state_id}/randao", (BeaconStatesEndpoints states, string state_id, ulong? epoch) => states.Randao(state_id, epoch));
+        json.MapGet("/eth/v1/beacon/states/{state_id}/sync_committees", (BeaconStatesEndpoints states, string state_id, ulong? epoch) => states.SyncCommittees(state_id, epoch));
+        RouteGroupBuilder sszOrJson = app.MapGroup("").ServesSszOrJson();
+        sszOrJson.MapPost("/eth/v1/beacon/states/{state_id}/validator_identities", (BeaconStatesEndpoints states, string state_id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ImmutableArray<string> ids) => states.ValidatorIdentities(state_id, ids)).Accepts<string[]>(AnyContentType);
+        sszOrJson.MapGet("/eth/v1/beacon/states/{state_id}/pending_deposits", (BeaconStatesEndpoints states, string state_id) =>
+            states.StateList(state_id, static spec => spec.ElectraForkEpoch, static s => s.PendingDeposits!, static items => PendingDeposit.Encode(items), BeaconJsonWriter.WritePendingDepositsAsync));
+        sszOrJson.MapGet("/eth/v1/beacon/states/{state_id}/pending_partial_withdrawals", (BeaconStatesEndpoints states, string state_id) =>
+            states.StateList(state_id, static spec => spec.ElectraForkEpoch, static s => s.PendingPartialWithdrawals!, static items => PendingPartialWithdrawal.Encode(items), BeaconJsonWriter.WritePendingPartialWithdrawalsAsync));
+        sszOrJson.MapGet("/eth/v1/beacon/states/{state_id}/pending_consolidations", (BeaconStatesEndpoints states, string state_id) =>
+            states.StateList(state_id, static spec => spec.ElectraForkEpoch, static s => s.PendingConsolidations!, static items => PendingConsolidation.Encode(items), BeaconJsonWriter.WritePendingConsolidationsAsync));
+        sszOrJson.MapGet("/eth/v1/beacon/states/{state_id}/proposer_lookahead", (BeaconStatesEndpoints states, string state_id) =>
+            states.StateList(state_id, static spec => spec.FuluForkEpoch, static s => s.ProposerLookahead!, static items => MemoryMarshal.AsBytes(items.AsSpan()).ToArray(), BeaconJsonWriter.WriteUIntArrayValueAsync));
     }
 
     /// <summary>beacon-APIs v5.0.0-alpha.2 <c>getStateRandao</c>: the mix <c>get_randao_mix</c> returns for the requested epoch, by default the state's own.</summary>
-    private static Task Randao(HttpContext c, string stateId, BeaconApiContext ctx)
+    private IResult Randao(string stateId, ulong? requestedEpoch)
     {
-        if (!TryParseEpochQuery(c, out ulong? requestedEpoch))
-        {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid epoch '{c.Request.Query["epoch"]}'.", c.RequestAborted);
-        }
-
         if (!StateIdResolver.TryResolvePrefix(ctx, stateId, true, out ResolvedState resolved, out int errorStatus, out string? errorMessage, out byte[]? prefix))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         if (prefix is not null && (!ctx.Store.TryGetStateLength(resolved.Root, out int length) || length < StateIdResolver.CheckpointsEnd))
-            return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"No state is retained for '{stateId}'.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status404NotFound, $"No state is retained for '{stateId}'.");
 
         ApiState state = resolved.State;
         ulong stateEpoch = ctx.Spec.GetEpoch(state.Slot);
@@ -79,8 +82,8 @@ internal static class BeaconStatesEndpoints
         // get_randao_mix's age check wraps for an epoch after the state's, which randao_mixes cannot hold yet.
         if (epoch > stateEpoch)
         {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
-                $"Epoch {epoch} is after epoch {stateEpoch} of this state, so its randao_mixes hold no mix for it.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status400BadRequest,
+                $"Epoch {epoch} is after epoch {stateEpoch} of this state, so its randao_mixes hold no mix for it.");
         }
 
         Hash256 mix;
@@ -95,16 +98,16 @@ internal static class BeaconStatesEndpoints
                 int position = BeaconStateAccessors.GetRandaoMixIndex(state.Slot, epoch);
                 Span<byte> bytes = stackalloc byte[Hash256.Size];
                 if (!ctx.Store.TryGetStateRange(resolved.Root, StateIdResolver.RandaoOffset + position * Hash256.Size, bytes))
-                    return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"No state is retained for '{stateId}'.", c.RequestAborted);
+                    return ApiResults.Error(StatusCodes.Status404NotFound, $"No state is retained for '{stateId}'.");
                 mix = new Hash256(bytes);
             }
         }
         catch (BeaconStateException e)
         {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, e.Message, c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status400BadRequest, e.Message);
         }
 
-        return WriteStateEnvelope(c, ctx, resolved, new RandaoDto(mix.ToString()));
+        return StateEnvelope(resolved, new RandaoDto(mix.ToString()));
     }
 
     /// <summary>
@@ -116,16 +119,11 @@ internal static class BeaconStatesEndpoints
     /// <c>current_sync_committee</c>, <c>next_sync_committee</c>); any other period is 400. Positions keep
     /// repeats, since get_next_sync_committee_indices may select a validator more than once.
     /// </remarks>
-    private static Task SyncCommittees(HttpContext c, string stateId, BeaconApiContext ctx)
+    private IResult SyncCommittees(string stateId, ulong? requestedEpoch)
     {
-        if (!TryParseEpochQuery(c, out ulong? requestedEpoch))
-        {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid epoch '{c.Request.Query["epoch"]}'.", c.RequestAborted);
-        }
-
         if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         ApiState state = resolved.State;
@@ -138,9 +136,8 @@ internal static class BeaconStatesEndpoints
             : null;
         if (committee is null)
         {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
-                $"Epoch {epoch} is outside the sync committee periods of this state: only period {statePeriod} (current) or {statePeriod + 1} (next) can be served.",
-                c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status400BadRequest,
+                $"Epoch {epoch} is outside the sync committee periods of this state: only period {statePeriod} (current) or {statePeriod + 1} (next) can be served.");
         }
 
         BlsPublicKey[] pubkeys = committee.Pubkeys!;
@@ -150,8 +147,8 @@ internal static class BeaconStatesEndpoints
         {
             if (!indices.TryGetValue(pubkeys[i], out int index))
             {
-                return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
-                    $"Sync committee member {pubkeys[i]} at position {i} is not in the validator registry of the state for '{stateId}' ({resolved.Root}).", c.RequestAborted);
+                return ApiResults.Error(StatusCodes.Status500InternalServerError,
+                    $"Sync committee member {pubkeys[i]} at position {i} is not in the validator registry of the state for '{stateId}' ({resolved.Root}).");
             }
             validators[i] = index.ToString();
         }
@@ -163,17 +160,7 @@ internal static class BeaconStatesEndpoints
             aggregates[subnet] = validators[(subnet * subcommitteeSize)..((subnet + 1) * subcommitteeSize)];
         }
 
-        return WriteStateEnvelope(c, ctx, resolved, new SyncCommitteeDto(validators, aggregates));
-    }
-
-    /// <summary>Reads the optional <c>epoch</c> query parameter; <c>false</c> only when it is present and not a uint64.</summary>
-    private static bool TryParseEpochQuery(HttpContext c, out ulong? epoch)
-    {
-        epoch = null;
-        if (!c.Request.Query.TryGetValue("epoch", out StringValues raw)) return true;
-        if (!ulong.TryParse(raw.ToString(), out ulong parsed)) return false;
-        epoch = parsed;
-        return true;
+        return StateEnvelope(resolved, new SyncCommitteeDto(validators, aggregates));
     }
 
     /// <summary>
@@ -185,64 +172,53 @@ internal static class BeaconStatesEndpoints
     /// Every list served here is a list of fixed-size elements, so its SSZ encoding is the elements' encodings concatenated.
     /// Each operation answers 400 for a state before the fork that introduced its field, so that check precedes decoding.
     /// </remarks>
-    private static Task StateList<T>(HttpContext c, string stateId, BeaconApiContext ctx, Func<BeaconChainSpec, ulong> introducedAtEpoch,
+    private IResult StateList<T>(string stateId, Func<BeaconChainSpec, ulong> introducedAtEpoch,
         Func<ApiState, T[]> select, Func<T[], byte[]> encodeSsz, Func<BeaconJsonStream, T[], Task> writeJson)
     {
-        ContentNegotiation.ResponseFormat? format = ContentNegotiation.Negotiate(c, sszSupported: true);
-        if (format is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         if (!StateIdResolver.TryResolveHeld(ctx, stateId, out ResolvedState resolved))
         {
             // A persisted state is state-sized, so head lists never load one.
             if (stateId == "head")
             {
-                return ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable, "The head state is not available yet; retry later.", c.RequestAborted);
+                return ApiResults.Error(StatusCodes.Status503ServiceUnavailable, "The head state is not available yet; retry later.");
             }
 
             if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState raw, out int errorStatus, out string? errorMessage))
             {
-                return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+                return ApiResults.Error(errorStatus, errorMessage!);
             }
 
             ulong slot = BeaconStateCodec.ReadSlot(raw.Ssz);
             ulong forkEpoch = introducedAtEpoch(ctx.Spec);
             if (ctx.Spec.GetEpoch(slot) < forkEpoch)
             {
-                return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
-                    $"The state for '{stateId}' is at slot {slot}, before epoch {forkEpoch} where the requested field was introduced.", c.RequestAborted);
+                return ApiResults.Error(StatusCodes.Status400BadRequest,
+                    $"The state for '{stateId}' is at slot {slot}, before epoch {forkEpoch} where the requested field was introduced.");
             }
 
             resolved = new ResolvedState(raw.Root, ApiStateDecoding.Decode(raw.Ssz, ctx.Spec));
         }
         else if (ctx.Spec.GetEpoch(resolved.State.Slot) < introducedAtEpoch(ctx.Spec))
         {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
-                $"The state for '{stateId}' is at slot {resolved.State.Slot}, before epoch {introducedAtEpoch(ctx.Spec)} where the requested field was introduced.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status400BadRequest,
+                $"The state for '{stateId}' is at slot {resolved.State.Slot}, before epoch {introducedAtEpoch(ctx.Spec)} where the requested field was introduced.");
         }
 
         ApiState state = resolved.State;
         T[] items = select(state);
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, state.Slot);
-        if (format == ContentNegotiation.ResponseFormat.Ssz)
-        {
-            c.Response.ContentType = ContentNegotiation.OctetStream;
-            return c.Response.Body.WriteAsync(encodeSsz(items), c.RequestAborted).AsTask();
-        }
-
-        return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(state.Slot))),
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
-            s => writeJson(s, items));
+        return ApiResults.SszOrJson(
+            ssz: () => ApiResults.Ssz(encodeSsz(items)),
+            json: () => ApiResults.VersionedEnvelope(ResponseEnvelope.ForkName(ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(state.Slot))),
+                ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
+                ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
+                s => writeJson(s, items))).WithConsensusVersion(ctx.Spec, state.Slot);
     }
 
-    private static Task Fork(HttpContext c, string stateId, BeaconApiContext ctx)
+    private IResult Fork(string stateId)
     {
         if (!StateIdResolver.TryResolvePrefix(ctx, stateId, true, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         Fork fork = resolved.State.ForkVersion;
@@ -251,34 +227,33 @@ internal static class BeaconStatesEndpoints
             fork.CurrentVersion!.ToHexString(withZeroX: true),
             fork.Epoch.ToString());
 
-        return WriteStateEnvelope(c, ctx, resolved, dto);
+        return StateEnvelope(resolved, dto);
     }
 
-    private static Task Root(HttpContext c, string stateId, BeaconApiContext ctx)
+    private IResult Root(string stateId)
     {
         if (ctx.GetCheckpointState(stateId) is { } checkpoint && StateIdResolver.TryResolveHeld(ctx, stateId, out ResolvedState held))
         {
-            return WriteStateEnvelope(c, ctx, held, new RootDto(checkpoint.StateRoot.ToString()));
+            return StateEnvelope(held, new RootDto(checkpoint.StateRoot.ToString()));
         }
         // The state root is the block's own commitment to it; reading that field avoids decoding
         // the (often multi-hundred-MB) state just to re-hash it.
         if (!StateIdResolver.TryResolveBlock(ctx, stateId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         RootDto dto = new(resolved.StateRoot.ToString());
-        return BeaconApiJson.WriteEnvelopeAsync(c, dto,
+        return ApiResults.Envelope(dto,
             ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
-            c.RequestAborted);
+            ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root));
     }
 
-    private static Task FinalityCheckpoints(HttpContext c, string stateId, BeaconApiContext ctx)
+    private IResult FinalityCheckpoints(string stateId)
     {
         if (!StateIdResolver.TryResolvePrefix(ctx, stateId, false, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         FinalityCheckpointsDto dto = new(
@@ -286,18 +261,17 @@ internal static class BeaconStatesEndpoints
             ToCheckpointDto(resolved.State.CurrentJustifiedCheckpoint!),
             ToCheckpointDto(resolved.State.FinalizedCheckpoint!));
 
-        return WriteStateEnvelope(c, ctx, resolved, dto);
+        return StateEnvelope(resolved, dto);
     }
 
-    private static Task WriteStateEnvelope<T>(HttpContext c, BeaconApiContext ctx, ResolvedState resolved, T data) =>
-        BeaconApiJson.WriteEnvelopeAsync(c, data,
+    private IResult StateEnvelope<T>(ResolvedState resolved, T data) =>
+        ApiResults.Envelope(data,
             ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
-            c.RequestAborted);
+            ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root));
 
     /// <summary>Writes <paramref name="entries"/> as the envelope's <c>data</c> array one element at a time, so a registry-sized response holds no registry-sized buffer while a slow reader drains it.</summary>
-    private static Task WriteStateEnvelopeStreamed<T>(HttpContext c, BeaconApiContext ctx, ResolvedState resolved, IEnumerable<T> entries) =>
-        BeaconApiJson.WriteStreamedEnvelopeAsync(c,
+    private IResult StateEnvelopeStreamed<T>(ResolvedState resolved, IEnumerable<T> entries) =>
+        ApiResults.StreamedEnvelope(
             ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
             async s =>
@@ -315,45 +289,35 @@ internal static class BeaconStatesEndpoints
     private static CheckpointDto ToCheckpointDto(Checkpoint checkpoint) =>
         new(checkpoint.Epoch.ToString(), checkpoint.Root!.ToString());
 
-    private static Task Validators(HttpContext c, string stateId, BeaconApiContext ctx)
-    {
-        List<string> idFilters = CollectQueryValues(c, "id", MaxValidatorIds + 1);
-        if (idFilters.Count > MaxValidatorIds)
-            return ApiErrors.Write(c, StatusCodes.Status414UriTooLong, "Too many validator IDs in request.", c.RequestAborted);
-        return WriteValidators(c, stateId, ctx, idFilters, CollectQueryValues(c, "status", 14));
-    }
+    private IResult Validators(string stateId, List<string> idFilters, List<string> statusFilters) => idFilters.Count > MaxValidatorIds
+        ? ApiResults.Error(StatusCodes.Status414UriTooLong, "Too many validator IDs in request.")
+        : FilteredValidators(stateId, idFilters, statusFilters);
 
     /// <summary>beacon-APIs v5.0.0-alpha.2 <c>postStateValidators</c>: the GET filters carried in a JSON body, without the URI length limit.</summary>
-    private static async Task ValidatorsPost(HttpContext c, string stateId, BeaconApiContext ctx)
-    {
-        (bool read, ValidatorsRequestDto? request) = await TryReadJsonBody<ValidatorsRequestDto>(c, bodyRequired: true);
-        if (!read) return;
+    private IResult ValidatorsPost(string stateId, ValidatorsRequestDto request) =>
+        FilteredValidators(stateId, [.. request.Ids ?? []], [.. request.Statuses ?? []]);
 
-        string[] statuses = request?.Statuses ?? [];
-        await WriteValidators(c, stateId, ctx, [.. request?.Ids ?? []], [.. statuses]);
-    }
-
-    private static Task WriteValidators(HttpContext c, string stateId, BeaconApiContext ctx, List<string> idFilters, List<string> statusFilters)
+    private IResult FilteredValidators(string stateId, List<string> idFilters, List<string> statusFilters)
     {
         if (statusFilters.Count > 13 || new HashSet<string>(statusFilters, StringComparer.Ordinal).Count != statusFilters.Count)
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, "Validator statuses must be unique.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status400BadRequest, "Validator statuses must be unique.");
 
         foreach (string filter in statusFilters)
         {
             if (!ValidatorStatus.IsValidFilter(filter))
-                return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid validator status '{filter}'.", c.RequestAborted);
+                return ApiResults.Error(StatusCodes.Status400BadRequest, $"Invalid validator status '{filter}'.");
         }
 
         if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         ApiState state = resolved.State;
         Validator[] validators = state.Validators!;
         ulong[] balances = state.Balances!;
         if (balances.Length < validators.Length)
-            return WriteInconsistentRegistry(c, validators.Length, balances.Length);
+            return InconsistentRegistry(validators.Length, balances.Length);
 
         ulong epoch = ctx.Spec.GetEpoch(state.Slot);
 
@@ -364,7 +328,7 @@ internal static class BeaconStatesEndpoints
             ValidatorIdStatus lookup = TryResolveValidatorIndex(ctx, state, id, ref pubkeyIndex, out int index);
             if (lookup == ValidatorIdStatus.Invalid)
             {
-                return WriteInvalidValidatorId(c, id);
+                return InvalidValidatorId(id);
             }
 
             indexFilter ??= [];
@@ -390,16 +354,11 @@ internal static class BeaconStatesEndpoints
             }
         }
 
-        return WriteStateEnvelopeStreamed(c, ctx, resolved, SelectEntries());
+        return StateEnvelopeStreamed(resolved, SelectEntries());
     }
 
-    private static Task ValidatorById(HttpContext c, string stateId, string validatorId, BeaconApiContext ctx)
+    private IResult ValidatorById(string stateId, string validatorId)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         ResolvedState resolved = default;
         bool held = false;
         if (ulong.TryParse(validatorId, out ulong numericIndex)
@@ -409,18 +368,18 @@ internal static class BeaconStatesEndpoints
             if (prefix is not null && TryReadValidator(ctx, resolved, prefix, numericIndex, out Validator? item, out ulong balance))
             {
                 if (item is null)
-                    return ApiErrors.Write(c, StatusCodes.Status404NotFound,
-                        $"Validator '{validatorId}' does not exist in this state.", c.RequestAborted);
+                    return ApiResults.Error(StatusCodes.Status404NotFound,
+                        $"Validator '{validatorId}' does not exist in this state.");
 
                 ulong stateEpoch = ctx.Spec.GetEpoch(resolved.State.Slot);
-                return WriteStateEnvelope(c, ctx, resolved,
+                return StateEnvelope(resolved,
                     ToValidatorEntry((int)numericIndex, item, balance, ValidatorStatus.Classify(item, stateEpoch)));
             }
         }
 
         if (!held && !StateIdResolver.TryResolve(ctx, stateId, out resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         ApiState state = resolved.State;
@@ -430,20 +389,20 @@ internal static class BeaconStatesEndpoints
             : TryResolveValidatorIndex(state, validatorId, out index);
         if (lookup == ValidatorIdStatus.Invalid)
         {
-            return WriteInvalidValidatorId(c, validatorId);
+            return InvalidValidatorId(validatorId);
         }
 
         if (lookup == ValidatorIdStatus.NotFound)
         {
-            return ApiErrors.Write(c, StatusCodes.Status404NotFound,
-                $"Validator '{validatorId}' does not exist in this state.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status404NotFound,
+                $"Validator '{validatorId}' does not exist in this state.");
         }
 
         ulong epoch = ctx.Spec.GetEpoch(state.Slot);
         Validator validator = state.Validators![index];
         ValidatorEntryDto entry = ToValidatorEntry(index, validator, state.Balances![index], ValidatorStatus.Classify(validator, epoch));
 
-        return WriteStateEnvelope(c, ctx, resolved, entry);
+        return StateEnvelope(resolved, entry);
     }
 
     private static bool TryReadValidator(BeaconApiContext ctx, ResolvedState historical, ReadOnlySpan<byte> prefix, ulong index, out Validator? validator, out ulong balance)
@@ -480,39 +439,29 @@ internal static class BeaconStatesEndpoints
         return true;
     }
 
-    private static Task ValidatorBalances(HttpContext c, string stateId, BeaconApiContext ctx)
-    {
-        List<string> idFilters = CollectQueryValues(c, "id", MaxValidatorIds + 1);
-        if (idFilters.Count > MaxValidatorIds)
-            return ApiErrors.Write(c, StatusCodes.Status414UriTooLong, "Too many validator IDs in request.", c.RequestAborted);
-
-        return WriteValidatorBalances(c, stateId, ctx, idFilters);
-    }
+    private IResult ValidatorBalances(string stateId, List<string> idFilters) => idFilters.Count > MaxValidatorIds
+        ? ApiResults.Error(StatusCodes.Status414UriTooLong, "Too many validator IDs in request.")
+        : FilteredValidatorBalances(stateId, idFilters);
 
     /// <summary>beacon-APIs v5.0.0-alpha.2 <c>postStateValidatorBalances</c>: the GET id filter carried in an optional JSON array body.</summary>
-    private static async Task ValidatorBalancesPost(HttpContext c, string stateId, BeaconApiContext ctx)
-    {
-        (bool read, string[]? ids) = await TryReadJsonBody<string[]>(c, bodyRequired: false);
-        if (!read) return;
+    private IResult ValidatorBalancesPost(string stateId, ImmutableArray<string> ids) =>
+        FilteredValidatorBalances(stateId, ToIdFilters(ids));
 
-        await WriteValidatorBalances(c, stateId, ctx, [.. ids ?? []]);
-    }
-
-    private static Task WriteValidatorBalances(HttpContext c, string stateId, BeaconApiContext ctx, List<string> idFilters)
+    private IResult FilteredValidatorBalances(string stateId, List<string> idFilters)
     {
         if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         ApiState state = resolved.State;
         ulong[] balances = state.Balances!;
         if (balances.Length < state.Validators!.Length)
-            return WriteInconsistentRegistry(c, state.Validators.Length, balances.Length);
+            return InconsistentRegistry(state.Validators.Length, balances.Length);
 
         if (!TryResolveIndices(ctx, state, idFilters, out List<int>? indices, out string? invalidId))
         {
-            return WriteInvalidValidatorId(c, invalidId);
+            return InvalidValidatorId(invalidId);
         }
 
         IEnumerable<ValidatorBalanceEntryDto> SelectEntries()
@@ -525,7 +474,7 @@ internal static class BeaconStatesEndpoints
             }
         }
 
-        return WriteStateEnvelopeStreamed(c, ctx, resolved, SelectEntries());
+        return StateEnvelopeStreamed(resolved, SelectEntries());
     }
 
     /// <summary>
@@ -536,34 +485,26 @@ internal static class BeaconStatesEndpoints
     /// The operation names no SSZ container; the SSZ body is the list of the response's fixed-size
     /// <c>(index: uint64, pubkey: Bytes48, activation_epoch: uint64)</c> entries, in that field order.
     /// </remarks>
-    private static async Task ValidatorIdentities(HttpContext c, string stateId, BeaconApiContext ctx)
+    private IResult ValidatorIdentities(string stateId, ImmutableArray<string> ids)
     {
-        ContentNegotiation.ResponseFormat? format = ContentNegotiation.Negotiate(c, sszSupported: true);
-        if (format is null)
-        {
-            await ContentNegotiation.WriteNotAcceptable(c);
-            return;
-        }
-
-        (bool read, string[]? ids) = await TryReadJsonBody<string[]>(c, bodyRequired: false);
-        if (!read) return;
-
         if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
-            await ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
-            return;
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         ApiState state = resolved.State;
         Validator[] validators = state.Validators!;
-        if (!TryResolveIndices(ctx, state, [.. ids ?? []], out List<int>? indices, out string? invalidId))
+        if (!TryResolveIndices(ctx, state, ToIdFilters(ids), out List<int>? indices, out string? invalidId))
         {
-            await WriteInvalidValidatorId(c, invalidId);
-            return;
+            return InvalidValidatorId(invalidId);
         }
 
         int count = indices?.Count ?? validators.Length;
-        if (format == ContentNegotiation.ResponseFormat.Ssz)
+        return ApiResults.SszOrJson(
+            ssz: () => ApiResults.Write(WriteSsz),
+            json: () => StateEnvelopeStreamed(resolved, SelectEntries()));
+
+        async Task WriteSsz(HttpContext c)
         {
             c.Response.ContentType = ContentNegotiation.OctetStream;
             byte[] ssz = new byte[Math.Min(count, IdentitySszEntriesPerWrite) * ValidatorIdentitySszLength];
@@ -581,8 +522,6 @@ internal static class BeaconStatesEndpoints
 
                 await c.Response.Body.WriteAsync(ssz.AsMemory(0, batch * ValidatorIdentitySszLength), c.RequestAborted);
             }
-
-            return;
         }
 
         IEnumerable<ValidatorIdentityDto> SelectEntries()
@@ -593,9 +532,10 @@ internal static class BeaconStatesEndpoints
                 yield return new ValidatorIdentityDto(index.ToString(), validators[index].Pubkey.ToString(), validators[index].ActivationEpoch.ToString());
             }
         }
-
-        await WriteStateEnvelopeStreamed(c, ctx, resolved, SelectEntries());
     }
+
+    /// <summary>The ids of an optional JSON array body; an absent body binds to a default array and selects nothing.</summary>
+    private static List<string> ToIdFilters(ImmutableArray<string> ids) => ids.IsDefault ? [] : [.. ids];
 
     /// <summary>Resolves request ids to distinct registry indices in first-seen order, dropping well-formed ids that name no validator.</summary>
     /// <remarks>An index and a pubkey naming one validator count once, so repeated ids cannot multiply the response.</remarks>
@@ -625,54 +565,19 @@ internal static class BeaconStatesEndpoints
     }
 
     /// <summary>Answers 500 before any byte of a streamed list is written, so a registry that cannot be listed never yields a truncated 200.</summary>
-    private static Task WriteInconsistentRegistry(HttpContext c, int validators, int balances) =>
-        ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
-            $"The state has {validators} validators but {balances} balances.", c.RequestAborted);
+    private static IResult InconsistentRegistry(int validators, int balances) =>
+        ApiResults.Error(StatusCodes.Status500InternalServerError,
+            $"The state has {validators} validators but {balances} balances.");
 
-    private static Task WriteInvalidValidatorId(HttpContext c, string? id) =>
-        ApiErrors.Write(c, StatusCodes.Status400BadRequest,
-            $"Invalid validator id '{id}': expected an index or a 0x-prefixed 48-byte pubkey.", c.RequestAborted);
+    private static IResult InvalidValidatorId(string? id) =>
+        ApiResults.Error(StatusCodes.Status400BadRequest,
+            $"Invalid validator id '{id}': expected an index or a 0x-prefixed 48-byte pubkey.");
 
-    /// <summary>Reads a POST JSON body, writing the error response itself when it cannot.</summary>
-    /// <returns><c>Ok</c> is false once an error has been written; <c>Value</c> is <c>null</c> only for an absent optional body; a JSON <c>null</c> body is 400.</returns>
-    private static async Task<(bool Ok, T? Value)> TryReadJsonBody<T>(HttpContext c, bool bodyRequired) where T : class
-    {
-        if (c.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody != true)
-        {
-            if (!bodyRequired) return (true, null);
-            await ApiErrors.Write(c, StatusCodes.Status400BadRequest, "A JSON request body is required.", c.RequestAborted);
-            return (false, null);
-        }
-
-        if (!ContentNegotiation.IsAcceptableContentType(c, ContentNegotiation.Json))
-        {
-            await ContentNegotiation.WriteUnsupportedMediaType(c, ContentNegotiation.Json);
-            return (false, null);
-        }
-
-        try
-        {
-            T? value = await JsonSerializer.DeserializeAsync<T>(c.Request.Body, BeaconApiJson.Options, c.RequestAborted);
-            if (value is not null) return (true, value);
-            await ApiErrors.Write(c, StatusCodes.Status400BadRequest, "Malformed request body: a JSON null is not a filter.", c.RequestAborted);
-        }
-        catch (JsonException e)
-        {
-            await ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Malformed request body: {e.Message}", c.RequestAborted);
-        }
-        catch (BadHttpRequestException e)
-        {
-            await ApiErrors.Write(c, e.StatusCode, e.Message, c.RequestAborted);
-        }
-
-        return (false, null);
-    }
-
-    private static Task Committees(HttpContext c, string stateId, BeaconApiContext ctx)
+    private IResult Committees(string stateId, ulong? requestedEpoch, int? indexFilter, ulong? slotFilter)
     {
         if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         ApiState state = resolved.State;
@@ -680,11 +585,7 @@ internal static class BeaconStatesEndpoints
         ulong previousEpoch = currentEpoch == 0 ? 0 : currentEpoch - 1;
         ulong nextEpoch = currentEpoch + 1;
 
-        ulong epoch = currentEpoch;
-        if (c.Request.Query.TryGetValue("epoch", out StringValues epochRaw) && !ulong.TryParse(epochRaw.ToString(), out epoch))
-        {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid epoch '{epochRaw}'.", c.RequestAborted);
-        }
+        ulong epoch = requestedEpoch ?? currentEpoch;
 
         // A single state's RandaoMixes vector only carries a real (non-stale) mix for the
         // previous/current/next epoch's seed lookahead window; outside that, GetSeed would silently
@@ -692,36 +593,18 @@ internal static class BeaconStatesEndpoints
         // exactly the "confidently wrong" failure mode this endpoint must not produce.
         if (epoch != previousEpoch && epoch != currentEpoch && epoch != nextEpoch)
         {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
-                $"Epoch {epoch} is out of range for this state: only the previous ({previousEpoch}), current ({currentEpoch}) or next ({nextEpoch}) epoch's committees can be computed from a single state.",
-                c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status400BadRequest,
+                $"Epoch {epoch} is out of range for this state: only the previous ({previousEpoch}), current ({currentEpoch}) or next ({nextEpoch}) epoch's committees can be computed from a single state.");
         }
 
-        int? indexFilter = null;
-        if (c.Request.Query.TryGetValue("index", out StringValues indexRaw))
+        if (indexFilter < 0)
         {
-            if (!int.TryParse(indexRaw.ToString(), out int parsedIndex) || parsedIndex < 0)
-            {
-                return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid committee index '{indexRaw}'.", c.RequestAborted);
-            }
-
-            indexFilter = parsedIndex;
+            return ApiResults.Error(StatusCodes.Status400BadRequest, $"Invalid committee index '{indexFilter}'.");
         }
 
-        ulong? slotFilter = null;
-        if (c.Request.Query.TryGetValue("slot", out StringValues slotRaw))
+        if (slotFilter is { } requestedSlot && ctx.Spec.GetEpoch(requestedSlot) != epoch)
         {
-            if (!ulong.TryParse(slotRaw.ToString(), out ulong parsedSlot))
-            {
-                return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid slot '{slotRaw}'.", c.RequestAborted);
-            }
-
-            if (ctx.Spec.GetEpoch(parsedSlot) != epoch)
-            {
-                return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Slot {parsedSlot} is not in epoch {epoch}.", c.RequestAborted);
-            }
-
-            slotFilter = parsedSlot;
+            return ApiResults.Error(StatusCodes.Status400BadRequest, $"Slot {requestedSlot} is not in epoch {epoch}.");
         }
 
         CommitteeCache cache;
@@ -731,7 +614,7 @@ internal static class BeaconStatesEndpoints
         }
         catch (BeaconStateException e)
         {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, e.Message, c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status400BadRequest, e.Message);
         }
 
         ulong epochStartSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch);
@@ -753,7 +636,7 @@ internal static class BeaconStatesEndpoints
             }
         }
 
-        return WriteStateEnvelope(c, ctx, resolved, entries);
+        return StateEnvelope(resolved, entries);
     }
 
     private enum ValidatorIdStatus { Ok, NotFound, Invalid }
@@ -825,25 +708,6 @@ internal static class BeaconStatesEndpoints
         }
 
         return false;
-    }
-
-    /// <summary>Collects a repeatable query parameter, splitting comma-joined values the same way multiple <c>key=</c> occurrences would be.</summary>
-    private static List<string> CollectQueryValues(HttpContext c, string key, int limit = int.MaxValue)
-    {
-        List<string> values = [];
-        foreach (string? raw in c.Request.Query[key])
-        {
-            if (string.IsNullOrEmpty(raw)) continue;
-            foreach (Range range in raw.AsSpan().Split(','))
-            {
-                ReadOnlySpan<char> part = raw.AsSpan()[range].Trim();
-                if (part.IsEmpty) continue;
-                values.Add(part.ToString());
-                if (values.Count == limit) return values;
-            }
-        }
-
-        return values;
     }
 
     private static ValidatorEntryDto ToValidatorEntry(int index, Validator validator, ulong balance, string status) => new(

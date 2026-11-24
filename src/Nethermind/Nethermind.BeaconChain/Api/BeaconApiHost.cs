@@ -63,12 +63,13 @@ public sealed class BeaconApiHost(
         builder.Logging.ClearProviders();
         builder.WebHost.UseKestrelCore().UseUrls($"http://{apiConfig.Host}:{apiConfig.Port}");
         builder.Services.AddRoutingCore();
+        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, columnPool);
+        BeaconApiEndpoints.AddServices(builder.Services, ctx);
 
         WebApplication app = builder.Build();
         if (IsLoopbackHost(apiConfig.Host))
             app.Use(ValidateLoopbackRequest);
         app.Use(stateLimiter.InvokeAsync);
-        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, columnPool);
         BeaconApiEndpoints.MapAll(app, ctx);
 
         await app.StartAsync(token);

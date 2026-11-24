@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -18,17 +19,19 @@ using Nethermind.Logging;
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
 /// <summary><c>/eth/v1/beacon/*</c>: genesis, headers (by id, slot or parent), block root, block content as SSZ or JSON, the block's attestations, and Gloas execution payload envelopes.</summary>
-internal static class BeaconEndpoints
+internal sealed class BeaconEndpoints(BeaconApiContext ctx)
 {
-    public static void Map(WebApplication app, BeaconApiContext ctx)
+    public static void Map(WebApplication app)
     {
-        app.MapGet("/eth/v1/beacon/genesis", c => ContentNegotiation.JsonOnly(c, ctx, Genesis));
-        app.MapGet("/eth/v1/beacon/headers", c => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), HeaderList));
-        app.MapGet("/eth/v1/beacon/headers/{block_id}", (HttpContext c, string block_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), block_id, HeaderById));
-        app.MapGet("/eth/v1/beacon/blocks/{block_id}/root", (HttpContext c, string block_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), block_id, BlockRoot));
-        app.MapGet("/eth/v2/beacon/blocks/{block_id}", (HttpContext c, string block_id) => BlockContent(c, block_id, ctx.ForRequest()));
-        app.MapGet("/eth/v2/beacon/blocks/{block_id}/attestations", (HttpContext c, string block_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), block_id, BlockAttestations));
-        app.MapGet("/eth/v1/beacon/execution_payload_envelopes/{block_id}", (HttpContext c, string block_id) => ExecutionPayloadEnvelope(c, block_id, ctx.ForRequest()));
+        RouteGroupBuilder json = app.MapGroup("").ServesJson();
+        json.MapGet("/eth/v1/beacon/genesis", (BeaconEndpoints beacon) => beacon.Genesis());
+        json.MapGet("/eth/v1/beacon/headers", (BeaconEndpoints beacon, string? parent_root, string? slot) => beacon.HeaderList(parent_root, slot));
+        json.MapGet("/eth/v1/beacon/headers/{block_id}", (BeaconEndpoints beacon, string block_id) => beacon.HeaderById(block_id));
+        json.MapGet("/eth/v1/beacon/blocks/{block_id}/root", (BeaconEndpoints beacon, string block_id) => beacon.BlockRoot(block_id));
+        json.MapGet("/eth/v2/beacon/blocks/{block_id}/attestations", (BeaconEndpoints beacon, string block_id) => beacon.BlockAttestations(block_id));
+        RouteGroupBuilder sszOrJson = app.MapGroup("").ServesSszOrJson();
+        sszOrJson.MapGet("/eth/v2/beacon/blocks/{block_id}", (BeaconEndpoints beacon, string block_id) => beacon.BlockContent(block_id));
+        sszOrJson.MapGet("/eth/v1/beacon/execution_payload_envelopes/{block_id}", (BeaconEndpoints beacon, string block_id) => beacon.ExecutionPayloadEnvelope(block_id));
     }
 
     /// <summary>beacon-APIs v5.0.0-alpha.2 <c>getSignedExecutionPayloadEnvelope</c>: the verified envelope stored for a Gloas block, as JSON or SSZ.</summary>
@@ -36,49 +39,38 @@ internal static class BeaconEndpoints
     /// Only envelopes that passed verification are stored, so a pre-Gloas block has none, and the store checks that a record names the block it is keyed by.
     /// An envelope is served for any retained block, canonical or not, and whether or not fork choice treats its payload as present.
     /// </remarks>
-    private static Task ExecutionPayloadEnvelope(HttpContext c, string blockId, BeaconApiContext ctx)
+    private IResult ExecutionPayloadEnvelope(string blockId)
     {
-        ContentNegotiation.ResponseFormat? format = ContentNegotiation.Negotiate(c, sszSupported: true);
-        if (format is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         // An unreadable record throws InvalidDataException, which the host turns into a logged 500.
         if (!ctx.Store.TryGetExecutionPayloadEnvelope(resolved.Root, out SignedExecutionPayloadEnvelope? envelope))
         {
-            return ApiErrors.Write(c, StatusCodes.Status404NotFound,
-                $"No execution payload envelope is retained for block {resolved.Root}.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status404NotFound,
+                $"No execution payload envelope is retained for block {resolved.Root}.");
         }
 
         // gloas/beacon-chain.md process_execution_payload: the envelope's parent_beacon_block_root is its block's parent_root.
         if (envelope.Message!.ParentBeaconBlockRoot != resolved.ParentRoot)
         {
-            return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
-                $"The envelope stored for block {resolved.Root} names parent {envelope.Message.ParentBeaconBlockRoot}, not the block's parent {resolved.ParentRoot}.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status500InternalServerError,
+                $"The envelope stored for block {resolved.Root} names parent {envelope.Message.ParentBeaconBlockRoot}, not the block's parent {resolved.ParentRoot}.");
         }
 
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Slot);
-        if (format == ContentNegotiation.ResponseFormat.Ssz)
-        {
-            c.Response.ContentType = ContentNegotiation.OctetStream;
-            return c.Response.Body.WriteAsync(SignedExecutionPayloadEnvelope.Encode(envelope), c.RequestAborted).AsTask();
-        }
-
-        // types/primitive.yaml ExecutionOptimistic is about the payload served, not the block that committed to it.
-        return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(BeaconFork.Gloas),
-            ResponseEnvelope.PayloadExecutionOptimistic(ctx, resolved),
-            ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
-            s =>
-            {
-                BeaconJsonWriter.WriteSignedExecutionPayloadEnvelope(s.Writer, envelope);
-                return Task.CompletedTask;
-            });
+        return ApiResults.SszOrJson(
+            ssz: () => ApiResults.Ssz(SignedExecutionPayloadEnvelope.Encode(envelope)),
+            // types/primitive.yaml ExecutionOptimistic is about the payload served, not the block that committed to it.
+            json: () => ApiResults.VersionedEnvelope(ResponseEnvelope.ForkName(BeaconFork.Gloas),
+                ResponseEnvelope.PayloadExecutionOptimistic(ctx, resolved),
+                ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
+                s =>
+                {
+                    BeaconJsonWriter.WriteSignedExecutionPayloadEnvelope(s.Writer, envelope);
+                    return Task.CompletedTask;
+                })).WithConsensusVersion(ctx.Spec, resolved.Slot);
     }
 
     /// <summary>beacon-APIs v5.0.0-alpha.2 <c>getBlockAttestationsV2</c>: the attestations included in the block body, in body order.</summary>
@@ -86,11 +78,11 @@ internal static class BeaconEndpoints
     /// The published operation is JSON only and its version enum stops at fulu; a Gloas block is served under
     /// <c>gloas</c> with the Gloas <c>Attestation</c> (consensus-specs v1.7.0-beta.2 gloas/beacon-chain.md), never under a fulu label.
     /// </remarks>
-    private static Task BlockAttestations(HttpContext c, string blockId, BeaconApiContext ctx)
+    private IResult BlockAttestations(string blockId)
     {
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         ulong slot = resolved.Slot;
@@ -103,36 +95,33 @@ internal static class BeaconEndpoints
                 $"Block {resolved.Root} at slot {slot} was read as {resolved.Block.GetType().Name}, which is not the shape of the {ResponseEnvelope.ForkName(fork)} fork"),
         };
 
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, slot);
-        return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
+        return ApiResults.VersionedEnvelope(ResponseEnvelope.ForkName(fork),
             ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, slot, resolved.Root),
             s =>
             {
                 writeAttestations(s.Writer);
                 return Task.CompletedTask;
-            });
+            }).WithConsensusVersion(ctx.Spec, slot);
     }
 
-    private static Task Genesis(HttpContext c, BeaconApiContext ctx)
+    private IResult Genesis()
     {
         GenesisDto dto = new(
             ctx.Spec.GenesisTime.ToString(),
             ctx.Spec.GenesisValidatorsRoot.ToString(),
             ctx.Spec.Forks[0].Version.ToHexString(withZeroX: true));
-        return BeaconApiJson.WriteDataAsync(c, dto, c.RequestAborted);
+        return ApiResults.Data(dto);
     }
 
-    private static Task HeaderList(HttpContext c, BeaconApiContext ctx)
+    private IResult HeaderList(string? parentRootRaw, string? slotRaw)
     {
-        if (c.Request.Query.TryGetValue("parent_root", out Microsoft.Extensions.Primitives.StringValues parentRootValue))
+        if (parentRootRaw is not null)
         {
-            return HeadersByParent(c, parentRootValue.ToString(), ctx);
+            return HeadersByParent(parentRootRaw, slotRaw);
         }
 
-        string id = c.Request.Query.TryGetValue("slot", out Microsoft.Extensions.Primitives.StringValues slotValue)
-            ? slotValue.ToString()
-            : "head";
+        string id = slotRaw ?? "head";
 
         if (!TryResolveHeader(ctx, id, out Hash256? root, out SignedBeaconBlockHeader? header, out int errorStatus, out string? errorMessage))
         {
@@ -140,18 +129,16 @@ internal static class BeaconEndpoints
             // id (or head/finalized genuinely unset) still is.
             if (errorStatus == StatusCodes.Status404NotFound && id != "head" && id != "finalized" && id != "genesis")
             {
-                return BeaconApiJson.WriteEnvelopeAsync(c, Array.Empty<HeaderEntryDto>(), false, false, c.RequestAborted);
+                return ApiResults.Envelope(Array.Empty<HeaderEntryDto>(), false, false);
             }
 
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         HeaderEntryDto entry = BuildHeaderEntry(ctx, root, header);
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, header.Message!.Slot);
-        return BeaconApiJson.WriteEnvelopeAsync(c, new[] { entry },
+        return ApiResults.Envelope(new[] { entry },
             ResponseEnvelope.ExecutionOptimistic(ctx, root, header.Message!.Slot),
-            ResponseEnvelope.IsFinalized(ctx, header.Message!.Slot, root),
-            c.RequestAborted);
+            ResponseEnvelope.IsFinalized(ctx, header.Message!.Slot, root)).WithConsensusVersion(ctx.Spec, header.Message!.Slot);
     }
 
     /// <summary>
@@ -160,19 +147,19 @@ internal static class BeaconEndpoints
     /// is damaged, and is refused because an empty or shorter list would read as a real answer. A parent
     /// that is not stored lists the children the index still holds, or none.
     /// </summary>
-    private static Task HeadersByParent(HttpContext c, string parentRootRaw, BeaconApiContext ctx)
+    private IResult HeadersByParent(string parentRootRaw, string? slotRaw)
     {
         if (!HexConvert.TryParseHash(parentRootRaw, out Hash256? parentRoot))
         {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, "Invalid parent_root: expected a 0x-prefixed 32-byte root.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status400BadRequest, "Invalid parent_root: expected a 0x-prefixed 32-byte root.");
         }
 
         ulong? slotFilter = null;
-        if (c.Request.Query.TryGetValue("slot", out Microsoft.Extensions.Primitives.StringValues slotRaw))
+        if (slotRaw is not null)
         {
-            if (!ulong.TryParse(slotRaw.ToString(), out ulong parsedSlot))
+            if (!ulong.TryParse(slotRaw, out ulong parsedSlot))
             {
-                return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid slot '{slotRaw}'.", c.RequestAborted);
+                return ApiResults.Error(StatusCodes.Status400BadRequest, $"Invalid slot '{slotRaw}'.");
             }
 
             slotFilter = parsedSlot;
@@ -185,8 +172,8 @@ internal static class BeaconEndpoints
         // Only a parent that is still stored can have a damaged entry; a pruned one lists whatever children remain.
         if (stored && !complete && ctx.Store.HasBlock(parentRoot!))
         {
-            return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
-                $"The root-to-children index holds no complete entry for the stored block {parentRoot}, so no child list can be served.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status500InternalServerError,
+                $"The root-to-children index holds no complete entry for the stored block {parentRoot}, so no child list can be served.");
         }
 
         List<HeaderEntryDto> entries = [];
@@ -207,15 +194,10 @@ internal static class BeaconEndpoints
             fork = childFork;
         }
 
-        if (fork is not null && !mixedForks)
-        {
-            c.Response.Headers[ResponseEnvelope.ConsensusVersionHeader] = ResponseEnvelope.ForkName(fork.Value);
-        }
-
-        return BeaconApiJson.WriteEnvelopeAsync(c, entries,
+        IResult result = ApiResults.Envelope(entries,
             optimistic,
-            finalized && entries.Count > 0,
-            c.RequestAborted);
+            finalized && entries.Count > 0);
+        return fork is not null && !mixedForks ? result.WithConsensusVersion(fork.Value) : result;
     }
 
     /// <summary>Reads an indexed child that passes <paramref name="slotFilter"/>, decoding it only once its stored slot matches.</summary>
@@ -239,49 +221,39 @@ internal static class BeaconEndpoints
         }
     }
 
-    private static Task HeaderById(HttpContext c, string blockId, BeaconApiContext ctx)
+    private IResult HeaderById(string blockId)
     {
         if (!TryResolveHeader(ctx, blockId, out Hash256? root, out SignedBeaconBlockHeader? header, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         HeaderEntryDto entry = BuildHeaderEntry(ctx, root, header);
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, header.Message!.Slot);
-        return BeaconApiJson.WriteEnvelopeAsync(c, entry,
+        return ApiResults.Envelope(entry,
             ResponseEnvelope.ExecutionOptimistic(ctx, root, header.Message!.Slot),
-            ResponseEnvelope.IsFinalized(ctx, header.Message!.Slot, root),
-            c.RequestAborted);
+            ResponseEnvelope.IsFinalized(ctx, header.Message!.Slot, root)).WithConsensusVersion(ctx.Spec, header.Message!.Slot);
     }
 
-    private static Task BlockRoot(HttpContext c, string blockId, BeaconApiContext ctx)
+    private IResult BlockRoot(string blockId)
     {
         if (!IdResolver.TryResolveRoot(ctx, blockId, out Hash256? root, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         if (!ctx.Store.TryGetRetainedBlockSlot(root!, out ulong slot))
-            return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"Block {root} is not retained by this node.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status404NotFound, $"Block {root} is not retained by this node.");
 
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, slot);
-        return BeaconApiJson.WriteEnvelopeAsync(c, new RootDto(root!.ToString()),
+        return ApiResults.Envelope(new RootDto(root!.ToString()),
             ResponseEnvelope.ExecutionOptimistic(ctx, root, slot),
-            ResponseEnvelope.IsFinalized(ctx, slot, root),
-            c.RequestAborted);
+            ResponseEnvelope.IsFinalized(ctx, slot, root)).WithConsensusVersion(ctx.Spec, slot);
     }
 
-    private static Task BlockContent(HttpContext c, string blockId, BeaconApiContext ctx)
+    private IResult BlockContent(string blockId)
     {
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
-        }
-
-        ContentNegotiation.ResponseFormat? format = ContentNegotiation.Negotiate(c, sszSupported: true);
-        if (format is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         ulong slot = resolved.Slot;
@@ -295,22 +267,16 @@ internal static class BeaconEndpoints
                 $"Block {resolved.Root} at slot {slot} was read as {resolved.Block.GetType().Name}, which is not the shape of the {ResponseEnvelope.ForkName(fork)} fork"),
         };
 
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, slot);
-        if (format == ContentNegotiation.ResponseFormat.Ssz)
-        {
-            c.Response.ContentType = ContentNegotiation.OctetStream;
-            byte[] encoded = SignedBeaconBlockCodec.Encode(resolved.Block, ctx.Spec);
-            return c.Response.Body.WriteAsync(encoded, c.RequestAborted).AsTask();
-        }
-
-        return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, slot, resolved.Root),
-            s =>
-            {
-                writeBlock(s.Writer);
-                return Task.CompletedTask;
-            });
+        return ApiResults.SszOrJson(
+            ssz: () => ApiResults.Ssz(SignedBeaconBlockCodec.Encode(resolved.Block, ctx.Spec)),
+            json: () => ApiResults.VersionedEnvelope(ResponseEnvelope.ForkName(fork),
+                ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
+                ResponseEnvelope.IsFinalized(ctx, slot, resolved.Root),
+                s =>
+                {
+                    writeBlock(s.Writer);
+                    return Task.CompletedTask;
+                })).WithConsensusVersion(ctx.Spec, slot);
     }
 
     private static bool TryResolveHeader(BeaconApiContext ctx, string id, [NotNullWhen(true)] out Hash256? root,

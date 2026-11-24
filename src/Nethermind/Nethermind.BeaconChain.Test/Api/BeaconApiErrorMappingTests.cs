@@ -42,11 +42,13 @@ public class BeaconApiErrorMappingTests
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
-        _pipeline = builder.Build();
         IBeaconChainStatusSource failingStatus = Substitute.For<IBeaconChainStatusSource>();
         failingStatus.CurrentHead.Throws(new InvalidOperationException(UnrelatedInternalDetail));
-        BeaconApiEndpoints.MapAll(_pipeline, new BeaconApiContext(new BeaconChainConfig(), Spec, failingStatus, _host.Clock, _host.Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null));
+        BeaconApiContext ctx = new(new BeaconChainConfig(), Spec, failingStatus, _host.Clock, _host.Store,
+            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null);
+        BeaconApiEndpoints.AddServices(builder.Services, ctx);
+        _pipeline = builder.Build();
+        BeaconApiEndpoints.MapAll(_pipeline, ctx);
         _pipeline.MapGet("/test/not-supported", (HttpContext _) => { throw new NotSupportedException(UnrelatedInternalDetail); });
         _pipeline.MapGet("/test/unsupported-fork", (HttpContext _) => { throw new UnsupportedForkException(new NotSupportedException(UnrelatedInternalDetail)); });
         _pipeline.MapGet("/test/fault-after-flush", FaultAfterFirstFlush);

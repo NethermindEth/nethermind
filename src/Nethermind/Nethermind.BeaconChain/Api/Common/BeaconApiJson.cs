@@ -17,17 +17,17 @@ internal static class BeaconApiJson
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
 
-    public static Task WriteDataAsync<T>(HttpContext ctx, T data, CancellationToken token = default)
+    public static Task WriteAsync<T>(HttpContext ctx, T body, CancellationToken token = default)
     {
         ctx.Response.ContentType = ContentNegotiation.Json;
-        return JsonSerializer.SerializeAsync(ctx.Response.Body, new DataEnvelope<T>(data), Options, token);
+        return JsonSerializer.SerializeAsync(ctx.Response.Body, body, Options, token);
     }
 
-    public static Task WriteEnvelopeAsync<T>(HttpContext ctx, T data, bool executionOptimistic, bool finalized, CancellationToken token = default)
-    {
-        ctx.Response.ContentType = ContentNegotiation.Json;
-        return JsonSerializer.SerializeAsync(ctx.Response.Body, new FullEnvelope<T>(executionOptimistic, finalized, data), Options, token);
-    }
+    public static Task WriteDataAsync<T>(HttpContext ctx, T data, CancellationToken token = default) =>
+        WriteAsync(ctx, new DataEnvelope<T>(data), token);
+
+    public static Task WriteEnvelopeAsync<T>(HttpContext ctx, T data, bool executionOptimistic, bool finalized, CancellationToken token = default) =>
+        WriteAsync(ctx, new FullEnvelope<T>(executionOptimistic, finalized, data), token);
 
     /// <summary>
     /// Streams the fork-versioned envelope (<c>version</c>, <c>execution_optimistic</c>,

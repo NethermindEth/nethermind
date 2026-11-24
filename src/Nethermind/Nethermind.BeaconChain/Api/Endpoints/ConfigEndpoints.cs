@@ -4,6 +4,7 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
@@ -12,13 +13,14 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
 /// <summary><c>/eth/v1/config/*</c>: spec constants, fork schedule, deposit contract.</summary>
-internal static class ConfigEndpoints
+internal sealed class ConfigEndpoints(BeaconApiContext ctx)
 {
-    public static void Map(WebApplication app, BeaconApiContext ctx)
+    public static void Map(WebApplication app)
     {
-        app.MapGet("/eth/v1/config/spec", c => ContentNegotiation.JsonOnly(c, ctx, Spec));
-        app.MapGet("/eth/v1/config/fork_schedule", c => ContentNegotiation.JsonOnly(c, ctx, ForkSchedule));
-        app.MapGet("/eth/v1/config/deposit_contract", c => ContentNegotiation.JsonOnly(c, ctx, DepositContract));
+        RouteGroupBuilder json = app.MapGroup("").ServesJson();
+        json.MapGet("/eth/v1/config/spec", (ConfigEndpoints config) => config.Spec());
+        json.MapGet("/eth/v1/config/fork_schedule", (ConfigEndpoints config) => config.ForkSchedule());
+        json.MapGet("/eth/v1/config/deposit_contract", (ConfigEndpoints config) => config.DepositContract());
     }
 
     /// <summary>The network config's <c>DEPOSIT_CONTRACT_ADDRESS</c>, or <c>null</c> for a chain this driver has no network config for.</summary>
@@ -36,15 +38,15 @@ internal static class ConfigEndpoints
         _ => null,
     };
 
-    private static Task DepositContract(HttpContext c, BeaconApiContext ctx)
+    private IResult DepositContract()
     {
         if (DepositContractAddress(ctx.Spec.ChainId) is not { } address)
         {
-            return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
-                $"No deposit contract is configured for chain {ctx.Spec.ChainId}.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status500InternalServerError,
+                $"No deposit contract is configured for chain {ctx.Spec.ChainId}.");
         }
 
-        return BeaconApiJson.WriteDataAsync(c, new DepositContractDto(ctx.Spec.ChainId.ToString(), address), c.RequestAborted);
+        return ApiResults.Data(new DepositContractDto(ctx.Spec.ChainId.ToString(), address));
     }
 
     /// <remarks>
@@ -54,7 +56,7 @@ internal static class ConfigEndpoints
     /// Constants tables come from <see cref="SpecConstants.All"/>. <c>SECONDS_PER_SLOT</c>, which that config
     /// no longer lists, stays for tooling that still reads it.
     /// </remarks>
-    private static Task Spec(HttpContext c, BeaconApiContext ctx)
+    private IResult Spec()
     {
         BeaconChainSpec spec = ctx.Spec;
         Dictionary<string, object> data = [with(SpecValues.Mainnet.Count + SpecConstants.All.Count + 4)];
@@ -99,7 +101,7 @@ internal static class ConfigEndpoints
             ? new Dictionary<string, string>[] { new() { ["EPOCH"] = "353024", ["GAS_LIMIT"] = "200000000" } }
             : Array.Empty<Dictionary<string, string>>();
 
-        return BeaconApiJson.WriteDataAsync(c, data, c.RequestAborted);
+        return ApiResults.Data(data);
     }
 
     /// <summary>Replaces the mainnet values of the keys that differ per network and that <see cref="BeaconChainSpec"/> does not hold.</summary>
@@ -158,7 +160,7 @@ internal static class ConfigEndpoints
         }
     }
 
-    private static Task ForkSchedule(HttpContext c, BeaconApiContext ctx)
+    private IResult ForkSchedule()
     {
         ForkScheduleEntry[] forks = ctx.Spec.Forks;
         ForkDto[] data = new ForkDto[forks.Length];
@@ -171,7 +173,7 @@ internal static class ConfigEndpoints
                 forks[i].Epoch.ToString());
         }
 
-        return BeaconApiJson.WriteDataAsync(c, data, c.RequestAborted);
+        return ApiResults.Data(data);
     }
 
     private sealed record DepositContractDto(
