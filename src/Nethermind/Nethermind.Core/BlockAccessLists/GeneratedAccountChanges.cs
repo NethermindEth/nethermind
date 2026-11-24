@@ -173,15 +173,8 @@ public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAcc
         return idx >= 0 ? span[idx] : null;
     }
 
-    public GeneratedSlotChanges GetOrAddSlotChanges(UInt256 key)
-    {
-        if (!_storageChanges.TryGetValue(key, out GeneratedSlotChanges? existing))
-        {
-            existing = new GeneratedSlotChanges(key);
-            _storageChanges.Add(key, existing);
-        }
-        return existing;
-    }
+    public GeneratedSlotChanges GetOrAddSlotChanges(UInt256 key) =>
+        CollectionsMarshal.GetValueRefOrAddDefault(_storageChanges, key, out _) ??= new GeneratedSlotChanges(key);
 
     public void AddStorageRead(UInt256 key)
     {
