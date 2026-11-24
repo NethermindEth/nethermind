@@ -19,7 +19,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring.TransactionPool;
 using Nethermind.Serialization.Json;
@@ -394,11 +393,10 @@ public class DataFeed
         IReleaseSpec spec = _specProvider.GetSpec(head.Header);
         UInt256? feePerBlobGas = null;
         TxReceipt[] txReceipts = _receiptFinder.Get(head);
-        ReceiptForRpc[] receipts = txReceipts.Length == 0 ? [] : new ReceiptForRpc[txReceipts.Length];
+        ReceiptForWeb[] receipts = txReceipts.Length == 0 ? [] : new ReceiptForWeb[txReceipts.Length];
         for (int i = 0; i < txReceipts.Length; i++)
         {
-            Transaction tx = txs[i];
-            receipts[i] = new ReceiptForRpc(tx.Hash, txReceipts[i], head.Timestamp, tx.GetGasInfo(spec, head.Header, ref feePerBlobGas));
+            receipts[i] = ReceiptForWeb.FromReceipt(txReceipts[i], txs[i].GetGasInfo(spec, head.Header, ref feePerBlobGas));
         }
         forkChoice.TrySetResult(
             JsonSerializer.SerializeToUtf8Bytes(
@@ -433,21 +431,7 @@ public class DataFeed
                             Blobs = t.BlobVersionedHashes?.Length ?? 0,
                             Method = t.DataLength >= 4 ? [.. t.Data.Span[..4]] : []
                         })],
-                        Receipts = [.. receipts.Select(r => new ReceiptForWeb
-                        {
-                            GasUsed = r.GasUsed,
-                            EffectiveGasPrice = r.EffectiveGasPrice ?? UInt256.Zero,
-                            ContractAddress = r.ContractAddress,
-                            Logs = [.. r.Logs.Select(l => new LogEntryForWeb
-                            {
-                                Address = l.Address,
-                                Data = l.Data,
-                                Topics = l.Topics
-                            })],
-                            Status = r.Status,
-                            BlobGasPrice = r.BlobGasPrice ?? UInt256.Zero,
-                            BlobGasUsed = r.BlobGasUsed ?? 0,
-                        })]
+                        Receipts = receipts
                     },
                     Safe = choice.Safe,
                     Finalized = choice.Finalized
@@ -483,6 +467,19 @@ public class DataFeed
     }
     internal class ReceiptForWeb
     {
+        public static ReceiptForWeb FromReceipt(TxReceipt receipt, in TxGasInfo gasInfo) => new()
+        {
+            GasUsed = receipt.GasUsed,
+            EffectiveGasPrice = gasInfo.EffectiveGasPrice ?? receipt.EffectiveGasPrice,
+            ContractAddress = receipt.ContractAddress,
+            Logs = receipt.Logs is { Length: > 0 } logs
+                ? Array.ConvertAll(logs, static log => new LogEntryForWeb { Address = log.Address, Data = log.Data, Topics = log.Topics })
+                : [],
+            Status = receipt.PostTransactionState is null ? receipt.StatusCode : null,
+            BlobGasPrice = gasInfo.BlobGasPrice ?? UInt256.Zero,
+            BlobGasUsed = gasInfo.BlobGasUsed ?? 0,
+        };
+
         public ulong GasUsed { get; set; }
         public UInt256 EffectiveGasPrice { get; set; }
         public Address? ContractAddress { get; set; }

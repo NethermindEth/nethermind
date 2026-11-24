@@ -17,8 +17,11 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring;
 using Nethermind.Specs.Forks;
@@ -84,6 +87,41 @@ public class DataFeedTests
         cancellation.Cancel();
 
         Assert.That(async () => await subscription.WaitAsync(TimeSpan.FromSeconds(1)), Throws.Nothing);
+    }
+
+    [Test]
+    public void Fork_choice_receipt_preserves_status_fees_and_logs([Values] bool legacy)
+    {
+        TxReceipt receipt = new()
+        {
+            GasUsed = 21_000,
+            EffectiveGasPrice = 5,
+            ContractAddress = TestItem.AddressA,
+            StatusCode = 1,
+            PostTransactionState = legacy ? TestItem.KeccakA : null,
+            Logs = legacy ? null : [new LogEntry(TestItem.AddressB, [1], [TestItem.KeccakB])]
+        };
+        TxGasInfo gas = legacy ? default : new TxGasInfo(7, 11, 13);
+
+        DataFeed.ReceiptForWeb result = DataFeed.ReceiptForWeb.FromReceipt(receipt, gas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GasUsed, Is.EqualTo(receipt.GasUsed));
+            Assert.That(result.ContractAddress, Is.EqualTo(receipt.ContractAddress));
+            Assert.That(result.Status, Is.EqualTo(legacy ? (long?)null : 1));
+            Assert.That(result.EffectiveGasPrice, Is.EqualTo(gas.EffectiveGasPrice ?? receipt.EffectiveGasPrice));
+            Assert.That(result.BlobGasPrice, Is.EqualTo(gas.BlobGasPrice ?? UInt256.Zero));
+            Assert.That(result.BlobGasUsed, Is.EqualTo(gas.BlobGasUsed ?? 0));
+            Assert.That(result.Logs, Has.Length.EqualTo(legacy ? 0 : 1));
+        }
+        if (!legacy)
+        {
+            LogEntry expected = receipt.Logs![0];
+            Assert.That(result.Logs[0].Address, Is.EqualTo(expected.Address));
+            Assert.That(result.Logs[0].Data, Is.EqualTo(expected.Data));
+            Assert.That(result.Logs[0].Topics, Is.EqualTo(expected.Topics));
+        }
     }
 
     [TestCase("?events=processed", false)]
