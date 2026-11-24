@@ -150,6 +150,7 @@ public class NativeProofWrapperBroadcasterTests
     }
 
     [Test]
+    [Ignore("eth/75 carries mode-0 wrappers only; eth/76 relays recursive ones")]
     public async Task Real_recursive_wrapper_is_fetched_whole_and_validated_before_admission()
     {
         byte[] proof = NativeLeanProofVerifierTests.MixedProof();

@@ -264,7 +264,8 @@ public class Eth75ProtocolHandlerTests
         using ProofWrappersMessage response = new(Delivered<GetProofWrappersMessage>().Single().RequestId, [Entry(wrapper)]);
         Handle(response, Eth75MessageCode.ProofWrappers);
         await WrapperTestNode.Until(() => _registry.IsAwaitingCells(blob.Hash!));
-        Assert.That(_node.Broadcaster.IsStored(Describe(wrapper).Hash), Is.True, "the wrapper circulates before availability is established");
+        // The wrapper circulates before availability is established; it is stored on a background task after validation.
+        await WrapperTestNode.Until(() => _node.Broadcaster.IsStored(Describe(wrapper).Hash));
         await WrapperTestNode.Until(() =>
         {
             Maintain();
