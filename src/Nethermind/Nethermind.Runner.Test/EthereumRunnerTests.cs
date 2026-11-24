@@ -1168,14 +1168,9 @@ public class EthereumRunnerTests
 
         INethermindApi api = runner.Api;
 
-        // They normally need the api to be populated by steps, so we mock out nethermind api here.
-        Build.MockOutNethermindApi((NethermindApi)api);
-
         api.Config<INetworkConfig>().LocalIp = "127.0.0.1";
         api.Config<INetworkConfig>().ExternalIp = "127.0.0.1";
         _ = api.Config<IHealthChecksConfig>(); // Randomly fail type discovery if not resolved early.
-
-        api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
 
         try
         {
@@ -1483,6 +1478,8 @@ public class EthereumRunnerTests
                         .AddSingleton(Substitute.For<IReportingValidator>())
                         // Pin a deterministic node key so resolving components does not load/generate a real key file.
                         .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, new InsecureProtectedPrivateKey(TestItem.PrivateKeyA))
+                        .AddSingleton(Substitute.For<IBlockProducer>())
+                        .AddSingleton(Substitute.For<IBlockProducerRunner>())
                         ;
                 }
 

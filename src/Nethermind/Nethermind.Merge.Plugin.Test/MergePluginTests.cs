@@ -23,7 +23,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Network;
 using Nethermind.Runner.Ethereum.Modules;
-using Nethermind.Runner.Test.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
@@ -102,11 +101,9 @@ public class MergePluginTests
             .AddSingleton(Substitute.For<IRpcModuleProvider>())
             .AddSingleton(Substitute.For<IBlockProcessingQueue>())
             .AddSingleton(Substitute.For<IProtocolsManager>())
+            .AddSingleton(Substitute.For<IBlockProducer>())
             .OnBuild(ctx =>
             {
-                INethermindApi api = ctx.Resolve<INethermindApi>();
-                Build.MockOutNethermindApi((NethermindApi)api);
-
                 ctx.Resolve<IBlockProcessingQueue>().IsEmpty.Returns(true);
             });
 

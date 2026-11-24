@@ -31,6 +31,7 @@ using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -149,6 +150,9 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<FrameTxWidthLedger>()
                 .Bind<IFrameTxWidthLedger, FrameTxWidthLedger>()
             .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
+            .AddSingleton<IManualBlockProductionTrigger, BuildBlocksWhenRequested>()
+            .AddSingleton<IBlockProducer>(static ctx => ResolveBlockProductionFactory<IBlockProducerFactory>(ctx).InitBlockProducer())
+            .AddSingleton<IBlockProducerRunner>(CreateBlockProducerRunner)
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
                 new GasPriceOracle(
@@ -191,6 +195,16 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 .AddScoped<IProducedBlockSuggester, ProducedBlockSuggester>();
         }
     }
+
+    private static IBlockProducerRunner CreateBlockProducerRunner(IComponentContext ctx) =>
+        ctx.Resolve<IBlockProductionPolicy>().ShouldStartBlockProduction()
+            ? ResolveBlockProductionFactory<IBlockProducerRunnerFactory>(ctx).InitBlockProducerRunner(ctx.Resolve<IBlockProducer>())
+            : new NoBlockProducerRunner();
+
+    // An engine with no factory registered has no producer (e.g. Taiko).
+    private static T ResolveBlockProductionFactory<T>(IComponentContext ctx) where T : class =>
+        ctx.ResolveOptional<T>()
+        ?? throw new NotSupportedException($"Mining in {ctx.Resolve<ChainSpec>().SealEngineType} mode is not supported");
 
     private static ITransactionProcessorAdapter CreateExecuteAdapter(ITransactionProcessor transactionProcessor)
         => new ExecuteTransactionProcessorAdapter(transactionProcessor);

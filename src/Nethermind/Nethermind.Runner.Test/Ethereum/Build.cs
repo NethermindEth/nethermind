@@ -11,7 +11,6 @@ using Autofac.Core.Lifetime;
 using Autofac.Core.Registration;
 using Nethermind.Api;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -42,9 +41,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .Build()
             );
 
-            NethermindApi api = new(apiDependencies);
-            MockOutNethermindApi(api);
-            return api;
+            return new NethermindApi(apiDependencies);
         }
 
         private class NSubstituteRegistrationSource : IRegistrationSource
@@ -81,7 +78,5 @@ namespace Nethermind.Runner.Test.Ethereum
 
             public bool IsAdapterForIndividualComponents => false;
         }
-
-        public static void MockOutNethermindApi(NethermindApi api) => api.BlockProducer = Substitute.For<IBlockProducer>();
     }
 }

@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -17,10 +15,6 @@ namespace Nethermind.Api
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
 
-        IBlockProducer? BlockProducer { get; set; }
-        IBlockProducerRunner BlockProducerRunner { get; set; }
-
-        IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IMainProcessingContext MainProcessingContext { get; }
         ITxSender? TxSender { get; }
         INonceManager? NonceManager { get; }
