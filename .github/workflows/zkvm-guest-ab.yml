@@ -440,7 +440,7 @@ jobs:
 
       - name: Set up the script SDK
         if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: global.json
 
@@ -623,7 +623,7 @@ jobs:
           path: head/${{ env.GUEST }}/bin
 
       - name: Set up the script SDK
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: global.json
 
