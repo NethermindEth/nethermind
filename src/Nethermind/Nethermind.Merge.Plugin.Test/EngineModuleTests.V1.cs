@@ -3180,7 +3180,7 @@ public partial class EngineModuleTests
         chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Pause();
         // The loop releases the forkchoice's wait for the commit before it leaves the block, and the rewind refuses
         // until the loop is idle.
-        Assert.That(() => chain.BlockProcessingQueue.IsEmpty && !chain.BlockTree.IsProcessingBlock, Is.True.After((int)GateTimeout.TotalMilliseconds, 10),
+        Assert.That(() => chain.BlockProcessingQueue.IsEmpty && !chain.Container.Resolve<BlockProcessingTracker>().IsProcessingBlock, Is.True.After((int)GateTimeout.TotalMilliseconds, 10),
             "precondition: the paused processing loop has drained");
         ResultWrapper<bool> rewind = byHash
             ? debug.debug_resetHead(blocks[0].BlockHash!)

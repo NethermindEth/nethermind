@@ -353,18 +353,18 @@ public partial class FrameTxFloodMeasurement
     private void ProcessOnce() => ProcessImport(_workloadBlock);
 
     /// <summary>Processes <paramref name="block"/> on the main branch processor the way the import loop does: with the
-    /// block tree's processing flag raised, unless the arm measures a node without that signal.</summary>
+    /// block processing flag raised, unless the arm measures a node without that signal.</summary>
     private void ProcessImport(Block block)
     {
         bool signal = s_blockProcessingSignal;
-        if (signal) _chain.BlockTree.IsProcessingBlock = true;
+        if (signal) _chain.Container.Resolve<BlockProcessingTracker>().IsProcessingBlock = true;
         try
         {
             _chain.BranchProcessor.Process(_parent, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         }
         finally
         {
-            if (signal) _chain.BlockTree.IsProcessingBlock = false;
+            if (signal) _chain.Container.Resolve<BlockProcessingTracker>().IsProcessingBlock = false;
         }
     }
 

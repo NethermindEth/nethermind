@@ -70,6 +70,7 @@ namespace Nethermind.TxPool.Test
         private TxPool _txPool;
         private TestReadOnlyStateProvider _stateProvider;
         private TestBlockTree _blockTree;
+        private BlockProcessingTracker _blockProcessing;
 
         private const int TxGasLimit = 1_000_000;
         /// <summary>Gas limit of the head the fixture starts from, which the pool reads at construction.
@@ -112,6 +113,7 @@ namespace Nethermind.TxPool.Test
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
             _stateProvider = new TestReadOnlyStateProvider();
             _blockTree = new TestBlockTree();
+            _blockProcessing = new BlockProcessingTracker();
             Block block = Build.A.Block.WithNumber(10000000 - 1).WithBaseFeePerGas(0)
                 .WithGasLimit(FixtureHeadGasLimit).WithTimestamp(FixtureHeadTimestamp).TestObject;
             _blockTree.Head = block;
@@ -6638,7 +6640,7 @@ namespace Nethermind.TxPool.Test
             IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
             if (announced) Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
             long before = Metrics.FrameTxSignatureVerificationsPreempted;
-            _blockTree.IsProcessingBlock = true;
+            _blockProcessing.IsProcessingBlock = true;
 
 #pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
@@ -6699,7 +6701,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.TryGetPendingTransaction(tx.Hash!, out _), Is.False, "the included tx must have left the pool");
 
             long before = Metrics.FrameTxSignatureVerificationsPreempted;
-            _blockTree.IsProcessingBlock = true;
+            _blockProcessing.IsProcessingBlock = true;
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject, blockA);
 
             using (Assert.EnterMultipleScope())
@@ -8688,7 +8690,8 @@ namespace Nethermind.TxPool.Test
             _headInfo ??= new ChainHeadInfoProvider(
                 new ChainHeadSpecProvider(specProvider, _blockTree),
                 _blockTree,
-                _stateProvider);
+                _stateProvider,
+                blockProcessingTracker: _blockProcessing);
 
             return new TxPool(
                 ethereumEcdsa ?? _ethereumEcdsa,

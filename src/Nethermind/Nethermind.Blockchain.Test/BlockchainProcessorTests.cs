@@ -475,7 +475,7 @@ public class BlockchainProcessorTests
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
             _processor = new BlockchainProcessor(_blockTree, _branchProcessor, [_recoveryStep], _stateReader, LimboLogs.Instance,
-                new BlockchainProcessor.Options { BlockProcessingTimeoutMs = blockProcessingTimeoutMs, TimeProvider = timeProvider ?? TimeProvider.System }, Substitute.For<IProcessingStats>(), new BlockTreeMutationLock());
+                new BlockchainProcessor.Options { BlockProcessingTimeoutMs = blockProcessingTimeoutMs, TimeProvider = timeProvider ?? TimeProvider.System }, Substitute.For<IProcessingStats>(), new BlockTreeMutationLock(), new BlockProcessingTracker());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
             _processor.BlockRemoved += (_, args) => Removal(args.BlockHash).TrySetResult(args.ProcessingResult);
