@@ -169,14 +169,7 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
         string oldPath = Path.GetFullPath("keystore/jwt-secret");
         bool sharedWorkingDirectory = IsWritableByOthers(Environment.CurrentDirectory);
         if (sharedWorkingDirectory)
-        {
-            string appKeyStoreDirectory = Path.GetFullPath(keyStoreDirectory, PathUtils.ExecutingDirectory);
-            string appSecretPath = Path.GetFullPath(Path.Join(appKeyStoreDirectory, "jwt-secret"));
-            string workingDirectorySecretPath = Path.GetFullPath(Path.Join(keyStoreDirectory, "jwt-secret"));
-            if (logger.IsWarn && (SecretMovedAway(workingDirectorySecretPath, appSecretPath) || SecretMovedAway(oldPath, appSecretPath)))
-                logger.Warn($"The working directory can be written by its group or by other users, so the JWT secret path changed to {appSecretPath:hide}. Set JsonRpc.JwtSecretFile to keep the previous path.");
-            keyStoreDirectory = appKeyStoreDirectory;
-        }
+            keyStoreDirectory = GetAppKeyStoreDirectory(keyStoreDirectory, oldPath, logger);
 
         string newPath = Path.GetFullPath(Path.Join(keyStoreDirectory, "jwt-secret"));
         jsonRpcConfig.JwtSecretFile = newPath;
@@ -202,6 +195,16 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
         {
             jsonRpcConfig.JwtSecretFile = Path.GetFullPath("jwt-secret".GetApplicationResourcePath(keyStoreDirectory));
         }
+    }
+
+    private static string GetAppKeyStoreDirectory(string keyStoreDirectory, string oldPath, ILogger logger)
+    {
+        string appKeyStoreDirectory = Path.GetFullPath(keyStoreDirectory, PathUtils.ExecutingDirectory);
+        string appSecretPath = Path.GetFullPath(Path.Join(appKeyStoreDirectory, "jwt-secret"));
+        string workingDirectorySecretPath = Path.GetFullPath(Path.Join(keyStoreDirectory, "jwt-secret"));
+        if (logger.IsWarn && (SecretMovedAway(workingDirectorySecretPath, appSecretPath) || SecretMovedAway(oldPath, appSecretPath)))
+            logger.Warn($"The working directory can be written by its group or by other users, so the JWT secret path changed to {appSecretPath:hide}. Set JsonRpc.JwtSecretFile to keep the previous path.");
+        return appKeyStoreDirectory;
     }
 
     private static bool SecretMovedAway(string previousPath, string newPath) =>
