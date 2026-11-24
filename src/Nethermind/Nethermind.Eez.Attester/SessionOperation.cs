@@ -110,5 +110,8 @@ internal sealed class SessionOperation : IDisposable
     internal Proof SignCurrent(EezAttestationSigner signer, ValueHash256 publicInputs, CancellationToken cancellation) =>
         _session.SignCurrent(this, signer, publicInputs, cancellation);
 
+    internal ExecutedStreamingBlock? ReplayBlock(BlockWitness input, NativeStreamingEvidence history) =>
+        _session.ReplayBlock(input, PreStateRoot, history);
+
     public void Dispose() => _session.ReleaseOperation(this);
 }

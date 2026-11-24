@@ -54,10 +54,20 @@ internal sealed class StreamingSessionRegistry : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             SweepCore();
-            StreamingSession session = new(authenticatedOwner, begin, _sessionLimits, Rules, frameBytes, _nativeProfile);
+            StreamingSession? replaySource = null;
+            ulong replayTip = begin.AnchorNumber;
             int owned = 0;
             foreach (Entry entry in _sessions.Values)
-                if (StringComparer.Ordinal.Equals(entry.Owner, authenticatedOwner)) owned++;
+            {
+                if (!StringComparer.Ordinal.Equals(entry.Owner, authenticatedOwner)) continue;
+                owned++;
+                if (Rules.HasNativeHistory && entry.Session.ReplayTip(begin) is { } tip && tip > replayTip)
+                {
+                    replaySource = entry.Session;
+                    replayTip = tip;
+                }
+            }
+            StreamingSession session = new(authenticatedOwner, begin, _sessionLimits, Rules, frameBytes, _nativeProfile, replaySource);
             if (_sessions.Count >= _limits.MaxSessions || owned >= _limits.MaxSessionsPerOwner ||
                 _reservation > _limits.MaxReservedBytes - _reservedBytes)
             {

@@ -6,6 +6,7 @@ using System.Threading;
 using Google.Protobuf;
 using Grpc.Core;
 using Nethermind.Consensus.Stateless;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Stateless;
@@ -16,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Eez.Attester;
 
@@ -49,11 +51,16 @@ internal sealed class StreamingBlockExecutor
             {
                 history = (operation.NativeHistory ?? throw new InvalidOperationException("native L1 checkpoint is missing"))
                     .Stage(operation.NativeHistoryLength, block.Witness, _nativeProfile.Headers);
+                if (operation.ReplayBlock(block, history) is { } replay)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    return replay;
+                }
                 executor = history.CreateExecutor(_nativeProfile.Genesis, _logs);
             }
             else executor = _executor!;
             using Witness witness = _nativeProfile is null ? WindowAssembler.ToWitness(block.Witness) : WindowAssembler.ToL2Witness(block.Witness);
-            result = executor.Execute([new EezStatelessBlock(block.Rlp.ToByteArray(), witness)], [])[0];
+            result = executor.ExecuteBlock(block.Rlp.Span, witness);
         }
         catch (EezStatelessException e)
         {
@@ -69,7 +76,7 @@ internal sealed class StreamingBlockExecutor
         if (result.Block.Number != block.Number || !result.Hash.Bytes.SequenceEqual(block.Hash.Span) ||
             !result.Parent.Hash!.Bytes.SequenceEqual(block.ParentHash.Span) ||
             !result.PreStateRoot.Bytes.SequenceEqual(operation.PreStateRoot.Span) ||
-            !Rlp.Encode(result.Block).AsSpan().SequenceEqual(block.Rlp.Span))
+            !MatchesEncoding(result.Block, block.Rlp.Span))
         {
             throw new RpcException(new Status(StatusCode.FailedPrecondition, "executed block differs from admitted block"));
         }
@@ -81,5 +88,14 @@ internal sealed class StreamingBlockExecutor
             NativeBlock = history is null ? null : ValidatedRollupXBlock.Capture(result, block.Rlp.Memory, _nativeProfile!.Genesis.Rules,
                 history.Count, history.Count == 0 ? default : history.Endpoint.Hash),
         };
+    }
+
+    internal static bool MatchesEncoding(Block block, ReadOnlySpan<byte> expected)
+    {
+        IRlpDecoder<Block> decoder = Rlp.GetDecoderOrThrow<Block>();
+        using ArrayPoolSpan<byte> encoded = decoder is BlockDecoder blockDecoder
+            ? blockDecoder.EncodeToArrayPoolSpan(block)
+            : decoder.EncodeToArrayPoolSpan(block);
+        return ((ReadOnlySpan<byte>)encoded).SequenceEqual(expected);
     }
 }

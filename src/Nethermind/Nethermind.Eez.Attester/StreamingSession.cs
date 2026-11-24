@@ -23,6 +23,7 @@ internal sealed class StreamingSession
     private readonly StreamingSessionLimits _limits;
     private readonly StreamingProtocolRules _rules;
     private readonly NativeStreamingProfile? _nativeProfile;
+    private StreamingSession? _replaySource;
     private NativeStreamingEvidence? _nativeHistory;
     private int _nativeHistoryLength;
     private int _anchorHistoryLength;
@@ -41,7 +42,8 @@ internal sealed class StreamingSession
     internal ulong RollupId { get; }
     internal ByteString Id { get; } = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(32));
 
-    internal StreamingSession(string authenticatedOwner, Begin begin, StreamingSessionLimits limits, StreamingProtocolRules rules = default, int frameBytes = 0, NativeStreamingProfile? nativeProfile = null)
+    internal StreamingSession(string authenticatedOwner, Begin begin, StreamingSessionLimits limits, StreamingProtocolRules rules = default,
+        int frameBytes = 0, NativeStreamingProfile? nativeProfile = null, StreamingSession? replaySource = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(authenticatedOwner);
         limits.Validate();
@@ -64,6 +66,7 @@ internal sealed class StreamingSession
         _rules = rules;
         if (rules.HasNativeHistory != (nativeProfile is not null) || nativeProfile is not null && rules.Profile != StreamingSettlementProfile.RollupXNative) throw new ArgumentException("Native session profile does not match its execution configuration.", nameof(nativeProfile));
         _nativeProfile = nativeProfile;
+        _replaySource = replaySource;
         _nativeHistory = nativeProfile is null ? null : new NativeStreamingEvidence(limits.MaxWitnessItems);
         if (rules.ChargesWireFrames && (frameBytes <= 0 || frameBytes > limits.MaxBytes))
             throw Error(StatusCode.ResourceExhausted, "session anchor limit exceeded");
@@ -129,6 +132,7 @@ internal sealed class StreamingSession
             _revoked.TrySetResult();
             RemoveSuffix(0);
             _nativeHistory = null;
+            _replaySource = null;
         }
     }
 
@@ -184,8 +188,43 @@ internal sealed class StreamingSession
             _revoked.TrySetResult();
             RemoveSuffix(0);
             _nativeHistory = null;
+            _replaySource = null;
             return response;
         }
+    }
+
+    internal ulong? ReplayTip(Begin begin)
+    {
+        lock (_lock)
+        {
+            return !_cancelled && _anchor.RollupId == begin.RollupId && _anchor.AnchorNumber == begin.AnchorNumber &&
+                _anchor.AnchorHash == begin.AnchorHash && _anchor.AnchorStateRoot == begin.AnchorStateRoot ? TipNumber : null;
+        }
+    }
+
+    internal ExecutedStreamingBlock? ReplayBlock(BlockWitness input, ByteString preStateRoot, NativeStreamingEvidence history) =>
+        Volatile.Read(ref _replaySource)?.FindExecutedBlock(input, preStateRoot, history);
+
+    private ExecutedStreamingBlock? FindExecutedBlock(BlockWitness input, ByteString preStateRoot, NativeStreamingEvidence history)
+    {
+        RetainedBlock retained;
+        lock (_lock)
+        {
+            if (_cancelled) return null;
+            int index = FindBlock(input.Number);
+            if (index < 0 || PreStateRoot(index) != preStateRoot) return null;
+            retained = _blocks[index];
+        }
+        if (retained.NativeBlock is not { } block || history.Count == 0 || block.L1CheckpointLength != history.Count ||
+            block.L1CheckpointHash != history.Endpoint.Hash || retained.Data.Hash != input.Hash ||
+            retained.Data.ParentHash != input.ParentHash || retained.Data.Rlp != input.Rlp ||
+            !SameWitness(retained.Data.Witness, input.Witness)) return null;
+        return new ExecutedStreamingBlock(input.Number, input.Hash, input.ParentHash, preStateRoot, retained.PostStateRoot, history)
+        {
+            Timestamp = retained.Timestamp,
+            NativeBlock = block with { Rlp = input.Rlp.Memory },
+            ReusedExecution = true,
+        };
     }
 
     internal SessionOperation AdmitBlock(SessionBinding binding, ulong requestId, BlockWitness block, int frameBytes = 0)
@@ -337,7 +376,11 @@ internal sealed class StreamingSession
                 SessionId = Id,
                 RequestId = operation.RequestId,
                 Epoch = operation.Binding.Epoch,
-                Validated = new Validated { Number = block.Number, Hash = block.Hash, PostStateRoot = executed.PostStateRoot, Reused = _rules.HasNativeHistory && operation.Duplicate >= 0 },
+                Validated = new Validated
+                {
+                    Number = block.Number, Hash = block.Hash, PostStateRoot = executed.PostStateRoot,
+                    Reused = _rules.HasNativeHistory && (operation.Duplicate >= 0 || executed.ReusedExecution),
+                },
             };
         }
     }
@@ -474,6 +517,7 @@ internal sealed record ExecutedStreamingBlock(ulong Number, ByteString Hash, Byt
 {
     internal ulong Timestamp { get; init; }
     internal ValidatedRollupXBlock? NativeBlock { get; init; }
+    internal bool ReusedExecution { get; init; }
 }
 internal sealed record StreamingSessionLimits(int MaxBlocks, long MaxBytes, long MaxWitnessItems)
 {

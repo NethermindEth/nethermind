@@ -73,6 +73,7 @@ public class StreamingBlockExecutorTests
     [TestCase("parent", TestName = "Execute_FalseParent_IsRejected")]
     [TestCase("root", TestName = "Execute_FalseAnchorRoot_IsRejected")]
     [TestCase("rlp", TestName = "Execute_InvalidRlp_IsRejected")]
+    [TestCase("trailingBlock", TestName = "Execute_TrailingBlockBytes_IsRejected")]
     [TestCase("witness", TestName = "Execute_MissingState_IsRejected")]
     [TestCase("partialWitness", TestName = "Execute_MissingTrieChild_IsRejected")]
     [TestCase("header", TestName = "Execute_EmptyHeader_IsRejected")]
@@ -87,6 +88,7 @@ public class StreamingBlockExecutorTests
             case "hash": block.Hash = ByteString.CopyFrom(new byte[32]); break;
             case "parent": block.ParentHash = ByteString.CopyFrom(new byte[32]); break;
             case "rlp": block.Rlp = ByteString.CopyFrom(new byte[] { 0xc0 }); break;
+            case "trailingBlock": block.Rlp = ByteString.CopyFrom([.. block.Rlp.Span, 0x00]); break;
             case "witness": block.Witness.State.Clear(); break;
             case "partialWitness":
                 for (int i = block.Witness.State.Count - 1; i >= 0; i--)

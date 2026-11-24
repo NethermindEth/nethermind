@@ -104,7 +104,8 @@ public sealed class NativeStreamingSessionTests(int version)
     }
 
     [Test]
-    public async Task Finalize_CurrentNativeCapture_UsesVersionedUnsignedPinRules([Values("original", "unrelated pin", "wrong L1 prefix")] string scenario)
+    public async Task Finalize_CurrentNativeCapture_UsesVersionedUnsignedPinRules(
+        [Values("original", "fresh begin", "unrelated pin", "wrong L1 prefix")] string scenario)
     {
         using JsonDocument identity = JsonDocument.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "identity.json")));
         JsonElement fields = identity.RootElement;
@@ -125,8 +126,17 @@ public sealed class NativeStreamingSessionTests(int version)
         StreamingRegistryLimits limits = new(2, 2, 64 * 1024 * 1024, TimeSpan.FromMinutes(10));
         using StreamingSessionRegistry sessions = new(limits, new StreamingSessionLimits(64, 4 * 1024 * 1024, 100_000),
             TimeProvider.System, StreamingSettlementProfile.RollupXNative, _profile);
+        int retainedBlocks = scenario == "fresh begin" ? _blocks.Count - 5 : 0;
+        if (retainedBlocks != 0)
+        {
+            StreamingSession prior = sessions.Begin("composer", _frames[0].Begin, _frames[0].CalculateSize());
+            for (int index = 0; index < retainedBlocks; index++) Append(prior, _blocks[index]);
+            sessions.Detach(prior, prior.Binding);
+        }
         StreamingConnection connection = new(sessions, "composer", context.RollupId);
         ServerFrame previous = connection.Dispatch(_frames[0].Clone()).Response!;
+        Assert.That(previous.Ready.ValidatedThrough, Is.EqualTo(_frames[0].Begin.AnchorNumber));
+        int reusedBlocks = 0;
         foreach (BlockWitness block in _blocks)
         {
             ClientFrame frame = new()
@@ -143,9 +153,11 @@ public sealed class NativeStreamingSessionTests(int version)
                 if (scenario == "wrong L1 prefix" && ReferenceEquals(block, _blocks[0]))
                     executed = executed with { NativeBlock = executed.NativeBlock!.Value with { L1CheckpointHash = TestItem.KeccakA.ValueHash256 } };
                 previous = connection.CommitBlock(append, executed);
+                if (previous.Validated.Reused) reusedBlocks++;
             }
             finally { connection.FinishOperation(append); }
         }
+        Assert.That(reusedBlocks, Is.EqualTo(retainedBlocks));
         ClientFrame request = _frames[^1].Clone();
         request.SessionId = previous.SessionId;
         request.Epoch = previous.Epoch;
@@ -417,6 +429,30 @@ public sealed class NativeStreamingSessionTests(int version)
         }
         AssertCode(() => Admit(session, changed), StatusCode.FailedPrecondition);
         Assert.That(session.Ready(session.Binding, 2).Ready.ValidatedHash, Is.EqualTo(_blocks[0].Hash));
+    }
+
+    [Test]
+    public void FreshBegin_ReusesOnlyMatchingLiveSessionEvidence([Values("different owner", "changed witness", "changed L1", "retired source")] string scenario)
+    {
+        StreamingRegistryLimits limits = new(2, 2, 64 * 1024 * 1024, TimeSpan.FromMinutes(10));
+        using StreamingSessionRegistry registry = new(limits, new StreamingSessionLimits(64, 4 * 1024 * 1024, 100_000),
+            TimeProvider.System, StreamingSettlementProfile.RollupXNative, _profile);
+        StreamingSession prior = registry.Begin("composer", _frames[0].Begin, _frames[0].CalculateSize());
+        BlockWitness block = _blocks[0].Clone();
+        Append(prior, block);
+        registry.Detach(prior, prior.Binding);
+        StreamingSession retry = registry.Begin(scenario == "different owner" ? "other" : "composer", _frames[0].Begin, _frames[0].CalculateSize());
+        if (scenario == "retired source") prior.Retire();
+        if (scenario == "changed L1")
+        {
+            block.Witness.L1HeadersRlp.Add(ByteString.CopyFrom([0xc0]));
+            AssertCode(() => Append(retry, block), StatusCode.FailedPrecondition);
+        }
+        else
+        {
+            if (scenario == "changed witness") block.Witness.Keys.Add(ByteString.CopyFrom(new byte[32]));
+            Assert.That(Append(retry, block).Validated.Reused, Is.False);
+        }
     }
 
     [Test]

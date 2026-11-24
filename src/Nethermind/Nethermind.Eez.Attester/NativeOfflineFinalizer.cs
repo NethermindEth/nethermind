@@ -16,7 +16,6 @@ using Nethermind.Eez.Prove;
 using Nethermind.Eez.Prove.V2;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using PostBatch = Nethermind.Eez.Execution.Settlement.PostBatch;
 using L1PostingContext = Nethermind.Eez.Prove.V2.L1PostingContext;
 using Block = Nethermind.Core.Block;
@@ -83,13 +82,12 @@ internal sealed class NativeOfflineFinalizer
             RollupXSettlementInput input = RollupXSettlementInput.Decode(settlement, _context, _profile.L1.Specs, cancellation,
                 offline, eligibility, batch, _profile.L1);
             using Witness witness = WindowAssembler.ToL2Witness(terminalInput.Witness);
-            EezStatelessBlock terminalWitness = new(terminalInput.Rlp.ToByteArray(), witness);
-            EezStatelessBlockResult terminal = ReplayTerminal(terminalWitness, in terminalBlock, history, cancellation);
+            EezStatelessBlockResult terminal = ReplayTerminal(terminalInput.Rlp.Span, witness, in terminalBlock, history, cancellation);
             ValidateRange(predecessor.AnchorNumber, terminal.Block.Number, eligibility, input.Stream.Messages.Length != 0, offline);
             RollupXObservationClaim[] observations = RollupXSettlementVerifier.VerifyNative(input.Batch, input.Stream, blocks[..^1], terminal,
                 parentHash, _context, _profile.Genesis.Rules, offline, cancellation);
             if (observations.Length != 0)
-                history.CreateObservationReplay(_profile.Genesis, _logs).Verify(terminalWitness, terminal, observations, cancellation);
+                history.CreateObservationReplay(_profile.Genesis, _logs).Verify(new(terminalInput.Rlp.ToByteArray(), witness), terminal, observations, cancellation);
             if (!offline.UsesCore) ValidateAcceptedRoot(parentHash, terminal, offline.AcceptedL2BlockHash);
             ValueHash256 publicInputs = RollupXPostBatchProfile.PublicInputsHash(input.Batch, _context.RollupId,
                 _context.VerificationKey, input.BlobHashes, offline.CustomData);
@@ -149,16 +147,17 @@ internal sealed class NativeOfflineFinalizer
         }
     }
 
-    private EezStatelessBlockResult ReplayTerminal(EezStatelessBlock witness, in ValidatedRollupXBlock block,
+    private EezStatelessBlockResult ReplayTerminal(ReadOnlySpan<byte> rlp, Witness witness, in ValidatedRollupXBlock block,
         NativeStreamingEvidence history, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(Rlp.Decode<Block>(witness.Rlp) ?? throw Rejected());
+        Block terminal = EezStatelessExecutor.DecodeBlock(rlp);
+        RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(terminal);
         EezStatelessExecutor executor = history.CreateExecutor(_profile.Genesis, _logs);
-        EezStatelessBlockResult result = executor.Execute([witness], plan.Positions)[0];
+        EezStatelessBlockResult result = executor.ExecuteBlock(terminal, witness, plan.Positions.ToArray());
         if (result.Block.Number != block.Number || result.Hash.ValueHash256 != block.Hash ||
             result.Block.ParentHash?.ValueHash256 != block.ParentHash || result.PreStateRoot.ValueHash256 != block.PreStateRoot ||
-            !Rlp.Encode(result.Block).AsSpan().SequenceEqual(witness.Rlp)) throw Rejected();
+            !StreamingBlockExecutor.MatchesEncoding(result.Block, rlp)) throw Rejected();
         return result;
     }
 

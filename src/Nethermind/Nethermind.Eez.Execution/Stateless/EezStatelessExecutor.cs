@@ -47,7 +47,8 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
         for (int i = 0; i < window.Count; i++)
         {
             int[] checkpoints = i == window.Count - 1 ? lastBlockCheckpoints.ToArray() : [];
-            results[i] = ExecuteBlock(window[i], checkpoints);
+            EezStatelessBlock input = window[i];
+            results[i] = ExecuteBlock(DecodeBlock(input.Rlp), input.Witness, checkpoints);
             if (i > 0)
             {
                 EnsureChains(results[i - 1], results[i]);
@@ -57,9 +58,11 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
         return results;
     }
 
-    private EezStatelessBlockResult ExecuteBlock(EezStatelessBlock input, int[] checkpoints)
+    internal EezStatelessBlockResult ExecuteBlock(ReadOnlySpan<byte> rlp, Witness witness) =>
+        ExecuteBlock(DecodeBlock(rlp), witness, []);
+
+    internal EezStatelessBlockResult ExecuteBlock(Block block, Witness witness, int[] checkpoints)
     {
-        Block block = Decode(input.Rlp);
         EnsureCheckpointsInRange(block, checkpoints);
         AssignSenders(block);
 
@@ -70,7 +73,7 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
             ? new TransactionCheckpointRecorder(specProvider, checkpoints, native is null || checkpoints[0] != EezTransactionCheckpoint.PreExecution ? null : native.ValidateEmptyPrefix,
                 projection is null ? null : projection.Project)
             : null;
-        StatelessBlockProcessingEnv env = CreateEnvironment(input.Witness, _transactionProcessorFactory, recorder,
+        StatelessBlockProcessingEnv env = CreateEnvironment(witness, _transactionProcessorFactory, recorder,
             recorder is not null ? recorder.Wrap : null, projection);
         StatelessBlockProcessingResult result = env.Process(block);
         if (!result.IsValid)
@@ -115,12 +118,13 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
         return rules.ProtocolBalanceAccounts.Length == 0 ? decorated : new ProtocolBalanceCleanup(decorated, worldState, specProvider, rules);
     }
 
-    private static Block Decode(byte[] rlp)
+    internal static Block DecodeBlock(ReadOnlySpan<byte> rlp)
     {
         Block? block;
         try
         {
-            block = Rlp.Decode<Block>(rlp);
+            RlpReader reader = new(rlp);
+            block = Rlp.Decode<Block>(ref reader);
         }
         catch (RlpReaderException e)
         {
