@@ -119,7 +119,7 @@ namespace Nethermind.JsonRpc.Modules
             return _sharedAsTask;
         }
 
-        private Task<T> ExclusivePath(CancellationToken cancellationToken) => _semaphore.Wait(0) ? Dequeue() : SlowPath(cancellationToken);
+        private Task<T> ExclusivePath(CancellationToken cancellationToken) => _semaphore.Wait(0, CancellationToken.None) ? Dequeue() : SlowPath(cancellationToken);
 
         private async Task<T> SlowPath(CancellationToken cancellationToken)
         {

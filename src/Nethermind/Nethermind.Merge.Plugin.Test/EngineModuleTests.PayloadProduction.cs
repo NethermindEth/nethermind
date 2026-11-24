@@ -16,10 +16,12 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Threading;
@@ -587,8 +589,19 @@ public partial class EngineModuleTests
                 {
                     state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
                 })
-                .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay));
+                .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
+                .ConfigureTestConfiguration(conf => conf.SuggestGenesisOnStart = false);
         });
+
+        // A build started before the pool has processed its parent is rebuilt once the pool catches up, even
+        // without new transactions. Subscribe the payload service first, so it sees the pool reach genesis.
+        ObservablePayloadPreparationService payloadPreparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
+        Task genesisPoolHead = Wait.ForEventCondition<Block>(chain.CancellationToken,
+            h => chain.TxPool.TxPoolHeadChanged += h,
+            h => chain.TxPool.TxPoolHeadChanged -= h,
+            b => b.IsGenesis);
+        chain.MainProcessingContext.GenesisLoader.Load();
+        await genesisPoolHead;
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash!;
@@ -601,7 +614,6 @@ public partial class EngineModuleTests
             .Result.Data.PayloadId!;
         await improvedBlockWait;
 
-        ObservablePayloadPreparationService payloadPreparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
         Task storedImprovementTask = payloadPreparation.WaitForStoredBlockAsync(payloadId, static block => block.Transactions.Length == 2, chain.CancellationToken);
         chain.AddTransactions(tx2);
         await storedImprovementTask;

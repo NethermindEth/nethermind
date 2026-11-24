@@ -277,6 +277,25 @@ public abstract class VirtualMachineTestsBase
         ulong excessBlobGas = 0,
         ulong gasPrice = 1) => PrepareTx((blockNumber, Timestamp), gasLimit, code, senderRecipientAndMiner, value, blockGasLimit, blobVersionedHashes, excessBlobGas, gasPrice: gasPrice);
 
+    /// <summary>Top-level frame sets an empty slot, restores it to zero and sets it again.</summary>
+    protected static byte[] SetClearSetSlotCode() => Prepare.EvmCode
+        .PersistData("0x1", "0x1")
+        .PersistData("0x1", HexZero)
+        .PersistData("0x1", "0x1")
+        .Op(Instruction.STOP)
+        .Done;
+
+    /// <summary>Prepares an Amsterdam transaction that runs <see cref="SetClearSetSlotCode"/>.</summary>
+    /// <param name="reservoirFunded">
+    /// When set, the state gas reservoir pays all but 20 gas of the first SSTORE's state gas, so the restoring SSTORE
+    /// gives back to the gas left less than its execution gas cost.
+    /// </param>
+    protected (Block block, Transaction transaction) PrepareSetClearSetSlotTx(bool reservoirFunded) => PrepareTx(
+        MainnetSpecProvider.AmsterdamActivation,
+        reservoirFunded ? Eip7825Constants.DefaultTxGasLimitCap + (ulong)GasCostOf.SSetState - 20 : 500_000,
+        SetClearSetSlotCode(),
+        blockGasLimit: 2 * Eip7825Constants.DefaultTxGasLimitCap);
+
     protected (Block block, Transaction transaction) PrepareTx(
         ForkActivation activation,
         ulong gasLimit,

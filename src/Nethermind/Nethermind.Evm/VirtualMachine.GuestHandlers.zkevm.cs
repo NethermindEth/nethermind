@@ -2875,7 +2875,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 IWorldState worldState = vm.WorldState;
                 // The guest's own world state reads the value, the original and the write through one lookup of the slot.
-                IGuestSlotStore? slots = worldState as IGuestSlotStore;
+                IGuestSlotStore? slots = vm.GuestSlots;
                 int slot = 0;
                 UInt256 currentValue, originalValue;
                 if (slots is not null)
@@ -2970,7 +2970,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         }
                     }
 
-                    if (slots is not null) slots.WriteAt(slot, in newValue);
+                    if (slots is not null) slots.WriteAt(slot, in storageCell, in currentValue, in newValue);
                     else worldState.Set(in storageCell, in newValue, in currentValue);
                     if (newValue.IsZero) vm.MetricsCounters.IncrementStorageDeleted();
                 }
@@ -3013,8 +3013,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 VirtualMachine<TGasPolicy> vm = state.Vm;
                 ref UInt256 slot = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 1));
-                StorageCell storageCell = new(vm.VmState.Env.ExecutingAccount, in slot);
-                vm.WorldState.GetTransientState(in storageCell, out slot);
+                IGuestSlotStore? slots = vm.GuestSlots;
+                if (slots is not null)
+                {
+                    slots.ReadTransient(vm.VmState.Env.ExecutingAccount, in slot, out slot);
+                }
+                else
+                {
+                    StorageCell storageCell = new(vm.VmState.Env.ExecutingAccount, in slot);
+                    vm.WorldState.GetTransientState(in storageCell, out slot);
+                }
                 // Reloaded rather than held across the call, where each would take a callee-saved register.
                 handlers = state.OpcodeHandlers;
                 code = ref stack.Code;
@@ -3111,14 +3119,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref EvmPooledMemory memory = ref AlignedMemory(ref state);
                 if (!TGasPolicy.UpdateMemoryCost(ref policy, in dataOffset, in dataLength, ref memory) ||
                     !TGasPolicy.UpdateMemoryCost(ref policy, in outputOffset, in outputLength, ref memory) ||
-                    !TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, vm.IsTracingAccess, codeSource))
+                    !TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, codeSource))
                     goto OutOfGas;
 
                 ICodeInfoRepository codeInfoRepository = vm.CodeInfoRepository;
                 CodeInfo codeInfo = codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
                 if (delegated is not null)
                 {
-                    if (!TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, vm.IsTracingAccess, delegated))
+                    if (!TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, delegated))
                         goto OutOfGas;
 
                     vm.WorldState.AddAccountRead(delegated);
@@ -3184,12 +3192,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary>
-        /// CALLDATACOPY, CODECOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, of bytes the source holds in
-        /// full into memory already written, with no call; an empty copy charges its base cost alone.
+        /// CALLDATACOPY, CODECOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, into memory already written,
+        /// with no call: bytes the source holds in full, or a copy of a word or more that ends at most a word past a
+        /// zero-extending source; an empty copy charges its base cost alone.
         /// </summary>
         /// <remarks>
-        /// With no call on its path, the handler saves no return address and reloads no dispatch register. Every other case
-        /// runs <see cref="ExecuteDataCopy{TSource}"/>, which also zero-fills, expands memory and falls back to the shared handler.
+        /// With no call on its path, the handler saves no return address and reloads no dispatch register. Other copies past
+        /// a zero-extending source run <see cref="ExecuteDataCopyPastSource{TSource}"/>. Every other case runs
+        /// <see cref="ExecuteDataCopy{TSource}"/>, which also zero-fills, expands memory and falls back to the shared handler.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -3233,10 +3243,110 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
+
+                // A copy of a word or more that ends at most a word past a zero-extending source, as a moving offset reads the
+                // end of the input: its last word is cleared and the bytes the source holds go over it. For a copy the source
+                // holds the difference wraps.
+                if (TSource.ZeroExtends && !EvmPooledMemory.IsSwizzled && (above | ((size | from | target) >> 32)) == 0 &&
+                    size >= EvmStack.WordSize && from + size - (ulong)source.Length - 1 < EvmStack.WordSize && Covers(gas, cost))
+                {
+                    ref byte range = ref AlignedMemory(ref state).TryGetWrittenRange(target, size);
+                    if (!Unsafe.IsNullRef(ref range))
+                    {
+                        gas -= (nuint)cost;
+                        ClearLastWord(ref range, size);
+                        uint copied = (uint)((ulong)source.Length - from);
+                        if (copied != 0)
+                            CopyFromSource<TSource>(ref range, source, from, copied);
+
+                        head -= 3;
+                        sp = ref Moved(ref sp, -3);
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint next = NextHandler(handlers, ref ip);
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                    }
+                }
+
+                if (TSource.ZeroExtends && !EvmPooledMemory.IsSwizzled && (above | ((size | from | target) >> 32)) == 0 && from + size > (ulong)source.Length)
+                {
+                    nint pastSource = Entry(&ExecuteDataCopyPastSource<TSource>);
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, pastSource);
+                }
             }
 
             nint general = Entry(&ExecuteDataCopy<TSource>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
+        }
+
+        /// <summary>
+        /// CALLDATACOPY or CODECOPY, as <typeparamref name="TSource"/> sources it, of bytes that run past the source into
+        /// memory already written: the bytes the source holds, then zeros.
+        /// </summary>
+        /// <remarks>
+        /// Entered from <see cref="ExecuteDataCopyIntoWritten{TSource}"/> alone, which has checked the stack holds the three
+        /// operands, each below 2^32, and that the copy runs past the source. A one-word copy that starts past the source
+        /// clears that word; the caller takes every other copy of a word or more with at most a word of zeros. Kept apart from
+        /// <see cref="ExecuteDataCopyIntoWritten{TSource}"/>, where its registers would cost every copy the source holds.
+        /// Every other case runs <see cref="ExecuteDataCopy{TSource}"/>.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteDataCopyPastSource<TSource>(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+            where TSource : struct, ICopySource
+        {
+            ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+            ulong size = Unsafe.Subtract(ref destination, 2 * LimbsPerWord);
+            ulong from = Unsafe.Subtract(ref destination, LimbsPerWord);
+            ulong target = destination;
+            ReadOnlySpan<byte> source = TSource.Read(ref stack, ref state);
+            ulong cost = VeryLowGasCost.GasCost + GasCostOf.Memory * ((size + (EvmStack.WordSize - 1)) >> 5);
+            if (size == 0 && Covers(gas, cost))
+            {
+                gas -= (nuint)cost;
+                goto Dispatch;
+            }
+
+            ref byte range = ref size != 0 && Covers(gas, cost) ? ref AlignedMemory(ref state).TryGetWrittenRange(target, size) : ref Unsafe.NullRef<byte>();
+            if (!Unsafe.IsNullRef(ref range))
+            {
+                gas -= (nuint)cost;
+                uint copied = from < (ulong)source.Length ? (uint)Math.Min(size, (ulong)source.Length - from) : 0;
+                uint zeros = (uint)size - copied;
+                if (zeros == EvmStack.WordSize && copied == 0)
+                {
+                    ClearLastWord(ref range, size);
+                }
+                else
+                {
+                    if (copied != 0)
+                        CopyFromSource<TSource>(ref range, source, from, copied);
+                    Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, zeros);
+                    // Reloaded rather than held across the call, where each would take a callee-saved register.
+                    handlers = state.OpcodeHandlers;
+                    code = ref stack.Code;
+                    sp = ref SlotAt(ref stack.Bottom, head);
+                }
+
+                goto Dispatch;
+            }
+
+            nint general = Entry(&ExecuteDataCopy<TSource>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
+
+        Dispatch:
+            head -= 3;
+            sp = ref Moved(ref sp, -3);
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = NextHandler(handlers, ref ip);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
         /// <summary>
@@ -3331,6 +3441,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
+        /// <summary>Zeroes the last 32 of the <paramref name="size"/> bytes at <paramref name="range"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ClearLastWord(ref byte range, ulong size) =>
+            MemoryMarshal.CreateSpan(ref Unsafe.Add(ref range, (nint)(size - EvmStack.WordSize)), EvmStack.WordSize).Clear();
+
         /// <summary>
         /// Copies <paramref name="length"/> bytes of <paramref name="source"/> from <paramref name="from"/> into memory at
         /// <paramref name="range"/>, in the memory layout.
@@ -3344,7 +3459,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             else if (EvmPooledMemory.IsSwizzled)
                 SwizzledMemory.Write(ref range, source.Slice((int)from, (int)length));
             else
-                Bytes.Copy(source.Slice((int)from, (int)length), MemoryMarshal.CreateSpan(ref range, (int)length));
+                // Every caller has checked that the source holds the bytes and the range takes them.
+                Bytes.Memmove(Unsafe.AsPointer(ref range), Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetReference(source), (nint)from)), length);
         }
 
         /// <summary>The bytes a copy to memory reads, as <see cref="ExecuteDataCopy{TSource}"/> runs it.</summary>
@@ -3536,11 +3652,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>KECCAK256 of a range inside the active, initialized memory.</summary>
+        /// <summary>KECCAK256 of an empty range or of a range inside the active, initialized memory.</summary>
         /// <remarks>
-        /// Every other case - short gas or stack, a range that grows memory or lies past the initialized memory, an
-        /// offset or length of 2^32 or more - runs the shared KECCAK256 handler instead. Hashing takes a call either way,
-        /// but this handler holds only five values across it, where the shared one saves every callee-saved register.
+        /// Every other case - short gas or stack, a non-empty range that grows memory or lies past the initialized memory,
+        /// or has an offset or length of 2^32 or more - runs the shared KECCAK256 handler instead. Hashing takes a call
+        /// either way, but this handler holds only five values across it, where the shared one saves every callee-saved
+        /// register.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -3573,13 +3690,43 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head--;
                         // The memo keys on the bytes as memory holds them, which in swizzled memory name the input only
                         // from a group boundary.
-                        if ((!EvmPooledMemory.IsSwizzled || (offset & (sizeof(uint) - 1)) == 0) &&
-                            TryReadWordKeccakMemo(ref data, length, ref lengthLimbs))
+                        ulong* entry = (!EvmPooledMemory.IsSwizzled || (offset & (sizeof(uint) - 1)) == 0)
+                            ? WordKeccakMemoEntryFor(ref data, length)
+                            : null;
+                        if (entry is not null)
                         {
+                            if (TryReadWordKeccakMemo(entry, ref data, length, ref lengthLimbs))
+                            {
+                                sp = ref Moved(ref sp, -1);
+                                ip = ref Unsafe.Add(ref ip, 1);
+                                nint memoized = NextHandler(handlers, ref ip);
+                                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, memoized);
+                            }
+
+                            // The input goes in now, while it is at hand; the length that makes the entry valid goes in with the digest.
+                            ref ulong key = ref Unsafe.As<byte, ulong>(ref data);
+                            entry[12] = 0;
+                            entry[0] = key;
+                            entry[1] = Unsafe.Add(ref key, 1);
+                            entry[2] = Unsafe.Add(ref key, 2);
+                            entry[3] = Unsafe.Add(ref key, 3);
+                            if (length == 64)
+                            {
+                                entry[4] = Unsafe.Add(ref key, 4);
+                                entry[5] = Unsafe.Add(ref key, 5);
+                                entry[6] = Unsafe.Add(ref key, 6);
+                                entry[7] = Unsafe.Add(ref key, 7);
+                            }
+                        }
+
+                        // Tested past the memo, which no empty range hits, and beside the call every other range takes.
+                        if (length == 0)
+                        {
+                            WriteEmptyKeccak(ref lengthLimbs);
                             sp = ref Moved(ref sp, -1);
                             ip = ref Unsafe.Add(ref ip, 1);
-                            nint memoized = NextHandler(handlers, ref ip);
-                            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, memoized);
+                            nint emptyInside = NextHandler(handlers, ref ip);
+                            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, emptyInside);
                         }
 
                         if (!EvmPooledMemory.IsSwizzled)
@@ -3604,17 +3751,54 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         Unsafe.Add(ref hash, 1) = limb1;
                         Unsafe.Add(ref hash, 2) = limb2;
                         Unsafe.Add(ref hash, 3) = limb3;
-                        if (!EvmPooledMemory.IsSwizzled || (offset & (sizeof(uint) - 1)) == 0)
-                            WriteWordKeccakMemo(ref state.Memory.GetActiveInitializedRange(offset, length), length, ref hash);
+                        if (entry is not null)
+                        {
+                            entry[8] = limb0;
+                            entry[9] = limb1;
+                            entry[10] = limb2;
+                            entry[11] = limb3;
+                            entry[12] = length;
+                        }
+
                         ip = ref Unsafe.Add(ref ip, 1);
                         nint next = NextHandler(handlers, ref ip);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
+
+                // An empty range touches no memory, so its offset may lie past it or past 2^32. Checked only here to keep
+                // the common case unchanged; an empty range inside the memory takes the digest above.
+                if ((length | Unsafe.Add(ref lengthLimbs, 1) | Unsafe.Add(ref lengthLimbs, 2) | Unsafe.Add(ref lengthLimbs, 3)) == 0 &&
+                    Covers(gas, GasCostOf.Sha3))
+                {
+                    gas -= (nuint)GasCostOf.Sha3;
+                    head--;
+                    WriteEmptyKeccak(ref lengthLimbs);
+                    sp = ref Moved(ref sp, -1);
+                    ip = ref Unsafe.Add(ref ip, 1);
+                    nint empty = NextHandler(handlers, ref ip);
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, empty);
+                }
             }
 
             nint shared = Entry(&ExecuteOpcode<KeccakOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>The limbs of <see cref="ValueKeccak.OfAnEmptyString"/>, least significant first.</summary>
+        private const ulong EmptyKeccakLimb0 = 0x7bfad8045d85a470;
+        private const ulong EmptyKeccakLimb1 = 0xe500b653ca82273b;
+        private const ulong EmptyKeccakLimb2 = 0x927e7db2dcc703c0;
+        private const ulong EmptyKeccakLimb3 = 0xc5d2460186f7233c;
+
+        /// <summary>Writes the digest of the empty input to the stack slot at <paramref name="limbs"/>, in limb layout.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void WriteEmptyKeccak(ref ulong limbs)
+        {
+            limbs = EmptyKeccakLimb0;
+            Unsafe.Add(ref limbs, 1) = EmptyKeccakLimb1;
+            Unsafe.Add(ref limbs, 2) = EmptyKeccakLimb2;
+            Unsafe.Add(ref limbs, 3) = EmptyKeccakLimb3;
         }
 
         /// <summary>The bits of the index of an entry of <see cref="s_wordKeccakMemo"/>.</summary>
@@ -3634,16 +3818,31 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         private static ulong* s_wordKeccakMemo;
 
-        /// <summary>Copies the memoized digest of the <paramref name="length"/> bytes at <paramref name="data"/> to <paramref name="slot"/> when there is one.</summary>
+        /// <summary>
+        /// The entry of <see cref="s_wordKeccakMemo"/> that holds the digest of the <paramref name="length"/> bytes at
+        /// <paramref name="data"/>, or null for an input the memo does not take.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool TryReadWordKeccakMemo(ref byte data, ulong length, ref ulong slot)
+        private static ulong* WordKeccakMemoEntryFor(ref byte data, ulong length)
         {
-            ulong* memo = s_wordKeccakMemo;
-            if (memo is null || (length != 32 && length != 64) || ((nuint)Unsafe.AsPointer(ref data) & (nuint)(sizeof(ulong) - 1)) != 0)
-                return false;
+            if ((length != 32 && length != 64) || ((nuint)Unsafe.AsPointer(ref data) & (nuint)(sizeof(ulong) - 1)) != 0)
+                return null;
 
+            ulong* memo = s_wordKeccakMemo;
+            if (memo is null)
+                memo = AllocateWordKeccakMemo();
+            return WordKeccakMemoEntry(memo, ref Unsafe.As<byte, ulong>(ref data), length);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static ulong* AllocateWordKeccakMemo() =>
+            s_wordKeccakMemo = (ulong*)NativeMemory.AllocZeroed((nuint)((1 << WordKeccakMemoBits) * WordKeccakMemoEntryLongs * sizeof(ulong)));
+
+        /// <summary>Copies the digest <paramref name="entry"/> holds for the <paramref name="length"/> bytes at <paramref name="data"/> to <paramref name="slot"/> when it holds one.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryReadWordKeccakMemo(ulong* entry, ref byte data, ulong length, ref ulong slot)
+        {
             ref ulong key = ref Unsafe.As<byte, ulong>(ref data);
-            ulong* entry = WordKeccakMemoEntry(memo, ref key, length);
             if (entry[12] != length) return false;
             ulong difference = (entry[0] ^ key) | (entry[1] ^ Unsafe.Add(ref key, 1)) | (entry[2] ^ Unsafe.Add(ref key, 2)) | (entry[3] ^ Unsafe.Add(ref key, 3));
             if (length == 64)
@@ -3655,23 +3854,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             Unsafe.Add(ref slot, 2) = entry[10];
             Unsafe.Add(ref slot, 3) = entry[11];
             return true;
-        }
-
-        /// <summary>Memoizes <paramref name="digest"/>, in limb layout, as the digest of the <paramref name="length"/> bytes at <paramref name="data"/>.</summary>
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void WriteWordKeccakMemo(ref byte data, ulong length, ref ulong digest)
-        {
-            if ((length != 32 && length != 64) || Unsafe.IsNullRef(ref data) || ((nuint)Unsafe.AsPointer(ref data) & (nuint)(sizeof(ulong) - 1)) != 0)
-                return;
-
-            ulong* memo = s_wordKeccakMemo;
-            if (memo is null)
-                s_wordKeccakMemo = memo = (ulong*)NativeMemory.AllocZeroed((nuint)((1 << WordKeccakMemoBits) * WordKeccakMemoEntryLongs * sizeof(ulong)));
-            ref ulong key = ref Unsafe.As<byte, ulong>(ref data);
-            ulong* entry = WordKeccakMemoEntry(memo, ref key, length);
-            for (int i = 0; i < (int)(length >> 3); i++) entry[i] = Unsafe.Add(ref key, i);
-            for (int i = 0; i < 4; i++) entry[8 + i] = Unsafe.Add(ref digest, i);
-            entry[12] = length;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

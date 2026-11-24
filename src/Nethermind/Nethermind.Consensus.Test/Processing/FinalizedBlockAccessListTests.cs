@@ -27,6 +27,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
@@ -319,6 +320,27 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         IBlockTracer tracer = tracing ? Substitute.For<IBlockTracer>() : NullBlockTracer.Instance;
         env.Processor.ProcessOne(block, ProcessingOptions.None, tracer, Amsterdam.Instance);
         Assert.That(env.Recording.Calls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Cancellation_during_apply_throws_before_the_state_root_is_recalculated()
+    {
+        using TestEnvironment env = new(useFlatDb);
+        Block block = env.CreateBlock();
+        env.Beacon.GetFinalizedHash().Returns(block.Hash);
+        using CancellationTokenSource cts = new();
+        IWorldState state = Substitute.For<IWorldState>();
+        state.When(s => s.ApplyBal(Arg.Any<ReadOnlyBlockAccessList>(), Arg.Any<CancellationToken>())).Do(_ => cts.Cancel());
+        FinalizedBlockAccessListProcessor processor = new(env.Recording, env.Policy, state, env.Receipts, env.Recovery, LimboLogs.Instance);
+        Assert.That(() => processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Amsterdam.Instance, cts.Token),
+            Throws.InstanceOf<OperationCanceledException>());
+        using (Assert.EnterMultipleScope())
+        {
+            state.Received(1).ApplyBal(Arg.Any<ReadOnlyBlockAccessList>(), cts.Token);
+            state.DidNotReceive().RecalculateStateRoot();
+            Assert.That(env.Recording.Calls, Is.EqualTo(0));
+        }
+        block.DisposeAccountChanges();
     }
 
     [TestCase(false)]

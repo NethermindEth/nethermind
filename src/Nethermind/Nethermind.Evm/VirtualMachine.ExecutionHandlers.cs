@@ -56,7 +56,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <summary>Selects how a frame credits and, under EIP-158, bumps the nonce of the account it executes in.</summary>
     private static delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>
         // EIP-8360 frame entry also sets the TCREATE context, so it cannot be skipped.
-        SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled && !SpecFlags.Eip8360(spec) ? &InitializeFrameSkippingNoOpCredit :
+        SpecFlags.Eip158(spec) && !SpecFlags.Eip8360(spec) ? &InitializeFrameSkippingNoOpCredit :
         SelectInitializeFrameCore(spec);
 
     /// <summary>The frame entry both builds select from, by the EIP-158 and EIP-8360 flags.</summary>
@@ -93,7 +93,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// That account is never empty: under CALL, STATICCALL and a transaction it holds the code, or an EIP-7702 designator
     /// to it; under DELEGATECALL and CALLCODE it is the caller, itself running code or a creation whose nonce is already 1.
     /// Crediting it zero neither creates nor touches it, yet costs two account lookups on every value-less call.
-    /// Not selected under EIP-7928, whose access-list tracking observes the credit.
+    /// Under EIP-7928 all the credit leaves in the block access list is the account's entry, which is already there: the
+    /// call or transaction that targets the account made it while resolving the account's code, and under DELEGATECALL
+    /// and CALLCODE the account is the caller's, whose entry was made the same way or by its creation.
     /// </remarks>
     private static bool InitializeFrameSkippingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
     {
@@ -108,7 +110,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private static void AddTransferLogCore<Eip7708>(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
         where Eip7708 : struct, IFlag
     {
-        if (Eip7708.IsActive && state.ExecutionType is not (ExecutionType.DELEGATECALL or ExecutionType.CALLCODE))
+        // The value is tested first: a value-less frame, the common one, then skips resolving its two addresses.
+        if (Eip7708.IsActive && !state.Env.Value.IsZero && state.ExecutionType is not (ExecutionType.DELEGATECALL or ExecutionType.CALLCODE))
             vm.AddTransferLog<Eip7708>(state.From, state.To, in state.Env.Value);
     }
 

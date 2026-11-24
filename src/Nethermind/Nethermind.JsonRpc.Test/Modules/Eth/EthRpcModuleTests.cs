@@ -1023,7 +1023,7 @@ public partial class EthRpcModuleTests
         await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
         await writer.CompleteAsync();
 
-        System.IO.Pipelines.ReadResult read = await pipe.Reader.ReadAsync();
+        System.IO.Pipelines.ReadResult read = await pipe.Reader.ReadAsync(cancellationToken);
         string serialized = Encoding.UTF8.GetString(read.Buffer.ToArray());
         pipe.Reader.AdvanceTo(read.Buffer.End);
         await pipe.Reader.CompleteAsync();
@@ -1222,6 +1222,8 @@ public partial class EthRpcModuleTests
             "FutureBlockRange",
             """{"fromBlock":"0x11","toBlock":"0x12","address":"0x0000000000000000000000000000000000000001","topics":["0x0000000000000000000000000000000000000000000000000000000000000001"]}""",
             """{"jsonrpc":"2.0","error":{"code":-32602,"message":"requested block range is in the future"},"id":67}""");
+        yield return ("NumberFilter", "0", """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 0: expected a filter object"},"id":67}""");
+        yield return ("ArrayFilter", "[]", """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 0: expected a filter object"},"id":67}""");
     }
 
     [TestCaseSource(nameof(EthGetLogsCases))]

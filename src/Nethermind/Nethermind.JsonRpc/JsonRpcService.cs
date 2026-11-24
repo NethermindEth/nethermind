@@ -697,6 +697,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             TargetParameterCountException or ArgumentException =>
                 LogFailureType(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, in request.IdRef, returnAction)),
 
+            GethTraceDeadlineException =>
+                GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.Message, in request.IdRef, returnAction),
+
             TraceDurationFormatException when isStreaming =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.Message, in request.IdRef, returnAction),
 
@@ -1085,7 +1088,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         Action? disposableAction = null,
         bool suppressWarning = false)
     {
-        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : methodName)}, id: {id}, errorType: {errorCode}");
+        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : JsonRpcRequest.EncodeLogText(methodName))}, id: {id}, errorType: {errorCode}");
         // Counted here, at the funnel every error response passes through: concurrency-cap
         // rejections reach this point along two distinct paths (module rental before invocation,
         // and the override-environment cap during invocation), and their warnings are suppressed

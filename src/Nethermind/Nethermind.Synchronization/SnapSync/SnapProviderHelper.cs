@@ -93,6 +93,27 @@ namespace Nethermind.Synchronization.SnapSync
             return BuildAndVerifyRoot(tree, accounts, startingHash, limitHash, expectedRootHash, keepLeftLeaf: false, proofs).result;
         }
 
+        /// <summary>
+        /// Verifies a storage range and writes its reconstructed nodes to a scratch trie store for proof export.
+        /// </summary>
+        /// <remarks>
+        /// The factory must use an isolated store. Nodes needed for a proof can span paths outside the downloaded range.
+        /// </remarks>
+        public static AddRangeResult ReconstructStorageProofNodes(
+            ISnapTrieFactory factory,
+            PathWithAccount account,
+            IReadOnlyList<PathWithStorageSlot> slots,
+            in ValueHash256 startingHash,
+            in ValueHash256 limitHash,
+            IByteArrayList proofs)
+        {
+            using ISnapTree<PathWithStorageSlot> tree = factory.CreateStorageTree(account.Path);
+            AddRangeResult result = BuildAndVerifyRoot(
+                tree, slots, startingHash, limitHash, account.Account.StorageRoot, keepLeftLeaf: false, proofs).result;
+            if (result == AddRangeResult.OK) tree.Commit(ValueKeccak.Zero, ValueKeccak.MaxValue);
+            return result;
+        }
+
         /// <param name="runStart">
         /// Where the consecutive ranges of a storage trie downloaded at <paramref name="expectedRootHash"/> begin, or
         /// <c>null</c> for the account trie, whose leaves are persisted whatever their path reaches, as flat keeps no full

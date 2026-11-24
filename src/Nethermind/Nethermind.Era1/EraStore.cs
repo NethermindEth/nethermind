@@ -169,7 +169,7 @@ public class EraStore : IEraStore
                     throw new EraVerificationException(
                         $"Checksum verification failed. Checksum: {checksum}, Expected: {expectedChecksum}");
                 }
-            });
+            }, cancellation);
 
             Task accumulatorTask = Task.Run(async () =>
             {
@@ -178,7 +178,7 @@ public class EraStore : IEraStore
                 {
                     throw new EraVerificationException($"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");
                 }
-            });
+            }, cancellation);
 
             await Task.WhenAll(checksumTask, accumulatorTask);
 

@@ -111,7 +111,10 @@ public class RocksDbFactory : IDbFactory
         }
         else if (settings.DeleteOnStart)
         {
-            RocksDbInstance.Delete(fullPath, settings, _logger);
+            if (!RocksDbInstance.Delete(fullPath, settings, _fileSystem, _logger))
+            {
+                throw new IOException($"Could not delete the {name} database at {fullPath}.");
+            }
         }
 
         try
@@ -255,9 +258,10 @@ public class RocksDbFactory : IDbFactory
                 DateTime creationTime = File.GetCreationTimeUtc(fullPath);
                 fileMetadataEntries.Add((liveFileMetadata.FileMetadata, creationTime));
             }
-            catch (IOException)
+            catch (IOException e)
             {
                 // Maybe the file is gone or something. We ignore it.
+                if (_logger.IsDebug) _logger.Debug($"Skipping warmup of {fullPath}: {e.Message}");
             }
         }
 
@@ -299,6 +303,7 @@ public class RocksDbFactory : IDbFactory
             catch (FileNotFoundException)
             {
                 // Happens sometimes. We do nothing here.
+                if (_logger.IsDebug) _logger.Debug($"Skipping warmup of {fullPath}: the file no longer exists");
             }
             catch (IOException e)
             {
