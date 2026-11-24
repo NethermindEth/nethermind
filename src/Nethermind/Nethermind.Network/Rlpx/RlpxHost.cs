@@ -706,7 +706,7 @@ namespace Nethermind.Network.Rlpx
             }
 
             // Detach subscriptions and dispose any sessions that weren't disconnected during shutdown.
-            // Sessions whose Disconnected event fired are already disposed via OnDisconnected.
+            // Sessions whose Disconnected event fired are already disposed via OnSessionDisconnected.
             foreach (KeyValuePair<Guid, SessionActivitySubscription> kvp in _sessionActivitySubscriptions)
             {
                 kvp.Value.DisconnectAndDispose();
@@ -753,10 +753,7 @@ namespace Nethermind.Network.Rlpx
             _nodeFilter.Touch(remoteNode.Address.Address, remoteNode.IsStatic || remoteNode.IsBootnode);
         }
 
-        void ISessionActivityObserver.OnSessionDisconnected(Session session, DisconnectEventArgs args) =>
-            OnSessionDisconnected(session, args);
-
-        private void OnSessionDisconnected(ISession session, DisconnectEventArgs args)
+        void ISessionActivityObserver.OnSessionDisconnected(Session session, DisconnectEventArgs args)
         {
             if (!_sessionActivitySubscriptions.TryRemove(session.SessionId, out SessionActivitySubscription? subscription))
             {
