@@ -46,6 +46,14 @@ public partial class SyncCommitteeContribution
     public BlsSignature Signature { get; set; }
 }
 
+/// <summary>Altair <c>SyncAggregatorSelectionData</c>: what a sync committee selection proof signs.</summary>
+[SszContainer]
+public partial class SyncAggregatorSelectionData
+{
+    public ulong Slot { get; set; }
+    public ulong SubcommitteeIndex { get; set; }
+}
+
 /// <summary>Altair <c>ContributionAndProof</c>.</summary>
 [SszContainer]
 public partial class ContributionAndProof

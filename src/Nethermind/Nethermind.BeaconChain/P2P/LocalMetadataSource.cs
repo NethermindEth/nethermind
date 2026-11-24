@@ -11,8 +11,9 @@ namespace Nethermind.BeaconChain.P2P;
 
 /// <summary>Holds the node's own eth2 <c>MetaData</c>, served over the <c>metadata</c> and <c>ping</c> protocols.</summary>
 /// <remarks>
-/// The attestation subnet bitfield holds the subnets joined for local aggregators (<see cref="SetAttnets"/>) and is empty at
-/// startup; the sync committee bitfield stays empty. The custody group count uses the same configuration as <see cref="Discovery.LocalCustody"/>.
+/// The attestation subnet bitfield holds the subnets joined for local aggregators (<see cref="SetAttnets"/>) and the sync committee
+/// bitfield those joined for local sync committee members (<see cref="SetSyncnets"/>); both are empty at startup. The custody group count
+/// uses the same configuration as <see cref="Discovery.LocalCustody"/>.
 /// </remarks>
 public class LocalMetadataSource(IBeaconChainConfig? config = null, BeaconChainStore? store = null)
 {
@@ -41,13 +42,23 @@ public class LocalMetadataSource(IBeaconChainConfig? config = null, BeaconChainS
     /// </remarks>
     internal void SetAttnets(BitArray attnets)
     {
-        lock (_updateLock)
-        {
-            MetaDataV3 current = Current;
-            ulong sequence = current.SeqNumber + 1;
-            if (store is not null) Persist(store, sequence + 1, current.CustodyGroupCount);
-            Current = new MetaDataV3 { SeqNumber = sequence, Attnets = attnets, Syncnets = current.Syncnets, CustodyGroupCount = current.CustodyGroupCount };
-        }
+        lock (_updateLock) Advertise(attnets, Current.Syncnets);
+    }
+
+    /// <summary>Advertises <paramref name="syncnets"/> under the next sequence number.</summary>
+    /// <remarks>As <see cref="SetAttnets"/>.</remarks>
+    internal void SetSyncnets(BitArray syncnets)
+    {
+        lock (_updateLock) Advertise(Current.Attnets, syncnets);
+    }
+
+    // Callers hold _updateLock.
+    private void Advertise(BitArray? attnets, BitArray? syncnets)
+    {
+        MetaDataV3 current = Current;
+        ulong sequence = current.SeqNumber + 1;
+        if (store is not null) Persist(store, sequence + 1, current.CustodyGroupCount);
+        Current = new MetaDataV3 { SeqNumber = sequence, Attnets = attnets, Syncnets = syncnets, CustodyGroupCount = current.CustodyGroupCount };
     }
 
     private static ulong Sequence(ulong count, BeaconChainStore? store)

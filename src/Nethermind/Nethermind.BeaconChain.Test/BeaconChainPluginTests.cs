@@ -170,21 +170,25 @@ public class BeaconChainPluginTests
     }
 
     [Test]
-    public void Plugin_wiring_shares_one_attestation_validator_and_subnet_set_between_gossip_the_orchestrator_and_the_validator_api()
+    public void Plugin_wiring_shares_one_validator_and_subnet_set_of_attestations_and_of_sync_committees_between_gossip_the_orchestrator_and_the_validator_api()
     {
+        Type[] shared = [typeof(SingleAttestationValidator), typeof(AttestationSubnets), typeof(SyncCommitteeValidator), typeof(SyncCommitteeSubnets)];
         List<(Type Consumer, Type Dependency, object? Instance)> resolved = [];
-        using IContainer container = BeaconChainTestContainer.BuildTrackingDependencies(BeaconChainTestContainer.Builder(), resolved, typeof(SingleAttestationValidator), typeof(AttestationSubnets));
+        using IContainer container = BeaconChainTestContainer.BuildTrackingDependencies(BeaconChainTestContainer.Builder(), resolved, shared);
 
         container.Resolve<IBeaconNodeValidatorApi>();
-        object validator = container.Resolve<SingleAttestationValidator>();
-        object subnets = container.Resolve<AttestationSubnets>();
+        Dictionary<Type, object> instances = shared.ToDictionary(static type => type, container.Resolve);
 
-        Assert.That(resolved.Select(r => (r.Consumer, r.Dependency, ReferenceEquals(r.Instance, r.Dependency == typeof(AttestationSubnets) ? subnets : validator))), Is.EquivalentTo(new[]
+        Assert.That(resolved.Select(r => (r.Consumer, r.Dependency, ReferenceEquals(r.Instance, instances[r.Dependency]))), Is.EquivalentTo(new[]
         {
             (typeof(GossipRouter), typeof(SingleAttestationValidator), true),
+            (typeof(GossipRouter), typeof(SyncCommitteeValidator), true),
             (typeof(BeaconSyncOrchestrator), typeof(AttestationSubnets), true),
+            (typeof(BeaconSyncOrchestrator), typeof(SyncCommitteeSubnets), true),
             (typeof(BeaconNodeValidatorApi), typeof(SingleAttestationValidator), true),
             (typeof(BeaconNodeValidatorApi), typeof(AttestationSubnets), true),
+            (typeof(BeaconNodeValidatorApi), typeof(SyncCommitteeValidator), true),
+            (typeof(BeaconNodeValidatorApi), typeof(SyncCommitteeSubnets), true),
         }));
     }
 
@@ -221,7 +225,9 @@ public class BeaconChainPluginTests
         }
 
         await step.Execute(CancellationToken.None);
-        if (enabled) await container.Resolve<AttesterDutyRunner>().StopAsync();
+        if (!enabled) return;
+        await container.Resolve<AttesterDutyRunner>().StopAsync();
+        await container.Resolve<SyncCommitteeDutyRunner>().StopAsync();
     }
 
     [Test]

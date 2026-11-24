@@ -65,13 +65,13 @@ public enum GossipDropReason
     /// <summary>A payload attestation from a peer that sent a vote for its slot that fork choice rejected.</summary>
     PayloadAttestationPeerRejected,
 
-    /// <summary>An attestation whose signature does not verify.</summary>
+    /// <summary>An attestation, sync committee message or contribution whose signature does not verify.</summary>
     InvalidSignature,
 
     /// <summary>A vote the published head cannot check, as before its state is captured or for an epoch outside its shuffling lookahead.</summary>
     Unverifiable,
 
-    /// <summary>An attestation on a subnet this node has not joined.</summary>
+    /// <summary>An attestation, sync committee message or contribution on a topic this node has not joined.</summary>
     UnjoinedSubnet,
 }
 
@@ -87,7 +87,8 @@ public enum GossipDropReason
 /// signatures need the head state and run in the import pipeline consuming these events.
 /// A block or aggregate for the next slot that arrives early is held and raised once its slot starts.
 /// An attestation on a joined <c>beacon_attestation_{subnet_id}</c> subnet is the exception: <see cref="SingleAttestationValidator"/>
-/// checks every rule against the published head here, so it is accepted or refused before <see cref="AttestationReceived"/>.
+/// checks every rule against the published head here, so it is accepted or refused before <see cref="AttestationReceived"/>. So are sync
+/// committee messages and contributions, by <see cref="SyncCommitteeValidator"/>, which raises no event: nothing past the pool consumes them.
 /// </remarks>
 /// <param name="store">Where a block's parent and an execution payload envelope's block and bid are read from; <c>null</c> holds no block, so every envelope passing the stateless rules is consumed unchecked.</param>
 /// <param name="status">Where the finalized checkpoint is read from; <c>null</c> applies no finalized-slot rule.</param>
@@ -100,8 +101,12 @@ public enum GossipDropReason
 /// Checks every <c>beacon_attestation_{subnet_id}</c> rule of an attestation on a joined subnet, so it is accepted or refused here;
 /// <c>null</c> ignores attestations.
 /// </param>
+/// <param name="syncCommittee">
+/// Checks every <c>sync_committee_{subnet_id}</c> and <c>sync_committee_contribution_and_proof</c> rule of a message on a joined topic, so it
+/// is accepted or refused here; <c>null</c> ignores them.
+/// </param>
 public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILogManager logManager, BeaconChainStore? store = null, IBeaconChainStatusSource? status = null,
-    FailedBlockRoots? failedBlocks = null, ColumnGossipRouter? headers = null, SingleAttestationValidator? attestations = null)
+    FailedBlockRoots? failedBlocks = null, ColumnGossipRouter? headers = null, SingleAttestationValidator? attestations = null, SyncCommitteeValidator? syncCommittee = null)
 {
     /// <summary>The spec <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>.</summary>
     public const long MaximumGossipClockDisparityMs = 500;
@@ -115,6 +120,16 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     // Fixed-size SSZ: committee_index and attester_index (8 + 8), AttestationData (8 + 8 + 32 + 40 + 40) and the BLS signature (96).
     private const int SingleAttestationSize = 240;
+
+    // Fixed-size SSZ: slot (8), beacon_block_root (32), validator_index (8) and the BLS signature (96).
+    private const int SyncCommitteeMessageSize = 144;
+
+    // Fixed-size SSZ: aggregator_index (8), the contribution's slot, beacon_block_root, subcommittee_index and aggregation_bits, and three BLS signatures.
+    private const int SignedContributionAndProofSize = 8 + 8 + 32 + 8 + SyncCommitteeContribution.SubcommitteeSize / 8 + 3 * BlsSignature.Length;
+
+    // The sync committee topics joined on demand, indexed by their bit in _syncCommitteeTopicBits: each subnet's, then the contribution topic.
+    private static readonly string[] SyncCommitteeAndContributionTopicNames = [.. GossipTopics.SyncCommitteeTopicNames, GossipTopics.SyncCommitteeContributionAndProof];
+    private const int ContributionTopicBit = SyncCommitteeContribution.SubnetCount;
 
     internal const int SeenCacheSize = 2048;
     private const int SeenProposalCacheSize = 1024;
@@ -171,6 +186,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     // Apart from _seenMessages, so a flood of cheap distinct votes cannot evict the message ids of the other topics.
     private readonly LruKeyCache<ValueHash256> _seenPayloadAttestationMessages = new(SeenCacheSize, "beacon gossip seen payload attestation messages");
     private readonly LruKeyCache<ValueHash256> _seenAttestationMessages = new(SeenCacheSize, "beacon gossip seen attestation messages");
+    private readonly LruKeyCache<ValueHash256> _seenSyncCommitteeMessages = new(SeenCacheSize, "beacon gossip seen sync committee messages");
     private readonly long[] _dropCounts = new long[Enum.GetValues<GossipDropReason>().Length];
     private readonly Lock _subscriptionLock = new();
     private readonly Dictionary<string, List<ITopic>> _subscriptions = [];
@@ -180,6 +196,12 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     // One bit for each attestation subnet to join; written under _subscriptionLock, read on the network thread.
     private ulong _attestationSubnets;
+
+    // The SyncCommitteeAndContributionTopicNames topics of each subscribed pre-Gloas digest; null where not joined.
+    private readonly Dictionary<string, (byte[] Digest, ITopic?[] Topics)> _syncCommitteeTopics = [];
+
+    // One bit for each SyncCommitteeAndContributionTopicNames topic to join; written under _subscriptionLock, read on the network thread.
+    private ulong _syncCommitteeTopicBits;
 
     // Written by the import worker once a block's proposer signature verifies; read on the network thread.
     private readonly LruKeyCache<(ulong Slot, ulong Proposer)> _seenProposals = new(SeenProposalCacheSize, "beacon gossip proposals");
@@ -261,19 +283,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         (ValueHash256, int) key = AggregateDataKey(data, committeeBits);
         lock (_seenAggregateBitsLock)
         {
-            if (_seenAggregateBits.TryGet(key, out List<BitArray>? seen))
-            {
-                foreach (BitArray prior in seen)
-                {
-                    if (IsNonStrictSuperset(prior, aggregationBits))
-                    {
-                        return true;
-                    }
-                }
-            }
+            return _seenAggregateBits.TryGet(key, out List<BitArray>? seen) && IsCovered(seen, aggregationBits);
         }
-
-        return false;
     }
 
     /// <summary>Records an aggregate that passed every gossip check, its selection proof and aggregator signature included.</summary>
@@ -290,15 +301,35 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 _seenAggregateBits.Set(key, seen);
             }
 
-            // p2p-interface.md is_non_strict_superset: a set the new one covers answers no additional lookup.
-            seen.RemoveAll(prior => IsNonStrictSuperset(aggregationBits, prior));
-            if (seen.Count == SeenAggregateBitsPerData)
-            {
-                seen.RemoveAt(0);
-            }
-
-            seen.Add(new BitArray(aggregationBits));
+            AddSeenBits(seen, aggregationBits, SeenAggregateBitsPerData);
         }
+    }
+
+    /// <summary>Whether a bitfield of <paramref name="seen"/> is a non-strict superset of <paramref name="bits"/> (p2p-interface.md <c>is_non_strict_superset</c>).</summary>
+    internal static bool IsCovered(List<BitArray> seen, BitArray bits)
+    {
+        foreach (BitArray prior in seen)
+        {
+            if (IsNonStrictSuperset(prior, bits))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Adds <paramref name="bits"/> to <paramref name="seen"/>, keeping at most <paramref name="capacity"/> bitfields.</summary>
+    internal static void AddSeenBits(List<BitArray> seen, BitArray bits, int capacity)
+    {
+        // p2p-interface.md is_non_strict_superset: a set the new one covers answers no additional lookup.
+        seen.RemoveAll(prior => IsNonStrictSuperset(bits, prior));
+        if (seen.Count == capacity)
+        {
+            seen.RemoveAt(0);
+        }
+
+        seen.Add(new BitArray(bits));
     }
 
     // is_non_strict_superset (p2p-interface.md) compares bits of one committee; bits of another length cover nothing.
@@ -508,7 +539,10 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             {
                 ITopic?[] attestationTopics = new ITopic?[GossipTopics.AttestationSubnetCount];
                 _attestationTopics[key] = (forkDigest, attestationTopics);
-                JoinAttestationSubnets(forkDigest, attestationTopics);
+                JoinTopics(forkDigest, attestationTopics, GossipTopics.BeaconAttestationTopicNames, _attestationSubnets);
+                ITopic?[] syncCommitteeTopics = new ITopic?[SyncCommitteeAndContributionTopicNames.Length];
+                _syncCommitteeTopics[key] = (forkDigest, syncCommitteeTopics);
+                JoinTopics(forkDigest, syncCommitteeTopics, SyncCommitteeAndContributionTopicNames, _syncCommitteeTopicBits);
             }
 
             if (_logger.IsInfo) _logger.Info($"Subscribed beacon gossip topics for fork digest 0x{key}");
@@ -531,9 +565,10 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 topic.Unsubscribe();
             }
 
-            if (_attestationTopics.Remove(key, out (byte[] Digest, ITopic?[] Topics) attestationTopics))
+            foreach (Dictionary<string, (byte[] Digest, ITopic?[] Topics)> joinedOnDemand in (ReadOnlySpan<Dictionary<string, (byte[], ITopic?[])>>)[_attestationTopics, _syncCommitteeTopics])
             {
-                foreach (ITopic? topic in attestationTopics.Topics)
+                if (!joinedOnDemand.Remove(key, out (byte[] Digest, ITopic?[] Topics) joined)) continue;
+                foreach (ITopic? topic in joined.Topics)
                 {
                     topic?.Unsubscribe();
                 }
@@ -556,27 +591,53 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             Volatile.Write(ref _attestationSubnets, subnets);
             foreach ((byte[] digest, ITopic?[] topics) in _attestationTopics.Values)
             {
-                JoinAttestationSubnets(digest, topics);
+                JoinTopics(digest, topics, GossipTopics.BeaconAttestationTopicNames, subnets);
             }
         }
     }
 
-    // Callers hold _subscriptionLock.
-    private void JoinAttestationSubnets(byte[] forkDigest, ITopic?[] topics)
+    /// <summary>Whether the sync committee topic at <paramref name="index"/> of <see cref="SyncCommitteeAndContributionTopicNames"/> is joined by the last <see cref="SetSyncCommitteeSubnets"/>.</summary>
+    private bool IsSyncCommitteeTopicJoined(int index) => (Volatile.Read(ref _syncCommitteeTopicBits) >> index & 1) != 0;
+
+    /// <summary>
+    /// Joins the <c>sync_committee_{subnet_id}</c> topic of each subnet set in <paramref name="subnets"/>, and while any is set
+    /// <c>sync_committee_contribution_and_proof</c>, on every subscribed pre-Gloas digest, and leaves the others.
+    /// </summary>
+    /// <param name="subnets">One bit for each subnet, subnet 0 lowest.</param>
+    /// <remarks>
+    /// Checking a contribution needs the head state, which is captured only while a validator client uses the node, so the contribution
+    /// topic is joined only while one of its validators is in the sync committee. Digests subscribed later join the same topics.
+    /// </remarks>
+    internal void SetSyncCommitteeSubnets(ulong subnets)
     {
-        for (int subnet = 0; subnet < topics.Length; subnet++)
+        lock (_subscriptionLock)
         {
-            bool wanted = (_attestationSubnets >> subnet & 1) != 0;
-            if (wanted && topics[subnet] is null)
+            ulong topicBits = subnets == 0 ? 0 : subnets | 1UL << ContributionTopicBit;
+            Volatile.Write(ref _syncCommitteeTopicBits, topicBits);
+            foreach ((byte[] digest, ITopic?[] topics) in _syncCommitteeTopics.Values)
             {
-                ITopic topic = _getTopic!(GossipTopics.Topic(forkDigest, GossipTopics.BeaconAttestationTopicNames[subnet]));
-                topic.Subscribe();
-                topics[subnet] = topic;
+                JoinTopics(digest, topics, SyncCommitteeAndContributionTopicNames, topicBits);
             }
-            else if (!wanted && topics[subnet] is { } joined)
+        }
+    }
+
+    /// <summary>Subscribes the topic of <paramref name="names"/> at each bit set in <paramref name="wanted"/> that <paramref name="topics"/> lacks, and unsubscribes the others.</summary>
+    /// <remarks>Callers hold _subscriptionLock.</remarks>
+    private void JoinTopics(byte[] forkDigest, ITopic?[] topics, string[] names, ulong wanted)
+    {
+        for (int index = 0; index < topics.Length; index++)
+        {
+            bool join = (wanted >> index & 1) != 0;
+            if (join && topics[index] is null)
+            {
+                ITopic topic = _getTopic!(GossipTopics.Topic(forkDigest, names[index]));
+                topic.Subscribe();
+                topics[index] = topic;
+            }
+            else if (!join && topics[index] is { } joined)
             {
                 joined.Unsubscribe();
-                topics[subnet] = null;
+                topics[index] = null;
             }
         }
     }
@@ -610,7 +671,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         GossipTopics.AttesterSlashing => gloasTopic ? HandleGloasAttesterSlashing(message, verdict) : HandleFuluAttesterSlashing(message, verdict),
         GossipTopics.ExecutionPayload => HandleExecutionPayloadEnvelope(message, verdict),
         GossipTopics.PayloadAttestationMessage => HandlePayloadAttestationMessage(message, verdict, source),
+        GossipTopics.SyncCommitteeContributionAndProof => HandleContributionAndProof(gloasTopic, message, verdict),
         _ when GossipTopics.TryParseBeaconAttestationTopicName(name, out ulong subnet) && subnet < GossipTopics.AttestationSubnetCount => HandleAttestation(subnet, gloasTopic, message, verdict),
+        _ when GossipTopics.TryParseSyncCommitteeTopicName(name, out ulong subnet) && subnet < SyncCommitteeContribution.SubnetCount => HandleSyncCommitteeMessage(subnet, gloasTopic, message, verdict),
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown gossip topic name"),
     };
 
@@ -718,17 +781,55 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             {
                 AttestationCheck check = validator.Check(attestation, subnet);
                 vote = check.Vote;
-                return check.Validity switch
-                {
-                    MessageValidity.Accepted => Verdict.Settle(MessageValidity.Accepted),
-                    MessageValidity.Rejected => Verdict.Reject(check.Reason),
-                    _ => Verdict.Ignore(check.Reason),
-                };
+                return Checked(check.Validity, check.Reason);
             },
             (_, _) => AttestationReceived?.Invoke(vote!),
             SingleAttestationSize,
             _seenAttestationMessages);
     }
+
+    // Every rule runs in SyncCommitteeValidator, so a message is accepted or refused here; nothing consumes it past the pool.
+    private MessageValidity HandleSyncCommitteeMessage(ulong subnet, bool gloasTopic, ReadOnlySpan<byte> message, GossipVerdict verdict)
+    {
+        string name = GossipTopics.SyncCommitteeTopicNames[subnet];
+        if (syncCommittee is not { } validator || gloasTopic || !IsSyncCommitteeTopicJoined((int)subnet))
+        {
+            return Drop(name, GossipDropReason.UnjoinedSubnet, MessageValidity.Ignored);
+        }
+
+        return Handle(name, message, verdict,
+            static payload => { SyncCommitteeMessage.Decode(payload, out SyncCommitteeMessage syncCommitteeMessage); return syncCommitteeMessage; },
+            syncCommitteeMessage => Checked(validator.CheckMessage(syncCommitteeMessage, subnet)),
+            static (_, _) => { },
+            SyncCommitteeMessageSize,
+            _seenSyncCommitteeMessages);
+    }
+
+    // As for sync committee messages; the topic is joined with the sync committee subnets (SetSyncCommitteeSubnets).
+    private MessageValidity HandleContributionAndProof(bool gloasTopic, ReadOnlySpan<byte> message, GossipVerdict verdict)
+    {
+        if (syncCommittee is not { } validator || gloasTopic || !IsSyncCommitteeTopicJoined(ContributionTopicBit))
+        {
+            return Drop(GossipTopics.SyncCommitteeContributionAndProof, GossipDropReason.UnjoinedSubnet, MessageValidity.Ignored);
+        }
+
+        return Handle(GossipTopics.SyncCommitteeContributionAndProof, message, verdict,
+            static payload => { SignedContributionAndProof.Decode(payload, out SignedContributionAndProof contribution); return contribution; },
+            contribution => Checked(validator.CheckContribution(contribution)),
+            static (_, _) => { },
+            SignedContributionAndProofSize,
+            _seenSyncCommitteeMessages);
+    }
+
+    private static Verdict Checked(SyncCommitteeCheck check) => Checked(check.Validity, check.Reason);
+
+    // The verdict of a message whose every rule ran on the network thread.
+    private static Verdict Checked(MessageValidity validity, GossipDropReason reason) => validity switch
+    {
+        MessageValidity.Accepted => Verdict.Settle(MessageValidity.Accepted),
+        MessageValidity.Rejected => Verdict.Reject(reason),
+        _ => Verdict.Ignore(reason),
+    };
 
     private MessageValidity Handle<T>(string name, ReadOnlySpan<byte> message, GossipVerdict pendingVerdict, Func<byte[], T> decode, Func<T, Verdict?> validate, Action<T, GossipVerdict> raise,
         int maxSize = Eth2MessageId.MaxGossipSize, LruKeyCache<ValueHash256>? seenMessages = null, Action<T>? releaseClaim = null) where T : class
@@ -1251,17 +1352,23 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         }
     }
 
-    // altair p2p is_current_slot: start(slot) - MAXIMUM_GOSSIP_CLOCK_DISPARITY <= now <= start(slot + 1) + MAXIMUM_GOSSIP_CLOCK_DISPARITY.
-    private Verdict? CheckCurrentSlot(ulong slot)
+    private Verdict? CheckCurrentSlot(ulong slot) => CurrentSlotRefusal(slotClock, slot) is { } reason ? Verdict.Ignore(reason) : null;
+
+    /// <summary>
+    /// Why <paramref name="slot"/> fails altair p2p <c>is_current_slot</c>, start(slot) - MAXIMUM_GOSSIP_CLOCK_DISPARITY &lt;= now &lt;=
+    /// start(slot + 1) + MAXIMUM_GOSSIP_CLOCK_DISPARITY: <see cref="GossipDropReason.FutureSlot"/> or <see cref="GossipDropReason.StaleSlot"/>;
+    /// <c>null</c> when it is current.
+    /// </summary>
+    internal static GossipDropReason? CurrentSlotRefusal(SlotClock slotClock, ulong slot)
     {
         long now = slotClock.UnixMilliseconds;
         // Checked before any slot-start time, which a wire slot near ulong.MaxValue would overflow.
         if (slot > slotClock.CurrentSlot + 1 || now + MaximumGossipClockDisparityMs < slotClock.SlotStartMilliseconds(slot))
         {
-            return Verdict.Ignore(GossipDropReason.FutureSlot);
+            return GossipDropReason.FutureSlot;
         }
 
-        return now > slotClock.SlotStartMilliseconds(slot + 1) + MaximumGossipClockDisparityMs ? Verdict.Ignore(GossipDropReason.StaleSlot) : null;
+        return now > slotClock.SlotStartMilliseconds(slot + 1) + MaximumGossipClockDisparityMs ? GossipDropReason.StaleSlot : null;
     }
 
     private EnvelopeBlockLookup ReadEnvelopeBlock(Hash256 blockRoot, ulong payloadSlot, out EnvelopeBlock? block)

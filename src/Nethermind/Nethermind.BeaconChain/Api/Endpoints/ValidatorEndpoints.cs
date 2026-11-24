@@ -33,6 +33,10 @@ internal static class ValidatorEndpoints
         app.MapPost("/eth/v1/validator/beacon_committee_subscriptions", c => SubscribeToBeaconCommittees(c, ctx));
         app.MapGet("/eth/v2/validator/aggregate_attestation", c => ContentNegotiation.JsonOnly(c, ctx, AggregateAttestation));
         app.MapPost("/eth/v2/validator/aggregate_and_proofs", c => SubmitAggregateAndProofs(c, ctx));
+        app.MapPost("/eth/v1/validator/sync_committee_subscriptions", c => SubscribeToSyncCommittees(c, ctx));
+        app.MapPost("/eth/v1/beacon/pool/sync_committees", c => SubmitSyncCommitteeMessages(c, ctx));
+        app.MapGet("/eth/v1/validator/sync_committee_contribution", c => ContentNegotiation.JsonOnly(c, ctx, ProduceContribution));
+        app.MapPost("/eth/v1/validator/contribution_and_proofs", c => SubmitContributionAndProofs(c, ctx));
         app.MapMethods("/eth/v1/validator/{**path}", ["GET", "POST"], c => Task.FromException(
             new BeaconNodeApiException(BeaconNodeApiError.NotSupported, $"{c.Request.Method} {c.Request.Path} is not served by this node yet.")));
     }
@@ -130,6 +134,39 @@ internal static class ValidatorEndpoints
         if (!await RequireElectraBody(c)) return;
         if (await ReadItems<SignedAggregateAndProofDto, SignedAggregateAndProof>(c, "Aggregate", FromDto) is not { } aggregates) return;
         await WriteFailures(c, await ctx.ValidatorApi.SubmitAggregateAndProofs(aggregates, c.RequestAborted), "Some aggregates were not published.");
+    }
+
+    private static async Task SubscribeToSyncCommittees(HttpContext c, BeaconApiContext ctx)
+    {
+        if (await ReadItems<SyncCommitteeSubscriptionDto, SyncCommitteeSubscription>(c, "Subscription", FromDto) is not { } subscriptions) return;
+        await ctx.ValidatorApi.SubscribeToSyncCommittees(subscriptions, c.RequestAborted);
+    }
+
+    private static async Task SubmitSyncCommitteeMessages(HttpContext c, BeaconApiContext ctx)
+    {
+        if (await ReadItems<SyncCommitteeMessageDto, SyncCommitteeMessage>(c, "Sync committee message", FromDto) is not { } messages) return;
+        await WriteFailures(c, await ctx.ValidatorApi.SubmitSyncCommitteeMessages(messages, c.RequestAborted), "Some sync committee messages were not published.");
+    }
+
+    private static async Task ProduceContribution(HttpContext c, BeaconApiContext ctx)
+    {
+        StringValues slot = c.Request.Query["slot"];
+        StringValues subcommitteeIndex = c.Request.Query["subcommittee_index"];
+        StringValues root = c.Request.Query["beacon_block_root"];
+        if (!TryParseUInt(slot, out ulong parsedSlot) || !TryParseUInt(subcommitteeIndex, out ulong parsedSubcommitteeIndex) || !HexConvert.TryParseHash(root.ToString(), out Hash256? parsedRoot))
+        {
+            await WriteInvalid(c, $"Invalid slot '{slot}', subcommittee index '{subcommitteeIndex}' or beacon block root '{root}'.");
+            return;
+        }
+
+        SyncCommitteeContribution contribution = await ctx.ValidatorApi.ProduceSyncCommitteeContribution(parsedSlot, parsedSubcommitteeIndex, parsedRoot!, c.RequestAborted);
+        await BeaconApiJson.WriteDataAsync(c, ToDto(contribution), c.RequestAborted);
+    }
+
+    private static async Task SubmitContributionAndProofs(HttpContext c, BeaconApiContext ctx)
+    {
+        if (await ReadItems<SignedContributionAndProofDto, SignedContributionAndProof>(c, "Contribution", FromDto) is not { } contributions) return;
+        await WriteFailures(c, await ctx.ValidatorApi.SubmitContributionAndProofs(contributions, c.RequestAborted), "Some contributions were not published.");
     }
 
     /// <summary>Whether the <c>Eth-Consensus-Version</c> header names a fork whose bodies use the Electra containers, writing the error response itself when not.</summary>
@@ -255,6 +292,46 @@ internal static class ValidatorEndpoints
     private static AttestationDto ToDto(Attestation attestation) =>
         new(HexConvert.BitListToHex(attestation.AggregationBits!), ToDto(attestation.Data!), attestation.Signature.ToString(), HexConvert.BitVectorToHex(attestation.CommitteeBits!));
 
+    private static SyncCommitteeSubscription? FromDto(SyncCommitteeSubscriptionDto? dto)
+    {
+        if (dto?.SyncCommitteeIndices is null || !TryParseUInt(dto.ValidatorIndex, out ulong validatorIndex) || !TryParseUInt(dto.UntilEpoch, out ulong untilEpoch)) return null;
+        ulong[] positions = new ulong[dto.SyncCommitteeIndices.Length];
+        for (int i = 0; i < positions.Length; i++)
+        {
+            if (!TryParseUInt(dto.SyncCommitteeIndices[i], out positions[i])) return null;
+        }
+
+        return new SyncCommitteeSubscription(validatorIndex, positions, untilEpoch);
+    }
+
+    private static SyncCommitteeMessage? FromDto(SyncCommitteeMessageDto? dto) =>
+        dto is not null && TryParseUInt(dto.Slot, out ulong slot) && HexConvert.TryParseHash(dto.BeaconBlockRoot, out Hash256? root)
+            && TryParseUInt(dto.ValidatorIndex, out ulong validatorIndex) && HexConvert.TryParseSignature(dto.Signature, out BlsSignature signature)
+            ? new SyncCommitteeMessage { Slot = slot, BeaconBlockRoot = root, ValidatorIndex = validatorIndex, Signature = signature }
+            : null;
+
+    private static SignedContributionAndProof? FromDto(SignedContributionAndProofDto? dto) =>
+        dto?.Message is { } message && TryParseUInt(message.AggregatorIndex, out ulong aggregatorIndex) && FromDto(message.Contribution) is { } contribution
+            && HexConvert.TryParseSignature(message.SelectionProof, out BlsSignature selectionProof) && HexConvert.TryParseSignature(dto.Signature, out BlsSignature signature)
+            ? new SignedContributionAndProof
+            {
+                Message = new ContributionAndProof { AggregatorIndex = aggregatorIndex, Contribution = contribution, SelectionProof = selectionProof },
+                Signature = signature,
+            }
+            : null;
+
+    private static SyncCommitteeContribution? FromDto(SyncCommitteeContributionDto? dto) =>
+        dto is not null && TryParseUInt(dto.Slot, out ulong slot) && HexConvert.TryParseHash(dto.BeaconBlockRoot, out Hash256? root)
+            && TryParseUInt(dto.SubcommitteeIndex, out ulong subcommitteeIndex)
+            && HexConvert.TryParseBitVector(dto.AggregationBits, SyncCommitteeContribution.SubcommitteeSize, out BitArray? aggregationBits)
+            && HexConvert.TryParseSignature(dto.Signature, out BlsSignature signature)
+            ? new SyncCommitteeContribution { Slot = slot, BeaconBlockRoot = root, SubcommitteeIndex = subcommitteeIndex, AggregationBits = aggregationBits, Signature = signature }
+            : null;
+
+    private static SyncCommitteeContributionDto ToDto(SyncCommitteeContribution contribution) =>
+        new(contribution.Slot.ToString(), contribution.BeaconBlockRoot!.ToString(), contribution.SubcommitteeIndex.ToString(),
+            HexConvert.BitVectorToHex(contribution.AggregationBits!), contribution.Signature.ToString());
+
     private sealed record DutiesDto<TDuty>(
         [property: JsonPropertyName("dependent_root"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DependentRoot,
         [property: JsonPropertyName("execution_optimistic")] bool ExecutionOptimistic,
@@ -316,6 +393,33 @@ internal static class ValidatorEndpoints
 
     private sealed record SignedAggregateAndProofDto(
         [property: JsonPropertyName("message")] AggregateAndProofDto Message,
+        [property: JsonPropertyName("signature")] string Signature);
+
+    private sealed record SyncCommitteeSubscriptionDto(
+        [property: JsonPropertyName("validator_index")] string ValidatorIndex,
+        [property: JsonPropertyName("sync_committee_indices")] string[] SyncCommitteeIndices,
+        [property: JsonPropertyName("until_epoch")] string UntilEpoch);
+
+    private sealed record SyncCommitteeMessageDto(
+        [property: JsonPropertyName("slot")] string Slot,
+        [property: JsonPropertyName("beacon_block_root")] string BeaconBlockRoot,
+        [property: JsonPropertyName("validator_index")] string ValidatorIndex,
+        [property: JsonPropertyName("signature")] string Signature);
+
+    private sealed record SyncCommitteeContributionDto(
+        [property: JsonPropertyName("slot")] string Slot,
+        [property: JsonPropertyName("beacon_block_root")] string BeaconBlockRoot,
+        [property: JsonPropertyName("subcommittee_index")] string SubcommitteeIndex,
+        [property: JsonPropertyName("aggregation_bits")] string AggregationBits,
+        [property: JsonPropertyName("signature")] string Signature);
+
+    private sealed record ContributionAndProofDto(
+        [property: JsonPropertyName("aggregator_index")] string AggregatorIndex,
+        [property: JsonPropertyName("selection_proof")] string SelectionProof,
+        [property: JsonPropertyName("contribution")] SyncCommitteeContributionDto Contribution);
+
+    private sealed record SignedContributionAndProofDto(
+        [property: JsonPropertyName("message")] ContributionAndProofDto Message,
         [property: JsonPropertyName("signature")] string Signature);
 
     private sealed record VersionedDto<TData>(

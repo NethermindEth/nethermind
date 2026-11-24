@@ -53,7 +53,8 @@ public sealed class BeaconSyncOrchestrator(
     HeadSnapshotHolder? headSnapshots = null,
     ColumnBackfill? columnBackfill = null,
     ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
-    AttestationSubnets? attestationSubnets = null)
+    AttestationSubnets? attestationSubnets = null,
+    SyncCommitteeSubnets? syncCommitteeSubnets = null)
 {
     private const int MaxBackfillDepth = 32;
 
@@ -3007,6 +3008,7 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         attestationSubnets?.Update(slot);
+        syncCommitteeSubnets?.Update(epoch);
 
         await DrainPendingRetriesAsync(token);
         RecoverGloasColumns(token);

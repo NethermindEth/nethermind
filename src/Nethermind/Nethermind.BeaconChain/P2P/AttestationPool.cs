@@ -69,6 +69,18 @@ public sealed class AttestationPool(SlotClock slotClock)
             (data, bits, signatures) = (aggregate.Data, new BitArray(aggregate.Bits), [.. aggregate.Signatures]);
         }
 
+        return new Attestation
+        {
+            AggregationBits = bits,
+            Data = data,
+            Signature = AggregateSignatures(signatures),
+            CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [(int)committeeIndex] = true },
+        };
+    }
+
+    /// <summary><c>bls.Aggregate</c> of verified signatures, of which there is at least one.</summary>
+    internal static BlsSignature AggregateSignatures(BlsSignature[] signatures)
+    {
         BlsSigner.Signature aggregated = new();
         aggregated.Decode(signatures[0].Bytes);
         for (int i = 1; i < signatures.Length; i++)
@@ -78,13 +90,7 @@ public sealed class AttestationPool(SlotClock slotClock)
             aggregated.Aggregate(signature);
         }
 
-        return new Attestation
-        {
-            AggregationBits = bits,
-            Data = data,
-            Signature = new BlsSignature(aggregated.Bytes),
-            CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [(int)committeeIndex] = true },
-        };
+        return new BlsSignature(aggregated.Bytes);
     }
 
     // Callers hold _lock.

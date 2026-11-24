@@ -39,6 +39,7 @@ public class BeaconNodeValidatorApiTests
     private static readonly Hash256 HeadRoot = Keccak.Compute("head");
     private static readonly Hash256 SiblingRoot = Keccak.Compute("sibling of the boundary block");
     private static readonly Hash256 OrphanRoot = Keccak.Compute("block off the finalized chain");
+    private static readonly Hash256 OptimisticRoot = Keccak.Compute("block whose payload is not verified yet");
 
     private static readonly ForkChoiceSnapshotNode[] Nodes =
     [
@@ -48,6 +49,7 @@ public class BeaconNodeValidatorApiTests
         Node(EpochStart, SiblingRoot, ParentRoot),
         Node(HeadSlot, HeadRoot, BoundaryRoot),
         Node(EpochStart - 5, OrphanRoot, null),
+        Node(HeadSlot, OptimisticRoot, BoundaryRoot) with { ExecutionStatus = ExecutionStatus.Optimistic },
     ];
 
     public enum HeadKind { Synced, Optimistic, Gloas }
@@ -231,6 +233,19 @@ public class BeaconNodeValidatorApiTests
             api => api.ProduceAttestationData(HeadSlot, 0, CancellationToken.None).AsTask(), BeaconNodeApiError.NotSupported);
         yield return Refused("Attestations of a Gloas slot", HeadSlot, AttestationTimeMs, HeadEpoch, HeadKind.Synced,
             api => api.SubmitAttestations([new SingleAttestation { Data = new AttestationData { Slot = HeadSlot } }], CancellationToken.None).AsTask(), BeaconNodeApiError.NotSupported);
+        yield return Refused("Sync committee messages of a Gloas slot", HeadSlot, AttestationTimeMs, HeadEpoch, HeadKind.Synced,
+            api => api.SubmitSyncCommitteeMessages([new SyncCommitteeMessage { Slot = HeadSlot, BeaconBlockRoot = HeadRoot }], CancellationToken.None).AsTask(), BeaconNodeApiError.NotSupported);
+        yield return Refused("Sync committee contribution of a Gloas slot", HeadSlot, AttestationTimeMs, HeadEpoch, HeadKind.Synced,
+            api => api.ProduceSyncCommitteeContribution(HeadSlot, 0, HeadRoot, CancellationToken.None).AsTask(), BeaconNodeApiError.NotSupported);
+        yield return Refused("Contributions of a Gloas slot", HeadSlot, AttestationTimeMs, HeadEpoch, HeadKind.Synced,
+            api => api.SubmitContributionAndProofs([new SignedContributionAndProof { Message = new ContributionAndProof { Contribution = new SyncCommitteeContribution { Slot = HeadSlot } } }],
+                CancellationToken.None).AsTask(), BeaconNodeApiError.NotSupported);
+        yield return Refused("Sync committee contribution of a subcommittee past the last", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
+            api => api.ProduceSyncCommitteeContribution(HeadSlot, SyncCommitteeContribution.SubnetCount, HeadRoot, CancellationToken.None).AsTask(), BeaconNodeApiError.InvalidRequest);
+        yield return Refused("Sync committee contribution for an optimistic block", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
+            api => api.ProduceSyncCommitteeContribution(HeadSlot, 0, OptimisticRoot, CancellationToken.None).AsTask(), BeaconNodeApiError.NotReady);
+        yield return Refused("Sync committee contribution of no message held", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
+            api => api.ProduceSyncCommitteeContribution(HeadSlot, 0, HeadRoot, CancellationToken.None).AsTask(), BeaconNodeApiError.NotFound);
 
         static TestCaseData Refused(string name, ulong wallSlot, long millisecondsIntoSlot, ulong gloasForkEpoch, HeadKind head, Func<IBeaconNodeValidatorApi, Task> call, BeaconNodeApiError expected) =>
             new TestCaseData(wallSlot, millisecondsIntoSlot, gloasForkEpoch, head, call, expected).SetName(name);
@@ -307,10 +322,6 @@ public class BeaconNodeValidatorApiTests
             () => api.PrepareBeaconProposers([], CancellationToken.None).AsTask(),
             () => api.ProduceBlock(HeadSlot, default, HeadRoot, CancellationToken.None).AsTask(),
             () => api.PublishBlock(new SignedBlockContents(new SignedBeaconBlock(), [], []), CancellationToken.None).AsTask(),
-            () => api.SubscribeToSyncCommittees([], CancellationToken.None).AsTask(),
-            () => api.SubmitSyncCommitteeMessages([], CancellationToken.None).AsTask(),
-            () => api.ProduceSyncCommitteeContribution(HeadSlot, 0, HeadRoot, CancellationToken.None).AsTask(),
-            () => api.SubmitContributionAndProofs([], CancellationToken.None).AsTask(),
         ];
 
         BeaconNodeApiError?[] refusals = new BeaconNodeApiError?[calls.Length];
@@ -532,25 +543,283 @@ public class BeaconNodeValidatorApiTests
         };
     }
 
-    private static async Task<MessageValidity> Deliver(ValidatorNode node, ulong subnet, SingleAttestation attestation)
+    public enum SyncFlaw { None, FutureSlot, StaleSlot, ValidatorIndex, NotInCommittee, Signature }
+
+    [TestCase(SyncFlaw.None, null)]
+    [TestCase(SyncFlaw.FutureSlot, "is in the future")]
+    [TestCase(SyncFlaw.StaleSlot, "has passed")]
+    [TestCase(SyncFlaw.ValidatorIndex, "is out of range")]
+    [TestCase(SyncFlaw.NotInCommittee, "is not in the sync committee")]
+    [TestCase(SyncFlaw.Signature, "signature is invalid")]
+    public async Task Submitted_sync_committee_message_is_published_on_every_subnet_of_its_validator_and_counted_at_each_position_unless_a_gossip_check_refuses_it(SyncFlaw flaw, string? refusal)
+    {
+        using ValidatorNode node = new(Presets.FarFutureEpoch, HeadSlot, AttestationTimeMs);
+        BeaconStateFulu state = SyncCommitteeHeadState(HeadSlot);
+        node.Heads.Current = Head(state, HeadRoot, executionInSync: true);
+        node.Gossip.SetSyncCommitteeSubnets(1);
+        SyncCommitteeMessage everySubnet = SyncMessage(state, 0, HeadSlot, HeadRoot);
+        SyncCommitteeMessage submitted = SyncMessage(state, 2, HeadSlot, HeadRoot);
+        switch (flaw)
+        {
+            case SyncFlaw.FutureSlot: submitted.Slot += 2; break;
+            case SyncFlaw.StaleSlot: submitted.Slot -= 2; break;
+            case SyncFlaw.ValidatorIndex: submitted.ValidatorIndex = 1000; break;
+            case SyncFlaw.NotInCommittee: submitted.ValidatorIndex = 40; break;
+        }
+        submitted.Signature = SyncMessageSignature(state, flaw == SyncFlaw.Signature ? 3 : (int)submitted.ValidatorIndex, submitted.Slot, HeadRoot);
+
+        // Seen on gossip first, which a local submission does not count against it.
+        MessageValidity gossiped = await Deliver(node, GossipTopics.SyncCommitteeTopicNames[0], SyncCommitteeMessage.Encode(everySubnet));
+        IReadOnlyList<SubmissionFailure> failures = await node.Api.SubmitSyncCommitteeMessages([everySubnet, submitted], CancellationToken.None);
+        SyncCommitteeContribution first = await node.Api.ProduceSyncCommitteeContribution(HeadSlot, 0, HeadRoot, CancellationToken.None);
+        SyncCommitteeContribution second = await node.Api.ProduceSyncCommitteeContribution(HeadSlot, 1, HeadRoot, CancellationToken.None);
+
+        byte[] digest = ForkDigest.Compute(node.Spec, HeadEpoch);
+        bool accepted = refusal is null;
+        (string, byte[])[] published =
+        [
+            .. GossipTopics.SyncCommitteeTopicNames.Select(name => (GossipTopics.Topic(digest, name), Snappy.CompressToArray(SyncCommitteeMessage.Encode(everySubnet)))),
+            .. accepted ? new[] { (GossipTopics.Topic(digest, GossipTopics.SyncCommitteeTopicNames[0]), Snappy.CompressToArray(SyncCommitteeMessage.Encode(submitted))) } : [],
+        ];
+        // Validator 0 holds positions 0, 32, 64 and 96 of subcommittee 0, validator 2 positions 2, 34, 66 and 98, and validator 0 the even ones of subcommittee 1.
+        int[] firstPositions = accepted ? [0, 2, 32, 34, 64, 66, 96, 98] : [0, 32, 64, 96];
+        int[] secondPositions = [.. Enumerable.Range(0, SyncCommitteeContribution.SubcommitteeSize / 2).Select(static half => 2 * half)];
+        Hash256 signingRoot = SyncCommitteeSigningRoot(state, HeadSlot, HeadRoot);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(gossiped, Is.EqualTo(MessageValidity.Accepted));
+        Assert.That(failures.Select(static failure => failure.Index), Is.EqualTo(accepted ? Array.Empty<int>() : [1]));
+        if (!accepted) Assert.That(failures[0].Message, Does.Contain(refusal));
+        Assert.That(node.Published, Is.EqualTo(published));
+        Assert.That(first.AggregationBits, Is.EqualTo(Bits(firstPositions)));
+        Assert.That(first.Signature, Is.EqualTo(GloasTestFixtures.AggregateSignature(signingRoot, [.. firstPositions.Select(static position => position % 32)])));
+        Assert.That((second.Slot, second.BeaconBlockRoot, second.SubcommitteeIndex, second.AggregationBits), Is.EqualTo((HeadSlot, HeadRoot, 1UL, Bits(secondPositions))));
+        Assert.That(second.Signature, Is.EqualTo(GloasTestFixtures.AggregateSignature(signingRoot, [.. secondPositions.Select(static _ => 0)])), "one signature for each position held");
+    }
+
+    [Test]
+    public async Task A_message_for_the_last_slot_of_a_period_is_checked_against_the_next_committee_even_from_a_head_a_slot_behind([Values] bool headLags)
+    {
+        ulong lastSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch((SyncPeriod + 1) * Presets.EpochsPerSyncCommitteePeriod) - 1;
+        using ValidatorNode node = new(Presets.FarFutureEpoch, lastSlot, AttestationTimeMs);
+        BeaconStateFulu state = HeadState(headLags ? lastSlot - 1 : lastSlot);
+        node.Heads.Current = Head(state, HeadRoot, executionInSync: true);
+
+        // HeadState puts validators 0, 1 and 2 in the current committee and 3 and 4 in the next, each in every subcommittee.
+        IReadOnlyList<SubmissionFailure> failures = await node.Api.SubmitSyncCommitteeMessages([SyncMessage(state, 3, lastSlot, HeadRoot), SyncMessage(state, 0, lastSlot, HeadRoot)], CancellationToken.None);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(failures.Select(static failure => failure.Index), Is.EqualTo(new[] { 1 }));
+        Assert.That(failures[0].Message, Does.Contain("is not in the sync committee"));
+        Assert.That(node.Published, Has.Count.EqualTo(SyncCommitteeContribution.SubnetCount));
+    }
+
+    public enum SyncGossipFlaw { None, AlreadySeen, FutureSlot, ValidatorIndex, NotInCommittee, WrongSubnet, Signature, UnjoinedSubnet }
+
+    // altair/p2p-interface.md sync_committee_{subnet_id}: each case breaks one rule, and gets that rule's verdict.
+    [TestCase(SyncGossipFlaw.None, MessageValidity.Accepted)]
+    [TestCase(SyncGossipFlaw.AlreadySeen, MessageValidity.Ignored)]
+    [TestCase(SyncGossipFlaw.FutureSlot, MessageValidity.Ignored)]
+    [TestCase(SyncGossipFlaw.ValidatorIndex, MessageValidity.Rejected)]
+    [TestCase(SyncGossipFlaw.NotInCommittee, MessageValidity.Rejected)]
+    [TestCase(SyncGossipFlaw.WrongSubnet, MessageValidity.Rejected)]
+    [TestCase(SyncGossipFlaw.Signature, MessageValidity.Rejected)]
+    [TestCase(SyncGossipFlaw.UnjoinedSubnet, MessageValidity.Ignored)]
+    public async Task Gossip_sync_committee_message_on_a_joined_subnet_gets_the_verdict_of_the_rule_it_breaks_and_only_an_accepted_one_is_pooled(SyncGossipFlaw flaw, MessageValidity expected)
+    {
+        using ValidatorNode node = new(Presets.FarFutureEpoch, HeadSlot, AttestationTimeMs);
+        BeaconStateFulu state = SyncCommitteeHeadState(HeadSlot);
+        node.Heads.Current = Head(state, HeadRoot, executionInSync: true);
+        node.Gossip.SetSyncCommitteeSubnets(0b0111);
+        // Validator 2 is in subcommittee 0 only, validator 0 in every one.
+        SyncCommitteeMessage message = SyncMessage(state, 2, HeadSlot, HeadRoot);
+        ulong subnet = 0;
+        switch (flaw)
+        {
+            case SyncGossipFlaw.AlreadySeen: await Deliver(node, GossipTopics.SyncCommitteeTopicNames[0], SyncCommitteeMessage.Encode(SyncMessage(state, 2, HeadSlot, BoundaryRoot))); break;
+            case SyncGossipFlaw.FutureSlot: message.Slot += 2; break;
+            case SyncGossipFlaw.ValidatorIndex: message.ValidatorIndex = 1000; break;
+            case SyncGossipFlaw.NotInCommittee: message.ValidatorIndex = 40; break;
+            case SyncGossipFlaw.WrongSubnet: subnet = 1; break;
+            case SyncGossipFlaw.UnjoinedSubnet: message.ValidatorIndex = 0; subnet = 3; break;
+        }
+        message.Signature = SyncMessageSignature(state, flaw == SyncGossipFlaw.Signature ? 3 : (int)message.ValidatorIndex, message.Slot, HeadRoot);
+
+        MessageValidity validity = await Deliver(node, GossipTopics.SyncCommitteeTopicNames[subnet], SyncCommitteeMessage.Encode(message));
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(expected));
+        Assert.That(node.SyncPool.GetContribution(HeadSlot, HeadRoot, 0)?.AggregationBits, expected == MessageValidity.Accepted ? Is.EqualTo(Bits([2, 34, 66, 98])) : Is.Null);
+    }
+
+    public enum ContributionFlaw
+    {
+        None, AggregatorSeen, CoveredBits, FutureSlot, SubcommitteeIndex, NoParticipants, NotAggregator, AggregatorIndex, NotInSubcommittee,
+        SelectionProof, AggregatorSignature, AggregateSignature, UnjoinedTopic,
+    }
+
+    // altair/p2p-interface.md sync_committee_contribution_and_proof: each case breaks one rule, and gets that rule's verdict.
+    [TestCase(ContributionFlaw.None, MessageValidity.Accepted)]
+    [TestCase(ContributionFlaw.AggregatorSeen, MessageValidity.Ignored)]
+    [TestCase(ContributionFlaw.CoveredBits, MessageValidity.Ignored)]
+    [TestCase(ContributionFlaw.FutureSlot, MessageValidity.Ignored)]
+    [TestCase(ContributionFlaw.SubcommitteeIndex, MessageValidity.Rejected)]
+    [TestCase(ContributionFlaw.NoParticipants, MessageValidity.Rejected)]
+    [TestCase(ContributionFlaw.NotAggregator, MessageValidity.Rejected)]
+    [TestCase(ContributionFlaw.AggregatorIndex, MessageValidity.Rejected)]
+    [TestCase(ContributionFlaw.NotInSubcommittee, MessageValidity.Rejected)]
+    [TestCase(ContributionFlaw.SelectionProof, MessageValidity.Rejected)]
+    [TestCase(ContributionFlaw.AggregatorSignature, MessageValidity.Rejected)]
+    [TestCase(ContributionFlaw.AggregateSignature, MessageValidity.Rejected)]
+    [TestCase(ContributionFlaw.UnjoinedTopic, MessageValidity.Ignored)]
+    public async Task Gossip_contribution_gets_the_verdict_of_the_rule_it_breaks_and_only_an_accepted_one_is_kept_as_the_best(ContributionFlaw flaw, MessageValidity expected)
+    {
+        using ValidatorNode node = new(Presets.FarFutureEpoch, HeadSlot, AttestationTimeMs);
+        BeaconStateFulu state = SyncCommitteeHeadState(HeadSlot);
+        node.Heads.Current = Head(state, HeadRoot, executionInSync: true);
+        node.Gossip.SetSyncCommitteeSubnets(flaw == ContributionFlaw.UnjoinedTopic ? 0UL : 1UL);
+        (int[] aggregators, int nonMemberAggregator, int nonAggregator) = SubcommitteeZeroSelection.Value;
+        SyncCommitteeContribution contribution = Contribution(state, 0, 2);
+        int aggregator = flaw switch { ContributionFlaw.NotAggregator => nonAggregator, ContributionFlaw.NotInSubcommittee => nonMemberAggregator, _ => aggregators[0] };
+        switch (flaw)
+        {
+            case ContributionFlaw.AggregatorSeen: await DeliverContribution(Signed(state, aggregator, Contribution(state, 0, 3))); break;
+            case ContributionFlaw.CoveredBits: await DeliverContribution(Signed(state, aggregators[1], Contribution(state, 0, 2, 3))); break;
+            case ContributionFlaw.FutureSlot: contribution.Slot += 2; break;
+            case ContributionFlaw.SubcommitteeIndex: contribution.SubcommitteeIndex = SyncCommitteeContribution.SubnetCount; break;
+            case ContributionFlaw.NoParticipants: contribution.AggregationBits = new BitArray(SyncCommitteeContribution.SubcommitteeSize); break;
+            case ContributionFlaw.AggregateSignature: contribution.Signature = GloasTestFixtures.AggregateSignature(SyncCommitteeSigningRoot(state, HeadSlot, HeadRoot), [2, 2, 2]); break;
+        }
+        SignedContributionAndProof signed = Signed(state, aggregator, contribution);
+        switch (flaw)
+        {
+            case ContributionFlaw.AggregatorIndex: signed = Sign(state, new ContributionAndProof { AggregatorIndex = 1000, Contribution = contribution, SelectionProof = signed.Message!.SelectionProof }, aggregator); break;
+            case ContributionFlaw.SelectionProof: signed = Sign(state, new ContributionAndProof
+            {
+                AggregatorIndex = (ulong)aggregator,
+                Contribution = contribution,
+                SelectionProof = SelectionProof(state, aggregators[1], HeadSlot, 0),
+            }, aggregator); break;
+            case ContributionFlaw.AggregatorSignature: signed = Sign(state, signed.Message!, aggregators[1]); break;
+        }
+
+        MessageValidity validity = await DeliverContribution(signed);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(expected));
+        if (flaw is not (ContributionFlaw.AggregatorSeen or ContributionFlaw.CoveredBits))
+            Assert.That(Encoded(node.SyncPool.GetBestContribution(HeadSlot, HeadRoot, 0)), Is.EqualTo(expected == MessageValidity.Accepted ? Encoded(contribution) : null));
+
+        Task<MessageValidity> DeliverContribution(SignedContributionAndProof delivered) => Deliver(node, GossipTopics.SyncCommitteeContributionAndProof, SignedContributionAndProof.Encode(delivered));
+    }
+
+    [Test]
+    public async Task Submitted_contributions_are_published_unless_gossip_already_has_them_and_the_best_of_each_vote_is_kept_for_two_slots()
+    {
+        using ValidatorNode node = new(Presets.FarFutureEpoch, HeadSlot, AttestationTimeMs);
+        BeaconStateFulu state = SyncCommitteeHeadState(HeadSlot);
+        node.Heads.Current = Head(state, HeadRoot, executionInSync: true);
+        node.Gossip.SetSyncCommitteeSubnets(1);
+        int[] aggregators = SubcommitteeZeroSelection.Value.Aggregators;
+        SignedContributionAndProof accepted = Signed(state, aggregators[0], Contribution(state, 0, 2));
+        SignedContributionAndProof sameAggregator = Signed(state, aggregators[0], Contribution(state, 0, 3));
+        int nonAggregator = SubcommitteeZeroSelection.Value.NonAggregator;
+        SignedContributionAndProof notSelected = Signed(state, nonAggregator, Contribution(state, 0, 3));
+
+        IReadOnlyList<SubmissionFailure> failures = await node.Api.SubmitContributionAndProofs([accepted, sameAggregator, notSelected], CancellationToken.None);
+        SyncCommitteeContribution? bestOfOne = node.SyncPool.GetBestContribution(HeadSlot, HeadRoot, 0);
+        SyncCommitteeContribution better = Contribution(state, 0, 2, 3);
+        MessageValidity betterOnGossip = await Deliver(node, GossipTopics.SyncCommitteeContributionAndProof, SignedContributionAndProof.Encode(Signed(state, aggregators[1], better)));
+        SyncCommitteeContribution? bestOfTwo = node.SyncPool.GetBestContribution(HeadSlot, HeadRoot, 0);
+        node.Clock.Add(TimeSpan.FromSeconds(2 * node.Spec.SecondsPerSlot));
+        SyncCommitteeContribution? pruned = node.SyncPool.GetBestContribution(HeadSlot, HeadRoot, 0);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(failures.Select(static failure => (failure.Index, failure.Message)), Is.EqualTo(new[] { (2, $"The selection proof does not select validator {nonAggregator} as an aggregator.") }),
+            "a contribution the network has is no failure");
+        Assert.That(node.Published, Is.EqualTo(new[]
+        {
+            (GossipTopics.Topic(ForkDigest.Compute(node.Spec, HeadEpoch), GossipTopics.SyncCommitteeContributionAndProof), Snappy.CompressToArray(SignedContributionAndProof.Encode(accepted))),
+        }));
+        Assert.That((Encoded(bestOfOne), betterOnGossip, Encoded(bestOfTwo), pruned), Is.EqualTo((Encoded(accepted.Message!.Contribution), MessageValidity.Accepted, Encoded(better), (SyncCommitteeContribution?)null)));
+    }
+
+    [Test]
+    public async Task Sync_committee_subscriptions_join_and_advertise_their_subnets_and_the_contribution_topic_until_their_end()
+    {
+        using ValidatorNode node = new(Presets.FarFutureEpoch, HeadSlot, AttestationTimeMs);
+        node.Store.EnsureSchemaVersion();
+        Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics = [];
+        byte[] digest = ForkDigest.Compute(node.Spec, HeadEpoch);
+        node.Gossip.Start(topicId => topics.TryGetValue(topicId, out GossipDigestWindowTests.RecordingTopic? topic) ? topic : topics[topicId] = new GossipDigestWindowTests.RecordingTopic(), digest);
+        node.Discovery.CreateDiscv5Services(IPAddress.Loopback);
+        ulong sequence = node.Metadata.Current.SeqNumber;
+        ulong periodEnd = (SyncPeriod + 1) * Presets.EpochsPerSyncCommitteePeriod;
+        // Positions 0 and 130 are in subcommittees 0 and 1, position 300 in subcommittee 2.
+        SyncCommitteeSubscription soon = new(1, [0, 130], HeadEpoch + 1);
+        SyncCommitteeSubscription wholePeriod = new(2, [300], periodEnd);
+
+        BeaconNodeApiError? afterNextPeriod = await Refusal(() => node.Api.SubscribeToSyncCommittees(
+            [soon, new SyncCommitteeSubscription(3, [1], periodEnd + Presets.EpochsPerSyncCommitteePeriod + 1)], CancellationToken.None).AsTask());
+        BeaconNodeApiError? pastCommittee = await Refusal(() => node.Api.SubscribeToSyncCommittees([new SyncCommitteeSubscription(3, [Presets.SyncCommitteeSize], periodEnd)], CancellationToken.None).AsTask());
+        ((ulong[], ulong[], ulong[], ulong) Subnets, bool Contribution) refused = SyncAdvertised();
+        await node.Api.SubscribeToSyncCommittees([soon, wholePeriod], CancellationToken.None);
+        ((ulong[], ulong[], ulong[], ulong), bool) subscribed = SyncAdvertised();
+        node.SyncSubnets.Update(HeadEpoch + 1);
+        ((ulong[], ulong[], ulong[], ulong), bool) afterSoon = SyncAdvertised();
+        node.SyncSubnets.Update(periodEnd);
+        ((ulong[], ulong[], ulong[], ulong), bool) afterPeriod = SyncAdvertised();
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That((afterNextPeriod, pastCommittee), Is.EqualTo(((BeaconNodeApiError?)BeaconNodeApiError.InvalidRequest, (BeaconNodeApiError?)BeaconNodeApiError.InvalidRequest)));
+        Assert.That(refused, Is.EqualTo(((Array.Empty<ulong>(), Array.Empty<ulong>(), Array.Empty<ulong>(), sequence), false)), "a refused batch subscribes nothing");
+        Assert.That(subscribed, Is.EqualTo(((new ulong[] { 0, 1, 2 }, new ulong[] { 0, 1, 2 }, new ulong[] { 0, 1, 2 }, sequence + 1), true)));
+        Assert.That(afterSoon, Is.EqualTo(((new ulong[] { 2 }, new ulong[] { 2 }, new ulong[] { 2 }, sequence + 2), true)));
+        Assert.That(afterPeriod, Is.EqualTo(((Array.Empty<ulong>(), Array.Empty<ulong>(), Array.Empty<ulong>(), sequence + 3), false)), "an empty bitfield leaves the ENR entry out");
+        Assert.That(node.Heads.CaptureState, Is.True, "checking a joined subnet's messages needs the head state");
+
+        ((ulong[], ulong[], ulong[], ulong), bool) SyncAdvertised() =>
+            (Advertised(node, topics, digest, GossipTopics.SyncCommitteeTopicNames, node.Metadata.Current.Syncnets!, "syncnets"), IsJoined(topics, digest, GossipTopics.SyncCommitteeContributionAndProof));
+    }
+
+    private static byte[]? Encoded(SyncCommitteeContribution? contribution) => contribution is null ? null : SyncCommitteeContribution.Encode(contribution);
+
+    private static BitArray Bits(int[] positions)
+    {
+        BitArray bits = new(SyncCommitteeContribution.SubcommitteeSize);
+        foreach (int position in positions) bits[position] = true;
+        return bits;
+    }
+
+    private static Task<MessageValidity> Deliver(ValidatorNode node, ulong subnet, SingleAttestation attestation) =>
+        Deliver(node, GossipTopics.BeaconAttestationTopicNames[subnet], SingleAttestation.Encode(attestation));
+
+    private static async Task<MessageValidity> Deliver(ValidatorNode node, string topicName, byte[] message)
     {
         TaskCompletionSource<MessageValidity> given = new(TaskCreationOptions.RunContinuationsAsynchronously);
         GossipVerdict verdict = new(given.TrySetResult, null);
-        MessageValidity checkedNow = node.Gossip.Handle(GossipTopics.BeaconAttestationTopicNames[subnet], gloasTopic: false, Snappy.CompressToArray(SingleAttestation.Encode(attestation)), verdict);
+        MessageValidity checkedNow = node.Gossip.Handle(topicName, gloasTopic: false, Snappy.CompressToArray(message), verdict);
         if (!verdict.IsHandedOff) verdict.Complete(checkedNow);
         return await given.Task;
     }
 
     /// <summary>The subnets joined on <paramref name="digest"/>, set in <c>MetaData.attnets</c> and in the ENR <c>attnets</c> entry, and the metadata sequence number.</summary>
-    private static (ulong[] Topics, ulong[] Metadata, ulong[] Enr, ulong Sequence) Advertised(ValidatorNode node, Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics, byte[] digest)
+    private static (ulong[] Topics, ulong[] Metadata, ulong[] Enr, ulong Sequence) Advertised(ValidatorNode node, Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics, byte[] digest) =>
+        Advertised(node, topics, digest, GossipTopics.BeaconAttestationTopicNames, node.Metadata.Current.Attnets!, "attnets");
+
+    /// <summary>The subnets of <paramref name="topicNames"/> joined on <paramref name="digest"/>, set in <paramref name="metadataBits"/> and in the ENR entry <paramref name="enrKey"/>, and the metadata sequence number.</summary>
+    private static (ulong[] Topics, ulong[] Metadata, ulong[] Enr, ulong Sequence) Advertised(ValidatorNode node, Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics, byte[] digest,
+        string[] topicNames, BitArray metadataBits, string enrKey)
     {
-        IEnumerable<ulong> subnets = Enumerable.Range(0, (int)GossipTopics.AttestationSubnetCount).Select(static subnet => (ulong)subnet);
-        BitArray? enr = node.Discovery.LocalNodeRecord.GetObj<byte[]>("attnets") is { } bytes ? new BitArray(bytes) : null;
-        return ([.. subnets.Where(subnet => topics.TryGetValue(GossipTopics.Topic(digest, GossipTopics.BeaconAttestationTopicNames[subnet]), out GossipDigestWindowTests.RecordingTopic? topic) && topic.IsSubscribed)],
-            [.. subnets.Where(subnet => node.Metadata.Current.Attnets![(int)subnet])],
+        IEnumerable<ulong> subnets = Enumerable.Range(0, topicNames.Length).Select(static subnet => (ulong)subnet);
+        BitArray? enr = node.Discovery.LocalNodeRecord.GetObj<byte[]>(enrKey) is { } bytes ? new BitArray(bytes) : null;
+        return ([.. subnets.Where(subnet => IsJoined(topics, digest, topicNames[subnet]))],
+            [.. subnets.Where(subnet => metadataBits[(int)subnet])],
             [.. subnets.Where(subnet => enr?[(int)subnet] == true)],
             node.Metadata.Current.SeqNumber);
     }
+
+    private static bool IsJoined(Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics, byte[] digest, string topicName) =>
+        topics.TryGetValue(GossipTopics.Topic(digest, topicName), out GossipDigestWindowTests.RecordingTopic? topic) && topic.IsSubscribed;
 
     /// <summary>The post-state of a head block at <paramref name="slot"/>, on a chain with <see cref="ParentRoot"/> just before the head epoch and <see cref="BoundaryRoot"/> at its first slot.</summary>
     private static BeaconStateFulu HeadState(ulong slot)
@@ -563,16 +832,28 @@ public class BeaconNodeValidatorApiTests
             state.BlockRoots![(int)(past % Presets.SlotsPerHistoricalRoot)] = BlockRootAt(past);
         state.ProposerLookahead = [.. Enumerable.Range(0, (int)Presets.ProposerLookaheadSlots).Select(static slotOffset => (ulong)(ValidatorCount - 1 - slotOffset))];
         state.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = Finalized.Epoch, Root = Finalized.Root };
-        state.CurrentSyncCommittee = Committee(static position => position % 3);
-        state.NextSyncCommittee = Committee(static position => 3 + position % 2);
+        state.CurrentSyncCommittee = Committee(validators, static position => position % 3);
+        state.NextSyncCommittee = Committee(validators, static position => 3 + position % 2);
         return state;
-
-        SyncCommittee Committee(Func<int, int> member) => new()
-        {
-            Pubkeys = [.. Enumerable.Range(0, Presets.SyncCommitteeSize).Select(position => validators[member(position)].Pubkey)],
-            AggregatePubkey = GloasTestFixtures.Pubkey(0x60),
-        };
     }
+
+    /// <summary>
+    /// <see cref="HeadState"/> with a current sync committee whose first subcommittee holds validators 0 to 31 at four positions each, and
+    /// whose others alternate validators 0 and 1, so validator 0 holds 4 positions of subcommittee 0 and 64 of each other, validator 2 only
+    /// 4 of subcommittee 0, and validators 32 and up none.
+    /// </summary>
+    private static BeaconStateFulu SyncCommitteeHeadState(ulong slot)
+    {
+        BeaconStateFulu state = HeadState(slot);
+        state.CurrentSyncCommittee = Committee(state.Validators!, static position => position < SyncCommitteeContribution.SubcommitteeSize ? position % 32 : position % 2);
+        return state;
+    }
+
+    private static SyncCommittee Committee(Validator[] validators, Func<int, int> member) => new()
+    {
+        Pubkeys = [.. Enumerable.Range(0, Presets.SyncCommitteeSize).Select(position => validators[member(position)].Pubkey)],
+        AggregatePubkey = GloasTestFixtures.Pubkey(0x60),
+    };
 
     private static Hash256 BlockRootAt(ulong slot) => slot >= EpochStart ? BoundaryRoot : slot == EpochStart - 1 ? ParentRoot : Keccak.Compute(slot.ToString());
 
@@ -591,6 +872,77 @@ public class BeaconNodeValidatorApiTests
     private static BlsSignature Sign(BeaconStateFulu state, int validatorIndex, AttestationData data) =>
         GloasTestFixtures.Sign(GloasTestFixtures.ValidatorKey(validatorIndex),
             Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), state.GetDomain(DomainType.BeaconAttester, data.Target!.Epoch)));
+
+    private static Hash256 SyncCommitteeSigningRoot(BeaconStateFulu state, ulong slot, Hash256 blockRoot) =>
+        Domains.ComputeSigningRoot(blockRoot, state.GetDomain(DomainType.SyncCommittee, BeaconChainSpec.Mainnet.GetEpoch(slot)));
+
+    private static SyncCommitteeMessage SyncMessage(BeaconStateFulu state, int validatorIndex, ulong slot, Hash256 blockRoot) => new()
+    {
+        Slot = slot,
+        BeaconBlockRoot = blockRoot,
+        ValidatorIndex = (ulong)validatorIndex,
+        Signature = SyncMessageSignature(state, validatorIndex, slot, blockRoot),
+    };
+
+    private static BlsSignature SyncMessageSignature(BeaconStateFulu state, int signerIndex, ulong slot, Hash256 blockRoot) =>
+        GloasTestFixtures.Sign(GloasTestFixtures.ValidatorKey(signerIndex), SyncCommitteeSigningRoot(state, slot, blockRoot));
+
+    /// <summary>The contribution of subcommittee <paramref name="subcommitteeIndex"/> at <see cref="HeadSlot"/> for <see cref="HeadRoot"/>, aggregated from the messages of <paramref name="participants"/> at each of their positions.</summary>
+    private static SyncCommitteeContribution Contribution(BeaconStateFulu state, ulong subcommitteeIndex, params int[] participants)
+    {
+        BlsPublicKey[] members = state.CurrentSyncCommittee!.Pubkeys!;
+        int firstPosition = (int)subcommitteeIndex * SyncCommitteeContribution.SubcommitteeSize;
+        BitArray bits = new(SyncCommitteeContribution.SubcommitteeSize);
+        List<int> signers = [];
+        for (int position = 0; position < bits.Length; position++)
+        {
+            int member = Array.IndexOf(participants, Array.FindIndex(state.Validators!, validator => validator.Pubkey == members[firstPosition + position]));
+            if (member < 0) continue;
+            bits[position] = true;
+            signers.Add(participants[member]);
+        }
+
+        return new SyncCommitteeContribution
+        {
+            Slot = HeadSlot,
+            BeaconBlockRoot = HeadRoot,
+            SubcommitteeIndex = subcommitteeIndex,
+            AggregationBits = bits,
+            Signature = signers.Count == 0 ? default : GloasTestFixtures.AggregateSignature(SyncCommitteeSigningRoot(state, HeadSlot, HeadRoot), signers),
+        };
+    }
+
+    private static BlsSignature SelectionProof(BeaconStateFulu state, int validatorIndex, ulong slot, ulong subcommitteeIndex) =>
+        GloasTestFixtures.Sign(GloasTestFixtures.ValidatorKey(validatorIndex), Domains.ComputeSigningRoot(
+            SszRoots.HashTreeRoot(new SyncAggregatorSelectionData { Slot = slot, SubcommitteeIndex = subcommitteeIndex }),
+            state.GetDomain(DomainType.SyncCommitteeSelectionProof, BeaconChainSpec.Mainnet.GetEpoch(slot))));
+
+    /// <summary><paramref name="contribution"/> with the selection proof of <paramref name="aggregatorIndex"/>, signed by it.</summary>
+    private static SignedContributionAndProof Signed(BeaconStateFulu state, int aggregatorIndex, SyncCommitteeContribution contribution) => Sign(state, new ContributionAndProof
+    {
+        AggregatorIndex = (ulong)aggregatorIndex,
+        Contribution = contribution,
+        SelectionProof = SelectionProof(state, aggregatorIndex, contribution.Slot, contribution.SubcommitteeIndex),
+    }, aggregatorIndex);
+
+    private static SignedContributionAndProof Sign(BeaconStateFulu state, ContributionAndProof message, int signerIndex) => new()
+    {
+        Message = message,
+        Signature = GloasTestFixtures.Sign(GloasTestFixtures.ValidatorKey(signerIndex), Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(message),
+            state.GetDomain(DomainType.ContributionAndProof, BeaconChainSpec.Mainnet.GetEpoch(message.Contribution!.Slot)))),
+    };
+
+    /// <summary>
+    /// Validators whose selection proof for subcommittee 0 at <see cref="HeadSlot"/> selects them, in and out of that subcommittee of
+    /// <see cref="SyncCommitteeHeadState"/>, and a member whose proof does not.
+    /// </summary>
+    private static readonly Lazy<(int[] Aggregators, int NonMemberAggregator, int NonAggregator)> SubcommitteeZeroSelection = new(static () =>
+    {
+        BeaconStateFulu state = SyncCommitteeHeadState(HeadSlot);
+        bool[] selected = [.. Enumerable.Range(0, ValidatorCount).Select(validator => BeaconStateAccessors.IsSyncCommitteeAggregator(SelectionProof(state, validator, HeadSlot, 0)))];
+        return ([.. Enumerable.Range(0, 32).Where(validator => selected[validator])], Enumerable.Range(32, ValidatorCount - 32).First(validator => selected[validator]),
+            Enumerable.Range(0, 32).First(validator => !selected[validator]));
+    });
 
     private static async Task<BeaconNodeApiError?> Refusal(Func<Task> call)
     {
@@ -631,6 +983,8 @@ public class BeaconNodeValidatorApiTests
         public GossipRouter Gossip => _container.Resolve<GossipRouter>();
         public AttestationPool Pool => _container.Resolve<AttestationPool>();
         public AttestationSubnets Subnets => _container.Resolve<AttestationSubnets>();
+        public SyncCommitteePool SyncPool => _container.Resolve<SyncCommitteePool>();
+        public SyncCommitteeSubnets SyncSubnets => _container.Resolve<SyncCommitteeSubnets>();
         public LocalMetadataSource Metadata => _container.Resolve<LocalMetadataSource>();
         public BeaconDiscovery Discovery => _container.Resolve<BeaconDiscovery>();
         public BeaconChainStore Store => _container.Resolve<BeaconChainStore>();
