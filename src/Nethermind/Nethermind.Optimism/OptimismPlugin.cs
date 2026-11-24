@@ -104,9 +104,6 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .AddSingleton<IGossipPolicy>(ShouldNotGossip.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
-            // Step override
-            .AddStep(typeof(InitializeBlockchainOptimism))
-
             // Validators
             .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey,
                 static ctx => new OptimismSpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId))
