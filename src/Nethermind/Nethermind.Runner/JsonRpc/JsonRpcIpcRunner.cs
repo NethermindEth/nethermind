@@ -34,6 +34,8 @@ namespace Nethermind.Runner.JsonRpc
         private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
         private readonly IJsonRpcConfig _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
 
+        private readonly Lock _lifecycle = new();
+        private bool _disposed;
         private string _path;
         private Socket _server;
 
@@ -43,22 +45,26 @@ namespace Nethermind.Runner.JsonRpc
 
             if (!string.IsNullOrEmpty(_path))
             {
-                if (_logger.IsInfo) _logger.Info($"Starting the JSON-RPC over an IPC service: {_path:hide}");
-
                 _ = Task.Run(() => StartServer(_path, cancellationToken), cancellationToken);
             }
         }
 
-        private async Task StartServer(string path, CancellationToken cancellationToken)
+        internal async Task StartServer(string path, CancellationToken cancellationToken)
         {
             try
             {
-                DeleteSocketFileIfExists(path);
+                lock (_lifecycle)
+                {
+                    if (_disposed || cancellationToken.IsCancellationRequested) return;
+                    if (_logger.IsInfo) _logger.Info($"Starting the JSON-RPC over an IPC service: {path:hide}");
 
-                _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-                _server.Bind(new UnixDomainSocketEndPoint(path));
-                TryRestrictSocketPermissions(path);
-                _server.Listen(0);
+                    DeleteSocketFileIfExists(path);
+
+                    _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                    _server.Bind(new UnixDomainSocketEndPoint(path));
+                    TryRestrictSocketPermissions(path);
+                    _server.Listen(0);
+                }
             }
             catch (Exception ex)
             {
@@ -232,8 +238,13 @@ namespace Nethermind.Runner.JsonRpc
 
         public void Dispose()
         {
-            _server?.Dispose();
-            DeleteSocketFileIfExists(_path);
+            lock (_lifecycle)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _server?.Dispose();
+                DeleteSocketFileIfExists(_path);
+            }
             if (_logger.IsInfo) _logger.Info("IPC JSON RPC service stopped");
         }
     }

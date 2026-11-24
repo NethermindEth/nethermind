@@ -66,6 +66,23 @@ public class JsonRpcIpcRunnerTests
         }
     }
 
+    [Test]
+    public async Task Queued_start_after_disposal_leaves_the_socket_path_alone()
+    {
+        IFileSystem files = Substitute.For<IFileSystem>();
+        IConfigProvider config = Substitute.For<IConfigProvider>();
+        config.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig());
+        JsonRpcIpcRunner runner = new(Substitute.For<IJsonRpcProcessor>(), config, LimboLogs.Instance,
+            Substitute.For<IJsonRpcLocalStats>(), new EthereumJsonSerializer(), files);
+        runner.Dispose();
+
+        using TempPath socketPath = TempPath.GetTempFile();
+        string path = socketPath.Path;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        await runner.StartServer(path, timeout.Token);
+        files.File.DidNotReceive().Exists(path);
+    }
+
     private static readonly TestCaseData[] ShutdownAcceptErrors =
     [
         new TestCaseData(new SocketException((int)SocketError.OperationAborted)).SetName("listener disposed while accepting"),
