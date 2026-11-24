@@ -147,10 +147,10 @@ public class JsonConfigSource : IConfigSource
     private static string NormalizeModuleName(string configModule) =>
         configModule.EndsWith("Config", StringComparison.InvariantCultureIgnoreCase) ? configModule : $"{configModule}Config";
 
-    private void ParseValue(Type type, string category, string name)
+    private object ParseValue(Type type, string category, string name)
     {
         string valueString = _values[category][name];
-        _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString, category, name)!;
+        return _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString, category, name)!;
     }
 
     public (bool IsSet, object? Value) GetValue(Type type, string category, string name)
@@ -158,12 +158,7 @@ public class JsonConfigSource : IConfigSource
         (bool isSet, _) = GetRawValue(category, name);
         if (isSet)
         {
-            if (!_parsedValues[category].ContainsKey(name))
-            {
-                ParseValue(type, category, name);
-            }
-
-            return (true, _parsedValues[category][name]);
+            return (true, _parsedValues[category].TryGetValue(name, out object? value) ? value : ParseValue(type, category, name));
         }
 
         return (false, ConfigSourceHelper.GetDefault(type));
@@ -176,8 +171,9 @@ public class JsonConfigSource : IConfigSource
             return (false, null);
         }
 
-        bool isSet = _values.ContainsKey(category) && _values[category].ContainsKey(name);
-        return (isSet, isSet ? _values[category][name] : null);
+        return _values.TryGetValue(category, out Dictionary<string, string>? values) && values.TryGetValue(name, out string? value)
+            ? (true, value)
+            : (false, null);
     }
 
     public IEnumerable<(string? Category, string Name)> GetConfigKeys() => _values.SelectMany(m => m.Value.Keys.Select(n => ((string?)m.Key, n)));

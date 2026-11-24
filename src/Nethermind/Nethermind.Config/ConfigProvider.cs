@@ -82,12 +82,14 @@ public class ConfigProvider : IConfigProvider
     {
         if (!typeof(IConfig).IsAssignableFrom(configType)) throw new ArgumentException($"Type {configType} is not {typeof(IConfig)}");
 
-        if (!_instances.ContainsKey(configType))
+        if (_instances.TryGetValue(configType, out IConfig? config))
         {
-            if (!_implementations.ContainsKey(configType))
-            {
-                Initialize();
-            }
+            return config;
+        }
+
+        if (!_implementations.ContainsKey(configType))
+        {
+            Initialize();
         }
 
         return _instances[configType];

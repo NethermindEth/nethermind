@@ -20,8 +20,8 @@ namespace Nethermind.Config
         public (bool IsSet, string? Value) GetRawValue(string category, string name)
         {
             string variableName = string.IsNullOrEmpty(category) ? name : $"{category}.{name}";
-            bool isSet = _args.ContainsKey(variableName);
-            return (isSet, isSet ? _args[variableName] : null);
+            bool isSet = _args.TryGetValue(variableName, out string? value);
+            return (isSet, value);
         }
 
         public IEnumerable<(string? Category, string Name)> GetConfigKeys() =>
