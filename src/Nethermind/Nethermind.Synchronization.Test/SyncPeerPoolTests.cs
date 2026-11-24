@@ -851,8 +851,8 @@ public class SyncPeerPoolTests
         await SetupPeers(ctx, 1);
         await ctx.DisposeAsync();
 
-        Assert.ThrowsAsync<ObjectDisposedException>(async () =>
-            await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 0));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 0));
     }
 
     [Test]
