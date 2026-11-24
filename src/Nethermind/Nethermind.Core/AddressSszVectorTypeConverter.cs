@@ -15,6 +15,8 @@ public static class AddressSszVectorTypeConverter
 
     public static Address FromSpan(ReadOnlySpan<byte> span) => new(span);
 
+    public static ValueAddress ValueFromSpan(ReadOnlySpan<byte> span) => new(span);
+
     public static void FromSpan(ReadOnlySpan<byte> span, Span<Address> values)
     {
         for (int i = 0; i < values.Length; i++)

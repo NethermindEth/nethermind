@@ -12,6 +12,7 @@ internal enum SszTypeConverterKind
 internal sealed class SszTypeConverterInfo
 {
     private const string LengthMemberName = "Length";
+    private const string ValueFromSpanMemberName = "ValueFromSpan";
 
     public required string TargetName { get; init; }
     public required string TargetNamespace { get; init; }
@@ -21,6 +22,12 @@ internal sealed class SszTypeConverterInfo
     public required string ConverterDisplayName { get; init; }
     public required int Length { get; init; }
     public required SszTypeConverterKind Kind { get; init; }
+
+    /// <summary>The type a <c>RefReader</c> returns for the target, or <c>null</c> when it returns the raw bytes.</summary>
+    public string? ReaderTypeReference { get; init; }
+
+    /// <summary>The converter method that reads <see cref="ReaderTypeReference"/> from a span.</summary>
+    public string? ReaderMethod { get; init; }
 
     public static IEnumerable<SszTypeConverterInfo> Find(Compilation compilation)
     {
@@ -161,6 +168,9 @@ internal sealed class SszTypeConverterInfo
             throw new InvalidOperationException($"SSZ converter {converterType.ToDisplayString()} must declare public static void Feed(ref Merkleizer merkleizer, {targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} value).");
         }
 
+        IMethodSymbol? valueFromSpan = FindValueFromSpanMethod(converterType);
+        ITypeSymbol? readerType = valueFromSpan?.ReturnType ?? (targetType.IsUnmanagedType ? targetType : null);
+
         return new()
         {
             TargetName = GetTypeName(targetType),
@@ -171,8 +181,17 @@ internal sealed class SszTypeConverterInfo
             ConverterDisplayName = converterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             Length = length,
             Kind = converterKind,
+            ReaderTypeReference = readerType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            ReaderMethod = readerType is null ? null : $"{converterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{valueFromSpan?.Name ?? "FromSpan"}",
         };
     }
+
+    // Optional: lets a reference-type target be read as its value-type counterpart without allocating.
+    private static IMethodSymbol? FindValueFromSpanMethod(INamedTypeSymbol converterType) =>
+        converterType.GetMembers(ValueFromSpanMemberName)
+            .OfType<IMethodSymbol>()
+            .FirstOrDefault(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, Parameters.Length: 1, ReturnType.IsUnmanagedType: true }
+                && IsSpanOfByte(m.Parameters[0].Type, nameof(ReadOnlySpan<>)));
 
     private static bool TryGetLength(INamedTypeSymbol converterType, out int length, out string? error)
     {

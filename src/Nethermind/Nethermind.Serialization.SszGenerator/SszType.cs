@@ -28,6 +28,8 @@ class SszType
                 CustomDecodeTemplate = $"{{1}} = {converter.ConverterStaticMemberAccess}.FromSpan({{0}});",
                 CustomFeedMethod = $"{converter.ConverterStaticMemberAccess}.Feed",
                 CustomFeedTemplate = $"{converter.ConverterStaticMemberAccess}.Feed(ref {{0}}, {{1}});",
+                ReaderTypeReference = converter.ReaderTypeReference,
+                ReaderMethod = converter.ReaderMethod,
             });
         }
 
@@ -113,6 +115,16 @@ class SszType
     public string? CustomDecodeTemplate { get; init; }
     public string? CustomFeedMethod { get; init; }
     public string? CustomFeedTemplate { get; init; }
+
+    /// <inheritdoc cref="SszTypeConverterInfo.ReaderTypeReference"/>
+    public string? ReaderTypeReference { get; init; }
+
+    /// <inheritdoc cref="SszTypeConverterInfo.ReaderMethod"/>
+    public string? ReaderMethod { get; init; }
+
+    /// <summary>Whether a base type is itself an SSZ type, so this type's <c>RefReader</c> hides an inherited one.</summary>
+    public bool HidesBaseRefReader { get; private set; }
+
     public bool HasCustomInlineCodec => CustomEncodeTemplate is not null;
     public IEnumerable<SszProperty>? CompatibleUnionMembers => Kind == Kind.CompatibleUnion ? Members?.Where(x => x.Name != SelectorPropertyName) : null;
     public SszProperty? Selector => Members?.FirstOrDefault(x => x.Name == SelectorPropertyName);
@@ -183,6 +195,11 @@ class SszType
         {
             string modifier = type.BaseType?.GetMembers("GetSszFixedSectionLength").Length > 0 ? "new " : "";
             result.FixedSectionLengthDeclaration = $"internal {modifier}static partial int GetSszFixedSectionLength()";
+        }
+
+        for (INamedTypeSymbol? baseType = type.BaseType; baseType is not null && !result.HidesBaseRefReader; baseType = baseType.BaseType)
+        {
+            result.HidesBaseRefReader = HasAttribute(baseType, "SszContainerAttribute") || HasAttribute(baseType, "SszCompatibleUnionAttribute");
         }
 
         switch (result.Kind)
