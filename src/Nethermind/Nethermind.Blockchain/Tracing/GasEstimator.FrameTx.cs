@@ -21,6 +21,13 @@ public partial class GasEstimator
     private const string InvalidErrorMarginNegative = "Invalid error margin, cannot be negative.";
     private const int RebalanceLevels = 2;
 
+    /// <summary>Fills the frame limits with every probe running as a plain restoring call.</summary>
+    public Result<TxFrame[]> EstimateFrameGas(Transaction transaction, BlockExecutionContext context,
+        bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin, Func<ulong, UInt256>? maxFeeAt,
+        CancellationToken token, out bool executionReverted) =>
+        EstimateFrameGas(transaction, context, fillExecution, fillState, gasCap, errorMargin, maxFeeAt, ExecutionOptions.CommitAndRestore,
+            token, out executionReverted);
+
     /// <summary>Fills omitted frame limits by replaying the complete transaction in the caller's state scope.</summary>
     /// <remarks>Every probe keeps its omitted execution and state limits within the rooms the final limits must fit,
     /// and its frame limits plus signature verification work within <paramref name="gasCap"/>, the work bound
@@ -34,10 +41,12 @@ public partial class GasEstimator
     /// the search runs at the tip it buys over the least <c>max_gas</c>, each search probe at the larger of the budget
     /// over its own <c>max_gas</c> and the base and blob fees plus that tip, and the final probe at the budget it buys
     /// over the filled limits; <see langword="null"/> keeps the transaction's fees.</param>
+    /// <param name="options">The options every probe runs with, including <see cref="ExecutionOptions.CommitAndRestore"/>;
+    /// a call's fee policy adds its fee options here so the final probe checks the limits as the call then runs.</param>
     /// <param name="executionReverted">Whether the failure is a frame of an otherwise valid transaction reverting.</param>
     public Result<TxFrame[]> EstimateFrameGas(Transaction transaction, BlockExecutionContext context,
-        bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin, Func<ulong, UInt256>? maxFeeAt, CancellationToken token,
-        out bool executionReverted)
+        bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin, Func<ulong, UInt256>? maxFeeAt, ExecutionOptions options,
+        CancellationToken token, out bool executionReverted)
     {
         executionReverted = false;
         if (errorMargin < 0 || errorMargin >= MaxErrorMargin)
@@ -52,7 +61,7 @@ public partial class GasEstimator
         tx.Nonce = stateProvider.GetNonce(tx.SenderAddress);
 
         Span<FrameReservation> reservations = stackalloc FrameReservation[Eip8141Constants.MaxFrames];
-        FrameGasSearch search = new(transactionProcessor, tx, context, fillExecution, fillState, gasCap, errorMargin, maxFeeAt, token,
+        FrameGasSearch search = new(transactionProcessor, tx, context, fillExecution, fillState, gasCap, errorMargin, maxFeeAt, options, token,
             reservations[..frames.Length]);
         if (!search.TryPartitionRooms(out string? error)) return Result<TxFrame[]>.Fail(error);
         search.ReserveEvenSplit();
@@ -103,6 +112,7 @@ public partial class GasEstimator
         private readonly CancellationTxTracer _probeTracer;
         private readonly CancellationToken _token;
         private readonly Func<ulong, UInt256>? _maxFeeAt;
+        private readonly ExecutionOptions _options;
         private UInt256 _searchTip;
         private readonly ulong _gasCap;
         private readonly ulong _executionCap;
@@ -122,7 +132,7 @@ public partial class GasEstimator
         private (int? Frame, EvmExceptionType? Error) _reservationFailure;
 
         public FrameGasSearch(ITransactionProcessor processor, Transaction tx, in BlockExecutionContext context, bool[] fillExecution,
-            bool[] fillState, ulong gasCap, int errorMargin, Func<ulong, UInt256>? maxFeeAt, CancellationToken token,
+            bool[] fillState, ulong gasCap, int errorMargin, Func<ulong, UInt256>? maxFeeAt, ExecutionOptions options, CancellationToken token,
             Span<FrameReservation> reservations)
         {
             _processor = processor;
@@ -137,6 +147,7 @@ public partial class GasEstimator
             _probeTracer = _tracer.WithCancellation(token);
             _token = token;
             _maxFeeAt = maxFeeAt;
+            _options = options;
             _searchTip = tx.MaxPriorityFeePerGas;
             _gasCap = gasCap;
             _executionCap = Math.Min(gasCap, Math.Min(context.Header.GasLimit, Eip7825Constants.DefaultTxGasLimitCap));
@@ -483,7 +494,7 @@ public partial class GasEstimator
             _probeHeader.GasUsed = 0;
             _tracer.Clear();
             _processor.SetBlockExecutionContext(in _probeContext);
-            ExecutionOptions options = ExecutionOptions.CommitAndRestore;
+            ExecutionOptions options = _options;
             if (!verifying) options |= ExecutionOptions.FrameGasEstimation;
             _lastResult = _processor.Process(probe, _probeTracer, options);
             LastProbeReverted = _lastResult.TransactionExecuted && _tracer.FrameError == EvmExceptionType.Revert;
