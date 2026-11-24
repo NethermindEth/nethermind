@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -858,11 +859,9 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (spec.IsEip8037Enabled)
                     {
                         delegatedBeforeTx ??= [];
-                        if (!delegatedBeforeTx.TryGetValue(authority, out bool delegatedBefore))
-                        {
-                            delegatedBefore = hasDelegation;
-                            delegatedBeforeTx[authority] = delegatedBefore;
-                        }
+                        ref bool delegatedBeforeEntry = ref CollectionsMarshal.GetValueRefOrAddDefault(delegatedBeforeTx, authority, out bool seen);
+                        if (!seen) delegatedBeforeEntry = hasDelegation;
+                        bool delegatedBefore = delegatedBeforeEntry;
 
                         bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
 
