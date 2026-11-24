@@ -420,6 +420,5 @@ public class LogIndexReorgTests
         public bool HasBlock(ulong blockNumber, Hash256 hash) => inner.HasBlock(blockNumber, hash);
         public void EnsureCanonical(Block block) => inner.EnsureCanonical(block);
         public void RemoveReceipts(Block block) => inner.RemoveReceipts(block);
-        public void RemoveReceipts(ulong blockNumber, Hash256 blockHash) => inner.RemoveReceipts(blockNumber, blockHash);
     }
 }

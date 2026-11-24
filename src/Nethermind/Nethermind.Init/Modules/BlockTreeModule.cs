@@ -35,6 +35,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IDeferredBlockDataWriter>(CreateDeferredWriter)
             .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
             .Bind<IReceiptStorage, IReceiptMigrationStore>()
+            .Bind<IReceiptPruner, PersistentReceiptStorage>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig, IHeaderDecoder, ILogManager>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
@@ -92,7 +93,9 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
 
         if (!receiptConfig.StoreReceipts)
         {
-            builder.AddSingleton<IReceiptMigrationStore>(NullReceiptStorage.Instance);
+            builder
+                .AddSingleton<IReceiptMigrationStore>(NullReceiptStorage.Instance)
+                .AddSingleton<IReceiptPruner>(NullReceiptStorage.Instance);
         }
     }
 

@@ -93,7 +93,7 @@ public class DebugBridgeTests
 
         if (lookup == RawTransactionLookup.ReceiptsRemoved)
         {
-            storage.RemoveReceipts(block.Number, block.Hash!);
+            container.Resolve<IReceiptPruner>().RemoveReceipts(block.Number, block.Hash!);
             Assert.That(storage.FindBlockHash(hash), Is.EqualTo(block.Hash), "removing receipt bodies must retain the transaction locator");
         }
         else if (lookup == RawTransactionLookup.Unindexed)
