@@ -126,8 +126,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         _opcodeHandlers = _filteredOpcodeHandlers!;
     }
 
-    private sealed unsafe class OpcodeTable
+    /// <param name="opcodeHooks">Whether the CALL, creation and SELFDESTRUCT handlers consult the machine's opcode hooks.</param>
+    private sealed unsafe class OpcodeTable(bool opcodeHooks)
     {
+        public OpcodeTable() : this(opcodeHooks: false) { }
+
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? NoTrace;
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? NoTraceCancelable;
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? Traced;
@@ -159,7 +162,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ? ref (TCancelable.IsActive ? ref TracedCancelable : ref Traced)
                     : ref (TCancelable.IsActive ? ref NoTraceCancelable : ref NoTrace);
 
-            return table ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec);
+            return table ??= GenerateOpcodeHandlers<TTracingInst, TCancelable>(spec, opcodeHooks);
         }
 
         /// <summary>Rebuilds both non-traced tables from whatever the JIT has promoted since the last build.</summary>
@@ -172,8 +175,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         public void RefreshNonTraced(IReleaseSpec spec)
         {
-            NoTrace = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
-            NoTraceCancelable = GenerateOpcodeHandlers<OffFlag, OnFlag>(spec);
+            NoTrace = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec, opcodeHooks);
+            NoTraceCancelable = GenerateOpcodeHandlers<OffFlag, OnFlag>(spec, opcodeHooks);
             System.Threading.Volatile.Write(ref _executionHandlers, null);
         }
     }

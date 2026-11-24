@@ -39,10 +39,11 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
     /// <summary>Returns whether <paramref name="address"/> is a precompile that counts as accessed without being in the set.</summary>
     /// <remarks>
     /// EIP-2929 adds the precompiles to the accessed addresses at transaction start. They are checked through the spec
-    /// instead of being inserted, until <see cref="ClearAccessList"/> empties the access list.
+    /// instead of being inserted, until <see cref="ClearAccessList"/> empties the access list. The spec is asked first,
+    /// so an access to an address that is not a precompile reads nothing more than before.
     /// </remarks>
     public readonly bool IsPrewarmedPrecompile(Address address, IReleaseSpec spec) =>
-        !_trackingState.PrecompilesCleared && spec.IsPrecompile(address);
+        spec.IsPrecompile(address) && !_trackingState.PrecompilesCleared;
 
     /// <summary>Empties the accessed addresses and storage keys, the pre-warmed precompiles included.</summary>
     /// <remarks>

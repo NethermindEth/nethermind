@@ -635,6 +635,17 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <remarks>The default routes EVM and overflow exceptions through Ethereum failure handling.</remarks>
     protected virtual bool IsFatalExecutionException(Exception exception) => false;
 
+    /// <summary>Whether this machine's CALL, creation and SELFDESTRUCT handlers consult its opcode hooks.</summary>
+    /// <remarks>
+    /// The opcode hooks are <see cref="ShouldSkipEoaCallFastPath"/>, <see cref="OnValueTransferCallPrecheck"/>,
+    /// <see cref="OnValueTransferCreatePrecheck"/>, <see cref="ResolveDelegatedCodeInfo"/> (for code entered from an EVM frame)
+    /// and <see cref="TryExecuteSelfDestruct"/>. A machine that overrides any of them sets this as well: the machine then
+    /// dispatches to handlers compiled with the hooks, cached apart from the handlers every other machine shares, which
+    /// are compiled without them and so run as if the hooks were absent. Read when the machine resolves its dispatch
+    /// table, so it must not change over the machine's lifetime. The zkEVM guest build compiles no opcode hooks.
+    /// </remarks>
+    protected virtual bool HasOpcodeHooks => false;
+
     /// <summary>
     /// Determines whether the externally owned account call optimization should be skipped.
     /// </summary>
@@ -644,7 +655,8 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <param name="codeSource">The account whose code is being entered.</param>
     /// <param name="value">The value supplied by the call.</param>
     /// <returns><c>true</c> when the full child frame path must be used.</returns>
-    /// <remarks>The default keeps the Ethereum empty-account fast path enabled.</remarks>
+    /// <remarks>An opcode hook: consulted only when <see cref="HasOpcodeHooks"/> is set. The default keeps the
+    /// empty-account fast path enabled.</remarks>
     protected internal virtual bool ShouldSkipEoaCallFastPath(
         ExecutionType executionType,
         Address caller,
@@ -661,6 +673,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// </param>
     /// <returns>Revert data that rejects the call, or <see langword="null"/> to continue.</returns>
     /// <remarks>
+    /// An opcode hook: raised only when <see cref="HasOpcodeHooks"/> is set.
     /// The hook runs after child gas reservation and the value stipend, but before depth and balance rejection.
     /// It is raised only for CALL operations and before a child snapshot or frame exists. A rejection is handled
     /// like a failed precheck: it pushes zero and returns the reserved gas less <paramref name="gasUsed"/>, none of it
@@ -681,6 +694,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <param name="value">The nonzero endowment.</param>
     /// <returns>Revert data that rejects the creation, or <see langword="null"/> to continue.</returns>
     /// <remarks>
+    /// An opcode hook: raised only when <see cref="HasOpcodeHooks"/> is set.
     /// The hook runs for CREATE, CREATE2 and TCREATE after the operation's own gas is charged, and before the
     /// depth, balance and nonce checks, the child gas reservation, the nonce increment and the address warm-up.
     /// A rejection pushes zero, stages the revert data as return data and leaves the remaining gas with the
@@ -688,8 +702,8 @@ public partial class VirtualMachine<TGasPolicy>(
     /// the hook reports no consumed gas: it runs before any gas is reserved for the creation, so a rejection has no
     /// reservation to charge and costs the caller the operation's own gas only. State and access-list changes made by
     /// the hook persist whether the creation is then rejected, fails a later check or proceeds. The hook must not
-    /// change the creator's nonce: the address and the nonce-limit check use the nonce read before the hook. The
-    /// default continues.
+    /// change the creator's nonce: the address it is given is derived from the nonce read before the hook, and the creation
+    /// derives it again afterwards. The default continues.
     /// </remarks>
     protected internal virtual byte[]? OnValueTransferCreatePrecheck(Address creator, Address contractAddress, in UInt256 value) => null;
 
@@ -718,8 +732,9 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <remarks>
     /// Ethereum resolves the delegated account directly. Specialized VMs can use the original source
     /// to preserve chain-specific code-repository decorators while retaining the same default behavior. This
-    /// hook applies to delegated code entered from an EVM frame; top-level transactions resolve their
-    /// delegated target in the transaction processor, and frame transactions resolve it directly.
+    /// hook applies to delegated code entered from an EVM frame, and only when <see cref="HasOpcodeHooks"/> is set;
+    /// top-level transactions resolve their delegated target in the transaction processor, and frame transactions
+    /// resolve it directly.
     /// </remarks>
     protected internal virtual CodeInfo ResolveDelegatedCodeInfo(Address codeSource, Address delegated, IReleaseSpec spec) =>
         CodeInfoRepository.GetDelegatedCodeInfo(delegated, spec);
@@ -733,6 +748,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <param name="result">The custom opcode result.</param>
     /// <returns><c>true</c> when the specialized implementation handled the opcode.</returns>
     /// <remarks>
+    /// An opcode hook: called only when <see cref="HasOpcodeHooks"/> is set.
     /// Not called in a static frame, which fails write protection after the same charge. Before Berlin the
     /// constant charge follows write protection, so the hook then runs before it.
     /// The default preserves the standard Ethereum SELFDESTRUCT implementation. When returning <c>true</c>

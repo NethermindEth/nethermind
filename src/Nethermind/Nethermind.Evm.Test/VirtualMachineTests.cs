@@ -4435,6 +4435,60 @@ public sealed class VirtualMachineExtensionHooksTests
     }
 
     [Test]
+    public void Opcode_hooks_are_not_consulted_by_a_machine_that_does_not_opt_in([Values] bool optIn, [Values] bool traced)
+    {
+        _hookedMachine.OpcodeHooks = optIn;
+        _hookedMachine.SkipEoaCallFastPath = true;
+        _hookedMachine.HandleSelfDestruct = true;
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, TestItem.AddressF, 7, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Create([], 7)
+            .Op(Instruction.POP)
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+
+        (Block Block, Transaction Transaction) prepared = PrepareTx(code);
+        TransactionResult result = traced ? _processor.Execute(prepared.Transaction,
+                new BlockExecutionContext(prepared.Block.Header, _specProvider.GetSpec(prepared.Block.Header)), new TestAllTracerWithOutput())
+            : ExecutePrepared(prepared, NullTxTracer.Instance);
+        bool eoaFrameEntered = _hookedMachine.Initializations.Count(static state => !state.IsTopLevel && !state.IsContinuation) > 1;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_hookedMachine.ValueTransferPrechecks, Has.Count.EqualTo(optIn ? 1 : 0));
+            Assert.That(_hookedMachine.ValueTransferCreatePrechecks, Has.Count.EqualTo(optIn ? 1 : 0));
+            Assert.That(_hookedMachine.SelfDestructCalls, Is.EqualTo(optIn ? 1 : 0));
+            // A traced run never takes the empty-account fast path, so only an untraced one shows the hook's effect.
+            if (!traced) Assert.That(eoaFrameEntered, Is.EqualTo(optIn), "only an opted-in machine leaves the empty-account fast path");
+        }
+    }
+
+    [Test]
+    public void Machines_with_and_without_opcode_hooks_keep_separate_dispatch_tables()
+    {
+        byte[] code = Prepare.EvmCode.CALL(50_000, TestItem.AddressF, 7, 0, 0, 0, 0).Op(Instruction.POP).Done;
+        Assert.That(ExecutePrepared(PrepareTx(code), NullTxTracer.Instance).TransactionExecuted, Is.True);
+
+        // A second machine on the same spec, opting out, must not pick up the hooked table the first one resolved.
+        HookedVirtualMachine plain = new(_scope.Resolve<IBlockhashProvider>(), _specProvider, LimboLogs.Instance) { OpcodeHooks = false };
+        HookedTransactionProcessor processor = new(_scope.Resolve<ITransactionProcessor.IBlobBaseFeeCalculator>(), _specProvider, _worldState,
+            plain, _scope.Resolve<ICodeInfoRepository>(), LimboLogs.Instance);
+        (Block block, Transaction transaction) = PrepareTx(code);
+        TransactionResult result = processor.Execute(transaction,
+            new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(plain.ValueTransferPrechecks, Is.Empty);
+            Assert.That(_hookedMachine.ValueTransferPrechecks, Has.Count.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void Delegated_code_resolution_hook_is_used()
     {
         Address delegatedTarget = Child;
@@ -4633,6 +4687,11 @@ public sealed class VirtualMachineExtensionHooksTests
         public ulong ValueTransferRevertGas { get; set; }
         public List<(Address Creator, Address ContractAddress, UInt256 Value)> ValueTransferCreatePrechecks { get; } = [];
         public bool ClearTopLevelAccessList { get; set; }
+
+        /// <summary>Whether the machine opts in to its opcode hooks; set before the first transaction, which resolves its dispatch table.</summary>
+        public bool OpcodeHooks { get; set; } = true;
+
+        protected override bool HasOpcodeHooks => OpcodeHooks;
 
         protected override bool TryExecuteFrameInitialization(VmState<EthereumGasPolicy> currentState, out CallResult result)
         {

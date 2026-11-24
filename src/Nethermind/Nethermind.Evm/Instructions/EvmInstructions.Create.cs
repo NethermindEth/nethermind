@@ -39,6 +39,25 @@ public static partial class EvmInstructions
 
         /// <summary>Whether the creation is an EIP-8360 <c>TCREATE</c>, whose account lasts for one transaction.</summary>
         abstract static bool IsTransient { get; }
+
+        /// <summary>Whether the handler consults the opcode hooks of the virtual machine it runs on.</summary>
+        /// <remarks>
+        /// Only <see cref="CreateWithOpcodeHooks{TOpCreate}"/> sets it, and only a machine whose
+        /// <see cref="VirtualMachine{TGasPolicy}.HasOpcodeHooks"/> is set dispatches to it, so the handlers of every other
+        /// machine are compiled without the hooks.
+        /// </remarks>
+        static virtual bool HasOpcodeHooks => false;
+    }
+
+    /// <summary>A creation opcode whose handler consults the opcode hooks of the virtual machine it runs on.</summary>
+    /// <typeparam name="TOpCreate">The creation opcode the handler runs.</typeparam>
+    internal struct CreateWithOpcodeHooks<TOpCreate> : IOpCreate
+        where TOpCreate : struct, IOpCreate
+    {
+        public static ExecutionType ExecutionType => TOpCreate.ExecutionType;
+        public static bool IsSalted => TOpCreate.IsSalted;
+        public static bool IsTransient => TOpCreate.IsTransient;
+        public static bool HasOpcodeHooks => true;
     }
 
     /// <summary>
@@ -107,7 +126,7 @@ public static partial class EvmInstructions
         bool isTransientCreate = TOpCreate.IsTransient;
 
         // EIP-8360: CREATE2 halts in the context of a TCREATE account, before any check that could push zero.
-        if (TSpec.IsEip8360Enabled && typeof(TOpCreate) == typeof(OpCreate2) && vm.VmState.IsTransientCreateContext)
+        if (TSpec.IsEip8360Enabled && TOpCreate.ExecutionType == ExecutionType.CREATE2 && vm.VmState.IsTransientCreateContext)
         {
             goto BadInstruction;
         }
@@ -163,23 +182,19 @@ public static partial class EvmInstructions
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, ref vm.VmState.Memory))
             goto OutOfGas;
 
-        // The value-transfer precheck sees the derived address, so a value-bearing creation loads its init code and
-        // derives the address ahead of the depth, balance and nonce checks. A zero-value creation raises no precheck
-        // and keeps those rejections ahead of the load and the address hashing.
-        ReadOnlyMemory<byte> initCode = default;
-        ulong accountNonce = 0;
-        Address? contractAddress = null;
-        if (!value.IsZero)
+        // A machine with opcode hooks sees a value-bearing creation, with the address it derives, before the depth,
+        // balance and nonce checks, so its init code is loaded and its address derived ahead of them. A zero-value
+        // creation raises no precheck and keeps those rejections ahead of the load and the address hashing.
+        if (TOpCreate.HasOpcodeHooks && !value.IsZero)
         {
-            if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out initCode))
+            if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> precheckInitCode))
                 goto OutOfGas;
 
-            accountNonce = state.GetNonce(env.ExecutingAccount);
-            contractAddress = GetContractAddress<TOpCreate>(env.ExecutingAccount, accountNonce, salt, initCode.Span);
-            if (vm.OnValueTransferCreatePrecheck(env.ExecutingAccount, contractAddress, in value) is { } precheckRevert)
+            Address precheckAddress = GetContractAddress<TOpCreate>(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount), salt, precheckInitCode.Span);
+            if (vm.OnValueTransferCreatePrecheck(env.ExecutingAccount, precheckAddress, in value) is { } precheckRevert)
             {
                 if (!TEip8037.IsActive && vm.IsTracingActions)
-                    TraceRevertedCreatePrecheck<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, contractAddress, initCode, precheckRevert);
+                    TraceRevertedCreatePrecheck<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, precheckAddress, precheckInitCode, precheckRevert);
 
                 vm.ReturnDataBuffer = precheckRevert;
                 return stack.PushZero<TTracingInst, OnFlag>();
@@ -198,7 +213,7 @@ public static partial class EvmInstructions
         }
 
         // Load the initialization code from memory based on the specified position and length.
-        if (contractAddress is null && !vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out initCode))
+        if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
@@ -214,8 +229,7 @@ public static partial class EvmInstructions
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
-        if (contractAddress is null)
-            accountNonce = state.GetNonce(env.ExecutingAccount);
+        ulong accountNonce = state.GetNonce(env.ExecutingAccount);
         if (accountNonce >= ulong.MaxValue)
         {
             if (!TEip8037.IsActive && vm.IsTracingActions)
@@ -225,11 +239,11 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
-        // Compute the contract address, unless the value-transfer precheck already derived it:
+        // Compute the contract address:
         // - For CREATE: based on the executing account and its current nonce.
         // - For CREATE2: based on the executing account, the provided salt, and the init code.
         // - For TCREATE: as CREATE2 with the EIP-8360 0xfe prefix.
-        contractAddress ??= GetContractAddress<TOpCreate>(env.ExecutingAccount, accountNonce, salt, initCode.Span);
+        Address contractAddress = GetContractAddress<TOpCreate>(env.ExecutingAccount, accountNonce, salt, initCode.Span);
 
         if (isTransientCreate)
         {
