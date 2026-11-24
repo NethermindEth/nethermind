@@ -21,6 +21,8 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -49,7 +51,7 @@ public class WorldStateDbDeciderModuleTests
     [TestCase(Flags.Enabled | Flags.PatriciaHasData, false, Description = "Patricia has data → patricia")]
     [TestCase(Flags.Enabled, true, Description = "Fresh node, flat enabled → flat")]
     [TestCase(Flags.Enabled | Flags.MigrateFromPruningTrieState | Flags.PatriciaHasData, true, Description = "Migrating from patricia → flat")]
-    public void IWorldStateManager_ResolvesToCorrectBackend(Flags flags, bool expectFlat)
+    public void State_services_resolve_to_the_selected_backend(Flags flags, bool expectFlat)
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -71,10 +73,11 @@ public class WorldStateDbDeciderModuleTests
 
         IWorldStateManager worldStateManager = container.Resolve<IWorldStateManager>();
 
-        if (expectFlat)
-            Assert.That(worldStateManager, Is.TypeOf<FlatWorldStateManager>());
-        else
-            Assert.That(worldStateManager, Is.Not.TypeOf<FlatWorldStateManager>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(worldStateManager is FlatWorldStateManager, Is.EqualTo(expectFlat));
+            Assert.That(container.Resolve<ISnapStateServer>() is SnapFlatStateServer, Is.EqualTo(expectFlat));
+        }
     }
 
     [TestCase(true, FullPruningTrigger.StateDbSize, 1, Description = "Flat + automatic trigger → warns once")]
