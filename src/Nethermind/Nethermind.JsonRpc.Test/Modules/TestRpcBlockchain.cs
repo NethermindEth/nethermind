@@ -35,6 +35,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Container;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Filters;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
@@ -198,6 +199,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = static @this => new EthRpcModule(
             @this.RpcConfig,
             @this.Bridge,
+            @this.Container.Resolve<FilterStore>(),
+            @this.Container.Resolve<FilterManager>(),
             @this.BlockFinder,
             @this.BlockTree,
             @this.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),

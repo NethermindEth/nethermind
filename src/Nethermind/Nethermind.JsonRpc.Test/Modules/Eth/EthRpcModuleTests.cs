@@ -108,15 +108,19 @@ public partial class EthRpcModuleTests
     private static FilterLog CreateTestFilterLog() =>
         new(1, 1, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, [1, 2, 3], [TestItem.KeccakC, TestItem.KeccakD]);
 
-    /// <summary>Creates a bridge with log filter 1 installed over the latest block that returns <paramref name="logs"/> for any resolved range.</summary>
+    /// <summary>Creates a bridge that returns <paramref name="logs"/> for any resolved range.</summary>
     private static IBlockchainBridge CreateLogsBridge(IEnumerable<FilterLog> logs)
     {
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetLogFilter(1).Returns(new LogFilter(1, BlockParameter.Latest, BlockParameter.Latest, AddressFilter.AnyAddress, SequenceTopicsFilter.AnyTopic));
         bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
             .Returns(logs);
         return bridge;
     }
+
+    /// <summary>Installs log filter 1 over the latest block.</summary>
+    private static void InstallLogFilter(TestRpcBlockchain chain) =>
+        chain.Container.Resolve<FilterStore>().SaveFilter(
+            new LogFilter(1, BlockParameter.Latest, BlockParameter.Latest, AddressFilter.AnyAddress, SequenceTopicsFilter.AnyTopic));
 
     private static void AssertAccountDoesNotExist(Context ctx, Address account) => Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
 
@@ -289,6 +293,8 @@ public partial class EthRpcModuleTests
             .WithEthRpcModule(@this => new EthRpcModule(
                 @this.RpcConfig,
                 @this.Bridge,
+                @this.Container.Resolve<FilterStore>(),
+                @this.Container.Resolve<FilterManager>(),
                 @this.BlockFinder,
                 @this.BlockTree,
                 @this.ReceiptFinder,
@@ -1037,6 +1043,7 @@ public partial class EthRpcModuleTests
         IBlockchainBridge bridge = CreateLogsBridge([CreateTestFilterLog()]);
 
         ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).WithBlockchainBridge(bridge).Build();
+        InstallLogFilter(ctx.Test);
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x1");
 
         string expected = enableLogsStreamMode ? ExpectedFilterLogStreamResponse("complete") : ExpectedFilterLogResponse;
@@ -1060,6 +1067,7 @@ public partial class EthRpcModuleTests
             .WithBlockchainBridge(bridge)
             .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = false, MaxLogsPerResponse = maxLogsPerResponse })
             .Build();
+        InstallLogFilter(ctx.Test);
 
         JsonRpcContext context = new(authenticated ? RpcEndpoint.IPC : RpcEndpoint.Http);
         string serialized = await RpcTest.TestSerializedRequest(ctx.Test.EthRpcModule, context, "eth_getFilterLogs", "0x1");
@@ -1085,6 +1093,7 @@ public partial class EthRpcModuleTests
             .WithBlockchainBridge(bridge)
             .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = true, MaxLogsPerResponse = 1 })
             .Build();
+        InstallLogFilter(ctx.Test);
 
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x1");
 
@@ -1233,7 +1242,6 @@ public partial class EthRpcModuleTests
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
             .Returns([CreateTestFilterLog()]);
-        bridge.FilterExists(1).Returns(true);
 
         ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getLogs", parameter);
@@ -1368,6 +1376,7 @@ public partial class EthRpcModuleTests
             .WithBlockchainBridge(bridge)
             .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = false, MaxLogsResponseBodySize = 64 })
             .Build();
+        InstallLogFilter(ctx.Test);
 
         string serialized = await ctx.Test.TestEthRpc(method, parameter);
 
@@ -1381,7 +1390,6 @@ public partial class EthRpcModuleTests
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
             .Returns(static _ => GetLogs());
-        bridge.FilterExists(1).Returns(true);
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithBlockchainBridge(bridge)
@@ -1570,7 +1578,6 @@ public partial class EthRpcModuleTests
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
             .Throws(new ResourceNotFoundException("resource not found message"));
-        bridge.FilterExists(1).Returns(true);
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getLogs", parameter);
@@ -1624,6 +1631,7 @@ public partial class EthRpcModuleTests
         IBlockchainBridge bridge = CreateLogsBridge(ThrowsOnIteration());
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+        InstallLogFilter(ctx.Test);
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x1");
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));

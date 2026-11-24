@@ -77,27 +77,10 @@ namespace Nethermind.Facade
 
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
 
-        int NewBlockFilter();
-        int NewPendingTransactionFilter();
-        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null);
-        /// <returns><c>true</c> if the filter existed and was removed; otherwise, <c>false</c>.</returns>
-        bool UninstallFilter(int filterId);
-        bool FilterExists(int filterId);
-        /// <returns>A pooled list that the caller disposes.</returns>
-        ArrayPoolList<Hash256> GetBlockFilterChanges(int filterId);
-
-        /// <returns>A pooled list that the caller disposes.</returns>
-        ArrayPoolList<Hash256> GetPendingTransactionFilterChanges(int filterId);
-
-        /// <returns>A pooled list that the caller disposes.</returns>
-        ArrayPoolList<FilterLog> GetLogFilterChanges(int filterId);
-        FilterType GetFilterType(int filterId);
         LogFilter GetFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null);
         IEnumerable<FilterLog> GetLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null, CancellationToken cancellationToken = default);
 
-        /// <returns>The installed log filter, or <c>null</c> if <paramref name="filterId"/> does not identify one.</returns>
-        LogFilter? GetLogFilter(int filterId);
         /// <inheritdoc cref="Nethermind.State.IStateReader.RunTreeVisitor{TCtx}"/>
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
 
