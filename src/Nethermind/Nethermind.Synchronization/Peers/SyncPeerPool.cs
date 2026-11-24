@@ -227,6 +227,7 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
+        private readonly Lock _priorityPeerCountLock = new();
         private int _priorityPeerCount;
         internal int PriorityPeerCount => Volatile.Read(ref _priorityPeerCount);
         public int InitializedPeersCount => InitializedPeers.Count();
@@ -264,8 +265,7 @@ namespace Nethermind.Synchronization.Peers
 
             if (syncPeer.IsPriority)
             {
-                Interlocked.Increment(ref _priorityPeerCount);
-                Metrics.PriorityPeers = PriorityPeerCount;
+                UpdatePriorityPeerCount(1);
             }
             if (_logger.IsTrace) TracePeerCount();
 
@@ -310,8 +310,7 @@ namespace Nethermind.Synchronization.Peers
 
             if (syncPeer.IsPriority)
             {
-                Interlocked.Decrement(ref _priorityPeerCount);
-                Metrics.PriorityPeers = PriorityPeerCount;
+                UpdatePriorityPeerCount(-1);
             }
             if (_logger.IsTrace) TracePeerCount();
 
@@ -340,12 +339,20 @@ namespace Nethermind.Synchronization.Peers
         internal bool RefreshCancellationIs(PublicKey id, CancellationTokenSource expected) =>
             _refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? current) && ReferenceEquals(current, expected);
 
+        private void UpdatePriorityPeerCount(int change)
+        {
+            lock (_priorityPeerCountLock)
+            {
+                Metrics.PriorityPeers = _priorityPeerCount += change;
+            }
+        }
+
         public void SetPeerPriority(PublicKey id)
         {
             if (_peers.TryGetValue(id, out PeerInfo peerInfo) && !peerInfo.SyncPeer.IsPriority)
             {
                 peerInfo.SyncPeer.IsPriority = true;
-                Interlocked.Increment(ref _priorityPeerCount);
+                UpdatePriorityPeerCount(1);
             }
         }
 

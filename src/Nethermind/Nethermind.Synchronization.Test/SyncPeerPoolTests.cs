@@ -329,7 +329,7 @@ public class SyncPeerPoolTests
         Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(0));
     }
 
-    [Test]
+    [Test, NonParallelizable]
     public async Task Should_increment_PriorityPeerCount_when_called_SetPriorityPeer()
     {
         const int peersMaxCount = 1;
@@ -343,8 +343,10 @@ public class SyncPeerPoolTests
         await WaitForPeersInitialization(ctx);
         Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(0));
 
+        Metrics.PriorityPeers = 0;
         ctx.Pool.SetPeerPriority(peer.Id);
         Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+        Assert.That(Metrics.PriorityPeers, Is.EqualTo(1));
     }
 
     [Test]
