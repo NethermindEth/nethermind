@@ -2126,15 +2126,22 @@ public class BlockCachePreWarmerTests
         ColdReadWatch.Arm(3, handler, 0, item);
         ColdReadWatch.Disarm();
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1_000; i++)
+        // The runtime can allocate on this thread while it tiers up the loop (OSR), so keep the best of a few rounds.
+        long allocated = long.MaxValue;
+        for (int round = 0; round < 5 && allocated != 0; round++)
         {
-            ColdReadWatch.Arm(3, handler, i, item);
-            ColdReadWatch.Read();
-            ColdReadWatch.Disarm();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1_000; i++)
+            {
+                ColdReadWatch.Arm(3, handler, i, item);
+                ColdReadWatch.Read();
+                ColdReadWatch.Disarm();
+            }
+
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero, "every warmed transaction arms the watch");
+        Assert.That(allocated, Is.Zero, "every warmed transaction arms the watch");
     }
 
     private sealed class CountingColdReadHandler : IColdReadHandler
