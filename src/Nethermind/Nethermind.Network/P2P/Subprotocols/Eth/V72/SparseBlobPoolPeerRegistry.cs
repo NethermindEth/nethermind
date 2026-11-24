@@ -1727,20 +1727,27 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     state.Submitting = false;
                     RetainSubmittedAnnouncements(state);
                     ReleaseTransaction(state);
-                    ReleaseCells(state);
-                    if (state.UnattributedCells is { } keptCells)
-                    {
-                        // Detached with its accounting, which AttributeUnattributedCells releases.
-                        unattributedCells = keptCells;
-                        unattributedCellSources = GetRegisteredSources(keptCells);
-                        state.UnattributedCells = null;
-                    }
-
                     state.Transaction = null;
                     state.TransactionPeer = null;
+                    ReleaseCells(state);
                     state.Cells = null;
                     state.AmbiguousValidationFailures = 0;
                     state.ExpiresAt = DateTimeOffset.MaxValue;
+                    if (state.UnattributedCells is { } keptCells)
+                    {
+                        if (_timestamper.UtcNowOffset < state.UnattributedCellsExpiresAt)
+                        {
+                            // Detached with its accounting, which AttributeUnattributedCells releases. The state owns
+                            // the cells until the sources are resolved.
+                            unattributedCellSources = GetRegisteredSources(keptCells);
+                            unattributedCells = keptCells;
+                            state.UnattributedCells = null;
+                        }
+                        else
+                        {
+                            ReleaseUnattributedCells(state);
+                        }
+                    }
                 }
             }
 
@@ -2032,9 +2039,14 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <summary>
-    /// Disconnects the sources of cells from a failed proof check that differ from cells which have since verified,
-    /// then releases the kept cells. Must be called outside <c>state.Lock</c>.
+    /// Releases the kept cells from a failed proof check and disconnects their sources whose cells differ from cells
+    /// which have since verified. Must be called outside <c>state.Lock</c>.
     /// </summary>
+    /// <remarks>
+    /// Runs after a completed admission, on the thread that handled the response which completed it. An exception
+    /// escaping here would fail that response and disconnect its sender, so local errors are logged instead, and
+    /// each disconnect is isolated from the others.
+    /// </remarks>
     private void AttributeUnattributedCells(
         Hash256 hash,
         byte[][]? blobVersionedHashes,
@@ -2042,34 +2054,67 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         in PendingCellsBuffer unattributedCells,
         ISparseBlobPoolPeer?[] sources)
     {
+        // Sources hold disjoint non-empty columns, so there are at most BlobCellMask.CellCount of them.
+        Span<bool> mismatched = sources.Length <= BlobCellMask.CellCount
+            ? stackalloc bool[sources.Length]
+            : new bool[sources.Length];
+        bool found;
         try
         {
-            // Sources hold disjoint non-empty columns, so there are at most BlobCellMask.CellCount of them.
-            Span<bool> mismatched = sources.Length <= BlobCellMask.CellCount
-                ? stackalloc bool[sources.Length]
-                : new bool[sources.Length];
-            if (!FindMismatchedSources(blobVersionedHashes, verifiedWrapper, unattributedCells, mismatched))
+            found = FindMismatchedSources(blobVersionedHashes, verifiedWrapper, unattributedCells, mismatched);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError)
             {
-                return;
+                _logger.Error($"Failed to compare kept sparse blob cells for {hash} with verified cells.", e);
             }
 
-            for (int i = 0; i < sources.Length; i++)
-            {
-                if (mismatched[i] && sources[i] is { IsClosing: false } peer)
-                {
-                    if (_logger.IsDebug)
-                    {
-                        _logger.Debug($"{peer.Id:hide} sent sparse blob cells for {hash} that differ from verified cells.");
-                    }
-
-                    peer.DisconnectSparseBlobPeer(DisconnectReason.BreachOfProtocol, $"Invalid sparse blob cells for {hash}.");
-                    RemovePeer(peer);
-                }
-            }
+            found = false;
         }
         finally
         {
             ReleaseCells(hash.ValueHash256, unattributedCells);
+        }
+
+        if (!found)
+        {
+            return;
+        }
+
+        for (int i = 0; i < sources.Length; i++)
+        {
+            if (mismatched[i] && sources[i] is { IsClosing: false } peer)
+            {
+                DisconnectSourceOfDifferingCells(hash, peer);
+            }
+        }
+    }
+
+    private void DisconnectSourceOfDifferingCells(Hash256 hash, ISparseBlobPoolPeer peer)
+    {
+        if (_logger.IsDebug)
+        {
+            _logger.Debug($"{peer.Id:hide} sent sparse blob cells for {hash} that differ from verified cells.");
+        }
+
+        try
+        {
+            try
+            {
+                peer.DisconnectSparseBlobPeer(DisconnectReason.BreachOfProtocol, $"Invalid sparse blob cells for {hash}.");
+            }
+            finally
+            {
+                RemovePeer(peer);
+            }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError)
+            {
+                _logger.Error($"Failed to disconnect {peer.Id:hide} for sparse blob cells for {hash}.", e);
+            }
         }
     }
 
@@ -2079,8 +2124,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     /// </summary>
     /// <remarks>
     /// The versioned hashes fix the commitments, and for a fixed commitment and index only one cell verifies. Once
-    /// the shared indices verify here, any other cell bytes at those indices are wrong, whichever peer sent the
-    /// proofs. A failed check proves nothing about a single source, so it never marks one.
+    /// the commitments match the versioned hashes and the shared indices verify here, any other cell bytes at those
+    /// indices are wrong, whichever peer sent the proofs. A check that does not pass proves nothing about the kept
+    /// cells, so it never marks a source.
     /// </remarks>
     /// <returns><c>true</c> when at least one source was marked.</returns>
     private static bool FindMismatchedSources(
@@ -2110,11 +2156,15 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return false;
         }
 
+        if (!IBlobProofsManager.For(ProofVersion.V1).ValidateHashes(verifiedWrapper, blobVersionedHashes))
+        {
+            return false;
+        }
+
         byte[][] commonCells = commonMask == verifiedMask
             ? verifiedCells
             : BlobCellsHelper.SelectFlattenedCells(verifiedCells, verifiedMask, commonMask, blobCount);
-        if (!BlobCellsHelper.ValidateCells(verifiedWrapper with { CellMask = commonMask, Cells = commonCells })
-            || !IBlobProofsManager.For(ProofVersion.V1).ValidateHashes(verifiedWrapper, blobVersionedHashes))
+        if (!BlobCellsHelper.ValidateCells(verifiedWrapper with { CellMask = commonMask, Cells = commonCells }))
         {
             return false;
         }
