@@ -13,7 +13,7 @@ public sealed class BlocksRequest : IDisposable
     public IOwnedReadOnlyList<BlockHeader> BodiesRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
     public OwnedBlockBodies? OwnedBodies { get; set; }
 
-    /// <summary>Hashes per EIP-8498 <c>GetDependencyProofs</c>, an implementation-defined limit serving peers enforce too.</summary>
+    /// <summary>Hashes per EIP-8512 <c>GetDependencyProofs</c>, an implementation-defined limit serving peers enforce too.</summary>
     public const int MaxDependencyProofsPerRequest = 64;
 
     public IOwnedReadOnlyList<BlockHeader> DependencyProofsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;

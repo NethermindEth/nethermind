@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Blockchain.Blocks;
 
 /// <summary>The one place a block may go without its EIP-8288 dependency proof: the finalized block and its canonical ancestors.</summary>
-/// <remarks>EIPs#12549 and EIP-8498 let a node that trusts finality skip these proofs; a side-chain block below the finalized height still needs one.</remarks>
+/// <remarks>EIPs#12549 and EIP-8512 let a node that trusts finality skip these proofs; a side-chain block below the finalized height still needs one.</remarks>
 public static class DependencyProofFinality
 {
     /// <summary>Whether <paramref name="header"/> is the finalized block or one of its ancestors, so its proof is not needed.</summary>

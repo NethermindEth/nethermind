@@ -294,7 +294,7 @@ namespace Nethermind.Network.P2P
             if (uncompressedLength <= Subprotocols.Eth.V73.Eth73Protocol.MaxGetProofWrappersBytes || _resolver is null) return false;
             (string? protocol, int messageId) = _resolver.ResolveProtocol(adaptivePacketType);
             return protocol == Protocol.Eth && _protocols.TryGetValue(Protocol.Eth, out IProtocolHandler? eth)
-                && eth.ProtocolVersion >= EthVersions.Eth73 && Subprotocols.Eth.V73.Eth73Protocol.ExceedsMessageLimit(messageId, uncompressedLength);
+                && eth.ProtocolVersion == EthVersions.Eth73 && Subprotocols.Eth.V73.Eth73Protocol.ExceedsMessageLimit(messageId, uncompressedLength);
         }
 
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);

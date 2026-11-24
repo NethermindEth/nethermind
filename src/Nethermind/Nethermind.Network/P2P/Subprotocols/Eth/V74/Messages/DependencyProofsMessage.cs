@@ -7,7 +7,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V74.Messages;
 
-/// <summary>EIP-8498 <c>DependencyProofs</c>: one proof per requested block, in request order.</summary>
+/// <summary>EIP-8512 <c>DependencyProofs</c>: one proof per requested block, in request order.</summary>
 /// <remarks>An empty entry is either an unavailable proof or the empty proof of a block without dependencies; only the block
 /// header's <c>dependency_proof_hash</c> tells them apart. A responder past the soft limit returns fewer entries.</remarks>
 public class DependencyProofsMessage(IOwnedReadOnlyList<byte[]> proofs, bool generateRandomRequestId = true)

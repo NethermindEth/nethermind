@@ -104,7 +104,7 @@ public class MergeP2PCapabilityResolverTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.EqualTo(scheduled));
-            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 74)), Is.EqualTo(scheduled), "EIP-8498 eth/74 activates with EIP-8288");
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 74)), Is.EqualTo(scheduled), "EIP-8512 eth/74 activates with EIP-8288");
         }
     }
 

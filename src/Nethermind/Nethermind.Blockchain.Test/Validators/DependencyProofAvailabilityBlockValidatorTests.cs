@@ -47,7 +47,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
         }
     }
 
-    // EIPs#12549 and EIP-8498: a missing proof is accepted only for the finalized block or a canonical ancestor of it, and
+    // EIPs#12549 and EIP-8512: a missing proof is accepted only for the finalized block or a canonical ancestor of it, and
     // only that failure is. A side-chain block below the finalized height is not trusted.
     [TestCase("none", BlockErrorMessages.MissingDependencyProof, false)]
     [TestCase("below", BlockErrorMessages.MissingDependencyProof, false)]

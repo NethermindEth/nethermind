@@ -28,7 +28,7 @@ using IContainer = Autofac.IContainer;
 
 namespace Nethermind.Synchronization.Test;
 
-// EIP-8288 (EIPs#12549) and EIP-8498: neither headers nor bodies carry the dependency proof, so forward sync asks for it in
+// EIP-8288 (EIPs#12549) and EIP-8512: neither headers nor bodies carry the dependency proof, so forward sync asks for it in
 // requests of its own, after the body, through a peer the pool allocates.
 public partial class BlockDownloaderTests
 {
@@ -77,12 +77,12 @@ public partial class BlockDownloaderTests
         }
     }
 
-    // EIP-8498: an empty entry, or the tail of a response cut short by the soft limit, is requested again without penalty;
+    // EIP-8512: an empty entry, or the tail of a response cut short by the soft limit, is requested again without penalty;
     // a non-empty proof that does not match its header is a breach of protocol.
     [TestCase(new[] { "match", "empty" }, false, 1)]
     [TestCase(new[] { "match" }, false, 1)]
     [TestCase(new[] { "mismatch", "match" }, true, 0)]
-    public async Task Dependency_proof_responses_follow_eip8498(string[] entries, bool breach, int requestedAgain)
+    public async Task Dependency_proof_responses_follow_eip8512(string[] entries, bool breach, int requestedAgain)
     {
         (IContainer node, Context ctx, BlockHeader[] headers) = await DependencyProofNode();
         await using IContainer scope = node;

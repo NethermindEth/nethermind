@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.Blocks
             protected override bool Filter(PeerInfo peerInfo) => peerInfo.SyncPeer.SupportsBlockAccessLists() && peerInfo.HeadNumber >= highestBlockNumber;
         }
 
-        /// <summary>EIP-8498: only an <c>eth/74</c> peer whose head is at or above the requested blocks can serve their proofs.</summary>
+        /// <summary>EIP-8512: only an <c>eth/74</c> peer whose head is at or above the requested blocks can serve their proofs.</summary>
         private sealed class DependencyProofsPeerAllocationStrategy(IPeerAllocationStrategy strategy, ulong highestBlockNumber) : FilterPeerAllocationStrategy(strategy)
         {
             protected override bool Filter(PeerInfo peerInfo) => peerInfo.SyncPeer.SupportsDependencyProofs() && peerInfo.HeadNumber >= highestBlockNumber;
