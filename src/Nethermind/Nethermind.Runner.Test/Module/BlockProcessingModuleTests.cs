@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 using Nethermind.Init.Modules;
 using NSubstitute;
 using NUnit.Framework;
