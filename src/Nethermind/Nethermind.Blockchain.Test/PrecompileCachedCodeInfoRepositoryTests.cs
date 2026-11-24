@@ -95,8 +95,12 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Address address = Address.FromNumber((UInt256)(ulong)number);
         TestPrecompile precompile = new(supportsCaching: false);
         IPrecompileProvider provider = CreateProvider((address, precompile));
+        IWorldState worldState = Substitute.For<IWorldState>();
 
-        Assert.That(Resolve(BuildRepository(null, provider), address), Is.SameAs(precompile));
+        Assert.That(Resolve(BuildRepository(null, provider, worldState), address), Is.SameAs(precompile));
+        // Off the index array as on it, the lookup records the account as the base repository does.
+        worldState.Received(1).AddAccountRead(address);
+        worldState.Received(1).RecordAccountAccess(address);
     }
 
     [Test]
@@ -179,8 +183,30 @@ public class PrecompileCachedCodeInfoRepositoryTests
         IPrecompile? resolved = repository.GetPrecompile(PrecompileAddress, spec);
 
         worldState.DidNotReceive().AddAccountRead(Arg.Any<Address>());
+        worldState.DidNotReceive().RecordAccountAccess(Arg.Any<Address>());
         Assert.That(resolved, Is.SameAs(repository.GetCachedCodeInfo(PrecompileAddress, false, spec, out _).Precompile),
             "frame-tx signature validation must share the block-cache-decorated instance with EVM calls");
+
+        // A code lookup records the account as the base repository does: in the block access list and in the witness.
+        worldState.Received(1).AddAccountRead(PrecompileAddress);
+        worldState.Received(1).RecordAccountAccess(PrecompileAddress);
+        worldState.DidNotReceive().RecordBytecodeAccess(Arg.Any<Address>());
+    }
+
+    [Test]
+    public void GetCachedCodeInfo_ForNonPrecompileAddress_LeavesRecordingToTheBaseRepository()
+    {
+        IWorldState worldState = Substitute.For<IWorldState>();
+        IPrecompileProvider provider = CreateProvider((PrecompileAddress, new TestPrecompile(supportsCaching: true)));
+        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
+        PrecompileCachedCodeInfoRepository repository = new(worldState, provider, baseRepository, CreateCaches(provider));
+        IReleaseSpec spec = CreateSpecWithPrecompiles(PrecompileAddress);
+        Address account = Address.FromNumber(0x1000);
+
+        repository.GetCachedCodeInfo(account, false, spec, out _);
+
+        baseRepository.Received(1).GetCachedCodeInfo(account, false, spec, out _);
+        Assert.That(worldState.ReceivedCalls(), Is.Empty, "the base repository records what it reads");
     }
 
     [TestCase(true, 1, 1, TestName = "Run_ForRepeatedInputWhenCaching_ComputesOnce")]
