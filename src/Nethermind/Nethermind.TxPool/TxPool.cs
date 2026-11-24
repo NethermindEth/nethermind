@@ -56,6 +56,8 @@ namespace Nethermind.TxPool
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _hashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
+        private readonly IIncomingTxFilter[] _samplingDeferredHashFilters;
+        private readonly IIncomingTxFilter[] _samplingDeferredPostHashFilters;
 
         private readonly HashCache _hashCache;
         private readonly TxBroadcaster _broadcaster;
@@ -412,6 +414,8 @@ namespace Nethermind.TxPool
             }
 
             _postHashFilters = postHashFilters.ToArray();
+            _samplingDeferredHashFilters = Array.FindAll(_hashFilters, static filter => filter is not AlreadyKnownTxFilter);
+            _samplingDeferredPostHashFilters = Array.FindAll(_postHashFilters, static filter => filter is not BlobProofsTxFilter);
 
             int? reportMinutes = txPoolConfig.ReportMinutes;
             if (_logger.IsInfo && reportMinutes.HasValue)
@@ -1976,9 +1980,8 @@ namespace Nethermind.TxPool
                 }
             }
 
-            foreach (IIncomingTxFilter filter in _hashFilters)
+            foreach (IIncomingTxFilter filter in skipSamplingDeferredFilters ? _samplingDeferredHashFilters : _hashFilters)
             {
-                if (skipSamplingDeferredFilters && filter is AlreadyKnownTxFilter) continue;
                 AcceptTxResult accepted = filter.Accept(tx, ref state, handlingOptions);
                 if (!accepted) return accepted;
             }
@@ -1986,15 +1989,9 @@ namespace Nethermind.TxPool
             // Validators and later filters can be supplied by plugins and retain the transaction.
             canRecycle = false;
             PooledBlobBuffers.Disown(tx);
-            filters = _postHashFilters;
+            filters = skipSamplingDeferredFilters ? _samplingDeferredPostHashFilters : _postHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
-                if (skipSamplingDeferredFilters
-                    && filters[i] is BlobProofsTxFilter)
-                {
-                    continue;
-                }
-
                 AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted) return accepted;
