@@ -536,6 +536,86 @@ public class HostTests
         }
     }
 
+    [TestCase("wallet", StatusCodes.Status200OK)]
+    [TestCase("ordinary", StatusCodes.Status413PayloadTooLarge)]
+    [TestCase("submission", StatusCodes.Status413PayloadTooLarge)]
+    [TestCase("limit", StatusCodes.Status200OK)]
+    [TestCase("oversized_tail", StatusCodes.Status413PayloadTooLarge)]
+    public async Task Large_http_batches_admit_evm_calls_within_the_ordinary_body_budget(string batch, int expectedStatus)
+    {
+        string callData = "0x" + new string('0', 42_000);
+        string oversizedData = "0x" + new string('0', RpcTestDriver.StandardRequestBodySize);
+        object call = new { jsonrpc = "2.0", id = 1, method = "eth_call", @params = new[] { new { data = callData } } };
+        object estimate = new { jsonrpc = "2.0", id = 2, method = "eth_estimateGas", @params = new[] { new { data = callData } } };
+        IEnumerable<object> notifications = Enumerable.Repeat<object>(new { jsonrpc = "2.0", method = "eth_chainId" },
+            RpcTestDriver.MaxBatchEnvelopes - 2);
+        object[] requests = batch switch
+        {
+            "wallet" => [call, estimate, new { jsonrpc = "2.0", id = 3, method = "eth_chainId" }],
+            "ordinary" => [call, new { jsonrpc = "2.0", id = 2, method = "eth_chainId", @params = new[] { oversizedData } }],
+            "submission" => [call, new { jsonrpc = "2.0", id = 2, method = "eth_sendRawTransaction", @params = new[] { oversizedData } }],
+            "limit" => [call, estimate, .. notifications],
+            _ => [call, estimate, .. notifications, new { jsonrpc = "2.0", id = 3, method = "eth_call", @params = new[] { new { data = oversizedData } } }],
+        };
+        List<string> methods = [];
+
+        (int status, JsonElement response) = await InvokeHttpAsync(JsonSerializer.SerializeToUtf8Bytes(requests),
+            (method, _, _) =>
+            {
+                methods.Add(method);
+                return Task.FromResult<object>("0x1");
+            });
+
+        Assert.That(status, Is.EqualTo(expectedStatus));
+        if (expectedStatus == StatusCodes.Status200OK)
+        {
+            bool atLimit = batch == "limit";
+            Assert.That(response.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(methods, Is.EqualTo(new[] { "eth_call", "eth_estimateGas" }
+                    .Concat(Enumerable.Repeat("eth_chainId", atLimit ? RpcTestDriver.MaxBatchCount - 2 : 1))));
+                Assert.That(response.EnumerateArray().Select(item => item.GetProperty("id").GetInt32()), Is.EqualTo(atLimit ? new[] { 1, 2 } : new[] { 1, 2, 3 }));
+            }
+        }
+        else
+        {
+            Assert.That(methods, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Http_batches_above_the_envelope_cap_keep_their_limit_response([Values] bool large)
+    {
+        string data = "0x" + new string('0', large ? RpcTestDriver.StandardRequestBodySize : 2);
+        int envelopeLimit = RpcTestDriver.MaxBatchEnvelopes;
+        object[] requests =
+        [
+            new { jsonrpc = "2.0", id = 0, method = "eth_call", @params = new[] { new { data } } },
+            .. Enumerable.Range(1, envelopeLimit + 1).Select(id => new { jsonrpc = "2.0", id, method = "eth_chainId" }),
+        ];
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(requests);
+        Assert.That(payload.Length > RpcTestDriver.StandardRequestBodySize, Is.EqualTo(large));
+        int calls = 0;
+
+        (int status, JsonElement response) = await InvokeHttpAsync(payload, (_, _, _) =>
+        {
+            calls++;
+            return Task.FromResult<object>("0x1");
+        });
+
+        Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(RpcTestDriver.MaxBatchCount));
+            Assert.That(response.EnumerateArray().Select(item => item.GetProperty("id").GetInt32()),
+                Is.EqualTo(Enumerable.Range(0, envelopeLimit + 1)));
+            JsonElement error = response[envelopeLimit].GetProperty("error");
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+            Assert.That(error.GetProperty("message").GetString(), Does.StartWith($"Batch exceeds {envelopeLimit} envelopes"));
+        }
+    }
+
     [Test]
     public async Task Batch_items_above_the_execution_cap_keep_their_response_ids([Values(33, 100)] int count)
     {

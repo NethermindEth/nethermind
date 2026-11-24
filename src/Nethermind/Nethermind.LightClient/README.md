@@ -638,12 +638,15 @@ tail itself cannot fit, a final ID-less `-32005` ends the response and the
 remaining items are not executed. Notifications still produce no response, and invalid
 envelopes retain their standard errors. Oversized results fail explicitly rather
 than returning incomplete data.
-Normal HTTP requests, batches and WebSocket messages have a 64 KiB body limit.
-A single HTTP `eth_sendRawTransaction`, `eth_sendRawTransactionSync`, `eth_call`,
-`eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` or `debug_traceCall` request may
-use up to 4 MiB plus 64 KiB of JSON text, so permitted contract-initcode inputs
-fit. Submitted raw envelopes/sidecars are limited to 2 MiB; at most four such large
-requests run concurrently. Peer responses and proof nodes have separate size limits.
+Normal HTTP requests and WebSocket messages have a 64 KiB body limit. HTTP
+`eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` and
+`debug_traceCall` can use the 4 MiB plus 64 KiB HTTP body limit, including when
+they are among the first 128 envelopes of a batch. Other entries, excess
+envelopes, and framing share the 64 KiB budget. Standalone HTTP
+`eth_sendRawTransaction` and `eth_sendRawTransactionSync` can also use the larger
+body limit. Submitted raw envelopes and sidecars are limited to 2 MiB. At most
+four large HTTP requests run concurrently. Peer responses and proof nodes have
+separate size limits.
 The listener admits at most 64 active requests and has no authentication; keep
 it on loopback or place an authenticated gateway in front of it.
 Response budgets count committed UTF-8 bytes per request: 64 simultaneous
