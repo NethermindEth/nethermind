@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -833,9 +832,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             codeInsertRefunds = 0;
             long preAuthorizationStateGasUsed = TGasPolicy.GetStateGasUsed(in gasAvailable);
-            // Tracks each authority's delegation status as of tx start, so AUTH_BASE refills can tell
-            // a pre-existing delegation from one installed earlier in the same tx.
-            Dictionary<Address, bool>? delegatedBeforeTx = null;
+            // Authorities delegated when first seen or set earlier in the tx. Only an authority's own tuples
+            // change its delegation, so a first sighting sees the pre-tx status and AUTH_BASE is charged once.
             HashSet<Address>? delegationSetFor = spec.IsEip8037Enabled ? [] : null;
             HashSet<Address>? writtenAccounts = null;
             if (spec.IsEip8037Enabled)
@@ -858,11 +856,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
                     if (spec.IsEip8037Enabled)
                     {
-                        delegatedBeforeTx ??= [];
-                        ref bool delegatedBeforeEntry = ref CollectionsMarshal.GetValueRefOrAddDefault(delegatedBeforeTx, authority, out bool seen);
-                        if (!seen) delegatedBeforeEntry = hasDelegation;
-                        bool delegatedBefore = delegatedBeforeEntry;
-
                         bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
 
                         if (!accountExists && !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost()))
@@ -879,13 +872,10 @@ namespace Nethermind.Evm.TransactionProcessing
                             }
                         }
 
-                        if (!clearsDelegation)
+                        if ((!clearsDelegation || hasDelegation) && delegationSetFor!.Add(authority) && !hasDelegation
+                            && !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetPerAuthBaseStateCost()))
                         {
-                            if (!delegatedBefore && delegationSetFor!.Add(authority)
-                                && !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetPerAuthBaseStateCost()))
-                            {
-                                return false;
-                            }
+                            return false;
                         }
                     }
 
