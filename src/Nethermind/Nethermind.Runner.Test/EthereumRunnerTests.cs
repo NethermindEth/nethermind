@@ -100,7 +100,6 @@ using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
 using BlockchainMetrics = Nethermind.Blockchain.Metrics;
-using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Runner.Test;
 
