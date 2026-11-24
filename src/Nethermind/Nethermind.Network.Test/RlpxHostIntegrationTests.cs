@@ -263,16 +263,16 @@ public class RlpxHostIntegrationTests
         await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(host.ActiveChannelCount, Is.EqualTo(1));
 
-        Task<int> received = client.ReceiveAsync(new byte[1], SocketFlags.None);
+        using CancellationTokenSource closeTimeout = new(TimeSpan.FromSeconds(1));
+        Task closed = ReceiveUntilClosedAsync(client, closeTimeout.Token);
         Task shutdown = host.Shutdown();
-        int got = await received.WaitAsync(TimeSpan.FromSeconds(1));
-        bool shutdownDoneAtEof = shutdown.IsCompleted;
+        await closed;
+        bool shutdownDoneAtClose = shutdown.IsCompleted;
         await shutdown.WaitAsync(TimeSpan.FromSeconds(30));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(got, Is.Zero);
-            Assert.That(shutdownDoneAtEof, Is.False);
+            Assert.That(shutdownDoneAtClose, Is.False);
             Assert.That(host.EventLoopsTerminated, Is.True);
             Assert.That(host.ActiveChannelCount, Is.Zero);
         }
@@ -1182,8 +1182,15 @@ public class RlpxHostIntegrationTests
     private static async Task ReceiveUntilClosedAsync(Socket socket, CancellationToken cancellationToken)
     {
         byte[] buffer = new byte[256];
-        while (await socket.ReceiveAsync(buffer.AsMemory(), SocketFlags.None, cancellationToken) > 0)
+        try
         {
+            while (await socket.ReceiveAsync(buffer.AsMemory(), SocketFlags.None, cancellationToken) > 0)
+            {
+            }
+        }
+        catch (SocketException e) when (e.SocketErrorCode == SocketError.ConnectionReset)
+        {
+            // A reset also means the remote channel closed before the event loops terminated.
         }
     }
 
