@@ -13,6 +13,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.History;
 using Nethermind.Config;
@@ -1397,6 +1398,7 @@ internal static class TestRpcBlockchainExt
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
             new BlockForRpcFactory(),
-            new ForwardedNonceTracker(blockchain.BlockFinder, nonceStateReader ?? blockchain.StateReader)
+            new ForwardedNonceTracker(blockchain.BlockFinder, nonceStateReader ?? blockchain.StateReader),
+            blockchain.Container.Resolve<ProofWrapperService>()
         ));
 }

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -61,7 +62,8 @@ public class OptimismEthRpcModule(
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
     IBlockForRpcFactory blockForRpcFactory,
-    ForwardedNonceTracker nonceTracker)
+    ForwardedNonceTracker nonceTracker,
+    ProofWrapperService proofWrapperService)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
         blockFinder,
@@ -81,7 +83,8 @@ public class OptimismEthRpcModule(
         secondsPerSlot,
         headBlockSignal,
         capabilitiesProvider,
-        blockForRpcFactory), IOptimismEthRpcModule
+        blockForRpcFactory,
+        proofWrapperService), IOptimismEthRpcModule
 {
     internal ForwardedNonceTracker NonceTracker => nonceTracker;
 

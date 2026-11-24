@@ -13,7 +13,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -38,7 +37,6 @@ public class AuRaMergeBlockProcessor(
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager,
     IAuRaValidator? validator,
-    ILeanProofVerifier leanProofVerifier,
     ITxFilter? txFilter = null,
     AuRaContractGasLimitOverride? gasLimitOverride = null,
     ContractRewriter? contractRewriter = null)
@@ -56,7 +54,6 @@ public class AuRaMergeBlockProcessor(
         executionRequestsProcessor,
         balManager,
         validator,
-        leanProofVerifier,
         txFilter,
         gasLimitOverride,
         contractRewriter)

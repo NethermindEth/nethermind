@@ -148,9 +148,9 @@ public class XdcBlockForRpcTests
     public async Task Xdc_chain_resolves_the_xdc_models_over_the_default_ones()
     {
         using XdcTestBlockchain chain = await XdcTestBlockchain.Create(blocksToAdd: 1);
-        // Decorators may wrap the factory, so the model it creates is what shows the XDC one is in use.
         IBlockForRpcFactory factory = chain.Container.Resolve<IBlockForRpcFactory>();
 
+        Assert.That(factory, Is.TypeOf<XdcBlockForRpcFactory>());
         Assert.That(factory.Create(chain.BlockTree.Head!, false, chain.SpecProvider), Is.TypeOf<XdcBlockForRpc>());
     }
 

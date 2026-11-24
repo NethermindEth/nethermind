@@ -928,6 +928,7 @@ public abstract class BlockchainTestBase
                 RlpReader blockReader = new(rlpBytes);
                 suggestedBlock = blockDecoder.DecodeComplete(ref blockReader);
                 rejectionRecorder.Register(suggestedBlock.Hash!, i);
+                if (testBlockJson.DeliveredDependencyProof is { } dependencyProof) suggestedBlock.StarkProof = Bytes.FromHexString(dependencyProof);
                 // The list travels beside the block, as it does over the network, so a list that does not match
                 // the header is dropped as the client's sync drops a peer's. One the header commits to but the
                 // decoder rejects throws here, and the block is invalid.

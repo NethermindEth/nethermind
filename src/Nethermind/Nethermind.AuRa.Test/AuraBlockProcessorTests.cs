@@ -13,6 +13,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
@@ -299,7 +300,6 @@ namespace Nethermind.AuRa.Test
                 new ExecutionRequestsProcessor(transactionProcessor),
                 balManager,
                 auRaValidator: null,
-                leanProofVerifier: Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>(),
                 txFilter,
                 contractRewriter: contractRewriter);
 
@@ -308,7 +308,8 @@ namespace Nethermind.AuRa.Test
                 GnosisSpecProvider.Instance,
                 stateProvider,
                 blockhashProvider,
-                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
+                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>(), transactionProcessor,
+                    new InclusionListProofService(Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>())),
                 LimboLogs.Instance,
                 Substitute.For<IWorldStateManager>());
 

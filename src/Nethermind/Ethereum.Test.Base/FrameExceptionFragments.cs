@@ -63,6 +63,13 @@ public static class FrameExceptionFragments
         FrameTxValidation.KeyedNoncesNotEnabled,
         FrameTxValidation.LegacyNonceNotAllowed,
         FrameTxValidation.MalformedNonceKeySet,
+        FrameTxValidation.DependencyFrameShape,
+        FrameTxValidation.DependencyFrameInAtomicBatch,
+        FrameTxValidation.DependencyFrameDataLength,
+        FrameTxValidation.TooManyDependenciesPerFrame,
+        FrameTxValidation.DependencyPaddingNotZero,
+        FrameTxValidation.InvalidDependencyScheme,
+        FrameTxValidation.DependencyFrameGasMismatch,
         // The fixtures file a signer that does not match as a format failure, and a signature that
         // does not verify as a signature failure.
         FrameTxSignatureValidator.InvalidSecp256k1Signer,

@@ -49,18 +49,14 @@ public static class Eip8288Constants
     /// <summary>Maximum encoded native direct witness or proof buffer the pinned backend accepts, such as a mode-0 leanSTARK proof.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
 
-    /// <summary>Local bound (1.25 MiB) on every serialized recursive aggregate proof of the pinned <see cref="AggregatedVk"/>
-    /// guest, including a private recursive input, in blocks, wrappers and inclusion lists alike, checked before proof decoding
-    /// or verification.</summary>
-    /// <remarks>Not an EIP-8288 constant: the EIP no longer bounds <c>stark_proof</c> and leaves its size to the proof system.
-    /// This is a pinned-prover limit with margin above the leanSPHINCS guest's measured 236–278 KB proofs (about 259 KB with mixed dependencies); a guest or key change
-    /// must revisit it.</remarks>
-    public const int MaxAggregateProofBytes = 1_310_720;
+    /// <summary>EIP-8288 <c>MAX_DEPENDENCY_PROOF_BYTES</c> (1 MiB), also applied to every other aggregate proof (wrappers,
+    /// inclusion lists) so none is produced or accepted that a block could not carry.</summary>
+    public const int MaxAggregateProofBytes = 1_048_576;
 
     /// <summary>EIP-8288 <c>MAX_IL_PROOF_BYTES</c> (1.25 MiB): the bound on an inclusion list's serialized SSZ
     /// <c>InclusionListProof</c> container, both fields and their offsets included, plus the four-byte offset the container
     /// adds to the signed <c>InclusionList</c>.</summary>
-    /// <remarks>Provisional, like <see cref="MaxAggregateProofBytes"/>.</remarks>
+    /// <remarks>Provisional.</remarks>
     public const int MaxIlProofBytes = 1_310_720;
 
     /// <summary>Fixed bytes counted against <see cref="MaxIlProofBytes"/> besides both fields: the container's two field offsets

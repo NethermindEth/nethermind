@@ -110,7 +110,6 @@ public class BlockForRpc
         BlockAccessListHash = block.Header.BlockAccessListHash;
         DependencyProofHash = block.Header.RecursiveStark?.DependencyProofHash;
         BlockDepsHash = block.Header.RecursiveStark?.BlockDepsHash;
-        if (includeFullTransactionData) DependencyProof = block.StarkProof;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -184,10 +183,6 @@ public class BlockForRpc
     /// <summary>EIP-8288 header <c>block_deps_hash</c>; null before the fork.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? BlockDepsHash { get; set; }
-
-    /// <summary>EIP-8288 <c>dependency_proof</c>, given with full transaction data only; null before the fork or when not available.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public byte[]? DependencyProof { get; set; }
 
     private static BlockTransactions GetTransactionHashes(Transaction[] transactions)
     {

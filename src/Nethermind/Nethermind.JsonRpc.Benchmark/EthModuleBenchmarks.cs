@@ -12,6 +12,7 @@ using Nethermind.History;
 using Nethermind.Synchronization;
 using NSubstitute;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -96,7 +97,8 @@ namespace Nethermind.JsonRpc.Benchmark
                     Substitute.For<ISyncPointers>(),
                     Substitute.For<IHistoryConfig>(),
                     Substitute.For<IHistoryPruner>()),
-                new BlockForRpcFactory());
+                new BlockForRpcFactory(),
+                _container.Resolve<ProofWrapperService>());
         }
 
         [GlobalCleanup]

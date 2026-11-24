@@ -63,19 +63,9 @@ public partial class EthRpcModule
         if ((BlockchainBridge.GetUnsupportedBlockOverrideError(blockOverride) ?? StateOverrideValidation.GetStorageConflictError(stateOverride)) is { } overrideError)
             return Result<FrameForRpc[]>.Fail(overrideError);
         IReleaseSpec spec = _specProvider.GetSpec(blockOverride?.ApplyTo(header) ?? header);
-        FrameForRpc[]? requested = request.Frames;
-        FrameForRpc[]? input = WithDependencyFrameGas(requested);
-        Result<Transaction> converted;
-        request.Frames = input;
-        try
-        {
-            converted = request.ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: false, checksFork: checksFork);
-        }
-        finally
-        {
-            request.Frames = requested;
-        }
-
+        FrameForRpc[]? input = WithDependencyFrameGas(request.Frames);
+        Result<Transaction> converted = request.WithFrames(input)
+            .ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: false, checksFork: checksFork);
         if (!converted.Success(out Transaction? tx, out string? error)) return Result<FrameForRpc[]>.Fail(error);
         tx.ChainId = _blockchainBridge.GetChainId();
         if (!FrameTxValidation.IsWellFormed(tx, spec, out error)) return Result<FrameForRpc[]>.Fail(error!);

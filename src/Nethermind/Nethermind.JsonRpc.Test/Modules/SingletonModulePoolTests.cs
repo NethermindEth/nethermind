@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Consensus.ProofAggregation;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -73,7 +75,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Substitute.For<IHistoryPruner>()),
                 new BlockForRpcFactory(),
                 new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Substitute.For<IHeaderStore>(), blockTree, Substitute.For<ISpecProvider>()),
-                Substitute.For<IReceiptStorage>());
+                Substitute.For<IReceiptStorage>(),
+                new ProofWrapperService(txPool, Substitute.For<ISpecProvider>(), blockTree, new LeanProofStore(FrameTxSigHash.ComputeValue),
+                    Substitute.For<ILeanProofVerifier>()));
             return Task.CompletedTask;
         }
 
