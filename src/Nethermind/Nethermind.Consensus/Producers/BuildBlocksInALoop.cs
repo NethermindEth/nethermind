@@ -13,6 +13,7 @@ namespace Nethermind.Consensus.Producers
         private readonly CancellationTokenSource _loopCancellationTokenSource = new();
         private readonly Lock _loopTaskLock = new();
         private Task? _loopTask;
+        private Task? _disposeTask;
         protected ILogger Logger { get; }
 
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
@@ -28,26 +29,24 @@ namespace Nethermind.Consensus.Producers
 
         public void StartLoop()
         {
-            if (_loopTask is null)
+            lock (_loopTaskLock)
             {
-                lock (_loopTaskLock)
+                if (_disposeTask is not null) return;
+                _loopTask ??= Task.Run(ProducerLoop, _loopCancellationTokenSource.Token).ContinueWith(t =>
                 {
-                    _loopTask ??= Task.Run(ProducerLoop, _loopCancellationTokenSource.Token).ContinueWith(t =>
+                    if (t.IsFaulted)
                     {
-                        if (t.IsFaulted)
-                        {
-                            if (Logger.IsError) Logger.Error($"Block producer encountered an exception.", t.Exception);
-                        }
-                        else if (t.IsCanceled)
-                        {
-                            if (Logger.IsDebug) Logger.Debug($"Block producer stopped.");
-                        }
-                        else if (t.IsCompleted)
-                        {
-                            if (Logger.IsDebug) Logger.Debug($"Block producer complete.");
-                        }
-                    });
-                }
+                        if (Logger.IsError) Logger.Error($"Block producer encountered an exception.", t.Exception);
+                    }
+                    else if (t.IsCanceled)
+                    {
+                        if (Logger.IsDebug) Logger.Debug($"Block producer stopped.");
+                    }
+                    else if (t.IsCompleted)
+                    {
+                        if (Logger.IsDebug) Logger.Debug($"Block producer complete.");
+                    }
+                });
             }
         }
 
@@ -66,9 +65,17 @@ namespace Nethermind.Consensus.Producers
             return args.BlockProductionTask;
         }
 
-        public async ValueTask DisposeAsync()
+        public ValueTask DisposeAsync()
         {
-            _loopCancellationTokenSource.Cancel();
+            lock (_loopTaskLock)
+            {
+                return new(_disposeTask ??= StopLoopAsync());
+            }
+        }
+
+        private async Task StopLoopAsync()
+        {
+            await _loopCancellationTokenSource.CancelAsync();
             if (_loopTask is not null)
             {
                 await _loopTask;
