@@ -32,6 +32,9 @@ public static class GossipTopics
     /// <summary>Gloas <c>payload_attestation_message</c> (EIP-7732).</summary>
     public const string PayloadAttestationMessage = "payload_attestation_message";
 
+    /// <summary>phase0/p2p-interface.md <c>ATTESTATION_SUBNET_COUNT</c>.</summary>
+    public const ulong AttestationSubnetCount = 64;
+
     // voluntary_exit and proposer_slashing are not subscribed: nothing consumes them and a message cannot be forwarded before full validation.
     /// <summary>The topic names the gossip router subscribes to on every digest, pre-Gloas.</summary>
     public static readonly string[] SubscribedTopicNames = [BeaconBlock, BeaconAggregateAndProof, AttesterSlashing];
@@ -43,6 +46,7 @@ public static class GossipTopics
     private const string TopicSuffix = "/ssz_snappy";
     private const int DigestHexLength = 8;
     private const string DataColumnSidecarPrefix = "data_column_sidecar_";
+    private const string BeaconAttestationPrefix = "beacon_attestation_";
     private const ulong EpochsKeptAfterFork = 2;
     private const ulong EpochsJoinedBeforeFork = 1;
 
@@ -55,7 +59,10 @@ public static class GossipTopics
         "execution_payload_bid", ExecutionPayload, PayloadAttestationMessage, "proposer_preferences",
     ];
 
-    private static readonly string[] SubnetTopicPrefixes = ["beacon_attestation_", "sync_committee_", "blob_sidecar_", DataColumnSidecarPrefix];
+    private static readonly string[] SubnetTopicPrefixes = [BeaconAttestationPrefix, "sync_committee_", "blob_sidecar_", DataColumnSidecarPrefix];
+
+    /// <summary>The <c>beacon_attestation_{subnet_id}</c> topic name of each attestation subnet, indexed by subnet.</summary>
+    public static readonly string[] BeaconAttestationTopicNames = CreateBeaconAttestationTopicNames();
 
     /// <summary>Builds the full topic string for a fork digest and topic name.</summary>
     public static string Topic(byte[] forkDigest, string name) => $"/eth2/{forkDigest.ToHexString()}/{name}/ssz_snappy";
@@ -115,20 +122,42 @@ public static class GossipTopics
     /// <summary>Whether <paramref name="name"/> is a <c>data_column_sidecar_{subnet_id}</c> topic name.</summary>
     /// <param name="name">The topic name.</param>
     /// <param name="subnetId">The subnet the name carries, or <see cref="ulong.MaxValue"/> when its decimal digits overflow.</param>
-    public static bool TryParseDataColumnSidecarTopicName(string name, out ulong subnetId)
+    public static bool TryParseDataColumnSidecarTopicName(string name, out ulong subnetId) => TryParseSubnetTopicName(name, DataColumnSidecarPrefix, out subnetId);
+
+    /// <summary>Whether <paramref name="name"/> is a <c>beacon_attestation_{subnet_id}</c> topic name.</summary>
+    /// <param name="name">The topic name.</param>
+    /// <param name="subnetId">The subnet the name carries, or <see cref="ulong.MaxValue"/> when its decimal digits overflow.</param>
+    public static bool TryParseBeaconAttestationTopicName(string name, out ulong subnetId) => TryParseSubnetTopicName(name, BeaconAttestationPrefix, out subnetId);
+
+    /// <summary>phase0/validator.md <c>compute_subnet_for_attestation</c>.</summary>
+    public static ulong ComputeSubnetForAttestation(ulong committeesPerSlot, ulong slot, ulong committeeIndex) =>
+        (committeesPerSlot * (slot % Presets.SlotsPerEpoch) + committeeIndex) % AttestationSubnetCount;
+
+    private static bool TryParseSubnetTopicName(string name, string prefix, out ulong subnetId)
     {
         subnetId = 0;
-        if (!name.StartsWith(DataColumnSidecarPrefix, StringComparison.Ordinal) || !IsDecimal(name.AsSpan(DataColumnSidecarPrefix.Length)))
+        if (!name.StartsWith(prefix, StringComparison.Ordinal) || !IsDecimal(name.AsSpan(prefix.Length)))
         {
             return false;
         }
 
-        if (!ulong.TryParse(name.AsSpan(DataColumnSidecarPrefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out subnetId))
+        if (!ulong.TryParse(name.AsSpan(prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out subnetId))
         {
             subnetId = ulong.MaxValue;
         }
 
         return true;
+    }
+
+    private static string[] CreateBeaconAttestationTopicNames()
+    {
+        string[] names = new string[AttestationSubnetCount];
+        for (ulong subnet = 0; subnet < AttestationSubnetCount; subnet++)
+        {
+            names[subnet] = $"{BeaconAttestationPrefix}{subnet}";
+        }
+
+        return names;
     }
 
     private static bool IsDecimal(ReadOnlySpan<char> value) => !value.IsEmpty && !value.ContainsAnyExceptInRange('0', '9');

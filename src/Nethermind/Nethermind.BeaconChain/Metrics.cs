@@ -36,6 +36,7 @@ public class Metrics
     internal static ulong WorkerFaultsCount;
     internal static ulong ValidatorAttestationsSubmittedCount;
     internal static ulong ValidatorSignerFailuresCount;
+    internal static ulong ValidatorAggregatesSubmittedCount;
     private static long _headSlotDelay;
     private static int _peerCount;
     private static long _lastBlockImportMs;
@@ -142,4 +143,10 @@ public class Metrics
     [CounterMetric]
     [Description("Signing requests the remote signer refused or did not answer.")]
     public static ulong BeaconChainValidatorSignerFailures { get => Volatile.Read(ref ValidatorSignerFailuresCount); set => Volatile.Write(ref ValidatorSignerFailuresCount, value); }
+    [CounterMetric]
+    [Description("Aggregates of the configured validators that the node accepted and published.")]
+    public static ulong BeaconChainValidatorAggregatesSubmitted { get => Volatile.Read(ref ValidatorAggregatesSubmittedCount); set => Volatile.Write(ref ValidatorAggregatesSubmittedCount, value); }
+    [KeyIsLabel("reason")]
+    [Description("Aggregation duties of the configured validators that published no aggregate, by closed-cardinality reason.")]
+    public static ConcurrentDictionary<StringLabel, long> BeaconChainValidatorAggregationsSkipped { get; } = new();
 }

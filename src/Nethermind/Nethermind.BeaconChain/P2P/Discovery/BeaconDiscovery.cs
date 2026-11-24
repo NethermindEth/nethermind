@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
@@ -297,6 +298,22 @@ public sealed class BeaconDiscovery(
 
         if (_logger.IsInfo) _logger.Info($"Updated beacon chain ENR to {_localEnr.ForkId}, sequence {LocalNodeRecord.EnrSequence}");
         return true;
+    }
+
+    /// <summary>Republishes the ENR with <paramref name="attnets"/> under its <c>attnets</c> entry, with a bumped sequence number when it changed.</summary>
+    /// <remarks>phase0/p2p-interface.md: the ENR MUST carry <c>MetaData.attnets</c> while any bit is set. Before <see cref="Start"/> there is no record to update.</remarks>
+    internal void UpdateLocalAttnets(BitArray attnets)
+    {
+        lock (_enrLock)
+        {
+            if (_localEnr is null) return;
+            byte[] bytes = new byte[(attnets.Length + 7) / 8];
+            attnets.CopyTo(bytes, 0);
+            byte[]? advertised = attnets.HasAnySet() ? bytes : null;
+            // EIP-778: persist before publication so a restart cannot reuse a sequence peers may already hold.
+            PersistEnrSequence(LocalNodeRecord.EnrSequence + 1);
+            if (_localEnr.UpdateAttnets(advertised) && _logger.IsDebug) _logger.Debug($"Updated beacon chain ENR attnets, sequence {LocalNodeRecord.EnrSequence}");
+        }
     }
 
     public async Task Stop()

@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
-using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
-using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
@@ -13,8 +10,8 @@ using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Libp2p.Protocols.Pubsub;
 using Snappier;
-using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.BeaconChain.ValidatorApi;
 
@@ -23,30 +20,37 @@ namespace Nethermind.BeaconChain.ValidatorApi;
 /// <para>
 /// Every call reads one <see cref="HeadSnapshot"/>, whose post-state and fork-choice copy are never mutated after publication,
 /// so no call waits for the import worker. A submitted attestation is checked as gossip against that snapshot on the calling
-/// thread, published, and only then queued to the worker for fork choice.
+/// thread by <see cref="SingleAttestationValidator"/>, which also adds it to the <see cref="AttestationPool"/> aggregates are
+/// served from, published, and only then queued to the worker for fork choice.
+/// </para>
+/// <para>
+/// A submitted aggregate goes through the <c>beacon_aggregate_and_proof</c> checks a gossip aggregate does: the stateless ones in
+/// <see cref="GossipRouter"/> on the calling thread, then the aggregator's and the aggregate's on the worker, which feeds it to fork
+/// choice. The call waits for that verdict, at most a third of a slot, and publishes the aggregate once accepted.
 /// </para>
 /// <para>
 /// The worker captures head states only while <see cref="HeadSnapshotHolder.CaptureState"/> is set. The first call that needs
 /// one sets it, so a node without a validator client pays nothing, and that call is refused as not ready.
 /// </para>
-/// <para>Only the attest path is served; a Gloas head or slot is refused as not supported.</para>
+/// <para>Only the attest and aggregate paths are served; a Gloas head or slot is refused as not supported.</para>
 /// </remarks>
 public sealed class BeaconNodeValidatorApi(
     BeaconChainSpec spec,
     SlotClock slotClock,
     HeadSnapshotHolder headSnapshots,
-    PubkeyCache pubkeys,
     IEngineDriver engine,
     BeaconSyncOrchestrator orchestrator,
-    BeaconP2P p2p) : IBeaconNodeValidatorApi
+    BeaconP2P p2p,
+    GossipRouter gossip,
+    SingleAttestationValidator attestationValidator,
+    AttestationPool attestationPool,
+    AttestationSubnets attestationSubnets) : IBeaconNodeValidatorApi
 {
     /// <summary>Slots the head may lag the wall clock by and still count as synced, as <c>/eth/v1/node/syncing</c> counts them.</summary>
     private const ulong ReadySyncDistance = 1;
 
-    /// <summary>phase0/p2p-interface.md <c>ATTESTATION_SUBNET_COUNT</c>.</summary>
-    private const ulong AttestationSubnetCount = 64;
-
-    private readonly CommitteeCacheLru _committees = new();
+    /// <summary>The longest a submitted aggregate waits for the worker's verdict: a third of a slot, so an aggregate due two thirds into its slot is still published within it.</summary>
+    private readonly TimeSpan _aggregateVerdictTimeout = TimeSpan.FromMilliseconds(spec.SecondsPerSlot * 1000 * GloasTiming.AttestationDueBps / Presets.BasisPoints);
 
     /// <summary>Publishes a gossip message on a topic, subscribed or not; tests script it, otherwise <see cref="BeaconP2P.Publish"/>.</summary>
     internal Action<string, byte[]> PublishGossip { get; set; } = p2p.Publish;
@@ -84,7 +88,7 @@ public sealed class BeaconNodeValidatorApi(
         if (epoch > headEpoch + 1) throw NotReady($"The head at epoch {headEpoch} is too far behind to know the committees of epoch {epoch}.");
         if (epoch + 1 < headEpoch) throw InvalidRequest($"Epoch {epoch} is before the previous epoch of the head at epoch {headEpoch}.");
 
-        CommitteeCache committees = GetCommittees(state, epoch);
+        CommitteeCache committees = attestationValidator.GetCommittees(state, epoch);
         ReadOnlySpan<Validator> validators = state.ReadOnlyValidators;
         HashSet<ulong> wanted = [.. validatorIndices];
         List<AttesterDuty> duties = [];
@@ -173,7 +177,7 @@ public sealed class BeaconNodeValidatorApi(
     {
         ulong epoch = spec.GetEpoch(slot);
         RefuseGloas(epoch);
-        (ulong earliestSlot, ulong latestSlot) = CurrentSlots();
+        (ulong earliestSlot, ulong latestSlot) = attestationValidator.CurrentSlots();
         if (slot < earliestSlot || slot > latestSlot) throw InvalidRequest($"Slot {slot} is not the current slot {slotClock.CurrentSlot}.");
         (HeadSnapshot head, BeaconStateFulu state) = RequireHeadState();
         SyncingStatus status = Status(head);
@@ -206,20 +210,17 @@ public sealed class BeaconNodeValidatorApi(
             if (attestation.Data is { } data) RefuseGloas(spec.GetEpoch(data.Slot));
         }
 
-        (HeadSnapshot head, BeaconStateFulu state) = RequireHeadState();
-        ForkChoiceSnapshot forkChoice = head.ForkChoice ?? throw NotReady("The node has no fork-choice view yet.");
-        Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = [with(forkChoice.Nodes.Count)];
-        foreach (ForkChoiceSnapshotNode node in forkChoice.Nodes) nodes[node.Root] = node;
+        HeadSnapshot head = RequireHeadState().Head;
+        if (head.ForkChoice is null) throw NotReady("The node has no fork-choice view yet.");
 
-        (ulong earliestSlot, ulong latestSlot) = CurrentSlots();
         List<SubmissionFailure> failures = [];
         for (int i = 0; i < attestations.Count; i++)
         {
             SingleAttestation attestation = attestations[i];
-            string? refusal = Validate(attestation, state, forkChoice.FinalizedCheckpoint, nodes, earliestSlot, latestSlot, out ulong subnet, out Attestation? vote)
-                ?? Publish(attestation, subnet);
+            AttestationCheck check = attestationValidator.Check(attestation, subnet: null);
+            string? refusal = check.Refusal ?? Publish(attestation, check.Subnet);
             if (refusal is null)
-                orchestrator.QueueGossipAttestation(vote!);
+                orchestrator.QueueGossipAttestation(check.Vote!);
             else
                 failures.Add(new SubmissionFailure(i, refusal));
         }
@@ -228,16 +229,75 @@ public sealed class BeaconNodeValidatorApi(
     }
 
     /// <inheritdoc/>
-    public ValueTask SubscribeToBeaconCommittees(IReadOnlyList<BeaconCommitteeSubscription> subscriptions, CancellationToken cancellationToken) =>
-        throw NotServed("POST /eth/v1/validator/beacon_committee_subscriptions");
+    /// <remarks>
+    /// An aggregator's subnet is joined from <see cref="AttestationSubnets.JoinLeadSlots"/> before its slot until the slot has passed
+    /// (<see cref="AttestationSubnets"/>); a subscription that does not aggregate needs nothing joined, as its attestation is published by
+    /// fanout. A subscription for a slot that has passed is ignored.
+    /// </remarks>
+    /// <exception cref="BeaconNodeApiException">
+    /// <see cref="BeaconNodeApiError.InvalidRequest"/> for a committee outside its slot's committee count or a slot after the next epoch,
+    /// and <see cref="BeaconNodeApiError.NotSupported"/> for a Gloas slot; then nothing is subscribed.
+    /// </exception>
+    public ValueTask SubscribeToBeaconCommittees(IReadOnlyList<BeaconCommitteeSubscription> subscriptions, CancellationToken cancellationToken)
+    {
+        ulong currentSlot = slotClock.CurrentSlot;
+        ulong endSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(slotClock.CurrentEpoch + 2);
+        foreach (BeaconCommitteeSubscription subscription in subscriptions)
+        {
+            if (subscription.CommitteesAtSlot is 0 or > Presets.MaxCommitteesPerSlot || subscription.CommitteeIndex >= subscription.CommitteesAtSlot)
+                throw InvalidRequest($"Committee {subscription.CommitteeIndex} is not one of the {subscription.CommitteesAtSlot} committees of slot {subscription.Slot}.");
+            if (subscription.Slot >= endSlot) throw InvalidRequest($"Slot {subscription.Slot} is after the epoch following the current epoch {slotClock.CurrentEpoch}.");
+            RefuseGloas(spec.GetEpoch(subscription.Slot));
+        }
+
+        // Checking the attestations of a joined subnet needs the head state.
+        headSnapshots.CaptureState = true;
+        foreach (BeaconCommitteeSubscription subscription in subscriptions)
+        {
+            if (subscription.IsAggregator && subscription.Slot >= currentSlot)
+                attestationSubnets.Add(GossipTopics.ComputeSubnetForAttestation(subscription.CommitteesAtSlot, subscription.Slot, subscription.CommitteeIndex), subscription.Slot);
+        }
+
+        attestationSubnets.Update(currentSlot);
+        return default;
+    }
 
     /// <inheritdoc/>
-    public ValueTask<Attestation> GetAggregateAttestation(ulong slot, Hash256 attestationDataRoot, ulong committeeIndex, CancellationToken cancellationToken) =>
-        throw NotServed("GET /eth/v2/validator/aggregate_attestation");
+    /// <remarks>Served from the <see cref="AttestationPool"/>, which aggregates every attestation the node validated for the vote.</remarks>
+    public ValueTask<Attestation> GetAggregateAttestation(ulong slot, Hash256 attestationDataRoot, ulong committeeIndex, CancellationToken cancellationToken)
+    {
+        RefuseGloas(spec.GetEpoch(slot));
+        return new(attestationPool.GetAggregate(slot, attestationDataRoot, committeeIndex)
+            ?? throw new BeaconNodeApiException(BeaconNodeApiError.NotFound, $"No attestation of committee {committeeIndex} at slot {slot} with data root {attestationDataRoot} is held."));
+    }
 
     /// <inheritdoc/>
-    public ValueTask<IReadOnlyList<SubmissionFailure>> SubmitAggregateAndProofs(IReadOnlyList<SignedAggregateAndProof> aggregates, CancellationToken cancellationToken) =>
-        throw NotServed("POST /eth/v2/validator/aggregate_and_proofs");
+    /// <remarks>
+    /// An aggregate ignored because gossip already covers it, by its aggregator or by a superset of its bits, is neither published
+    /// again nor refused: the network has it (p2p-interface.md <c>beacon_aggregate_and_proof</c> Seen).
+    /// </remarks>
+    /// <exception cref="BeaconNodeApiException"><see cref="BeaconNodeApiError.NotReady"/> before gossip has started.</exception>
+    public async ValueTask<IReadOnlyList<SubmissionFailure>> SubmitAggregateAndProofs(IReadOnlyList<SignedAggregateAndProof> aggregates, CancellationToken cancellationToken)
+    {
+        foreach (SignedAggregateAndProof aggregate in aggregates)
+        {
+            if (aggregate.Message?.Aggregate?.Data is { } data) RefuseGloas(spec.GetEpoch(data.Slot));
+        }
+
+        if (!orchestrator.GossipStarted) throw NotReady("Gossip has not started yet; the node is still catching up.");
+
+        Task<string?>[] submissions = new Task<string?>[aggregates.Count];
+        for (int i = 0; i < submissions.Length; i++) submissions[i] = SubmitAggregate(aggregates[i], cancellationToken);
+        string?[] refusals = await Task.WhenAll(submissions);
+
+        List<SubmissionFailure> failures = [];
+        for (int i = 0; i < refusals.Length; i++)
+        {
+            if (refusals[i] is { } refusal) failures.Add(new SubmissionFailure(i, refusal));
+        }
+
+        return failures;
+    }
 
     /// <inheritdoc/>
     public ValueTask PrepareBeaconProposers(IReadOnlyList<ProposerPreparation> preparations, CancellationToken cancellationToken) =>
@@ -266,6 +326,38 @@ public sealed class BeaconNodeValidatorApi(
     /// <inheritdoc/>
     public ValueTask<IReadOnlyList<SubmissionFailure>> SubmitContributionAndProofs(IReadOnlyList<SignedContributionAndProof> contributions, CancellationToken cancellationToken) =>
         throw NotServed("POST /eth/v1/validator/contribution_and_proofs");
+
+    /// <returns>Why the aggregate was not published, or <c>null</c>.</returns>
+    private async Task<string?> SubmitAggregate(SignedAggregateAndProof aggregate, CancellationToken cancellationToken)
+    {
+        if (aggregate.Message is not { Aggregate: { Data.Target: not null, CommitteeBits: { } committeeBits, AggregationBits: { } aggregationBits } attestation } message)
+            return "The aggregate has no attestation.";
+
+        byte[] compressed = Snappy.CompressToArray(SignedAggregateAndProof.Encode(aggregate));
+        TaskCompletionSource<MessageValidity> verdictGiven = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        GossipVerdict verdict = new(verdictGiven.TrySetResult, null);
+        MessageValidity checkedHere = gossip.Handle(GossipTopics.BeaconAggregateAndProof, gloasTopic: false, compressed, verdict);
+        if (!verdict.IsHandedOff) verdict.Complete(checkedHere);
+
+        MessageValidity validity;
+        try
+        {
+            validity = await verdictGiven.Task.WaitAsync(_aggregateVerdictTimeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            return "The node did not finish checking the aggregate in time.";
+        }
+
+        return validity switch
+        {
+            MessageValidity.Ignored when gossip.IsAggregateSeen(attestation.Data, committeeBits, aggregationBits, message.AggregatorIndex) => null,
+            MessageValidity.Accepted => Publish(GossipTopics.Topic(ForkDigest.Compute(spec, spec.GetEpoch(attestation.Data.Slot)), GossipTopics.BeaconAggregateAndProof), compressed, "aggregate"),
+            MessageValidity.Rejected => "The aggregate fails a beacon_aggregate_and_proof gossip rule.",
+            MessageValidity.Throttled => "The node is too busy to check the aggregate.",
+            _ => "The aggregate cannot be checked now, such as for a block the node does not know or a slot outside the current and previous epoch.",
+        };
+    }
 
     private SyncingStatus Status(HeadSnapshot? head)
     {
@@ -304,92 +396,23 @@ public sealed class BeaconNodeValidatorApi(
         if (epoch >= spec.GloasForkEpoch) throw NotSupported($"Epoch {epoch} is a Gloas epoch; this node serves validator duties up to Fulu.");
     }
 
-    /// <summary>The slots the wall clock may be in, allowing <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c> either way.</summary>
-    private (ulong Earliest, ulong Latest) CurrentSlots()
-    {
-        ulong currentSlot = slotClock.CurrentSlot;
-        long now = slotClock.UnixMilliseconds;
-        ulong latest = now + GossipRouter.MaximumGossipClockDisparityMs >= slotClock.SlotStartMilliseconds(currentSlot + 1) ? currentSlot + 1 : currentSlot;
-        ulong earliest = currentSlot > 0 && now - GossipRouter.MaximumGossipClockDisparityMs <= slotClock.SlotStartMilliseconds(currentSlot) ? currentSlot - 1 : currentSlot;
-        return (earliest, latest);
-    }
-
-    private CommitteeCache GetCommittees(BeaconStateFulu state, ulong epoch)
-    {
-        lock (_committees) return _committees.GetOrBuild(state, epoch);
-    }
-
-    /// <summary>The electra/p2p-interface.md <c>beacon_attestation_{subnet_id}</c> checks of a locally submitted attestation.</summary>
-    /// <returns>Why the attestation is refused, or <c>null</c> with its subnet and its fork-choice form.</returns>
-    private string? Validate(SingleAttestation attestation, BeaconStateFulu state, CheckpointRef finalized, Dictionary<Hash256, ForkChoiceSnapshotNode> nodes,
-        ulong earliestSlot, ulong latestSlot, out ulong subnet, out Attestation? vote)
-    {
-        subnet = 0;
-        vote = null;
-        if (attestation.Data is not { BeaconBlockRoot: { } blockRoot, Source: not null, Target: { Root: { } targetRoot } target } data) return "The attestation has no data.";
-        if (data.Index != 0) return "The attestation data index is not zero.";
-        if (data.Slot > latestSlot) return $"Slot {data.Slot} is in the future.";
-        ulong epoch = spec.GetEpoch(data.Slot);
-        if (epoch + 1 < spec.GetEpoch(earliestSlot)) return $"Epoch {epoch} is neither the current nor the previous epoch.";
-        if (target.Epoch != epoch) return $"Target epoch {target.Epoch} is not the epoch {epoch} of the slot.";
-        if (!nodes.ContainsKey(blockRoot)) return $"Block {blockRoot} is not known.";
-        ulong headEpoch = state.GetCurrentEpoch();
-        if (epoch > headEpoch + 1) return $"The head at epoch {headEpoch} is too far behind to know the committees of epoch {epoch}.";
-
-        CommitteeCache committees = GetCommittees(state, epoch);
-        if (attestation.CommitteeIndex >= (ulong)committees.CommitteesPerSlot) return $"Committee index {attestation.CommitteeIndex} is out of range ({committees.CommitteesPerSlot} committees per slot).";
-        ReadOnlySpan<int> committee = committees.GetBeaconCommittee(data.Slot, (int)attestation.CommitteeIndex);
-        int position = attestation.AttesterIndex < int.MaxValue ? committee.IndexOf((int)attestation.AttesterIndex) : -1;
-        if (position < 0) return $"Validator {attestation.AttesterIndex} is not in committee {attestation.CommitteeIndex} at slot {data.Slot}.";
-        if (!IsSignatureValid(state, attestation.AttesterIndex, data, attestation.Signature)) return "The signature is invalid.";
-        if (CheckpointBlock(nodes, blockRoot, epoch) != targetRoot) return $"Target {targetRoot} is not the checkpoint block of {blockRoot}.";
-        if (CheckpointBlock(nodes, blockRoot, finalized.Epoch) != finalized.Root) return $"Block {blockRoot} does not descend from the finalized checkpoint {finalized}.";
-
-        // phase0/validator.md compute_subnet_for_attestation.
-        subnet = ((ulong)committees.CommitteesPerSlot * (data.Slot % Presets.SlotsPerEpoch) + attestation.CommitteeIndex) % AttestationSubnetCount;
-        vote = new Attestation
-        {
-            AggregationBits = new BitArray(committee.Length) { [position] = true },
-            Data = data,
-            Signature = attestation.Signature,
-            CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [(int)attestation.CommitteeIndex] = true },
-        };
-        return null;
-    }
-
-    private bool IsSignatureValid(BeaconStateFulu state, ulong validatorIndex, AttestationData data, BlsSignature signature)
-    {
-        if (!SignatureSets.TryGetValidatorKey(pubkeys, state.ReadOnlyValidators, validatorIndex, out G1Affine key)) return false;
-        Hash256 domain = state.GetDomain(DomainType.BeaconAttester, data.Target!.Epoch);
-        return BlockSignatureBatch.Verify(key, signature, Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), domain), null);
-    }
-
     /// <returns>Why the attestation was not published, or <c>null</c>.</returns>
-    private string? Publish(SingleAttestation attestation, ulong subnet)
+    private string? Publish(SingleAttestation attestation, ulong subnet) =>
+        Publish(GossipTopics.Topic(ForkDigest.Compute(spec, spec.GetEpoch(attestation.Data!.Slot)), GossipTopics.BeaconAttestationTopicNames[subnet]),
+            Snappy.CompressToArray(SingleAttestation.Encode(attestation)), "attestation");
+
+    /// <returns>Why the message was not published, or <c>null</c>.</returns>
+    private string? Publish(string topic, byte[] message, string what)
     {
-        string topic = GossipTopics.Topic(ForkDigest.Compute(spec, spec.GetEpoch(attestation.Data!.Slot)), $"beacon_attestation_{subnet}");
         try
         {
-            PublishGossip(topic, Snappy.CompressToArray(SingleAttestation.Encode(attestation)));
+            PublishGossip(topic, message);
             return null;
         }
         catch (InvalidOperationException e)
         {
-            return $"The attestation was not published: {e.Message}";
+            return $"The {what} was not published: {e.Message}";
         }
-    }
-
-    /// <summary>fork-choice.md <c>get_checkpoint_block</c> over the snapshot: the latest block of <paramref name="blockRoot"/>'s chain at or before the first slot of <paramref name="epoch"/>.</summary>
-    /// <returns><c>null</c> when that block is below the snapshot.</returns>
-    private static Hash256? CheckpointBlock(Dictionary<Hash256, ForkChoiceSnapshotNode> nodes, Hash256 blockRoot, ulong epoch)
-    {
-        ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch);
-        for (ForkChoiceSnapshotNode? node = nodes.GetValueOrDefault(blockRoot); node is not null; node = node.ParentRoot is { } parent ? nodes.GetValueOrDefault(parent) : null)
-        {
-            if (node.Slot <= startSlot) return node.Root;
-        }
-
-        return null;
     }
 
     /// <summary><c>get_block_root_at_slot(state, compute_start_slot_at_epoch(epoch - 1) - 1)</c> on the head's chain, or the genesis block root when that underflows.</summary>

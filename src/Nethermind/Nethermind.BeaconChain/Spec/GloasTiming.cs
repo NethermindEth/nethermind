@@ -9,5 +9,6 @@ public static class GloasTiming
     public const ulong ProposerReorgCutoffBps = 1_667;
     public const ulong AttestationDueBps = 3_333;
     public const ulong AttestationDueBpsGloas = 2_500;
+    public const ulong AggregateDueBps = 6_667;
     public const ulong PayloadAttestationDueBps = 7_500;
 }

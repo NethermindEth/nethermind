@@ -229,6 +229,7 @@ public sealed class BeaconP2P : IAsyncDisposable
         [
             .. GossipTopics.SubscribedTopicNames,
             .. GossipTopics.GloasTopicNames,
+            .. GossipTopics.BeaconAttestationTopicNames,
             .. Enumerable.Range(0, (int)Eip7594DasConstants.DataColumnSidecarSubnetCount).Select(static subnet => GossipTopics.DataColumnSidecarTopicName((ulong)subnet)),
         ];
         foreach (ulong epoch in GossipTopics.DigestRotationEpochs(spec, 0).Prepend(0UL))

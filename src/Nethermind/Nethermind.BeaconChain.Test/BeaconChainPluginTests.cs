@@ -13,6 +13,7 @@ using Nethermind.Config;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.BeaconChain.ValidatorClient;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -96,7 +97,7 @@ public class BeaconChainPluginTests
         foreach (ulong epoch in GossipTopics.DigestRotationEpochs(spec, 0).Prepend(0UL))
         {
             byte[] digest = ForkDigest.Compute(spec, epoch);
-            string[] names = [.. GossipTopics.SubscribedTopicNames, .. GossipTopics.GloasTopicNames];
+            string[] names = [.. GossipTopics.SubscribedTopicNames, .. GossipTopics.GloasTopicNames, .. GossipTopics.BeaconAttestationTopicNames];
             for (ulong subnet = 0; subnet < Eip7594DasConstants.DataColumnSidecarSubnetCount; subnet++)
             {
                 names = [.. names, GossipTopics.DataColumnSidecarTopicName(subnet)];
@@ -166,6 +167,25 @@ public class BeaconChainPluginTests
 
         Assert.That(peerManager.UncustodiedSampledColumns(), Is.EqualTo(new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns).And.Not.Empty,
             "with no peer connected, every sampled column lacks a custodian");
+    }
+
+    [Test]
+    public void Plugin_wiring_shares_one_attestation_validator_and_subnet_set_between_gossip_the_orchestrator_and_the_validator_api()
+    {
+        List<(Type Consumer, Type Dependency, object? Instance)> resolved = [];
+        using IContainer container = BeaconChainTestContainer.BuildTrackingDependencies(BeaconChainTestContainer.Builder(), resolved, typeof(SingleAttestationValidator), typeof(AttestationSubnets));
+
+        container.Resolve<IBeaconNodeValidatorApi>();
+        object validator = container.Resolve<SingleAttestationValidator>();
+        object subnets = container.Resolve<AttestationSubnets>();
+
+        Assert.That(resolved.Select(r => (r.Consumer, r.Dependency, ReferenceEquals(r.Instance, r.Dependency == typeof(AttestationSubnets) ? subnets : validator))), Is.EquivalentTo(new[]
+        {
+            (typeof(GossipRouter), typeof(SingleAttestationValidator), true),
+            (typeof(BeaconSyncOrchestrator), typeof(AttestationSubnets), true),
+            (typeof(BeaconNodeValidatorApi), typeof(SingleAttestationValidator), true),
+            (typeof(BeaconNodeValidatorApi), typeof(AttestationSubnets), true),
+        }));
     }
 
     [Test]

@@ -101,6 +101,10 @@ public class GossipMessageValidatorTests
         yield return Case("payload attestation message is consumed", Topic(GloasDigest, GossipTopics.PayloadAttestationMessage), Encode(PtcVote(WallSlot)), MessageValidity.Ignored, typeof(PayloadAttestationMessage), null);
         yield return Case("payload attestation message on a Fulu digest", Topic(FuluDigest, GossipTopics.PayloadAttestationMessage), Encode(PtcVote(FuluSlot)), MessageValidity.Ignored, null, GossipDropReason.UnknownTopic);
         yield return Case("payload attestation message for a pre-Gloas slot", Topic(GloasDigest, GossipTopics.PayloadAttestationMessage), Encode(PtcVote(FuluSlot)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
+
+        yield return Case("attestation subnet past the last one", Topic(FuluDigest, "beacon_attestation_64"), validBlock, MessageValidity.Rejected, null, GossipDropReason.UnknownTopic);
+        yield return Case("attestation on a subnet this node has not joined", Topic(FuluDigest, GossipTopics.BeaconAttestationTopicNames[3]), validBlock, MessageValidity.Ignored, null, GossipDropReason.UnjoinedSubnet);
+        yield return Case("attestation on a Gloas digest", Topic(GloasDigest, GossipTopics.BeaconAttestationTopicNames[3]), validBlock, MessageValidity.Ignored, null, GossipDropReason.UnjoinedSubnet);
     }
 
     /// <summary>
@@ -136,7 +140,8 @@ public class GossipMessageValidatorTests
         (GossipMessageValidator validator, GossipRouter router, List<object> raised) = Create();
 
         string label = GossipTopics.TryParse(topic, out _, out string? name)
-            && (Array.IndexOf(GossipTopics.SubscribedTopicNames, name) >= 0 || Array.IndexOf(GossipTopics.GloasTopicNames, name) >= 0) ? name! : "unhandled";
+            && (Array.IndexOf(GossipTopics.SubscribedTopicNames, name) >= 0 || Array.IndexOf(GossipTopics.GloasTopicNames, name) >= 0 || Array.IndexOf(GossipTopics.BeaconAttestationTopicNames, name) >= 0)
+            ? name! : "unhandled";
         StringLabel key = new(label);
         long before = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key);
         MessageValidity validity = validator.Validate(Message(topic, data), GossipVerdict.None);

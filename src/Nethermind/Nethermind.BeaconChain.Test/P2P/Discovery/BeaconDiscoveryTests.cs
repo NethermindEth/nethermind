@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.BeaconChain.P2P.Discovery;
@@ -61,6 +62,24 @@ public class BeaconDiscoveryTests
         Assert.That(changed.Current.SeqNumber, Is.EqualTo(first.Current.SeqNumber + 1));
         Assert.That(changed.Current.CustodyGroupCount, Is.EqualTo(nextCount));
         Assert.That(restarted.Current.SeqNumber, Is.EqualTo(changed.Current.SeqNumber));
+    }
+
+    [Test]
+    public void Attnets_take_the_next_metadata_sequence_and_a_restart_starts_past_it_with_none()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        LocalMetadataSource running = new(new BeaconChainConfig(), new BeaconChainStore(db));
+        ulong startSequence = running.Current.SeqNumber;
+        BitArray attnets = new(Bytes.FromHexString("0x0100000000000080"));
+
+        running.SetAttnets(attnets);
+        LocalMetadataSource restarted = new(new BeaconChainConfig(), new BeaconChainStore(db));
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That((running.Current.SeqNumber, running.Current.Attnets), Is.EqualTo((startSequence + 1, attnets)));
+        Assert.That(running.Current.CustodyGroupCount, Is.EqualTo(restarted.Current.CustodyGroupCount));
+        Assert.That(restarted.Current.SeqNumber, Is.GreaterThan(running.Current.SeqNumber), "a restarted node advertises no subnet, so it must not reuse a sequence that did");
+        Assert.That(restarted.Current.Attnets, Is.EqualTo(new BitArray(64)));
     }
 
     [Test]

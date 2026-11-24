@@ -23,7 +23,7 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// <para>
 /// Past <paramref name="maxPending"/> messages or <paramref name="maxPendingBytes"/> bytes waiting for a verdict, or a fraction of the
 /// messages from one delivering peer, a new message is <see cref="MessageValidity.Throttled"/>: the router caches no id for it, so a
-/// later copy is checked, and charges its sender nothing. Aggregates and payload attestations are held to their own bound of
+/// later copy is checked, and charges its sender nothing. Attestations, aggregates and payload attestations are held to their own bound of
 /// <paramref name="maxPendingVotes"/> instead, the import worker's vote queue, so their volume cannot take the room of a block.
 /// New peers share a quarter of the vote queue. Each starts with a small allowance and earns one additional pending vote for each accepted
 /// vote, up to one eighth of the queue. After two accepted votes, a peer may use up to twice its earned allowance while fewer than one

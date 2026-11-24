@@ -64,6 +64,15 @@ public enum GossipDropReason
 
     /// <summary>A payload attestation from a peer that sent a vote for its slot that fork choice rejected.</summary>
     PayloadAttestationPeerRejected,
+
+    /// <summary>An attestation whose signature does not verify.</summary>
+    InvalidSignature,
+
+    /// <summary>A vote the published head cannot check, as before its state is captured or for an epoch outside its shuffling lookahead.</summary>
+    Unverifiable,
+
+    /// <summary>An attestation on a subnet this node has not joined.</summary>
+    UnjoinedSubnet,
 }
 
 /// <summary>
@@ -77,6 +86,8 @@ public enum GossipDropReason
 /// rules of each topic. Proposer signature and shuffling, parent-block checks and the aggregator's selection proof and
 /// signatures need the head state and run in the import pipeline consuming these events.
 /// A block or aggregate for the next slot that arrives early is held and raised once its slot starts.
+/// An attestation on a joined <c>beacon_attestation_{subnet_id}</c> subnet is the exception: <see cref="SingleAttestationValidator"/>
+/// checks every rule against the published head here, so it is accepted or refused before <see cref="AttestationReceived"/>.
 /// </remarks>
 /// <param name="store">Where a block's parent and an execution payload envelope's block and bid are read from; <c>null</c> holds no block, so every envelope passing the stateless rules is consumed unchecked.</param>
 /// <param name="status">Where the finalized checkpoint is read from; <c>null</c> applies no finalized-slot rule.</param>
@@ -85,8 +96,12 @@ public enum GossipDropReason
 /// Checks a Fulu block's header against the published fork-choice snapshot, lookahead and key cache, so the block is accepted, and forwarded,
 /// before its data and execution payload are; <c>null</c> leaves the verdict to the import pipeline.
 /// </param>
+/// <param name="attestations">
+/// Checks every <c>beacon_attestation_{subnet_id}</c> rule of an attestation on a joined subnet, so it is accepted or refused here;
+/// <c>null</c> ignores attestations.
+/// </param>
 public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILogManager logManager, BeaconChainStore? store = null, IBeaconChainStatusSource? status = null,
-    FailedBlockRoots? failedBlocks = null, ColumnGossipRouter? headers = null)
+    FailedBlockRoots? failedBlocks = null, ColumnGossipRouter? headers = null, SingleAttestationValidator? attestations = null)
 {
     /// <summary>The spec <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>.</summary>
     public const long MaximumGossipClockDisparityMs = 500;
@@ -97,6 +112,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     // Fixed-size SSZ: validator_index (8), PayloadAttestationData (32 + 8 + 1 + 1) and the BLS signature (96).
     private const int PayloadAttestationMessageSize = 146;
+
+    // Fixed-size SSZ: committee_index and attester_index (8 + 8), AttestationData (8 + 8 + 32 + 40 + 40) and the BLS signature (96).
+    private const int SingleAttestationSize = 240;
 
     internal const int SeenCacheSize = 2048;
     private const int SeenProposalCacheSize = 1024;
@@ -152,9 +170,16 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     // Apart from _seenMessages, so a flood of cheap distinct votes cannot evict the message ids of the other topics.
     private readonly LruKeyCache<ValueHash256> _seenPayloadAttestationMessages = new(SeenCacheSize, "beacon gossip seen payload attestation messages");
+    private readonly LruKeyCache<ValueHash256> _seenAttestationMessages = new(SeenCacheSize, "beacon gossip seen attestation messages");
     private readonly long[] _dropCounts = new long[Enum.GetValues<GossipDropReason>().Length];
     private readonly Lock _subscriptionLock = new();
     private readonly Dictionary<string, List<ITopic>> _subscriptions = [];
+
+    // The beacon_attestation_{subnet_id} topics of each subscribed pre-Gloas digest, indexed by subnet; null where not joined.
+    private readonly Dictionary<string, (byte[] Digest, ITopic?[] Topics)> _attestationTopics = [];
+
+    // One bit for each attestation subnet to join; written under _subscriptionLock, read on the network thread.
+    private ulong _attestationSubnets;
 
     // Written by the import worker once a block's proposer signature verifies; read on the network thread.
     private readonly LruKeyCache<(ulong Slot, ulong Proposer)> _seenProposals = new(SeenProposalCacheSize, "beacon gossip proposals");
@@ -208,6 +233,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     public event Action<AttesterSlashingGloas, GossipVerdict>? GloasAttesterSlashingReceived;
     public event Action<SignedExecutionPayloadEnvelope, GossipVerdict>? ExecutionPayloadEnvelopeReceived;
     public event Action<PayloadAttestationMessage, GossipVerdict>? PayloadAttestationMessageReceived;
+
+    /// <summary>Raised with an attestation on a joined subnet that passed every gossip rule, already accepted, in the form fork choice takes.</summary>
+    public event Action<Attestation>? AttestationReceived;
 
     public long GetDropCount(GossipDropReason reason) => Interlocked.Read(ref _dropCounts[(int)reason]);
     /// <summary>Whether a block with a valid proposer signature has been seen for <paramref name="slot"/> and <paramref name="proposerIndex"/>.</summary>
@@ -476,6 +504,13 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             }
 
             _subscriptions[key] = subscriptions;
+            if (!IsGloasDigest(forkDigest))
+            {
+                ITopic?[] attestationTopics = new ITopic?[GossipTopics.AttestationSubnetCount];
+                _attestationTopics[key] = (forkDigest, attestationTopics);
+                JoinAttestationSubnets(forkDigest, attestationTopics);
+            }
+
             if (_logger.IsInfo) _logger.Info($"Subscribed beacon gossip topics for fork digest 0x{key}");
         }
     }
@@ -496,7 +531,53 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 topic.Unsubscribe();
             }
 
+            if (_attestationTopics.Remove(key, out (byte[] Digest, ITopic?[] Topics) attestationTopics))
+            {
+                foreach (ITopic? topic in attestationTopics.Topics)
+                {
+                    topic?.Unsubscribe();
+                }
+            }
+
             if (_logger.IsInfo) _logger.Info($"Unsubscribed beacon gossip topics for fork digest 0x{key}");
+        }
+    }
+
+    /// <summary>Whether <paramref name="subnet"/> is set in the last <see cref="SetAttestationSubnets"/>.</summary>
+    internal bool IsAttestationSubnetJoined(ulong subnet) => subnet < GossipTopics.AttestationSubnetCount && (Volatile.Read(ref _attestationSubnets) >> (int)subnet & 1) != 0;
+
+    /// <summary>Joins the <c>beacon_attestation_{subnet_id}</c> topic of each subnet set in <paramref name="subnets"/> on every subscribed pre-Gloas digest, and leaves the others.</summary>
+    /// <param name="subnets">One bit for each subnet, subnet 0 lowest.</param>
+    /// <remarks>Digests subscribed later join the same subnets; before <see cref="Start"/> nothing is joined until then.</remarks>
+    internal void SetAttestationSubnets(ulong subnets)
+    {
+        lock (_subscriptionLock)
+        {
+            Volatile.Write(ref _attestationSubnets, subnets);
+            foreach ((byte[] digest, ITopic?[] topics) in _attestationTopics.Values)
+            {
+                JoinAttestationSubnets(digest, topics);
+            }
+        }
+    }
+
+    // Callers hold _subscriptionLock.
+    private void JoinAttestationSubnets(byte[] forkDigest, ITopic?[] topics)
+    {
+        for (int subnet = 0; subnet < topics.Length; subnet++)
+        {
+            bool wanted = (_attestationSubnets >> subnet & 1) != 0;
+            if (wanted && topics[subnet] is null)
+            {
+                ITopic topic = _getTopic!(GossipTopics.Topic(forkDigest, GossipTopics.BeaconAttestationTopicNames[subnet]));
+                topic.Subscribe();
+                topics[subnet] = topic;
+            }
+            else if (!wanted && topics[subnet] is { } joined)
+            {
+                joined.Unsubscribe();
+                topics[subnet] = null;
+            }
         }
     }
 
@@ -529,6 +610,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         GossipTopics.AttesterSlashing => gloasTopic ? HandleGloasAttesterSlashing(message, verdict) : HandleFuluAttesterSlashing(message, verdict),
         GossipTopics.ExecutionPayload => HandleExecutionPayloadEnvelope(message, verdict),
         GossipTopics.PayloadAttestationMessage => HandlePayloadAttestationMessage(message, verdict, source),
+        _ when GossipTopics.TryParseBeaconAttestationTopicName(name, out ulong subnet) && subnet < GossipTopics.AttestationSubnetCount => HandleAttestation(subnet, gloasTopic, message, verdict),
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown gossip topic name"),
     };
 
@@ -618,6 +700,34 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             PayloadAttestationMessageSize,
             _seenPayloadAttestationMessages,
             vote => ReleasePayloadAttestationAttempt(vote, source));
+    }
+
+    // Every rule runs in SingleAttestationValidator, so an attestation is accepted or refused here and its vote raised already accepted.
+    private MessageValidity HandleAttestation(ulong subnet, bool gloasTopic, ReadOnlySpan<byte> message, GossipVerdict verdict)
+    {
+        string name = GossipTopics.BeaconAttestationTopicNames[subnet];
+        if (attestations is not { } validator || gloasTopic || !IsAttestationSubnetJoined(subnet))
+        {
+            return Drop(name, GossipDropReason.UnjoinedSubnet, MessageValidity.Ignored);
+        }
+
+        Attestation? vote = null;
+        return Handle(name, message, verdict,
+            static payload => { SingleAttestation.Decode(payload, out SingleAttestation attestation); return attestation; },
+            attestation =>
+            {
+                AttestationCheck check = validator.Check(attestation, subnet);
+                vote = check.Vote;
+                return check.Validity switch
+                {
+                    MessageValidity.Accepted => Verdict.Settle(MessageValidity.Accepted),
+                    MessageValidity.Rejected => Verdict.Reject(check.Reason),
+                    _ => Verdict.Ignore(check.Reason),
+                };
+            },
+            (_, _) => AttestationReceived?.Invoke(vote!),
+            SingleAttestationSize,
+            _seenAttestationMessages);
     }
 
     private MessageValidity Handle<T>(string name, ReadOnlySpan<byte> message, GossipVerdict pendingVerdict, Func<byte[], T> decode, Func<T, Verdict?> validate, Action<T, GossipVerdict> raise,
