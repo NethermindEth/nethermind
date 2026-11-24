@@ -402,6 +402,22 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     }
                 }
 
+                // Not gated by Submitting: a submission reads the kept cells only after it has succeeded, under
+                // this lock, so a source stripped here is never blamed in place of a later session.
+                if (state.UnattributedCells is { } unattributedCells
+                    && unattributedCells.TryRemoveSource(peerId, out PendingCellsBuffer? remainingUnattributedCells))
+                {
+                    if (remainingUnattributedCells is { } retainedUnattributedCells
+                        && TryReplaceCellsAccounting(trackedHash, unattributedCells, retainedUnattributedCells))
+                    {
+                        state.UnattributedCells = retainedUnattributedCells;
+                    }
+                    else
+                    {
+                        ReleaseUnattributedCells(state);
+                    }
+                }
+
                 if (transactionRemoved)
                 {
                     transactionRetryPeer = state.Cells is { } cells
@@ -1439,7 +1455,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     /// Cell responses are all-or-nothing per transaction, so a peer asked for cells outside its
     /// announcement replies empty. Peers whose announcement covers the whole request are preferred;
     /// otherwise the request is trimmed to a partial announcer's mask and the caller keeps
-    /// selecting peers for the remainder.
+    /// selecting peers for the remainder. While cells from a failed proof check are kept for
+    /// attribution, the body peer is asked first when it covers the request.
     /// </remarks>
     private ISparseBlobPoolPeer? SelectPeer(
         TrackedSparseBlobTx state,
@@ -1452,6 +1469,20 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         if (state.Announcements.Count == 0)
         {
             return null;
+        }
+
+        // While cells from a failed check are kept, the body peer's own cells settle which side was wrong:
+        // they either verify against its proofs or fail as a same-source tuple.
+        if (state.UnattributedCells is not null
+            && state.TransactionPeer is { } transactionPeer
+            && state.Announcements.TryGetValue(transactionPeer.Id, out BlobCellMask transactionPeerMask)
+            && (transactionPeerMask & requestMask) == requestMask
+            && excludedPeers?.Contains(transactionPeer.Id) != true
+            && !state.AmbiguousFailureSources.Contains(transactionPeer.Id)
+            && !state.InFlightByPeer.ContainsKey(transactionPeer.Id)
+            && IsActivePeer(transactionPeer))
+        {
+            return transactionPeer;
         }
 
         ISparseBlobPoolPeer? lastResortPeer = null;
@@ -1580,6 +1611,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return HandleAttachFailure(hash, state, transactionPeer, cells.Value, error, failureSource);
         }
 
+        // The exact tuple handed to the pool, kept before the pool may replace the transaction's wrapper.
+        ShardBlobNetworkWrapper submittedWrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
         if (CancelSubmissionIfRequested(hash, state, transaction, originalWrapper))
         {
             return null;
@@ -1655,7 +1688,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 transactionPeer,
                 cells.Value,
                 $"Invalid sparse blob cell proofs for {hash}.",
-                SparseBlobAttachFailureSource.Ambiguous);
+                SparseBlobAttachFailureSource.Ambiguous,
+                proofCheckFailed: true);
         }
         else if (result == AcceptTxResult.Invalid)
         {
@@ -1669,6 +1703,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
         else if (result == AcceptTxResult.Accepted || result == AcceptTxResult.AlreadyKnown)
         {
+            PendingCellsBuffer? unattributedCells = null;
+            ISparseBlobPoolPeer?[]? unattributedCellSources = null;
             bool remove;
             lock (state.Lock)
             {
@@ -1684,12 +1720,30 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     RetainSubmittedAnnouncements(state);
                     ReleaseTransaction(state);
                     ReleaseCells(state);
+                    if (state.UnattributedCells is { } keptCells)
+                    {
+                        // Detached with its accounting, which AttributeUnattributedCells releases.
+                        unattributedCells = keptCells;
+                        unattributedCellSources = GetRegisteredSources(keptCells);
+                        state.UnattributedCells = null;
+                    }
+
                     state.Transaction = null;
                     state.TransactionPeer = null;
                     state.Cells = null;
                     state.AmbiguousValidationFailures = 0;
                     state.ExpiresAt = DateTimeOffset.MaxValue;
                 }
+            }
+
+            if (unattributedCells is { } detachedCells)
+            {
+                AttributeUnattributedCells(
+                    hash,
+                    transaction.BlobVersionedHashes,
+                    submittedWrapper,
+                    detachedCells,
+                    unattributedCellSources!);
             }
 
             if (remove)
@@ -1745,7 +1799,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         ISparseBlobPoolPeer? transactionPeer,
         PendingCellsBuffer cells,
         string? error,
-        SparseBlobAttachFailureSource failureSource)
+        SparseBlobAttachFailureSource failureSource,
+        bool proofCheckFailed = false)
     {
         if (failureSource == SparseBlobAttachFailureSource.Cells && cells.Sources.Length > 1)
         {
@@ -1792,14 +1847,42 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
             else if (failureSource == SparseBlobAttachFailureSource.Ambiguous)
             {
+                bool firstFailure = state.AmbiguousValidationFailures == 0;
                 state.AmbiguousValidationFailures++;
                 removeState = state.AmbiguousValidationFailures >= MaxAmbiguousValidationFailures;
-                transactionRetryPeer = SelectTransactionRetryPeer(cells, transactionPeer);
-                ReleaseTransaction(state);
-                ReleaseCells(state);
-                state.Transaction = null;
-                state.TransactionPeer = null;
+
+                // A failed proof check cannot tell a wrong proof from a wrong cell. Keep the first failed cells
+                // until a later check verifies cells at the same indices, which shows whether they were wrong.
+                bool keepUnattributedCells = proofCheckFailed
+                    && firstFailure
+                    && !removeState
+                    && state.UnattributedCells is null
+                    && state.Cells is not null;
+                if (keepUnattributedCells)
+                {
+                    state.UnattributedCells = state.Cells;
+                    state.UnattributedCellsExpiresAt = _timestamper.UtcNowOffset + EarlyCellsTtl;
+                }
+                else
+                {
+                    ReleaseCells(state);
+                }
+
                 state.Cells = null;
+
+                // Its own cells for the same indices then settle which side was wrong, so the body stays
+                // while its peer is still connected.
+                bool keepTransaction = keepUnattributedCells
+                    && transactionPeer is not null
+                    && ReferenceEquals(state.TransactionPeer, transactionPeer)
+                    && IsActivePeer(transactionPeer);
+                if (!keepTransaction)
+                {
+                    transactionRetryPeer = SelectTransactionRetryPeer(cells, transactionPeer);
+                    ReleaseTransaction(state);
+                    state.Transaction = null;
+                    state.TransactionPeer = null;
+                }
             }
             else if (failureSource == SparseBlobAttachFailureSource.Transaction)
             {
@@ -1869,6 +1952,158 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         return result;
     }
+
+    /// <summary>
+    /// Resolves the registered session of every source of <paramref name="cells"/>. Must be called under <c>state.Lock</c>.
+    /// </summary>
+    /// <remarks>
+    /// Peer cleanup strips a session's cells from the kept buffer before a new session under the same key is
+    /// registered, so a source still present here belongs to the registered session, if any.
+    /// </remarks>
+    private ISparseBlobPoolPeer?[] GetRegisteredSources(in PendingCellsBuffer cells)
+    {
+        ISparseBlobPoolPeer?[] sources = new ISparseBlobPoolPeer?[cells.Sources.Length];
+        for (int i = 0; i < sources.Length; i++)
+        {
+            sources[i] = _peers.TryGetValue(cells.Sources[i].PeerId, out ISparseBlobPoolPeer? peer) ? peer : null;
+        }
+
+        return sources;
+    }
+
+    /// <summary>
+    /// Disconnects the sources of cells from a failed proof check that differ from cells which have since verified,
+    /// then releases the kept cells. Must be called outside <c>state.Lock</c>.
+    /// </summary>
+    private void AttributeUnattributedCells(
+        Hash256 hash,
+        byte[][]? blobVersionedHashes,
+        ShardBlobNetworkWrapper verifiedWrapper,
+        in PendingCellsBuffer unattributedCells,
+        ISparseBlobPoolPeer?[] sources)
+    {
+        try
+        {
+            // Sources hold disjoint non-empty columns, so there are at most BlobCellMask.CellCount of them.
+            Span<bool> mismatched = sources.Length <= BlobCellMask.CellCount
+                ? stackalloc bool[sources.Length]
+                : new bool[sources.Length];
+            if (!FindMismatchedSources(blobVersionedHashes, verifiedWrapper, unattributedCells, mismatched))
+            {
+                return;
+            }
+
+            for (int i = 0; i < sources.Length; i++)
+            {
+                if (mismatched[i] && sources[i] is { IsClosing: false } peer)
+                {
+                    if (_logger.IsDebug)
+                    {
+                        _logger.Debug($"{peer.Id:hide} sent sparse blob cells for {hash} that differ from verified cells.");
+                    }
+
+                    peer.DisconnectSparseBlobPeer(DisconnectReason.BreachOfProtocol, $"Invalid sparse blob cells for {hash}.");
+                    RemovePeer(peer);
+                }
+            }
+        }
+        finally
+        {
+            ReleaseCells(hash.ValueHash256, unattributedCells);
+        }
+    }
+
+    /// <summary>
+    /// Marks the sources of <paramref name="cells"/> whose cells differ from <paramref name="verifiedWrapper"/>'s cells
+    /// at the indices both hold.
+    /// </summary>
+    /// <remarks>
+    /// The versioned hashes fix the commitments, and for a fixed commitment and index only one cell verifies. Once
+    /// the shared indices verify here, any other cell bytes at those indices are wrong, whichever peer sent the
+    /// proofs. A failed check proves nothing about a single source, so it never marks one.
+    /// </remarks>
+    /// <returns><c>true</c> when at least one source was marked.</returns>
+    private static bool FindMismatchedSources(
+        byte[][]? blobVersionedHashes,
+        ShardBlobNetworkWrapper verifiedWrapper,
+        in PendingCellsBuffer cells,
+        Span<bool> mismatched)
+    {
+        if (blobVersionedHashes is not { Length: > 0 }
+            || verifiedWrapper is not { Version: ProofVersion.V1, Cells: { } verifiedCells })
+        {
+            return false;
+        }
+
+        int blobCount = blobVersionedHashes.Length;
+        BlobCellMask verifiedMask = verifiedWrapper.CellMask;
+        if (verifiedWrapper.Commitments.Length != blobCount
+            || verifiedCells.Length != blobCount * verifiedMask.Count
+            || !BlobCellsHelper.TryGetPresentCellMask(cells.Cells, cells.CellMask, blobCount, out BlobCellMask presentMask))
+        {
+            return false;
+        }
+
+        BlobCellMask commonMask = presentMask & verifiedMask;
+        if (commonMask.IsEmpty)
+        {
+            return false;
+        }
+
+        byte[][] commonCells = commonMask == verifiedMask
+            ? verifiedCells
+            : BlobCellsHelper.SelectFlattenedCells(verifiedCells, verifiedMask, commonMask, blobCount);
+        if (!BlobCellsHelper.ValidateCells(verifiedWrapper with { CellMask = commonMask, Cells = commonCells })
+            || !IBlobProofsManager.For(ProofVersion.V1).ValidateHashes(verifiedWrapper, blobVersionedHashes))
+        {
+            return false;
+        }
+
+        bool found = false;
+        for (int i = 0; i < cells.Sources.Length; i++)
+        {
+            BlobCellMask compareMask = cells.Sources[i].CellMask & commonMask;
+            if (!compareMask.IsEmpty
+                && !AreCellsEqual(cells.Cells, cells.CellMask, commonCells, commonMask, compareMask, blobCount))
+            {
+                mismatched[i] = true;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
+    private static bool AreCellsEqual(
+        byte[][] left,
+        BlobCellMask leftMask,
+        byte[][] right,
+        BlobCellMask rightMask,
+        BlobCellMask compareMask,
+        int blobCount)
+    {
+        int leftCellsPerBlob = leftMask.Count;
+        int rightCellsPerBlob = rightMask.Count;
+        foreach (int cellIndex in compareMask.EnumerateSetBits())
+        {
+            int leftPosition = GetCellPosition(leftMask, cellIndex);
+            int rightPosition = GetCellPosition(rightMask, cellIndex);
+            for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
+            {
+                if (!left[blobIndex * leftCellsPerBlob + leftPosition].AsSpan()
+                    .SequenceEqual(right[blobIndex * rightCellsPerBlob + rightPosition]))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Returns the position of <paramref name="cellIndex"/> among the set bits of <paramref name="mask"/>.</summary>
+    private static int GetCellPosition(BlobCellMask mask, int cellIndex)
+        => new BlobCellMask(mask.Value & ((UInt128.One << cellIndex) - UInt128.One)).Count;
 
     private bool RecordAmbiguousFailure(
         TrackedSparseBlobTx state,
@@ -2003,6 +2238,12 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     state.Cells = null;
                 }
 
+                // A fixed lifetime, kept whether or not a body is present.
+                if (state.UnattributedCells is not null && now >= state.UnattributedCellsExpiresAt)
+                {
+                    ReleaseUnattributedCells(state);
+                }
+
                 if (!state.InFlightMask.IsEmpty && now >= state.InFlightUntil)
                 {
                     retryMask = state.InFlightMask;
@@ -2100,6 +2341,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             state.InFlightMask = BlobCellMask.Empty;
             ReleaseTransaction(state);
             ReleaseCells(state);
+            ReleaseUnattributedCells(state);
             state.Transaction = null;
             state.TransactionPeer = null;
             state.Cells = null;
@@ -2447,11 +2689,23 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private void ReleaseCells(TrackedSparseBlobTx state)
     {
-        if (state.Cells is not { } cells)
+        if (state.Cells is { } cells)
         {
-            return;
+            ReleaseCells(state.Hash, cells);
         }
+    }
 
+    private void ReleaseUnattributedCells(TrackedSparseBlobTx state)
+    {
+        if (state.UnattributedCells is { } cells)
+        {
+            ReleaseCells(state.Hash, cells);
+            state.UnattributedCells = null;
+        }
+    }
+
+    private void ReleaseCells(ValueHash256 hash, in PendingCellsBuffer cells)
+    {
         lock (_accountingLock)
         {
             _earlyCellsBytes -= cells.ByteLength;
@@ -2461,7 +2715,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 if (_peerUsage.TryGetValue(peerId, out PeerUsage? usage))
                 {
                     usage.EarlyCellBytes -= cells.GetByteLength(peerId);
-                    ReleaseTrackedHashReference(usage, state.Hash);
+                    ReleaseTrackedHashReference(usage, hash);
                     RemovePeerUsageIfEmpty(peerId, usage);
                 }
             }
@@ -2686,6 +2940,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         public ISparseBlobPoolPeer? TransactionPeer { get; set; }
         public int TransactionBytes { get; set; }
         public PendingCellsBuffer? Cells { get; set; }
+        /// <summary>Cells of the first failed proof check, kept until verified cells show whether they were wrong.</summary>
+        public PendingCellsBuffer? UnattributedCells { get; set; }
+        public DateTimeOffset UnattributedCellsExpiresAt { get; set; }
         public DateTimeOffset? AdmissionDueAt { get; set; }
         public int AmbiguousValidationFailures { get; set; }
         public int AmbiguousCellValidationFailures { get; set; }
