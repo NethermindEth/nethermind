@@ -438,7 +438,7 @@ namespace Nethermind.Network.Rlpx
         public event EventHandler<SessionEventArgs> SessionCreated;
         public event SessionDisconnectedEventHandler SessionDisconnected;
 
-        internal SessionActivitySubscription TrackSessionActivity(ISession session)
+        internal SessionActivitySubscription TrackSessionActivity(Session session)
         {
             ArgumentNullException.ThrowIfNull(session);
 
@@ -534,7 +534,7 @@ namespace Nethermind.Network.Rlpx
                 _group.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout));
         }
 
-        private void InitializeChannel(IChannel channel, ISession session, IPAddress? inboundRemoteIp)
+        private void InitializeChannel(IChannel channel, Session session, IPAddress? inboundRemoteIp)
         {
             if (TrackChannel(channel))
             {
@@ -554,7 +554,7 @@ namespace Nethermind.Network.Rlpx
             AddHandshakeHandlers(channel, session, HandshakeRole.Recipient);
         }
 
-        private void InitializeOutboundChannel(IChannel channel, ISession session, ConnectionAttempt attempt)
+        private void InitializeOutboundChannel(IChannel channel, Session session, ConnectionAttempt attempt)
         {
             if (TrackChannel(channel))
             {
@@ -588,7 +588,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private void ActivateSession(IChannel channel, ISession session)
+        private void ActivateSession(IChannel channel, Session session)
         {
             TrackSessionActivity(session);
             _sessionMonitor.AddSession(session);
@@ -717,38 +717,12 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");
         }
 
-        internal sealed class SessionActivitySubscription
+        internal sealed class SessionActivitySubscription(RlpxHost rlpxHost, Session session)
         {
-            private readonly RlpxHost _rlpxHost;
-            private readonly ISession _session;
-            private readonly Session? _concreteSession;
-            private readonly EventHandler<DisconnectEventArgs>? _onDisconnected;
-            private readonly EventHandler<PeerEventArgs>? _refreshNodeFilter;
+            private readonly RlpxHost _rlpxHost = rlpxHost;
+            private readonly Session _session = session;
 
-            public SessionActivitySubscription(RlpxHost rlpxHost, ISession session)
-            {
-                _rlpxHost = rlpxHost;
-                _session = session;
-                _concreteSession = session as Session;
-                if (_concreteSession is null)
-                {
-                    _refreshNodeFilter = RefreshNodeFilter;
-                    _onDisconnected = OnDisconnected;
-                }
-            }
-
-            public void Attach()
-            {
-                if (_concreteSession is not null)
-                {
-                    _concreteSession.SetActivityObserver(_rlpxHost);
-                    return;
-                }
-
-                _session.MsgReceived += _refreshNodeFilter!;
-                _session.MsgDelivered += _refreshNodeFilter!;
-                _session.Disconnected += _onDisconnected!;
-            }
+            public void Attach() => _session.SetActivityObserver(_rlpxHost);
 
             public void Detach()
             {
@@ -756,19 +730,7 @@ namespace Nethermind.Network.Rlpx
                 _rlpxHost._sessionActivitySubscriptions.TryRemove(_session.SessionId, out _);
             }
 
-            public void DetachSession()
-            {
-                if (_concreteSession is not null)
-                {
-                    _concreteSession.SetActivityObserver(null);
-                }
-                else
-                {
-                    _session.MsgReceived -= _refreshNodeFilter!;
-                    _session.MsgDelivered -= _refreshNodeFilter!;
-                    _session.Disconnected -= _onDisconnected!;
-                }
-            }
+            public void DetachSession() => _session.SetActivityObserver(null);
 
             public void DisconnectAndDispose()
             {
@@ -783,14 +745,6 @@ namespace Nethermind.Network.Rlpx
                     if (logger.IsDebug) logger.Debug($"Could not disconnect {_session:hide} on shutdown: {e.Message}");
                 }
             }
-
-            private void RefreshNodeFilter(object? _, PeerEventArgs __)
-            {
-                Node remoteNode = _session.Node;
-                _rlpxHost._nodeFilter.Touch(remoteNode.Address.Address, remoteNode.IsStatic || remoteNode.IsBootnode);
-            }
-
-            private void OnDisconnected(object? _, DisconnectEventArgs args) => _rlpxHost.OnSessionDisconnected(_session, args);
         }
 
         void ISessionActivityObserver.OnSessionActivity(Session session)
@@ -858,10 +812,10 @@ namespace Nethermind.Network.Rlpx
             public bool TryAbandon() => Interlocked.CompareExchange(ref _state, 2, 0) == 0;
         }
 
-        private sealed class OutboundSessionActivationHandler(RlpxHost rlpxHost, ISession session, ConnectionAttempt attempt) : ChannelHandlerAdapter
+        private sealed class OutboundSessionActivationHandler(RlpxHost rlpxHost, Session session, ConnectionAttempt attempt) : ChannelHandlerAdapter
         {
             private readonly RlpxHost _rlpxHost = rlpxHost;
-            private readonly ISession _session = session;
+            private readonly Session _session = session;
             private readonly ConnectionAttempt _attempt = attempt;
 
             public override void ChannelActive(IChannelHandlerContext context)

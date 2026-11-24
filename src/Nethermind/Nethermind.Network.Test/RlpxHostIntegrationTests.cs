@@ -20,6 +20,8 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
@@ -65,20 +67,18 @@ public class RlpxHostIntegrationTests
         try
         {
             IPAddress receivedIp = IPAddress.Parse("203.0.113.1");
-            ISession receivedSession = Substitute.For<ISession>();
-            receivedSession.Node.Returns(new Node(TestItem.PublicKeyA, receivedIp.ToString(), 30303));
+            Session receivedSession = CreateInitializedSession(receivedIp);
 
             host.TrackSessionActivity(receivedSession);
-            receivedSession.MsgReceived += Raise.EventWith(receivedSession, new PeerEventArgs(receivedSession.Node, "eth", 1, 32));
+            receivedSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Ping, []));
 
             Assert.That(host.ShouldContact(receivedIp), Is.False, "received traffic should keep the active session filtered");
 
             IPAddress deliveredIp = IPAddress.Parse("198.51.100.1");
-            ISession deliveredSession = Substitute.For<ISession>();
-            deliveredSession.Node.Returns(new Node(TestItem.PublicKeyA, deliveredIp.ToString(), 30303));
+            Session deliveredSession = CreateInitializedSession(deliveredIp);
 
             host.TrackSessionActivity(deliveredSession);
-            deliveredSession.MsgDelivered += Raise.EventWith(deliveredSession, new PeerEventArgs(deliveredSession.Node, "eth", 2, 64));
+            deliveredSession.DeliverMessage(PingMessage.Instance);
 
             Assert.That(host.ShouldContact(deliveredIp), Is.False, "sent traffic should keep the active session filtered");
         }
@@ -86,6 +86,19 @@ public class RlpxHostIntegrationTests
         {
             await host.Shutdown();
         }
+    }
+
+    private static Session CreateInitializedSession(IPAddress remoteIp)
+    {
+        Session session = new(30303, new Node(TestItem.PublicKeyA, remoteIp.ToString(), 30303), Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, Substitute.For<IPacketSender>());
+        IProtocolHandler p2p = Substitute.For<IProtocolHandler>();
+        p2p.Name.Returns("p2p");
+        p2p.ProtocolCode.Returns("p2p");
+        p2p.MessageIdSpaceSize.Returns(16);
+        session.AddProtocolHandler(p2p);
+        return session;
     }
 
     [Test]
