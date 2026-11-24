@@ -147,21 +147,18 @@ public class JsonConfigSource : IConfigSource
     private static string NormalizeModuleName(string configModule) =>
         configModule.EndsWith("Config", StringComparison.InvariantCultureIgnoreCase) ? configModule : $"{configModule}Config";
 
-    private object ParseValue(Type type, string category, string name)
-    {
-        string valueString = _values[category][name];
-        return _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString, category, name)!;
-    }
-
     public (bool IsSet, object? Value) GetValue(Type type, string category, string name)
     {
-        (bool isSet, _) = GetRawValue(category, name);
-        if (isSet)
+        (bool isSet, string? raw) = GetRawValue(category, name);
+        if (!isSet) return (false, ConfigSourceHelper.GetDefault(type));
+
+        Dictionary<string, object> parsed = _parsedValues[category];
+        if (!parsed.TryGetValue(name, out object? value))
         {
-            return (true, _parsedValues[category].TryGetValue(name, out object? value) ? value : ParseValue(type, category, name));
+            value = parsed[name] = ConfigSourceHelper.ParseValue(type, raw!, category, name)!;
         }
 
-        return (false, ConfigSourceHelper.GetDefault(type));
+        return (true, value);
     }
 
     public (bool IsSet, string? Value) GetRawValue(string category, string name)
