@@ -689,8 +689,8 @@ public class SessionTests
         Assert.That(message.WasDisposed, Is.True);
     }
 
-    // eth/75 wrapper messages are bounded by this client's caps on their advertised uncompressed size, before decompression;
-    // PooledTransactions (0x0a) and DependencyProofs (0x17) keep their eth limits.
+    // eth/74 DependencyProofs and eth/75 wrapper messages are bounded by this client's caps on their advertised uncompressed
+    // size, before decompression; PooledTransactions (0x0a) keeps its eth limits.
     [TestCase(75, 0x1a, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.LocalMaxResponseBytes, false)]
     [TestCase(75, 0x1a, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.LocalMaxResponseBytes + 1, true)]
     [TestCase(75, 0x19, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.MaxGetProofWrappersBytes + 1, true)]
@@ -698,10 +698,13 @@ public class SessionTests
     [TestCase(75, 0x18, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.MaxNewProofWrapperHashesBytes + 1, true)]
     [TestCase(75, 0x18, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.MaxNewProofWrapperHashesBytes, false)]
     [TestCase(75, 0x0a, 16 * 1024 * 1024, false)]
-    [TestCase(75, 0x17, 16 * 1024 * 1024, false)]
+    [TestCase(75, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes, false)]
+    [TestCase(75, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes + 1, true)]
+    [TestCase(74, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes, false)]
+    [TestCase(74, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes + 1, true)]
     [TestCase(74, 0x1a, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.LocalMaxResponseBytes + 1, false)]
-    [TestCase(74, 0x17, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.LocalMaxResponseBytes + 1, false)]
-    public void Eth75_wrapper_messages_are_bounded_before_decompression(int version, int code, int length, bool exceeds)
+    [TestCase(72, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes + 1, false)]
+    public void Wrapper_and_proof_messages_are_bounded_before_decompression(int version, int code, int length, bool exceeds)
     {
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
