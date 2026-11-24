@@ -5458,6 +5458,122 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
+    [TestCase(CellSessionEnd.Replacement)]
+    [TestCase(CellSessionEnd.RemovalThenReAdd)]
+    public void registry_should_keep_no_cells_when_the_only_cell_source_ended_during_the_failed_check(CellSessionEnd sessionEnd)
+    {
+        Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells);
+        byte[][] invalidCells = CopyWithCorruptedCell(cells, cellIndex: 0, byteIndex: 0);
+        using SparseBlobPoolPeerRegistry registry = CreateAttributionRegistry();
+        TestSparseBlobPeer transactionPeer = new(TestItem.PublicKeyC);
+        TestSparseBlobPeer oldSession = new(TestItem.PublicKeyA);
+        TestSparseBlobPeer newSession = new(TestItem.PublicKeyA);
+        int submissions = 0;
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+        {
+            if (++submissions == 1)
+            {
+                // The only cell source's session ends while the pool checks the first tuple, and the same node reconnects.
+                if (sessionEnd == CellSessionEnd.RemovalThenReAdd)
+                {
+                    registry.RemovePeer(oldSession);
+                }
+
+                registry.AddPeer(newSession);
+            }
+
+            return IsValidSparseTuple(call.Arg<Transaction>()) ? AcceptTxResult.Accepted : AcceptTxResult.InvalidBlobProofs;
+        });
+        AddAnnouncingPeers(registry, tx.Hash!, cellMask, transactionPeer, oldSession);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.RecordTransaction(transactionPeer, tx), Is.Null);
+            Assert.That(registry.RecordCells(oldSession, tx.Hash!, cellMask, invalidCells), Is.True);
+        }
+
+        // No source of the failed cells is left, so nothing is kept for attribution.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(submissions, Is.EqualTo(1));
+            Assert.That(GetEarlyCellsBytes(registry), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, newSession.Id), Is.Zero);
+            Assert.That(GetPeerTrackedHashCount(registry, newSession.Id), Is.Zero);
+        }
+
+        // Valid cells from the body peer, and the body again in case it was not kept.
+        Assert.That(registry.RecordCells(transactionPeer, tx.Hash!, cellMask, cells), Is.True);
+        _ = registry.RecordTransaction(transactionPeer, tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(submissions, Is.EqualTo(2));
+            Assert.That(newSession.Disconnects, Is.Empty);
+            Assert.That(oldSession.Disconnects, Is.Empty);
+            Assert.That(transactionPeer.Disconnects, Is.Empty);
+            Assert.That(GetEarlyCellsBytes(registry), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, newSession.Id), Is.Zero);
+            Assert.That(GetPeerTrackedHashCount(registry, newSession.Id), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void registry_should_drop_cells_of_a_session_that_ended_during_the_merge_before_the_failed_check()
+    {
+        Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells);
+        byte[][] invalidCells = CopyWithCorruptedCell(cells, cellIndex: 0, byteIndex: 0);
+        using SparseBlobPoolPeerRegistry registry = CreateAttributionRegistry();
+        TestSparseBlobPeer transactionPeer = new(TestItem.PublicKeyC);
+        TestSparseBlobPeer oldSession = new(TestItem.PublicKeyA);
+        TestSparseBlobPeer newSession = new(TestItem.PublicKeyA);
+        SubmitWithCellProofCheck();
+        int merges = 0;
+        AcceptTxResult? bodyDuringMerge = AcceptTxResult.Invalid;
+        _transactionPool.MergeBlobCells(tx.Hash!, Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>()).Returns(_ =>
+        {
+            if (++merges == 1)
+            {
+                // The cell source's session ends while its cells are merged, the same node reconnects, and the body
+                // arrives; the pool no longer holds the transaction, so the tuple is submitted again and fails.
+                registry.AddPeer(newSession);
+                bodyDuringMerge = registry.RecordTransaction(transactionPeer, tx);
+            }
+
+            return BlobCellMergeResult.TransactionUnavailable;
+        });
+        AddAnnouncingPeers(registry, tx.Hash!, cellMask, transactionPeer, oldSession);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.RecordCells(oldSession, tx.Hash!, cellMask, invalidCells), Is.True);
+            Assert.That(registry.TryApplyRecordedCells(tx.Hash!), Is.False);
+        }
+
+        // The ended session's cells were dropped when the failed cells would have been kept.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(merges, Is.EqualTo(1));
+            Assert.That(bodyDuringMerge, Is.Null);
+            Assert.That(GetEarlyCellsBytes(registry), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, newSession.Id), Is.Zero);
+            Assert.That(GetPeerTrackedHashCount(registry, newSession.Id), Is.Zero);
+        }
+
+        Assert.That(registry.RecordCells(transactionPeer, tx.Hash!, cellMask, cells), Is.True);
+        _ = registry.RecordTransaction(transactionPeer, tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newSession.Disconnects, Is.Empty);
+            Assert.That(oldSession.Disconnects, Is.Empty);
+            Assert.That(transactionPeer.Disconnects, Is.Empty);
+            Assert.That(GetEarlyCellsBytes(registry), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, newSession.Id), Is.Zero);
+            Assert.That(GetPeerTrackedHashCount(registry, newSession.Id), Is.Zero);
+        }
+        _transactionPool.Received(2).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+    }
+
     public enum KeptCellSessionEnd
     {
         ReplacedWhileKept,
