@@ -85,7 +85,7 @@ public static partial class BlockProcessing
     public static void ProcessBlock(BeaconStateFulu state, BeaconBlock block, EpochCache cache, PubkeyCache pubkeys, INewPayloadNotifier notifier, ulong maxBlobsPerBlock, bool verifySignatures = true)
     {
         if (verifySignatures)
-            BlockSignatureBatch.Run(batch => ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures: true, batch));
+            BlockSignatureBatch.Run(pubkeys.SignatureVerifier, batch => ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures: true, batch));
         else
             ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures: false, batch: null);
     }

@@ -287,7 +287,7 @@ public class SyncAggregateSignatureTests
             _ => OffSubgroupKeys.WithG2Torsion(honest),
         };
         SyncAggregate syncAggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = signature };
-        BlockSignatureBatch? batch = batched ? new BlockSignatureBatch() : null;
+        BlockSignatureBatch? batch = batched ? new BlockSignatureBatch(BlsSignatureVerifier.Instance) : null;
 
         Action process = () =>
         {
@@ -308,7 +308,7 @@ public class SyncAggregateSignatureTests
         SyncFixture fixture = CreateSyncFixture(gloas, members);
         BitArray bits = Bits(static i => i % 3 != 1);
         SyncAggregate aggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = HonestSignature(fixture.SigningRoot, members, bits) };
-        BlockSignatureBatch batch = new();
+        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
         fixture.Process(aggregate, true, batch);
 
         Assert.That(batch.Count, Is.EqualTo(1));
@@ -423,7 +423,7 @@ public class SyncAggregateSignatureTests
     {
         bool serial = verify(null);
 
-        BlockSignatureBatch batch = new();
+        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
         bool batched = verify(batch.Defer("deferred"));
         try
         {
@@ -440,7 +440,7 @@ public class SyncAggregateSignatureTests
     private static void Process(Action<BlockSignatureBatch?> process, bool batched)
     {
         if (batched)
-            BlockSignatureBatch.Run(batch => process(batch));
+            BlockSignatureBatch.Run(BlsSignatureVerifier.Instance, batch => process(batch));
         else
             process(null);
     }

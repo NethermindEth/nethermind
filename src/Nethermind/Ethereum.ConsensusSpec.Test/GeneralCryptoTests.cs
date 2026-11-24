@@ -80,14 +80,14 @@ public class GeneralCryptoTests
             return;
         }
         Hash256 message = new(Hex(Field(input, "message")));
-        Assert.That(validKeys && BlockSignatureBatch.Verify(aggregate.ToAffine(), signature, message, null), Is.EqualTo(expected));
+        Assert.That(validKeys && BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, aggregate.ToAffine(), signature, message, null), Is.EqualTo(expected));
         if (validKeys)
         {
             bool batchValid;
             try
             {
-                BlockSignatureBatch batch = new();
-                if (!BlockSignatureBatch.Verify(aggregate.ToAffine(), signature, message, batch.Defer("invalid vector signature")))
+                BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
+                if (!BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, aggregate.ToAffine(), signature, message, batch.Defer("invalid vector signature")))
                     throw new BeaconStateException("invalid vector signature");
                 batch.Verify();
                 batchValid = true;

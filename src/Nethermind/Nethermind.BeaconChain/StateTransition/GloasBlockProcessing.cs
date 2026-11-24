@@ -35,7 +35,7 @@ public static partial class GloasBlockProcessing
     public static void ProcessBlock(BeaconStateGloas state, BeaconBlockGloas block, EpochCache cache, PubkeyCache pubkeys, INewPayloadNotifier notifier, BeaconChainSpec spec, bool verifySignatures = true)
     {
         if (verifySignatures)
-            BlockSignatureBatch.Run(batch => ProcessBlock(state, block, cache, pubkeys, notifier, spec, verifySignatures: true, batch));
+            BlockSignatureBatch.Run(pubkeys.SignatureVerifier, batch => ProcessBlock(state, block, cache, pubkeys, notifier, spec, verifySignatures: true, batch));
         else
             ProcessBlock(state, block, cache, pubkeys, notifier, spec, verifySignatures: false, batch: null);
     }
@@ -73,7 +73,7 @@ public static partial class GloasBlockProcessing
             throw new BeaconStateException($"Block proposer index {proposerIndex} has no cached public key ({pubkeys.Count} cached)");
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(block.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block), domain);
-        return SignatureSets.TryGetValidatorKey(pubkeys, state.ReadOnlyValidators, proposerIndex, out G1Affine key) && BlsSigner.Verify(key, signedBlock.Signature.Bytes, signingRoot.Bytes);
+        return SignatureSets.TryGetValidatorKey(pubkeys, state.ReadOnlyValidators, proposerIndex, out G1Affine key) && pubkeys.SignatureVerifier.Verify(key, signedBlock.Signature.Bytes, signingRoot.Bytes);
     }
 
     /// <summary>Spec <c>process_block_header</c>: unchanged from Fulu except for the Gloas block/body types.</summary>
@@ -86,7 +86,7 @@ public static partial class GloasBlockProcessing
         System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(epochRoot, epoch);
         Hash256 domain = state.GetDomain(DomainType.Randao, epoch);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(epochRoot), domain);
-        return SignatureSets.TryGetValidatorKey(pubkeys, state.ReadOnlyValidators, proposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, reveal, signingRoot, deferral);
+        return SignatureSets.TryGetValidatorKey(pubkeys, state.ReadOnlyValidators, proposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(pubkeys.SignatureVerifier, key, reveal, signingRoot, deferral);
     }
 
     /// <summary>Spec <c>process_eth1_data</c>: unchanged from Fulu except for the Gloas body type.</summary>
@@ -241,7 +241,7 @@ public static partial class GloasBlockProcessing
         ulong previousSlot = Math.Max(state.Slot, 1) - 1;
         Hash256 domain = state.GetDomain(DomainType.SyncCommittee, BeaconStateAccessors.ComputeEpochAtSlot(previousSlot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(state.GetBlockRootAtSlot(previousSlot), domain);
-        return BlockSignatureBatch.Verify(participants.ToAffine(), syncAggregate.SyncCommitteeSignature, signingRoot, deferral);
+        return BlockSignatureBatch.Verify(pubkeys.SignatureVerifier, participants.ToAffine(), syncAggregate.SyncCommitteeSignature, signingRoot, deferral);
     }
 
     // ---- Execution payload bid (EIP-7732) ----
@@ -274,7 +274,7 @@ public static partial class GloasBlockProcessing
             if (!state.CanBuilderCoverBid(builderIndex, amount))
                 throw new BeaconStateException($"Builder {builderIndex} cannot cover a bid of {amount}");
             const string invalidSignature = "Invalid execution payload bid signature";
-            if (verifySignature && !VerifyExecutionPayloadBidSignature(state, signedBid, batch?.Defer(invalidSignature)))
+            if (verifySignature && !VerifyExecutionPayloadBidSignature(state, signedBid, spec.SignatureVerifier, batch?.Defer(invalidSignature)))
                 throw new BeaconStateException(invalidSignature);
         }
 
@@ -318,14 +318,14 @@ public static partial class GloasBlockProcessing
         state.LatestExecutionPayloadBid = bid;
     }
 
-    private static bool VerifyExecutionPayloadBidSignature(BeaconStateGloas state, SignedExecutionPayloadBid signedBid, BlockSignatureBatch.Deferral? deferral)
+    private static bool VerifyExecutionPayloadBidSignature(BeaconStateGloas state, SignedExecutionPayloadBid signedBid, ISignatureVerifier verifier, BlockSignatureBatch.Deferral? deferral)
     {
         Builder builder = state.Builders![(int)signedBid.Message!.BuilderIndex];
         Hash256 domain = state.GetDomain(DomainType.BeaconBuilder);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(signedBid.Message), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
-        return BlsSignatureSet.TryKeyValidate(builder.Pubkey.Bytes, pubkey) && BlockSignatureBatch.Verify(pubkey, signedBid.Signature, signingRoot, deferral);
+        return BlsSignatureSet.TryKeyValidate(builder.Pubkey.Bytes, pubkey) && BlockSignatureBatch.Verify(verifier, pubkey, signedBid.Signature, signingRoot, deferral);
     }
 
     // ---- Execution payload envelope (EIP-7732) ----
@@ -420,12 +420,12 @@ public static partial class GloasBlockProcessing
         if (envelope.BuilderIndex == Presets.BuilderIndexSelfBuild)
         {
             ulong proposerIndex = state.LatestBlockHeader!.ProposerIndex;
-            return SignatureSets.TryGetValidatorKey(pubkeys, state.ReadOnlyValidators, proposerIndex, out G1Affine proposerKey) && BlsSigner.Verify(proposerKey, signedEnvelope.Signature.Bytes, signingRoot.Bytes);
+            return SignatureSets.TryGetValidatorKey(pubkeys, state.ReadOnlyValidators, proposerIndex, out G1Affine proposerKey) && pubkeys.SignatureVerifier.Verify(proposerKey, signedEnvelope.Signature.Bytes, signingRoot.Bytes);
         }
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
         Builder builder = state.Builders![(int)envelope.BuilderIndex];
-        return BlsSignatureSet.TryKeyValidate(builder.Pubkey.Bytes, pubkey) && BlsSigner.Verify(pubkey, signedEnvelope.Signature.Bytes, signingRoot.Bytes);
+        return BlsSignatureSet.TryKeyValidate(builder.Pubkey.Bytes, pubkey) && pubkeys.SignatureVerifier.Verify(pubkey, signedEnvelope.Signature.Bytes, signingRoot.Bytes);
     }
 
     /// <summary>
@@ -638,7 +638,7 @@ public static partial class GloasBlockProcessing
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
-        return BlsSignatureSet.TryKeyValidate(request.Pubkey.Bytes, pubkey) && BlsSigner.Verify(pubkey, request.Signature.Bytes, signingRoot.Bytes);
+        return BlsSignatureSet.TryKeyValidate(request.Pubkey.Bytes, pubkey) && spec.SignatureVerifier.Verify(pubkey, request.Signature.Bytes, signingRoot.Bytes);
     }
 
     /// <summary>Spec <c>process_builder_exit_request</c> (EIP-8282, new in Gloas).</summary>

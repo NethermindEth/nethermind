@@ -16,7 +16,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
@@ -832,7 +831,7 @@ public sealed class ColumnGossipRouter(
             Hash256 domain = Domains.ComputeDomain(DomainType.BeaconProposer, spec.VersionForEpoch(spec.GetEpoch(header.Slot)), spec.GenesisValidatorsRoot);
             Interlocked.Increment(ref _headerSignatureVerifications);
             valid = pubkeys.TryGetValidPublicKey((int)header.ProposerIndex, out G1Affine key)
-                && BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
+                && pubkeys.SignatureVerifier.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
         }
         catch (ArgumentOutOfRangeException)
         {

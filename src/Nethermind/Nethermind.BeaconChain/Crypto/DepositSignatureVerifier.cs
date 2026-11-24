@@ -18,7 +18,7 @@ namespace Nethermind.BeaconChain.Crypto;
 /// </remarks>
 public static class DepositSignatureVerifier
 {
-    private static readonly LruCache<(Hash256 SigningRoot, BlsSignature Signature), bool> Verdicts = new(4096, nameof(DepositSignatureVerifier));
+    private static readonly LruCache<(ISignatureVerifier Verifier, Hash256 SigningRoot, BlsSignature Signature), bool> Verdicts = new(4096, nameof(DepositSignatureVerifier));
     /// <param name="genesisValidatorsRoot">The root of the state the deposit applies to; it selects the network whose <c>GENESIS_FORK_VERSION</c> signs deposits.</param>
     public static bool IsValid(Hash256 genesisValidatorsRoot, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount, BlsSignature signature)
         => IsValid(BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot), pubkey, withdrawalCredentials, amount, signature);
@@ -35,11 +35,11 @@ public static class DepositSignatureVerifier
         Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, spec.GenesisForkVersion, Hash256.Zero);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
 
-        if (Verdicts.TryGet((signingRoot, signature), out bool valid))
+        if (Verdicts.TryGet((spec.SignatureVerifier, signingRoot, signature), out bool valid))
             return valid;
         Bls.P1Affine publicKey = new(stackalloc long[Bls.P1Affine.Sz]);
-        valid = BlsSignatureSet.TryKeyValidate(pubkey.Bytes, publicKey) && BlsSigner.Verify(publicKey, signature.Bytes, signingRoot.Bytes);
-        Verdicts.Set((signingRoot, signature), valid);
+        valid = BlsSignatureSet.TryKeyValidate(pubkey.Bytes, publicKey) && spec.SignatureVerifier.Verify(publicKey, signature.Bytes, signingRoot.Bytes);
+        Verdicts.Set((spec.SignatureVerifier, signingRoot, signature), valid);
         return valid;
     }
 }
