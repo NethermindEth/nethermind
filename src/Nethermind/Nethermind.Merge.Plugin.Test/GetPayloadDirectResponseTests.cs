@@ -11,6 +11,9 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
@@ -19,13 +22,17 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -245,28 +252,72 @@ public class GetPayloadDirectResponseTests
         IStreamableResult materialized;
         if (version == 1)
         {
-            PayloadBodiesV1DirectResponse rawResponse = new(new PayloadBodiesV1DirectResponse.PayloadBody?[] { new(encoded) });
+            PayloadBodiesV1DirectResponse rawResponse = new(new PayloadBodiesV1DirectResponse.PayloadBody?[] { new(encoded, block.StarkProof) });
             dto = new[] { rawResponse[0] };
             raw = rawResponse;
             materialized = new PayloadBodiesV1DirectResponse(new ExecutionPayloadBodyV1Result?[] { new([], [], block.StarkProof) });
-            Assert.That(rawResponse[0]!.StarkProof, Is.EqualTo(block.StarkProof));
+            Assert.That(rawResponse[0]!.DependencyProof, Is.EqualTo(block.StarkProof));
         }
         else
         {
-            PayloadBodiesV2DirectResponse rawResponse = new([new(encoded, null)]);
+            PayloadBodiesV2DirectResponse rawResponse = new([new(encoded, null, block.StarkProof)]);
             dto = new[] { rawResponse[0] };
             raw = rawResponse;
             materialized = new PayloadBodiesV2DirectResponse([new([], [], null, block.StarkProof)]);
-            Assert.That(rawResponse[0]!.StarkProof, Is.EqualTo(block.StarkProof));
+            Assert.That(rawResponse[0]!.DependencyProof, Is.EqualTo(block.StarkProof));
         }
         byte[] expected = JsonSerializer.SerializeToUtf8Bytes(dto, dto.GetType(), EthereumJsonSerializer.JsonOptions);
+        byte[] rawJson = await WriteStreamableAsync(raw);
+        byte[] materializedJson = await WriteStreamableAsync(materialized);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(await WriteStreamableAsync(raw))), Is.True);
-            Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(await WriteStreamableAsync(materialized))), Is.True);
+            Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(rawJson)), Is.True);
+            Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(materializedJson)), Is.True);
+            Assert.That(rawJson, Is.EqualTo(materializedJson));
         }
         (raw as IDisposable)?.Dispose();
         (materialized as IDisposable)?.Dispose();
+    }
+
+    // EIP-8288 (EIPs#12549): a body carries the stored dependencyProof, and is still served without it when the proof is pruned.
+    [Test]
+    public async Task Payload_bodies_join_the_proof_kept_apart_from_the_stored_body([Values(1, 2)] int version, [Values] bool proofStored)
+    {
+        Block block = Build.A.Block.WithNumber(1).WithWithdrawals(0).TestObject;
+        block.StarkProof = new byte[PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
+        block.Header.Hash = block.Header.CalculateHash();
+        DependencyProofStore proofStore = new(new TestMemDb());
+        IBlockStore blockStore = new DependencyProofBlockStore(new BlockStore(new TestMemDb()), proofStore);
+        blockStore.Insert(block);
+        if (!proofStored) proofStore.Delete(block.Number, block.Hash!);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindHeader(block.Hash!, Arg.Any<BlockTreeLookupOptions>()).Returns(block.Header);
+        byte[]? expectedProof = proofStored ? block.StarkProof : null;
+
+        IStreamableResult served;
+        IStreamableResult received;
+        if (version == 1)
+        {
+            served = (IStreamableResult)new GetPayloadBodiesByHashV1Handler(blockTree, blockStore, proofStore, LimboLogs.Instance).Handle([block.Hash!]).Data;
+            received = new PayloadBodiesV1DirectResponse([new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals, expectedProof)]);
+        }
+        else
+        {
+            served = (IStreamableResult)new GetPayloadBodiesByHashV2Handler(blockTree, LimboLogs.Instance, new BlockAccessListStore(new TestMemDb()), blockStore, proofStore).Handle([block.Hash!]).Data;
+            received = new PayloadBodiesV2DirectResponse([PayloadBodiesV2DirectResponse.CreatePayloadBody(block.Transactions, block.Withdrawals, null, expectedProof)]);
+        }
+
+        byte[] servedJson = await WriteStreamableAsync(served);
+        JsonNode body = JsonNode.Parse(servedJson)!.AsArray()[0]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(servedJson, Is.EqualTo(await WriteStreamableAsync(received)));
+            Assert.That(body["dependencyProof"]?.GetValue<string>(), Is.EqualTo(expectedProof?.ToHexString(true)));
+            Assert.That(body.AsObject().ContainsKey("starkProof"), Is.False);
+        }
+        (served as IDisposable)?.Dispose();
+        (received as IDisposable)?.Dispose();
     }
 
     // The hand-rolled writer is the path a CL actually receives, and recursive_stark is the one field the
@@ -294,6 +345,7 @@ public class GetPayloadDirectResponseTests
         {
             Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)), Is.True);
             Assert.That(JsonNode.Parse(actual)!["executionPayload"]!["inclusionLists"], Is.Null);
+            Assert.That(JsonNode.Parse(actual)!["executionPayload"]!["dependencyProof"]?.GetValue<string>(), Is.EqualTo(block.StarkProof.ToHexString(true)));
         }
     }
 
@@ -615,7 +667,7 @@ public class GetPayloadDirectResponseTests
         byte[]? blockAccessList,
         bool includeNull) =>
         includeNull
-            ? [PayloadBodiesV2DirectResponse.CreatePayloadBody(transactions, withdrawals, ArrayMemoryManager.From(blockAccessList)), null, PayloadBodiesV2DirectResponse.CreatePayloadBody([], null, null)]
+            ? [PayloadBodiesV2DirectResponse.CreatePayloadBody(transactions, withdrawals, ArrayMemoryManager.From(blockAccessList)), null, PayloadBodiesV2DirectResponse.CreatePayloadBody(Array.Empty<Transaction>(), null, null)]
             : [PayloadBodiesV2DirectResponse.CreatePayloadBody(transactions, withdrawals, ArrayMemoryManager.From(blockAccessList))];
 
     private static bool GetCanBeStreamable(Type type)

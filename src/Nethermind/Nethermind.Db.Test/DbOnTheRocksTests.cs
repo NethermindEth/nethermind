@@ -301,12 +301,14 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [TestCase("compression=kLZ4Compression")]
-        [TestCase("allow_mmap_reads=false", TestName = "No mmap reads: a page fault per cold contract reads 3.8 GB of fresh code about 3x slower than pread")]
-        public void CodeDb_applies_default_option(string option)
+        [TestCase(DbNames.Code, "compression=kLZ4Compression")]
+        [TestCase(DbNames.Code, "allow_mmap_reads=false", TestName = "No mmap reads: a page fault per cold contract reads 3.8 GB of fresh code about 3x slower than pread")]
+        [TestCase(DbNames.DependencyProofs, "enable_blob_files=true")]
+        [TestCase(DbNames.DependencyProofs, "min_blob_size=4096")]
+        public void Db_applies_default_option(string dbName, string option)
         {
             using IContainer container = CreateRocksDbContainer(new DbConfig());
-            using IDb db = container.Resolve<IDbFactory>().CreateDb(new DbSettings(DbNames.Code, DbPath));
+            using IDb db = container.Resolve<IDbFactory>().CreateDb(new DbSettings(dbName, DbPath));
             db.Flush();
 
             Assert.That(ReadOptionsFile(DbPath), Does.Contain(option));

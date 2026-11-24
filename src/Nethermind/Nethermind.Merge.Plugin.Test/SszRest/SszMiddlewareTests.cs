@@ -1461,7 +1461,7 @@ public class SszMiddlewareTests
     [Test]
     public async Task GetPayloadBodiesByRange_from_zero_is_rejected_by_the_engine_as_invalid_body()
     {
-        GetPayloadBodiesByRangeV1Handler handler = new(Substitute.For<Blockchain.IBlockTree>(), Substitute.For<Blockchain.Blocks.IBlockStore>(), LimboLogs.Instance);
+        GetPayloadBodiesByRangeV1Handler handler = new(Substitute.For<Blockchain.IBlockTree>(), Substitute.For<Blockchain.Blocks.IBlockStore>(), Substitute.For<Blockchain.Blocks.IDependencyProofStore>(), LimboLogs.Instance);
         _engineModule.engine_getPayloadBodiesByRangeV1(Arg.Any<ulong>(), Arg.Any<ulong>())
             .Returns(call => handler.Handle(call.ArgAt<ulong>(0), call.ArgAt<ulong>(1)));
 

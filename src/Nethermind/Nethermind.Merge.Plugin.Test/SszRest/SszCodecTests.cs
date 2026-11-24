@@ -32,7 +32,7 @@ public class SszCodecTests
     {
         ExecutionPayloadV4 payload = new();
         if (inclusionCommitment) payload.InclusionLists = [new InclusionListV1 { Transactions = [], RecursiveStark = RecursiveStarkV1.Empty }];
-        else payload.StarkProof = [1];
+        else payload.DependencyProof = [1];
         Assert.That(() => new SszExecutionPayloadV4(payload), Throws.TypeOf<NotSupportedException>());
     }
 

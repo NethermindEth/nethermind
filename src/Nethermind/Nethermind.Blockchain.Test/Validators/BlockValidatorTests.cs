@@ -155,9 +155,11 @@ public class BlockValidatorTests
         Assert.That(error, Is.EqualTo(BlockErrorMessages.MissingRecursiveStark));
     }
 
+    // EIPs#12549: a proof received with the block must hash to dependency_proof_hash before the verifier runs. A block
+    // committing to a nonempty proof it does not carry is never valid: its proof is not available yet.
     [TestCase(true)]
     [TestCase(false)]
-    public void Eip8288_rejects_missing_or_mismatched_body_before_verification(bool missing)
+    public void Eip8288_rejects_mismatched_proof_before_verification_and_a_missing_one_as_unavailable(bool missing)
     {
         (Block block, BlockHeader parent) = Eip8288Block();
         block.Header.RecursiveStark = new(Keccak.Compute(new byte[] { 1 }), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
@@ -166,9 +168,31 @@ public class BlockValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error), Is.False);
-            Assert.That(error, Is.EqualTo(missing ? BlockErrorMessages.MissingRecursiveStark : BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(error, Is.EqualTo(missing ? BlockErrorMessages.MissingDependencyProof : BlockErrorMessages.InvalidRecursiveStark));
             Assert.That(verifier.RecursiveCalls, Is.Zero);
         }
+    }
+
+    // A block committing to the empty proof needs none to be validated, so a dependency-free block synced without one is valid.
+    [Test]
+    public void Eip8288_validates_a_block_committing_to_the_empty_proof_without_it()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block(withDependency: false);
+        block.Header.RecursiveStark = new(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+        block.StarkProof = null;
+
+        Assert.That(CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error), Is.True, error);
+    }
+
+    [Test]
+    public void Eip8288_checks_the_deps_hash_of_a_block_without_its_proof()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(new byte[] { 1 }), Keccak.Compute("wrong"));
+
+        CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(error, Does.StartWith("InvalidBlockDepsHash"));
     }
 
     [Test]
@@ -226,6 +250,8 @@ public class BlockValidatorTests
             Assert.That(decoded.Header.CalculateHash(), Is.EqualTo(block.Header.Hash));
         }
 
+        // The proof travels apart from the RLP block, as the execution payload or eth/74 delivers it.
+        decoded.StarkProof = block.StarkProof;
         bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(decoded, parent, out string? error);
 
         Assert.That(result, Is.True, error);
@@ -445,25 +471,17 @@ public class BlockValidatorTests
         return _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body);
     }
 
-    [TestCase(false, null, true)]
-    [TestCase(false, new byte[0], false)]
-    [TestCase(true, null, false)]
-    [TestCase(true, new byte[0], false)]
-    [TestCase(true, new byte[] { 2 }, false)]
-    [TestCase(true, new byte[] { 1 }, true)]
-    public void ValidateBodyAgainstHeader_binds_proof_presence_and_hash(bool commitmentPresent, byte[]? proof, bool expected)
+    // EIPs#12549: the block body carries no dependency proof, so body validation does not look at it.
+    [TestCase(false, null)]
+    [TestCase(true, null)]
+    [TestCase(true, new byte[] { 2 })]
+    public void ValidateBodyAgainstHeader_ignores_the_dependency_proof(bool commitmentPresent, byte[]? proof)
     {
         Block block = Build.A.Block.TestObject;
         block.Header.RecursiveStark = commitmentPresent ? new(Keccak.Compute(new byte[] { 1 }), TestItem.KeccakA) : null;
         block.StarkProof = proof;
 
-        bool valid = _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(valid, Is.EqualTo(expected));
-            Assert.That(error, expected ? Is.Null : Is.Not.Null);
-        }
+        Assert.That(_blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error), Is.True, error);
     }
 
     [Test]

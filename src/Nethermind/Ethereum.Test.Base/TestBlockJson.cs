@@ -10,9 +10,10 @@ namespace Ethereum.Test.Base
         public TestBlockHeaderJson? BlockHeader { get; set; }
         public TestBlockHeaderJson[]? UncleHeaders { get; set; }
         public string? Rlp { get; set; }
+        public string? DependencyProof { get; set; }
         public BlockAccessListAccountJson[]? BlockAccessList { get; set; }
 
-        /// <summary>An expected-invalid block has no top-level fields; its access list is under <c>rlp_decoded</c>.</summary>
+        /// <summary>An expected-invalid block has no top-level fields; its access list and proof are under <c>rlp_decoded</c>.</summary>
         [JsonPropertyName("rlp_decoded")]
         public TestBlockRlpDecodedJson? RlpDecoded { get; set; }
 
@@ -27,10 +28,15 @@ namespace Ethereum.Test.Base
         /// <summary>The EIP-7928 access list delivered with the block, valid or not.</summary>
         [JsonIgnore]
         public BlockAccessListAccountJson[]? DeliveredBlockAccessList => BlockAccessList ?? RlpDecoded?.BlockAccessList;
+
+        /// <summary>The EIP-8288 dependency proof delivered beside the block, valid or not.</summary>
+        [JsonIgnore]
+        public string? DeliveredDependencyProof => DependencyProof ?? RlpDecoded?.DependencyProof;
     }
 
     public class TestBlockRlpDecodedJson
     {
         public BlockAccessListAccountJson[]? BlockAccessList { get; set; }
+        public string? DependencyProof { get; set; }
     }
 }

@@ -6,7 +6,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class ExecutionPayloadBodyV1Result(Transaction[] transactions, Withdrawal[]? withdrawals, byte[]? starkProof = null)
+public class ExecutionPayloadBodyV1Result(Transaction[] transactions, Withdrawal[]? withdrawals, byte[]? dependencyProof = null)
 {
     private Transaction[]? _sourceTransactions = transactions;
     private byte[][]? _transactions;
@@ -26,7 +26,7 @@ public class ExecutionPayloadBodyV1Result(Transaction[] transactions, Withdrawal
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public byte[]? StarkProof { get; set; } = starkProof;
+    public byte[]? DependencyProof { get; set; } = dependencyProof;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Withdrawal[]? Withdrawals { get; set; } = withdrawals;

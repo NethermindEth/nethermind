@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -158,35 +159,17 @@ public class InvalidBlockInterceptorTest
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
     }
 
+    // EIP-8288: a block whose dependency proof is not available yet is not invalid, so its hash is not tracked as such.
     [Test]
-    public void Corrupt_peer_proof_does_not_poison_valid_header([Values] bool missing)
+    public void Missing_dependency_proof_is_not_tracked_as_invalid()
     {
-        BlockValidator bodyValidator = new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance,
-            NullLogManager.Instance, Substitute.For<ILeanProofVerifier>());
-        _baseValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
-            .Returns(call => bodyValidator.ValidateBodyAgainstHeader(call.Arg<BlockHeader>(), call.Arg<BlockBody>(), out _));
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
-        byte[] authenticProof = [];
-        block.Header.RecursiveStark = new(Keccak.Compute(authenticProof), Keccak.OfAnEmptyString);
-        block.Header.Hash = block.Header.CalculateHash();
-        block.StarkProof = missing ? null : [2];
-        _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(false);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(HeaderValidator.ValidateHash(block.Header), Is.True);
-        }
+        _baseValidator.ValidateSuggestedBlock(block, parent, out Arg.Any<string?>())
+            .Returns(call => { call[2] = BlockErrorMessages.MissingDependencyProof; return false; });
 
         Assert.That(_invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _), Is.False);
 
-        using (Assert.EnterMultipleScope())
-        {
-            _tracker.DidNotReceive().OnInvalidBlock(block.Hash!, block.ParentHash);
-            _tracker.DidNotReceive().SetChildParent(block.Hash!, block.ParentHash!);
-        }
-        block.StarkProof = authenticProof;
-        Assert.That(_invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _), Is.False);
-        _tracker.Received().OnInvalidBlock(block.Hash!, block.ParentHash);
+        _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
     }
-
 }
