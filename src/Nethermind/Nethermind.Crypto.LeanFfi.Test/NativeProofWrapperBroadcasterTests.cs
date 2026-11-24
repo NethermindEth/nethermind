@@ -91,6 +91,8 @@ public class NativeProofWrapperBroadcasterTests
         context.Session.When(session => session.DeliverMessage(Arg.Any<T>())).Do(call =>
         {
             T message = call.Arg<T>();
+            // A call for a derived eth/76 message type matches its base type's route too; only its own route encodes it.
+            if (message.GetType() != typeof(T)) return;
             IByteBuffer buffer = context.Chain.Container.Resolve<IMessageSerializationService>().ZeroSerialize(message);
             try
             {
