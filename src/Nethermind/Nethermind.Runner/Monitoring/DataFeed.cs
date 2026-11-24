@@ -394,10 +394,11 @@ public class DataFeed
         IReleaseSpec spec = _specProvider.GetSpec(head.Header);
         UInt256? feePerBlobGas = null;
         TxReceipt[] txReceipts = _receiptFinder.Get(head);
-        ReceiptForRpc[] receipts = new ReceiptForRpc[txReceipts.Length];
+        ReceiptForRpc[] receipts = txReceipts.Length == 0 ? [] : new ReceiptForRpc[txReceipts.Length];
         for (int i = 0; i < txReceipts.Length; i++)
         {
-            receipts[i] = new ReceiptForRpc(txs[i].Hash, txReceipts[i], head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header, ref feePerBlobGas));
+            Transaction tx = txs[i];
+            receipts[i] = new ReceiptForRpc(tx.Hash, txReceipts[i], head.Timestamp, tx.GetGasInfo(spec, head.Header, ref feePerBlobGas));
         }
         forkChoice.TrySetResult(
             JsonSerializer.SerializeToUtf8Bytes(
