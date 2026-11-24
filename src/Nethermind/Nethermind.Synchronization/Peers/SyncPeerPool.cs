@@ -60,6 +60,7 @@ namespace Nethermind.Synchronization.Peers
         private Task? _refreshLoopTask;
 
         private volatile TaskCompletionSource _signal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly Action _signalPeersChanged;
         private readonly TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(DefaultUpgradeIntervalInMs);
         private Timer? _upgradeTimer;
 
@@ -93,6 +94,7 @@ namespace Nethermind.Synchronization.Peers
             PriorityPeerMaxCount = priorityPeerMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager.GetClassLogger<SyncPeerPool>();
+            _signalPeersChanged = SignalPeersChanged;
 
             // The packed AllocationAllowances representation reserves 1 byte (8 bits) per context but only honours
             // values up to MaxAllocationSlots; anything higher is clamped at registration time.
@@ -361,7 +363,7 @@ namespace Nethermind.Synchronization.Peers
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default)
         {
-            SyncPeerAllocation allocation = new(allocationContexts, _isAllocatedChecks, SignalPeersChanged);
+            SyncPeerAllocation allocation = new(allocationContexts, _isAllocatedChecks, _signalPeersChanged);
             if (cancellationToken.IsCancellationRequested)
             {
                 return allocation;
@@ -370,36 +372,45 @@ namespace Nethermind.Synchronization.Peers
             int tryCount = 1;
             long timeStamp = Stopwatch.GetTimestamp();
 
-            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
-
-            while (true)
+            CancellationToken refreshLoopToken = _refreshLoopCancellation.Token;
+            // Most allocations succeed on the first try, so the linked source is created only when a wait is needed.
+            CancellationTokenSource? cts = null;
+            try
             {
-                // Snapshot the signal task before attempting allocation so that any
-                // signal fired during or after TryAllocateOnce is already on this task.
-                Task signal = _signal.Task;
-
-                if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
+                while (true)
                 {
-                    return allocation;
-                }
+                    // Snapshot the signal task before attempting allocation so that any
+                    // signal fired during or after TryAllocateOnce is already on this task.
+                    Task signal = _signal.Task;
 
-                long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(timeStamp).TotalMilliseconds;
-                bool timeoutReached = timeoutMilliseconds == 0
-                                      || elapsedMilliseconds < 0
-                                      || elapsedMilliseconds > timeoutMilliseconds;
-                if (timeoutReached) return allocation;
-
-                int waitTime = GetAllocationWaitTime(tryCount++);
-                waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
-
-                if (waitTime > 0)
-                {
-                    await Task.WhenAny(signal, Task.Delay(waitTime, cts.Token));
-                    if (cts.IsCancellationRequested)
+                    if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
                     {
                         return allocation;
                     }
+
+                    long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(timeStamp).TotalMilliseconds;
+                    bool timeoutReached = timeoutMilliseconds == 0
+                                          || elapsedMilliseconds < 0
+                                          || elapsedMilliseconds > timeoutMilliseconds;
+                    if (timeoutReached) return allocation;
+
+                    int waitTime = GetAllocationWaitTime(tryCount++);
+                    waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
+
+                    if (waitTime > 0)
+                    {
+                        cts ??= CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, refreshLoopToken);
+                        await Task.WhenAny(signal, Task.Delay(waitTime, cts.Token));
+                        if (cts.IsCancellationRequested)
+                        {
+                            return allocation;
+                        }
+                    }
                 }
+            }
+            finally
+            {
+                cts?.Dispose();
             }
         }
 
@@ -408,12 +419,23 @@ namespace Nethermind.Synchronization.Peers
             lock (_isAllocatedChecks)
             {
                 PeerInfo? selected = peerAllocationStrategy
-                    .Allocate(allocation.Current, InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts)),
+                    .Allocate(allocation.Current, GetAllocatablePeers(allocationContexts),
                     _stats,
                     _blockTree);
 
                 allocation.AllocatePeer(selected);
                 return allocation.HasPeer;
+            }
+        }
+
+        private IEnumerable<PeerInfo> GetAllocatablePeers(AllocationContexts allocationContexts)
+        {
+            foreach ((_, PeerInfo peerInfo) in _peers)
+            {
+                if (peerInfo.SyncPeer.IsInitialized && peerInfo.CanBeAllocated(allocationContexts))
+                {
+                    yield return peerInfo;
+                }
             }
         }
 
