@@ -305,28 +305,13 @@ namespace Nethermind.Xdc
 
             if (_logger.IsInfo) _logger.Info($"Round {round}: processing HighestQC fork block #{proposalParent.Number} {proposalParent.Hash} before proposing.");
 
-            TaskCompletionSource<ProcessingResult> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            void OnBlockRemoved(object? s, BlockRemovedEventArgs e)
+            // ForceProcessing bypasses the TD check (fork has equal TD); DoNotUpdateHead keeps head intact — only state is needed.
+            BlockVerdict verdict = await _processingQueue.EnqueueAndWaitForVerdictAsync(unprocessedParent, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead).WaitAsync(ct);
+            ProcessingResult result = await verdict.Removed.WaitAsync(ct);
+            if (result != ProcessingResult.Success)
             {
-                if (e.BlockHash == unprocessedParent.Hash)
-                    tcs.TrySetResult(e.ProcessingResult);
-            }
-
-            _processingQueue.BlockRemoved += OnBlockRemoved;
-            try
-            {
-                // ForceProcessing bypasses the TD check (fork has equal TD); DoNotUpdateHead keeps head intact — only state is needed.
-                await _processingQueue.Enqueue(unprocessedParent, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead);
-                ProcessingResult result = await tcs.Task.WaitAsync(ct);
-                if (result != ProcessingResult.Success)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Round {round}: processing HighestQC block #{proposalParent.Number} failed ({result}), skipping proposal.");
-                    return false;
-                }
-            }
-            finally
-            {
-                _processingQueue.BlockRemoved -= OnBlockRemoved;
+                if (_logger.IsWarn) _logger.Warn($"Round {round}: processing HighestQC block #{proposalParent.Number} failed ({result}), skipping proposal.");
+                return false;
             }
 
             if (!_stateReader.HasStateForBlock(proposalParent))
