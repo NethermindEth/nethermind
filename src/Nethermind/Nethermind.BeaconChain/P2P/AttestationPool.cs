@@ -78,6 +78,25 @@ public sealed class AttestationPool(SlotClock slotClock)
         };
     }
 
+    /// <summary>The aggregate of every vote held, one for each data root and committee.</summary>
+    internal List<Attestation> GetAggregates()
+    {
+        List<(ulong Slot, Hash256 DataRoot, ulong CommitteeIndex)> votes;
+        lock (_lock)
+        {
+            Prune(slotClock.CurrentSlot);
+            votes = [.. _aggregates.Keys];
+        }
+
+        List<Attestation> aggregates = [with(votes.Count)];
+        foreach ((ulong slot, Hash256 dataRoot, ulong committeeIndex) in votes)
+        {
+            if (GetAggregate(slot, dataRoot, committeeIndex) is { } aggregate) aggregates.Add(aggregate);
+        }
+
+        return aggregates;
+    }
+
     /// <summary><c>bls.Aggregate</c> of verified signatures, of which there is at least one.</summary>
     internal static BlsSignature AggregateSignatures(BlsSignature[] signatures)
     {

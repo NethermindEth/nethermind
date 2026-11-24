@@ -93,6 +93,26 @@ public sealed class Web3SignerClient(IValidatorClientConfig config, BeaconChainS
             $"the contribution of {publicKey} for slot {contribution.Slot} and subcommittee {contribution.SubcommitteeIndex}", cancellationToken);
     }
 
+    /// <inheritdoc/>
+    public ValueTask<BlsSignature> SignRandaoReveal(BlsPublicKey publicKey, ulong epoch, CancellationToken cancellationToken)
+    {
+        Span<byte> epochRoot = stackalloc byte[Hash256.Size];
+        BinaryPrimitives.WriteUInt64LittleEndian(epochRoot, epoch);
+        return Sign(publicKey, Request("RANDAO_REVEAL", DomainType.Randao, epoch, new Hash256(epochRoot)) with { RandaoReveal = new RandaoRevealDto(epoch.ToString()) },
+            $"the randao reveal of {publicKey} for epoch {epoch}", cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Sent as <c>BLOCK_V2</c> with the <c>block_header</c> Web3Signer takes from Bellatrix on, versioned by the fork of the block's slot.</remarks>
+    public ValueTask<BlsSignature> SignBlock(BlsPublicKey publicKey, BeaconBlockHeader blockHeader, CancellationToken cancellationToken)
+    {
+        ulong epoch = spec.GetEpoch(blockHeader.Slot);
+        BlockHeaderDto header = new(blockHeader.Slot.ToString(), blockHeader.ProposerIndex.ToString(), blockHeader.ParentRoot!.ToString(), blockHeader.StateRoot!.ToString(), blockHeader.BodyRoot!.ToString());
+        BlockRequestDto block = new(ResponseEnvelope.ForkName(spec.ForkAtEpoch(epoch)).ToUpperInvariant(), header);
+        SigningRequest request = Request("BLOCK_V2", DomainType.BeaconProposer, epoch, SszRoots.HashTreeRoot(blockHeader)) with { BeaconBlock = block };
+        return Sign(publicKey, request, $"the block of {publicKey} for slot {blockHeader.Slot}", cancellationToken);
+    }
+
     public void Dispose() => Http.Dispose();
 
     /// <summary>A signing request of <paramref name="type"/> for an object whose root is <paramref name="objectRoot"/>, signed under <paramref name="domainType"/> of <paramref name="epoch"/>.</summary>
@@ -172,6 +192,12 @@ public sealed class Web3SignerClient(IValidatorClientConfig config, BeaconChainS
 
         [JsonPropertyName("contribution_and_proof"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ContributionAndProofDto? ContributionAndProof { get; init; }
+
+        [JsonPropertyName("randao_reveal"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public RandaoRevealDto? RandaoReveal { get; init; }
+
+        [JsonPropertyName("beacon_block"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public BlockRequestDto? BeaconBlock { get; init; }
     }
 
     private sealed record ForkInfoDto(
@@ -230,6 +256,19 @@ public sealed class Web3SignerClient(IValidatorClientConfig config, BeaconChainS
         [property: JsonPropertyName("subcommittee_index")] string SubcommitteeIndex,
         [property: JsonPropertyName("aggregation_bits")] string AggregationBits,
         [property: JsonPropertyName("signature")] string Signature);
+
+    private sealed record RandaoRevealDto([property: JsonPropertyName("epoch")] string Epoch);
+
+    private sealed record BlockRequestDto(
+        [property: JsonPropertyName("version")] string Version,
+        [property: JsonPropertyName("block_header")] BlockHeaderDto BlockHeader);
+
+    private sealed record BlockHeaderDto(
+        [property: JsonPropertyName("slot")] string Slot,
+        [property: JsonPropertyName("proposer_index")] string ProposerIndex,
+        [property: JsonPropertyName("parent_root")] string ParentRoot,
+        [property: JsonPropertyName("state_root")] string StateRoot,
+        [property: JsonPropertyName("body_root")] string BodyRoot);
 
     private sealed record SigningResponse([property: JsonPropertyName("signature")] string? Signature);
 }

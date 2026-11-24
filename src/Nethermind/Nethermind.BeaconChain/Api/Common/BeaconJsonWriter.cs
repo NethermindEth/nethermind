@@ -54,7 +54,7 @@ internal static partial class BeaconJsonWriter
 {
     public static partial void WriteSignedBeaconBlock(Utf8JsonWriter w, SignedBeaconBlock block);
 
-    private static partial void WriteBeaconBlock(Utf8JsonWriter w, BeaconBlock block);
+    internal static partial void WriteBeaconBlock(Utf8JsonWriter w, BeaconBlock block);
 
     private static partial void WriteBeaconBlockBody(Utf8JsonWriter w, BeaconBlockBody body);
 

@@ -246,6 +246,18 @@ public class BeaconNodeValidatorApiTests
             api => api.ProduceSyncCommitteeContribution(HeadSlot, 0, OptimisticRoot, CancellationToken.None).AsTask(), BeaconNodeApiError.NotReady);
         yield return Refused("Sync committee contribution of no message held", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
             api => api.ProduceSyncCommitteeContribution(HeadSlot, 0, HeadRoot, CancellationToken.None).AsTask(), BeaconNodeApiError.NotFound);
+        yield return Refused("Block of a Gloas slot", HeadSlot + 1, AttestationTimeMs, HeadEpoch, HeadKind.Synced,
+            api => api.ProduceBlock(HeadSlot + 1, default, HeadRoot, CancellationToken.None).AsTask(), BeaconNodeApiError.NotSupported);
+        yield return Refused("Block of a slot other than the current one", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
+            api => api.ProduceBlock(HeadSlot + 2, default, HeadRoot, CancellationToken.None).AsTask(), BeaconNodeApiError.InvalidRequest);
+        yield return Refused("Block of the slot of the head", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
+            api => api.ProduceBlock(HeadSlot, default, HeadRoot, CancellationToken.None).AsTask(), BeaconNodeApiError.InvalidRequest);
+        yield return Refused("Block on an optimistic head", HeadSlot + 1, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Optimistic,
+            api => api.ProduceBlock(HeadSlot + 1, default, HeadRoot, CancellationToken.None).AsTask(), BeaconNodeApiError.NotReady);
+        yield return Refused("Published block without a payload", HeadSlot + 1, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
+            api => api.PublishBlock(new SignedBlockContents(new SignedBeaconBlock(), [], []), CancellationToken.None).AsTask(), BeaconNodeApiError.InvalidRequest);
+        yield return Refused("Published block of a Gloas slot", HeadSlot + 1, AttestationTimeMs, HeadEpoch, HeadKind.Synced,
+            api => api.PublishBlock(new SignedBlockContents(TestChain.CreateBlock(HeadSlot + 1, HeadRoot), [], []), CancellationToken.None).AsTask(), BeaconNodeApiError.NotSupported);
 
         static TestCaseData Refused(string name, ulong wallSlot, long millisecondsIntoSlot, ulong gloasForkEpoch, HeadKind head, Func<IBeaconNodeValidatorApi, Task> call, BeaconNodeApiError expected) =>
             new TestCaseData(wallSlot, millisecondsIntoSlot, gloasForkEpoch, head, call, expected).SetName(name);
@@ -310,24 +322,6 @@ public class BeaconNodeValidatorApiTests
             AttestationData produced = await node.Api.ProduceAttestationData(HeadSlot, 0, CancellationToken.None);
             return new SingleAttestation { CommitteeIndex = 0, AttesterIndex = (ulong)validatorIndex, Data = produced, Signature = Sign(state, validatorIndex, produced) };
         }
-    }
-
-    [Test]
-    public async Task Members_of_later_duties_refuse_as_not_supported()
-    {
-        using ValidatorNode node = new(Presets.FarFutureEpoch, HeadSlot, AttestationTimeMs);
-        IBeaconNodeValidatorApi api = node.Api;
-        Func<Task>[] calls =
-        [
-            () => api.PrepareBeaconProposers([], CancellationToken.None).AsTask(),
-            () => api.ProduceBlock(HeadSlot, default, HeadRoot, CancellationToken.None).AsTask(),
-            () => api.PublishBlock(new SignedBlockContents(new SignedBeaconBlock(), [], []), CancellationToken.None).AsTask(),
-        ];
-
-        BeaconNodeApiError?[] refusals = new BeaconNodeApiError?[calls.Length];
-        for (int i = 0; i < calls.Length; i++) refusals[i] = await Refusal(calls[i]);
-
-        Assert.That(refusals, Is.All.EqualTo(BeaconNodeApiError.NotSupported));
     }
 
     public enum GossipFlaw { None, AlreadySeen, NonZeroIndex, UnknownBlock, FailedBlock, CommitteeIndex, WrongSubnet, FutureSlot, StaleEpoch, TargetEpoch, NotInCommittee, Signature, TargetNotAncestor, NotFinalizedDescendant, UnjoinedSubnet }

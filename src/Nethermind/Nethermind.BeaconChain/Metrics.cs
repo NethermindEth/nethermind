@@ -39,6 +39,7 @@ public class Metrics
     internal static ulong ValidatorAggregatesSubmittedCount;
     internal static ulong ValidatorSyncCommitteeMessagesSubmittedCount;
     internal static ulong ValidatorSyncCommitteeContributionsSubmittedCount;
+    internal static ulong ValidatorBlocksProposedCount;
     private static long _headSlotDelay;
     private static int _peerCount;
     private static long _lastBlockImportMs;
@@ -163,4 +164,10 @@ public class Metrics
     [KeyIsLabel("reason")]
     [Description("Sync committee aggregation duties of the configured validators that published no contribution, by closed-cardinality reason.")]
     public static ConcurrentDictionary<StringLabel, long> BeaconChainValidatorSyncCommitteeContributionsSkipped { get; } = new();
+    [CounterMetric]
+    [Description("Blocks of the configured validators that the node accepted and published.")]
+    public static ulong BeaconChainValidatorBlocksProposed { get => Volatile.Read(ref ValidatorBlocksProposedCount); set => Volatile.Write(ref ValidatorBlocksProposedCount, value); }
+    [KeyIsLabel("reason")]
+    [Description("Block proposal duties of the configured validators that published no block, by closed-cardinality reason.")]
+    public static ConcurrentDictionary<StringLabel, long> BeaconChainValidatorProposalsSkipped { get; } = new();
 }

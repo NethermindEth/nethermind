@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using CkzgLib;
+using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -12,6 +15,7 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub;
+using Nethermind.Merge.Plugin.Data;
 using Snappier;
 
 namespace Nethermind.BeaconChain.ValidatorApi;
@@ -20,7 +24,7 @@ namespace Nethermind.BeaconChain.ValidatorApi;
 /// <remarks>
 /// <para>
 /// Every call reads one <see cref="HeadSnapshot"/>, whose post-state and fork-choice copy are never mutated after publication,
-/// so no call waits for the import worker. A submitted attestation is checked as gossip against that snapshot on the calling
+/// so reading duties never waits for the import worker. A submitted attestation is checked as gossip against that snapshot on the calling
 /// thread by <see cref="SingleAttestationValidator"/>, which also adds it to the <see cref="AttestationPool"/> aggregates are
 /// served from, published, and only then queued to the worker for fork choice.
 /// </para>
@@ -38,7 +42,12 @@ namespace Nethermind.BeaconChain.ValidatorApi;
 /// The worker captures head states only while <see cref="HeadSnapshotHolder.CaptureState"/> is set. The first call that needs
 /// one sets it, so a node without a validator client pays nothing, and that call is refused as not ready.
 /// </para>
-/// <para>Only the attest, aggregate and sync committee paths are served; a Gloas head or slot is refused as not supported.</para>
+/// <para>
+/// A block is built on the import worker by <see cref="BlockProducer"/>, as only the worker holds the head's state and drives the execution
+/// layer. A published block is checked as gossip on the calling thread, published with its data column sidecars, and queued to the worker
+/// for import.
+/// </para>
+/// <para>Validator duties are served up to Fulu; a Gloas head or slot is refused as not supported.</para>
 /// </remarks>
 public sealed class BeaconNodeValidatorApi(
     BeaconChainSpec spec,
@@ -53,13 +62,21 @@ public sealed class BeaconNodeValidatorApi(
     AttestationSubnets attestationSubnets,
     SyncCommitteeValidator syncCommitteeValidator,
     SyncCommitteePool syncCommitteePool,
-    SyncCommitteeSubnets syncCommitteeSubnets) : IBeaconNodeValidatorApi
+    SyncCommitteeSubnets syncCommitteeSubnets,
+    ProposerPreparations proposerPreparations,
+    BlockAttestationPool blockAttestationPool,
+    PubkeyCache pubkeys) : IBeaconNodeValidatorApi
 {
     /// <summary>Slots the head may lag the wall clock by and still count as synced, as <c>/eth/v1/node/syncing</c> counts them.</summary>
     private const ulong ReadySyncDistance = 1;
 
     /// <summary>The longest a submitted aggregate waits for the worker's verdict: a third of a slot, so an aggregate due two thirds into its slot is still published within it.</summary>
     private readonly TimeSpan _aggregateVerdictTimeout = TimeSpan.FromMilliseconds(spec.SecondsPerSlot * 1000 * GloasTiming.AttestationDueBps / Presets.BasisPoints);
+
+    /// <summary>The longest a block is waited for: a third of a slot, past which attesters have voted without it.</summary>
+    private readonly TimeSpan _productionTimeout = TimeSpan.FromMilliseconds(spec.SecondsPerSlot * 1000 * GloasTiming.AttestationDueBps / Presets.BasisPoints);
+
+    private static readonly ulong[] AllColumns = CreateAllColumns();
 
     /// <summary>Publishes a gossip message on a topic, subscribed or not; tests script it, otherwise <see cref="BeaconP2P.Publish"/>.</summary>
     internal Action<string, byte[]> PublishGossip { get; set; } = p2p.Publish;
@@ -309,16 +326,89 @@ public sealed class BeaconNodeValidatorApi(
     }
 
     /// <inheritdoc/>
+    /// <remarks>A preparation holds through the current epoch and the <see cref="ProposerPreparations.RetainedEpochs"/> after it.</remarks>
+    /// <exception cref="BeaconNodeApiException">
+    /// <see cref="BeaconNodeApiError.InvalidRequest"/> when the node would hold more than <see cref="ProposerPreparations.MaxPreparations"/> validators;
+    /// then nothing is prepared.
+    /// </exception>
     public ValueTask PrepareBeaconProposers(IReadOnlyList<ProposerPreparation> preparations, CancellationToken cancellationToken) =>
-        throw NotServed("POST /eth/v1/validator/prepare_beacon_proposer");
+        proposerPreparations.TryPrepare(preparations) ? default : throw InvalidRequest($"The node holds the fee recipients of at most {ProposerPreparations.MaxPreparations} validators.");
 
     /// <inheritdoc/>
-    public ValueTask<ProducedBlock> ProduceBlock(ulong slot, BlsSignature randaoReveal, Hash256 graffiti, CancellationToken cancellationToken) =>
-        throw NotServed("GET /eth/v3/validator/blocks/{slot}");
+    /// <remarks>
+    /// The aggregates the <see cref="AttestationPool"/> holds join the <see cref="BlockAttestationPool"/> here, off the import worker, which then
+    /// builds the block with <see cref="BlockProducer"/>; the call waits for it at most a third of a slot.
+    /// </remarks>
+    /// <exception cref="BeaconNodeApiException">
+    /// <see cref="BeaconNodeApiError.InvalidRequest"/> for a slot other than the current one or not after the head, a randao reveal that is not the
+    /// proposer's or a proposer with no fee recipient prepared; <see cref="BeaconNodeApiError.NotReady"/> also when the worker is too busy, the
+    /// execution layer builds no usable payload or the block fails its own state transition.
+    /// </exception>
+    public async ValueTask<ProducedBlock> ProduceBlock(ulong slot, BlsSignature randaoReveal, Hash256 graffiti, CancellationToken cancellationToken)
+    {
+        RefuseGloas(spec.GetEpoch(slot));
+        (_, ulong latestSlot) = attestationValidator.CurrentSlots();
+        if (slot < slotClock.CurrentSlot || slot > latestSlot) throw InvalidRequest($"Slot {slot} is not the current slot {slotClock.CurrentSlot}.");
+        HeadSnapshot head = RequireHeadState().Head;
+        SyncingStatus status = Status(head);
+        if (status.IsSyncing || status.IsOptimistic) throw NotReady(status.IsSyncing ? $"The node is syncing: its head is {status.SyncDistance} slots behind." : "The head's execution payload is not yet verified.");
+        if (slot <= status.HeadSlot) throw InvalidRequest($"Slot {slot} is not after the head at slot {status.HeadSlot}.");
+
+        foreach (Attestation aggregate in attestationPool.GetAggregates()) blockAttestationPool.Add(aggregate);
+        TaskCompletionSource<ProducedBlock> produced = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.ProduceBlockItem(slot, randaoReveal, graffiti, produced)))
+            throw NotReady("The import worker is too busy to build a block.");
+        try
+        {
+            return await produced.Task.WaitAsync(_productionTimeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            throw NotReady($"The node did not build the block of slot {slot} in time.");
+        }
+    }
 
     /// <inheritdoc/>
-    public ValueTask PublishBlock(SignedBlockContents contents, CancellationToken cancellationToken) =>
-        throw NotServed("POST /eth/v2/beacon/blocks");
+    /// <remarks>
+    /// <para>
+    /// beacon-APIs <c>broadcast_validation</c> <c>gossip</c>: before anything is published, the block passes the fulu/p2p-interface.md
+    /// <c>beacon_block</c> checks the node can make against the head snapshot (<see cref="CheckGossipBlock"/>), and its blobs and cell proofs must
+    /// match its commitments, from which every data column sidecar is computed (fulu/validator.md <c>get_data_column_sidecars_from_block</c>).
+    /// </para>
+    /// <para>
+    /// The block and its sidecars are then published, and the block is queued to the import worker as one from gossip, with the sidecars of the
+    /// columns the node samples. The call returns once it is queued, so a block that fails its full import was still published, which the route
+    /// answers with 202 and this call does not report.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="BeaconNodeApiException">
+    /// <see cref="BeaconNodeApiError.InvalidRequest"/> as the interface says; <see cref="BeaconNodeApiError.NotReady"/> before gossip has started,
+    /// or when publishing failed.
+    /// </exception>
+    public async ValueTask PublishBlock(SignedBlockContents contents, CancellationToken cancellationToken)
+    {
+        SignedBeaconBlock signed = contents.SignedBlock;
+        if (signed.Message is not { Body.ExecutionPayload: not null } block) throw InvalidRequest("The block has no body or no execution payload.");
+        RefuseGloas(spec.GetEpoch(block.Slot));
+        (HeadSnapshot head, BeaconStateFulu state) = RequireHeadState();
+        if (!orchestrator.GossipStarted) throw NotReady("Gossip has not started yet; the node is still catching up.");
+        if (CheckGossipBlock(head, state, signed) is { } refusal) throw InvalidRequest(refusal);
+        DataColumnSidecar[] columns = DataColumns(signed, contents) ?? throw InvalidRequest("The blobs or their cell proofs do not match the block's KZG commitments.");
+
+        byte[] digest = ForkDigest.Compute(spec, spec.GetEpoch(block.Slot));
+        string? failure = Publish(GossipTopics.Topic(digest, GossipTopics.BeaconBlock), Snappy.CompressToArray(SignedBeaconBlock.Encode(signed)), "block");
+        if (failure is not null) throw NotReady(failure);
+        gossip.MarkProposalSeen(block.Slot, block.ProposerIndex);
+        foreach (DataColumnSidecar column in columns)
+        {
+            string topic = GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(CustodyGroups.ComputeSubnetForDataColumnSidecar(column.Index)));
+            string? columnFailure = Publish(topic, Snappy.CompressToArray(DataColumnSidecar.Encode(column)), "data column sidecar");
+            failure ??= columnFailure;
+        }
+
+        await orchestrator.WorkWriter.WriteAsync(new BeaconSyncOrchestrator.LocalBlockItem(signed, SszRoots.HashTreeRoot(block), columns), cancellationToken);
+        if (failure is not null) throw NotReady($"The block was published, but not all of its data column sidecars: {failure}");
+    }
 
     /// <inheritdoc/>
     /// <remarks>
@@ -457,6 +547,78 @@ public sealed class BeaconNodeValidatorApi(
         };
     }
 
+    /// <summary>The fulu/p2p-interface.md <c>beacon_block</c> checks of <paramref name="signed"/> the node can make against the head snapshot.</summary>
+    /// <remarks>The expected proposer is checked only for a block on the head, whose state holds the lookahead of the block's slot.</remarks>
+    /// <returns>Why the block must not be published, or <c>null</c>.</returns>
+    private string? CheckGossipBlock(HeadSnapshot head, BeaconStateFulu state, SignedBeaconBlock signed)
+    {
+        BeaconBlock block = signed.Message!;
+        (_, ulong latestSlot) = attestationValidator.CurrentSlots();
+        if (block.Slot > latestSlot) return $"Slot {block.Slot} is in the future.";
+        ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(head.Status.FinalizedEpoch);
+        if (block.Slot <= finalizedSlot) return $"Slot {block.Slot} is not after the finalized slot {finalizedSlot}.";
+        if (gossip.IsProposalSeen(block.Slot, block.ProposerIndex)) return $"A block of proposer {block.ProposerIndex} at slot {block.Slot} was already seen.";
+
+        ForkChoiceSnapshotNode? parent = null;
+        foreach (ForkChoiceSnapshotNode node in head.ForkChoice?.Nodes ?? [])
+        {
+            if (node.Root == block.ParentRoot) parent = node;
+        }
+
+        if (parent is null) return $"The parent {block.ParentRoot} is not known.";
+        if (block.Slot <= parent.Slot) return $"Slot {block.Slot} is not after the parent's slot {parent.Slot}.";
+        ulong headEpoch = state.GetCurrentEpoch();
+        ulong blockEpoch = spec.GetEpoch(block.Slot);
+        if (block.ParentRoot == head.Status.HeadRoot && blockEpoch <= headEpoch + 1)
+        {
+            ulong expected = state.ProposerLookahead![(int)((blockEpoch - headEpoch) * Presets.SlotsPerEpoch + block.Slot % Presets.SlotsPerEpoch)];
+            if (expected != block.ProposerIndex) return $"Proposer {block.ProposerIndex} is not the proposer {expected} of slot {block.Slot}.";
+        }
+
+        try
+        {
+            if (!SignatureSets.VerifyProposerSignature(state, signed, pubkeys)) return "The proposer signature is invalid.";
+        }
+        catch (BeaconStateException e)
+        {
+            return e.Message;
+        }
+
+        BeaconBlockBody body = block.Body!;
+        ulong timestamp = state.GenesisTime + block.Slot * Presets.SecondsPerSlot;
+        if (body.ExecutionPayload!.Timestamp != timestamp) return $"The payload timestamp {body.ExecutionPayload.Timestamp} is not the time {timestamp} of slot {block.Slot}.";
+        ulong maxBlobs = spec.GetBlobParameters(blockEpoch)?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra;
+        int blobCount = body.BlobKzgCommitments?.Length ?? 0;
+        return (ulong)blobCount > maxBlobs ? $"The block has {blobCount} blob commitments, more than the {maxBlobs} allowed." : null;
+    }
+
+    /// <summary>Every data column sidecar of the block, computed from its blobs and checked against their cell proofs.</summary>
+    /// <returns>The sidecars in column order, none for a block without blobs, or <c>null</c> when the blobs or proofs do not match the commitments.</returns>
+    private static DataColumnSidecar[]? DataColumns(SignedBeaconBlock signed, SignedBlockContents contents)
+    {
+        int blobCount = signed.Message!.Body!.BlobKzgCommitments?.Length ?? 0;
+        if (contents.Blobs.Count != blobCount || contents.KzgProofs.Count != blobCount * Ckzg.CellsPerExtBlob) return null;
+        if (blobCount == 0) return [];
+
+        BlobAndProofV2[] blobs = new BlobAndProofV2[blobCount];
+        for (int i = 0; i < blobCount; i++)
+        {
+            byte[][] proofs = new byte[Ckzg.CellsPerExtBlob][];
+            for (int cell = 0; cell < proofs.Length; cell++) proofs[cell] = contents.KzgProofs[i * Ckzg.CellsPerExtBlob + cell];
+            blobs[i] = new BlobAndProofV2(contents.Blobs[i], proofs);
+        }
+
+        DataColumnSidecar[] columns = LocalBlobColumns.Create(signed, blobs, AllColumns);
+        return columns.Length == AllColumns.Length ? columns : null;
+    }
+
+    private static ulong[] CreateAllColumns()
+    {
+        ulong[] columns = new ulong[Eip7594DasConstants.NumberOfColumns];
+        for (int column = 0; column < columns.Length; column++) columns[column] = (ulong)column;
+        return columns;
+    }
+
     private SyncingStatus Status(HeadSnapshot? head)
     {
         ulong headSlot = head?.Status.HeadSlot ?? 0;
@@ -536,7 +698,6 @@ public sealed class BeaconNodeValidatorApi(
     private static Hash256 BlockRootAtSlot(HeadSnapshot head, BeaconStateFulu state, ulong slot) =>
         slot >= state.Slot ? head.Status.HeadRoot! : state.GetBlockRootAtSlot(slot);
 
-    private static BeaconNodeApiException NotServed(string route) => NotSupported($"{route} is not served by this node yet.");
     private static BeaconNodeApiException NotSupported(string message) => new(BeaconNodeApiError.NotSupported, message);
     private static BeaconNodeApiException NotReady(string message) => new(BeaconNodeApiError.NotReady, message);
     private static BeaconNodeApiException InvalidRequest(string message) => new(BeaconNodeApiError.InvalidRequest, message);

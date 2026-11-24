@@ -204,16 +204,20 @@ public class BeaconChainPluginTests
     }
 
     private const string ValidatorKey = "0x989d34725a2bfc3f15105f3f5fc8741f436c25ee1ee4f948e425d6bcb8c56bce6e06c269635b7e985a7ffa639e2409bf";
+    private const string FeeRecipient = "0x00000000000000000000000000000000000000fe";
 
-    [TestCase(true, "http://127.0.0.1:9000", ValidatorKey, null)]
-    [TestCase(true, "ftp://127.0.0.1:9000", ValidatorKey, "RemoteSignerUrl")]
-    [TestCase(true, null, ValidatorKey, "RemoteSignerUrl")]
-    [TestCase(true, "http://127.0.0.1:9000", "0x1234", "PublicKeys")]
-    [TestCase(true, "http://127.0.0.1:9000", null, "PublicKeys")]
-    [TestCase(false, null, null, null)]
-    public async Task Plugin_wiring_starts_the_validator_client_only_when_enabled_and_refuses_a_bad_config(bool enabled, string? remoteSignerUrl, string? publicKey, string? refusedItem)
+    [TestCase(true, "http://127.0.0.1:9000", ValidatorKey, FeeRecipient, null)]
+    [TestCase(true, "ftp://127.0.0.1:9000", ValidatorKey, FeeRecipient, "RemoteSignerUrl")]
+    [TestCase(true, null, ValidatorKey, FeeRecipient, "RemoteSignerUrl")]
+    [TestCase(true, "http://127.0.0.1:9000", "0x1234", FeeRecipient, "PublicKeys")]
+    [TestCase(true, "http://127.0.0.1:9000", null, FeeRecipient, "PublicKeys")]
+    [TestCase(true, "http://127.0.0.1:9000", ValidatorKey, null, "FeeRecipient")]
+    [TestCase(true, "http://127.0.0.1:9000", ValidatorKey, "0x00fe", "FeeRecipient")]
+    [TestCase(false, null, null, null, null)]
+    public async Task Plugin_wiring_starts_the_validator_client_only_when_enabled_and_refuses_a_bad_config(bool enabled, string? remoteSignerUrl, string? publicKey, string? feeRecipient,
+        string? refusedItem)
     {
-        ValidatorClientConfig config = new() { Enabled = enabled, RemoteSignerUrl = remoteSignerUrl, PublicKeys = publicKey is null ? [] : [publicKey] };
+        ValidatorClientConfig config = new() { Enabled = enabled, RemoteSignerUrl = remoteSignerUrl, PublicKeys = publicKey is null ? [] : [publicKey], FeeRecipient = feeRecipient };
         await using IContainer container = BeaconChainTestContainer.Builder().AddSingleton<IValidatorClientConfig>(config).Build();
         StartValidatorClient step = container.Resolve<StartValidatorClient>();
 
@@ -228,6 +232,7 @@ public class BeaconChainPluginTests
         if (!enabled) return;
         await container.Resolve<AttesterDutyRunner>().StopAsync();
         await container.Resolve<SyncCommitteeDutyRunner>().StopAsync();
+        await container.Resolve<ProposerDutyRunner>().StopAsync();
     }
 
     [Test]

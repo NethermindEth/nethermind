@@ -5,6 +5,7 @@ using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -69,6 +70,13 @@ internal static class HexConvert
         {
             return false;
         }
+    }
+
+    /// <summary>Parses a 0x-prefixed 20-byte execution address.</summary>
+    public static bool TryParseAddress(string? s, [NotNullWhen(true)] out Address? address)
+    {
+        address = TryParseBytes(s, out byte[]? bytes) && bytes.Length == Address.Size ? new Address(bytes) : null;
+        return address is not null;
     }
 
     /// <summary>Encodes an SSZ bitvector (LSB-first within each byte) as a <c>0x</c>-prefixed hex string.</summary>

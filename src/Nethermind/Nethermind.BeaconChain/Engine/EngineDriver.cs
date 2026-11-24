@@ -9,6 +9,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -50,6 +51,8 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     internal TimeSpan ForkchoiceTimeout { get; init; } = TimeSpan.FromSeconds(8);
     /// <summary>How long an import waits for its first local blob recovery attempt before using network columns.</summary>
     internal TimeSpan LocalColumnsTimeout { get; init; } = TimeSpan.FromSeconds(1);
+    /// <summary>How long block production waits for <c>engine_getPayloadV5</c>: the 1 s timeout of execution-apis paris.md <c>engine_getPayloadV1</c>.</summary>
+    internal TimeSpan GetPayloadTimeout { get; init; } = TimeSpan.FromSeconds(1);
     /// <summary>
     /// The block currently being run through the state transition; the orchestrator sets it before
     /// <see cref="StateTransition.StateTransition.Apply"/> so <see cref="NotifyNewPayload"/> can
@@ -205,6 +208,68 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             (PayloadStatusV1 status, TimeSpan elapsed) = await pending.WaitAsync(ForkchoiceTimeout);
             return (status, elapsed);
         }, blockNumber: headNumber);
+    }
+
+    /// <summary>
+    /// Has the execution layer start building a payload on <paramref name="headExecHash"/>: <c>engine_forkchoiceUpdatedV3</c> with
+    /// <paramref name="attributes"/> (bellatrix/validator.md <c>prepare_execution_payload</c>).
+    /// </summary>
+    /// <remarks>
+    /// The caller passes the forkchoice state its last update without attributes sent, so this never moves the execution head. Called from
+    /// the import worker, which serializes it with the other forkchoice updates.
+    /// </remarks>
+    /// <returns>The payload id, or <c>null</c> when the execution layer did not answer VALID with one, such as while it is syncing.</returns>
+    /// <exception cref="EngineUnavailableException">The call produced no result.</exception>
+    internal async Task<byte[]?> StartPayloadBuild(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash, PayloadAttributes attributes)
+    {
+        ForkchoiceStateV1 state = new(headExecHash, finalizedExecHash, safeExecHash);
+        ForkchoiceUpdatedV1Result result = await CallBuildAsync("forkchoiceUpdatedV3", ForkchoiceTimeout, () => detector.InnerEngine.engine_forkchoiceUpdatedV3(state, attributes));
+        return result.PayloadStatus.Status == PayloadStatus.Valid && result.PayloadId is { } payloadId ? Bytes.FromHexString(payloadId) : null;
+    }
+
+    /// <summary>The payload the execution layer built for <paramref name="payloadId"/>, with its blobs bundle and execution requests: <c>engine_getPayloadV5</c>.</summary>
+    /// <exception cref="EngineUnavailableException">The call produced no payload, such as for an unknown payload id.</exception>
+    internal async Task<GetPayloadV5Result> GetPayload(byte[] payloadId) =>
+        (await CallBuildAsync("getPayloadV5", GetPayloadTimeout, () => detector.InnerEngine.engine_getPayloadV5(payloadId)))!;
+
+    /// <summary>Runs one block-production engine call within <paramref name="timeout"/> and records whether it answered.</summary>
+    /// <exception cref="EngineUnavailableException">The call failed, timed out, answered no result, or a timed-out forkchoice update is still running.</exception>
+    /// <exception cref="OperationCanceledException">An external consensus client took over the engine API.</exception>
+    private async Task<T> CallBuildAsync<T>(string method, TimeSpan timeout, Func<Task<ResultWrapper<T>>> call)
+    {
+        try
+        {
+            if (_pendingForkchoice is { IsCompleted: false })
+                throw new EngineUnavailableException(method, "the previous forkchoiceUpdated call is still running");
+            // Task.Run keeps synchronous EL work inside the deadline; the call is released only once that work ends.
+            IDisposable embedded = detector.EnterEmbeddedCall(method);
+            Task<ResultWrapper<T>> pending = Task.Run(async () =>
+            {
+                using (embedded)
+                    return await call();
+            });
+            _ = pending.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            ResultWrapper<T> result = await pending.WaitAsync(timeout);
+            if (result.Result.ResultType != ResultType.Success || result.Data is not { } data)
+                throw new EngineUnavailableException(method, result.Result.Error);
+            _isAvailable = true;
+            return data;
+        }
+        catch (OperationCanceledException) when (detector.HasStoodDown)
+        {
+            throw;
+        }
+        catch (EngineUnavailableException)
+        {
+            _isAvailable = false;
+            throw;
+        }
+        catch (Exception e)
+        {
+            _isAvailable = false;
+            throw new EngineUnavailableException(method, e.Message, e);
+        }
     }
 
     private string FormatExecutionBlock(Hash256 hash) =>
