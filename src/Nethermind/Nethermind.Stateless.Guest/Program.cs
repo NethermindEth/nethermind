@@ -49,8 +49,16 @@ partial class Program
     /// report the block invalid, and the guest exits 1 without writing an output. The message tells it apart from a
     /// runtime abort, which prints nothing.
     /// </remarks>
-    private static bool IsOutOfMemory(Exception exception) =>
-        exception is OutOfMemoryException or { InnerException: OutOfMemoryException };
+    private static bool IsOutOfMemory(Exception? exception)
+    {
+        for (; exception is not null; exception = exception.InnerException)
+        {
+            if (exception is OutOfMemoryException)
+                return true;
+        }
+
+        return false;
+    }
 
     /// <summary>Validates the input this guest takes, returning the encoded result.</summary>
     /// <remarks>Implemented per input format, in <c>Input.Ssz.cs</c> or <c>Input.Trusted.cs</c>, whichever the build includes.</remarks>

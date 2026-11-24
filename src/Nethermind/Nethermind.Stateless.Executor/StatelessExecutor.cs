@@ -92,10 +92,18 @@ public static partial class StatelessExecutor
     /// <remarks>
     /// Memory is a limit of the machine validating the block, not a property of the block, so a valid block can run out of it.
     /// Reporting that as an invalid block would make the guest prove a valid block invalid; letting the exception through
-    /// aborts the run instead. The inner exception counts too, as decoders and initializers wrap what they catch.
+    /// aborts the run instead. Inner exceptions count too, at any depth, as decoders and initializers wrap what they catch.
     /// </remarks>
-    private static bool IsOutOfMemory(Exception exception) =>
-        exception is OutOfMemoryException or { InnerException: OutOfMemoryException };
+    private static bool IsOutOfMemory(Exception? exception)
+    {
+        for (; exception is not null; exception = exception.InnerException)
+        {
+            if (exception is OutOfMemoryException)
+                return true;
+        }
+
+        return false;
+    }
 
     /// <summary>Loads the KZG trusted setup the block's blob transactions need; the guest verifies none.</summary>
     static partial void InitializeKzg(IReleaseSpec spec);
