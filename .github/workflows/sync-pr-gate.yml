@@ -133,10 +133,20 @@ jobs:
           repositories: "nethermind,post-merge-smoke-tests"
           permission-contents: read
 
-      - name: Checkout repository
+      # PR code only runs inside Docker: the image build and the client container. Everything run on the
+      # VM itself comes from master's checkout, as the job holds secrets and master's cache scope.
+      - name: Checkout PR
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          persist-credentials: false
+
+      - name: Checkout master scripts
+        uses: actions/checkout@v6
+        with:
+          path: base
+          sparse-checkout: scripts
           persist-credentials: false
 
       - name: Build PR image
@@ -148,7 +158,7 @@ jobs:
             --build-arg BUILD_CONFIG=release \
             --build-arg CI=true \
             --build-arg COMMIT_HASH=${{ github.event.pull_request.head.sha }} \
-            .
+            pr
 
       - name: Checkout tests repository
         uses: actions/checkout@v6
@@ -170,6 +180,8 @@ jobs:
 
       - name: Set up .NET for CI scripts
         uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: base/global.json
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -226,26 +238,26 @@ jobs:
         env:
           NETWORK: hoodi
           SYNC_MODE: ${{ matrix.mode }}
-        run: dotnet run --file scripts/wait-for-sync.cs
+        run: dotnet run --file base/scripts/wait-for-sync.cs
 
+      # The container writes these files as root, so never follow its symlinks or trust its file names.
       - name: Get Nethermind Debug Logs
         if: failure() || cancelled()
+        working-directory: sedge
         run: |
-          target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
-          cd "$target_dir/logs"
-          log_file=$(find . -type f -name "*.log" | head -n 1)
-          echo "Found log file: $log_file"
-          artifact_name=$(basename "$log_file")-hoodi-${{ matrix.mode }}-${{ matrix.consensus }}-${{ github.run_id }}
-          zip "${artifact_name}.zip" "$log_file"
-          echo "artifact_name=$artifact_name" >> $GITHUB_ENV
-          echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV
+          log_dir=$(realpath -e execution-data/logs) || exit 0
+          if [[ "$log_dir" != "$PWD"/* ]]; then
+            echo "::warning::Skipping logs outside the workspace: $log_dir"
+            exit 0
+          fi
+          find "$log_dir" -type f -name '*.log' -print0 | head -zn 1 | xargs -0r zip -j -y "$RUNNER_TEMP/nethermind-log.zip"
 
       - name: Upload Nethermind Debug logs artifact
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.artifact_name }}
-          path: ${{ env.artifact_path }}
+          name: nethermind-log-hoodi-${{ matrix.mode }}-${{ matrix.consensus }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/nethermind-log.zip
           retention-days: 7
 
       - name: Get Consensus Logs
