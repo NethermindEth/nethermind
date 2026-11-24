@@ -16,6 +16,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -1178,5 +1179,26 @@ public class ProofWrapperBroadcasterTests
             Assert.That(link.Penalties, Has.One.Contains("transaction metadata"));
             Assert.That(node.Pending, Is.Empty, "the wrapper is discarded before validation");
         }
+    }
+
+    // eth/76: manifests of wrappers announced on the connection are served in request order and the rest omitted; this node
+    // requests none, so manifests sent to it are a violation.
+    [Test]
+    public void Manifests_of_announced_wrappers_are_served_and_unsolicited_ones_are_violations()
+    {
+        using WrapperTestNode node = new();
+        Transaction transaction = FrameTransaction(1);
+        node.AddPending(transaction);
+        byte[] wrapper = Wrapper(64, transaction);
+        Assert.That(node.Broadcaster.PublishWrapper(wrapper), Is.True);
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        ValueHash256 hash = Describe(wrapper).Hash;
+        node.Broadcaster.OnGetProofWrapperManifests(peer, new(5, [TestItem.KeccakA.ValueHash256, hash]));
+        ProofWrapperManifestsMessage response = link.Sent<ProofWrapperManifestsMessage>().Single();
+        Assert.That((response.RequestId, response.Manifests), Is.EqualTo((5L, new[] { new ProofWrapperManifest(hash, WrapperMetadata.Of(wrapper)) })));
+
+        node.Broadcaster.OnProofWrapperManifests(peer, response);
+        Assert.That(link.Penalties, Has.One.Contains("manifests"));
     }
 }

@@ -13,7 +13,7 @@
     <None Update="Specs\merge_fork_id_test.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="P2P\Subprotocols\Eth\V75\Vectors\*.json">
+    <None Update="P2P\Subprotocols\Eth\V7*\Vectors\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

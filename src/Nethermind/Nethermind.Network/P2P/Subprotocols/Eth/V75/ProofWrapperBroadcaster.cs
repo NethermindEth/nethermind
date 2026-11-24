@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
@@ -412,15 +413,17 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
         try { hashes = WrapperBodies.ParseWrapper(wrapper, out shape, out coverage); }
         catch (RlpException) { return false; }
         ValueHash256[] encodingHashes = WrapperCompaction.EncodingHashes(wrapper);
-        WrapperAnnouncement announcement;
-        try { announcement = WrapperAnnouncement.Create(wrapper, shape.Mode, coverage, WrapperMetadata.InlineFor(wrapper)); }
+        WrapperMetadata manifest;
+        try { manifest = WrapperMetadata.Of(wrapper); }
         catch (RlpException) { return false; }
+        WrapperAnnouncement announcement = WrapperAnnouncement.Create(wrapper, shape.Mode, coverage,
+            shape.Mode == MempoolWrapper.ModeDirect && manifest.Count <= Eth75Protocol.MaxInlineTransactions ? manifest : null);
         Outbox outbox = new();
         lock (_gate)
         {
             // A wrapper validated under a verifier the target fork no longer uses is never offered.
             if (_disposed || verifier != _verifier
-                || !_store.TryAdd(new(announcement, (byte[])wrapper.Clone(), hashes, verifier, shape, encodingHashes))) return false;
+                || !_store.TryAdd(new(announcement, (byte[])wrapper.Clone(), hashes, verifier, shape, encodingHashes, manifest))) return false;
             _tombstones.Remove(announcement.Hash);
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers)
@@ -583,6 +586,41 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
         foreach ((_, bool[]? replace) in served)
             foreach (bool reference in replace ?? []) if (reference) references++;
         if (references > 0) WrapperMetrics.Record(WrapperEvent.ReferenceSent, references);
+    }
+
+    /// <summary>Returns the manifests of the requested wrappers this node offers and announced to <paramref name="peer"/>, in
+    /// request order, adding none once the response reaches the soft response limit (<c>eth/76</c>).</summary>
+    /// <remarks>Served manifests count toward the serving budget; beyond it the response is empty.</remarks>
+    internal void OnGetProofWrapperManifests(WrapperPeer peer, GetProofWrapperManifestsMessage request)
+    {
+        Outbox outbox = new();
+        List<ProofWrapperManifest> served = [];
+        lock (_gate)
+        {
+            if (peer.Closed) return;
+            int content = 0;
+            long now = _clock.GetTimestamp();
+            foreach (ValueHash256 wrapperHash in request.Hashes)
+            {
+                if (!peer.Announced.Contains(wrapperHash, now) || !TryGetOffered(wrapperHash, out WrapperStore.Entry entry)) continue;
+                if (ResponseLength(request.RequestId, content) >= Eth75Protocol.SoftResponseLimit) break;
+                served.Add(new(wrapperHash, entry.Manifest));
+                content += Eth75Rlp.LengthOfList(1 + ValueHash256.MemorySize + entry.Manifest.Encoded.Length);
+            }
+            double share = Math.Max(1.0, (double)_peers.Count * WrapperTransportLimits.ServeBytesPerSecond / WrapperTransportLimits.GlobalServeBytesPerSecond);
+            if (served.Count > 0 && !peer.Serving.TryBorrow(content * share)) served.Clear();
+            outbox.Send(peer, new ProofWrapperManifestsMessage(request.RequestId, [.. served]));
+        }
+        outbox.Flush();
+    }
+
+    /// <summary>This node requests no manifests, so any ProofWrapperManifests answers no request and is a violation.</summary>
+    internal void OnProofWrapperManifests(WrapperPeer peer, ProofWrapperManifestsMessage message)
+    {
+        Outbox outbox = new();
+        lock (_gate)
+            if (!peer.Closed) Violation(peer, $"manifests for unissued request {message.RequestId}", outbox);
+        outbox.Flush();
     }
 
     /// <summary>Per transaction of <paramref name="entry"/>, whether its encoding was previously sent to <paramref name="peer"/>

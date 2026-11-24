@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,6 +35,10 @@ public sealed class WrapperMetadata
     public ValueHash256[] Hashes { get; }
 
     public int Count => Hashes.Length;
+
+    /// <summary>Keccak-256 of the concatenated transaction hashes, which an <c>eth/76</c> announcement carries as
+    /// <c>txs-hash</c>.</summary>
+    public ValueHash256 TransactionsDigest => ValueKeccak.Compute(MemoryMarshal.AsBytes(Hashes.AsSpan()));
 
     /// <summary>Checks received metadata against the EIP-8437 wire rules.</summary>
     /// <param name="encoded">The metadata list.</param>

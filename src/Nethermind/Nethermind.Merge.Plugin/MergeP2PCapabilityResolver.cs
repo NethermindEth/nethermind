@@ -82,13 +82,15 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         {
             capabilities.Add(new Capability(Protocol.Eth, 72));
             // EIP-8512 eth/74 adds to eth/72 the dependency proof exchange, which block sync needs once proofs leave the body.
-            // EIP-8437 eth/75 extends eth/74 with proof wrapper propagation. Both are advertised once EIP-8288 is scheduled,
+            // EIP-8437 eth/75 extends eth/74 with proof wrapper propagation, and eth/76 extends eth/75 with aggregated (mode-1)
+            // wrapper relay. All three are advertised once EIP-8288 is scheduled,
             // not active: a session keeps its negotiated version, so a peer connected before the fork would otherwise never
             // exchange wrappers. The transport ignores wrapper messages until EIP-8288 activates.
             if (IsEip8288Scheduled())
             {
                 capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth74));
                 capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth75));
+                capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth76));
             }
         }
     }

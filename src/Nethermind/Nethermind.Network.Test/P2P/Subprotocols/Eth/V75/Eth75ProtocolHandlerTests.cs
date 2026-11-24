@@ -29,6 +29,8 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
@@ -65,29 +67,47 @@ public class Eth75ProtocolHandlerTests
             .With(new NewProofWrapperHashesMessageSerializer())
             .With(new GetProofWrappersMessageSerializer())
             .With(new ProofWrappersMessageSerializer())
+            .With(new NewProofWrapperHashesMessage76Serializer())
+            .With(new GetProofWrappersMessage76Serializer())
+            .With(new GetProofWrapperManifestsMessageSerializer())
+            .With(new ProofWrapperManifestsMessageSerializer())
             .TestObject;
         _delivered = [];
         _session = Substitute.For<ISession>();
         _session.Node.Returns(new Node(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303)));
         _session.When(static s => s.DeliverMessage(Arg.Any<P2PMessage>()))
             .Do(c => { lock (_delivered) _delivered.Add(c.Arg<P2PMessage>()); });
-        ISyncServer syncServer = Substitute.For<ISyncServer>();
         _genesis = Build.A.Block.Genesis.TestObject;
+        _custody = new BlobCustodyTracker();
+        _registry = new SparseBlobPoolPeerRegistry(_node.Pool, _custody, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        _handler = Connect(eth76: false);
+    }
+
+    private BlobCustodyTracker _custody = null!;
+
+    /// <summary>Creates a handler of the session for <c>eth/75</c> or <c>eth/76</c> and completes its Status exchange.</summary>
+    private Eth75ProtocolHandler Connect(bool eth76)
+    {
+        ISyncServer syncServer = Substitute.For<ISyncServer>();
         syncServer.Head.Returns(_genesis.Header);
         syncServer.Genesis.Returns(_genesis.Header);
         ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
         txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.InMemory);
         ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
         gossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
-        BlobCustodyTracker custody = new();
-        _registry = new SparseBlobPoolPeerRegistry(_node.Pool, custody, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
-        _handler = new Eth75ProtocolHandler(_session, _serializer, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
-            syncServer, RunImmediatelyScheduler.Instance, _node.Pool, Substitute.For<IGossipPolicy>(), new ForkInfo(specProvider, syncServer),
-            LimboLogs.Instance, txPoolConfig, specProvider, custody, _registry, Substitute.For<IBlockFinder>(),
-            new DependencyProofStore(new TestMemDb()), _node.Broadcaster, gossipPolicy);
-        _handler.Init();
-        using StatusMessage69 status = new() { ProtocolVersion = 75, GenesisHash = _genesis.Hash!, LatestBlockHash = _genesis.Hash! };
-        Handle(status, 0);
+        NodeStatsManager stats = new(Substitute.For<ITimerFactory>(), LimboLogs.Instance);
+        ForkInfo forkInfo = new(_specProvider, syncServer);
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        DependencyProofStore proofStore = new(new TestMemDb());
+        Eth75ProtocolHandler handler = eth76
+            ? new Eth76ProtocolHandler(_session, _serializer, stats, syncServer, RunImmediatelyScheduler.Instance, _node.Pool, Substitute.For<IGossipPolicy>(),
+                forkInfo, LimboLogs.Instance, txPoolConfig, _specProvider, _custody, _registry, blockFinder, proofStore, _node.Broadcaster, gossipPolicy)
+            : new Eth75ProtocolHandler(_session, _serializer, stats, syncServer, RunImmediatelyScheduler.Instance, _node.Pool, Substitute.For<IGossipPolicy>(),
+                forkInfo, LimboLogs.Instance, txPoolConfig, _specProvider, _custody, _registry, blockFinder, proofStore, _node.Broadcaster, gossipPolicy);
+        handler.Init();
+        using StatusMessage69 status = new() { ProtocolVersion = handler.ProtocolVersion, GenesisHash = _genesis.Hash!, LatestBlockHash = _genesis.Hash! };
+        Handle(handler, status, 0);
+        return handler;
     }
 
     [TearDown]
@@ -99,13 +119,15 @@ public class Eth75ProtocolHandlerTests
         _node.Dispose();
     }
 
-    private void Handle<T>(T message, int code) where T : MessageBase
+    private void Handle<T>(T message, int code) where T : MessageBase => Handle(_handler, message, code);
+
+    private void Handle<T>(Eth75ProtocolHandler handler, T message, int code) where T : MessageBase
     {
         IByteBuffer buffer = _serializer.ZeroSerialize(message);
         try
         {
             buffer.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(buffer) { PacketType = (byte)code });
+            handler.HandleMessage(new ZeroPacket(buffer) { PacketType = (byte)code });
         }
         finally { buffer.Release(); }
     }
@@ -354,5 +376,29 @@ public class Eth75ProtocolHandlerTests
 
         Transaction served = Delivered<PooledTransactionsMessage66>().Single().EthMessage.Transactions.Single();
         Assert.That(((ShardBlobNetworkWrapper)served.NetworkWrapper!).Blobs, Is.Empty);
+    }
+
+    // Message shapes follow the negotiated version: an eth/76 connection is announced a mode-1 wrapper in the six-field form an
+    // eth/75 connection never sees, and is served its manifest.
+    [Test]
+    public void Eth76_connection_exchanges_aggregates_and_manifests_in_its_own_forms()
+    {
+        using Eth75ProtocolHandler eth76 = Connect(eth76: true);
+        Transaction transaction = FrameTransaction(1);
+        _node.AddPending(transaction);
+        byte[] wrapper = Wrapper(64, transaction);
+        Assert.That(_node.Broadcaster.PublishWrapper(wrapper), Is.True);
+        ValueHash256 hash = Describe(wrapper).Hash;
+        using GetProofWrapperManifestsMessage request = new(3, [hash]);
+        Handle(eth76, request, Eth76MessageCode.GetProofWrapperManifests);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((eth76.ProtocolVersion, eth76.MessageIdSpaceSize), Is.EqualTo((76, 0x1d)));
+            Assert.That(Delivered<NewProofWrapperHashesMessage>().Select(static m => m.GetType()), Is.EqualTo(new[] { typeof(NewProofWrapperHashesMessage76) }));
+            Assert.That(Delivered<NewProofWrapperHashesMessage76>().Single().Announcements.Single().Hash, Is.EqualTo(hash));
+            ProofWrapperManifestsMessage manifests = Delivered<ProofWrapperManifestsMessage>().Single();
+            Assert.That((manifests.RequestId, manifests.Manifests.Single()), Is.EqualTo((3L, new ProofWrapperManifest(hash, WrapperMetadata.Of(wrapper)))));
+        }
     }
 }

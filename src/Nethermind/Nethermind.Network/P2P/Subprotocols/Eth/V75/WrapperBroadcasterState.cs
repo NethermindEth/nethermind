@@ -101,8 +101,11 @@ internal sealed class WrapperRateLimit(double perSecond, TimeProvider clock)
 internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxStoreBytes, int maxObjects = WrapperTransportLimits.MaxStoreObjects)
 {
     internal sealed class Entry(WrapperAnnouncement announcement, byte[] wrapper, ValueHash256[] hashes, Eip8288Verifier verifier, WrapperShape shape,
-        ValueHash256[] encodingHashes)
+        ValueHash256[] encodingHashes, WrapperMetadata manifest)
     {
+        /// <summary>The metadata of all the wrapper's transactions, served as its <c>eth/76</c> manifest.</summary>
+        public WrapperMetadata Manifest { get; } = manifest;
+
         /// <summary>The encoding hashes of the wrapper's transactions, in order, against which hash references are made.</summary>
         public ValueHash256[] EncodingHashes { get; } = encodingHashes;
 
@@ -118,7 +121,7 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         /// <summary>The consensus hashes of the wrapper's <c>transactions</c>, in order.</summary>
         public ValueHash256[] Hashes { get; } = hashes;
         public LinkedListNode<ValueHash256>? Node { get; set; }
-        public long Bytes { get; } = wrapper.Length + 256 + hashes.Length * 96L;
+        public long Bytes { get; } = wrapper.Length + 256 + hashes.Length * 96L + manifest.Encoded.Length;
     }
 
     private readonly Dictionary<ValueHash256, Entry> _objects = [];
@@ -200,9 +203,9 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     public IWrapperLink Link { get; } = link;
     public bool Closed { get; set; }
 
-    /// <summary>Whether the connection runs above <c>eth/75</c>, which exchanges only mode-0 wrappers in full and announces them
-    /// without coverage hints.</summary>
-    public bool Aggregates => Link.ProtocolVersion > EthVersions.Eth75;
+    /// <summary>Whether the connection runs <c>eth/76</c>, which relays mode-1 wrappers, announces coverage hints and permits
+    /// compact retrieval; <c>eth/75</c> exchanges only mode-0 wrappers in full.</summary>
+    public bool Aggregates => Link.ProtocolVersion >= EthVersions.Eth76;
 
     /// <summary>Whether wrappers of <paramref name="mode"/> are announced and served to the peer.</summary>
     public bool Supports(int mode) => mode == MempoolWrapper.ModeDirect || Aggregates;

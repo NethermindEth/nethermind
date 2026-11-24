@@ -62,7 +62,7 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
     /// <summary>An aggregating link by default, which exchanges both wrapper modes; <c>eth/75</c> exchanges only mode 0.</summary>
     public byte ProtocolVersion { get; init; } = AggregatingVersion;
 
-    public const byte AggregatingVersion = EthVersions.Eth75 + 1;
+    public const byte AggregatingVersion = EthVersions.Eth76;
 
     public void Send(P2PMessage message)
     {
