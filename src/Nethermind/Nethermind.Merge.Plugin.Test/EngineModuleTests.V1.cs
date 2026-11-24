@@ -2666,7 +2666,6 @@ public partial class EngineModuleTests
         public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true) =>
             inner.ValidateSuggestedBlock(block, parent, out error, validateHashes);
 
-        public bool ValidateWithdrawals(Block block, out string? error) => inner.ValidateWithdrawals(block, out error);
 
         public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
             inner.ValidateBodyAgainstHeader(header, toBeValidated, out error);
