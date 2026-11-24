@@ -33,14 +33,14 @@ public static class DependencyProofStoreExtensions
     /// <paramref name="block"/> itself, which lacks a committed proof only when it is not available.</returns>
     public static Block WithProof(this IDependencyProofStore proofStore, Block block)
     {
-        if (block.StarkProof is not null || block.Header.RecursiveStark is null || block.Hash is null
+        if (block.DependencyProof is not null || block.Header.DependencyProofCommitment is null || block.Hash is null
             || proofStore.Get(block.Number, block.Hash) is not { } proof)
         {
             return block;
         }
 
         Block withProof = block.WithReplacedBody(block.Body);
-        withProof.StarkProof = proof;
+        withProof.DependencyProof = proof;
         // The proof is not part of the block's encoding, so the stored size stands.
         withProof.EncodedSize = block.EncodedSize;
         return withProof;

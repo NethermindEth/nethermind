@@ -14,11 +14,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 /// <summary>Drives background aggregation on the EIP-8288 cadence, producing mode-1 wrappers over bounded subsets that together
 /// cover the pending dependency-bearing transactions, and offers each new one over <c>eth/73</c>.</summary>
 /// <remarks>Peers fetch the announced wrapper on demand, so an unchanged wrapper is never sent or announced again.</remarks>
-public sealed class ProofWrapperGossip(ProofWrapperService wrappers, ProofWrapperTransport transport, ILogManager logManager,
+public sealed class ProofWrapperProducer(ProofWrapperService wrappers, ProofWrapperBroadcaster broadcaster, ILogManager logManager,
     TimeProvider? timeProvider = null) : IAsyncDisposable, IDisposable
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
-    private readonly ILogger _logger = logManager.GetClassLogger<ProofWrapperGossip>();
+    private readonly ILogger _logger = logManager.GetClassLogger<ProofWrapperProducer>();
     private readonly CancellationTokenSource _stop = new();
     private readonly Lock _lock = new();
     private Task? _loop;
@@ -92,7 +92,7 @@ public sealed class ProofWrapperGossip(ProofWrapperService wrappers, ProofWrappe
             if (!latest.IsSuccess || latest.Data!.Length == 0) return;
             // Already stored counts as published too, so an unchanged wrapper is not hashed again every cycle; one that failed
             // to publish, for example during a verifier change, is offered again on the next cycle.
-            if (transport.PublishWrapper(latest.Data) || transport.IsStored(hash)) _published = hash;
+            if (broadcaster.PublishWrapper(latest.Data) || broadcaster.IsStored(hash)) _published = hash;
         }
     }
 

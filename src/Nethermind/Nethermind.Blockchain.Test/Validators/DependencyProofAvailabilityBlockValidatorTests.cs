@@ -43,7 +43,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
         {
             Assert.That(valid, Is.True, error);
             Assert.That(inner.ValidatedProof, Is.EqualTo(Proof));
-            Assert.That(block.StarkProof, Is.Null, "the caller's block, which may be a cached instance, does not gain the proof");
+            Assert.That(block.DependencyProof, Is.Null, "the caller's block, which may be a cached instance, does not gain the proof");
         }
     }
 
@@ -58,7 +58,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
     [TestCase("unmarked", BlockErrorMessages.MissingDependencyProof, false)]
     [TestCase("canonical-off-beacon", BlockErrorMessages.MissingDependencyProof, false)]
     [TestCase("beacon-off-canonical", BlockErrorMessages.MissingDependencyProof, false)]
-    [TestCase("canonical-ancestor", BlockErrorMessages.InvalidRecursiveStark, false)]
+    [TestCase("canonical-ancestor", BlockErrorMessages.InvalidDependencyProof, false)]
     public void Trusts_finality_only_for_a_missing_proof_of_a_finalized_ancestor(string relation, string innerError, bool expected)
     {
         (Block block, DependencyProofStore store) = Committed(10);
@@ -100,7 +100,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
     public void Module_verifies_the_stored_proof_of_a_block_received_without_it([Values] bool verdict)
     {
         Block block = Build.A.Block.WithNumber(10).WithTransactions(DependencyTx()).TestObject;
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(Proof),
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(Proof),
             new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         block.Header.Hash = block.Header.CalculateHash();
         DependencyProofStore store = new(new TestMemDb());
@@ -126,7 +126,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.EqualTo(verdict), error);
-            Assert.That(error, Is.EqualTo(verdict ? null : BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(error, Is.EqualTo(verdict ? null : BlockErrorMessages.InvalidDependencyProof));
             Assert.That(verifier.VerifiedProof, Is.EqualTo(Proof));
         }
     }
@@ -152,7 +152,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
     private static (Block Block, DependencyProofStore Store) Committed(ulong number)
     {
         Block block = Build.A.Block.WithNumber(number).TestObject;
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(Proof), Keccak.Compute("deps"));
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(Proof), Keccak.Compute("deps"));
         block.Header.Hash = block.Header.CalculateHash();
         return (block, new DependencyProofStore(new TestMemDb()));
     }
@@ -165,13 +165,13 @@ public class DependencyProofAvailabilityBlockValidatorTests
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
 
-        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+        public bool VerifyDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
         {
             VerifiedProof = proof.ToArray();
             return result;
         }
 
-        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) =>
+        public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) =>
             throw new NotSupportedException();
     }
 
@@ -183,8 +183,8 @@ public class DependencyProofAvailabilityBlockValidatorTests
 
         public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
         {
-            ValidatedProof = block.StarkProof;
-            error = block.StarkProof is null ? Error : null;
+            ValidatedProof = block.DependencyProof;
+            error = block.DependencyProof is null ? Error : null;
             return error is null;
         }
 

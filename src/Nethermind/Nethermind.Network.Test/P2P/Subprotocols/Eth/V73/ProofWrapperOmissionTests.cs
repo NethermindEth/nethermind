@@ -40,17 +40,17 @@ public class ProofWrapperOmissionTests
         public (GetProofWrappersMessage Request, ProofWrappersMessage Response) Exchange(byte[] wrapper)
         {
             Holder.Tick(System.TimeSpan.FromSeconds(1));
-            Assert.That(Holder.Transport.PublishWrapper(wrapper), Is.True);
-            Node.Transport.OnAnnounce(HolderPeer, ToNode.Sent<NewProofWrapperHashesMessage>()[^1]);
+            Assert.That(Holder.Broadcaster.PublishWrapper(wrapper), Is.True);
+            Node.Broadcaster.OnAnnounce(HolderPeer, ToNode.Sent<NewProofWrapperHashesMessage>()[^1]);
             GetProofWrappersMessage request = ToHolder.Sent<GetProofWrappersMessage>()[^1];
-            Holder.Transport.OnGetProofWrappers(NodePeer, request);
+            Holder.Broadcaster.OnGetProofWrappers(NodePeer, request);
             ProofWrappersMessage response = ToNode.Sent<ProofWrappersMessage>()[^1];
-            Node.Transport.OnProofWrappers(HolderPeer, response);
+            Node.Broadcaster.OnProofWrappers(HolderPeer, response);
             return (request, response);
         }
 
         public Task Stored(byte[] wrapper) =>
-            WrapperTestNode.Until(() => Node.Transport.IsStored(Describe(wrapper).Hash) && Node.Transport.FetchCount == 0);
+            WrapperTestNode.Until(() => Node.Broadcaster.IsStored(Describe(wrapper).Hash) && Node.Broadcaster.FetchCount == 0);
 
         public void Dispose()
         {
@@ -81,7 +81,7 @@ public class ProofWrapperOmissionTests
             Assert.That(response.Entries.Single().Hash, Is.EqualTo(Describe(second).Hash), "identity is the complete wrapper's");
             Assert.That(pair.Node.Pending.Select(static t => t.Hash), Is.EquivalentTo(new[] { a.Hash, b.Hash }));
             Assert.That(pair.ToHolder.Penalties, Is.Empty);
-            Assert.That(pair.Node.Transport.ChargedBytes, Is.Zero);
+            Assert.That(pair.Node.Broadcaster.ChargedBytes, Is.Zero);
         }
     }
 
@@ -96,15 +96,15 @@ public class ProofWrapperOmissionTests
         node.AddPending(a, b, c);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Transport.PublishWrapper(first), Is.True);
-            Assert.That(node.Transport.PublishWrapper(second), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(first), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(second), Is.True);
         }
         FakeWrapperLink link = new(), other = new("other");
         WrapperPeer peer = node.Connect(link), otherPeer = node.Connect(other);
-        node.Transport.OnGetProofWrappers(peer, new(1, true, [Describe(first).Hash]));
-        node.Transport.OnGetProofWrappers(peer, new(2, false, [Describe(second).Hash]));
-        node.Transport.OnGetProofWrappers(peer, new(3, true, [Describe(second).Hash]));
-        node.Transport.OnGetProofWrappers(otherPeer, new(1, true, [Describe(second).Hash]));
+        node.Broadcaster.OnGetProofWrappers(peer, new(1, true, [Describe(first).Hash]));
+        node.Broadcaster.OnGetProofWrappers(peer, new(2, false, [Describe(second).Hash]));
+        node.Broadcaster.OnGetProofWrappers(peer, new(3, true, [Describe(second).Hash]));
+        node.Broadcaster.OnGetProofWrappers(otherPeer, new(1, true, [Describe(second).Hash]));
         byte[][] sent = [.. link.Sent<ProofWrappersMessage>().Select(static m => m.Entries.Single().Wrapper)];
         byte[] compact = sent[2];
         using (Assert.EnterMultipleScope())
@@ -128,12 +128,12 @@ public class ProofWrapperOmissionTests
         using Pair pair = new();
         pair.Exchange(first);
         await pair.Stored(first);
-        pair.Node.Transport.OnAnnounce(pair.HolderPeer, new([Describe(second)]));
+        pair.Node.Broadcaster.OnAnnounce(pair.HolderPeer, new([Describe(second)]));
         GetProofWrappersMessage compactRequest = pair.ToHolder.Sent<GetProofWrappersMessage>()[^1];
         Assert.That(compactRequest.Compact, Is.True);
         // References to b and c, which this connection never carried in full.
         byte[] unresolvable = WrapperCompaction.Compact(second, static _ => true);
-        pair.Node.Transport.OnProofWrappers(pair.HolderPeer, new(compactRequest.RequestId, [new(Describe(second).Hash, unresolvable)]));
+        pair.Node.Broadcaster.OnProofWrappers(pair.HolderPeer, new(compactRequest.RequestId, [new(Describe(second).Hash, unresolvable)]));
         GetProofWrappersMessage retry = pair.ToHolder.Sent<GetProofWrappersMessage>()[^1];
         using (Assert.EnterMultipleScope())
         {
@@ -142,7 +142,7 @@ public class ProofWrapperOmissionTests
             Assert.That(retry.Compact, Is.False);
             Assert.That(retry.Hashes, Is.EqualTo(new[] { Describe(second).Hash }));
         }
-        pair.Node.Transport.OnProofWrappers(pair.HolderPeer, new(retry.RequestId, [Entry(second)]));
+        pair.Node.Broadcaster.OnProofWrappers(pair.HolderPeer, new(retry.RequestId, [Entry(second)]));
         await pair.Stored(second);
         Assert.That(pair.ToHolder.Penalties, Is.Empty);
     }
@@ -156,20 +156,20 @@ public class ProofWrapperOmissionTests
         using Pair pair = new();
         pair.Exchange(first);
         await pair.Stored(first);
-        pair.Node.Transport.OnAnnounce(pair.HolderPeer, new([Describe(second)]));
+        pair.Node.Broadcaster.OnAnnounce(pair.HolderPeer, new([Describe(second)]));
         GetProofWrappersMessage compactRequest = pair.ToHolder.Sent<GetProofWrappersMessage>()[^1];
         // A cache miss forces the next request to be complete; the peer answers it with references anyway.
-        pair.Node.Transport.OnProofWrappers(pair.HolderPeer, new(compactRequest.RequestId,
+        pair.Node.Broadcaster.OnProofWrappers(pair.HolderPeer, new(compactRequest.RequestId,
             [new(Describe(second).Hash, WrapperCompaction.Compact(second, static _ => true))]));
         GetProofWrappersMessage complete = pair.ToHolder.Sent<GetProofWrappersMessage>()[^1];
         Assert.That(complete.Compact, Is.False);
         byte[] resolvable = WrapperCompaction.Compact(second, hash => hash == ValueKeccak.Compute(Envelope(a)));
-        pair.Node.Transport.OnProofWrappers(pair.HolderPeer, new(complete.RequestId, [new(Describe(second).Hash, resolvable)]));
+        pair.Node.Broadcaster.OnProofWrappers(pair.HolderPeer, new(complete.RequestId, [new(Describe(second).Hash, resolvable)]));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pair.ToHolder.Penalties.Single(), Does.Contain("compact = 0"));
-            Assert.That(pair.Node.Transport.IsStored(Describe(second).Hash), Is.False);
-            Assert.That(pair.Node.Transport.ChargedBytes, Is.Zero);
+            Assert.That(pair.Node.Broadcaster.IsStored(Describe(second).Hash), Is.False);
+            Assert.That(pair.Node.Broadcaster.ChargedBytes, Is.Zero);
         }
     }
 
@@ -184,10 +184,10 @@ public class ProofWrapperOmissionTests
         await pair.Stored(first);
         byte[] compact = WrapperCompaction.Compact(second, hash => hash == ValueKeccak.Compute(Envelope(a)));
         WrapperAnnouncement understated = Announcement(1, compact.Length, Describe(second).Hash, Describe(second).Coverage);
-        pair.Node.Transport.OnAnnounce(pair.HolderPeer, new([understated]));
+        pair.Node.Broadcaster.OnAnnounce(pair.HolderPeer, new([understated]));
         GetProofWrappersMessage request = pair.ToHolder.Sent<GetProofWrappersMessage>()[^1];
         Assert.That(request.Compact, Is.True);
-        pair.Node.Transport.OnProofWrappers(pair.HolderPeer, new(request.RequestId, [new(Describe(second).Hash, compact)]));
+        pair.Node.Broadcaster.OnProofWrappers(pair.HolderPeer, new(request.RequestId, [new(Describe(second).Hash, compact)]));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pair.ToHolder.Penalties.Single(), Does.Contain("announced length"));
@@ -202,9 +202,9 @@ public class ProofWrapperOmissionTests
         using Pair pair = new();
         pair.Exchange(wrapper);
         await pair.Stored(wrapper);
-        Assert.That(pair.Node.Transport.CachedEncodingBytes, Is.Positive);
-        pair.Node.Transport.Remove(pair.HolderPeer);
-        Assert.That(pair.Node.Transport.CachedEncodingBytes, Is.Zero);
+        Assert.That(pair.Node.Broadcaster.CachedEncodingBytes, Is.Positive);
+        pair.Node.Broadcaster.Remove(pair.HolderPeer);
+        Assert.That(pair.Node.Broadcaster.CachedEncodingBytes, Is.Zero);
     }
 
     [Test]

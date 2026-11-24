@@ -25,7 +25,7 @@ public class DependencyProofStoreTests
         IBlockStore blockStore = container.Resolve<IBlockStore>();
         IDependencyProofStore proofStore = container.Resolve<IDependencyProofStore>();
         Block block = BlockWithProof(1, proofBytes);
-        byte[] proof = block.StarkProof!;
+        byte[] proof = block.DependencyProof!;
 
         blockStore.InsertDeferred(block);
         blockStore.Cache(block);
@@ -34,12 +34,12 @@ public class DependencyProofStoreTests
         Block stored = blockStore.Get(block.Number, block.Hash!, shouldCache: false)!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(block.StarkProof, Is.SameAs(proof), "the caller's block keeps its proof");
-            Assert.That(stored.StarkProof, Is.Null, "the block read back carries no proof");
+            Assert.That(block.DependencyProof, Is.SameAs(proof), "the caller's block keeps its proof");
+            Assert.That(stored.DependencyProof, Is.Null, "the block read back carries no proof");
             Assert.That(blockStore.GetRlp(block.Number, block.Hash!), Is.EqualTo(Rlp.Encode(block).Bytes), "the proof is not part of the block encoding");
             Assert.That(proofStore.Get(block.Number, block.Hash!), Is.EqualTo(proof));
-            Assert.That(proofStore.WithProof(stored).StarkProof, Is.EqualTo(proof));
-            Assert.That(stored.StarkProof, Is.Null, "joining the proof leaves the stored instance without it");
+            Assert.That(proofStore.WithProof(stored).DependencyProof, Is.EqualTo(proof));
+            Assert.That(stored.DependencyProof, Is.Null, "joining the proof leaves the stored instance without it");
         }
     }
 
@@ -64,7 +64,7 @@ public class DependencyProofStoreTests
         {
             Assert.That(blockStore.Get(block.Number, block.Hash!), Is.Null);
             Assert.That(proofStore.Get(block.Number, block.Hash!), Is.Null);
-            Assert.That(proofStore.Get(kept.Number, kept.Hash!), Is.EqualTo(kept.StarkProof));
+            Assert.That(proofStore.Get(kept.Number, kept.Hash!), Is.EqualTo(kept.DependencyProof));
         }
     }
 
@@ -86,7 +86,7 @@ public class DependencyProofStoreTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(joined.StarkProof, Is.EqualTo(block.StarkProof));
+            Assert.That(joined.DependencyProof, Is.EqualTo(block.DependencyProof));
             Assert.That(RpcSize(joined), Is.EqualTo(size));
             Assert.That(RpcSize(stored), Is.EqualTo(size));
         }
@@ -106,8 +106,8 @@ public class DependencyProofStoreTests
     private static Block BlockWithProof(ulong number, int proofBytes)
     {
         Block block = Build.A.Block.WithNumber(number).WithWithdrawals(0).TestObject;
-        block.StarkProof = new byte[proofBytes];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
+        block.DependencyProof = new byte[proofBytes];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), Keccak.Compute("deps"));
         block.Header.Hash = block.Header.CalculateHash();
         return block;
     }

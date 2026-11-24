@@ -51,8 +51,8 @@ public class SszCodecTests
         if (inclusionCommitment) block.InclusionLists = [new CommitteeInclusionList([], proof, [])];
         else
         {
-            block.StarkProof = proof;
-            block.Header.RecursiveStark = new(Keccak.Compute(proof), Keccak.Zero);
+            block.DependencyProof = proof;
+            block.Header.DependencyProofCommitment = new(Keccak.Compute(proof), Keccak.Zero);
         }
         Func<SszExecutionPayloadV1> create = () => version switch
         {

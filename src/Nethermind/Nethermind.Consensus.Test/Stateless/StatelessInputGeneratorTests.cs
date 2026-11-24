@@ -206,9 +206,9 @@ public class StatelessInputGeneratorTests
             byte[] proof = [1];
             Block suggested = block.WithReplacedBody(new BlockBody([dependencyTx], [], block.Withdrawals));
             suggested.Header.TxRoot = TxTrie.CalculateRoot(suggested.Transactions);
-            suggested.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof),
+            suggested.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(proof),
                 new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(suggested, FrameTxSigHash.ComputeValue)));
-            suggested.StarkProof = proofMissing ? null : proof;
+            suggested.DependencyProof = proofMissing ? null : proof;
             suggested.Header.Hash = suggested.Header.CalculateHash();
             FakeLeanProofVerifier verifier = new(false);
 

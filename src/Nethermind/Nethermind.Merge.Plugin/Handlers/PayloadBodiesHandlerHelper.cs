@@ -56,5 +56,5 @@ internal static class PayloadBodiesHandlerHelper
     /// <summary>Reads the EIP-8288 <c>dependencyProof</c> the EL keeps apart from the body.</summary>
     /// <returns><c>null</c> before the fork and when the proof is not available, as when pruned; the body is still served.</returns>
     private static byte[]? GetDependencyProof(IDependencyProofStore proofStore, BlockHeader header, ulong blockNumber, Hash256 blockHash) =>
-        header.RecursiveStark is null ? null : proofStore.Get(blockNumber, blockHash);
+        header.DependencyProofCommitment is null ? null : proofStore.Get(blockNumber, blockHash);
 }

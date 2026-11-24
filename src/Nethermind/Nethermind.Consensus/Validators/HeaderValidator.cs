@@ -105,7 +105,7 @@ namespace Nethermind.Consensus.Validators
                    && ValidateBlockAccessListHash(header, spec, ref error)
                    && ValidateSlotNumber(header, spec, ref error)
                    && ValidateBloom(header, spec, ref error)
-                   && ValidateRecursiveStarkFields(header, spec, ref error);
+                   && ValidateDependencyProofFields(header, spec, ref error);
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
@@ -136,24 +136,24 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private static bool ValidateRecursiveStarkFields(BlockHeader header, IReleaseSpec spec, ref string? error)
+        private static bool ValidateDependencyProofFields(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
-            RecursiveStarkCommitment? proof = header.RecursiveStark;
+            DependencyProofCommitment? proof = header.DependencyProofCommitment;
             if (!spec.IsEip8288Enabled)
             {
                 if (proof is null) return true;
-                error = BlockErrorMessages.RecursiveStarkNotEnabled;
+                error = BlockErrorMessages.DependencyProofNotEnabled;
                 return false;
             }
             if (proof is null)
             {
                 if (header.IsGenesis) return true;
-                error = BlockErrorMessages.MissingRecursiveStark;
+                error = BlockErrorMessages.MissingDependencyProof;
                 return false;
             }
             if (!proof.HasValidShape)
             {
-                error = BlockErrorMessages.InvalidRecursiveStark;
+                error = BlockErrorMessages.InvalidDependencyProof;
                 return false;
             }
             return true;
@@ -515,7 +515,7 @@ namespace Nethermind.Consensus.Validators
             {
                 // The EIP-8288 commitment follows SlotNumber in the header RLP, so an absent slot is encoded,
                 // and decoded back, as a zero placeholder.
-                bool proofPlaceholder = header.SlotNumber == 0 && header.RecursiveStark is not null;
+                bool proofPlaceholder = header.SlotNumber == 0 && header.DependencyProofCommitment is not null;
                 if (header.SlotNumber is not null && !proofPlaceholder)
                 {
                     if (_logger.IsWarn) _logger.Warn("SlotNumber field should not have value.");

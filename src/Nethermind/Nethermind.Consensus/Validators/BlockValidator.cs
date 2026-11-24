@@ -98,35 +98,35 @@ public class BlockValidator(
                ValidateEip4844Fields(block, spec, ref errorMessage) &&
                ValidateWithdrawals(block, spec, validateHashes, ref errorMessage) &&
                ValidateBlockLevelAccessList(block, spec, ref errorMessage) &&
-               ValidateRecursiveStark(block, spec, ref errorMessage);
+               ValidateDependencyProof(block, spec, ref errorMessage);
     }
 
     /// <summary>EIP-8288 block validity: the header commitments must match the block's dependencies and any <c>dependency_proof</c>
     /// received with it. <see cref="DependencyProofBlockValidator"/> verifies the proof.</summary>
     /// <remarks>A block committing to a nonempty proof it does not carry fails last with
     /// <see cref="BlockErrorMessages.MissingDependencyProof"/>, which is not invalidity (EIPs#12549).</remarks>
-    private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
+    private bool ValidateDependencyProof(Block block, IReleaseSpec spec, ref string? error)
     {
-        RecursiveStarkCommitment? recursiveStark = block.Header.RecursiveStark;
+        DependencyProofCommitment? recursiveStark = block.Header.DependencyProofCommitment;
         if (!spec.IsEip8288Enabled)
         {
-            if (recursiveStark is null && block.StarkProof is null) return true;
-            error = BlockErrorMessages.RecursiveStarkNotEnabled;
+            if (recursiveStark is null && block.DependencyProof is null) return true;
+            error = BlockErrorMessages.DependencyProofNotEnabled;
             return false;
         }
 
         if (recursiveStark is null)
         {
-            error = BlockErrorMessages.MissingRecursiveStark;
+            error = BlockErrorMessages.MissingDependencyProofCommitment;
             if (_logger.IsWarn) _logger.Warn($"Missing recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
             return false;
         }
 
-        if (block.StarkProof is not null
-            && (block.StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes
-                || Keccak.Compute(block.StarkProof) != recursiveStark.DependencyProofHash))
+        if (block.DependencyProof is not null
+            && (block.DependencyProof.Length > Eip8288Constants.MaxAggregateProofBytes
+                || Keccak.Compute(block.DependencyProof) != recursiveStark.DependencyProofHash))
         {
-            error = BlockErrorMessages.InvalidRecursiveStark;
+            error = BlockErrorMessages.InvalidDependencyProof;
             return false;
         }
 
@@ -139,7 +139,7 @@ public class BlockValidator(
             return false;
         }
 
-        if (block.StarkProof is null && recursiveStark.DependencyProofHash != Keccak.OfAnEmptyString)
+        if (block.DependencyProof is null && recursiveStark.DependencyProofHash != Keccak.OfAnEmptyString)
         {
             error = BlockErrorMessages.MissingDependencyProof;
             return false;

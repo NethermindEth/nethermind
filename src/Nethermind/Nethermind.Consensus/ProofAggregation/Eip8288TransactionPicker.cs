@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.ProofAggregation;
 internal sealed class Eip8288TransactionPicker : BlockProcessor.IBlockProductionTransactionPicker
 {
     // len(rlp(stark_proof)) - 1: the one byte of an empty stark_proof is already part of the block's fixed overhead.
-    private static readonly int MaxStarkProofLength = Rlp.LengthOfByteString(Eip8288Constants.MaxAggregateProofBytes, 0) - 1;
+    private static readonly int MaxDependencyProofLength = Rlp.LengthOfByteString(Eip8288Constants.MaxAggregateProofBytes, 0) - 1;
 
     private readonly BlockProcessor.IBlockProductionTransactionPicker _inner;
     private readonly ISpecProvider _specProvider;
@@ -72,7 +72,7 @@ internal sealed class Eip8288TransactionPicker : BlockProcessor.IBlockProduction
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         if (!spec.IsEip8288Enabled) return args.Action == BlockProcessor.TxAction.Add;
 
-        if (producing is not null && producing.TxByteLength + currentTx.GetLength(false) + StarkProofReserve(producing, currentTx) > _maxTxLengthBytes)
+        if (producing is not null && producing.TxByteLength + currentTx.GetLength(false) + DependencyProofReserve(producing, currentTx) > _maxTxLengthBytes)
         {
             // If smallest tx is too large, stop picking
             args.Set(currentTx.GasLimit == GasCostOf.Transaction ? BlockProcessor.TxAction.Stop : BlockProcessor.TxAction.Skip, "Too large for CL");
@@ -108,8 +108,8 @@ internal sealed class Eip8288TransactionPicker : BlockProcessor.IBlockProduction
     /// <summary>The payload bytes kept for the EIP-8288 <c>dependency_proof</c> once the block carries dependencies.</summary>
     /// <remarks>The proof is outside the RLP block (EIPs#12549) but inside the CL payload and attached only after packing, so the
     /// largest admissible proof is reserved out of the byte budget against the CL gossip limit.</remarks>
-    private static int StarkProofReserve(BlockToProduce block, Transaction candidate) =>
+    private static int DependencyProofReserve(BlockToProduce block, Transaction candidate) =>
         block.LeanProduction.ProofInputs.Count != 0 || Eip8288Dependencies.IsDependencyBearing(candidate)
-            ? MaxStarkProofLength
+            ? MaxDependencyProofLength
             : 0;
 }

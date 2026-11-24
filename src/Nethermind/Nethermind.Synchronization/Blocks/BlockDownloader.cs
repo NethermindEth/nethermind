@@ -586,8 +586,8 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     EncodedBlockAccessList = entry.EncodedAccessList,
                     // A block committing to the empty proof carries it, so it is stored and served as for a block from newPayload.
-                    StarkProof = entry.DependencyProof
-                        ?? (entry.Header.RecursiveStark?.DependencyProofHash == Keccak.OfAnEmptyString ? [] : null)
+                    DependencyProof = entry.DependencyProof
+                        ?? (entry.Header.DependencyProofCommitment?.DependencyProofHash == Keccak.OfAnEmptyString ? [] : null)
                 };
 
                 if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
@@ -744,7 +744,7 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                if (Keccak.Compute(proof) != header.RecursiveStark?.DependencyProofHash)
+                if (Keccak.Compute(proof) != header.DependencyProofCommitment?.DependencyProofHash)
                 {
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"dependency proof does not match its header. Block: {header.ToString(BlockHeader.Format.Short)}");
                     result = SyncResponseHandlingResult.LesserQuality;
@@ -753,7 +753,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 entry.DependencyProof = proof;
-                if (entry.Block is not null) entry.Block.StarkProof = proof;
+                if (entry.Block is not null) entry.Block.DependencyProof = proof;
                 taken++;
             }
 
@@ -890,7 +890,7 @@ namespace Nethermind.Synchronization.Blocks
             // A block inserted by newPayload has its EIP-8288 dependency proof in the proof store.
             return new Block(header, localBlock.Body)
             {
-                StarkProof = header.RecursiveStark is null ? null : _proofStore.Get(header.Number, header.Hash!)
+                DependencyProof = header.DependencyProofCommitment is null ? null : _proofStore.Get(header.Number, header.Hash!)
             };
         }
 
@@ -1130,8 +1130,8 @@ namespace Nethermind.Synchronization.Blocks
 
             /// <remarks>A block committing to the empty proof needs none.</remarks>
             public bool HasDependencyProof =>
-                Header.RecursiveStark is not { } commitment || commitment.DependencyProofHash == Keccak.OfAnEmptyString
-                || DependencyProofTrusted || DependencyProof is not null || Block?.StarkProof is not null;
+                Header.DependencyProofCommitment is not { } commitment || commitment.DependencyProofHash == Keccak.OfAnEmptyString
+                || DependencyProofTrusted || DependencyProof is not null || Block?.DependencyProof is not null;
 
             private DateTimeOffset _dependencyProofRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedDependencyProofDownload =>

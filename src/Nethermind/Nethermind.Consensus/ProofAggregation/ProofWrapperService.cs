@@ -43,18 +43,18 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Recursive merges of already proven aggregates a produced wrapper may fold on top of its fresh signatures.</summary>
     /// <remarks>Held at the three merges a <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> set needed when a direct leaf took four
-    /// signatures, so widening <see cref="RecursiveStarkAggregator.DirectBatchSize"/> cannot tighten what a wrapper covers.</remarks>
+    /// signatures, so widening <see cref="DependencyProofAggregator.DirectBatchSize"/> cannot tighten what a wrapper covers.</remarks>
     private const long WrapperMergeAllowance = 3;
 
-    /// <summary>Estimated proving cost (<see cref="RecursiveStarkAggregator.EstimatedCost"/>) one produced wrapper may take: that of
+    /// <summary>Estimated proving cost (<see cref="DependencyProofAggregator.EstimatedCost"/>) one produced wrapper may take: that of
     /// folding <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> fresh signatures, plus <see cref="WrapperMergeAllowance"/> merges.</summary>
     /// <remarks>EIP-8288 limits mode 1 only by <c>MAX_WRAPPER_BYTES</c> and the circuit's dependency-list limit, here
     /// <see cref="Eip8288Constants.MaxProofDependencies"/>, so a produced wrapper is bounded by those and this budget: it may cover many more dependencies
     /// when they come from already proven aggregates, whose merge costs far less than fresh signatures. A transaction exceeding it
     /// alone is produced in a wrapper of its own. The budget is deliberately independent of the direct leaf size: it is a cap on
     /// the work one wrapper may take, not a restatement of how that work is split.</remarks>
-    internal const long MaxWrapperProvingCost = Eip8288Constants.MaxLeanSigDepsPerWrapper * RecursiveStarkAggregator.SignatureCost
-        + WrapperMergeAllowance * RecursiveStarkAggregator.MergeCost;
+    internal const long MaxWrapperProvingCost = Eip8288Constants.MaxLeanSigDepsPerWrapper * DependencyProofAggregator.SignatureCost
+        + WrapperMergeAllowance * DependencyProofAggregator.MergeCost;
 
     /// <summary>How long aggregation leaves a dependency set a peer offers a proof of, before proving it itself.</summary>
     internal static readonly TimeSpan ReuseOfferWait = TimeSpan.FromMilliseconds(2 * Eip8288Constants.AggregationInterval);
@@ -817,7 +817,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         if (!Monitor.TryEnter(_aggregationLock)) return Result.Fail("Proof aggregation is busy; retry later.");
         try
         {
-            using IDisposable request = ProductionProofCache.Background(cancellationToken);
+            using IDisposable request = DependencyProofCache.Background(cancellationToken);
             if (RefreshVerifier() is not { } verifier) return Result.Fail(WrappersUnavailable);
             List<Bucket> buckets = PlanBuckets(verifier, cancellationToken);
             if (buckets.Count == 0) return Result.Fail(NoProofBackedTransactions);
@@ -831,7 +831,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (i != 0 && budget is { } limit && clock.GetElapsedTime(started) >= limit) break;
                 int index = (start + i) % buckets.Count;
                 Result<byte[]> result = BuildBucket(buckets[index], verifier, false, clock, cancellationToken, out bool unchanged);
-                if (result.Error != ProductionProofCache.BackgroundBusyMessage) Advance(buckets, index);
+                if (result.Error != DependencyProofCache.BackgroundBusyMessage) Advance(buckets, index);
                 if (result.IsSuccess)
                 {
                     any = true;
@@ -855,7 +855,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using IDisposable request = ProductionProofCache.Background(cancellationToken);
+            using IDisposable request = DependencyProofCache.Background(cancellationToken);
             if (RefreshVerifier() is not { } verifier) return Result<byte[]>.Fail(WrappersUnavailable);
             List<Bucket> buckets = PlanBuckets(verifier, cancellationToken);
             int start = ResumeIndex(buckets);
@@ -864,7 +864,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 int index = (start + i) % buckets.Count;
                 result = BuildBucket(buckets[index], verifier, returnEncoded, TimeProvider.System, cancellationToken, out _);
-                if (result.Error != ProductionProofCache.BackgroundBusyMessage) Advance(buckets, index);
+                if (result.Error != DependencyProofCache.BackgroundBusyMessage) Advance(buckets, index);
                 if (result.Error != AwaitingOfferedProof) break;
             }
             return result;
@@ -1101,14 +1101,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (AwaitsOffer(deps, clock)) return Result<byte[]>.Fail(AwaitingOfferedProof);
                 if (cached is not null && cached.Verifier == verifier && HasOverlap(cached.Parent.InnerDeps, [.. deps]))
                 {
-                    AggregationInput incremental = RecursiveStarkAggregator.Combine(
+                    AggregationInput incremental = DependencyProofAggregator.Combine(
                         [new() { RecursiveProofs = [cached.Parent] }, selectedInput], deps);
                     if (incremental.Discards.Count <= Eip8288Constants.MaxProofDependencies)
                         selectedInput = incremental;
                 }
-                proof = RecursiveStarkAggregator.Prove(selectedInput, leanProofVerifier, verifier, in hash, cancellationToken);
-                if (leanProofVerifier is not ProductionProofCache
-                    && !leanProofVerifier.VerifyRecursiveStark(in hash, verifier.AggregatedVk.Bytes, proof))
+                proof = DependencyProofAggregator.Prove(selectedInput, leanProofVerifier, verifier, in hash, cancellationToken);
+                if (leanProofVerifier is not DependencyProofCache
+                    && !leanProofVerifier.VerifyDependencyProof(in hash, verifier.AggregatedVk.Bytes, proof))
                     return Result<byte[]>.Fail("Produced dependency proof failed verification.");
             }
             cancellationToken.ThrowIfCancellationRequested();
@@ -1160,10 +1160,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// that is cheaper, as the build does when the previous wrapper's statement overlaps.</summary>
     private static long ProvingCost(AggregationInput input, IReadOnlyList<FrameDependency> required, RecursiveProofInput? parent)
     {
-        long cost = RecursiveStarkAggregator.EstimatedCost(input);
+        long cost = DependencyProofAggregator.EstimatedCost(input);
         if (parent is not { } proven || cost == 0) return cost;
-        AggregationInput extended = RecursiveStarkAggregator.Combine([new() { RecursiveProofs = [proven] }, input], required);
-        return Math.Min(cost, RecursiveStarkAggregator.EstimatedCost(extended));
+        AggregationInput extended = DependencyProofAggregator.Combine([new() { RecursiveProofs = [proven] }, input], required);
+        return Math.Min(cost, DependencyProofAggregator.EstimatedCost(extended));
     }
 
     private static bool HasOverlap(IReadOnlyList<FrameDependency> dependencies, HashSet<FrameDependency> selected)

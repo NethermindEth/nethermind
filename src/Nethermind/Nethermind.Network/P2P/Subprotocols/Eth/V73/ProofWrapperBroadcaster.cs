@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 /// or served once the target fork's verifier differs from the one it was validated under: on a verifier change every
 /// mode-1 wrapper is dropped and a mode-0 wrapper is kept only if it re-validates.
 /// </remarks>
-public sealed partial class ProofWrapperTransport : IDisposable
+public sealed partial class ProofWrapperBroadcaster : IDisposable
 {
     private readonly ProofWrapperService _wrappers;
     private readonly TimeProvider _clock;
@@ -53,22 +53,22 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private bool _disposed;
     private Eip8288Verifier? _verifier;
 
-    public ProofWrapperTransport(ProofWrapperService wrappers, ILogManager logManager, TimeProvider? timeProvider = null)
+    public ProofWrapperBroadcaster(ProofWrapperService wrappers, ILogManager logManager, TimeProvider? timeProvider = null)
     {
         _wrappers = wrappers;
         _clock = timeProvider ?? TimeProvider.System;
-        _logger = logManager.GetClassLogger<ProofWrapperTransport>();
+        _logger = logManager.GetClassLogger<ProofWrapperBroadcaster>();
         _verifier = _wrappers.RefreshVerifier();
         _wrappers.WrapperValidated += OnWrapperValidated;
         _wrappers.VerifierChanged += OnVerifierChanged;
         _wrappers.IsDependencySetOffered = IsDependencySetOffered;
         // A chain without a scheduled EIP-8288 fork runs no wrapper timer.
         _timer = _wrappers.IsScheduled
-            ? _clock.CreateTimer(static state => ((ProofWrapperTransport)state!).Tick(), this, WrapperTransportLimits.Tick, WrapperTransportLimits.Tick)
+            ? _clock.CreateTimer(static state => ((ProofWrapperBroadcaster)state!).Tick(), this, WrapperTransportLimits.Tick, WrapperTransportLimits.Tick)
             : null;
     }
 
-    /// <summary>Whether the head activates EIP-8288; the transport is inert otherwise.</summary>
+    /// <summary>Whether the head activates EIP-8288; the broadcaster is inert otherwise.</summary>
     public bool IsEnabled => _wrappers.IsEnabled;
 
     internal int PeerCount { get { lock (_gate) return _peers.Count; } }

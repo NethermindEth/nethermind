@@ -65,9 +65,9 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(block!.Transactions, Is.EqualTo((Transaction[])[transaction]));
-            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([resolved]))));
-            Assert.That(block.Header.RecursiveStark.BlockDepsHash, Is.Not.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([raw]))));
-            Assert.That(block.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([resolved]).ToByteArray()));
+            Assert.That(block.Header.DependencyProofCommitment!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([resolved]))));
+            Assert.That(block.Header.DependencyProofCommitment.BlockDepsHash, Is.Not.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([raw]))));
+            Assert.That(block.DependencyProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([resolved]).ToByteArray()));
             Assert.That(Eip8288Dependencies.ParseFrame(transaction.Frames![1]).Single(), Is.EqualTo(raw));
             Assert.That(TxDecoder.Instance.Encode(transaction).Bytes, Is.EqualTo(encoded));
         }
@@ -94,8 +94,8 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(block.Transactions, Is.EqualTo((Transaction[])[transaction]));
-            Assert.That(block.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([resolved]).ToByteArray()));
-            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([resolved]))));
+            Assert.That(block.DependencyProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([resolved]).ToByteArray()));
+            Assert.That(block.Header.DependencyProofCommitment!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([resolved]))));
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block.Hash));
             Assert.That(verifier.ProofCalls, Is.EqualTo(1), "only production proves; import verifies the attached proof");
             Assert.That(chain.BlockProcessor, Is.Not.TypeOf<DependencyProofBlockProcessor>());
@@ -146,7 +146,7 @@ public class Eip8288BlockProductionTests
         }
         Block produced = new(block.Header, new BlockBody([.. included], [], null))
         {
-            StarkProof = carriesProof ? new byte[Eip8288Constants.MaxAggregateProofBytes] : []
+            DependencyProof = carriesProof ? new byte[Eip8288Constants.MaxAggregateProofBytes] : []
         };
 
         using (Assert.EnterMultipleScope())
@@ -241,7 +241,7 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(processed!.Transactions, Has.Length.EqualTo(2));
-            Assert.That(processed.Header.RecursiveStark!.BlockDepsHash,
+            Assert.That(processed.Header.DependencyProofCommitment!.BlockDepsHash,
                 Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(processed, FrameTxSigHash.ComputeValue))));
             Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a fresh production scope shares the prepared statement");
         }
@@ -266,12 +266,12 @@ public class Eip8288BlockProductionTests
         ValueHash256 hash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, block.StarkProof), Is.True);
+            Assert.That(verifier.VerifyDependencyProof(hash, Eip8288Constants.AggregatedVk, block.DependencyProof), Is.True);
             Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a rejected optional cache entry cannot stall fresh proving");
             Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
-            Assert.That(replacement, Is.EqualTo(block.StarkProof));
+            Assert.That(replacement, Is.EqualTo(block.DependencyProof));
             Block? repeated = await chain.BlockProducer.BuildBlock();
-            Assert.That(repeated!.StarkProof, Is.EqualTo(replacement));
+            Assert.That(repeated!.DependencyProof, Is.EqualTo(replacement));
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));
         }
     }
@@ -288,8 +288,8 @@ public class Eip8288BlockProductionTests
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
         CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
-        ProductionProofCache cache = new(verifier);
-        Task<byte[]> initial = Task.Run(() => cache.ProveRecursiveStark(firstHash, Eip8288Constants.AggregatedVk, firstInput));
+        DependencyProofCache cache = new(verifier);
+        Task<byte[]> initial = Task.Run(() => cache.ProveDependencyProof(firstHash, Eip8288Constants.AggregatedVk, firstInput));
         try
         {
             Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
@@ -297,7 +297,7 @@ public class Eip8288BlockProductionTests
             Task<byte[]> concurrent = Task.Run(() =>
             {
                 requested.Set();
-                return cache.ProveRecursiveStark(firstHash, Eip8288Constants.AggregatedVk, firstInput);
+                return cache.ProveDependencyProof(firstHash, Eip8288Constants.AggregatedVk, firstInput);
             });
             Assert.That(requested.Wait(TimeSpan.FromSeconds(5)), Is.True);
             await Task.Delay(50);
@@ -315,9 +315,9 @@ public class Eip8288BlockProductionTests
             }
             entered.Reset();
             release.Reset();
-            Task<byte[]> unrelated = Task.Run(() => cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk, secondInput));
+            Task<byte[]> unrelated = Task.Run(() => cache.ProveDependencyProof(secondHash, Eip8288Constants.AggregatedVk, secondInput));
             Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
-            Task<byte[]> ready = Task.Run(() => cache.ProveRecursiveStark(firstHash, Eip8288Constants.AggregatedVk, firstInput));
+            Task<byte[]> ready = Task.Run(() => cache.ProveDependencyProof(firstHash, Eip8288Constants.AggregatedVk, firstInput));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(await ready.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(firstHash.ToByteArray()));
@@ -338,13 +338,13 @@ public class Eip8288BlockProductionTests
     public async Task Scheduled_statement_finishes_after_a_later_slot_starts()
     {
         // More than one leaf, so the statement folds over several native calls; one longer than a slot must still finish and be stored.
-        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, RecursiveStarkAggregator.DirectBatchSize + 1)
+        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, DependencyProofAggregator.DirectBatchSize + 1)
             .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"slow-{i}"), default)));
         AggregationInput input = new() { Deps = deps, Witnesses = [.. deps.Select(_ => (ReadOnlyMemory<byte>)new byte[] { 1 })] };
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
         CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
-        ProductionProofCache cache = new(verifier);
+        DependencyProofCache cache = new(verifier);
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Assert.That(cache.ObserveProduction(100, 10), Is.True);
         cache.Schedule(deps, Eip8288Dependencies.ComputeDepsHash(deps), input, Eip8288Verifier.Pinned, store);
@@ -375,7 +375,7 @@ public class Eip8288BlockProductionTests
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
         CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
-        ProductionProofCache cache = new(verifier);
+        DependencyProofCache cache = new(verifier);
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Schedule(first);
         try
@@ -418,8 +418,8 @@ public class Eip8288BlockProductionTests
         using ManualResetEventSlim observed = new();
         using CancellationTokenSource cancellation = new();
         CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
-        ProductionProofCache cache = new(verifier);
-        Task<byte[]> active = Task.Run(() => cache.ProveRecursiveStark(firstHash, Eip8288Constants.AggregatedVk,
+        DependencyProofCache cache = new(verifier);
+        Task<byte[]> active = Task.Run(() => cache.ProveDependencyProof(firstHash, Eip8288Constants.AggregatedVk,
             new() { Deps = [first], Witnesses = [new byte[] { 1 }] }));
         Task<byte[]>? queued = null;
         try
@@ -427,15 +427,15 @@ public class Eip8288BlockProductionTests
             Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
             AggregationInput input = new() { Deps = new ObservedDependencies(second, observed), Witnesses = [new byte[] { 1 }] };
             queued = Task.Run(() => cancel
-                ? ProductionProofCache.Prove(cache, secondHash, Eip8288Constants.AggregatedVk, input, cancellation.Token)
-                : cache.ProveRecursiveStark(in statement.Hash, Eip8288Constants.AggregatedVk, input));
+                ? DependencyProofCache.Prove(cache, secondHash, Eip8288Constants.AggregatedVk, input, cancellation.Token)
+                : cache.ProveDependencyProof(in statement.Hash, Eip8288Constants.AggregatedVk, input));
             Assert.That(observed.Wait(TimeSpan.FromSeconds(5)), Is.True);
             await Task.Delay(50);
             statement.Hash = firstHash;
             if (cancel) cancellation.Cancel();
-            using (ProductionProofCache.Background(default))
+            using (DependencyProofCache.Background(default))
             {
-                Assert.Throws<InvalidOperationException>(() => cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk,
+                Assert.Throws<InvalidOperationException>(() => cache.ProveDependencyProof(secondHash, Eip8288Constants.AggregatedVk,
                     new() { Deps = [second], Witnesses = [new byte[] { 1 }] }));
             }
             Assert.That(verifier.ProofCalls, Is.EqualTo(1), "background work does not queue behind the active producer");
@@ -455,7 +455,7 @@ public class Eip8288BlockProductionTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(await queued.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(secondHash.ToByteArray()));
-                    Assert.That(cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk,
+                    Assert.That(cache.ProveDependencyProof(secondHash, Eip8288Constants.AggregatedVk,
                         new() { Deps = [second], Witnesses = [new byte[] { 1 }] }), Is.EqualTo(secondHash.ToByteArray()));
                     Assert.That(verifier.ProofCalls, Is.EqualTo(2));
                 }
@@ -518,7 +518,7 @@ public class Eip8288BlockProductionTests
         Block? first = await chain.BlockProducer.BuildBlock();
         Assert.That(first, Is.Not.Null);
         Assert.That(first!.Transactions, Has.Length.EqualTo(1));
-        first.StarkProof![0] ^= 0xff;
+        first.DependencyProof![0] ^= 0xff;
         Block? second = await chain.BlockProducer.BuildBlock();
         Assert.That(second, Is.Not.Null);
         Assert.That(second!.Transactions, Has.Length.EqualTo(1));
@@ -526,7 +526,7 @@ public class Eip8288BlockProductionTests
         {
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));
             Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(1), "a proof verified when produced is not verified natively again");
-            Assert.That(second.StarkProof,
+            Assert.That(second.DependencyProof,
                 Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(second, FrameTxSigHash.ComputeValue).ToByteArray()));
         }
 
@@ -535,7 +535,7 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(empty!.Transactions, Is.Empty);
-            Assert.That(empty.StarkProof, Is.Empty, "a block without dependencies carries an empty proof");
+            Assert.That(empty.DependencyProof, Is.Empty, "a block without dependencies carries an empty proof");
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));
         }
         Block? restored = await chain.BlockProducer.BuildBlock();
@@ -551,7 +551,7 @@ public class Eip8288BlockProductionTests
     public void Canceled_production_reuses_verified_completed_steps_without_finishing_the_canceled_tree()
     {
         // Two leaves and a merge, so there are three completed steps to reuse whatever the leaf size is.
-        const int count = RecursiveStarkAggregator.DirectBatchSize + 1;
+        const int count = DependencyProofAggregator.DirectBatchSize + 1;
         FrameDependency[] dependencies = new FrameDependency[count];
         ReadOnlyMemory<byte>[] witnesses = new ReadOnlyMemory<byte>[count];
         for (int i = 0; i < dependencies.Length; i++)
@@ -562,18 +562,18 @@ public class Eip8288BlockProductionTests
         AggregationInput input = new() { Deps = dependencies, Witnesses = witnesses };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
         CountingVerifier verifier = new();
-        ProductionProofCache cache = new(verifier);
+        DependencyProofCache cache = new(verifier);
         for (int i = 0; i < 3; i++)
         {
             using CancellationTokenSource canceled = new();
             verifier.OnProof = canceled.Cancel;
-            Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, cache, Eip8288Verifier.Pinned, hash, canceled.Token));
+            Assert.Throws<OperationCanceledException>(() => DependencyProofAggregator.Prove(input, cache, Eip8288Verifier.Pinned, hash, canceled.Token));
             Assert.That(verifier.ProofCalls, Is.EqualTo(i + 1));
         }
         verifier.OnProof = null;
-        byte[] result = RecursiveStarkAggregator.Prove(input, cache, Eip8288Verifier.Pinned, hash);
+        byte[] result = DependencyProofAggregator.Prove(input, cache, Eip8288Verifier.Pinned, hash);
         result[0] ^= 0xff;
-        byte[] reused = RecursiveStarkAggregator.Prove(input, cache, Eip8288Verifier.Pinned, hash);
+        byte[] reused = DependencyProofAggregator.Prove(input, cache, Eip8288Verifier.Pinned, hash);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reused, Is.EqualTo(hash.ToByteArray()));
@@ -586,20 +586,20 @@ public class Eip8288BlockProductionTests
     public void Verified_recursive_proofs_are_not_verified_natively_again()
     {
         CountingVerifier verifier = new();
-        ProductionProofCache cache = new(verifier);
+        DependencyProofCache cache = new(verifier);
         ValueHash256 statement = Eip8288Dependencies.ComputeDepsHash([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("verified"), default)]);
         ValueHash256 other = Eip8288Dependencies.ComputeDepsHash([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other"), default)]);
         byte[] proof = statement.ToByteArray();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cache.VerifyRecursiveStark(other, Eip8288Constants.AggregatedVk, proof), Is.False);
-            Assert.That(cache.VerifyRecursiveStark(other, Eip8288Constants.AggregatedVk, proof), Is.False, "a rejection is never cached");
+            Assert.That(cache.VerifyDependencyProof(other, Eip8288Constants.AggregatedVk, proof), Is.False);
+            Assert.That(cache.VerifyDependencyProof(other, Eip8288Constants.AggregatedVk, proof), Is.False, "a rejection is never cached");
             Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(2));
-            Assert.That(cache.VerifyRecursiveStark(statement, Eip8288Constants.AggregatedVk, proof), Is.True);
-            Assert.That(cache.VerifyRecursiveStark(statement, Eip8288Constants.AggregatedVk, proof), Is.True);
+            Assert.That(cache.VerifyDependencyProof(statement, Eip8288Constants.AggregatedVk, proof), Is.True);
+            Assert.That(cache.VerifyDependencyProof(statement, Eip8288Constants.AggregatedVk, proof), Is.True);
             Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(3));
-            Assert.That(cache.VerifyRecursiveStark(other, Eip8288Constants.AggregatedVk, proof), Is.False, "the statement is part of the key");
-            Assert.That(cache.VerifyRecursiveStark(statement, new byte[32], proof), Is.True, "the verification key is part of the key");
+            Assert.That(cache.VerifyDependencyProof(other, Eip8288Constants.AggregatedVk, proof), Is.False, "the statement is part of the key");
+            Assert.That(cache.VerifyDependencyProof(statement, new byte[32], proof), Is.True, "the verification key is part of the key");
             Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(5));
         }
     }
@@ -610,25 +610,25 @@ public class Eip8288BlockProductionTests
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("cache-a"), default);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
         CountingVerifier verifier = new() { WrongStatement = true };
-        ProductionProofCache cache = new(verifier);
+        DependencyProofCache cache = new(verifier);
         AggregationInput input = new() { Deps = [dependency], Witnesses = [new byte[] { 1 }] };
-        Assert.Throws<InvalidOperationException>(() => cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input));
+        Assert.Throws<InvalidOperationException>(() => cache.ProveDependencyProof(hash, Eip8288Constants.AggregatedVk, input));
         verifier.WrongStatement = false;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input), Is.EqualTo(hash.ToByteArray()));
+            Assert.That(cache.ProveDependencyProof(hash, Eip8288Constants.AggregatedVk, input), Is.EqualTo(hash.ToByteArray()));
             Assert.That(verifier.ProofCalls, Is.EqualTo(2));
         }
         verifier.RejectChangedWitness = true;
         AggregationInput bad = new() { Deps = [dependency], Witnesses = [new byte[] { 2 }] };
-        Assert.Throws<InvalidOperationException>(() => cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, bad));
+        Assert.Throws<InvalidOperationException>(() => cache.ProveDependencyProof(hash, Eip8288Constants.AggregatedVk, bad));
         Assert.That(verifier.ProofCalls, Is.EqualTo(3));
         FrameDependency changed = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("cache-b"), default);
         ValueHash256 changedHash = Eip8288Dependencies.ComputeDepsHash([changed]);
         AggregationInput next = new() { Deps = [changed], Witnesses = [new byte[] { 1 }] };
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cache.ProveRecursiveStark(changedHash, Eip8288Constants.AggregatedVk, next), Is.EqualTo(changedHash.ToByteArray()));
+            Assert.That(cache.ProveDependencyProof(changedHash, Eip8288Constants.AggregatedVk, next), Is.EqualTo(changedHash.ToByteArray()));
             Assert.That(verifier.ProofCalls, Is.EqualTo(4));
         }
     }
@@ -639,24 +639,24 @@ public class Eip8288BlockProductionTests
         using CancellationTokenSource cancellation = new();
         ExecutionContext? captured = null;
         CountingVerifier verifier = new();
-        ProductionProofCache cache = new(verifier);
+        DependencyProofCache cache = new(verifier);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("scope"), default);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
         AggregationInput input = new() { Deps = [dependency], Witnesses = [new byte[] { 1 }] };
         if (background)
         {
-            using (ProductionProofCache.Background(cancellation.Token)) captured = ExecutionContext.Capture();
+            using (DependencyProofCache.Background(cancellation.Token)) captured = ExecutionContext.Capture();
         }
         else
         {
             verifier.OnProof = () => captured = ExecutionContext.Capture();
-            ProductionProofCache.Prove(cache, hash, Eip8288Constants.AggregatedVk, input, cancellation.Token);
+            DependencyProofCache.Prove(cache, hash, Eip8288Constants.AggregatedVk, input, cancellation.Token);
             verifier.OnProof = null;
         }
         cancellation.Cancel();
         Assert.That(captured, Is.Not.Null);
         ExecutionContext.Run(captured!, _ =>
-            Assert.That(cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input), Is.EqualTo(hash.ToByteArray())), null);
+            Assert.That(cache.ProveDependencyProof(hash, Eip8288Constants.AggregatedVk, input), Is.EqualTo(hash.ToByteArray())), null);
     }
 
     [Test]
@@ -684,7 +684,7 @@ public class Eip8288BlockProductionTests
             {
                 Assert.That(first, Is.Not.Null, "a pass with a deadline does not wait for the native call");
                 Assert.That(first!.Transactions, Is.EqualTo(new[] { plain }));
-                Assert.That(first.StarkProof, Is.Empty);
+                Assert.That(first.DependencyProof, Is.Empty);
                 Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True, "the missing statement is proven off the production path");
             }
             Block? next = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock).WaitAsync(TimeSpan.FromSeconds(5));
@@ -710,7 +710,7 @@ public class Eip8288BlockProductionTests
     public async Task Producer_waiting_behind_background_aggregation_is_served_after_one_native_call()
     {
         // More than one leaf, so the background fold takes several native calls and the producer can be served between them.
-        FrameDependency[] dependencies = new FrameDependency[RecursiveStarkAggregator.DirectBatchSize + 1];
+        FrameDependency[] dependencies = new FrameDependency[DependencyProofAggregator.DirectBatchSize + 1];
         ReadOnlyMemory<byte>[] witnesses = new ReadOnlyMemory<byte>[dependencies.Length];
         for (int i = 0; i < dependencies.Length; i++)
         {
@@ -723,17 +723,17 @@ public class Eip8288BlockProductionTests
         using SemaphoreSlim started = new(0);
         using SemaphoreSlim permits = new(0);
         CountingVerifier verifier = new() { OnProof = () => { started.Release(); permits.Wait(); } };
-        ProductionProofCache cache = new(verifier);
+        DependencyProofCache cache = new(verifier);
         Task<byte[]> background = Task.Run(() =>
         {
-            using (ProductionProofCache.Background(default))
-                return RecursiveStarkAggregator.Prove(new() { Deps = dependencies, Witnesses = witnesses }, cache, Eip8288Verifier.Pinned, backgroundHash);
+            using (DependencyProofCache.Background(default))
+                return DependencyProofAggregator.Prove(new() { Deps = dependencies, Witnesses = witnesses }, cache, Eip8288Verifier.Pinned, backgroundHash);
         });
         try
         {
             Assert.That(await started.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
             using CancellationTokenSource improvement = new();
-            Task<byte[]> producer = Task.Run(() => ProductionProofCache.Prove(cache, producedHash, Eip8288Constants.AggregatedVk,
+            Task<byte[]> producer = Task.Run(() => DependencyProofCache.Prove(cache, producedHash, Eip8288Constants.AggregatedVk,
                 new() { Deps = [produced], Witnesses = [new byte[] { 1 }] }, improvement.Token));
             await Task.Delay(100);
             Assert.That(producer.IsCompleted, Is.False, "the active background call is noninterruptible");
@@ -759,23 +759,23 @@ public class Eip8288BlockProductionTests
     public void Production_step_cache_releases_old_proofs_under_byte_pressure()
     {
         CountingVerifier verifier = new() { ProofPaddingBytes = Eip8288Constants.MaxAggregateProofBytes - 32 };
-        ProductionProofCache cache = new(verifier);
+        DependencyProofCache cache = new(verifier);
         FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("large-0"), default);
         AggregationInput initial = new() { Deps = [first], Witnesses = [new byte[] { 1 }] };
         ValueHash256 initialHash = Eip8288Dependencies.ComputeDepsHash([first]);
-        cache.ProveRecursiveStark(initialHash, Eip8288Constants.AggregatedVk, initial);
+        cache.ProveDependencyProof(initialHash, Eip8288Constants.AggregatedVk, initial);
         // Enough maximum-sized proofs to pass the cache's 32 MiB byte bound well before its entry bound.
         const int laterProofs = 32 * 1024 * 1024 / Eip8288Constants.MaxAggregateProofBytes + 1;
         for (int i = 1; i <= laterProofs; i++)
         {
             FrameDependency next = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"large-{i}"), default);
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([next]);
-            cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk,
+            cache.ProveDependencyProof(hash, Eip8288Constants.AggregatedVk,
                 new() { Deps = [next], Witnesses = [new byte[] { 1 }] });
         }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cache.ProveRecursiveStark(initialHash, Eip8288Constants.AggregatedVk, initial), Has.Length.EqualTo(Eip8288Constants.MaxAggregateProofBytes));
+            Assert.That(cache.ProveDependencyProof(initialHash, Eip8288Constants.AggregatedVk, initial), Has.Length.EqualTo(Eip8288Constants.MaxAggregateProofBytes));
             Assert.That(verifier.ProofCalls, Is.EqualTo(laterProofs + 2), "the evicted first proof is proven again");
         }
     }
@@ -890,7 +890,7 @@ public class Eip8288BlockProductionTests
             {
                 Assert.That(block, Is.Not.Null);
                 Assert.That(block!.Transactions, Is.EqualTo(new[] { covered }));
-                Assert.That(block.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([proven]).ToByteArray()),
+                Assert.That(block.DependencyProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([proven]).ToByteArray()),
                     "the body is restricted to a dependency set whose proof is reused unchanged");
             }
         }
@@ -941,7 +941,7 @@ public class Eip8288BlockProductionTests
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         // Three whole leaves and two merges, above MaxScheduledStatementCost, so the statement is cut to a prefix.
-        const int leaf = RecursiveStarkAggregator.DirectBatchSize;
+        const int leaf = DependencyProofAggregator.DirectBatchSize;
         FrameDependency[] backlog = [.. Enumerable.Range(0, 3 * leaf).Select(i =>
             new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"backlog-{i}"), default))];
         for (int i = 0; i < backlog.Length; i++)
@@ -957,7 +957,7 @@ public class Eip8288BlockProductionTests
         // The widest nonce-ordered prefix whose estimate still fits the bound, which need not end on a leaf boundary.
         int widest = 1;
         while (widest < backlog.Length
-               && RecursiveStarkAggregator.EstimatedCost(new AggregationInput { Deps = backlog[..(widest + 1)], Witnesses = new ReadOnlyMemory<byte>[widest + 1] })
+               && DependencyProofAggregator.EstimatedCost(new AggregationInput { Deps = backlog[..(widest + 1)], Witnesses = new ReadOnlyMemory<byte>[widest + 1] })
                   <= DependencyProofPlanner.MaxScheduledStatementCost) widest++;
         HashSet<FrameDependency> all = [.. backlog];
         Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == widest), Is.True.After(5000, 20));
@@ -1002,7 +1002,7 @@ public class Eip8288BlockProductionTests
         await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
 
         AggregationInput wideInput = new() { Deps = wide, Witnesses = new ReadOnlyMemory<byte>[wide.Length] };
-        Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.LessThanOrEqualTo(DependencyProofPlanner.MaxScheduledStatementCost));
+        Assert.That(DependencyProofAggregator.EstimatedCost(wideInput), Is.LessThanOrEqualTo(DependencyProofPlanner.MaxScheduledStatementCost));
         HashSet<FrameDependency> all = [.. backlog, .. wide];
         Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Intersect(wide).Any()), Is.True.After(5000, 20));
     }
@@ -1010,7 +1010,7 @@ public class Eip8288BlockProductionTests
     // Folding the proven signatures again costs one unit each; merging their proof in costs MergeCost whatever the set size,
     // so extension wins once the set outgrows a merge. A whole leaf does; a single signature does not.
     [TestCase(1, false)]
-    [TestCase(RecursiveStarkAggregator.DirectBatchSize, true)]
+    [TestCase(DependencyProofAggregator.DirectBatchSize, true)]
     public async Task Scheduled_production_proof_extends_a_proven_subset_only_when_cheaper(int provenCount, bool extended)
     {
         CountingVerifier verifier = new();
@@ -1180,7 +1180,7 @@ public class Eip8288BlockProductionTests
         {
             Assert.That(block, Is.Not.Null);
             Assert.That(block!.Transactions, Is.EqualTo(new[] { includable }));
-            Assert.That(block.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([a]).ToByteArray()));
+            Assert.That(block.DependencyProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([a]).ToByteArray()));
         }
     }
 
@@ -1201,7 +1201,7 @@ public class Eip8288BlockProductionTests
         {
             Assert.That(processed!.Transactions, Is.Empty);
             Assert.That(Eip8288Dependencies.ForBlock(processed, FrameTxSigHash.ComputeValue), Is.Empty);
-            Assert.That(processed.StarkProof, Is.Empty);
+            Assert.That(processed.DependencyProof, Is.Empty);
         }
     }
 
@@ -1247,11 +1247,11 @@ public class Eip8288BlockProductionTests
         {
             Assert.That(processed!.Transactions, Is.EqualTo((Transaction[])[transaction]));
             Assert.That(Eip8288Dependencies.ForBlock(processed, FrameTxSigHash.ComputeValue), Is.EqualTo((FrameDependency[])[dependency]));
-            Assert.That(processed.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency]))));
+            Assert.That(processed.Header.DependencyProofCommitment!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency]))));
             if (superset) Assert.That(verifier.ProofCalls, Is.GreaterThan(proofCallsBefore), "discarding the surplus needs a new proof");
             else
             {
-                Assert.That(processed.StarkProof, Is.EqualTo(producing.LeanProduction.InclusionListProofInput!.RecursiveProofs[0].Proof.ToArray()));
+                Assert.That(processed.DependencyProof, Is.EqualTo(producing.LeanProduction.InclusionListProofInput!.RecursiveProofs[0].Proof.ToArray()));
                 Assert.That(verifier.ProofCalls, Is.EqualTo(proofCallsBefore), "the unchanged verified IL statement needs no new proof");
             }
             Assert.That(verifier.RecursiveVerificationCalls, Is.GreaterThan(verificationCallsBefore));
@@ -1413,7 +1413,7 @@ public class Eip8288BlockProductionTests
         {
             Assert.That(block.Transactions.Select(static tx => tx.Hash), Is.EqualTo(new[] { transaction.Hash }));
             Assert.That(block.Header.BlobGasUsed, Is.EqualTo(Eip4844Constants.GasPerBlob));
-            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash(
+            Assert.That(block.Header.DependencyProofCommitment!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash(
                 Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)))));
         }
     }
@@ -1539,13 +1539,13 @@ public class Eip8288BlockProductionTests
             return true;
         }
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
-        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+        public bool VerifyDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
         {
             RecursiveVerificationCalls++;
             return proof.Length == 32 + ProofPaddingBytes && proof[..32].SequenceEqual(depsHash.Bytes);
         }
         public AggregationInput? LastInput { get; private set; }
-        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
+        public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             ProofCalls++;
             LastInput = input;

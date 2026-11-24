@@ -3387,8 +3387,8 @@ public class BlockTreeTests
     {
         BlockTree tree = Build.A.BlockTree().WithBadBlockStore(Substitute.For<IBadBlockStore>()).OfChainLength(3).TestObject;
         Block invalid = Build.A.Block.WithParent(tree.Head!).WithNumber(4).TestObject;
-        invalid.StarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes + 1];
-        invalid.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(invalid.StarkProof), TestItem.KeccakA);
+        invalid.DependencyProof = new byte[Eip8288Constants.MaxAggregateProofBytes + 1];
+        invalid.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(invalid.DependencyProof), TestItem.KeccakA);
         tree.ReportBadBlock(invalid);
         using (Assert.EnterMultipleScope())
         {

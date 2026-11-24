@@ -84,7 +84,7 @@ public sealed class AuRaBlockHeader(
             ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
             RequestsHash = src.RequestsHash,
             BlockAccessListHash = src.BlockAccessListHash,
-            RecursiveStark = src.RecursiveStark,
+            DependencyProofCommitment = src.DependencyProofCommitment,
             BlobGasUsed = src.BlobGasUsed,
             ExcessBlobGas = src.ExcessBlobGas,
             SlotNumber = src.SlotNumber,

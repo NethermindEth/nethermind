@@ -1968,8 +1968,8 @@ public class SszMiddlewareTests
         if (inclusionCommitment) block.InclusionLists = [new CommitteeInclusionList([], [1], [])];
         else
         {
-            block.StarkProof = [1];
-            block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof), Keccak.Zero);
+            block.DependencyProof = [1];
+            block.Header.DependencyProofCommitment = new(Keccak.Compute(block.DependencyProof), Keccak.Zero);
         }
         GetPayloadV6Result result = new(block, UInt256.Zero, new BlobsBundleV2(block), [], false);
         _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(ResultWrapper<GetPayloadV6Result?>.Success(result));

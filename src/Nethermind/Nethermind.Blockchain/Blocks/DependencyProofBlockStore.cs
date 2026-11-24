@@ -19,13 +19,13 @@ public sealed class DependencyProofBlockStore(IBlockStore blockStore, IDependenc
 {
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {
-        if (block.StarkProof is { } proof) proofStore.Insert(block.Number, HashOf(block), proof);
+        if (block.DependencyProof is { } proof) proofStore.Insert(block.Number, HashOf(block), proof);
         blockStore.Insert(block, writeFlags);
     }
 
     public void InsertDeferred(Block block)
     {
-        if (block.StarkProof is { } proof) proofStore.InsertDeferred(block.Number, HashOf(block), proof);
+        if (block.DependencyProof is { } proof) proofStore.InsertDeferred(block.Number, HashOf(block), proof);
         blockStore.InsertDeferred(block);
     }
 

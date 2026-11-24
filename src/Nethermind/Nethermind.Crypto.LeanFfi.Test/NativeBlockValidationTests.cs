@@ -62,7 +62,7 @@ public class NativeBlockValidationTests
             Leaf(witnesses[(starks + signatures / 2)..])];
         List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(leaves.SelectMany(static leaf => leaf.InnerDeps));
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        byte[] proof = NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk,
+        byte[] proof = NativeLeanProofVerifier.Instance.ProveDependencyProof(in depsHash, Eip8288Constants.AggregatedVk,
             new AggregationInput { RecursiveProofs = leaves });
         (Block block, BlockHeader parent) = BlockWithProof(dependencies, proof);
 
@@ -79,7 +79,7 @@ public class NativeBlockValidationTests
         {
             List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(raw.Select(static w => w.Dependency));
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
-            return new(deps, NativeLeanProofVerifier.Instance.ProveRecursiveStark(in hash, Eip8288Constants.AggregatedVk, new AggregationInput
+            return new(deps, NativeLeanProofVerifier.Instance.ProveDependencyProof(in hash, Eip8288Constants.AggregatedVk, new AggregationInput
             {
                 Deps = [.. raw.Select(static w => w.Dependency)],
                 Witnesses = [.. raw.Select(static w => (ReadOnlyMemory<byte>)w.Witness)]
@@ -96,9 +96,9 @@ public class NativeBlockValidationTests
         // The native backend proves the empty set as the EIP-8288 empty stark_proof; any nonempty proof is rejected.
         byte[] proof = nonEmpty
             ? [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-            : NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, new AggregationInput());
-        block.StarkProof = proof;
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), new Hash256(depsHash));
+            : NativeLeanProofVerifier.Instance.ProveDependencyProof(in depsHash, Eip8288Constants.AggregatedVk, new AggregationInput());
+        block.DependencyProof = proof;
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(proof), new Hash256(depsHash));
 
         bool result = CreateValidator().ValidateSuggestedBlock(block, parent, out string? error);
 
@@ -130,8 +130,8 @@ public class NativeBlockValidationTests
         Block block = Build.A.Block.WithParent(parent).WithTransactions(transaction).TestObject;
 
         ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
-        block.StarkProof = proof;
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), new Hash256(depsHash));
+        block.DependencyProof = proof;
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(proof), new Hash256(depsHash));
         return (block, parent);
     }
 

@@ -58,8 +58,8 @@ public class BlockForRpcWireFormatTests
     public void Block_response_carries_the_recursive_stark_commitment_but_not_the_proof([Values] bool full)
     {
         Block block = Build.A.Block.WithNumber(3).TestObject;
-        block.StarkProof = [0xab, 0xcd];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(TestItem.KeccakA, TestItem.KeccakB);
+        block.DependencyProof = [0xab, 0xcd];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(TestItem.KeccakA, TestItem.KeccakB);
 
         string json = Serialize(new BlockForRpc(block, full, MainnetSpecProvider.Instance));
 

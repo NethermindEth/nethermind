@@ -489,8 +489,8 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
         if (parameters.Eip8288TransitionTimestamp is { } proofTransition && genesisHeader.Timestamp >= proofTransition)
         {
-            genesisHeader.RecursiveStark = RecursiveStarkCommitment.Empty;
-            chainSpec.Genesis.StarkProof = [];
+            genesisHeader.DependencyProofCommitment = DependencyProofCommitment.Empty;
+            chainSpec.Genesis.DependencyProof = [];
         }
     }
 

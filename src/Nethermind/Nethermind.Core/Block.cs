@@ -48,11 +48,11 @@ public class Block
     )
     { }
 
-    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists, StarkProof = StarkProof };
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists, DependencyProof = DependencyProof };
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists, StarkProof = StarkProof };
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists, DependencyProof = DependencyProof };
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists, StarkProof = StarkProof };
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists, DependencyProof = DependencyProof };
 
     public BlockHeader Header { get; }
 
@@ -72,7 +72,8 @@ public class Block
 
     /// <summary>The EIP-8288 <c>dependency_proof</c>: null when not available, empty for a block without dependencies.</summary>
     /// <remarks>Neither header nor body: the header commits to it by hash, and it travels in the Engine API execution payload.</remarks>
-    public byte[]? StarkProof { get; set; }
+    [JsonPropertyName("starkProof")]
+    public byte[]? DependencyProof { get; set; }
 
     public Hash256? Hash => Header.Hash; // do not add setter here
 

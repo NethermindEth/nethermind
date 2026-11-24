@@ -150,7 +150,7 @@ public partial class BlockDownloaderTests
         for (int i = 0; i < DependencyProofs.Length; i++)
         {
             BlockHeader header = Build.A.BlockHeader.WithParent(chain[i]).WithTransactionsRoot(TxTrie.CalculateRoot([BodyTransaction])).TestObject;
-            header.RecursiveStark = new RecursiveStarkCommitment(emptyProofs ? Keccak.OfAnEmptyString : Keccak.Compute(DependencyProofs[i]), Keccak.Compute("deps"));
+            header.DependencyProofCommitment = new DependencyProofCommitment(emptyProofs ? Keccak.OfAnEmptyString : Keccak.Compute(DependencyProofs[i]), Keccak.Compute("deps"));
             header.Hash = header.CalculateHash();
             chain[i + 1] = header;
         }

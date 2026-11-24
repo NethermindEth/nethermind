@@ -279,14 +279,14 @@ public class OptimismModuleTests
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).WithWithdrawals(null).TestObject;
-        block.StarkProof = emptyProof ? [] : [1];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+        block.DependencyProof = emptyProof ? [] : [1];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
         bool isValid = container.Resolve<IBlockValidator>().ValidateSuggestedBlock(block, parent, out string? error);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(isValid, Is.EqualTo(emptyProof), error);
-            Assert.That(error, Is.EqualTo(emptyProof ? null : BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(error, Is.EqualTo(emptyProof ? null : BlockErrorMessages.InvalidDependencyProof));
         }
     }
 }

@@ -40,7 +40,7 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 
 /// <summary>EIP-8437 <c>eth/73</c> wrapper propagation over production DI wiring with the native verifier.</summary>
 [NonParallelizable]
-public class NativeProofWrapperTransportTests
+public class NativeProofWrapperBroadcasterTests
 {
     private sealed record WireMessage(int PacketType, byte[] Body);
 
@@ -51,7 +51,7 @@ public class NativeProofWrapperTransportTests
         public Eth73ProtocolHandler Handler { get; } = handler;
         public Action<WireMessage>? Post { get; set; }
         public ConcurrentQueue<string> Disconnects { get; } = new();
-        public ProofWrapperTransport Transport => Chain.Container.Resolve<ProofWrapperTransport>();
+        public ProofWrapperBroadcaster Broadcaster => Chain.Container.Resolve<ProofWrapperBroadcaster>();
 
         public void Dispose()
         {
@@ -145,7 +145,7 @@ public class NativeProofWrapperTransportTests
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<SubprotocolException>(() => Receive(context, request));
-            Assert.That(context.Transport.PeerCount, Is.Zero);
+            Assert.That(context.Broadcaster.PeerCount, Is.Zero);
         }
     }
 
@@ -164,18 +164,18 @@ public class NativeProofWrapperTransportTests
         source.Chain.Container.Resolve<LeanProofStore>().AddVerified(
             [NativeLeanProofVerifierTests.Dependency("sphincs"), NativeLeanProofVerifierTests.Dependency("stark")], null, proof);
         Assert.That(source.Chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-        await using ProofWrapperGossip gossip = source.Chain.Container.Resolve<ProofWrapperGossip>();
-        gossip.Start();
+        await using ProofWrapperProducer producer = source.Chain.Container.Resolve<ProofWrapperProducer>();
+        producer.Start();
 
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
         // The validated wrapper is stored on a background task, so it may land after its transaction is pending.
-        while (!target.Chain.TxPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) || target.Transport.StoredObjects == 0)
+        while (!target.Chain.TxPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) || target.Broadcaster.StoredObjects == 0)
             await Task.Delay(50, timeout.Token);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(target.Chain.Container.Resolve<ILeanProofVerifier>(), Is.TypeOf<ProductionProofCache>());
+            Assert.That(target.Chain.Container.Resolve<ILeanProofVerifier>(), Is.TypeOf<DependencyProofCache>());
             Assert.That(target.Chain.Container.Resolve<LeanProofStore>().Covers(transaction), Is.True);
-            Assert.That(target.Transport.StoredObjects, Is.EqualTo(1), "the validated wrapper is offered onward");
+            Assert.That(target.Broadcaster.StoredObjects, Is.EqualTo(1), "the validated wrapper is offered onward");
             Assert.That(source.Disconnects, Is.Empty);
             Assert.That(target.Disconnects, Is.Empty);
         }
@@ -186,8 +186,8 @@ public class NativeProofWrapperTransportTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(block.Transactions, Has.Length.EqualTo(1));
-            Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue),
-                Eip8288Constants.AggregatedVk, block.StarkProof!), Is.True);
+            Assert.That(NativeLeanProofVerifier.Instance.VerifyDependencyProof(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue),
+                Eip8288Constants.AggregatedVk, block.DependencyProof!), Is.True);
         }
         toTarget.Writer.TryComplete();
         toSource.Writer.TryComplete();
@@ -199,11 +199,11 @@ public class NativeProofWrapperTransportTests
     {
         using Context context = await Create();
         Receive(context, Init(context));
-        Assert.That(context.Transport.PeerCount, Is.EqualTo(1));
+        Assert.That(context.Broadcaster.PeerCount, Is.EqualTo(1));
         context.Handler.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(context.Transport.PeerCount, Is.Zero);
+            Assert.That(context.Broadcaster.PeerCount, Is.Zero);
             Assert.That(context.Disconnects, Is.Empty);
         }
     }

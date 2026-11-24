@@ -52,7 +52,7 @@ public class HeaderDecoderTests
             .WithMixHash(Keccak.Compute("mix_hash"))
             .WithNonce(1000)
             .TestObject;
-        header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), Keccak.Compute("deps"));
+        header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(proof), Keccak.Compute("deps"));
 
         HeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header);
@@ -64,18 +64,18 @@ public class HeaderDecoderTests
         fields.SkipItems(23);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(fields.DecodeKeccak(), Is.EqualTo(header.RecursiveStark.DependencyProofHash));
-            Assert.That(fields.DecodeKeccak(), Is.EqualTo(header.RecursiveStark.BlockDepsHash));
+            Assert.That(fields.DecodeKeccak(), Is.EqualTo(header.DependencyProofCommitment.DependencyProofHash));
+            Assert.That(fields.DecodeKeccak(), Is.EqualTo(header.DependencyProofCommitment.BlockDepsHash));
             Assert.That(fields.Position, Is.EqualTo(rlp.Length));
         }
 
-        Assert.That(decoded.RecursiveStark, Is.Not.Null);
+        Assert.That(decoded.DependencyProofCommitment, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.RecursiveStark!.DependencyProofHash, Is.EqualTo(Keccak.Compute(proof)));
-            Assert.That(decoded.RecursiveStark.BlockDepsHash, Is.EqualTo(Keccak.Compute("deps")));
+            Assert.That(decoded.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(Keccak.Compute(proof)));
+            Assert.That(decoded.DependencyProofCommitment.BlockDepsHash, Is.EqualTo(Keccak.Compute("deps")));
             if (proof.Length == 0)
-                Assert.That(decoded.RecursiveStark.DependencyProofHash,
+                Assert.That(decoded.DependencyProofCommitment.DependencyProofHash,
                     Is.EqualTo(new Hash256("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")));
         }
 
@@ -87,7 +87,7 @@ public class HeaderDecoderTests
     public void Proof_commitments_require_32_bytes([Values(23, 24)] int fieldIndex, [Values(0, 31, 33)] int size)
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
-        header.RecursiveStark = new(Keccak.OfAnEmptyString, Keccak.Compute("deps"));
+        header.DependencyProofCommitment = new(Keccak.OfAnEmptyString, Keccak.Compute("deps"));
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(Rlp.Encode(header).Bytes, fieldIndex, Rlp.Encode(new byte[size]).Bytes);
 
         Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
@@ -97,10 +97,10 @@ public class HeaderDecoderTests
     public void Proof_commitment_has_fixed_size_and_changes_header_hash()
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
-        header.RecursiveStark = new(Keccak.OfAnEmptyString, Keccak.Compute("deps"));
+        header.DependencyProofCommitment = new(Keccak.OfAnEmptyString, Keccak.Compute("deps"));
         HeaderDecoder decoder = new();
         Rlp emptyProof = decoder.Encode(header);
-        header.RecursiveStark = new(Keccak.Compute(new byte[Eip8288Constants.MaxAggregateProofBytes]), Keccak.Compute("deps"));
+        header.DependencyProofCommitment = new(Keccak.Compute(new byte[Eip8288Constants.MaxAggregateProofBytes]), Keccak.Compute("deps"));
         Rlp largeProof = decoder.Encode(header);
         using (Assert.EnterMultipleScope())
         {

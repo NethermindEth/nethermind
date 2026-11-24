@@ -44,12 +44,12 @@ public class Eth74ProtocolHandler(
     IChainHeadSpecProvider specProvider,
     IBlobCustodyTracker blobCustodyTracker,
     ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
-    ProofWrapperTransport wrapperTransport,
+    ProofWrapperBroadcaster wrapperBroadcaster,
     IBlockFinder blockFinder,
     IDependencyProofStore proofStore,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth73ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo,
-        logManager, txPoolConfig, specProvider, blobCustodyTracker, sparseBlobPoolPeerRegistry, wrapperTransport, transactionsGossipPolicy),
+        logManager, txPoolConfig, specProvider, blobCustodyTracker, sparseBlobPoolPeerRegistry, wrapperBroadcaster, transactionsGossipPolicy),
     ISyncPeer, IStaticProtocolInfo
 {
     private static readonly Func<DependencyProofsMessage, int, DependencyProofsMessage> SelectProofs = static (message, _) => message;
@@ -105,7 +105,7 @@ public class Eth74ProtocolHandler(
     /// <returns>The stored proof, or the empty entry for an unknown, pre-fork or pruned block.</returns>
     private byte[] GetProof(Hash256 blockHash) =>
         blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is
-        { RecursiveStark: not null } header
+        { DependencyProofCommitment: not null } header
             ? proofStore.Get(header.Number, blockHash) ?? []
             : [];
 

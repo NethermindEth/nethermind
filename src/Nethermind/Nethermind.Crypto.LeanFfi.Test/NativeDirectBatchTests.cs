@@ -14,7 +14,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Crypto.LeanFfi.Test;
 
-/// <summary>Drives <see cref="RecursiveStarkAggregator.Prove"/> over real packaged signatures, so the managed batching
+/// <summary>Drives <see cref="DependencyProofAggregator.Prove"/> over real packaged signatures, so the managed batching
 /// path and the native backend are exercised together rather than the C ABI alone.</summary>
 [Explicit("Native proving; run deliberately.")]
 public class NativeDirectBatchTests
@@ -67,7 +67,7 @@ public class NativeDirectBatchTests
         return 0;
     }
 
-    /// <summary>What a direct leaf of leanSTARK witnesses costs, which <see cref="RecursiveStarkAggregator.DirectBatchSize"/>
+    /// <summary>What a direct leaf of leanSTARK witnesses costs, which <see cref="DependencyProofAggregator.DirectBatchSize"/>
     /// bounds alongside signatures.</summary>
     /// <remarks>A leanSTARK witness is about 163 KB against a signature's 6 KB, and mode 1 does not cap generics at one per
     /// wrapper, so a whole leaf of them is reachable. Reports time, native calls and peak RSS; asserts only that the proof verifies, so it holds on any host.</remarks>
@@ -81,7 +81,7 @@ public class NativeDirectBatchTests
         foreach (ReadOnlyMemory<byte> witness in input.Witnesses) witnessBytes += witness.Length;
 
         Stopwatch watch = Stopwatch.StartNew();
-        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, in depsHash);
+        byte[] proof = DependencyProofAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, in depsHash);
         TimeSpan elapsed = watch.Elapsed;
 
         Report($"count={count},ms={elapsed.TotalMilliseconds:F0},calls={verifier.ProofCalls},"
@@ -89,7 +89,7 @@ public class NativeDirectBatchTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(proof, Has.Length.LessThanOrEqualTo(Eip8288Constants.MaxAggregateProofBytes));
-            Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, proof), Is.True);
+            Assert.That(NativeLeanProofVerifier.Instance.VerifyDependencyProof(depsHash, Eip8288Constants.AggregatedVk, proof), Is.True);
         }
     }
 
@@ -126,7 +126,7 @@ public class NativeDirectBatchTests
         CountingVerifier verifier = new();
 
         Stopwatch watch = Stopwatch.StartNew();
-        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, in depsHash);
+        byte[] proof = DependencyProofAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, in depsHash);
         TimeSpan elapsed = watch.Elapsed;
 
         TestContext.Out.WriteLine($"{count} signatures: {elapsed.TotalMilliseconds:F0} ms, {verifier.ProofCalls} native proof calls, {proof.Length} B");
@@ -134,7 +134,7 @@ public class NativeDirectBatchTests
         {
             Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a wrapper-sized set fits one direct leaf");
             Assert.That(proof, Has.Length.LessThanOrEqualTo(Eip8288Constants.MaxAggregateProofBytes));
-            Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, proof), Is.True);
+            Assert.That(NativeLeanProofVerifier.Instance.VerifyDependencyProof(depsHash, Eip8288Constants.AggregatedVk, proof), Is.True);
         }
     }
 
@@ -153,7 +153,7 @@ public class NativeDirectBatchTests
         Eip8288Verifier forkVerifier = Eip8288Verifier.Pinned;
 
         ValueHash256 firstHash = Eip8288Dependencies.ComputeDepsHash(first.Deps);
-        byte[] firstProof = RecursiveStarkAggregator.Prove(first, verifier, forkVerifier, in firstHash);
+        byte[] firstProof = DependencyProofAggregator.Prove(first, verifier, forkVerifier, in firstHash);
         ValueHash256 wholeHash = Eip8288Dependencies.ComputeDepsHash(whole.Deps);
         AggregationInput extended = new()
         {
@@ -161,12 +161,12 @@ public class NativeDirectBatchTests
             Deps = second.Deps,
             Witnesses = second.Witnesses
         };
-        byte[] proof = RecursiveStarkAggregator.Prove(extended, verifier, forkVerifier, in wholeHash);
+        byte[] proof = DependencyProofAggregator.Prove(extended, verifier, forkVerifier, in wholeHash);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verifier.ProofCalls, Is.EqualTo(2), "one leaf, then one call folding the child with the rest");
-            Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(wholeHash, Eip8288Constants.AggregatedVk, proof), Is.True);
+            Assert.That(NativeLeanProofVerifier.Instance.VerifyDependencyProof(wholeHash, Eip8288Constants.AggregatedVk, proof), Is.True);
         }
     }
 
@@ -199,13 +199,13 @@ public class NativeDirectBatchTests
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.Canonicalize(statement));
 
         // The first call in a process also pays the backend's one-time setup, so the second is the one measured.
-        NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, input);
+        NativeLeanProofVerifier.Instance.ProveDependencyProof(in depsHash, Eip8288Constants.AggregatedVk, input);
         Stopwatch watch = Stopwatch.StartNew();
-        byte[] proof = NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, input);
+        byte[] proof = NativeLeanProofVerifier.Instance.ProveDependencyProof(in depsHash, Eip8288Constants.AggregatedVk, input);
         TimeSpan elapsed = watch.Elapsed;
 
         Report($"shape={shape},ms={elapsed.TotalMilliseconds:F0},proof_bytes={proof.Length},peak_rss_kb={PeakRssKb()}");
-        Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, proof), Is.True);
+        Assert.That(NativeLeanProofVerifier.Instance.VerifyDependencyProof(depsHash, Eip8288Constants.AggregatedVk, proof), Is.True);
 
         static AggregationInput Take(AggregationInput source, int start, int count) => new()
         {
@@ -216,7 +216,7 @@ public class NativeDirectBatchTests
         static RecursiveProofInput ProvenChild(AggregationInput leaf)
         {
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(leaf.Deps);
-            return new(leaf.Deps, NativeLeanProofVerifier.Instance.ProveRecursiveStark(in hash, Eip8288Constants.AggregatedVk, leaf));
+            return new(leaf.Deps, NativeLeanProofVerifier.Instance.ProveDependencyProof(in hash, Eip8288Constants.AggregatedVk, leaf));
         }
 
         static AggregationInput Union(AggregationInput a, AggregationInput b)
@@ -241,12 +241,12 @@ public class NativeDirectBatchTests
             NativeLeanProofVerifier.Instance.VerifyLeanSphincs(in dataHash, in verificationKey, witness);
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) =>
             NativeLeanProofVerifier.Instance.VerifyLeanStark(in dataHash, in verificationKey, witness);
-        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) =>
-            NativeLeanProofVerifier.Instance.VerifyRecursiveStark(in depsHash, aggregatedVk, proof);
-        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
+        public bool VerifyDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) =>
+            NativeLeanProofVerifier.Instance.VerifyDependencyProof(in depsHash, aggregatedVk, proof);
+        public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             ProofCalls++;
-            return NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, aggregatedVk, input);
+            return NativeLeanProofVerifier.Instance.ProveDependencyProof(in depsHash, aggregatedVk, input);
         }
     }
 }

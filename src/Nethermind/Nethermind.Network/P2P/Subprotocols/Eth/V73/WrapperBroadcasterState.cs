@@ -189,7 +189,7 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
     }
 }
 
-/// <summary>A peer's request, budget and suppression state, guarded by the transport lock.</summary>
+/// <summary>A peer's request, budget and suppression state, guarded by the broadcaster lock.</summary>
 internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, WrapperEncodingBudget encodingBudget)
 {
     public IWrapperLink Link { get; } = link;
@@ -232,7 +232,7 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     /// <summary>Announcements awaiting announcement under the rate limit.</summary>
     public List<WrapperAnnouncement> ToAnnounce { get; } = [];
 
-    /// <summary>Messages queued under the transport lock, so request IDs leave in order.</summary>
+    /// <summary>Messages queued under the broadcaster lock, so request IDs leave in order.</summary>
     public ConcurrentQueue<P2PMessage> Outgoing { get; } = new();
 
     /// <summary>1 while one thread sends <see cref="Outgoing"/>.</summary>

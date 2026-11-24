@@ -32,7 +32,7 @@ public class LeanProofBudgetTests
                 if (contribution.RecursiveProofs.Count != 0) contributions.Add(contribution);
             }
         }
-        AggregationInput combined = RecursiveStarkAggregator.Combine(contributions, dependencies);
+        AggregationInput combined = DependencyProofAggregator.Combine(contributions, dependencies);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(contributions, Has.Count.EqualTo(1));

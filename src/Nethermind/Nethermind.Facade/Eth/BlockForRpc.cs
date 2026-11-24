@@ -108,8 +108,8 @@ public class BlockForRpc
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
         RequestsHash = block.Header.RequestsHash;
         BlockAccessListHash = block.Header.BlockAccessListHash;
-        DependencyProofHash = block.Header.RecursiveStark?.DependencyProofHash;
-        BlockDepsHash = block.Header.RecursiveStark?.BlockDepsHash;
+        DependencyProofHash = block.Header.DependencyProofCommitment?.DependencyProofHash;
+        BlockDepsHash = block.Header.DependencyProofCommitment?.BlockDepsHash;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

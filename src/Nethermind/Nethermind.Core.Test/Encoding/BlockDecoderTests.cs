@@ -24,10 +24,10 @@ public class BlockDecoderTests
     public void Block_encoding_omits_the_dependency_proof(int size)
     {
         Block block = Build.A.Block.WithWithdrawals(0).TestObject;
-        block.Header.RecursiveStark = new(Keccak.Compute(new byte[size]), Keccak.Compute("deps"));
+        block.Header.DependencyProofCommitment = new(Keccak.Compute(new byte[size]), Keccak.Compute("deps"));
         BlockDecoder decoder = new();
         byte[] withoutProof = decoder.Encode(block).Bytes;
-        block.StarkProof = new byte[size];
+        block.DependencyProof = new byte[size];
         byte[] encoded = decoder.Encode(block).Bytes;
         RlpReader reader = new(encoded);
         Block decoded = decoder.DecodeGuardNotNull(ref reader);
@@ -37,9 +37,9 @@ public class BlockDecoderTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(encoded, Is.EqualTo(withoutProof));
-                Assert.That(decoded.StarkProof, Is.Null);
-                Assert.That(decoded.Header.RecursiveStark!.DependencyProofHash, Is.EqualTo(block.Header.RecursiveStark.DependencyProofHash));
-                Assert.That(recovery.Header.RecursiveStark!.DependencyProofHash, Is.EqualTo(block.Header.RecursiveStark.DependencyProofHash));
+                Assert.That(decoded.DependencyProof, Is.Null);
+                Assert.That(decoded.Header.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(block.Header.DependencyProofCommitment.DependencyProofHash));
+                Assert.That(recovery.Header.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(block.Header.DependencyProofCommitment.DependencyProofHash));
                 Assert.That(() => DecodeWithTrailingProof(decoder, block, new byte[size]), Throws.InstanceOf<RlpException>());
             }
         }

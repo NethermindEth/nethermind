@@ -58,7 +58,7 @@ public class NativeInclusionListTests
         FrameDependency[] dependencies = [.. Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue)];
         ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(dependencies);
         NativeLeanProofVerifierTests.AssertBareStarkProof(proofBytes, dependencies);
-        Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proofBytes), Is.True);
+        Assert.That(NativeLeanProofVerifier.Instance.VerifyDependencyProof(commitment, Eip8288Constants.AggregatedVk, proofBytes), Is.True);
         if (scenario == "bad-proof") proofBytes[^1] ^= 1;
         PayloadAttributes attributes = new()
         {

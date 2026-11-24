@@ -244,27 +244,27 @@ public class GetPayloadDirectResponseTests
     public async Task Payload_bodies_preserve_proof_in_raw_and_materialized_responses([Values(0, 65537)] int size, [Values(1, 2)] int version)
     {
         Block block = Build.A.Block.WithWithdrawals(0).TestObject;
-        block.StarkProof = new byte[size];
-        block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
+        block.DependencyProof = new byte[size];
+        block.Header.DependencyProofCommitment = new(Keccak.Compute(block.DependencyProof), Keccak.Compute("deps"));
         byte[] encoded = Rlp.Encode(block).Bytes;
         object dto;
         IStreamableResult raw;
         IStreamableResult materialized;
         if (version == 1)
         {
-            PayloadBodiesV1DirectResponse rawResponse = new(new PayloadBodiesV1DirectResponse.PayloadBody?[] { new(encoded, block.StarkProof) });
+            PayloadBodiesV1DirectResponse rawResponse = new(new PayloadBodiesV1DirectResponse.PayloadBody?[] { new(encoded, block.DependencyProof) });
             dto = new[] { rawResponse[0] };
             raw = rawResponse;
-            materialized = new PayloadBodiesV1DirectResponse(new ExecutionPayloadBodyV1Result?[] { new([], [], block.StarkProof) });
-            Assert.That(rawResponse[0]!.DependencyProof, Is.EqualTo(block.StarkProof));
+            materialized = new PayloadBodiesV1DirectResponse(new ExecutionPayloadBodyV1Result?[] { new([], [], block.DependencyProof) });
+            Assert.That(rawResponse[0]!.DependencyProof, Is.EqualTo(block.DependencyProof));
         }
         else
         {
-            PayloadBodiesV2DirectResponse rawResponse = new([new(encoded, null, block.StarkProof)]);
+            PayloadBodiesV2DirectResponse rawResponse = new([new(encoded, null, block.DependencyProof)]);
             dto = new[] { rawResponse[0] };
             raw = rawResponse;
-            materialized = new PayloadBodiesV2DirectResponse([new([], [], null, block.StarkProof)]);
-            Assert.That(rawResponse[0]!.DependencyProof, Is.EqualTo(block.StarkProof));
+            materialized = new PayloadBodiesV2DirectResponse([new([], [], null, block.DependencyProof)]);
+            Assert.That(rawResponse[0]!.DependencyProof, Is.EqualTo(block.DependencyProof));
         }
         byte[] expected = JsonSerializer.SerializeToUtf8Bytes(dto, dto.GetType(), EthereumJsonSerializer.JsonOptions);
         byte[] rawJson = await WriteStreamableAsync(raw);
@@ -284,8 +284,8 @@ public class GetPayloadDirectResponseTests
     public async Task Payload_bodies_join_the_proof_kept_apart_from_the_stored_body([Values(1, 2)] int version, [Values] bool proofStored)
     {
         Block block = Build.A.Block.WithNumber(1).WithWithdrawals(0).TestObject;
-        block.StarkProof = new byte[PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
+        block.DependencyProof = new byte[PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), Keccak.Compute("deps"));
         block.Header.Hash = block.Header.CalculateHash();
         DependencyProofStore proofStore = new(new TestMemDb());
         IBlockStore blockStore = new DependencyProofBlockStore(new BlockStore(new TestMemDb()), proofStore);
@@ -293,7 +293,7 @@ public class GetPayloadDirectResponseTests
         if (!proofStored) proofStore.Delete(block.Number, block.Hash!);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindHeader(block.Hash!, Arg.Any<BlockTreeLookupOptions>()).Returns(block.Header);
-        byte[]? expectedProof = proofStored ? block.StarkProof : null;
+        byte[]? expectedProof = proofStored ? block.DependencyProof : null;
 
         IStreamableResult served;
         IStreamableResult received;
@@ -331,8 +331,8 @@ public class GetPayloadDirectResponseTests
     public async Task Direct_response_json_matches_dto_json_with_recursive_stark(int proofLength, bool inclusionCommitment)
     {
         (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
-        block.StarkProof = new byte[proofLength];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
+        block.DependencyProof = new byte[proofLength];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), Keccak.Compute("deps"));
         if (inclusionCommitment) block.InclusionLists = [new CommitteeInclusionList([], [1], [])];
 
         object plain = CreatePlainResult(6, block, blobsBundle, executionRequests);
@@ -345,7 +345,7 @@ public class GetPayloadDirectResponseTests
         {
             Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)), Is.True);
             Assert.That(JsonNode.Parse(actual)!["executionPayload"]!["inclusionLists"], Is.Null);
-            Assert.That(JsonNode.Parse(actual)!["executionPayload"]!["dependencyProof"]?.GetValue<string>(), Is.EqualTo(block.StarkProof.ToHexString(true)));
+            Assert.That(JsonNode.Parse(actual)!["executionPayload"]!["dependencyProof"]?.GetValue<string>(), Is.EqualTo(block.DependencyProof.ToHexString(true)));
         }
     }
 

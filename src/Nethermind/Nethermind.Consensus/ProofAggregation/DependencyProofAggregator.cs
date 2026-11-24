@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>The "verify, union and discard" logic shared by mempool re-forwarders, FOCIL creators, and block builders.</summary>
-public static class RecursiveStarkAggregator
+public static class DependencyProofAggregator
 {
     /// <summary>Target serialized-witness size for each direct proving batch, in bytes.</summary>
     public const long MaxProductionWitnessBytes = 4 * 1024 * 1024;
@@ -43,12 +43,12 @@ public static class RecursiveStarkAggregator
     /// a proof within <see cref="Eip8288Constants.MaxAggregateProofBytes"/>, checked before the verifier runs, that verifies
     /// against <paramref name="depsHash"/> and the block fork's <c>AGGREGATED_VK</c>. Wrappers and inclusion lists never use the
     /// empty form: their dependency sets are nonempty.</remarks>
-    public static bool VerifyStarkCheck(ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, int dependencyCount, in ValueHash256 depsHash,
+    public static bool CheckDependencyProof(ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, int dependencyCount, in ValueHash256 depsHash,
         ReadOnlySpan<byte> proof)
         => dependencyCount == 0
             ? proof.IsEmpty
             : proof.Length is > 0 and <= Eip8288Constants.MaxAggregateProofBytes
-                && verifier.VerifyRecursiveStark(in depsHash, forkVerifier.AggregatedVk.Bytes, proof);
+                && verifier.VerifyDependencyProof(in depsHash, forkVerifier.AggregatedVk.Bytes, proof);
 
     // Relative native proving costs that rank alternative inputs. First measured on a two-core devnet node with the in-tree
     // backend (about 2.2 s per signature and 20 s per merge); on the F128 backend a merge of two proofs takes about 194 ms
@@ -258,7 +258,7 @@ public static class RecursiveStarkAggregator
                 // The same verified statement needs no new recursive guest execution.
                 cancellationToken.ThrowIfCancellationRequested();
                 if (parent.Proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes
-                    || !verifier.VerifyRecursiveStark(in depsHash, aggregatedVk, parent.Proof.Span))
+                    || !verifier.VerifyDependencyProof(in depsHash, aggregatedVk, parent.Proof.Span))
                     throw new InvalidOperationException("Invalid recursive dependency proof.");
                 cancellationToken.ThrowIfCancellationRequested();
                 return parent.Proof.ToArray();
@@ -269,7 +269,7 @@ public static class RecursiveStarkAggregator
             && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)
             && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes)
         {
-            byte[] result = ProductionProofCache.Prove(verifier, in depsHash, aggregatedVk, input, cancellationToken);
+            byte[] result = DependencyProofCache.Prove(verifier, in depsHash, aggregatedVk, input, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             return result;
         }
@@ -334,7 +334,7 @@ public static class RecursiveStarkAggregator
             children = next;
         }
         cancellationToken.ThrowIfCancellationRequested();
-        byte[] proof = ProductionProofCache.Prove(verifier, in depsHash, aggregatedVk,
+        byte[] proof = DependencyProofCache.Prove(verifier, in depsHash, aggregatedVk,
             new AggregationInput { RecursiveProofs = children }, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         return proof;
@@ -357,7 +357,7 @@ public static class RecursiveStarkAggregator
                 Discards = [.. removed]
             };
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(canonical);
-            byte[] childProof = ProductionProofCache.Prove(verifier, in hash, aggregatedVk, childInput, cancellationToken);
+            byte[] childProof = DependencyProofCache.Prove(verifier, in hash, aggregatedVk, childInput, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             return new(canonical, childProof);
         }

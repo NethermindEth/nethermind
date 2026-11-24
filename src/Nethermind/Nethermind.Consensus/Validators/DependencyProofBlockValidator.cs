@@ -53,12 +53,12 @@ public sealed class DependencyProofBlockValidator(
     {
         error = null;
         // A block without the commitment needs no spec lookup: the inner validator has already required it from EIP-8288 on.
-        if (block.Header.RecursiveStark is not { } recursiveStark) return true;
+        if (block.Header.DependencyProofCommitment is not { } recursiveStark) return true;
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         if (!spec.IsEip8288Enabled) return true;
 
-        byte[]? proof = block.StarkProof ?? (recursiveStark.DependencyProofHash == Keccak.OfAnEmptyString ? [] : null);
+        byte[]? proof = block.DependencyProof ?? (recursiveStark.DependencyProofHash == Keccak.OfAnEmptyString ? [] : null);
         if (proof is null)
         {
             error = BlockErrorMessages.MissingDependencyProof;
@@ -67,9 +67,9 @@ public sealed class DependencyProofBlockValidator(
 
         List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        if (!RecursiveStarkAggregator.VerifyStarkCheck(leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in depsHash, proof))
+        if (!DependencyProofAggregator.CheckDependencyProof(leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in depsHash, proof))
         {
-            error = BlockErrorMessages.InvalidRecursiveStark;
+            error = BlockErrorMessages.InvalidDependencyProof;
             if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
             return false;
         }

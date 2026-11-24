@@ -21,7 +21,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
 public class Eip8437ClientCaseTests
 {
     private static void Answer(WrapperTestNode node, WrapperPeer peer, FakeWrapperLink link, params byte[][] wrappers) =>
-        node.Transport.OnProofWrappers(peer, new ProofWrappersMessage(link.Sent<GetProofWrappersMessage>()[^1].RequestId,
+        node.Broadcaster.OnProofWrappers(peer, new ProofWrappersMessage(link.Sent<GetProofWrappersMessage>()[^1].RequestId,
             [.. wrappers.Select(Entry)]));
 
     private static ValueHash256[] AnnouncedTo(FakeWrapperLink target) =>
@@ -40,19 +40,19 @@ public class Eip8437ClientCaseTests
         node.AddPending(a, b);
         FakeWrapperLink link = new(), fresh = new("fresh");
         WrapperPeer peer = node.Connect(link);
-        node.Transport.OnAnnounce(peer, new([.. new[] { Describe(w1), Describe(w2) }.OrderBy(d => d.Hash)]));
+        node.Broadcaster.OnAnnounce(peer, new([.. new[] { Describe(w1), Describe(w2) }.OrderBy(d => d.Hash)]));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Transport.PublishWrapper(w1), Is.True);
-            Assert.That(node.Transport.PublishWrapper(w2), Is.True);
-            Assert.That(node.Transport.PublishWrapper(w3), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(w1), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(w2), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(w3), Is.True);
             Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(w3).Hash }), "W1 and W2 came from the peer; W3 halves its verifications");
         }
 
-        node.Transport.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, false, [Describe(w3).Hash]));
+        node.Broadcaster.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, false, [Describe(w3).Hash]));
         Assert.That(link.Sent<ProofWrappersMessage>().Single().Entries.Select(static e => e.Wrapper), Is.EqualTo(new[] { w3 }));
         node.Tick(TimeSpan.FromSeconds(1));
-        Assert.That(node.Transport.PublishWrapper(w4), Is.True);
+        Assert.That(node.Broadcaster.PublishWrapper(w4), Is.True);
         node.Tick(TimeSpan.FromSeconds(1));
         node.Connect(fresh);
         using (Assert.EnterMultipleScope())
@@ -72,17 +72,17 @@ public class Eip8437ClientCaseTests
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
-        node.Transport.OnAnnounce(peer, new([Describe(direct)]));
+        node.Broadcaster.OnAnnounce(peer, new([Describe(direct)]));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Transport.PublishWrapper(direct), Is.True);
-            Assert.That(node.Transport.PublishWrapper(aggregate), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(direct), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(aggregate), Is.True);
         }
-        node.Transport.OnGetProofWrappers(peer, new(1, true, [Describe(aggregate).Hash]));
+        node.Broadcaster.OnGetProofWrappers(peer, new(1, true, [Describe(aggregate).Hash]));
         node.Tick(TimeSpan.FromSeconds(1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Transport.PublishWrapper(another), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(another), Is.True);
             Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(aggregate).Hash }),
                 "the first aggregate is IL-reusable where the direct witnesses are not; the second adds nothing over it");
         }
@@ -95,11 +95,11 @@ public class Eip8437ClientCaseTests
         using WrapperTestNode node = new();
         node.Tree.Head.Returns((Block?)null);
         FakeWrapperLink link = new();
-        node.Transport.Accept(link);
+        node.Broadcaster.Accept(link);
         node.Tick(WrapperTransportLimits.Tick);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Transport.PublishWrapper(Wrapper(64, FrameTransaction(1))), Is.False);
+            Assert.That(node.Broadcaster.PublishWrapper(Wrapper(64, FrameTransaction(1))), Is.False);
             Assert.That(link.Sent<NewProofWrapperHashesMessage>(), Is.Empty);
             Assert.That(link.Penalties, Is.Empty);
         }
@@ -112,18 +112,18 @@ public class Eip8437ClientCaseTests
         using WrapperTestNode node = new();
         node.Tree.Head.Returns((Block?)null);
         FakeWrapperLink link = new();
-        node.Transport.Accept(link);
+        node.Broadcaster.Accept(link);
         node.Tick(WrapperTransportLimits.Tick);
         node.Tree.Head.Returns(Build.A.Block.WithNumber(10).TestObject);
         node.Tick(WrapperTransportLimits.Tick);
         byte[] wrapper = Wrapper(64, FrameTransaction(1));
-        Assert.That(node.Transport.PublishWrapper(wrapper), Is.True);
+        Assert.That(node.Broadcaster.PublishWrapper(wrapper), Is.True);
         node.Tick(WrapperTransportLimits.Tick);
         Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(wrapper).Hash }));
     }
 
     // Discard a wrapper failing proof or dependency validation without penalizing its sender; malformed transport or
-    // mismatched announced hashes remain penalizable (see ProofWrapperTransportTests for the verifier change).
+    // mismatched announced hashes remain penalizable (see ProofWrapperBroadcasterTests for the verifier change).
     [TestCase("proof", false)]
     [TestCase("dependency union", false)]
     [TestCase("announced hash", true)]
@@ -139,18 +139,18 @@ public class Eip8437ClientCaseTests
         node.Verifier.Valid = scenario != "proof";
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
-        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+        node.Broadcaster.OnAnnounce(peer, new([Describe(wrapper)]));
         if (scenario == "announced hash")
-            node.Transport.OnProofWrappers(peer, new(link.Sent<GetProofWrappersMessage>()[^1].RequestId, [new(Describe(wrapper).Hash, Wrapper(64, 9, a, b))]));
+            node.Broadcaster.OnProofWrappers(peer, new(link.Sent<GetProofWrappersMessage>()[^1].RequestId, [new(Describe(wrapper).Hash, Wrapper(64, 9, a, b))]));
         else
             Answer(node, peer, link, wrapper);
         // A penalized source leaves the fetch waiting for another announcer.
-        if (!penalized) await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+        if (!penalized) await WrapperTestNode.Until(() => node.Broadcaster.FetchCount == 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(link.Penalties, Has.Length.EqualTo(penalized ? 1 : 0));
             Assert.That(node.Pending, Is.Empty);
-            Assert.That(node.Transport.IsStored(Describe(wrapper).Hash), Is.False);
+            Assert.That(node.Broadcaster.IsStored(Describe(wrapper).Hash), Is.False);
         }
     }
 
@@ -171,7 +171,7 @@ public class Eip8437ClientCaseTests
     // Omitting encodings previously sent in full, and retrying in full after eviction, are covered by
     // ProofWrapperOmissionTests.
 
-    // A complete wrapper can be validated without envelope requests: the transport has no other request than GetProofWrappers.
+    // A complete wrapper can be validated without envelope requests: the broadcaster has no other request than GetProofWrappers.
     // leanSTARK dependencies are carried like leanSPHINCS ones.
     [Test]
     public async Task Complete_wrapper_is_validated_without_envelope_requests([Values] bool mixed)
@@ -181,9 +181,9 @@ public class Eip8437ClientCaseTests
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
-        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+        node.Broadcaster.OnAnnounce(peer, new([Describe(wrapper)]));
         Answer(node, peer, link, wrapper);
-        await WrapperTestNode.Until(() => node.Transport.IsStored(Describe(wrapper).Hash) && node.Transport.FetchCount == 0);
+        await WrapperTestNode.Until(() => node.Broadcaster.IsStored(Describe(wrapper).Hash) && node.Broadcaster.FetchCount == 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node.Pending.Select(static t => t.Hash), Is.EquivalentTo(new[] { a.Hash, b.Hash }));

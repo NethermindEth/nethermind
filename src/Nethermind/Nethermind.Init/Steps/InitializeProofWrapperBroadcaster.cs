@@ -9,18 +9,18 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
 namespace Nethermind.Init.Steps;
 
-/// <summary>Creates the EIP-8437 wrapper transport before the network starts.</summary>
-/// <remarks>The transport subscribes to wrapper validation on creation, so it offers wrappers validated before the first EIP-8437 session.</remarks>
+/// <summary>Creates the EIP-8437 wrapper broadcaster before the network starts.</summary>
+/// <remarks>The broadcaster subscribes to wrapper validation on creation, so it offers wrappers validated before the first EIP-8437 session.</remarks>
 [RunnerStepDependencies(
     dependencies: [typeof(InitializeBlockchain)],
     dependents: [typeof(InitializeNetwork)]
 )]
-public sealed class InitializeProofWrapperTransport(ProofWrapperTransport transport) : IStep
+public sealed class InitializeProofWrapperBroadcaster(ProofWrapperBroadcaster broadcaster) : IStep
 {
     /// <inheritdoc/>
     public Task Execute(CancellationToken cancellationToken)
     {
-        GC.KeepAlive(transport);
+        GC.KeepAlive(broadcaster);
         return Task.CompletedTask;
     }
 }

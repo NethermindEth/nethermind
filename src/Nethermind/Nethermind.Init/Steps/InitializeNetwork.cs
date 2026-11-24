@@ -56,7 +56,7 @@ public class InitializeNetwork : IStep
     private readonly ILogManager _logManager;
 
     private readonly ILogger _logger;
-    private readonly ProofWrapperGossip? _proofWrapperGossip;
+    private readonly ProofWrapperProducer? _proofWrapperProducer;
 
     public InitializeNetwork(
         ISyncServer _, // Need to be resolved at least once
@@ -81,7 +81,7 @@ public class InitializeNetwork : IStep
         INodeStorageFactory nodeStorageFactory,
         FlatStateActivationPolicy flatStateActivationPolicy,
         ILogManager logManager,
-        ProofWrapperGossip? proofWrapperGossip = null
+        ProofWrapperProducer? proofWrapperProducer = null
     )
     {
         _synchronizer = synchronizer;
@@ -105,7 +105,7 @@ public class InitializeNetwork : IStep
         _nodeStorageFactory = nodeStorageFactory;
         _flatStateActivationPolicy = flatStateActivationPolicy;
         _logManager = logManager;
-        _proofWrapperGossip = proofWrapperGossip;
+        _proofWrapperProducer = proofWrapperProducer;
 
         _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
@@ -140,7 +140,7 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        _proofWrapperGossip?.Start();
+        _proofWrapperProducer?.Start();
 
         try
         {

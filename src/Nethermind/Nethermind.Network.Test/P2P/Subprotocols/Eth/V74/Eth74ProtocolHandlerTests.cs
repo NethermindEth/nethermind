@@ -81,7 +81,7 @@ public class Eth74ProtocolHandlerTests
         _proofStore = new DependencyProofStore(new TestMemDb());
         _handler = new Eth74ProtocolHandler(_session, _serializer, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
             syncServer, RunImmediatelyScheduler.Instance, _node.Pool, Substitute.For<IGossipPolicy>(), new ForkInfo(specProvider, syncServer),
-            LimboLogs.Instance, Substitute.For<ITxPoolConfig>(), specProvider, custody, _registry, _node.Transport, _blockFinder, _proofStore);
+            LimboLogs.Instance, Substitute.For<ITxPoolConfig>(), specProvider, custody, _registry, _node.Broadcaster, _blockFinder, _proofStore);
         _handler.Init();
         using StatusMessage69 status = new() { ProtocolVersion = 74, GenesisHash = genesis.Hash!, LatestBlockHash = genesis.Hash! };
         Handle(status, 0);
@@ -191,7 +191,7 @@ public class Eth74ProtocolHandlerTests
     private BlockHeader Committed(ulong number, byte[] proof)
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(number).TestObject;
-        header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), Keccak.Compute("deps"));
+        header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(proof), Keccak.Compute("deps"));
         header.Hash = header.CalculateHash();
         _blockFinder.FindHeader(header.Hash, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
         return header;

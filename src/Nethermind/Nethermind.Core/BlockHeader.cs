@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -98,7 +99,8 @@ public class BlockHeader
     public ulong? SlotNumber { get; set; }
 
     /// <summary>EIP-8288 header fields <c>dependency_proof_hash</c> and <c>block_deps_hash</c>.</summary>
-    public RecursiveStarkCommitment? RecursiveStark { get; set; }
+    [JsonPropertyName("recursiveStark")]
+    public DependencyProofCommitment? DependencyProofCommitment { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
@@ -154,10 +156,10 @@ public class BlockHeader
         {
             builder.AppendLine($"{indent}SlotNumber: {SlotNumber}");
         }
-        if (RecursiveStark is not null)
+        if (DependencyProofCommitment is not null)
         {
-            builder.AppendLine($"{indent}BlockDepsHash: {RecursiveStark.BlockDepsHash}");
-            builder.AppendLine($"{indent}DependencyProofHash: {RecursiveStark.DependencyProofHash}");
+            builder.AppendLine($"{indent}BlockDepsHash: {DependencyProofCommitment.BlockDepsHash}");
+            builder.AppendLine($"{indent}DependencyProofHash: {DependencyProofCommitment.DependencyProofHash}");
         }
 
         return builder.ToString();
@@ -244,7 +246,7 @@ public class BlockHeader
         dst.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         dst.SlotNumber = SlotNumber;
         dst.BlockAccessListHash = BlockAccessListHash;
-        dst.RecursiveStark = RecursiveStark;
+        dst.DependencyProofCommitment = DependencyProofCommitment;
         dst.BlobGasUsed = BlobGasUsed;
         dst.ExcessBlobGas = ExcessBlobGas;
     }
