@@ -17,8 +17,8 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -114,13 +114,13 @@ public class DataFeedTests
             Assert.That(result.BlobGasPrice, Is.EqualTo(gas.BlobGasPrice ?? UInt256.Zero));
             Assert.That(result.BlobGasUsed, Is.EqualTo(gas.BlobGasUsed ?? 0));
             Assert.That(result.Logs, Has.Length.EqualTo(legacy ? 0 : 1));
-        }
-        if (!legacy)
-        {
-            LogEntry expected = receipt.Logs![0];
-            Assert.That(result.Logs[0].Address, Is.EqualTo(expected.Address));
-            Assert.That(result.Logs[0].Data, Is.EqualTo(expected.Data));
-            Assert.That(result.Logs[0].Topics, Is.EqualTo(expected.Topics));
+            if (!legacy)
+            {
+                LogEntry expected = receipt.Logs![0];
+                Assert.That(result.Logs[0].Address, Is.EqualTo(expected.Address));
+                Assert.That(result.Logs[0].Data, Is.EqualTo(expected.Data));
+                Assert.That(result.Logs[0].Topics, Is.EqualTo(expected.Topics));
+            }
         }
     }
 
