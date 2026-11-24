@@ -14,7 +14,7 @@ GUEST_ARCH := riscv32
 # libairbender of a bflat-airbender release. bflat does not check a local
 # manifest, so the download is checked against AIRBENDER_SHA256 instead.
 # AIRBENDER_LIB_DIR names another libairbender build.
-BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:4d6c260c633e79de383973f70bbd8b0ca8380bbb@sha256:d0f7b3f2ff4895150d9cf6a1ba16b2d5da192e6dab7ebbec04ee6cefa5fbc86a
+BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:85efc7543bc6b2c962e8004c2b60443c8fd66b46@sha256:fffada7093e519bd23f4569d1068eb9619e4c60e48a7ae2d908e499f8c5788cd
 AIRBENDER_VERSION := v1.0.9
 AIRBENDER_SHA256 := f5e7de3ed52ee666d6786a963df9939e01bffca4a544b1475cdf8f8e406133c6
 AIRBENDER_LIB_DIR ?= $(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION)
