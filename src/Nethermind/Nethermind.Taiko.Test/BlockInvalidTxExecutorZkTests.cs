@@ -118,6 +118,7 @@ public class BlockInvalidTxExecutorZkTests
 
     [TestCase(ProcessingOptions.ProducingBlock, false, TestName = "IllFormedTx_WhenProducing_IsDroppedWithoutExecution")]
     [TestCase(ProcessingOptions.None, true, TestName = "IllFormedTx_WhenNotProducing_IsLeftToBlockValidator")]
+    [TestCase(ProcessingOptions.EthereumMerge, true, TestName = "IllFormedTx_WhenValidatingPayload_IsLeftToBlockValidator")]
     public void IllFormedTx_IsDroppedOnlyWhenProducing(ProcessingOptions processingOptions, bool expectKept)
     {
         Transaction anchor = MakeTx(0);
