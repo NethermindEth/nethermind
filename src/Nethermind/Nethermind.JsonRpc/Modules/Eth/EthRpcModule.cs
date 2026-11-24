@@ -1092,32 +1092,13 @@ public partial class EthRpcModule(
     public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)
     {
         int id = filterId <= int.MaxValue ? (int)filterId : -1;
-        FilterType filterType = filterStore.GetFilterType(id);
-        switch (filterType)
+        return filterStore.GetFilter<FilterBase>(id) switch
         {
-            case FilterType.BlockFilter:
-                {
-                    return filterStore.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(filterManager.PollBlockHashes(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
-                }
-            case FilterType.PendingTransactionFilter:
-                {
-                    return filterStore.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(filterManager.PollPendingTransactionHashes(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
-                }
-            case FilterType.LogFilter:
-                {
-                    return filterStore.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(filterManager.PollLogs(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
-                }
-            default:
-                {
-                    return ResultWrapper<IEnumerable<object>>.Fail($"Filter type {filterType} is not supported.", ErrorCodes.InvalidInput);
-                }
-        }
+            null => ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput),
+            LogFilter => ResultWrapper<IEnumerable<object>>.Success(filterManager.PollLogs(id)),
+            PendingTransactionFilter => ResultWrapper<IEnumerable<object>>.Success(filterManager.PollPendingTransactionHashes(id)),
+            _ => ResultWrapper<IEnumerable<object>>.Success(filterManager.PollBlockHashes(id))
+        };
     }
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
