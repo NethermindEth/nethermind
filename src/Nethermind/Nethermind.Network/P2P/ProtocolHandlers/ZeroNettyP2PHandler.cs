@@ -136,7 +136,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
     }
 
-    // eth/73 wrapper messages are bounded by their advertised uncompressed size, before any decompression.
+    // eth/75 wrapper messages are bounded by their advertised uncompressed size, before any decompression.
     private bool ExceedsProtocolLimit(int packetType, int uncompressedLength) =>
         _session is IMessageLimitSession limited && limited.ExceedsMessageLimit(packetType, uncompressedLength);
 

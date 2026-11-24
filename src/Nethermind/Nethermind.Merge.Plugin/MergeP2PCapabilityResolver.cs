@@ -74,21 +74,21 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         capabilities.Add(new Capability(Protocol.Eth, 69));
         capabilities.Add(new Capability(Protocol.Eth, 70));
         capabilities.Add(new Capability(Protocol.Eth, 71));
-        // A node without blob support exchanges no cells, so before PeerDAS it can still take eth/72 as the base of eth/73
-        // and propagate EIP-8288 proof wrappers; otherwise a chain without EIP-7594 would never relay them.
+        // A node without blob support exchanges no cells, so before PeerDAS it can still take eth/72 as the base of eth/74 and
+        // eth/75 and propagate EIP-8288 proof wrappers; otherwise a chain without EIP-7594 would never relay them.
         if (_txPoolConfig.BlobsSupport.IsEnabled()
             ? IsEip7594Enabled()
             : IsEip8288Scheduled())
         {
             capabilities.Add(new Capability(Protocol.Eth, 72));
-            // EIP-8437 eth/73 extends eth/72 with proof wrapper propagation. It is advertised once EIP-8288 is scheduled,
-            // not active: a session keeps its negotiated version, so a peer connected before the fork would otherwise stay on
-            // eth/72 and never exchange wrappers. The transport ignores wrapper messages until EIP-8288 activates.
             // EIP-8512 eth/74 adds to eth/72 the dependency proof exchange, which block sync needs once proofs leave the body.
+            // EIP-8437 eth/75 extends eth/74 with proof wrapper propagation. Both are advertised once EIP-8288 is scheduled,
+            // not active: a session keeps its negotiated version, so a peer connected before the fork would otherwise never
+            // exchange wrappers. The transport ignores wrapper messages until EIP-8288 activates.
             if (IsEip8288Scheduled())
             {
-                capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth73));
                 capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth74));
+                capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth75));
             }
         }
     }

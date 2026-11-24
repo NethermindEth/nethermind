@@ -7,6 +7,8 @@ using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -25,8 +27,8 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
@@ -35,21 +37,21 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V73.WrapperTestObjects;
+using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V75.WrapperTestObjects;
 using GetPooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
 using PooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage;
 using PooledTransactionsMessage65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V75;
 
-/// <summary>EIP-8437 wrapper exchange and transaction-message rules through the <c>eth/73</c> handler.</summary>
-public class Eth73ProtocolHandlerTests
+/// <summary>EIP-8437 wrapper exchange and transaction-message rules through the <c>eth/75</c> handler.</summary>
+public class Eth75ProtocolHandlerTests
 {
     private WrapperTestNode _node = null!;
     private ISession _session = null!;
     private IMessageSerializationService _serializer = null!;
     private List<P2PMessage> _delivered = null!;
-    private Eth73ProtocolHandler _handler = null!;
+    private Eth75ProtocolHandler _handler = null!;
     private Block _genesis = null!;
     private SparseBlobPoolPeerRegistry _registry = null!;
     private IChainHeadSpecProvider _specProvider = null!;
@@ -79,11 +81,12 @@ public class Eth73ProtocolHandlerTests
         gossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
         BlobCustodyTracker custody = new();
         _registry = new SparseBlobPoolPeerRegistry(_node.Pool, custody, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
-        _handler = new Eth73ProtocolHandler(_session, _serializer, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+        _handler = new Eth75ProtocolHandler(_session, _serializer, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
             syncServer, RunImmediatelyScheduler.Instance, _node.Pool, Substitute.For<IGossipPolicy>(), new ForkInfo(specProvider, syncServer),
-            LimboLogs.Instance, txPoolConfig, specProvider, custody, _registry, _node.Broadcaster, gossipPolicy);
+            LimboLogs.Instance, txPoolConfig, specProvider, custody, _registry, Substitute.For<IBlockFinder>(),
+            new DependencyProofStore(new TestMemDb()), _node.Broadcaster, gossipPolicy);
         _handler.Init();
-        using StatusMessage69 status = new() { ProtocolVersion = 73, GenesisHash = _genesis.Hash!, LatestBlockHash = _genesis.Hash! };
+        using StatusMessage69 status = new() { ProtocolVersion = 75, GenesisHash = _genesis.Hash!, LatestBlockHash = _genesis.Hash! };
         Handle(status, 0);
     }
 
@@ -109,7 +112,7 @@ public class Eth73ProtocolHandlerTests
 
     private T[] Delivered<T>() { lock (_delivered) return [.. _delivered.OfType<T>()]; }
 
-    // EIP-8437: GetPooledTransactions treats dependency-bearing transactions as unavailable on every eth version, eth/73
+    // EIP-8437: GetPooledTransactions treats dependency-bearing transactions as unavailable on every eth version, eth/75
     // included; other pooled transactions are served as usual.
     [Test]
     public void Dependency_bearing_transactions_are_unavailable_through_get_pooled_transactions()
@@ -131,13 +134,13 @@ public class Eth73ProtocolHandlerTests
     public async Task Wrapper_retrieval_round_trips_without_envelope_requests()
     {
         Transaction transaction = FrameTransaction(1);
-        byte[] wrapper = Wrapper(64, transaction);
+        byte[] wrapper = DirectWrapper(transaction);
         using NewProofWrapperHashesMessage announce = new([Describe(wrapper)]);
-        Handle(announce, Eth73MessageCode.NewProofWrapperHashes);
+        Handle(announce, Eth75MessageCode.NewProofWrapperHashes);
         GetProofWrappersMessage wrapperRequest = Delivered<GetProofWrappersMessage>().Single();
         Assert.That(wrapperRequest.Compact, Is.False);
         using ProofWrappersMessage wrapperResponse = new(wrapperRequest.RequestId, [Entry(wrapper)]);
-        Handle(wrapperResponse, Eth73MessageCode.ProofWrappers);
+        Handle(wrapperResponse, Eth75MessageCode.ProofWrappers);
 
         await WrapperTestNode.Until(() => _node.Broadcaster.IsStored(Describe(wrapper).Hash) && _node.Broadcaster.FetchCount == 0);
         using (Assert.EnterMultipleScope())
@@ -148,9 +151,9 @@ public class Eth73ProtocolHandlerTests
         }
     }
 
-    // EIP-8437: dependency-bearing transactions never appear in Transactions or NewPooledTransactionHashes, eth/73 included.
+    // EIP-8437: dependency-bearing transactions never appear in Transactions or NewPooledTransactionHashes, eth/75 included.
     [Test]
-    public void Dependency_bearing_transactions_do_not_propagate_on_eth73([Values] bool sendFullTx)
+    public void Dependency_bearing_transactions_do_not_propagate_on_eth75([Values] bool sendFullTx)
     {
         Transaction transaction = FrameTransaction(1);
         _handler.SendNewTransactions([transaction], sendFullTx);
@@ -189,10 +192,10 @@ public class Eth73ProtocolHandlerTests
     public void Wrapper_messages_are_ignored_without_penalty_while_eip8288_is_inactive()
     {
         _node.Tree.Head.Returns((Block?)null);
-        using NewProofWrapperHashesMessage announce = new([Describe(Wrapper(64, FrameTransaction(1)))]);
-        Handle(announce, Eth73MessageCode.NewProofWrapperHashes);
-        using GetProofWrappersMessage request = new(1, true, [TestItem.KeccakA.ValueHash256]);
-        Handle(request, Eth73MessageCode.GetProofWrappers);
+        using NewProofWrapperHashesMessage announce = new([Describe(DirectWrapper(FrameTransaction(1)))]);
+        Handle(announce, Eth75MessageCode.NewProofWrapperHashes);
+        using GetProofWrappersMessage request = new(1, false, [TestItem.KeccakA.ValueHash256]);
+        Handle(request, Eth75MessageCode.GetProofWrappers);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Delivered<GetProofWrappersMessage>(), Is.Empty);
@@ -222,7 +225,7 @@ public class Eth73ProtocolHandlerTests
         // Cells for a transaction the pool does not hold yet go to its admission, as in the real pool.
         _node.Pool.MergeBlobCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>()).Returns(BlobCellMergeResult.TransactionUnavailable);
         Transaction blob = BlobFrameTransaction(1, 2);
-        byte[] wrapper = Wrapper(64, blob);
+        byte[] wrapper = DirectWrapper(blob);
 
         AnnounceCells(blob, BlobCellMask.Full);
         Maintain();
@@ -235,9 +238,9 @@ public class Eth73ProtocolHandlerTests
         }
 
         using NewProofWrapperHashesMessage announce = new([Describe(wrapper)]);
-        Handle(announce, Eth73MessageCode.NewProofWrapperHashes);
+        Handle(announce, Eth75MessageCode.NewProofWrapperHashes);
         using ProofWrappersMessage response = new(Delivered<GetProofWrappersMessage>().Single().RequestId, [Entry(wrapper)]);
-        Handle(response, Eth73MessageCode.ProofWrappers);
+        Handle(response, Eth75MessageCode.ProofWrappers);
         await WrapperTestNode.Until(() => _registry.IsAwaitingCells(blob.Hash!));
         Assert.That(_node.Broadcaster.IsStored(Describe(wrapper).Hash), Is.True, "the wrapper circulates before availability is established");
         await WrapperTestNode.Until(() =>
@@ -306,7 +309,7 @@ public class Eth73ProtocolHandlerTests
         }
     }
 
-    // EIP-8437: on eth/73 EIP-8070 applies to every blob-carrying frame transaction. One without dependencies is announced with
+    // EIP-8437: on eth/75 EIP-8070 applies to every blob-carrying frame transaction. One without dependencies is announced with
     // a cell mask, its elided body is fetched through GetPooledTransactions, and its cells only once that body is known.
     [Test]
     public async Task Blob_frame_transaction_without_dependencies_is_fetched_as_cells()
@@ -338,7 +341,7 @@ public class Eth73ProtocolHandlerTests
         _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 
-    // On eth/73 a blob-carrying frame transaction without dependencies is served in its elided network form.
+    // On eth/75 a blob-carrying frame transaction without dependencies is served in its elided network form.
     [Test]
     public void Blob_frame_transaction_is_served_elided()
     {

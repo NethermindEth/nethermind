@@ -5,7 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
 namespace Nethermind.Init.Steps;
 

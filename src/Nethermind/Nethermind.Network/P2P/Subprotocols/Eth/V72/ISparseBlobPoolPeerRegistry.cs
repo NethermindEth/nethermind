@@ -9,7 +9,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 
 /// <summary>
 /// Coordinates node-wide sparse blob announcements, requests, admission, and serving budgets across eth/72 peers, including
-/// the cells of blob-carrying dependency-bearing transactions from validated eth/73 proof wrappers.
+/// the cells of blob-carrying dependency-bearing transactions from validated eth/75 proof wrappers.
 /// </summary>
 public interface ISparseBlobPoolPeerRegistry : IWrappedBlobTransactionAdmission
 {

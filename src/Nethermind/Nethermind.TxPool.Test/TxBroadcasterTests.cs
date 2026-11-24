@@ -883,7 +883,7 @@ public class TxBroadcasterTests
     }
 
     // EIP-8437: dependency-bearing transactions, those with a dependency frame even if it carries no triples, propagate like
-    // others; each connection carries them only from eth/73.
+    // others; each connection carries them only from eth/75.
     [Test]
     public void Gossips_dependency_bearing_transactions([Values] bool dependencyFrame, [Values] bool withoutTriples)
     {

@@ -20,7 +20,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
-/// <summary>Shared proof-wrapper validation, admission and aggregation for RPC and eth/73 peers.</summary>
+/// <summary>Shared proof-wrapper validation, admission and aggregation for RPC and eth/75 peers.</summary>
 /// <remarks>
 /// Wrappers are validated under their target fork, which fixes the verifier: the fork active at the next slot's timestamp,
 /// predicted from the local head with the local slot-length estimate (see <see cref="WrapperTargetFork"/>).

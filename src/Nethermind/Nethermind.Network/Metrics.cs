@@ -125,12 +125,12 @@ namespace Nethermind.Network
         public static long OversizedTransactionsSkipped;
 
         [CounterMetric]
-        [Description("EIP-8437 eth/73 proof wrapper transport events.")]
+        [Description("EIP-8437 eth/75 proof wrapper transport events.")]
         [KeyIsLabel("event")]
         public static NonBlocking.ConcurrentDictionary<string, long> ProofWrapperEvents { get; } = new();
 
         [GaugeMetric]
-        [Description("Number of eth/73 peers exchanging proof wrappers.")]
+        [Description("Number of eth/75 peers exchanging proof wrappers.")]
         public static long ProofWrapperPeers { get; set; }
 
         [GaugeMetric]

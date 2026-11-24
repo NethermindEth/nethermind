@@ -16,16 +16,17 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NSubstitute;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V75;
 
 /// <summary>Accepts every proof unless told otherwise, counting recursive STARK checks.</summary>
 internal sealed class WrapperTestVerifier : ILeanProofVerifier
@@ -58,6 +59,10 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 
     public string Description => name;
     public PublicKey? NodeId { get; init; }
+    /// <summary>An aggregating link by default, which exchanges both wrapper modes; <c>eth/75</c> exchanges only mode 0.</summary>
+    public byte ProtocolVersion { get; init; } = AggregatingVersion;
+
+    public const byte AggregatingVersion = EthVersions.Eth75 + 1;
 
     public void Send(P2PMessage message)
     {
@@ -236,10 +241,9 @@ internal static class WrapperTestObjects
     /// <summary>Describes bytes that need not parse as a wrapper, as mode 1 with zero hints.</summary>
     public static WrapperAnnouncement DescribeOpaque(byte[] wrapper) => Announcement(1, wrapper.Length, ValueKeccak.Compute(wrapper));
 
-    /// <summary>An announcement entry with arbitrary, possibly false, metadata.</summary>
-    public static WrapperAnnouncement Announcement(int mode, int length, in ValueHash256 hash, WrapperCoverage coverage = default) =>
-        WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)mode), Eth73Rlp.EncodeUInt((ulong)length),
-            Eth73Rlp.EncodeBytes(hash.Bytes), Eth73Rlp.EncodeBytes(coverage.DepsHash.Bytes), Eth73Rlp.EncodeBytes(coverage.TxsHash.Bytes)));
+    /// <summary>An announcement entry with arbitrary, possibly false, claims.</summary>
+    public static WrapperAnnouncement Announcement(int mode, int length, in ValueHash256 hash, WrapperCoverage? coverage = default,
+        WrapperMetadata? metadata = null) => new(mode, length, hash, coverage, metadata);
 
     /// <summary>A ProofWrappers entry pairing <paramref name="wrapper"/> with its canonical hash.</summary>
     public static ProofWrapperEntry Entry(byte[] wrapper) => new(ValueKeccak.Compute(wrapper), wrapper);

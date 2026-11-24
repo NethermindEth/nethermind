@@ -7,7 +7,7 @@ using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
 /// <summary>EIP-8437 hash-based omission: a transaction encoding previously sent in full on the connection may be replaced by
 /// <c>[encoding-hash]</c>, the Keccak-256 of the pooled transaction bytes without their RLP string prefix, when that is
@@ -30,8 +30,8 @@ internal static class WrapperCompaction
     /// <summary>The pooled encodings of a complete wrapper's transactions with their encoding hashes, in order.</summary>
     public static (ValueHash256 Hash, byte[] Encoding)[] Encodings(ReadOnlySpan<byte> wrapper)
     {
-        Eth73RlpReader outer = new(wrapper);
-        Eth73RlpReader transactions = outer.ReadList().ReadList();
+        Eth75RlpReader outer = new(wrapper);
+        Eth75RlpReader transactions = outer.ReadList().ReadList();
         List<(ValueHash256, byte[])> encodings = [];
         while (transactions.HasMore)
         {
@@ -46,8 +46,8 @@ internal static class WrapperCompaction
     {
         try
         {
-            Eth73RlpReader outer = new(wrapper);
-            Eth73RlpReader transactions = outer.ReadList().ReadList();
+            Eth75RlpReader outer = new(wrapper);
+            Eth75RlpReader transactions = outer.ReadList().ReadList();
             int count = 0;
             for (; transactions.HasMore; count++) transactions.ReadItem();
             return count;
@@ -58,8 +58,8 @@ internal static class WrapperCompaction
     /// <summary>The encoding hashes of a complete wrapper's transactions, in order.</summary>
     public static ValueHash256[] EncodingHashes(ReadOnlySpan<byte> wrapper)
     {
-        Eth73RlpReader outer = new(wrapper);
-        Eth73RlpReader transactions = outer.ReadList().ReadList();
+        Eth75RlpReader outer = new(wrapper);
+        Eth75RlpReader transactions = outer.ReadList().ReadList();
         List<ValueHash256> hashes = [];
         while (transactions.HasMore) hashes.Add(ValueKeccak.Compute(transactions.ReadBytes()));
         return [.. hashes];
@@ -79,9 +79,9 @@ internal static class WrapperCompaction
     /// <param name="hashes">The encoding hashes of the wrapper's transactions, in order.</param>
     public static byte[] Compact(byte[] wrapper, ReadOnlySpan<bool> replace, ReadOnlySpan<ValueHash256> hashes)
     {
-        Eth73RlpReader outer = new(wrapper);
-        Eth73RlpReader fields = outer.ReadList();
-        Eth73RlpReader transactions = fields.ReadList();
+        Eth75RlpReader outer = new(wrapper);
+        Eth75RlpReader fields = outer.ReadList();
+        Eth75RlpReader transactions = fields.ReadList();
         List<byte[]> items = [];
         bool replaced = false;
         for (int i = 0; transactions.HasMore; i++)
@@ -97,16 +97,16 @@ internal static class WrapperCompaction
         if (!replaced) return wrapper;
         byte[] mode = fields.ReadItem().ToArray();
         byte[] content = fields.ReadItem().ToArray();
-        return Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. items]), mode, content);
+        return Eth75Rlp.EncodeList(Eth75Rlp.EncodeList([.. items]), mode, content);
     }
 
     /// <summary>The length <see cref="Compact(byte[], ReadOnlySpan{bool}, ReadOnlySpan{ValueHash256})"/> returns for the same
     /// <paramref name="replace"/>, read from item headers alone.</summary>
     public static int CompactLength(ReadOnlySpan<byte> wrapper, ReadOnlySpan<bool> replace)
     {
-        Eth73RlpReader outer = new(wrapper);
-        Eth73RlpReader fields = outer.ReadList();
-        Eth73RlpReader transactions = fields.ReadList();
+        Eth75RlpReader outer = new(wrapper);
+        Eth75RlpReader fields = outer.ReadList();
+        Eth75RlpReader transactions = fields.ReadList();
         int content = 0;
         bool replaced = false;
         for (int i = 0; transactions.HasMore; i++)
@@ -119,18 +119,18 @@ internal static class WrapperCompaction
         if (!replaced) return wrapper.Length;
         int rest = fields.ReadItem().Length;
         rest += fields.ReadItem().Length;
-        return Eth73Rlp.LengthOfList(Eth73Rlp.LengthOfList(content) + rest);
+        return Eth75Rlp.LengthOfList(Eth75Rlp.LengthOfList(content) + rest);
     }
 
-    public static byte[] Reference(in ValueHash256 hash) => Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes(hash.Bytes));
+    public static byte[] Reference(in ValueHash256 hash) => Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes(hash.Bytes));
 
     /// <summary>Whether a returned wrapper carries any reference, read from its transaction list alone.</summary>
     public static bool HasReferences(ReadOnlySpan<byte> wire)
     {
         try
         {
-            Eth73RlpReader outer = new(wire);
-            Eth73RlpReader transactions = outer.ReadList().ReadList();
+            Eth75RlpReader outer = new(wire);
+            Eth75RlpReader transactions = outer.ReadList().ReadList();
             while (transactions.HasMore)
             {
                 if (transactions.IsListNext) return true;
@@ -154,10 +154,10 @@ internal static class WrapperCompaction
         try
         {
             if (wire.Length > announcedLength) return Fail("a compact wrapper exceeds its announced length", out error);
-            Eth73RlpReader outer = new(wire);
-            Eth73RlpReader fields = outer.ReadList();
+            Eth75RlpReader outer = new(wire);
+            Eth75RlpReader fields = outer.ReadList();
             outer.End();
-            Eth73RlpReader transactions = fields.ReadList();
+            Eth75RlpReader transactions = fields.ReadList();
             List<byte[]> items = [];
             bool missing = false;
             long content = 0;
@@ -170,7 +170,7 @@ internal static class WrapperCompaction
                     items.Add(item);
                     continue;
                 }
-                Eth73RlpReader reference = transactions.ReadList();
+                Eth75RlpReader reference = transactions.ReadList();
                 ValueHash256 hash = reference.ReadHash();
                 reference.End();
                 if (lookup(hash) is not { } encoding)
@@ -180,7 +180,7 @@ internal static class WrapperCompaction
                 }
                 // Cache entries are keyed by their own hash, so this guards only against a corrupted cache.
                 if (ValueKeccak.Compute(encoding) != hash) return Fail("a cached encoding does not match its hash", out error);
-                byte[] full = Eth73Rlp.EncodeBytes(encoding);
+                byte[] full = Eth75Rlp.EncodeBytes(encoding);
                 if (full.Length <= ReferenceLength) return Fail("a reference is not smaller than the encoding it replaces", out error);
                 content += full.Length;
                 if (content > announcedLength) return Fail("a reconstructed wrapper exceeds its announced length", out error);
@@ -190,10 +190,10 @@ internal static class WrapperCompaction
             byte[] mode = fields.ReadItem().ToArray();
             byte[] proof = fields.ReadItem().ToArray();
             fields.End();
-            long length = Eth73Rlp.LengthOfList(Eth73Rlp.LengthOfList((int)content) + mode.Length + proof.Length);
-            if (length > announcedLength || length > Eth73Protocol.MaxWrapperBytes)
+            long length = Eth75Rlp.LengthOfList(Eth75Rlp.LengthOfList((int)content) + mode.Length + proof.Length);
+            if (length > announcedLength || length > Eth75Protocol.MaxWrapperBytes)
                 return Fail("a reconstructed wrapper exceeds its announced length", out error);
-            wrapper = Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. items]), mode, proof);
+            wrapper = Eth75Rlp.EncodeList(Eth75Rlp.EncodeList([.. items]), mode, proof);
             return Outcome.Complete;
         }
         catch (RlpException exception)

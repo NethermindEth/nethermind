@@ -10,13 +10,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
 /// <summary>
-/// EIP-8437 wrapper propagation shared by every <c>eth/73</c> connection: announcements, whole-wrapper retrieval, validation
+/// EIP-8437 wrapper propagation shared by every <c>eth/75</c> connection: announcements, whole-wrapper retrieval, validation
 /// hand-off, and serving of validated wrappers.
 /// </summary>
 /// <remarks>
@@ -102,13 +102,13 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
         lock (_gate)
         {
             foreach (WrapperFetch fetch in _fetches.Values)
-                if (!fetch.Removed && fetch.Announcement.Mode == MempoolWrapper.ModeRecursive && fetch.Announcement.Coverage.DepsHash == depsHash)
+                if (!fetch.Removed && fetch.Announcement.Mode == MempoolWrapper.ModeRecursive && fetch.Announcement.Coverage?.DepsHash == depsHash)
                     return true;
         }
         return false;
     }
 
-    /// <summary>Registers an <c>eth/73</c> peer once its Status is accepted.</summary>
+    /// <summary>Registers an <c>eth/75</c> peer once its Status is accepted.</summary>
     /// <remarks>Peers negotiate no verifier: each validates under its own target fork. A peer connected before EIP-8288 is
     /// enabled is registered too, but no wrapper message is exchanged with it until then. Null on a chain without a scheduled
     /// EIP-8288 fork.</remarks>
@@ -130,7 +130,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             foreach (WrapperStore.Entry entry in _store.Recent())
             {
                 if (peer.ToAnnounce.Count == WrapperTransportLimits.MaxConnectAnnouncements) break;
-                if (entry.Verifier != _verifier) continue;
+                if (entry.Verifier != _verifier || !peer.Supports(entry.Shape.Mode)) continue;
                 if (_wrappers.IsAnyPending(entry.Hashes)) peer.ToAnnounce.Add(entry.Announcement);
                 else (stale ??= []).Add(entry.Announcement.Hash);
             }
@@ -206,9 +206,9 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
     private void Violation(WrapperPeer peer, string reason, Outbox outbox)
     {
         WrapperMetrics.Record(WrapperEvent.Violation);
-        if (_logger.IsDebug) _logger.Debug($"eth/73 wrapper violation by {peer}: {reason}");
+        if (_logger.IsDebug) _logger.Debug($"eth/75 wrapper violation by {peer}: {reason}");
         RemoveCore(peer, outbox);
-        outbox.Penalize(peer, $"eth/73: {reason}");
+        outbox.Penalize(peer, $"eth/75: {reason}");
     }
 
     /// <summary>Resolves a response's request; null when it is discarded or the peer was penalized.</summary>
@@ -230,7 +230,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
         catch (Exception exception)
         {
             // An exception escaping a timer callback ends the process; the verifier-change rule is retried on the next tick.
-            if (_logger.IsError) _logger.Error("eth/73 could not apply the local verifier-change rule", exception);
+            if (_logger.IsError) _logger.Error("eth/75 could not apply the local verifier-change rule", exception);
             refreshed = _wrappers.CurrentVerifier;
         }
         Outbox outbox = new();
@@ -343,7 +343,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             try { Publish(wrapper, verifier); }
             catch (Exception exception) when (exception is ArgumentException or RlpException or InvalidOperationException)
             {
-                if (_logger.IsDebug) _logger.Debug($"eth/73 could not offer a wrapper: {exception.Message}");
+                if (_logger.IsDebug) _logger.Debug($"eth/75 could not offer a wrapper: {exception.Message}");
             }
         });
 
@@ -393,26 +393,28 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
                 peer.Exchanged.Clear();
                 peer.ToAnnounce.Clear();
                 foreach (WrapperStore.Entry entry in _store.Recent())
-                    if (entry.Verifier == verifier) peer.ToAnnounce.Add(entry.Announcement);
+                    if (entry.Verifier == verifier && peer.Supports(entry.Shape.Mode)) peer.ToAnnounce.Add(entry.Announcement);
                 FlushAnnouncements(peer, outbox);
             }
         }
         outbox.Flush();
         WrapperMetrics.Record(WrapperEvent.UpgradeDropped, dropped);
-        if (_logger.IsInfo) _logger.Info($"eth/73 target fork verifier is now {verifier}: dropped {dropped} wrappers, kept {revalidated.Count}");
+        if (_logger.IsInfo) _logger.Info($"eth/75 target fork verifier is now {verifier}: dropped {dropped} wrappers, kept {revalidated.Count}");
     }
 
     /// <summary>Offers a fully validated wrapper and announces it to peers that may lack it.</summary>
     private bool Publish(byte[] wrapper, Eip8288Verifier verifier)
     {
-        if (!IsEnabled || wrapper.Length is 0 or > Eth73Protocol.MaxWrapperBytes) return false;
+        if (!IsEnabled || wrapper.Length is 0 or > Eth75Protocol.MaxWrapperBytes) return false;
         ValueHash256[] hashes;
         WrapperShape shape;
         WrapperCoverage coverage;
         try { hashes = WrapperBodies.ParseWrapper(wrapper, out shape, out coverage); }
         catch (RlpException) { return false; }
         ValueHash256[] encodingHashes = WrapperCompaction.EncodingHashes(wrapper);
-        WrapperAnnouncement announcement = WrapperAnnouncement.Create(wrapper, shape.Mode, coverage);
+        WrapperAnnouncement announcement;
+        try { announcement = WrapperAnnouncement.Create(wrapper, shape.Mode, coverage, WrapperMetadata.InlineFor(wrapper)); }
+        catch (RlpException) { return false; }
         Outbox outbox = new();
         lock (_gate)
         {
@@ -423,14 +425,14 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers)
             {
-                if (peer.Known.Contains(announcement.Hash, now)) continue;
+                if (peer.Known.Contains(announcement.Hash, now) || !peer.Supports(shape.Mode)) continue;
                 peer.ToAnnounce.Add(announcement);
                 FlushAnnouncements(peer, outbox);
             }
         }
         outbox.Flush();
         WrapperMetrics.Record(WrapperEvent.Published);
-        if (_logger.IsDebug) _logger.Debug($"eth/73 offering {announcement}");
+        if (_logger.IsDebug) _logger.Debug($"eth/75 offering {announcement}");
         return true;
     }
 
@@ -443,7 +445,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
         long now = _clock.GetTimestamp();
         while (peer.ToAnnounce.Count > 0 && peer.AnnouncementsOut.TryTake(1))
         {
-            int count = Math.Min(peer.ToAnnounce.Count, Eth73Protocol.MaxAnnouncements);
+            int count = Math.Min(peer.ToAnnounce.Count, Eth75Protocol.MaxAnnouncements);
             List<WrapperAnnouncement> batch = [];
             foreach (WrapperAnnouncement announcement in peer.ToAnnounce.GetRange(0, count))
             {
@@ -551,7 +553,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
                 // A requested hash is not marked known: one asked for before this node held it must still be announced later.
                 // Hashes this node has not announced on this connection are unavailable.
                 if (!peer.Announced.Contains(wrapperHash, now) || !TryGetOffered(wrapperHash, out WrapperStore.Entry entry)) continue;
-                if (ResponseLength(request.RequestId, content) >= Eth73Protocol.SoftResponseLimit) break;
+                if (ResponseLength(request.RequestId, content) >= Eth75Protocol.SoftResponseLimit) break;
                 bool[]? replace = request.Compact ? Replacements(peer, entry, now) : null;
                 served.Add((entry, replace));
                 content += EntryLength(replace is null ? entry.Wrapper.Length : WrapperCompaction.CompactLength(entry.Wrapper, replace));
@@ -594,9 +596,9 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
     }
 
     /// <summary>The encoded length of a ProofWrappers entry <c>[hash, wrapper]</c> for a wrapper of <paramref name="wrapperLength"/> bytes.</summary>
-    internal static int EntryLength(int wrapperLength) => Eth73Rlp.LengthOfList(1 + ValueHash256.MemorySize + wrapperLength);
+    internal static int EntryLength(int wrapperLength) => Eth75Rlp.LengthOfList(1 + ValueHash256.MemorySize + wrapperLength);
 
     /// <summary>The message-data length of <c>[request_id, [items]]</c> whose items encode in <paramref name="itemsLength"/> bytes.</summary>
     internal static int ResponseLength(long requestId, int itemsLength) =>
-        Eth73Rlp.LengthOfList(Eth73Rlp.LengthOfUInt((ulong)requestId) + Eth73Rlp.LengthOfList(itemsLength));
+        Eth75Rlp.LengthOfList(Eth75Rlp.LengthOfUInt((ulong)requestId) + Eth75Rlp.LengthOfList(itemsLength));
 }

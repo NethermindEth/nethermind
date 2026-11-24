@@ -9,10 +9,10 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
 public sealed partial class ProofWrapperBroadcaster
 {
@@ -26,7 +26,8 @@ public sealed partial class ProofWrapperBroadcaster
     // ---- Announcements and wrapper requests ---------------------------------------------------------------------------
 
     /// <summary>Records announced wrappers this node wants; announcements establish no validity and require no action.</summary>
-    /// <remarks>EIP-8437: a wrapper whose coverage hints match a held wrapper validated under the current rules is not fetched.</remarks>
+    /// <remarks>A wrapper whose coverage hints, where announced, match a held wrapper validated under the current rules is not
+    /// fetched.</remarks>
     internal void OnAnnounce(WrapperPeer peer, NewProofWrapperHashesMessage message)
     {
         bool enabled = IsEnabled;
@@ -52,7 +53,7 @@ public sealed partial class ProofWrapperBroadcaster
                     existing.AddSource(peer, announcement);
                     continue;
                 }
-                if (_store.HoldsEquivalent(announcement.Coverage, announcement.Mode, _verifier))
+                if (announcement.Coverage is { } coverage && _store.HoldsEquivalent(coverage, announcement.Mode, _verifier))
                 {
                     WrapperMetrics.Record(WrapperEvent.EquivalentSkipped);
                     continue;
@@ -133,17 +134,17 @@ public sealed partial class ProofWrapperBroadcaster
     {
         List<WrapperFetch> batch = [];
         long bytes = 0;
-        for (; next < queued.Count && batch.Count < Eth73Protocol.MaxWrappersPerRequest; next++)
+        for (; next < queued.Count && batch.Count < Eth75Protocol.MaxWrappersPerRequest; next++)
         {
             WrapperFetch fetch = queued[next];
             if (fetch.Requested || fetch.Wrapper is not null) continue;
             int length = EntryLength(fetch.LengthFrom(peer));
-            if (batch.Count > 0 && bytes + length > Eth73Protocol.SoftResponseLimit) break;
+            if (batch.Count > 0 && bytes + length > Eth75Protocol.SoftResponseLimit) break;
             batch.Add(fetch);
             bytes += length;
         }
         // Requests are batched within the soft limit, so a response carries at most the requested bytes.
-        long reserved = Math.Min(bytes + Eth73Protocol.ResponseFramingBytes, Eth73Protocol.LocalMaxResponseBytes);
+        long reserved = Math.Min(bytes + Eth75Protocol.ResponseFramingBytes, Eth75Protocol.LocalMaxResponseBytes);
         if (batch.Count == 0 || peer.LastIssued == long.MaxValue || !TryCharge(peer, reserved)) return false;
         ValueHash256[] ids = new ValueHash256[batch.Count];
         for (int i = 0; i < ids.Length; i++)
@@ -157,7 +158,7 @@ public sealed partial class ProofWrapperBroadcaster
         }
         // References are useful only once this node holds encodings the peer sent in full; a wrapper whose compact form
         // referenced an evicted encoding is fetched complete.
-        bool compact = !peer.Received.IsEmpty && batch.TrueForAll(static fetch => !fetch.RequiresComplete);
+        bool compact = peer.Aggregates && !peer.Received.IsEmpty && batch.TrueForAll(static fetch => !fetch.RequiresComplete);
         WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch], compact);
         peer.Requests.Add(request.Id, request);
         outbox.Send(peer, new GetProofWrappersMessage(request.Id, compact, ids));
@@ -166,8 +167,8 @@ public sealed partial class ProofWrapperBroadcaster
     }
 
     /// <summary>Matches returned entries, in order, to distinct requested hashes, resolves hash references from encodings
-    /// cached from this peer, checks each wrapper's canonical hash and the responding peer's announced mode, length and coverage
-    /// hints, then queues the wrappers for validation.</summary>
+    /// cached from this peer, checks each wrapper's canonical hash and the responding peer's announced mode, length, metadata and
+    /// coverage hints, then queues the wrappers for validation.</summary>
     /// <remarks>Requested wrappers skipped before the last one returned were unavailable from this peer; those after it were cut
     /// by the soft limit and are requested again from the same peer. A compact item referencing an encoding this node no longer
     /// holds is discarded without penalty and requested again with <c>compact = 0</c> (EIP-8437).</remarks>
@@ -215,8 +216,10 @@ public sealed partial class ProofWrapperBroadcaster
                 else if (item.Hash != entries[i].Hash) violation = "a returned wrapper does not match its hash";
                 else if (fetches[cursor].LengthFrom(peer) != item.Wrapper.Length)
                     violation = "a returned wrapper does not match its announced mode or length";
-                // EIP-8437: false hints are penalized before, and independently of, proof verification.
-                else if (item.Coverage is { } coverage && coverage != fetches[cursor].CoverageFrom(peer))
+                // EIP-8437: false metadata and hints are penalized before, and independently of, proof verification.
+                else if (item.Parsed && !Equals(item.Metadata, fetches[cursor].ClaimFrom(peer).Metadata))
+                    violation = "a returned wrapper does not match its announced transaction metadata";
+                else if (item.Coverage is { } coverage && fetches[cursor].CoverageFrom(peer) is { } announced && coverage != announced)
                     violation = "a returned wrapper does not match its announced dependency or transaction digest";
                 else matched[i] = cursor++;
             }
@@ -250,13 +253,16 @@ public sealed partial class ProofWrapperBroadcaster
                     if (!TryCharge(peer, item.Charge))
                     {
                         WrapperMetrics.Record(WrapperEvent.BudgetDropped);
-                        if (_logger.IsDebug) _logger.Debug($"eth/73 dropped {fetch.Announcement} from {peer}: byte budget exhausted");
+                        if (_logger.IsDebug) _logger.Debug($"eth/75 dropped {fetch.Announcement} from {peer}: byte budget exhausted");
                         continue;
                     }
                     fetch.Wrapper = wrapper;
                     fetch.ChargedBytes = item.Charge;
                     fetch.Server = peer;
-                    fetch.AddSource(peer, item.Mode, wrapper.Length, item.Coverage ?? default);
+                    // EIP-8437: other announcers' claims found false against the verified hash are discarded with their senders.
+                    if (item.Parsed)
+                        foreach (WrapperPeer claimant in fetch.FalseClaimants(peer, item.Mode, wrapper.Length, item.Metadata))
+                            Violation(claimant, $"announced false mode, length or metadata for {fetch.Announcement}", outbox);
                     Enqueue(fetch);
                 }
                 // A wrapper after the last returned one was cut by the soft limit: ask the same peer again.
@@ -273,22 +279,29 @@ public sealed partial class ProofWrapperBroadcaster
         outbox.Flush();
     }
 
-    /// <summary>A returned entry after reference resolution: the complete wrapper, its hash, coverage hints and admission charge,
-    /// or no wrapper on a cache miss, or the reason it is malformed.</summary>
-    /// <remarks>Hints are null for a wrapper that does not parse, which validation then rejects as malformed.</remarks>
+    /// <summary>A returned entry after reference resolution: the complete wrapper, its hash, coverage hints, inline metadata and
+    /// admission charge, or no wrapper on a cache miss, or the reason it is malformed.</summary>
+    /// <remarks>A wrapper that does not parse has no hints or metadata to check; validation then rejects it as malformed.</remarks>
     private readonly record struct Returned(int Mode, ValueHash256 Hash, byte[]? Wrapper, bool Referenced, string? Error, long Charge = 0,
-        WrapperCoverage? Coverage = null);
+        WrapperCoverage? Coverage = null, WrapperMetadata? Metadata = null, bool Parsed = false);
 
     private static Returned Complete(int mode, byte[] wrapper, bool referenced)
     {
-        WrapperCoverage? coverage;
+        WrapperCoverage? coverage = null;
+        WrapperMetadata? metadata = null;
+        bool parsed = false;
         try
         {
-            WrapperBodies.ParseWrapper(wrapper, out _, out WrapperCoverage parsed);
-            coverage = parsed;
+            WrapperBodies.ParseWrapper(wrapper, out _, out WrapperCoverage hints);
+            coverage = hints;
+            parsed = true;
+            metadata = WrapperMetadata.InlineFor(wrapper);
         }
-        catch (RlpException) { coverage = null; }
-        return new(mode, ValueKeccak.Compute(wrapper), wrapper, referenced, null, AdmissionCharge(wrapper), coverage);
+        catch (RlpException exception)
+        {
+            if (parsed) return new(mode, default, null, referenced, $"malformed wrapper transaction: {exception.Message}");
+        }
+        return new(mode, ValueKeccak.Compute(wrapper), wrapper, referenced, null, AdmissionCharge(wrapper), coverage, metadata, parsed);
     }
 
     /// <summary>What a held wrapper is charged to its server's byte budgets until validated: as ordinary transaction gossip, the
@@ -296,7 +309,7 @@ public sealed partial class ProofWrapperBroadcaster
     /// capped at two wrappers' worth, so any wrapper within <c>MAX_WRAPPER_BYTES</c> stays retrievable.</summary>
     private static long AdmissionCharge(byte[] wrapper) =>
         Math.Min(Math.Max(wrapper.Length, (long)WrapperCompaction.CountTransactions(wrapper) * InboundTransactionBudget.TransactionCharge),
-            2L * Eth73Protocol.MaxWrapperBytes);
+            2L * Eth75Protocol.MaxWrapperBytes);
 
     /// <summary>Resolves and hashes the returned wrappers outside the lock, since a response carries up to 2 MiB.</summary>
     private Returned[] Resolve(WrapperPeer peer, ProofWrappersMessage message)
@@ -371,7 +384,7 @@ public sealed partial class ProofWrapperBroadcaster
             if (fetch.Announcer is { } announcer) announcer.PendingFetches--;
         }
         Drop(fetch);
-        if (_logger.IsTrace) _logger.Trace($"eth/73 stopped fetching {fetch.Announcement}: {reason}");
+        if (_logger.IsTrace) _logger.Trace($"eth/75 stopped fetching {fetch.Announcement}: {reason}");
     }
 
     /// <summary>Releases every byte charged for a fetch.</summary>
@@ -475,11 +488,11 @@ public sealed partial class ProofWrapperBroadcaster
         }
         catch (OperationCanceledException) when (processing.IsCancellationRequested)
         {
-            if (_logger.IsDebug) _logger.Debug($"eth/73 validation of {fetch.Announcement} was cancelled");
+            if (_logger.IsDebug) _logger.Debug($"eth/75 validation of {fetch.Announcement} was cancelled");
         }
         catch (Exception exception)
         {
-            if (_logger.IsWarn) _logger.Warn($"eth/73 validation of {fetch.Announcement} failed: {exception.Message}");
+            if (_logger.IsWarn) _logger.Warn($"eth/75 validation of {fetch.Announcement} failed: {exception.Message}");
         }
         finally
         {
@@ -521,7 +534,7 @@ public sealed partial class ProofWrapperBroadcaster
         {
             case Verdict.Valid:
                 WrapperMetrics.Record(WrapperEvent.Validated);
-                if (_logger.IsDebug) _logger.Debug($"eth/73 validated {fetch.Announcement}");
+                if (_logger.IsDebug) _logger.Debug($"eth/75 validated {fetch.Announcement}");
                 break;
             // Pool policy is not a protocol matter and never penalizes: a valid proof stands even if transactions were refused, and
             // the wrapper is relayed unchanged under the service's partial-rejection rule. A soft tombstone keeps re-announcements of one that
@@ -529,7 +542,7 @@ public sealed partial class ProofWrapperBroadcaster
             case Verdict.PoolRejected:
                 WrapperMetrics.Record(WrapperEvent.Validated);
                 SoftTombstone(fetch);
-                if (_logger.IsDebug) _logger.Debug($"eth/73 validated {fetch.Announcement}, but the pool rejected its transactions: {error}");
+                if (_logger.IsDebug) _logger.Debug($"eth/75 validated {fetch.Announcement}, but the pool rejected its transactions: {error}");
                 break;
             case Verdict.Malformed:
                 Reject(fetch, error ?? "malformed wrapper");
@@ -547,12 +560,12 @@ public sealed partial class ProofWrapperBroadcaster
                         DropBacklog(server);
                     }
                 }
-                if (_logger.IsDebug) _logger.Debug($"eth/73 discarded {fetch.Announcement}: {error}");
+                if (_logger.IsDebug) _logger.Debug($"eth/75 discarded {fetch.Announcement}: {error}");
                 break;
             default:
                 WrapperMetrics.Record(WrapperEvent.LocalFailure);
                 SoftTombstone(fetch);
-                if (_logger.IsDebug) _logger.Debug($"eth/73 could not complete {fetch.Announcement}: {error}");
+                if (_logger.IsDebug) _logger.Debug($"eth/75 could not complete {fetch.Announcement}: {error}");
                 break;
         }
     }
@@ -574,7 +587,7 @@ public sealed partial class ProofWrapperBroadcaster
         }
         outbox.Flush();
         WrapperMetrics.Record(WrapperEvent.Malformed);
-        if (_logger.IsDebug) _logger.Debug($"eth/73 rejected {fetch.Announcement}: {reason}");
+        if (_logger.IsDebug) _logger.Debug($"eth/75 rejected {fetch.Announcement}: {reason}");
     }
 
     private async Task<(Verdict, string?, Eip8288Verifier?)> VerifyAsync(Func<CancellationToken, Task<ProofWrapperAcceptance>> accept, CancellationToken cancellation)

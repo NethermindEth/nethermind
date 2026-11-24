@@ -6264,7 +6264,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8437: on eth/73 EIP-8070 applies to blob-carrying frame transactions, which arrive with their blob data elided
+        // EIP-8437: on eth/75 EIP-8070 applies to blob-carrying frame transactions, which arrive with their blob data elided
         // and are sampled like type-3 ones; their announced size is the elided network size.
         [Test]
         public void Blob_carrying_frame_tx_in_elided_form_passes_sampling_validation()

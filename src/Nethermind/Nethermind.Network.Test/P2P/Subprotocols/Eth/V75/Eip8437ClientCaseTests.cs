@@ -8,13 +8,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V73.WrapperTestObjects;
+using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V75.WrapperTestObjects;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V75;
 
 /// <summary>The client integration cases EIP-8437 lists under Test Cases, with valid dependency-bearing transactions A and B
 /// under a fixed target verifier unless stated otherwise.</summary>
@@ -88,7 +88,7 @@ public class Eip8437ClientCaseTests
         }
     }
 
-    // Before local activation, ignore wrapper messages without penalties and send none (see also Eth73ProtocolHandlerTests).
+    // Before local activation, ignore wrapper messages without penalties and send none (see also Eth75ProtocolHandlerTests).
     [Test]
     public void Inactive_transport_sends_nothing()
     {

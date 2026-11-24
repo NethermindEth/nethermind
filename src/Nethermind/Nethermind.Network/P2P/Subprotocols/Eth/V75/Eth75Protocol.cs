@@ -4,24 +4,24 @@
 using System;
 using Nethermind.Core;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
-/// <summary>EIP-8437 <c>eth/73</c> proof wrapper messages; the protocol version and message IDs are provisional.</summary>
-public static class Eth73MessageCode
+/// <summary>EIP-8437 <c>eth/75</c> proof wrapper messages; the protocol version and message IDs are provisional.</summary>
+public static class Eth75MessageCode
 {
-    public const int NewProofWrapperHashes = 0x16;
-    public const int GetProofWrappers = 0x17;
-    public const int ProofWrappers = 0x18;
+    public const int NewProofWrapperHashes = 0x18;
+    public const int GetProofWrappers = 0x19;
+    public const int ProofWrappers = 0x1a;
 
     /// <summary>Whether <paramref name="code"/> is one of the three wrapper messages.</summary>
     public static bool IsWrapperMessage(int code) => code is >= NewProofWrapperHashes and <= ProofWrappers;
 }
 
 /// <summary>EIP-8437 message bounds and this client's local message caps.</summary>
-public static class Eth73Protocol
+public static class Eth75Protocol
 {
     /// <summary>One past the last message ID, <c>ProofWrappers</c>.</summary>
-    public const int MessageIdSpaceSize = Eth73MessageCode.ProofWrappers + 1;
+    public const int MessageIdSpaceSize = Eth75MessageCode.ProofWrappers + 1;
 
     /// <summary>The <c>eth</c> soft response limit (2 MiB).</summary>
     public const int SoftResponseLimit = 2 * 1024 * 1024;
@@ -39,13 +39,19 @@ public static class Eth73Protocol
     /// soft limit alone is not a violation.</remarks>
     public const int LocalMaxResponseBytes = SoftResponseLimit + MaxWrapperBytes + ResponseFramingBytes;
 
-    /// <summary>The largest valid NewProofWrapperHashes, 64 <c>[mode, length, hash, deps-hash, txs-hash]</c> entries at their
-    /// widest, bounding message data before decompression (EIP-8437 check_vectors.py).</summary>
-    public const int MaxNewProofWrapperHashesBytes = 6787;
+    /// <summary>The largest NewProofWrapperHashes accepted, 64 <c>[mode, length, hash, txs-meta]</c> entries with 17-transaction
+    /// metadata at the widest wire integers and three fees each, bounding message data before decompression (EIP-8437
+    /// check_vectors.py).</summary>
+    /// <remarks>A local cap: fee lists have no fixed length, but an EIP-8141 transaction carries two fees.</remarks>
+    public const int MaxNewProofWrapperHashesBytes = 197_508;
 
     /// <summary>The largest valid GetProofWrappers, 32 hashes under the widest request ID, bounding message data before
     /// decompression (EIP-8437 check_vectors.py).</summary>
-    public const int MaxGetProofWrappersBytes = 1072;
+    public const int MaxGetProofWrappersBytes = 1071;
+
+    /// <summary>Transactions of a mode-0 wrapper up to which its announcement carries their metadata inline; fixed for
+    /// <c>eth/75</c>, independently of EIP-8288's validity limits.</summary>
+    public const int MaxInlineTransactions = 17;
 
     /// <summary>Entries per NewProofWrapperHashes.</summary>
     public const int MaxAnnouncements = 64;
@@ -53,16 +59,17 @@ public static class Eth73Protocol
     /// <summary>Hashes per GetProofWrappers.</summary>
     public const int MaxWrappersPerRequest = 32;
 
-    /// <summary>Nesting bound of the strict decoder; a wrapper nests three lists deep inside a two-list response.</summary>
+    /// <summary>Nesting bound of the strict decoder; a wrapper nests three lists deep inside a two-list response, and a fee list
+    /// five deep inside an announcement.</summary>
     public const int MaxRlpDepth = 8;
 
-    /// <summary>Whether an advertised uncompressed size exceeds this client's cap for an <c>eth/73</c> wrapper message,
+    /// <summary>Whether an advertised uncompressed size exceeds this client's cap for an <c>eth/75</c> wrapper message,
     /// checked before decompression.</summary>
     public static bool ExceedsMessageLimit(int code, int uncompressedLength) => code switch
     {
-        Eth73MessageCode.ProofWrappers => uncompressedLength > LocalMaxResponseBytes,
-        Eth73MessageCode.NewProofWrapperHashes => uncompressedLength > MaxNewProofWrapperHashesBytes,
-        Eth73MessageCode.GetProofWrappers => uncompressedLength > MaxGetProofWrappersBytes,
+        Eth75MessageCode.ProofWrappers => uncompressedLength > LocalMaxResponseBytes,
+        Eth75MessageCode.NewProofWrapperHashes => uncompressedLength > MaxNewProofWrapperHashesBytes,
+        Eth75MessageCode.GetProofWrappers => uncompressedLength > MaxGetProofWrappersBytes,
         _ => false
     };
 }
@@ -120,7 +127,7 @@ public static class WrapperTransportLimits
     public static readonly TimeSpan PendingLifetime = TimeSpan.FromSeconds(60);
 
     /// <summary>Bytes charged to one peer's outstanding responses and received wrappers awaiting validation.</summary>
-    public const long MaxPeerBytes = 4L * Eth73Protocol.LocalMaxResponseBytes + 2L * Eth73Protocol.MaxWrapperBytes;
+    public const long MaxPeerBytes = 4L * Eth75Protocol.LocalMaxResponseBytes + 2L * Eth75Protocol.MaxWrapperBytes;
 
     /// <summary>Bytes charged across all peers.</summary>
     public const long MaxGlobalBytes = 64L * 1024 * 1024;
@@ -130,10 +137,10 @@ public static class WrapperTransportLimits
     public const int MaxStoreObjects = 256;
 
     /// <summary>Held wrappers announced to a newly connected peer, most recent first.</summary>
-    public const int MaxConnectAnnouncements = Eth73Protocol.MaxAnnouncements;
+    public const int MaxConnectAnnouncements = Eth75Protocol.MaxAnnouncements;
 
     /// <summary>Bytes of encodings cached from one peer for resolving its hash references.</summary>
-    public const long MaxCachedEncodingBytesPerPeer = 2L * Eth73Protocol.MaxWrapperBytes;
+    public const long MaxCachedEncodingBytesPerPeer = 2L * Eth75Protocol.MaxWrapperBytes;
 
     /// <summary>Bytes of encodings cached across all peers.</summary>
     public const long MaxCachedEncodingBytes = 64L * 1024 * 1024;

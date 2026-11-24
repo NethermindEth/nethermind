@@ -220,7 +220,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                && (sendFullTx || (tx.Hash is not null && ShouldNotifyTransactionCore(tx)));
 
         /// <summary>Whether NewPooledTransactionHashes may announce the cells of a pooled dependency-bearing transaction, which
-        /// EIP-8437 permits only for EIP-8070 blob availability on <c>eth/73</c>.</summary>
+        /// EIP-8437 permits only for EIP-8070 blob availability on <c>eth/75</c>.</summary>
         protected virtual bool AnnouncesDependencyBearingCells(Transaction tx) => false;
 
         protected virtual bool ShouldNotifyTransactionCore(Transaction tx)

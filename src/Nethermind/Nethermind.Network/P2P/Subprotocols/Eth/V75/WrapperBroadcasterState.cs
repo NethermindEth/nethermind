@@ -8,17 +8,21 @@ using System.Threading;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
-/// <summary>The connection side of an <c>eth/73</c> peer.</summary>
+/// <summary>The connection side of an <c>eth/75</c> peer.</summary>
 internal interface IWrapperLink
 {
     string Description { get; }
 
     /// <summary>The peer's node ID, under which its failure score outlives the connection; null when unknown.</summary>
     PublicKey? NodeId { get; }
+
+    /// <summary>The negotiated <c>eth</c> version, which selects the wrapper modes and message forms used with the peer.</summary>
+    byte ProtocolVersion { get; }
 
     /// <summary>Sends a wrapper message.</summary>
     void Send(P2PMessage message);
@@ -142,7 +146,8 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
             if (!_byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders)) _byTransaction[transaction] = holders = [];
             holders.Add(wrapperHash);
         }
-        if (!_byCoverage.TryGetValue(entry.Announcement.Coverage, out List<ValueHash256>? equivalent)) _byCoverage[entry.Announcement.Coverage] = equivalent = [];
+        WrapperCoverage coverage = entry.Announcement.Coverage!.Value;
+        if (!_byCoverage.TryGetValue(coverage, out List<ValueHash256>? equivalent)) _byCoverage[coverage] = equivalent = [];
         equivalent.Add(wrapperHash);
         return true;
     }
@@ -183,9 +188,9 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         foreach (ValueHash256 transaction in entry.Hashes)
             if (_byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders) && holders.Remove(wrapperHash) && holders.Count == 0)
                 _byTransaction.Remove(transaction);
-        if (_byCoverage.TryGetValue(entry.Announcement.Coverage, out List<ValueHash256>? equivalent) && equivalent.Remove(wrapperHash)
-            && equivalent.Count == 0)
-            _byCoverage.Remove(entry.Announcement.Coverage);
+        WrapperCoverage coverage = entry.Announcement.Coverage!.Value;
+        if (_byCoverage.TryGetValue(coverage, out List<ValueHash256>? equivalent) && equivalent.Remove(wrapperHash) && equivalent.Count == 0)
+            _byCoverage.Remove(coverage);
     }
 }
 
@@ -194,6 +199,13 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
 {
     public IWrapperLink Link { get; } = link;
     public bool Closed { get; set; }
+
+    /// <summary>Whether the connection runs above <c>eth/75</c>, which exchanges only mode-0 wrappers in full and announces them
+    /// without coverage hints.</summary>
+    public bool Aggregates => Link.ProtocolVersion > EthVersions.Eth75;
+
+    /// <summary>Whether wrappers of <paramref name="mode"/> are announced and served to the peer.</summary>
+    public bool Supports(int mode) => mode == MempoolWrapper.ModeDirect || Aggregates;
 
     /// <summary>Encoding hashes of transactions this node sent the peer in full within validated wrappers: the only ones it
     /// may replace with hash references (EIP-8437).</summary>
@@ -325,28 +337,38 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     /// <summary>Cancels validation at the fetch deadline or shutdown.</summary>
     public CancellationTokenSource? Processing { get; set; }
 
-    /// <summary>The metadata each source announced; a response is held to its own server's metadata, so one peer's false
-    /// metadata cannot make an honest server's response look mismatched.</summary>
-    private readonly Dictionary<WrapperPeer, (int Mode, int Length, WrapperCoverage Coverage)> _metadata = [];
+    /// <summary>What each source announced; a response is held to its own server's claims, so one peer's false claims cannot
+    /// make an honest server's response look mismatched (EIP-8437).</summary>
+    private readonly Dictionary<WrapperPeer, WrapperAnnouncement> _claims = [];
 
-    public void AddSource(WrapperPeer peer, int mode, int length, WrapperCoverage coverage)
+    public void AddSource(WrapperPeer peer, WrapperAnnouncement announcement)
     {
         if (Sources.Contains(peer) || Sources.Count >= WrapperTransportLimits.MaxAnnouncersPerWrapper) return;
         Sources.Add(peer);
-        _metadata[peer] = (mode, length, coverage);
+        _claims[peer] = announcement;
     }
 
-    public void AddSource(WrapperPeer peer, WrapperAnnouncement announcement) =>
-        AddSource(peer, announcement.Mode, announcement.Length, announcement.Coverage);
+    /// <summary>What <paramref name="peer"/> announced, or the first announcement.</summary>
+    public WrapperAnnouncement ClaimFrom(WrapperPeer peer) => _claims.GetValueOrDefault(peer, Announcement);
 
     /// <summary>The length <paramref name="peer"/> announced, or the first announcement's.</summary>
-    public int LengthFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length, WrapperCoverage Coverage) metadata) ? metadata.Length : Announcement.Length;
+    public int LengthFrom(WrapperPeer peer) => ClaimFrom(peer).Length;
 
     /// <summary>The mode <paramref name="peer"/> announced, or the first announcement's.</summary>
-    public int ModeFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length, WrapperCoverage Coverage) metadata) ? metadata.Mode : Announcement.Mode;
+    public int ModeFrom(WrapperPeer peer) => ClaimFrom(peer).Mode;
 
-    /// <summary>The coverage hints <paramref name="peer"/> announced, or the first announcement's.</summary>
-    public WrapperCoverage CoverageFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length, WrapperCoverage Coverage) metadata) ? metadata.Coverage : Announcement.Coverage;
+    /// <summary>The coverage hints <paramref name="peer"/> announced, or the first announcement's; null when announced without.</summary>
+    public WrapperCoverage? CoverageFrom(WrapperPeer peer) => ClaimFrom(peer).Coverage;
+
+    /// <summary>Sources other than <paramref name="server"/> whose claims about a wrapper with a verified hash are false.</summary>
+    public List<WrapperPeer> FalseClaimants(WrapperPeer server, int mode, int length, WrapperMetadata? metadata)
+    {
+        List<WrapperPeer> claimants = [];
+        foreach ((WrapperPeer peer, WrapperAnnouncement claim) in _claims)
+            if (peer != server && !peer.Closed && (claim.Mode != mode || claim.Length != length || !Equals(claim.Metadata, metadata)))
+                claimants.Add(peer);
+        return claimants;
+    }
 
     /// <summary>The next peer to ask for the body, or null once every source was tried or the source budget is spent.</summary>
     /// <remarks>Sources are asked in announcement order, except that deprioritized ones are asked only after the others, the

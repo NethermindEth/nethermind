@@ -16,7 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;

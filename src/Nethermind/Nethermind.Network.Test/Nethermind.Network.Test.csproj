@@ -13,6 +13,9 @@
     <None Update="Specs\merge_fork_id_test.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="P2P\Subprotocols\Eth\V75\Vectors\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Content Include="Rlpx\block.go.snappy">
