@@ -24,8 +24,11 @@ public class PrunedReceiptRetentionModuleTests
             .Build();
 
         IReceiptStorage storage = container.Resolve<IReceiptStorage>();
-        Assert.That(storage, storeReceipts ? Is.TypeOf<PersistentReceiptStorage>() : Is.SameAs(NullReceiptStorage.Instance));
-        Assert.That(container.Resolve<IReceiptPruner>(), Is.SameAs(storage));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage, storeReceipts ? Is.TypeOf<PersistentReceiptStorage>() : Is.SameAs(NullReceiptStorage.Instance));
+            Assert.That(container.Resolve<IReceiptPruner>(), Is.SameAs(storage));
+        }
     }
 
     [Test]
