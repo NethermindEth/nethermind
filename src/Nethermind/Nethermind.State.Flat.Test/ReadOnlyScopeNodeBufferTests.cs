@@ -14,7 +14,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.NodeBuffer;
-using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Test.NodeBuffer;
 using Nethermind.Trie;
