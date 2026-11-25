@@ -81,14 +81,8 @@ namespace Nethermind.Merge.AuRa
 
                 .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
 
-                // Overrides AuRaModule's registration. This relies on the plugin order (Aura before AuRaMerge in the
-                // default Plugin.PluginOrder), so that this registration is the last one and wins.
-                // On a post-merge head, skip only the startup backward ChainLevelInfo scan for the last AuRa-finalized
-                // level: it would read every level back to the merge transition, or down to genesis on post-merge
-                // synced nodes, and its result no longer selects the active validator (post-merge blocks bypass the
-                // AuRa validator, the branch processor is not wired and the manager is disposed at startup). Later
-                // queries such as GetFinalizationLevel, used when re-executing historical blocks, still work.
-                // Pre-merge heads (archive sync from genesis) keep the eager load MultiValidator depends on.
+                // Overrides AuRaModule's registration (relies on Aura loading before AuRaMerge in Plugin.PluginOrder).
+                // A post-merge head skips the startup scan; see AuRaBlockFinalizationManager's loadLastFinalizedBlockLevel.
                 .AddSingleton<IAuRaBlockFinalizationManager, IBlockTree, IChainLevelInfoRepository, IValidatorStore, ILogManager, AuRaChainSpecEngineParameters, IPoSSwitcher>(
                     static (blockTree, chainLevelInfoRepository, validatorStore, logManager, param, poSSwitcher) =>
                         new AuRaBlockFinalizationManager(blockTree, chainLevelInfoRepository, validatorStore, logManager, param.TwoThirdsMajorityTransition,

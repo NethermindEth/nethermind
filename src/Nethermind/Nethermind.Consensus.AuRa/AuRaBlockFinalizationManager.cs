@@ -22,6 +22,7 @@ namespace Nethermind.Consensus.AuRa
     /// <see cref="ChainLevelInfo"/> back from the head. Only the startup scan is skipped: later queries such as
     /// <see cref="GetFinalizationLevel"/> and <see cref="GetLastLevelFinalizedBy"/> work as before. Intended for
     /// heads already past the merge transition, where the startup value no longer selects the active validator.
+    /// On a post-merge head the scan can read back to the merge transition, or to genesis if no level was finalized.
     /// </param>
     public class AuRaBlockFinalizationManager(
         IBlockTree blockTree,
@@ -44,10 +45,7 @@ namespace Nethermind.Consensus.AuRa
         // Must be computed eagerly: MultiValidator.SetFinalizationManager reads LastFinalizedBlockLevel
         // during DI resolution (inside InitializeBlockchain, before SetMainBlockBranchProcessor runs)
         // to pick the active validator. Reading 0 produces state-root divergence on archive sync when
-        // crossing a validator-contract transition. The scan stops at the first finalized level, but only
-        // this manager writes those flags and it stops at the merge: on a post-merge head the scan reads every
-        // level back to the merge transition, or down to genesis on a chain synced after the merge. Callers
-        // with a post-merge head skip only this startup scan via loadLastFinalizedBlockLevel.
+        // crossing a validator-contract transition. Skippable via loadLastFinalizedBlockLevel; see its doc.
         private ulong _lastFinalizedBlockLevel = loadLastFinalizedBlockLevel ? LoadInitialLastFinalizedBlockLevel(blockTree, chainLevelInfoRepository, logManager) : 0UL;
 
         public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
