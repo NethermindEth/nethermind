@@ -427,6 +427,19 @@ public class SnapshotRepositoryTests
         Assert.That(result.Persisted[0].From.BlockNumber, Is.LessThan(s2.BlockNumber));
     }
 
+    [TestCase(2UL)]
+    [TestCase(3UL)]
+    public void AssembleSnapshots_persisted_edge_must_reach_the_database_state(ulong edgeHeight)
+    {
+        StateId edgeEnd = CreateStateId(edgeHeight, rootByte: 1);
+        StateId database = CreateStateId(3);
+        _tier.ConvertToPersistedBase(CreateSnapshot(CreateStateId(0), edgeEnd)).Dispose();
+
+        using AssembledSnapshotResult result = _repository.AssembleSnapshots(edgeEnd, database, 4);
+
+        Assert.That(result.SnapshotCount, Is.Zero);
+    }
+
     [Test]
     public void AssembleSnapshots_InMemoryOvershoot_Rejected()
     {

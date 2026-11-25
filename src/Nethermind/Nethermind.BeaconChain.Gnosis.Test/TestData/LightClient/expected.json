@@ -1,0 +1,43 @@
+{
+  "captured_at": "2026-11-17T07:01:39.200529+00:00",
+  "provider": "https://rpc-gbc.gnosischain.com",
+  "config_commit": "2dd5746292ca298ae0695f1ee221098074574e04",
+  "preset_commit": "045d46d6db96a39b4d91485f9783474c13546ac9",
+  "checkpoint": "0x3d0942bcdbce6e066526c0a1e65da11b2f5ad52233280362a9ab947ef2bd8c4f",
+  "bootstrap_slot": 31178688,
+  "bootstrap_execution_hash": "0xa25dfb1cdec3507449dfa094135fc55a2a7f7fd2cbef6404d088d418e939c28c",
+  "bootstrap_execution_state_root": "0x45535962a9ba78974f4b23fb5b722c329560c051681c9e5105065e01b7259f79",
+  "attested_slot": 31181112,
+  "attested_root": "0xbf3016275eb1105634e01ea5747b5bdc4a52439b13419e7d13e1794224dbd4a6",
+  "attested_execution_hash": "0xa443d908104c78efa9fece05ddf2c172237c822d4bdbb39f23d1100b752ae4b3",
+  "attested_execution_state_root": "0x2ad9a3ee5af9cc85fa0633023145228adf9b3fd31a065be0a7aa1328352662eb",
+  "finalized_slot": 31181072,
+  "finalized_root": "0x23b2860ffeb1ca4d833efb08db4357b8bae58c71d431b01b653c2d3e24b2b5fd",
+  "finalized_execution_hash": "0x5a1fbd56719b5cf55e17ba6e33184f5a9b1b412dfad75f8260fd863858f8d4aa",
+  "finalized_execution_state_root": "0x08741fa8df145ed175ff0940e26292ff46837bdcf5bd33b7aeda2215103b6f1b",
+  "signature_slot": 31181113,
+  "participants": 504,
+  "sha256": {
+    "bootstrap.ssz": "210f9e0613c2f981ec0d2f96cc14ea7001f99e31db9725dde645b3be3d8dcc8b",
+    "finality.ssz": "49c3959c512d3a925f3e1ab675e1c4e43051db2ecc22190c68f677f312250913",
+    "update.ssz": "4325cbe16bf61f30c9b51958e445adde1d7b8f7721ee6ab155739916531a6c98"
+  },
+  "source_paths": {
+    "bootstrap": "/eth/v1/beacon/light_client/bootstrap/0x3d0942bcdbce6e066526c0a1e65da11b2f5ad52233280362a9ab947ef2bd8c4f",
+    "finality": "/eth/v1/beacon/light_client/finality_update",
+    "finalized_root": "/eth/v1/beacon/headers/31181072",
+    "attested_root": "/eth/v1/beacon/headers/31181112",
+    "bootstrap_root": "/eth/v1/beacon/headers/31178688",
+    "update": "/eth/v1/beacon/light_client/updates?start_period=3805&count=1"
+  },
+  "bootstrap_period": 3805,
+  "period_after_finality": 3806,
+  "update_attested_slot": 31171505,
+  "update_finalized_slot": 31171472,
+  "update_signature_slot": 31171506,
+  "update_attested_root": "0x80d740696e8c66bfd5cdd24f839e580b6c20b2fc2522c6dc4cf3e20375ffb1ef",
+  "update_finalized_root": "0x11a2aba5545a9d336f08176f4c2f4a293778c526620289701ab93e092fe61700",
+  "update_participants": 501,
+  "update_fork_digest": "0x3237dab6",
+  "update_execution_hash": "0x77e68c3378a3085ee27031d81a753fe5483170d0bd6922023489b7a8c49222c9"
+}

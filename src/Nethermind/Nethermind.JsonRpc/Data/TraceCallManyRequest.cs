@@ -48,11 +48,9 @@ public class TraceCallManyRequest(ArrayPoolList<TransactionForRpcWithTraceTypes>
             {
                 foreach (JsonElement element in jsonValue.EnumerateArray())
                 {
-                    TransactionForRpcWithTraceTypes? call = TypeInfoJsonSerializer.Deserialize<TransactionForRpcWithTraceTypes>(element, options);
-                    if (call is not null)
-                    {
-                        calls.Add(call);
-                    }
+                    TransactionForRpcWithTraceTypes call = TypeInfoJsonSerializer.Deserialize<TransactionForRpcWithTraceTypes>(element, options)
+                        ?? throw new JsonException("Trace calls must not be null.");
+                    calls.Add(call);
                 }
 
                 _calls?.Dispose();

@@ -43,6 +43,7 @@ namespace Ethereum.Test.Base
             {
                 TestType.State => JsonToEthereumTest.ConvertStateTest(json),
                 TestType.Transaction => JsonToEthereumTest.ConvertTransactionTests(json),
+                TestType.EngineReorg => JsonToEthereumTest.ConvertToEngineReorgTests(json),
                 _ => JsonToEthereumTest.ConvertToBlockchainTests(json)
             };
 

@@ -49,6 +49,7 @@ public partial class EngineModuleTests
         MissingChange,
         SurplusChange,
         SurplusReads,
+        MissingStorageReadOnlyAccount,
     }
 
     [TestCase("0xa04968dfc2905bb5a79a1ad614b305f04e3fcbde14aeb724e603589103a95196", "0x87d0fad9d6a03b251234c25c1886a181e8e0855f77da7e50ce3dca8e9ecbc24b", "0x4c297f9404c233588f95de66ed9fcbea2d51bc1923aed71c1510050e0e96f339", "0xa12cc4c6899afd77")]
@@ -533,6 +534,10 @@ public partial class EngineModuleTests
             yield return new TestCaseData("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, false, errorKind);
             yield return new TestCaseData("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, true, errorKind);
         }
+
+        yield return new TestCaseData(null, null, null, false, true, BalErrorKind.MissingStorageReadOnlyAccount);
+        yield return new TestCaseData("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, false, BalErrorKind.MissingStorageReadOnlyAccount);
+        yield return new TestCaseData("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, true, BalErrorKind.MissingStorageReadOnlyAccount);
     }
 
     protected static string GetExpectedBalError(BalErrorKind errorKind, bool exactMatch = true) =>
@@ -547,7 +552,7 @@ public partial class EngineModuleTests
             : errorKind switch
             {
                 BalErrorKind.IncorrectChange => "incorrect changes",
-                BalErrorKind.MissingChange => "missing account changes",
+                BalErrorKind.MissingChange or BalErrorKind.MissingStorageReadOnlyAccount => "missing account changes",
                 BalErrorKind.SurplusChange => "surplus changes",
                 _ => "invalid storage reads",
             };
@@ -1682,6 +1687,12 @@ public partial class EngineModuleTests
 
         SortedDictionary<Address, ReadOnlyAccountChanges> modifiedAccounts = [];
         Address senderAddress = TestItem.AddressA;
+        Address? droppedAddress = errorKind switch
+        {
+            BalErrorKind.MissingChange => senderAddress,
+            BalErrorKind.MissingStorageReadOnlyAccount => ContractAddress.From(senderAddress, 2),
+            _ => null
+        };
 
         ReadOnlyBlockAccessList modifiedBal = CreateBlockAccessList();
         byte[] modifiedBalRlp = Rlp.Encode(modifiedBal);
@@ -1696,7 +1707,7 @@ public partial class EngineModuleTests
         {
             foreach (ReadOnlyAccountChanges ac in validBal.AccountChanges)
             {
-                if (errorKind is not BalErrorKind.MissingChange || ac.Address != senderAddress)
+                if (ac.Address != droppedAddress)
                 {
                     modifiedAccounts[ac.Address] = CloneAccountChanges(ac);
                 }

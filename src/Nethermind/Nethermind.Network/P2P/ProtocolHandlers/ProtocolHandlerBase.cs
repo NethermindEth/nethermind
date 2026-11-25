@@ -75,14 +75,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         private void HandleRlpException<T>(int dataLength, RlpReaderException e) where T : P2PMessage
         {
             if (Logger.IsTrace) TraceRlpException(typeof(T).Name, e);
-            ReportIn($"{typeof(T).Name} - Deserialization exception", dataLength);
+            if (Logger.IsTrace || NetworkDiagTracer.IsEnabled) ReportIn($"{typeof(T).Name} - Deserialization exception", dataLength);
         }
 
         private void HandleRlpLimitException<T>(int dataLength, RlpLimitException e) where T : P2PMessage
         {
             Session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached, e.Message);
             if (Logger.IsTrace) TraceRlpLimitException(typeof(T).Name, e);
-            ReportIn($"{typeof(T).Name} - Deserialization limit exception", dataLength);
+            if (Logger.IsTrace || NetworkDiagTracer.IsEnabled) ReportIn($"{typeof(T).Name} - Deserialization limit exception", dataLength);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
