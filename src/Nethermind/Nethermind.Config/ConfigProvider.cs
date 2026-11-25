@@ -6,7 +6,9 @@ using NonBlocking;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Config;
@@ -98,19 +100,64 @@ public class ConfigProvider : IConfigProvider
             return null;
         }
 
-        for (int i = 0; i < _configSource.Count; i++)
+        // Query sources and defaults under the names Initialize uses, whichever form (Sync or SyncConfig) was requested
+        foreach ((Type configType, Type directImplementation) in FindConfigTypes(ConfigTypesFromAssembly, category, name))
         {
-            (bool isSet, string? str) = _configSource[i].GetRawValue(category, name);
-            if (isSet)
+            string? sourceCategory = ConfigExtensions.GetCategoryName(configType) is null ? null : directImplementation.Name;
+            for (int i = 0; i < _configSource.Count; i++)
             {
-                return str;
+                (bool isSet, string? str) = _configSource[i].GetRawValue(sourceCategory!, name);
+                if (isSet)
+                {
+                    return str;
+                }
             }
         }
 
-        return Categories.TryGetValue(category, out object? value) ? value.GetType()
-            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
-            ?.GetValue(value) : null;
+        foreach ((Type configType, _) in FindConfigTypes(ConfigTypesFromAssembly, category, name))
+        {
+            if (Categories.TryGetValue(configType.Name[1..], out object? value))
+            {
+                return value.GetType()
+                    .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                    .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+                    ?.GetValue(value);
+            }
+        }
+
+        return null;
+    }
+
+    internal static IEnumerable<(Type ConfigType, Type DirectImplementation)> FindConfigTypes(
+        IEnumerable<(Type ConfigType, Type DirectImplementation)> configTypes, string? category, string name)
+    {
+        // An exact category name (Foo for IFoo) wins over the short alias of another one (Foo for IFooConfig),
+        // whether or not it declares the requested item
+        bool hasExactMatch = false;
+        foreach ((Type configType, _) in configTypes)
+        {
+            if (IsExactCategory(configType, category))
+            {
+                hasExactMatch = true;
+                break;
+            }
+        }
+
+        foreach ((Type configType, Type directImplementation) in configTypes)
+        {
+            if (HasProperty(configType, category, name) && (!hasExactMatch || IsExactCategory(configType, category)))
+            {
+                yield return (configType, directImplementation);
+            }
+        }
+
+        static bool HasProperty(Type configType, string? category, string name) =>
+            IsCategory(configType, category)
+            && configType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase) is not null;
+
+        static bool IsExactCategory(Type configType, string? category) =>
+            IsCategory(configType, category)
+            && string.Equals(configType.Name[1..], category, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -189,6 +236,11 @@ public class ConfigProvider : IConfigProvider
                             try
                             {
                                 propertyInfo.SetValue(config, value);
+                            }
+                            catch (TargetInvocationException e) when (e.InnerException is IExceptionWithExitCode and Exception setterError)
+                            {
+                                // A setter's own configuration error keeps its exit code, which the wrapper below would hide.
+                                ExceptionDispatchInfo.Throw(setterError);
                             }
                             catch (Exception e)
                             {

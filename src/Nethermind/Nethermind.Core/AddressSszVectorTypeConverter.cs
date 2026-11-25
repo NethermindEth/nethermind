@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;
@@ -14,6 +15,8 @@ public static class AddressSszVectorTypeConverter
     public const int Length = Address.Size;
 
     public static Address FromSpan(ReadOnlySpan<byte> span) => new(span);
+
+    public static ref readonly ValueAddress ValueFromSpan(ReadOnlySpan<byte> span) => ref MemoryMarshal.AsRef<ValueAddress>(span);
 
     public static void FromSpan(ReadOnlySpan<byte> span, Span<Address> values)
     {

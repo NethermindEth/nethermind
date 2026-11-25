@@ -32,6 +32,17 @@ public partial class StatusMessageV2
     public ulong EarliestAvailableSlot { get; set; }
 }
 
+/// <summary>Altair req/resp <c>MetaData</c> (v2): sequence and attestation/sync subnet subscriptions.</summary>
+[SszContainer]
+public partial class MetaDataV2
+{
+    public ulong SeqNumber { get; set; }
+    [SszVector(64)]
+    public BitArray? Attnets { get; set; }
+    [SszVector(4)]
+    public BitArray? Syncnets { get; set; }
+}
+
 /// <summary>Fulu req/resp <c>MetaData</c> (v3): altair fields plus <c>custody_group_count</c>.</summary>
 [SszContainer]
 public partial class MetaDataV3

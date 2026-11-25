@@ -34,7 +34,7 @@ public class ReceiptsSyncInsertBenchmarks
     private TempPath _directory = null!;
     private IColumnsDb<ReceiptsColumns> _receiptsDb = null!;
     private IContainer _container = null!;
-    private IReceiptStorage _storage = null!;
+    private IReceiptMigrationStore _storage = null!;
     private Block[] _blocks = null!;
     private TxReceipt[][] _receipts = null!;
     private Block[] _blocksWithEncodedTransactions = null!;
@@ -58,7 +58,7 @@ public class ReceiptsSyncInsertBenchmarks
             .AddModule(new TestNethermindModule(Cancun.Instance))
             .AddSingleton(_receiptsDb)
             .Build();
-        _storage = _container.Resolve<IReceiptStorage>();
+        _storage = _container.Resolve<IReceiptMigrationStore>();
 
         BlockDecoder blockDecoder = new();
         ReceiptMessageDecoder receiptDecoder = new();

@@ -10,5 +10,7 @@ namespace Nethermind.Blockchain.Receipts
     {
         TxReceipt?[] GetForMigration(ulong blockNumber, Hash256 blockHash) => Get(blockHash, recover: false);
         void InsertForMigration(Block block, TxReceipt[] receipts);
+        ulong MigratedBlockNumber { get; set; }
+        void EnsureCanonical(Block block);
     }
 }

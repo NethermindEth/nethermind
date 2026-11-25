@@ -56,7 +56,7 @@ internal sealed class PortfolioViewerStartupFilter : IStartupFilter
 
 /// <summary>Serves the embedded portfolio viewer page and its detection/IPFS/sibling-proxy endpoints under
 /// <c>/portfolio*</c>, so the multi-chain view works through a single JSON-RPC port.</summary>
-public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner, IPinnedCidStore pins, ILogManager logManager)
+public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner, IPinnedCidStore pins, IPortfolioViewerConfig config, ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PortfolioViewerMiddleware>();
     private static readonly PathString NodesPath = new("/portfolio-nodes");
@@ -117,6 +117,12 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
 
         // Not served on authenticated (Engine API) ports.
         if (!jsonRpcUrlCollection.TryGetValue(context.Connection.LocalPort, out JsonRpcUrl? url) || url.IsAuthenticated)
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return Task.CompletedTask;
+        }
+
+        if ((isIpfs || isPin || isUnpinAll) && !config.IpfsEnabled)
         {
             context.Response.StatusCode = StatusCodes.Status404NotFound;
             return Task.CompletedTask;

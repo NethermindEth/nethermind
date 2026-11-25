@@ -137,7 +137,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public long MemoryUsedByDirtyCache
+    internal long MemoryUsedByDirtyCache
     {
         get => _memoryUsedByDirtyCache;
         set
@@ -147,7 +147,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public long DirtyMemoryUsedByDirtyCache
+    internal long DirtyMemoryUsedByDirtyCache
     {
         get => _dirtyMemoryUsedByDirtyCache;
         set
@@ -157,9 +157,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public long PersistedMemoryUsedByDirtyCache => MemoryUsedByDirtyCache - DirtyMemoryUsedByDirtyCache;
+    internal long PersistedMemoryUsedByDirtyCache => MemoryUsedByDirtyCache - DirtyMemoryUsedByDirtyCache;
 
-    public void IncrementMemoryUsedByDirtyCache(long nodeMemoryUsage, bool persisted)
+    internal void IncrementMemoryUsedByDirtyCache(long nodeMemoryUsage, bool persisted)
     {
         Metrics.CachedNodesCount = Interlocked.Increment(ref _totalCachedNodesCount);
         Metrics.MemoryUsedByCache = Interlocked.Add(ref _memoryUsedByDirtyCache, nodeMemoryUsage);
@@ -170,7 +170,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public void DecreaseMemoryUsedByDirtyCache(long nodeMemoryUsage, bool persisted)
+    internal void DecreaseMemoryUsedByDirtyCache(long nodeMemoryUsage, bool persisted)
     {
         Metrics.CachedNodesCount = Interlocked.Decrement(ref _totalCachedNodesCount);
         Metrics.MemoryUsedByCache = Interlocked.Add(ref _memoryUsedByDirtyCache, -nodeMemoryUsage);
@@ -181,7 +181,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public int CommittedNodesCount
+    internal int CommittedNodesCount
     {
         get => _committedNodesCount;
         private set
@@ -193,7 +193,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void IncrementCommittedNodesCount() => Metrics.CommittedNodesCount = Interlocked.Increment(ref _committedNodesCount);
 
-    public int PersistedNodesCount
+    internal int PersistedNodesCount
     {
         get => _persistedNodesCount;
         private set
@@ -205,7 +205,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void IncrementPersistedNodesCount() => Metrics.PersistedNodeCount = Interlocked.Increment(ref _persistedNodesCount);
 
-    public long CachedNodesCount
+    internal long CachedNodesCount
     {
         get
         {
@@ -215,7 +215,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public long DirtyCachedNodesCount
+    internal long DirtyCachedNodesCount
     {
         get
         {
@@ -527,7 +527,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public IReadOnlyTrieStore AsReadOnly() => new ReadOnlyTrieStore(this);
 
-    public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) =>
+    internal bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) =>
         hash is not null && DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, hash));
 
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
@@ -544,7 +544,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private TrieNode FindCachedOrUnknown(in TrieStoreDirtyNodesCache.Key key, bool isReadOnly) => isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
 
     // Used only in tests
-    public void Dump()
+    internal void Dump()
     {
         foreach (TrieStoreDirtyNodesCache? dirtyNode in _dirtyNodes)
         {
@@ -1043,7 +1043,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         FlushCommitBufferNoLock();
     }
 
-    public void WaitForPruning() => _pruningTask.Wait();
+    internal void WaitForPruning() => _pruningTask.Wait();
 
     private readonly INodeStorage _nodeStorage;
 

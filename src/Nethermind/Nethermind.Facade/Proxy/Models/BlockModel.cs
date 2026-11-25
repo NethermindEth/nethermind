@@ -45,6 +45,9 @@ namespace Nethermind.Facade.Proxy.Models
             block.Header.ReceiptsRoot = ReceiptsRoot;
             block.Header.TotalDifficulty = TotalDifficulty;
             block.Header.TxRoot = TransactionsRoot;
+            block.Header.BaseFeePerGas = BaseFeePerGas;
+            block.Header.BlobGasUsed = BlobGasUsed;
+            block.Header.ExcessBlobGas = ExcessBlobGas;
             return block;
         }
     }

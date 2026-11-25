@@ -204,19 +204,16 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             int maxSize = 10 * AllowedInvalidResponses;
-            while (_resultLog.Count > maxSize)
-            {
-                lock (_syncLock)
-                {
-                    if (_resultLog.Count > 0)
-                    {
-                        _resultLog.RemoveLast();
-                    }
-                }
-            }
-
+            // Trimmed before the add, so the log holds the new result and the maxSize before it. One critical
+            // section: a count read outside it can be stale by the time the lock is taken, after a pivot update
+            // has already cleared the log.
             lock (_syncLock)
             {
+                while (_resultLog.Count > maxSize)
+                {
+                    _resultLog.RemoveLast();
+                }
+
                 _resultLog.AddFirst((peer, result));
             }
 
