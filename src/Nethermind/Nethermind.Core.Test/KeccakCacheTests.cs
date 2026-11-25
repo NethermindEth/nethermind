@@ -3,8 +3,12 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -15,6 +19,85 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class KeccakCacheTests
     {
+        [Test]
+        [CancelAfter(30_000)]
+        public async Task Native_cache_preserves_hashes_at_both_capacities(CancellationToken token)
+        {
+            const string ChildMode = "NETHERMIND_KECCAK_CACHE_TEST";
+            string? mode = Environment.GetEnvironmentVariable(ChildMode);
+            if (mode is "default" or "compact")
+            {
+                bool compact = mode == "compact";
+                AssertNativeCache(compact ? 1 << 15 : 1 << 19);
+                if (compact) AssertBucketCollisions();
+                return;
+            }
+
+            ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            string assembly = typeof(KeccakCacheTests).Assembly.Location;
+            string runtimeConfig = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.runtimeconfig.json");
+            JsonObject config = JsonNode.Parse(await File.ReadAllTextAsync(Path.ChangeExtension(assembly, ".runtimeconfig.json"), token))!.AsObject();
+            JsonNode runtimeOptions = config["runtimeOptions"]!;
+            JsonNode properties = runtimeOptions["configProperties"] ??= new JsonObject();
+            start.ArgumentList.Add("exec");
+            start.ArgumentList.Add("--runtimeconfig");
+            start.ArgumentList.Add(runtimeConfig);
+            start.ArgumentList.Add(assembly);
+            start.ArgumentList.Add("--filter");
+            start.ArgumentList.Add($"FullyQualifiedName~{nameof(Native_cache_preserves_hashes_at_both_capacities)}");
+            try
+            {
+                foreach (string variant in new[] { "default", "compact" })
+                {
+                    properties[KeccakCache.CompactCacheSwitch] = variant == "compact";
+                    await File.WriteAllTextAsync(runtimeConfig, config.ToJsonString(), token);
+                    start.Environment[ChildMode] = variant;
+                    using Process child = Process.Start(start)!;
+                    Task<string> output = child.StandardOutput.ReadToEndAsync(token);
+                    Task<string> error = child.StandardError.ReadToEndAsync(token);
+                    try { await child.WaitForExitAsync(token); }
+                    finally
+                    {
+                        if (!child.HasExited) child.Kill(entireProcessTree: true);
+                        await child.WaitForExitAsync(CancellationToken.None);
+                    }
+                    Assert.That(child.ExitCode, Is.Zero, $"{variant}: {await output}\n{await error}");
+                }
+            }
+            finally { File.Delete(runtimeConfig); }
+        }
+
+        private static void AssertNativeCache(int capacity)
+        {
+            Assert.That(KeccakCache.Count, Is.EqualTo((nuint)capacity));
+            Random random = new(7919);
+            Span<byte> buffer = stackalloc byte[92];
+            foreach (int length in new[] { 20, 32, 64, 92 })
+            {
+                Span<byte> input = buffer[..length];
+                for (int i = 0; i < 16; i++)
+                {
+                    random.NextBytes(input);
+                    ReadOnlySpan<byte> key = input;
+                    ValueHash256 expected = ValueKeccak.Compute(key);
+                    ValueHash256 computed = KeccakCache.Compute(input);
+                    Assert.That(KeccakCache.TryGet(input, out ValueHash256 digest), Is.True);
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(KeccakCache.GetBucket(key), Is.EqualTo((uint)key.FastHash() & (uint)(capacity - 1)));
+                        Assert.That(computed, Is.EqualTo(expected));
+                        Assert.That(digest, Is.EqualTo(expected));
+                    }
+                }
+            }
+        }
+
         [Test]
         public void Multiple()
         {
@@ -83,7 +166,7 @@ namespace Nethermind.Core.Test
             }
         }
 
-        private string[] GetBucketCollisions()
+        private static string[] GetBucketCollisions()
         {
             Random random = new(13);
             Span<byte> span = stackalloc byte[32];
@@ -115,7 +198,9 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Collision()
+        public void Collision() => AssertBucketCollisions();
+
+        private static void AssertBucketCollisions()
         {
             string[] colliding = GetBucketCollisions();
 
