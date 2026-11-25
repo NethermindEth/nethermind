@@ -1890,6 +1890,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         ISparseBlobPoolPeer? peerToDisconnect = null;
         PublicKey? peerToRemove = null;
         string? disconnectDetails = null;
+        Exception? retentionError = null;
         bool removeState = false;
         bool removalRequested;
         lock (state.Lock)
@@ -1915,7 +1916,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     && state.UnattributedCells is null
                     && state.Cells is { } failedCells)
                 {
-                    keptCells = RemoveEndedSources(state.Hash, failedCells, state.EndedCellSources);
+                    keptCells = RemoveEndedSources(state.Hash, failedCells, state.EndedCellSources, out retentionError);
                 }
                 else
                 {
@@ -1974,6 +1975,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             state.Submitting = false;
         }
 
+        if (retentionError is not null && _logger.IsError)
+        {
+            _logger.Error($"Failed to keep sparse blob cells for {hash} for attribution; they were released.", retentionError);
+        }
+
         if (removalRequested)
         {
             TryRemoveState(hash, state);
@@ -2021,31 +2027,57 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     /// Removes the sources whose session ended while <paramref name="cells"/> were in use, and releases their bytes.
     /// Must be called under <c>state.Lock</c>.
     /// </summary>
+    /// <remarks>
+    /// The remaining cells are prepared before any bytes are released, and the bytes of every removed source are then
+    /// released in one step. If preparing them fails, the accounting of <paramref name="cells"/> is still intact, so
+    /// they are released whole and nothing is kept.
+    /// </remarks>
     /// <returns>The remaining cells, or <c>null</c> when none remain and all their bytes were released.</returns>
-    private PendingCellsBuffer? RemoveEndedSources(ValueHash256 hash, PendingCellsBuffer cells, List<PublicKey>? endedSources)
+    private PendingCellsBuffer? RemoveEndedSources(
+        ValueHash256 hash,
+        PendingCellsBuffer cells,
+        List<PublicKey>? endedSources,
+        out Exception? error)
     {
+        error = null;
         if (endedSources is null)
         {
             return cells;
         }
 
-        for (int i = 0; i < endedSources.Count; i++)
+        PendingCellsBuffer? remaining = cells;
+        bool removed = false;
+        try
         {
-            if (!cells.TryRemoveSource(endedSources[i], out PendingCellsBuffer? remaining))
+            for (int i = 0; i < endedSources.Count; i++)
             {
-                continue;
+                if (remaining is { } current
+                    && current.TryRemoveSource(endedSources[i], out PendingCellsBuffer? next))
+                {
+                    remaining = next;
+                    removed = true;
+                }
             }
-
-            if (remaining is not { } retained || !TryReplaceCellsAccounting(hash, cells, retained))
-            {
-                ReleaseCells(hash, cells);
-                return null;
-            }
-
-            cells = retained;
+        }
+        catch (Exception e)
+        {
+            error = e;
+            remaining = null;
+            removed = true;
         }
 
-        return cells;
+        if (!removed)
+        {
+            return cells;
+        }
+
+        if (remaining is { } retained && TryReplaceCellsAccounting(hash, cells, retained))
+        {
+            return retained;
+        }
+
+        ReleaseCells(hash, cells);
+        return null;
     }
 
     /// <summary>

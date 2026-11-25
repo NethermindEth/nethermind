@@ -5800,6 +5800,88 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
+    [Test]
+    public void registry_should_drop_cells_of_several_sessions_that_ended_during_the_failed_check()
+    {
+        const int blobCount = 1;
+        Transaction tx = BuildSparseBlobTransaction(blobCount, out byte[][] fullCells);
+        BlobCellMask firstEndedMask = BlobCellMask.FromIndices([4]);
+        BlobCellMask secondEndedMask = BlobCellMask.FromIndices([9]);
+        BlobCellMask keptMask = BlobCellMask.FromIndices([77]);
+        BlobCellMask cellMask = firstEndedMask | secondEndedMask | keptMask;
+        byte[][] firstEndedCells = CopyWithCorruptedCell(
+            BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, firstEndedMask, blobCount), cellIndex: 0, byteIndex: 0);
+        byte[][] secondEndedCells = CopyWithCorruptedCell(
+            BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, secondEndedMask, blobCount), cellIndex: 0, byteIndex: 0);
+        byte[][] keptInvalidCells = CopyWithCorruptedCell(
+            BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, keptMask, blobCount), cellIndex: 0, byteIndex: 0);
+        int sourceBytes = blobCount * CkzgLib.Ckzg.BytesPerCell;
+        using SparseBlobPoolPeerRegistry registry = CreateAttributionRegistry();
+        TestSparseBlobPeer transactionPeer = new(TestItem.PublicKeyC);
+        TestSparseBlobPeer keptCellPeer = new(TestItem.PublicKeyE);
+        TestSparseBlobPeer firstOldSession = new(TestItem.PublicKeyA);
+        TestSparseBlobPeer firstNewSession = new(TestItem.PublicKeyA);
+        TestSparseBlobPeer secondOldSession = new(TestItem.PublicKeyD);
+        TestSparseBlobPeer secondNewSession = new(TestItem.PublicKeyD);
+        int submissions = 0;
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+        {
+            if (++submissions == 1)
+            {
+                // Two cell sources' sessions end while the pool checks the first tuple, and both nodes reconnect.
+                registry.AddPeer(firstNewSession);
+                registry.AddPeer(secondNewSession);
+            }
+
+            return IsValidSparseTuple(call.Arg<Transaction>()) ? AcceptTxResult.Accepted : AcceptTxResult.InvalidBlobProofs;
+        });
+        AddAnnouncingPeers(registry, tx.Hash!, BlobCellMask.Full, transactionPeer);
+        registry.AddPeer(keptCellPeer);
+        registry.AddPeer(firstOldSession);
+        registry.AddPeer(secondOldSession);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.RecordCells(firstOldSession, tx.Hash!, firstEndedMask, firstEndedCells), Is.True);
+            Assert.That(registry.RecordCells(secondOldSession, tx.Hash!, secondEndedMask, secondEndedCells), Is.True);
+            Assert.That(registry.RecordCells(keptCellPeer, tx.Hash!, keptMask, keptInvalidCells), Is.True);
+            Assert.That(registry.RecordTransaction(transactionPeer, tx), Is.Null);
+        }
+
+        // Both ended sessions' cells were released when the failed cells were kept; the other source's cells were kept.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(submissions, Is.EqualTo(1));
+            Assert.That(GetEarlyCellsBytes(registry), Is.EqualTo(sourceBytes));
+            Assert.That(GetPeerEarlyCellBytes(registry, keptCellPeer.Id), Is.EqualTo(sourceBytes));
+            Assert.That(GetPeerEarlyCellBytes(registry, firstNewSession.Id), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, secondNewSession.Id), Is.Zero);
+            Assert.That(GetPeerTrackedHashCount(registry, firstNewSession.Id), Is.Zero);
+            Assert.That(GetPeerTrackedHashCount(registry, secondNewSession.Id), Is.Zero);
+            Assert.That(registry.HasRecordedTransaction(tx.Hash!), Is.True);
+            Assert.That(transactionPeer.CellRequests, Is.EqualTo(new[] { (tx.Hash!, cellMask) }));
+        }
+
+        Assert.That(registry.RecordCells(
+            transactionPeer,
+            tx.Hash!,
+            cellMask,
+            BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, cellMask, blobCount)), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(keptCellPeer.Disconnects, Has.Count.EqualTo(1));
+            Assert.That(firstOldSession.Disconnects, Is.Empty);
+            Assert.That(firstNewSession.Disconnects, Is.Empty);
+            Assert.That(secondOldSession.Disconnects, Is.Empty);
+            Assert.That(secondNewSession.Disconnects, Is.Empty);
+            Assert.That(transactionPeer.Disconnects, Is.Empty);
+            Assert.That(GetEarlyCellsBytes(registry), Is.Zero);
+            Assert.That(GetTrackedTransactionBytes(registry), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, keptCellPeer.Id), Is.Zero);
+        }
+    }
+
     public enum KeptCellSessionEnd
     {
         ReplacedWhileKept,
