@@ -50,6 +50,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private Hash256? _selectionHead;
     private uint _selectedBuckets;
 
+    /// <summary>Statements, by <c>get_deps_hash</c>, whose held proof may stand for a bucket: those this node built and those of
+    /// peer wrappers it admitted and relayed; guarded by itself.</summary>
+    /// <remarks>Admission caches a peer's proof before pool admission, so a proof whose transactions the pool rejected is held but
+    /// never relayed; it must not stop this node proving the bucket.</remarks>
+    private readonly HashSet<ValueHash256> _standingStatements = [];
+    private readonly Queue<ValueHash256> _standingOrder = [];
+
+    internal const int MaxStandingStatements = 4096;
+
     /// <summary>Encoded transaction and dependency bytes a produced mode-1 wrapper may carry: <c>MAX_WRAPPER_BYTES</c> less the
     /// largest aggregate proof and the list framing.</summary>
     internal const int MaxWrapperContentBytes = Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes - 64;
@@ -411,7 +420,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             // Already pending transactions are free to include, so only newly admitted ones may carry rejected ones, at most one each.
             int rejected = decoded.Transactions.Count - pooled;
             if ((admission.IsSuccess || admitted != 0 && rejected <= admitted) && relay is not null && RefreshVerifier() == verifier)
+            {
+                if (decoded.RecursiveStark is not null) MarkStanding(Eip8288Dependencies.ComputeDepsHash(decoded.Deps));
                 WrapperValidated?.Invoke(relay, verifier);
+            }
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
         }
         catch (RlpException)
@@ -937,9 +949,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>Held verified aggregates a bucket's proof may extend instead of folding every witness again.</summary>
     private const int MaxHeldExtensions = 4;
 
-    /// <summary>Transactions whose inputs are unavailable a bucket passes over before taking only those ranked above them.</summary>
-    private const int MaxUnavailableSkips = 4;
-
     /// <summary>Plans one mode-1 wrapper for each <paramref name="selected"/> bucket holding a pending dependency-bearing
     /// transaction, in bucket order.</summary>
     /// <remarks>EIP-8288 proof reuse: candidates are split into <see cref="BucketCount"/> buckets by transaction-hash prefix
@@ -997,7 +1006,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             List<RecursiveProofInput> parents = leanProofStore.ProvenOverlaps(dependencies, MaxHeldExtensions);
             if (previousProof is { } own) parents.Add(own);
             Bucket? best = null;
-            for (int skips = 0; skips <= MaxUnavailableSkips && ranked.Count != 0; skips++)
+            // Each pass drops a transaction whose inputs are unavailable, so the list shrinks until the prefix stops at the budget.
+            while (ranked.Count != 0)
             {
                 // The longest fitting prefix, found by binary search, taking cost and size to grow with the prefix.
                 int taken = 0;
@@ -1030,6 +1040,21 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             transactions.Sort(static (a, b) => a.Hash!.Bytes.SequenceCompareTo(b.Hash!.Bytes));
             return new(transactions, union, input);
         }
+    }
+
+    private void MarkStanding(in ValueHash256 depsHash)
+    {
+        lock (_standingStatements)
+        {
+            if (!_standingStatements.Add(depsHash)) return;
+            _standingOrder.Enqueue(depsHash);
+            if (_standingOrder.Count > MaxStandingStatements) _standingStatements.Remove(_standingOrder.Dequeue());
+        }
+    }
+
+    private bool IsStanding(in ValueHash256 depsHash)
+    {
+        lock (_standingStatements) return _standingStatements.Contains(depsHash);
     }
 
     /// <summary>The bucket of a transaction: the top <c>log2(</c><see cref="BucketCount"/><c>)</c> bits of its hash.</summary>
@@ -1183,8 +1208,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
             if (!leanProofStore.TryGetRecursiveProof(deps, out byte[]? proof))
             {
-                // EIP-8288 proof reuse: an aggregate this node or a peer already proved over a superset stands for the bucket.
-                if (leanProofStore.SmallestProving(deps) is not null) return Result<byte[]>.Fail(CoveredByHeldAggregate);
+                // EIP-8288 proof reuse: an aggregate this node built, or a peer's it admitted and relayed, over a superset stands for
+                // the bucket. A smaller held proof of other origin only means proving again.
+                if (leanProofStore.SmallestProving(deps) is { } covering && IsStanding(Eip8288Dependencies.ComputeDepsHash(covering.InnerDeps)))
+                    return Result<byte[]>.Fail(CoveredByHeldAggregate);
                 if (AwaitsOffer(deps, clock)) return Result<byte[]>.Fail(AwaitingOfferedProof);
                 HashSet<FrameDependency> required = [.. deps];
                 if (cached is not null && cached.Verifier == verifier && HasOverlap(cached.Parent.InnerDeps, required))
@@ -1219,6 +1246,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (RefreshVerifier() != verifier) return Result<byte[]>.Fail(VerifierChangedDuringAdmission);
                 leanProofStore.AddCachedRecursive(deps, proof!);
             }
+            MarkStanding(hash);
             byte[] encoded = MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes;
             if (encoded.Length > Eip8288Constants.MaxWrapperBytes)
                 return Result<byte[]>.Fail("Aggregated wrapper exceeds the size limit.");

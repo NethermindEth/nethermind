@@ -849,39 +849,73 @@ public class ProofWrapperServiceTests
         Assert.That(wrapper.Transactions.Select(static tx => tx.Hash!.ToString()), Is.EqualTo(expected));
     }
 
-    // EIP-8288 proof reuse: a held verified aggregate covering the bucket, a peer's or this node's own from before a transaction
-    // left, stands for it, so nothing is proven again.
-    [Test]
-    public void Held_aggregate_covering_the_bucket_is_reused_without_proving([Values] bool fromPeer)
+    // EIP-8288 proof reuse: a held verified aggregate covering the bucket stands for it when this node built it, or admitted and
+    // relayed the peer wrapper carrying it. A peer proof cached by a wrapper the pool rejected, and so never relayed, does not stop
+    // this node proving the bucket.
+    [TestCase("own", true)]
+    [TestCase("admitted peer", true)]
+    [TestCase("rejected peer", false)]
+    public async Task Held_aggregate_covering_the_bucket_stands_for_it_only_when_built_or_relayed(string source, bool covered)
     {
         FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first"), default);
         FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("second"), default);
         FrameDependency other = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other"), default);
         Transaction a = InBucket(0, CreateTransaction(first, TestItem.KeccakA));
         Transaction b = InBucket(0, CreateTransaction(second, TestItem.KeccakB));
+        Transaction c = InBucket(0, CreateTransaction(other, TestItem.KeccakC));
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        store.AddVerified([first, second], [[1], [1]], null);
-        // Admission caches a peer's recursive proof by its exact set.
-        if (fromPeer) store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([first, second, other]), [9]);
+        store.AddVerified([first, second, other], [[1], [1], [1]], null);
         Transaction[] pending = [a, b];
         ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(source == "rejected peer" ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted);
         FakeLeanProofVerifier verifier = new(true);
         ProofWrapperService service = CreateService(pending, store, verifier, pool: pool);
         pool.GetPendingTransactions().Returns(_ => pending);
-        if (!fromPeer)
+        if (source == "own")
         {
             Assert.That(service.BuildWrapper().IsSuccess, Is.True);
             pending = [a];
         }
+        else
+        {
+            LeanProofStore peerStore = new(FrameTxSigHash.ComputeValue);
+            peerStore.AddVerified([first, second, other], [[1], [1], [1]], null);
+            byte[] peerWrapper = CreateService([a, b, c], peerStore, new FakeLeanProofVerifier(true)).BuildWrapper().Data!;
+            await service.AcceptDetailedAsync(peerWrapper);
+        }
         int proofs = verifier.ProofCalls;
 
-        Result<byte[]> reused = service.BuildWrapper();
+        Result<byte[]> built = service.BuildWrapper();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reused.Error, Is.EqualTo(ProofWrapperService.CoveredByHeldAggregate));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(proofs));
+            Assert.That(built.Error, covered ? Is.EqualTo(ProofWrapperService.CoveredByHeldAggregate) : Is.Null);
+            Assert.That(verifier.ProofCalls, Is.EqualTo(covered ? proofs : proofs + 1));
         }
+    }
+
+    // Transactions whose inputs are unavailable, however many rank above the rest, are passed over rather than leaving the bucket
+    // unaggregated.
+    [Test]
+    public void Bucket_passes_over_any_number_of_unavailable_transactions_ranked_first()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Transaction[] unavailable = [.. Enumerable.Range(0, 8).Select(i =>
+        {
+            Transaction transaction = InBucket(0, CreateTransaction(
+                new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"unavailable:{i}"), default), TestItem.KeccakA));
+            transaction.GasBottleneck = 100;
+            return transaction;
+        })];
+        Transaction available = OnePerBucket(store, 0)[0];
+        available.GasBottleneck = 1;
+        ProofWrapperService service = CreateService([.. unavailable, available], store, new FakeLeanProofVerifier(true));
+
+        Result<byte[]> built = service.BuildWrapper();
+
+        Assert.That(built.IsSuccess ? Decode(built.Data!).Transactions.Select(static tx => tx.Hash) : null, Is.EqualTo(new[] { available.Hash }),
+            built.Error);
     }
 
     // EIP-8288 proof reuse: a bucket's proof extends a held aggregate of part of it rather than folding every witness again,
