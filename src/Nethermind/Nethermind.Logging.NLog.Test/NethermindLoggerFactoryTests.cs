@@ -47,6 +47,31 @@ public class NethermindLoggerFactoryTests
         }
     }
 
+    [Test]
+    public void Severity_ceiling_does_not_enable_none()
+    {
+        CapturingLogger capturingLogger = new(true);
+        using NethermindLoggerFactory factory = new(new OneLoggerLogManager(new ILogger(capturingLogger)),
+            lowerLogLevel: true, maxLogLevel: MsLogLevel.Trace);
+        MsLogger logger = factory.CreateLogger(nameof(NethermindLoggerFactoryTests));
+        int noneFormatCalls = 0;
+
+        logger.Log(MsLogLevel.None, default, "not logged", null, (state, _) =>
+        {
+            noneFormatCalls++;
+            return state;
+        });
+        logger.Log(MsLogLevel.Warning, default, "capped", null, static (state, _) => state);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.IsEnabled(MsLogLevel.None), Is.False);
+            Assert.That(logger.IsEnabled(MsLogLevel.Warning), Is.True);
+            Assert.That(noneFormatCalls, Is.Zero);
+            Assert.That(capturingLogger.Entries, Is.EqualTo(new[] { new LogEntry(CapturedLevel.Trace, "capped") }));
+        }
+    }
+
     [TestCase(MsLogLevel.Error)]
     [TestCase(MsLogLevel.Critical)]
     public void Error_log_forwards_original_exception(MsLogLevel logLevel)
