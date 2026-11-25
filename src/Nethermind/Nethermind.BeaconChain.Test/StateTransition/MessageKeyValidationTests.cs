@@ -115,12 +115,17 @@ public class MessageKeyValidationTests
     }
 
     [Test]
-    public void A_verifier_that_rejects_every_signature_refuses_a_valid_envelope([Values] bool rejecting)
+    public void A_verifier_that_rejects_every_signature_refuses_a_valid_envelope([Values] bool rejecting, [Values] bool selfBuild)
     {
         BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
-        SignedExecutionPayloadBid bid = ValidBuilderBid(state, builderSk, builderIndex: 0, value: 3 * Gwei);
+        InstallRealValidatorKeys(state);
+        SignedExecutionPayloadBid bid = selfBuild
+            ? SelfBuildBid(state, state.LatestBlockHash!, Hash(0x88))
+            : ValidBuilderBid(state, builderSk, builderIndex: 0, value: 3 * Gwei);
         GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: false);
-        SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
+        SignedExecutionPayloadEnvelope envelope = selfBuild
+            ? ValidEnvelope(state, bid.Message!, ValidatorKey((int)state.LatestBlockHeader!.ProposerIndex), Presets.BuilderIndexSelfBuild)
+            : ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
         PubkeyCache pubkeys = rejecting ? new PubkeyCache { SignatureVerifier = new RejectingSignatureVerifier() } : new PubkeyCache();
 
         Action verify = () => GloasBlockProcessing.VerifyExecutionPayloadEnvelope(new BlockStates().Add(state), envelope, new AcceptingNotifier(), pubkeys);
