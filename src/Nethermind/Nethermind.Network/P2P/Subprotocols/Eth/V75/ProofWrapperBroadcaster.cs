@@ -69,7 +69,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             : null;
     }
 
-    /// <summary>Whether the head activates EIP-8288; the broadcaster is inert otherwise.</summary>
+    /// <summary>Whether the mempool fork enables EIP-8288; the broadcaster is inert otherwise.</summary>
     public bool IsEnabled => _wrappers.IsEnabled;
 
     internal int PeerCount { get { lock (_gate) return _peers.Count; } }
@@ -228,7 +228,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
 
     private void Tick()
     {
-        // Applies the local verifier-change rule, through VerifierChanged, once the head reaches a fork with another verifier.
+        // Applies the local verifier-change rule, through VerifierChanged, once the local clock reaches a fork with another verifier.
         // Before activation it runs only for peers, which register once the fork is scheduled.
         if (!IsEnabled && PeerCount == 0) return;
         Eip8288Verifier? refreshed;
