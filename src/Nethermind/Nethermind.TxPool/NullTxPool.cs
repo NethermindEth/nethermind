@@ -142,12 +142,6 @@ namespace Nethermind.TxPool
 
         public AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
 
-        public event EventHandler<TxEventArgs> NewDiscovered
-        {
-            add { }
-            remove { }
-        }
-
         public event EventHandler<TxEventArgs> NewPending
         {
             add { }
