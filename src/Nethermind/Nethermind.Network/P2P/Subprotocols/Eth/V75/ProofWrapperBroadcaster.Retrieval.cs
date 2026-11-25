@@ -383,10 +383,12 @@ public sealed partial class ProofWrapperBroadcaster
     }
 
     /// <summary>Matches returned manifests, in order, to distinct requested hashes, checks each on arrival and against held
-    /// transactions, and drops wanted wrappers a manifest shows add no coverage; the rest are fetched next (<c>eth/76</c>).</summary>
-    /// <remarks>A manifest is <paramref name="peer"/>'s claim, checked against the wrapper if it is fetched from that peer. Hashes
-    /// after the last one returned were cut by the soft limit and are asked again; a wrapper whose manifest was unavailable, or
-    /// that an empty response or a timeout left without one, is fetched without it.</remarks>
+    /// transactions, and does not fetch from <paramref name="peer"/> a wrapper its manifest shows adds no coverage; the rest are
+    /// fetched next (<c>eth/76</c>).</summary>
+    /// <remarks>A manifest is <paramref name="peer"/>'s claim alone: one showing no new coverage only retires that peer as a
+    /// source, so a false one cannot keep the wrapper from other announcers, who are asked for their own manifest. It is checked
+    /// against the wrapper if it is fetched. Hashes after the last one returned were cut by the soft limit and are asked again;
+    /// a wrapper whose manifest was unavailable, or that an empty response or a timeout left without one, is fetched without it.</remarks>
     internal void OnProofWrapperManifests(WrapperPeer peer, ProofWrapperManifestsMessage message)
     {
         ProofWrapperManifest[] entries = message.Manifests;
@@ -432,7 +434,6 @@ public sealed partial class ProofWrapperBroadcaster
         }
         int last = entries.Length == 0 ? -1 : matched[^1];
         int next = 0;
-        long expiry = _clock.GetTimestamp() + (long)(WrapperTransportLimits.SoftTombstone.TotalSeconds * _clock.TimestampFrequency);
         for (int position = 0; position < fetches.Length; position++)
         {
             WrapperFetch fetch = fetches[position];
@@ -443,9 +444,10 @@ public sealed partial class ProofWrapperBroadcaster
                 fetch.SetManifest(peer, manifest);
                 fetch.WantsManifest = false;
                 if (fetch.Removed || !HeldRecursively(manifest.Hashes)) continue;
-                // Other announcers of the same aggregate are not asked for its manifest again for a while.
-                _tombstones.Add(fetch.Announcement.Hash, expiry);
-                Remove(fetch, "its manifest shows no new coverage");
+                // The next source, if any, is asked for its own manifest; without one the fetch ends as every source tried.
+                fetch.Tried.Add(peer);
+                fetch.ClaimedCovered.Add(peer);
+                fetch.WantsManifest = true;
                 WrapperMetrics.Record(WrapperEvent.HeldSkipped);
             }
             else if (position <= last || entries.Length == 0) fetch.WantsManifest = false;

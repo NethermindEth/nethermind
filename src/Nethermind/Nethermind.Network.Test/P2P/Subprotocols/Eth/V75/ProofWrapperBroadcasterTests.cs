@@ -1299,6 +1299,34 @@ public class ProofWrapperBroadcasterTests
         }
     }
 
+    // eth/76: a manifest is its sender's claim alone. A peer announcing a real aggregate with a false txs-hash and a matching
+    // manifest of held transactions only retires itself as a source: an honest announcer is asked for its manifest, the wrapper
+    // is fetched from it, and the false manifest is then attributed to its sender.
+    [Test]
+    public async Task False_covering_manifest_does_not_keep_an_aggregate_from_honest_announcers()
+    {
+        using WrapperTestNode node = AggregatingNode(out Transaction a, out Transaction _);
+        byte[] wrapper = Wrapper(64, 7, a, FrameTransaction(3)), decoy = Wrapper(64, 9, a);
+        WrapperAnnouncement truth = Describe(wrapper);
+        FakeWrapperLink liar = new("liar"), honest = new("honest");
+        WrapperPeer liarPeer = node.Connect(liar), honestPeer = node.Connect(honest);
+        node.Broadcaster.OnAnnounce(liarPeer, new([Announcement(1, truth.Length, truth.Hash, Describe(decoy).Coverage)]));
+        node.Broadcaster.OnAnnounce(honestPeer, new([truth]));
+
+        AnswerManifests(node, liarPeer, liar, (wrapper, WrapperMetadata.Of(decoy)));
+        Assert.That(honest.Sent<GetProofWrapperManifestsMessage>().SelectMany(static m => m.Hashes), Is.EqualTo(new[] { truth.Hash }));
+        AnswerManifests(node, honestPeer, honest, (wrapper, WrapperMetadata.Of(wrapper)));
+        Answer(node, honestPeer, honest, wrapper);
+        await WrapperTestNode.Until(() => node.Broadcaster.IsStored(truth.Hash));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(liar.Sent<GetProofWrappersMessage>(), Is.Empty);
+            Assert.That(honest.Penalties, Is.Empty);
+            Assert.That(liar.Penalties, Has.Length.EqualTo(1), "its manifest is false against the verified wrapper");
+        }
+    }
+
     // eth/76: a manifest is checked on arrival against its announcement and held transactions, and against the wrapper fetched
     // from the same peer, before proof verification.
     [TestCase("txs-hash")]
