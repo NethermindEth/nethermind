@@ -85,23 +85,24 @@ public class GuestInitCodeTests
     public void Empty_init_code_is_empty() => Assert.That(CodeInfo.ForInitCode(ReadOnlyMemory<byte>.Empty, callDepth: 5).IsEmpty, Is.True);
 
     [Test]
-    public void Init_code_loaded_from_memory_runs_where_it_was_loaded([Values] bool inlineMemory)
+    public void Init_code_is_borrowed_from_memory_until_its_one_copy([Values] bool inlineMemory)
     {
         const int callDepth = 6;
         byte[] code = Filled(200, JUMPDEST);
         UInt256 location = 64;
+        UInt256 length = (UInt256)code.Length;
         using EvmFrameMemory frameMemory = new();
         EvmPooledMemory memory = inlineMemory ? new(frameMemory) : default;
         try
         {
             bool saved = memory.TrySave(in location, code);
-            bool loaded = CodeInfo.TryLoadInitCode(ref memory, in location, (UInt256)code.Length, callDepth, out ReadOnlyMemory<byte> initCode);
+            bool loaded = CodeInfo.TryLoadInitCode(ref memory, in location, in length, callDepth, out ReadOnlyMemory<byte> initCode);
             CodeInfo codeInfo = CodeInfo.ForInitCode(initCode, callDepth);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(saved && loaded, Is.True);
-                Assert.That(Unsafe.AreSame(in First(codeInfo), in MemoryMarshal.GetReference(initCode.Span)), Is.True, "no second copy");
+                Assert.That(Unsafe.AreSame(in MemoryMarshal.GetReference(initCode.Span), in MemoryMarshal.GetReference(memory.Inspect(in location, in length).Span)), Is.True, "borrowed");
                 Assert.That(codeInfo.ExecutionCodeSpan.ToArray(), Is.EqualTo(code));
             }
         }

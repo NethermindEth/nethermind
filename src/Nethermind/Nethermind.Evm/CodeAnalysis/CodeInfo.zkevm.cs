@@ -60,8 +60,8 @@ public sealed partial class CodeInfo
         ref InitCodeBuffers buffers = ref GetInitCodeBuffers(callDepth, length);
         byte[] code = buffers.Code!;
         ReadOnlySpan<byte> source = initCode.Span;
-        // Init code from TryLoadInitCode lies in the buffer already.
-        if (!Unsafe.AreSame(ref MemoryMarshal.GetReference(source), ref MemoryMarshal.GetArrayDataReference(code)))
+        // Where memory is swizzled, TryLoadInitCode has loaded the init code into the buffer already.
+        if (!EvmPooledMemory.IsSwizzled || !Unsafe.AreSame(ref MemoryMarshal.GetReference(source), ref MemoryMarshal.GetArrayDataReference(code)))
             source.CopyTo(code);
 
         // Longer init code that ran before at this depth may have left its bytes there.
@@ -70,32 +70,36 @@ public sealed partial class CodeInfo
     }
 
     /// <remarks>
-    /// Copies the init code once, into the buffer <see cref="ForInitCode"/> runs it from, in natural byte order where the
-    /// memory is swizzled: a copy of its own would be a second one, which the guest never frees. The init code stays valid
-    /// as long as the code of a creation frame does, until the next creation at that depth loads its own.
+    /// The guest never frees memory, so the init code is copied once, into the buffer <see cref="ForInitCode"/> runs it
+    /// from. Memory in natural byte order is borrowed: nothing writes the creating frame's memory before
+    /// <see cref="ForInitCode"/> copies it, and the guest's only action tracer keeps none of it. Swizzled memory is read
+    /// into that buffer in natural order here instead, rather than into a copy of its own.
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static partial bool TryLoadInitCode(ref EvmPooledMemory memory, in UInt256 location, in UInt256 length, int callDepth, out ReadOnlyMemory<byte> initCode)
     {
-        // Charging the expansion has checked the range.
-        Span<byte> laidOut = memory.LoadLaidOutSpanAfterGas(in location, in length);
-        int codeLength = laidOut.Length;
-        if (codeLength == 0)
-        {
-            initCode = default;
-            return true;
-        }
+        if (!EvmPooledMemory.IsSwizzled) return memory.TryLoad(in location, in length, out initCode);
 
-        byte[] code = GetInitCodeBuffers(callDepth, codeLength).Code!;
-        if (EvmPooledMemory.IsSwizzled)
-            SwizzledMemory.Read(ref MemoryMarshal.GetReference(laidOut), code.AsSpan(0, codeLength));
-        else
-            laidOut.CopyTo(code);
-
-        initCode = code.AsMemory(0, codeLength);
+        initCode = LoadSwizzledInitCode(ref memory, in location, in length, callDepth);
         return true;
     }
 
+    /// <summary>Reads the init code from swizzled memory into the code buffer of <paramref name="callDepth"/>, in natural byte order.</summary>
+    /// <remarks>Out of line, as the creation handler it would otherwise be inlined into has an instance per fork.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ReadOnlyMemory<byte> LoadSwizzledInitCode(ref EvmPooledMemory memory, in UInt256 location, in UInt256 length, int callDepth)
+    {
+        // Charging the expansion has checked the range.
+        Span<byte> laidOut = memory.LoadLaidOutSpanAfterGas(in location, in length);
+        if (laidOut.IsEmpty) return default;
+
+        byte[] code = GetInitCodeBuffers(callDepth, laidOut.Length).Code!;
+        SwizzledMemory.Read(ref MemoryMarshal.GetReference(laidOut), code.AsSpan(0, laidOut.Length));
+        return code.AsMemory(0, laidOut.Length);
+    }
+
     /// <summary>The buffers of the creation frames at <paramref name="callDepth"/>, grown to hold <paramref name="length"/> bytes of code.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ref InitCodeBuffers GetInitCodeBuffers(int callDepth, int length)
     {
         ref InitCodeBuffers buffers = ref (_initCodeBuffers ??= new InitCodeBuffers[VirtualMachineStatics.MaxCallDepth + 1])[callDepth];
