@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
@@ -76,6 +77,40 @@ public class PerTxTimingCollectorTests
             else
                 Assert.That(other, Is.Null);
         }
+    }
+
+    [Test]
+    public void Executor_releases_timings_after_processing_even_on_failure([Values] bool fail)
+    {
+        Transaction transaction = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.TestObject.WithReplacedBody(new BlockBody([transaction], []));
+        ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
+        adapter.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(_ =>
+            fail ? throw new InvalidOperationException("Test failure") : TransactionResult.Ok);
+        TimingExecutor executor = new(adapter, Substitute.For<IWorldState>());
+        using BlockReceiptsTracer receipts = new();
+        receipts.SetOtherTracer(NullBlockTracer.Instance);
+        receipts.StartNewBlockTrace(block);
+
+        if (fail)
+            Assert.Throws<InvalidOperationException>(() => executor.ProcessTransactions(block, ProcessingOptions.None, receipts, CancellationToken.None));
+        else
+            executor.ProcessTransactions(block, ProcessingOptions.None, receipts, CancellationToken.None);
+
+        using ArrayPoolList<long> snapshot = PerTxTimingCollector.Snapshot();
+        Assert.That(snapshot, Has.Count.EqualTo(1));
+        snapshot[0] = -1;
+        fail = false;
+        receipts.StartNewBlockTrace(block);
+        executor.ProcessSingle(block, receipts);
+        Assert.That(snapshot[0], Is.EqualTo(-1));
+    }
+
+    private sealed class TimingExecutor(ITransactionProcessorAdapter adapter, IWorldState state)
+        : BlockProcessor.BlockValidationTransactionsExecutor(adapter, state)
+    {
+        public void ProcessSingle(Block block, BlockReceiptsTracer receipts) =>
+            ProcessTransaction(block, block.Transactions[0], 0, receipts, ProcessingOptions.None);
     }
 
     private static void ExecuteTransactions(int count)

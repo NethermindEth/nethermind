@@ -81,6 +81,7 @@ public class PortfolioViewerMiddlewareTests
             Substitute.For<IDetectionCache>(),
             Substitute.For<IDetectionScanner>(),
             Substitute.For<IPinnedCidStore>(),
+            new PortfolioViewerConfig(),
             LimboLogs.Instance);
         await middleware.InvokeAsync(ctx);
 
@@ -178,8 +179,25 @@ public class PortfolioViewerMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
     }
 
-    private static PortfolioViewerMiddleware CreateMiddleware(bool isAuthenticated = false, ISiblingNodeRegistry? siblings = null, IDetectionScanner? scanner = null, IPinnedCidStore? pins = null) =>
-        new(_ => Task.CompletedTask, CreateUrlCollection(isAuthenticated), siblings ?? Substitute.For<ISiblingNodeRegistry>(), Substitute.For<IDetectionCache>(), scanner ?? Substitute.For<IDetectionScanner>(), pins ?? Substitute.For<IPinnedCidStore>(), LimboLogs.Instance);
+    [TestCase("GET", "/portfolio-ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")]
+    [TestCase("POST", "/portfolio-ipfs-pin/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")]
+    [TestCase("DELETE", "/portfolio-ipfs-pin")]
+    public async Task Ipfs_DisabledByDefault_Returns404(string method, string path)
+    {
+        (DefaultHttpContext ctx, _) = CreateContext(Port, method, path);
+        IPinnedCidStore pins = Substitute.For<IPinnedCidStore>();
+
+        await CreateMiddleware(pins: pins, ipfsEnabled: new PortfolioViewerConfig().IpfsEnabled).InvokeAsync(ctx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+            Assert.That(pins.ReceivedCalls(), Is.Empty);
+        }
+    }
+
+    private static PortfolioViewerMiddleware CreateMiddleware(bool isAuthenticated = false, ISiblingNodeRegistry? siblings = null, IDetectionScanner? scanner = null, IPinnedCidStore? pins = null, bool ipfsEnabled = true) =>
+        new(_ => Task.CompletedTask, CreateUrlCollection(isAuthenticated), siblings ?? Substitute.For<ISiblingNodeRegistry>(), Substitute.For<IDetectionCache>(), scanner ?? Substitute.For<IDetectionScanner>(), pins ?? Substitute.For<IPinnedCidStore>(), new PortfolioViewerConfig { IpfsEnabled = ipfsEnabled }, LimboLogs.Instance);
 
     private static IJsonRpcUrlCollection CreateUrlCollection(bool isAuthenticated = false) =>
         new TestJsonRpcUrlCollection(new JsonRpcUrl("http", "127.0.0.1", Port, RpcEndpoint.Http, isAuthenticated, [ModuleType.Eth]));

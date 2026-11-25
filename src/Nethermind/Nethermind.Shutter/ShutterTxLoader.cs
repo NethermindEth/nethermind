@@ -109,7 +109,7 @@ public class ShutterTxLoader(
         if (txCount > keyCount)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not decrypt all Shutter transactions: found {txCount} transactions but received {keyCount} keys (excluding placeholder).");
-            sequencedTransactions.ReduceCount(txCount - keyCount);
+            sequencedTransactions.ReduceCount(keyCount);
             txCount = keyCount;
         }
 

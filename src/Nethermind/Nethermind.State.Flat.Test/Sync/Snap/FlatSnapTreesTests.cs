@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Snap;
@@ -23,10 +22,10 @@ public class FlatSnapTreesTests
     private static IPersistence.IWriteBatch WriteBatch() => Substitute.For<IPersistence.IWriteBatch>();
 
     private static FlatSnapStateTree NewStateTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch? writer = null, bool enableDoubleWriteCheck = false) =>
-        new(reader, writer ?? WriteBatch(), enableDoubleWriteCheck, LimboLogs.Instance);
+        new(reader, writer ?? WriteBatch(), enableDoubleWriteCheck);
 
     private static FlatSnapStorageTree NewStorageTree(IPersistence.IPersistenceReader reader, Hash256 addressHash, IPersistence.IWriteBatch? writer = null) =>
-        new(reader, writer ?? WriteBatch(), addressHash, enableDoubleWriteCheck: false, LimboLogs.Instance);
+        new(reader, writer ?? WriteBatch(), addressHash, enableDoubleWriteCheck: false);
 
     private static ValueHash256 PathHash(string prefix) => new(Bytes.FromHexString(prefix + new string('0', 64 - prefix.Length)));
 
@@ -69,9 +68,9 @@ public class FlatSnapTreesTests
     private static IEnumerable<TestCaseData> DisposeCases()
     {
         yield return new TestCaseData((Func<IPersistence.IPersistenceReader, IPersistence.IWriteBatch, IDisposable>)
-            ((r, w) => new FlatSnapStateTree(r, w, enableDoubleWriteCheck: false, LimboLogs.Instance))).SetName("state tree");
+            ((r, w) => new FlatSnapStateTree(r, w, enableDoubleWriteCheck: false))).SetName("state tree");
         yield return new TestCaseData((Func<IPersistence.IPersistenceReader, IPersistence.IWriteBatch, IDisposable>)
-            ((r, w) => new FlatSnapStorageTree(r, w, Keccak.Zero, enableDoubleWriteCheck: false, LimboLogs.Instance))).SetName("storage tree");
+            ((r, w) => new FlatSnapStorageTree(r, w, Keccak.Zero, enableDoubleWriteCheck: false))).SetName("storage tree");
     }
 
     [TestCaseSource(nameof(DisposeCases))]

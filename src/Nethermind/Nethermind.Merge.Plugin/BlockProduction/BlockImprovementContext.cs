@@ -37,15 +37,17 @@ public class BlockImprovementContext : IBlockImprovementContext
         SharedCancellationTokenSource cts)
     {
         _improvementCancellation = cts;
-        _timeOutCancellation = new CancellationTokenSource(timeout);
         _best = new(currentBestBlock, currentBlockFees);
         StartDateTime = startDateTime;
 
-        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
-        CancellationToken ct = _linkedCancellation.Token;
+        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _timeOutCancellation = CancellationTokenSource.CreateLinkedTokenSource(_linkedCancellation.Token);
+        _timeOutCancellation.CancelAfter(timeout);
+        CancellationToken ct = _timeOutCancellation.Token;
+        CancellationToken abandonToken = _linkedCancellation.Token;
         // Task.Run so doesn't block FCU response while first block is being produced
         ImprovementTask = Task.Run(() => blockProducer
-            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, ct)
+            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, ct, abandonToken)
             .ContinueWith(SetCurrentBestBlock));
     }
 

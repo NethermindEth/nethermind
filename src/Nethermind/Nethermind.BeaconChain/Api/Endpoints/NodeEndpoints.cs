@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Globalization;
-using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Multiformats.Base;
 using Multiformats.Hash;
 using Nethermind.BeaconChain.Api.Common;
@@ -17,62 +15,41 @@ using Nethermind.Libp2p.Core;
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
 /// <summary><c>/eth/v1/node/*</c>: health, identity, version, syncing, and peer accounting.</summary>
-internal static class NodeEndpoints
+internal sealed class NodeEndpoints(BeaconApiContext ctx)
 {
     /// <summary>Slots the head may lag the wall clock by and still count as caught up (health 200, is_syncing=false).</summary>
     private const long ReadySyncDistance = 1;
 
-    public static void Map(WebApplication app, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/node/health")]
+    public IResult Health([FromQuery(Name = "syncing_status")] int? syncingStatus)
     {
-        app.MapGet("/eth/v1/node/health", c => Health(c, ctx.ForRequest()));
-        app.MapGet("/eth/v1/node/version", c => Version(c));
-        app.MapGet("/eth/v1/node/identity", c => ContentNegotiation.JsonOnly(c, ctx, Identity));
-        app.MapGet("/eth/v1/node/syncing", c => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), Syncing));
-        app.MapGet("/eth/v1/node/peer_count", c => ContentNegotiation.JsonOnly(c, ctx, PeerCount));
-        app.MapGet("/eth/v1/node/peers", c => ContentNegotiation.JsonOnly(c, ctx, Peers));
-        app.MapGet("/eth/v1/node/peers/{peer_id}", (HttpContext c, string peer_id) => ContentNegotiation.JsonOnly(c, ctx, peer_id, PeerById));
-    }
-
-    private static Task Health(HttpContext c, BeaconApiContext ctx)
-    {
-        int syncingStatus = StatusCodes.Status206PartialContent;
-        if (c.Request.Query.TryGetValue("syncing_status", out Microsoft.Extensions.Primitives.StringValues raw)
-            && (!int.TryParse(raw.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out syncingStatus)
-                || syncingStatus is < 100 or > 599))
+        if (syncingStatus is < 100 or > 599)
         {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, "Invalid syncing status code.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status400BadRequest, "Invalid syncing status code.");
         }
 
         StatusMessageV2 status = ctx.StatusSource.CurrentStatus;
         if (status.HeadRoot == Hash256.Zero)
         {
             // Nothing has been observed yet: neither "ready" nor "syncing" is true, only "not initialized".
-            c.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-            return Task.CompletedTask;
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         }
 
         long distance = (long)ctx.SlotClock.CurrentSlot - (long)status.HeadSlot;
-        c.Response.StatusCode = distance > ReadySyncDistance || !ctx.StatusSource.ExecutionInSync || !ctx.Engine.IsAvailable
-            ? syncingStatus : StatusCodes.Status200OK;
-        return Task.CompletedTask;
+        return Results.StatusCode(distance > ReadySyncDistance || !ctx.StatusSource.ExecutionInSync || !ctx.Engine.IsAvailable
+            ? syncingStatus ?? StatusCodes.Status206PartialContent : StatusCodes.Status200OK);
     }
 
-    private static Task Version(HttpContext c)
-    {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
+    [HttpGet("/eth/v1/node/version"), Negotiated]
+    public static IResult Version() => ApiResults.Data(new VersionDto(BeaconP2P.ClientAgentVersion));
 
-        return BeaconApiJson.WriteDataAsync(c, new VersionDto(BeaconP2P.ClientAgentVersion), c.RequestAborted);
-    }
-
-    private static Task Identity(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/node/identity"), Negotiated]
+    public IResult Identity()
     {
         if (ctx.P2P?.LocalPeerId is not { } peerId)
         {
-            return ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable,
-                "The P2P host has not started yet; no peer id is assigned.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status503ServiceUnavailable,
+                "The P2P host has not started yet; no peer id is assigned.");
         }
 
         string peerIdString = peerId.ToString()!;
@@ -98,10 +75,11 @@ internal static class NodeEndpoints
             [],
             metadata);
 
-        return BeaconApiJson.WriteDataAsync(c, dto, c.RequestAborted);
+        return ApiResults.Data(dto);
     }
 
-    private static Task Syncing(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/node/syncing"), Negotiated]
+    public IResult Syncing()
     {
         StatusMessageV2 status = ctx.StatusSource.CurrentStatus;
         ulong wallSlot = ctx.SlotClock.CurrentSlot;
@@ -115,10 +93,11 @@ internal static class NodeEndpoints
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
             !ctx.Engine.IsAvailable);
 
-        return BeaconApiJson.WriteDataAsync(c, dto, c.RequestAborted);
+        return ApiResults.Data(dto);
     }
 
-    private static Task PeerCount(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/node/peer_count"), Negotiated]
+    public IResult PeerCount()
     {
         int disconnected = 0, connecting = 0, connected = 0, disconnecting = 0;
         foreach (PeerRecord peer in ctx.PeerManager?.Peers ?? [])
@@ -133,7 +112,7 @@ internal static class NodeEndpoints
         }
         PeerCountDto dto = new(disconnected.ToString(), connecting.ToString(), connected.ToString(), disconnecting.ToString());
 
-        return BeaconApiJson.WriteDataAsync(c, dto, c.RequestAborted);
+        return ApiResults.Data(dto);
     }
 
     /// <summary>
@@ -142,25 +121,26 @@ internal static class NodeEndpoints
     /// manager reports an empty list rather than an error - the same "zero rather than unavailable"
     /// choice <see cref="PeerCount"/> already makes for the same case.
     /// </summary>
-    private static Task Peers(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/node/peers"), Negotiated]
+    public IResult Peers([FromQuery(Name = "state")] string[] stateFilters, [FromQuery(Name = "direction")] string[] directionFilters)
     {
         List<PeerConnectionState> states = [];
-        foreach (string? raw in c.Request.Query["state"])
+        foreach (string raw in stateFilters)
         {
             if (ParseState(raw) is not { } state)
             {
-                return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Unknown peer state '{raw}'.", c.RequestAborted);
+                return ApiResults.Error(StatusCodes.Status400BadRequest, $"Unknown peer state '{raw}'.");
             }
 
             states.Add(state);
         }
 
         List<PeerDirection> directions = [];
-        foreach (string? raw in c.Request.Query["direction"])
+        foreach (string raw in directionFilters)
         {
             if (ParseDirection(raw) is not { } direction)
             {
-                return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Unknown peer direction '{raw}'.", c.RequestAborted);
+                return ApiResults.Error(StatusCodes.Status400BadRequest, $"Unknown peer direction '{raw}'.");
             }
 
             directions.Add(direction);
@@ -183,29 +163,29 @@ internal static class NodeEndpoints
             filtered.Add(ToPeerDto(peer));
         }
 
-        c.Response.ContentType = ContentNegotiation.Json;
-        return JsonSerializer.SerializeAsync(c.Response.Body, new PeersEnvelopeDto(filtered, new PeersMetaDto(filtered.Count)), BeaconApiJson.Options, c.RequestAborted);
+        return ApiResults.Json(new PeersEnvelopeDto(filtered, new PeersMetaDto(filtered.Count)));
     }
 
-    /// <summary><c>/eth/v1/node/peers/{peer_id}</c>: a single tracked peer, or 404 for an id this
+    /// <summary><c>/eth/v1/node/peers/{peerId}</c>: a single tracked peer, or 404 for an id this
     /// driver's peer manager (or the driver itself, when it has none) has no record of.</summary>
-    private static Task PeerById(HttpContext c, string peer_id, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/node/peers/{peerId}"), Negotiated]
+    public IResult PeerById(string peerId)
     {
-        if (peer_id.Length > 64 || peer_id.AsSpan().IndexOfAnyExcept("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz") >= 0
-            || !Multihash.TryParse(peer_id, MultibaseEncoding.Base58Btc, out Multihash hash)
+        if (peerId.Length > 64 || peerId.AsSpan().IndexOfAnyExcept("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz") >= 0
+            || !Multihash.TryParse(peerId, MultibaseEncoding.Base58Btc, out Multihash hash)
             || (int)hash.Code is not (0 or 18)
             || ((int)hash.Code == 18 ? hash.Length != 32 : hash.Length is < 1 or > 42)
-            || !new PeerId(peer_id).Bytes.AsSpan().SequenceEqual(hash.ToBytes()))
+            || !new PeerId(peerId).Bytes.AsSpan().SequenceEqual(hash.ToBytes()))
         {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid peer ID: {peer_id}", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status400BadRequest, $"Invalid peer ID: {peerId}");
         }
 
-        if (ctx.PeerManager is null || !ctx.PeerManager.TryGetPeer(peer_id, out PeerRecord peer))
+        if (ctx.PeerManager is null || !ctx.PeerManager.TryGetPeer(peerId, out PeerRecord peer))
         {
-            return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"No known peer '{peer_id}'.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status404NotFound, $"No known peer '{peerId}'.");
         }
 
-        return BeaconApiJson.WriteDataAsync(c, ToPeerDto(peer), c.RequestAborted);
+        return ApiResults.Data(ToPeerDto(peer));
     }
 
     private static PeerDto ToPeerDto(PeerRecord peer) => new(
@@ -277,7 +257,7 @@ internal static class NodeEndpoints
         [property: JsonPropertyName("connected")] string Connected,
         [property: JsonPropertyName("disconnecting")] string Disconnecting);
 
-    // No shared BeaconApiJson helper produces a {"data": [...], "meta": {...}} shape (only a single
+    // No shared ApiResults helper produces a {"data": [...], "meta": {...}} shape (only a single
     // "data" value or the fork-versioned envelope), so this is written directly rather than reusing one.
     private sealed record PeerDto(
         [property: JsonPropertyName("peer_id")] string PeerId,

@@ -1938,6 +1938,61 @@ public class FastHeadersSyncTests
     }
 
     [Test]
+    public async Task Request_sizing_returns_when_a_dependency_arrives_during_the_estimate()
+    {
+        BlockHeader[] headers = new BlockHeader[15];
+        headers[0] = Build.A.BlockHeader.WithNumber(0).WithDifficulty(1).TestObject;
+        for (int i = 1; i < headers.Length; i++)
+            headers[i] = Build.A.BlockHeader.WithParent(headers[i - 1]).WithDifficulty(1).TestObject;
+        TaskCompletionSource<int?> sizing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ISyncPeerPool peers = Substitute.For<ISyncPeerPool>();
+        peers.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(2), Task.FromResult<int?>(2), sizing.Task);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new SyncConfig
+            {
+                FastSync = true,
+                SnapSync = true,
+                PivotNumber = 14,
+                PivotHash = headers[14].Hash!.ToString(),
+                PivotTotalDifficulty = "1000",
+                FastHeadersMemoryBudget = 1
+            }))
+            .AddSingleton<ISyncPeerPool>(peers)
+            .AddSingleton<ISyncReport>(new NullSyncReport())
+            .AddSingleton<HeadersSyncFeed>()
+            .Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        tree.SyncPivot = (14, headers[14].Hash!);
+        HeadersSyncFeed feed = container.Resolve<HeadersSyncFeed>();
+        feed.InitializeFeed();
+        HeadersSyncBatch upper = (await feed.PrepareRequest())!;
+        HeadersSyncBatch lower = (await feed.PrepareRequest())!;
+        ulong lowerStart = lower.StartNumber;
+
+        Task<HeadersSyncBatch?> sizedRequest = feed.PrepareRequest();
+        Assert.That(sizedRequest.IsCompleted, Is.False);
+        ReadOnlySpan<BlockHeader?> lowerResponse = headers.AsSpan((int)lower.StartNumber, lower.RequestSize);
+        lower.Response = lowerResponse.ToPooledList();
+        feed.HandleResponse(lower);
+        ReadOnlySpan<BlockHeader?> upperResponse = headers.AsSpan((int)upper.StartNumber, upper.RequestSize);
+        upper.Response = upperResponse.ToPooledList();
+        feed.HandleResponse(upper);
+        sizing.SetResult(2);
+
+        Task finished = await Task.WhenAny(sizedRequest, Task.Delay(TimeSpan.FromSeconds(10)));
+        Assert.That(finished, Is.SameAs(sizedRequest), "the sized request must return while a dependency waits");
+        using HeadersSyncBatch? sizedBatch = await sizedRequest;
+        using HeadersSyncBatch? nextRequest = await feed.PrepareRequest();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sizedBatch, Is.Null);
+            Assert.That(tree.LowestInsertedHeader!.Number, Is.EqualTo(lowerStart));
+            Assert.That(nextRequest?.EndNumber, Is.EqualTo(lowerStart - 1));
+        }
+    }
+
+    [Test]
     public async Task Retained_response_is_requeued_when_insert_cancels()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();

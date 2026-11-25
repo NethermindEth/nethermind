@@ -4,7 +4,6 @@
 using System.Buffers.Binary;
 using System.IO;
 using Nethermind.BeaconChain.Spec;
-using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core.Crypto;
@@ -49,12 +48,12 @@ public sealed class BeaconBlocksByHeadProtocolV1(BeaconChainSpec spec, BeaconCha
             ulong servedEpochs = currentEpoch >= Spec.GloasForkEpoch ? BeaconChainStore.MinEpochsForBlockRequests : MinEpochsForBlockRequestsBeforeGloas;
             ulong minimumEpoch = currentEpoch > servedEpochs ? currentEpoch - servedEpochs : 0;
             ulong previousSlot = ulong.MaxValue;
-            for (ulong i = 0; i < count && store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block); i++)
+            for (ulong i = 0; i < count && store.TryGetStoredBlock(root, out StoredBlock block); i++)
             {
                 cts.Token.ThrowIfCancellationRequested();
                 if (Spec.GetEpoch(block.Slot) < minimumEpoch) break;
                 if (i > 0 && block.Slot >= previousSlot) break;
-                await WriteBlockChunkAsync(stream, block, cts);
+                await WriteBlockChunkAsync(stream, block.Slot, block.Ssz, cts);
                 previousSlot = block.Slot;
                 root = block.ParentRoot;
                 if (block.Slot == 0) break;
