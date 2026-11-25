@@ -49,11 +49,7 @@ namespace Nethermind.Consensus.Clique
                     return cfg;
                 })
 
-                .AddDecorator<ISyncConfig>(static (_, syncConfig) =>
-                {
-                    syncConfig.NeedToWaitForHeader = true;
-                    return syncConfig;
-                })
+                .Intercept<ISyncConfig>(static syncConfig => syncConfig.NeedToWaitForHeader = true)
 
                 .AddSingleton<ISnapshotManager, SnapshotManager>()
                 .AddLast<IBlockPreprocessorStep, AuthorRecoveryStep>()
