@@ -249,7 +249,8 @@ public sealed class DependencyProofCache(ILeanProofVerifier verifier, ILogManage
     {
         try
         {
-            byte[] proof = DependencyProofAggregator.Prove(statement.Input, this, statement.ForkVerifier, statement.DepsHash, CancellationToken.None);
+            byte[] proof = DependencyProofAggregator.Prove(statement.Input, this, statement.ForkVerifier, statement.DepsHash, CancellationToken.None,
+                blockProduction: true);
             statement.Store.AddCachedRecursive(statement.Deps, proof);
         }
         // A later production pass schedules the statement again.

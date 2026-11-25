@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -84,6 +85,32 @@ public class NativeBlockValidationTests
                 Deps = [.. raw.Select(static w => w.Dependency)],
                 Witnesses = [.. raw.Select(static w => (ReadOnlyMemory<byte>)w.Witness)]
             }));
+        }
+    }
+
+    // One signature past a step: two equal leaves and one merge, where mempool aggregation would take 17 leaves and 16 merges.
+    [Test]
+    public async Task BlockValidator_with_native_verifier_accepts_a_block_production_proof_of_equal_wide_leaves()
+    {
+        const int signatures = Eip8288Constants.MaxRawWitnessesPerStep + 1;
+        (FrameDependency Dependency, byte[] Witness)[] witnesses = await GenerateWitnesses(0, signatures);
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(witnesses.Select(static w => w.Dependency));
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
+        NativeBlockProductionTests.CountingNativeVerifier prover = new();
+
+        byte[] proof = DependencyProofAggregator.Prove(new AggregationInput
+        {
+            Deps = [.. witnesses.Select(static w => w.Dependency)],
+            Witnesses = [.. witnesses.Select(static w => (ReadOnlyMemory<byte>)w.Witness)]
+        }, prover, Eip8288Verifier.Pinned, in depsHash, blockProduction: true);
+        (Block block, BlockHeader parent) = BlockWithProof(dependencies, proof);
+
+        bool result = CreateValidator().ValidateSuggestedBlock(block, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True, error);
+            Assert.That(prover.ProofCalls, Is.EqualTo(3));
         }
     }
 
