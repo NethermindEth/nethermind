@@ -3194,7 +3194,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_accept_only_when_synced([Values(false, true)] bool isSynced, [Values(false, true)] bool isLocal)
+        public void should_accept_only_when_synced([Values(false, true)] bool isSynced, [Values(false, true)] bool isLocal, [Values(false, true)] bool acceptTxWhenNotSynced)
         {
             if (!isSynced)
             {
@@ -3203,7 +3203,7 @@ namespace Nethermind.TxPool.Test
                 _blockTree.Head = block;
             }
 
-            _txPool = CreatePool(null, new TestSpecProvider(Berlin.Instance));
+            _txPool = CreatePool(new TxPoolConfig { GasLimit = TxGasLimit, AcceptTxWhenNotSynced = acceptTxWhenNotSynced }, new TestSpecProvider(Berlin.Instance));
             Transaction tx = Build.A.Transaction
                 .WithChainId(TestBlockchainIds.ChainId)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -3211,8 +3211,8 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(tx, isLocal ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo((isSynced || isLocal) ? 1 : 0));
-                Assert.That(result, Is.EqualTo((isSynced || isLocal) ? AcceptTxResult.Accepted : AcceptTxResult.Syncing));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo((isSynced || isLocal || acceptTxWhenNotSynced) ? 1 : 0));
+                Assert.That(result, Is.EqualTo((isSynced || isLocal || acceptTxWhenNotSynced) ? AcceptTxResult.Accepted : AcceptTxResult.Syncing));
             }
         }
 
