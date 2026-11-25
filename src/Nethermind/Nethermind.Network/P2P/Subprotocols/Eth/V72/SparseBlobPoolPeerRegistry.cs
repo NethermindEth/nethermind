@@ -1908,13 +1908,15 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             && transactionPeer is not null
             && cells.IsFromSinglePeer(transactionPeer.Id))
         {
-            // The same key is not the same session: when the session that sent the only source's cells ended while
-            // they were in use, the body's session did not send them, and the failure is ambiguous.
+            // The same key is not the same session. The cells' session is the one registered under the key unless it
+            // ended while they were in use, and the body's session must be that registered, open session too; the
+            // body may still be an earlier session's. Otherwise the failure is ambiguous.
             bool sameSessionFailure;
             bool sameSourceRemovalRequested = false;
             lock (state.Lock)
             {
-                sameSessionFailure = !IsEndedCellSource(state, cells.LastSourcePeerId);
+                sameSessionFailure = !IsEndedCellSource(state, cells.LastSourcePeerId)
+                    && IsActivePeer(transactionPeer);
                 if (sameSessionFailure)
                 {
                     state.Submitting = false;

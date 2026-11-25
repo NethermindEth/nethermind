@@ -5984,6 +5984,76 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.Received(2).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
     }
 
+    [Test]
+    public void registry_should_not_disconnect_an_ended_body_session_for_cells_of_the_session_now_registered_under_its_key()
+    {
+        Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells);
+        Transaction wrongProofTransaction = BuildElidedBlobTransaction(tx);
+        CorruptSparseBlobProof(wrongProofTransaction, cellMask);
+        int cellBytes = cells.Length * CkzgLib.Ckzg.BytesPerCell;
+        using SparseBlobPoolPeerRegistry registry = CreateAttributionRegistry();
+        TestSparseBlobPeer oldSession = new(TestItem.PublicKeyA);
+        TestSparseBlobPeer newSession = new(TestItem.PublicKeyA);
+        TestSparseBlobPeer otherPeer = new(TestItem.PublicKeyC);
+        int submissions = 0;
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+        {
+            switch (++submissions)
+            {
+                case 1:
+                    // The session that sent the body and the cells ends while the pool checks them, the same node
+                    // reconnects, and the pool asks for the tuple again later.
+                    registry.AddPeer(newSession);
+                    return AcceptTxResult.AlreadyKnown;
+                case 2:
+                    return AcceptTxResult.AlreadyKnown;
+                default:
+                    return IsValidSparseTuple(call.Arg<Transaction>()) ? AcceptTxResult.Accepted : AcceptTxResult.InvalidBlobProofs;
+            }
+        });
+        AddAnnouncingPeers(registry, tx.Hash!, cellMask, oldSession, otherPeer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.RecordCells(oldSession, tx.Hash!, cellMask, cells), Is.True);
+            Assert.That(registry.RecordTransaction(oldSession, wrongProofTransaction), Is.Null);
+            Assert.That(submissions, Is.EqualTo(2));
+            Assert.That(registry.HasRecordedTransaction(tx.Hash!), Is.True);
+            Assert.That(GetEndedCellSourceCount(registry, tx.Hash!), Is.EqualTo(1));
+        }
+
+        // The new session sends its own cells, which replace the ended session's; the old session's body is still
+        // held, and the proof check of the two fails.
+        Assert.That(registry.RecordCells(newSession, tx.Hash!, cellMask, cells), Is.True);
+
+        // The same key does not make it one session: the failure is ambiguous, the old session's body is released, the
+        // new session's cells are kept for attribution, and neither session is disconnected.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(submissions, Is.EqualTo(3));
+            Assert.That(oldSession.Disconnects, Is.Empty);
+            Assert.That(newSession.Disconnects, Is.Empty);
+            Assert.That(GetAmbiguousValidationFailures(registry, tx.Hash!), Is.EqualTo(1));
+            Assert.That(registry.HasRecordedTransaction(tx.Hash!), Is.False);
+            Assert.That(GetTrackedTransactionBytes(registry), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, newSession.Id), Is.EqualTo(cellBytes));
+            Assert.That(otherPeer.CellRequests, Is.EqualTo(new[] { (tx.Hash!, cellMask) }));
+        }
+
+        // A valid tuple from another peer is admitted, and the new session's kept cells match the verified ones.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.RecordTransaction(otherPeer, tx), Is.Null);
+            Assert.That(registry.RecordCells(otherPeer, tx.Hash!, cellMask, cells), Is.True);
+            Assert.That(submissions, Is.EqualTo(4));
+            Assert.That(oldSession.Disconnects, Is.Empty);
+            Assert.That(newSession.Disconnects, Is.Empty);
+            Assert.That(otherPeer.Disconnects, Is.Empty);
+            Assert.That(GetEarlyCellsBytes(registry), Is.Zero);
+            Assert.That(GetTrackedTransactionBytes(registry), Is.Zero);
+        }
+    }
+
     public enum WrongShapeSource
     {
         EndedSession,
@@ -8109,6 +8179,14 @@ public class Eth72ProtocolHandlerTests
             && state.GetType().GetProperty("EndedCellSources")!.GetValue(state) is ICollection endedSources
                 ? endedSources.Count
                 : 0;
+
+    private static int GetAmbiguousValidationFailures(SparseBlobPoolPeerRegistry registry, Hash256 hash)
+    {
+        object state = ((IDictionary)typeof(SparseBlobPoolPeerRegistry)
+            .GetField("_transactions", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(registry)!)[hash.ValueHash256]!;
+        return (int)state.GetType().GetProperty("AmbiguousValidationFailures")!.GetValue(state)!;
+    }
 
     private static long GetPeerTransactionBytes(SparseBlobPoolPeerRegistry registry, PublicKey peerId) =>
         GetPeerUsage(registry, peerId) is { } usage
