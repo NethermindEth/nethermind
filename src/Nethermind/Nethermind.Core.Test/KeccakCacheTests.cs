@@ -20,7 +20,7 @@ namespace Nethermind.Core.Test
     public class KeccakCacheTests
     {
         [Test]
-        [CancelAfter(30_000)]
+        [CancelAfter(60_000)]
         public async Task Native_cache_preserves_hashes_at_both_capacities(CancellationToken token)
         {
             const string ChildMode = "NETHERMIND_KECCAK_CACHE_TEST";

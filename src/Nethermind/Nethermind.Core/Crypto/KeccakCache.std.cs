@@ -25,7 +25,7 @@ public static unsafe partial class KeccakCache
     /// <summary>
     /// The number of entries in the host's cache.
     /// </summary>
-    public static nuint Count => BucketMask + 1;
+    internal static nuint Count => BucketMask + 1;
 
     internal const string CompactCacheSwitch = "Nethermind.Core.KeccakCache.Compact";
     private const uint DefaultBucketMask = (1u << 19) - 1;
