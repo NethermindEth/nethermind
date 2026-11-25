@@ -124,7 +124,6 @@ jobs:
           [[ $LEANVM_REVS =~ ^($name(,$name)*)?$ ]] || fail "leanvm_revs must be comma-separated revisions"
           [[ $NETHERMIND_REF =~ ^$name$ ]] || fail "nethermind_ref must be a branch, tag or commit"
           [[ $BENCH_SCENARIOS =~ ^(builder|mempool)(,(builder|mempool))*$ ]] || fail "bench_scenarios must be builder and/or mempool"
-          # run.sh reads these from its environment; plain values only, so they cannot reach a command line as code.
           # Only the benchmark settings run.sh and its scripts read, with plain values, so bench_env cannot set PATH, LD_PRELOAD,
           # BASH_ENV or any other variable that changes what runs.
           allowed=' AVERAGE_CPUS AVERAGE_MEMORY BASELINE_REF MEMPOOL_RUNS COUNTS WARMUPS REPEATS SLOT_MS RESERVE_MS NODES DEGREE
