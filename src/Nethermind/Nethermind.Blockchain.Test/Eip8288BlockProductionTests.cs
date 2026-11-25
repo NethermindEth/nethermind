@@ -388,6 +388,8 @@ public class Eip8288BlockProductionTests
             {
                 Assert.That(cache.IsScheduledWithin(new HashSet<FrameDependency>([.. first, .. second])), Is.True, "a body extending it keeps it");
                 Assert.That(cache.IsScheduledWithin(new HashSet<FrameDependency>([.. first.Skip(1), .. second])), Is.False);
+                Assert.That(cache.IsScheduledCovering(new HashSet<FrameDependency>(first.Skip(1))), Is.True, "a restricted rebuild it covers is not queued again");
+                Assert.That(cache.IsScheduledCovering(new HashSet<FrameDependency>([.. first, .. second])), Is.False);
             }
             Schedule(second);
             Schedule(third);

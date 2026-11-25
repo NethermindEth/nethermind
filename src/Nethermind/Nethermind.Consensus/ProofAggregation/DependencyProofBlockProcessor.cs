@@ -116,7 +116,7 @@ internal sealed class DependencyProofBlockProcessor(
                     // Only the latest payload is worth proving: its unrestricted body when the rebuild leaves some of it out, else a
                     // rebuild whose bucket merge did not fit, unless a scheduled statement already covers it.
                     if (latest && (producing.LeanProduction.DependencyLimit is not null || kept < block.Transactions.Length)
-                        && !_dependencyProofCache.IsScheduledWithin(attempted))
+                        && !_dependencyProofCache.IsScheduledWithin(attempted) && !_dependencyProofCache.IsScheduledCovering(attempted))
                         DependencyProofPlanner.ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept,
                             leanProofStore, verifier, _dependencyProofCache);
                     throw new LeanProofNotReadyException(limit);
