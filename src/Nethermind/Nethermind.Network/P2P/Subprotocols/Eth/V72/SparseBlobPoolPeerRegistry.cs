@@ -1860,28 +1860,37 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             failureSource = SparseBlobAttachFailureSource.Ambiguous;
         }
 
-        bool sameSourceFailure = failureSource == SparseBlobAttachFailureSource.Ambiguous
+        if (failureSource == SparseBlobAttachFailureSource.Ambiguous
             && transactionPeer is not null
-            && cells.IsFromSinglePeer(transactionPeer.Id);
-        if (sameSourceFailure)
+            && cells.IsFromSinglePeer(transactionPeer.Id))
         {
-            bool sameSourceRemovalRequested;
+            // The same key is not the same session: when the session that sent the only source's cells ended while
+            // they were in use, the body's session did not send them, and the failure is ambiguous.
+            bool sameSessionFailure;
+            bool sameSourceRemovalRequested = false;
             lock (state.Lock)
             {
-                state.Submitting = false;
-                sameSourceRemovalRequested = state.RemovalRequested;
+                sameSessionFailure = !IsEndedCellSource(state, cells.LastSourcePeerId);
+                if (sameSessionFailure)
+                {
+                    state.Submitting = false;
+                    sameSourceRemovalRequested = state.RemovalRequested;
+                }
             }
 
-            if (sameSourceRemovalRequested)
+            if (sameSessionFailure)
             {
-                TryRemoveState(hash, state);
+                if (sameSourceRemovalRequested)
+                {
+                    TryRemoveState(hash, state);
+                    return null;
+                }
+
+                _txPool.ForgetRejectedBlobTransaction(hash);
+                transactionPeer.DisconnectSparseBlobPeer(DisconnectReason.BreachOfProtocol, error ?? "invalid sparse blob cells");
+                RemovePeer(transactionPeer);
                 return null;
             }
-
-            _txPool.ForgetRejectedBlobTransaction(hash);
-            transactionPeer!.DisconnectSparseBlobPeer(DisconnectReason.BreachOfProtocol, error ?? "invalid sparse blob cells");
-            RemovePeer(transactionPeer);
-            return null;
         }
 
         PublicKey retryFallbackPeerId = cells.LastSourcePeerId;
@@ -1966,9 +1975,15 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
             else
             {
-                _peers.TryGetValue(cells.LastSourcePeerId, out peerToDisconnect);
-                peerToRemove = cells.LastSourcePeerId;
-                disconnectDetails = error ?? "invalid sparse blob cells";
+                // The session registered under the source's key did not send these cells when the session that did
+                // ended while they were in use: they are then only discarded and requested again.
+                if (!IsEndedCellSource(state, cells.LastSourcePeerId))
+                {
+                    _peers.TryGetValue(cells.LastSourcePeerId, out peerToDisconnect);
+                    peerToRemove = cells.LastSourcePeerId;
+                    disconnectDetails = error ?? "invalid sparse blob cells";
+                }
+
                 DiscardCells(state);
             }
 
@@ -2142,6 +2157,13 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         state.Cells = null;
         state.EndedCellSources = null;
     }
+
+    /// <summary>
+    /// Whether the session that sent <paramref name="peerId"/>'s part of <see cref="TrackedSparseBlobTx.Cells"/> ended while
+    /// the cells were in use. Must be called under <c>state.Lock</c>.
+    /// </summary>
+    private static bool IsEndedCellSource(TrackedSparseBlobTx state, PublicKey peerId)
+        => state.EndedCellSources?.Contains(peerId) == true;
 
     private static bool HasSource(in PendingCellsBuffer cells, PublicKey peerId)
     {
