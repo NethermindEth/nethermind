@@ -29,8 +29,8 @@ public static class DependencyProofAggregator
     /// <summary>Fresh signatures one block-production direct leaf takes at most: the native step bound.</summary>
     /// <remarks>A block producer proves its statement itself, so no other producer waits behind its longest call, which
     /// <see cref="DirectBatchSize"/> bounds for mempool aggregation. Its signatures are split into the fewest equal leaves
-    /// within this bound: on 8 arm64 vCPUs one call of 200 signatures took about 2 s where 13 leaves of 16 and their merges
-    /// took 13 s.</remarks>
+    /// within this bound: on 8 arm64 vCPUs 200 signatures took 1.2 s in one call where 13 leaves of 16 and their merges took
+    /// 6.3 s, and 500 took 3.1 s in three calls against 16.4 s in 63.</remarks>
     internal const int BlockProductionBatchSize = Eip8288Constants.MaxRawWitnessesPerStep;
     /// <summary>Fresh signatures folded into one direct leaf, so one native call.</summary>
     /// <remarks>A recursive merge costs about nine signatures, so fewer, wider leaves cost less than more, narrower ones.
