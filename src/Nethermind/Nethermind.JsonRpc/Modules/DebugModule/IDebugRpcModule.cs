@@ -52,6 +52,9 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Returns the full stack trace of all invoked opcodes of all transactions that were included in the block specified. The parent of the block must be present or it will fail.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
+    [JsonRpcMethod(Description = "Similar to debug_traceBlock, but reads the RLP-encoded block from a file on the node's filesystem.", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockFromFile(string fileName, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
+
     [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block number as well as \"latest\" or \"finalized\" and replays the block that is already present in the database.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockParameter,
         [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);

@@ -3497,6 +3497,51 @@ public partial class DebugRpcModuleTests
             response);
     }
 
+    [Test]
+    public async Task Debug_traceBlockFromFile_matches_debug_traceBlock([Values("head", "genesis", "garbage")] string content)
+    {
+        using Context context = await Context.Create();
+        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        byte[] blockRlp = content switch
+        {
+            "head" => Rlp.Encode(context.Blockchain.BlockTree.Head),
+            "genesis" => Rlp.Encode(context.Blockchain.BlockTree.FindBlock(0)),
+            _ => [0x01, 0x02, 0x03]
+        };
+        string fileName = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(fileName, blockRlp);
+            GethTraceOptions options = new() { Tracer = "callTracer" };
+
+            string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", blockRlp.ToHexString(true), options);
+            string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockFromFile", fileName, options);
+
+            Assert.That(JsonElement.DeepEquals(JsonDocument.Parse(response).RootElement, JsonDocument.Parse(expected).RootElement),
+                $"{response}{Environment.NewLine}{expected}");
+        }
+        finally
+        {
+            File.Delete(fileName);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockFromFile_fails_when_file_cannot_be_read([Values] bool directory)
+    {
+        using Context context = await Context.Create();
+        string fileName = directory ? Path.GetTempPath() : Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockFromFile", fileName);
+
+        JsonElement error = JsonDocument.Parse(response).RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(error.GetProperty("message").GetString(), Does.StartWith("could not read file: "), response);
+        }
+    }
+
     [TestCaseSource(nameof(TraceBlockSource))]
     public async Task Debug_traceBlock(Func<TestRpcBlockchain, Transaction[]> factory, GethTraceOptions options, string expected)
     {

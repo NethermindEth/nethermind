@@ -741,6 +741,21 @@ public class DebugRpcModule(
         }
     }
 
+    public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null, CancellationToken cancellationToken = default)
+    {
+        byte[] blockRlp;
+        try
+        {
+            blockRlp = File.ReadAllBytes(fileName);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"could not read file: {exception.Message}", ErrorCodes.InvalidInput);
+        }
+
+        return debug_traceBlock(blockRlp, options, cancellationToken);
+    }
+
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null, CancellationToken cancellationToken = default)
     {
         // The block tree's pending hash aliases the head, not a next-block candidate.
