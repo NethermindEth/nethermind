@@ -36,6 +36,11 @@ public class OptimismTransactionProcessor(
         }
 
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+        if (tx.IsDeposit() && tx.IsOPSystemTransaction && opSpecHelper.IsRegolith(header))
+        {
+            return TransactionResult.WithDetail(TransactionResult.ErrorType.MalformedTransaction, "system deposit not supported after Regolith");
+        }
+
         IReleaseSpec spec = SpecProvider.GetSpec(header);
         _currentTxL1Cost = null;
         // Matches op-geth, which charges neither the L1 data fee nor the operator fee for eth_call and eth_estimateGas.
@@ -62,13 +67,19 @@ public class OptimismTransactionProcessor(
             {
                 WorldState.IncrementNonce(tx.SenderAddress!);
             }
-            header.GasUsed += tx.GasLimit;
-            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.ErrorDescription}");
+            ulong gasUsed = tx.IsOPSystemTransaction ? 0UL : tx.GasLimit;
+            header.GasUsed += gasUsed;
+            tracer.MarkAsFailed(tx.To!, gasUsed, [], $"failed deposit: {result.ErrorDescription}");
             result = TransactionResult.Ok;
         }
 
         return result;
     }
+
+    protected override bool UsesSystemTransactionProcessor(Transaction tx) => !tx.IsDeposit() && base.UsesSystemTransactionProcessor(tx);
+
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, in EthereumGasPolicy intrinsicGas, ulong minGasRequired, bool validate) =>
+        base.ValidateGas(tx, header, spec, in intrinsicGas, minGasRequired, validate && !(tx.IsDeposit() && tx.IsOPSystemTransaction));
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
@@ -81,7 +92,7 @@ public class OptimismTransactionProcessor(
 
         UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
 
-        if (tx.IsDeposit() && !tx.IsOPSystemTransaction && senderBalance < tx.ValueRef)
+        if (tx.IsDeposit() && senderBalance < tx.ValueRef)
         {
             return TransactionResult.InsufficientSenderBalance;
         }

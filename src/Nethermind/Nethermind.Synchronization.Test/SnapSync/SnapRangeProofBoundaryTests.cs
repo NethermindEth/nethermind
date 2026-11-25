@@ -59,6 +59,11 @@ public class SnapRangeProofBoundaryTests
     private static readonly ValueHash256 RootExtensionSlot1 = new("0xab1ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");
     private static readonly ValueHash256 RootExtensionSlot2 = new("0xab2ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");
 
+    private const int ParityKeyCount = 1000;
+    private const long ParityRangeBytes = 4000;
+
+    private static readonly FlatDbColumns[] TrieNodeColumns = [FlatDbColumns.StateNodes, FlatDbColumns.StateTopNodes, FlatDbColumns.StorageNodes, FlatDbColumns.FallbackNodes];
+
     public enum Backend { Patricia, Flat }
 
     [Test]
@@ -508,6 +513,133 @@ public class SnapRangeProofBoundaryTests
         Assert.That(refreshed.Account.StorageRoot, Is.EqualTo(source.Accounts[KeyB].StorageRoot), "the proven storage root is adopted");
     }
 
+    /// <summary>
+    /// Holds the flat snap trees, which build a range's trie as node records, to the trie nodes that a trie of
+    /// <see cref="TrieNode"/>s committed through <see cref="SnapUpperBoundAdapter"/> persists from the same ranges.
+    /// </summary>
+    [Test]
+    public void AddRanges_FlatNodeRecords_PersistTheTrieNodesOfATrieNodeCommit([Values] bool storage, [Values] bool shuffled)
+    {
+        Func<ISnapTrieFactory, (AddRangeResult Result, bool IsRootPersisted)>[] ranges = ParityRanges(storage);
+        if (shuffled) new Random(7).Shuffle(ranges);
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> recordDb = new();
+        using SnapshotableMemColumnsDb<FlatDbColumns> trieNodeDb = new();
+        FlatSnapTrieFactory recordFactory = new(
+            new RocksDbPersistence(recordDb, LimboLogs.Instance, NullTrieNodeLog.Instance),
+            Substitute.For<IPersistenceManager>(), recordDb, new MemDb(), new TestSyncConfig(), LimboLogs.Instance);
+        TrieNodeFactory trieNodeFactory = new(new RocksDbPersistence(trieNodeDb, LimboLogs.Instance, NullTrieNodeLog.Instance));
+
+        foreach (Func<ISnapTrieFactory, (AddRangeResult Result, bool IsRootPersisted)> addRange in ranges)
+        {
+            (AddRangeResult Result, bool IsRootPersisted) expected = addRange(trieNodeFactory);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(expected.Result, Is.EqualTo(AddRangeResult.OK), "guards the premise");
+                Assert.That(addRange(recordFactory), Is.EqualTo(expected));
+            }
+        }
+
+        Assert.That(TrieNodes(recordDb), Is.EqualTo(TrieNodes(trieNodeDb)).And.Not.Empty);
+    }
+
+    /// <summary>The ranges, of a few kilobytes each, that an honest snap server returns over a trie of keys sharing prefixes of every length, ending with a proof of absence.</summary>
+    /// <param name="storage">Whether the ranges are of one account's storage rather than of the state.</param>
+    private static Func<ISnapTrieFactory, (AddRangeResult Result, bool IsRootPersisted)>[] ParityRanges(bool storage)
+    {
+        ValueHash256[] keys = RandomKeys();
+        TestRawTrieStore store = new(new TestMemDb());
+        StateTree state = new(store.GetTrieStore(null), LimboLogs.Instance);
+        Account ownerAccount = Build.An.Account.WithBalance(1).TestObject;
+        if (storage)
+        {
+            StorageTree storageTree = new(store.GetTrieStore(keys[0].ToCommitment()), LimboLogs.Instance);
+            foreach (ValueHash256 key in keys) storageTree.Set(key, Rlp.Encode(key.Bytes[..4]), false);
+            storageTree.Commit();
+            ownerAccount = ownerAccount.WithChangedStorageRoot(storageTree.RootHash);
+            state.Set(keys[0].ToCommitment(), ownerAccount);
+        }
+        else
+        {
+            for (int i = 0; i < keys.Length; i++) state.Set(keys[i].ToCommitment(), Build.An.Account.WithBalance((ulong)i + 1).TestObject);
+        }
+
+        state.Commit();
+        Hash256 stateRoot = state.RootHash;
+        PathWithAccount owner = new(keys[0], ownerAccount.ToStruct());
+        SnapStateServer server = new(store.AsReadOnly(), LimboLogs.Instance);
+        List<Func<ISnapTrieFactory, (AddRangeResult Result, bool IsRootPersisted)>> ranges = [];
+        ValueHash256 origin = ValueKeccak.Zero;
+        while (true)
+        {
+            ValueHash256 start = origin;
+            byte[][] proof;
+            ValueHash256[] paths;
+            if (storage)
+            {
+                (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
+                    server.GetStorageRanges(stateRoot, [owner], start, ValueKeccak.MaxValue, ParityRangeBytes, CancellationToken.None);
+                PathWithStorageSlot[] entries = slots.Count == 0 ? [] : [.. slots[0]];
+                proof = Copy(proofs);
+                paths = [.. entries.Select(static entry => entry.Path)];
+                slots.DisposeRecursive();
+                proofs?.Dispose();
+                ranges.Add(factory =>
+                {
+                    using IByteArrayList rangeProofs = Proofs(proof);
+                    (AddRangeResult result, _, _, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(factory, owner, entries, start, ValueKeccak.Zero, ValueKeccak.MaxValue, rangeProofs);
+                    return (result, isRootPersisted);
+                });
+            }
+            else
+            {
+                (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+                    server.GetAccountRanges(stateRoot, start, ValueKeccak.MaxValue, ParityRangeBytes, CancellationToken.None);
+                PathWithAccount[] entries = [.. accounts];
+                proof = Copy(proofs);
+                paths = [.. entries.Select(static entry => entry.Path)];
+                accounts.Dispose();
+                proofs.Dispose();
+                ranges.Add(factory =>
+                {
+                    using IByteArrayList rangeProofs = Proofs(proof);
+                    return (SnapProviderHelper.AddAccountRange(factory, 0, stateRoot, start, ValueKeccak.MaxValue, entries, rangeProofs).result, false);
+                });
+            }
+
+            if (paths.Length == 0) break;
+
+            origin = paths[^1].IncrementPath();
+        }
+
+        Assert.That(ranges, Has.Count.GreaterThan(10), "guards the premise: the keys span many ranges");
+        return [.. ranges];
+    }
+
+    /// <summary>Random keys, every other one sharing a prefix with an earlier one, so the trie holds extensions and embedded nodes at every depth.</summary>
+    private static ValueHash256[] RandomKeys()
+    {
+        Random random = new(42);
+        List<ValueHash256> keys = [];
+        byte[] key = new byte[ValueHash256.MemorySize];
+        while (keys.Count < ParityKeyCount)
+        {
+            random.NextBytes(key);
+            if (keys.Count % 2 == 1) keys[random.Next(keys.Count)].Bytes[..random.Next(1, ValueHash256.MemorySize)].CopyTo(key);
+            ValueHash256 candidate = new(key);
+            if (!keys.Contains(candidate)) keys.Add(candidate);
+        }
+
+        return [.. keys];
+    }
+
+    private static byte[][] Copy(IByteArrayList? proofs) => proofs is null ? [] : [.. Enumerable.Range(0, proofs.Count).Select(i => proofs[i].ToArray())];
+
+    private static Dictionary<string, string?> TrieNodes(SnapshotableMemColumnsDb<FlatDbColumns> db) =>
+        TrieNodeColumns
+            .SelectMany(column => db.GetColumnDb(column).GetAll().Select(node => ($"{column}:{node.Key.ToHexString()}", node.Value?.ToHexString())))
+            .ToDictionary();
+
     private static PathWithAccount MadeUpAccountBeforeD() => new(KeyBeforeD, Build.An.Account.WithBalance(9).TestObject.ToStruct());
 
     private static ContainerBuilder CreateContainerBuilder(Hash256 stateRoot) =>
@@ -680,5 +812,62 @@ public class SnapRangeProofBoundaryTests
         }
 
         private static byte[] SlotValue(in ValueHash256 path) => Rlp.Encode(path.Bytes[..4]);
+    }
+
+    /// <summary>Builds snap trees of <see cref="TrieNode"/>s, persisting only their trie nodes, as flat snap sync did before node records.</summary>
+    private sealed class TrieNodeFactory(IPersistence persistence) : ISnapTrieFactory
+    {
+        public ISnapTree<PathWithAccount> CreateStateTree() => Create<PathWithAccount>(null);
+
+        public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath) => Create<PathWithStorageSlot>(accountPath.ToCommitment());
+
+        private TrieNodeTree<TEntry> Create<TEntry>(Hash256? address) where TEntry : ISnapEntry
+        {
+            IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
+            IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+            SnapUpperBoundAdapter adapter = new(address is null
+                ? new PersistenceTrieStoreAdapter(reader, writeBatch, enableDoubleWriteCheck: false)
+                : new PersistenceStorageTrieStoreAdapter(reader, writeBatch, address, enableDoubleWriteCheck: false), boundWholePath: address is not null);
+            PatriciaTree tree = address is null ? new StateTree(adapter, LimboLogs.Instance) : new StorageTree(adapter, LimboLogs.Instance);
+            return new TrieNodeTree<TEntry>(tree, adapter, reader, writeBatch, address);
+        }
+    }
+
+    private sealed class TrieNodeTree<TEntry>(PatriciaTree tree, SnapUpperBoundAdapter adapter, IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, Hash256? address)
+        : ISnapTree<TEntry> where TEntry : ISnapEntry
+    {
+        private List<(TrieNode, TreePath)>? _proofNodes;
+
+        public Hash256 RootHash => tree.RootHash;
+
+        public void SetRootFromProof(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes) =>
+            _proofNodes = PatriciaSnapProof.SetRoot(tree, proofs, nodes);
+
+        public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
+        {
+            ValueHash256 computedHash = default;
+            Span<ValueHash256> result = new(ref computedHash);
+            bool found = address is null
+                ? reader.TryLoadStateRlp(path, ReadFlags.None, static (rlp, hash) => hash[0] = ValueKeccak.Compute(rlp), result)
+                : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (rlp, hash) => hash[0] = ValueKeccak.Compute(rlp), result);
+            return found && computedHash == keccak;
+        }
+
+        public void BulkSetAndUpdateRootHash(IReadOnlyList<TEntry> entries) => ISnapTree<TEntry>.DoBulkSetAndUpdateRootHash(tree, entries);
+
+        public bool Commit(ValueHash256 lowerBound, ValueHash256 upperBound)
+        {
+            PatriciaSnapProof.StitchBoundaries(_proofNodes, this);
+            adapter.LowerBound = lowerBound;
+            adapter.UpperBound = upperBound;
+            tree.Commit(skipRoot: address is null, WriteFlags.DisableWAL);
+            return _proofNodes is { Count: > 0 } ? _proofNodes[0].Item1.IsPersisted : lowerBound == ValueKeccak.Zero && upperBound == ValueKeccak.MaxValue;
+        }
+
+        public void Dispose()
+        {
+            writeBatch.Dispose();
+            reader.Dispose();
+        }
     }
 }

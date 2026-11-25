@@ -406,6 +406,15 @@ public class AdminModuleTests
     }
 
     [Test]
+    public async Task AdminSubscribe_WithUnknownName_ReturnsMethodNotFound()
+    {
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "bogusType");
+
+        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32601,\"message\":\"no \\\"bogusType\\\" subscription in admin namespace\"},\"id\":67}";
+        Assert.That(serialized, Is.EqualTo(expectedResult));
+    }
+
+    [Test]
     public async Task AdminSubscribe_WithArgumentException_ReturnsInvalidParamsWithReason()
     {
         _subscriptionManager = Substitute.For<ISubscriptionManager>();
@@ -619,6 +628,77 @@ public class AdminModuleTests
         _existingSession1.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
 
         Assert.That(manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)), Is.False, "after disconnect the session is unhooked and must not raise further notifications");
+    }
+
+    [Test]
+    public async Task PeerEventsSubscription_OnEveryEventTypeBehindAPendingSend_SendsAndTracesThemInOrder()
+    {
+        Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
+        PeerEventArgs peerEventArgs = new(new Peer(node));
+        PeerEventArgs messageEventArgs = new(node, "BitTorrent", 1, 2);
+        TimeSpan timeout = TimeSpan.FromSeconds(30);
+        ConcurrentQueue<string> sent = new();
+        ConcurrentQueue<string> traces = new();
+        int tracedWhilePending = 0;
+        TaskCompletionSource firstSendStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<int> firstSendGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource allTraced = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _jsonRpcDuplexClient.SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            sent.Enqueue(RpcTest.SerializeResponse(call.Arg<JsonRpcResult>().Response));
+            if (sent.Count > 1) return Task.FromResult(0);
+            firstSendStarted.TrySetResult();
+            return firstSendGate.Task;
+        });
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsTrace.Returns(true);
+        PeerEventsSubscription subscription = new(_jsonRpcDuplexClient, new OneLoggerLogManager(new ILogger(logger)), _peerPool, _rlpxPeer);
+        // Recorded from here on, past the constructor's own trace line.
+        logger.When(l => l.Trace(Arg.Any<string>())).Do(call =>
+        {
+            if (!firstSendGate.Task.IsCompleted) Interlocked.Increment(ref tracedWhilePending);
+            traces.Enqueue(call.Arg<string>());
+            if (traces.Count == 4) allTraced.TrySetResult();
+        });
+
+        try
+        {
+            _peerPool.PeerAdded += Raise.EventWith(new object(), peerEventArgs);
+            await firstSendStarted.Task.WaitAsync(timeout);
+            _existingSession1.MsgReceived += Raise.EventWith(new object(), messageEventArgs);
+            _existingSession1.MsgDelivered += Raise.EventWith(new object(), messageEventArgs);
+            _peerPool.PeerRemoved += Raise.EventWith(new object(), peerEventArgs);
+            int sentWhileHeld = sent.Count;
+            firstSendGate.TrySetResult(0);
+            await allTraced.Task.WaitAsync(timeout);
+
+            string id = subscription.Id;
+            string peerHash = TestItem.PublicKeyA.Hash.ToString(false);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sentWhileHeld, Is.EqualTo(1), "the events raised during a pending send wait in the queue behind it");
+                Assert.That(tracedWhilePending, Is.Zero, "a send is traced only after it completes");
+                Assert.That(sent, Is.EqualTo(new[]
+                {
+                    BuildExpectedPeerLifecycleNotification(id, "add", peerHash),
+                    BuildExpectedMessageNotification(id, "msgrecv", peerHash),
+                    BuildExpectedMessageNotification(id, "msgsend", peerHash),
+                    BuildExpectedPeerLifecycleNotification(id, "drop", peerHash),
+                }), "each event is sent once, in the order raised");
+                Assert.That(traces, Is.EqualTo(new[]
+                {
+                    $"admin_subscription {id} printed new peer.",
+                    $"admin_subscription {id} printed message received.",
+                    $"admin_subscription {id} printed message sent.",
+                    $"admin_subscription {id} printed dropped peer.",
+                }), "each event type keeps its own trace text");
+            }
+        }
+        finally
+        {
+            firstSendGate.TrySetResult(0);
+            subscription.Dispose();
+        }
     }
 
     [Test]

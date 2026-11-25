@@ -187,7 +187,7 @@ public class AdminRpcModule : IAdminRpcModule
         }
         catch (KeyNotFoundException)
         {
-            return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+            return ResultWrapper<string>.Fail($"no \"{subscriptionName}\" subscription in admin namespace", ErrorCodes.MethodNotFound);
         }
         catch (LimitExceededException e)
         {

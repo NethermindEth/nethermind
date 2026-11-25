@@ -40,7 +40,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -114,7 +113,6 @@ public partial class EthRpcModule(
     private int _syncRequests;
 
     private ResultWrapper<ulong>? _chainIdResponse;
-    readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
     public ResultWrapper<string> eth_protocolVersion()
     {
@@ -469,19 +467,25 @@ public partial class EthRpcModule(
         return null;
     }
 
-    public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
+    public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction) =>
+        DecodeRawTransaction(transaction) is { } tx ? await SendTx(tx) : InvalidRawTransaction();
+
+    /// <summary>Decodes the payload of <c>eth_sendRawTransaction</c>, or returns <c>null</c> when it is not valid transaction RLP.</summary>
+    protected static Transaction? DecodeRawTransaction(byte[] transaction)
     {
         try
         {
-            Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(transaction,
+            return TxRlpDecoder.DecodeCompleteNotNull(transaction,
                 RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
-            return await SendTx(tx);
         }
         catch (RlpReaderException)
         {
-            return ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
+            return null;
         }
     }
+
+    protected static ResultWrapper<Hash256> InvalidRawTransaction() =>
+        ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
 
     public virtual ResultWrapper<SignTransactionResult> eth_signTransaction(SignableTransactionForRpc rpcTx)
     {
@@ -1479,17 +1483,8 @@ public partial class EthRpcModule(
             ? ResultWrapper<IEnumerable<ReceiptForRpc>?>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
             : ResultWrapper<IEnumerable<ReceiptForRpc>?>.Fail($"failed to get receipts for block #{block.Number}", ErrorCodes.ResourceNotFound);
 
-    public ResultWrapper<JsonNode> eth_config()
-    {
-        ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
-
-        return ResultWrapper<JsonNode>.Success(JsonSerializer.SerializeToNode(new ForkConfigSummary
-        {
-            Current = ForkConfigFactory.Create(forks.Current, _specProvider),
-            Next = ForkConfigFactory.Create(forks.Next, _specProvider),
-            Last = ForkConfigFactory.Create(forks.Last, _specProvider)
-        }, TypeInfoJsonSerializer.GetTypeInfo<ForkConfigSummary>(UnchangedDictionaryKeyOptions))!);
-    }
+    public ResultWrapper<JsonNode> eth_config() =>
+        ResultWrapper<JsonNode>.Success(ForkConfigFactory.CreateSummary(forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header), _specProvider));
 
     public ResultWrapper<AccountAccessForRpc[]?> eth_getBlockAccessList(BlockParameter blockParameter)
     {

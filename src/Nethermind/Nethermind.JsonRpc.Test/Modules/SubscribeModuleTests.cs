@@ -286,7 +286,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task Wrong_subscription_name()
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "wrongSubscriptionType");
-            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Wrong subscription type: wrongSubscriptionType.\"},\"id\":67}";
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32601,\"message\":\"no \\\"wrongSubscriptionType\\\" subscription in eth namespace\"},\"id\":67}";
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
@@ -582,6 +582,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
             string expectedResult = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32602,\"message\":\"invalid argument 1: {reason}\"}},\"id\":67}}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
+        [TestCase("logs", "0", "expected a filter object")]
+        [TestCase("logs", "[]", "expected a filter object")]
+        [TestCase("logs", "\"0\"", "expected a filter object")]
+        [TestCase("transactionReceipts", "true", "expected an object with transactionHashes")]
+        [TestCase("transactionReceipts", "[]", "expected an object with transactionHashes")]
+        public async Task Subscription_with_a_filter_of_another_kind_returns_invalid_params(string subscriptionName, string args, string reason)
+        {
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", subscriptionName, args);
+            Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 1: {{reason}}"},"id":67}"""));
         }
 
         [TestCase("0x12")]

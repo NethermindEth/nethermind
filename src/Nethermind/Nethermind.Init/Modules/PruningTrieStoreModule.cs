@@ -46,7 +46,7 @@ public class PruningTrieStoreModule : Module
             // Special case for state db with pruning trie state.
             .AddKeyedSingleton<IDb>(DbNames.State, (ctx) =>
             {
-                // A container without an init config keeps the factory-type check alone, as before the mode was read.
+                // Without an init config, only the factory type decides.
                 bool memDbMode = _memDbMode ?? (ctx.ResolveOptional<IInitConfig>()?.DiagnosticMode == DiagnosticMode.MemDb);
                 IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
                 IDbFactory dbFactory = ctx.Resolve<IDbFactory>();
@@ -58,7 +58,7 @@ public class PruningTrieStoreModule : Module
                 // DbMonitoringModule decorates IDbFactory, so its type alone does not show the MemDb diagnostic mode.
                 if (!memDbMode && dbFactory is not MemDbFactory)
                 {
-                    FullPruningInnerDbFactory fullPruningInnerDbFactory = new(dbFactory, fileSystem, stateDbSettings.DbPath);
+                    FullPruningInnerDbFactory fullPruningInnerDbFactory = new(dbFactory, fileSystem, stateDbSettings.DbPath, ctx.Resolve<ILogManager>());
                     // DeleteOnStart reaches only the inner DB that gets opened. A copy left by an interrupted
                     // full pruning would otherwise stay on disk for good: only the next pruning clears it,
                     // and a flat node never runs one.
