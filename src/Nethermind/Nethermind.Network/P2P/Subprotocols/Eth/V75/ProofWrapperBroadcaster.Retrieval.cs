@@ -281,9 +281,9 @@ public sealed partial class ProofWrapperBroadcaster
         lock (_gate)
         {
             if (peer.Closed) return;
-            // Resolution parses and hashes every body, so a response to no outstanding request is settled before it.
-            outstanding = peer.Requests.ContainsKey(message.RequestId);
-            if (!outstanding) TakeRequest(peer, message.RequestId, outbox);
+            // Resolution parses and hashes every body, so a response to no outstanding wrapper request is settled before it.
+            outstanding = peer.Requests.TryGetValue(message.RequestId, out WrappersRequest? pending) && !pending.Manifests;
+            if (!outstanding && TakeRequest(peer, message.RequestId, outbox) is { } manifestRequest) MismatchedResponse(peer, manifestRequest, outbox);
         }
         if (!outstanding)
         {
@@ -295,9 +295,8 @@ public sealed partial class ProofWrapperBroadcaster
         {
             if (peer.Closed) return;
             WrappersRequest? request = TakeRequest(peer, message.RequestId, outbox);
-            if (request is null || request.Manifests)
+            if (request is null)
             {
-                if (request is not null) MismatchedResponse(peer, request, outbox);
                 outbox.Flush();
                 return;
             }
