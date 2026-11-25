@@ -48,7 +48,11 @@ public class RlpDecoderTests
 
         ArgumentException? exception = Assert.Throws<ArgumentException>(() => Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: false));
 
-        Assert.That(exception!.GetBaseException().Message, Is.EqualTo(ThrowingConstructorDecoder.Error));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.InnerException, Is.InstanceOf<TargetInvocationException>());
+            Assert.That(exception.GetBaseException().Message, Is.EqualTo(ThrowingConstructorDecoder.Error));
+        }
     }
 
     [Test]
