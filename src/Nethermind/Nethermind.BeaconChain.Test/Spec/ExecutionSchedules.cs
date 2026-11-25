@@ -5,7 +5,6 @@ using System.IO;
 using System.Text;
 using System.Text.Json.Nodes;
 using Nethermind.BeaconChain.Spec;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -44,7 +43,7 @@ internal static class ExecutionSchedules
     /// <summary>The shipped <c>chainspec/<paramref name="name"/>.json</c>, after <paramref name="edit"/> changes its JSON.</summary>
     public static ChainSpec LoadChainspec(string name, Action<JsonObject>? edit = null)
     {
-        using Stream resource = typeof(IConfig).Assembly.GetManifestResourceStream($"Nethermind.Config.chainspec.{name}.json")
+        using Stream resource = typeof(ChainSpecFileLoader).Assembly.GetManifestResourceStream($"Nethermind.Specs.chainspec.{name}.json")
             ?? throw new ArgumentException($"No embedded chainspec named {name}.", nameof(name));
         JsonObject json = JsonNode.Parse(resource)!.AsObject();
         edit?.Invoke(json);

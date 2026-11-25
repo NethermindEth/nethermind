@@ -873,6 +873,7 @@
           "Nethermind.Crypto": "[2.4.0-preview, )",
           "Nethermind.DotNetty.Handlers": "[0.8.0.11, )",
           "Nethermind.Network.Contract": "[2.4.0-preview, )",
+          "Nethermind.Network.Core": "[2.4.0-preview, )",
           "Nethermind.Network.Enr": "[2.4.0-preview, )",
           "Nethermind.Network.Stats": "[2.4.0-preview, )",
           "Nethermind.Synchronization": "[2.4.0-preview, )",
@@ -885,16 +886,26 @@
           "Nethermind.Config": "[2.4.0-preview, )"
         }
       },
+      "nethermind.network.core": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Config": "[2.4.0-preview, )",
+          "Nethermind.Core": "[2.4.0-preview, )",
+          "Nethermind.DotNetty.Transport": "[0.8.0.11, )",
+          "Nethermind.Logging": "[2.4.0-preview, )",
+          "Nethermind.Network.Contract": "[2.4.0-preview, )",
+          "Nethermind.Network.Enr": "[2.4.0-preview, )",
+          "Nethermind.Network.Stats": "[2.4.0-preview, )"
+        }
+      },
       "nethermind.network.discovery": {
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Api": "[2.4.0-preview, )",
           "Nethermind.Crypto": "[2.4.0-preview, )",
-          "Nethermind.Facade": "[2.4.0-preview, )",
           "Nethermind.Kademlia": "[2.4.0-preview, )",
           "Nethermind.Logging.Microsoft": "[2.4.0-preview, )",
-          "Nethermind.Network": "[2.4.0-preview, )",
+          "Nethermind.Network.Core": "[2.4.0-preview, )",
           "Nethermind.Network.Enr": "[2.4.0-preview, )"
         }
       },
@@ -1025,24 +1036,6 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Numerics.Int256": "[1.15.0, )"
-        }
-      },
-      "nethermind.shutter": {
-        "type": "Project",
-        "dependencies": {
-          "Google.Protobuf": "[3.36.2, )",
-          "Nethermind.Blockchain": "[2.4.0-preview, )",
-          "Nethermind.Consensus": "[2.4.0-preview, )",
-          "Nethermind.Core": "[2.4.0-preview, )",
-          "Nethermind.Crypto": "[2.4.0-preview, )",
-          "Nethermind.Init": "[2.4.0-preview, )",
-          "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.2.0, )",
-          "Nethermind.Logging.Microsoft": "[2.4.0-preview, )",
-          "Nethermind.Merge.Plugin": "[2.4.0-preview, )",
-          "Nethermind.Network.Discovery": "[2.4.0-preview, )",
-          "Nethermind.Network.Libp2p": "[2.4.0-preview, )",
-          "Nethermind.Serialization.Ssz": "[2.4.0-preview, )",
-          "Nethermind.Specs": "[2.4.0-preview, )"
         }
       },
       "nethermind.sockets": {

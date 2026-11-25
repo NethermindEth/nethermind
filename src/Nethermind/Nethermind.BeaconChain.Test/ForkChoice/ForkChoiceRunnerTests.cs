@@ -9,6 +9,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
+using Nethermind.BeaconChain.Test.Crypto;
 using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.StateTransition;
@@ -900,18 +901,21 @@ public class ForkChoiceRunnerTests
     }
 
     [Test]
-    public void Gossip_aggregate_for_an_ancestor_of_the_head_in_the_first_two_epochs_counts()
+    public void Gossip_aggregate_for_an_ancestor_of_the_head_in_the_first_two_epochs_counts([Values] bool rejectEverySignature)
     {
         const ulong targetEpoch = 1;
-        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner(rejectEverySignature);
         TickToSlot(runner, 2 * Presets.SlotsPerEpoch - 1);
         List<UnsignedChain.ChainBlock> line = ImportLine(chain, runner, chain.AnchorRoot, 30, 32, 40);
         (BeaconStateFulu signingState, ulong voteSlot, int member) = FirstCommitteeMember(line[^1], targetEpoch);
         ulong weightBefore = Weight(runner, line[0].Root) - Weight(runner, line[1].Root);
+        Action gossip = () => runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, line[0].Root, targetEpoch, member, signingState));
 
-        runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, line[0].Root, targetEpoch, member, signingState));
-
-        Assert.That(Weight(runner, line[0].Root) - Weight(runner, line[1].Root) - weightBefore, Is.EqualTo(EffectiveBalance));
+        if (rejectEverySignature)
+            Assert.That(gossip, Throws.TypeOf<ForkChoiceException>());
+        else
+            Assert.That(gossip, Throws.Nothing);
+        Assert.That(Weight(runner, line[0].Root) - Weight(runner, line[1].Root) - weightBefore, Is.EqualTo(rejectEverySignature ? 0UL : EffectiveBalance));
     }
 
     [Test]
@@ -1838,10 +1842,11 @@ public class ForkChoiceRunnerTests
         }
     }
 
-    private static (UnsignedChain Chain, ForkChoiceRunner Runner) CreateRunner()
+    private static (UnsignedChain Chain, ForkChoiceRunner Runner) CreateRunner(bool rejectEverySignature = false)
     {
         UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        PubkeyCache pubkeys = rejectEverySignature ? RejectingSignatureVerifier.PubkeysFor(chain.Anchor.AnchorState.Validators!) : chain.Anchor.Pubkeys;
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, pubkeys);
         return (chain, runner);
     }
 

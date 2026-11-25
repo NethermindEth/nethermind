@@ -800,7 +800,7 @@ public class EthereumRunnerTests
     {
         if (chain is "amsterdam" or "bogota")
         {
-            using Stream source = typeof(IConfig).Assembly.GetManifestResourceStream("Nethermind.Config.chainspec.hoodi.json")!;
+            using Stream source = typeof(ChainSpecFileLoader).Assembly.GetManifestResourceStream("Nethermind.Specs.chainspec.hoodi.json")!;
             JsonNode genesis = JsonNode.Parse(source)!;
             JsonObject config = genesis["config"]!.AsObject();
             // Geth's fork order check rejects Amsterdam at genesis unless every earlier timestamp fork is there too.

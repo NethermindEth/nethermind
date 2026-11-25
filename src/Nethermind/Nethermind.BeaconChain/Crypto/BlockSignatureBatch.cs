@@ -5,7 +5,6 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Threading;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 using G2 = Nethermind.Crypto.Bls.P2;
 
@@ -34,6 +33,7 @@ namespace Nethermind.BeaconChain.Crypto;
 /// </remarks>
 public sealed class BlockSignatureBatch
 {
+    private readonly ISignatureVerifier _verifier;
     private readonly List<BlsSignatureSet> _sets = [];
     private readonly List<string> _failures = [];
 
@@ -53,7 +53,8 @@ public sealed class BlockSignatureBatch
         });
     }
 
-    internal BlockSignatureBatch() { }
+    internal BlockSignatureBatch(ISignatureVerifier verifier) => _verifier = verifier;
+
     internal int Count => _sets.Count;
 
     /// <summary>Runs <paramref name="process"/> against a new batch, then verifies every signature it deferred.</summary>
@@ -62,9 +63,9 @@ public sealed class BlockSignatureBatch
     /// because the serial path stops at that signature and never reaches the later failure.
     /// </remarks>
     /// <exception cref="BeaconStateException">A deferred signature is invalid; the message is the one its call site gave.</exception>
-    internal static void Run(Action<BlockSignatureBatch> process)
+    internal static void Run(ISignatureVerifier verifier, Action<BlockSignatureBatch> process)
     {
-        BlockSignatureBatch batch = new();
+        BlockSignatureBatch batch = new(verifier);
         try
         {
             process(batch);
@@ -97,9 +98,14 @@ public sealed class BlockSignatureBatch
     /// <summary>Verifies a signature now when <paramref name="deferral"/> is <c>null</c>, otherwise defers it.</summary>
     /// <returns><c>false</c> when the signature is refused now; <c>true</c> when it is valid or deferred.</returns>
     internal static bool Verify(G1Affine publicKey, BlsSignature signature, Hash256 signingRoot, Deferral? deferral) =>
+        Verify(BlsSignatureVerifier.Instance, publicKey, signature, signingRoot, deferral);
+
+    /// <summary>Verifies a signature now with <paramref name="verifier"/> when <paramref name="deferral"/> is <c>null</c>, otherwise defers it.</summary>
+    /// <returns><c>false</c> when the signature is refused now; <c>true</c> when it is valid or deferred.</returns>
+    internal static bool Verify(ISignatureVerifier verifier, G1Affine publicKey, BlsSignature signature, Hash256 signingRoot, Deferral? deferral) =>
         !publicKey.IsInf()
         && (deferral is null
-            ? BlsSigner.Verify(publicKey, signature.Bytes, signingRoot.Bytes)
+            ? verifier.Verify(publicKey, signature.Bytes, signingRoot.Bytes)
             : deferral.Batch.Add(publicKey, signature, signingRoot, deferral.Failure));
 
     private bool Add(G1Affine publicKey, BlsSignature signature, Hash256 signingRoot, string failure)
@@ -117,7 +123,7 @@ public sealed class BlockSignatureBatch
             return false;
 
         if (!BlsSignatureSet.TryCreate(publicKey, point.ToAffine(), signingRoot.Bytes, out BlsSignatureSet? set))
-            return BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), signingRoot.Bytes);
+            return _verifier.Verify(publicKey, signature.Bytes, signingRoot.Bytes);
 
         _sets.Add(set);
         _failures.Add(failure);
@@ -145,10 +151,10 @@ public sealed class BlockSignatureBatch
 
     private string? FirstInvalid()
     {
-        if (BatchSignatureVerifier.VerifyBatch(_sets))
+        if (_verifier.VerifyBatch(_sets))
             return null;
 
-        int invalid = BatchSignatureVerifier.FindInvalid(_sets);
+        int invalid = _verifier.FindInvalid(_sets);
         return invalid < 0 ? null : _failures[invalid];
     }
 }

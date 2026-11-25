@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Prometheus;
-using Nethermind.Network;
+using Nethermind.Network.Discovery;
 using System.Globalization;
 using PrometheusMetrics = Prometheus.Metrics;
-using NetworkMetrics = Nethermind.Network.Metrics;
+using DiscoveryMetrics = Nethermind.Network.Discovery.Metrics;
 
 namespace Nethermind.Bootnode;
 
@@ -110,12 +110,12 @@ internal sealed class BootnodeMetrics
     }
 
     public void UpdateDiscoveryMessageCounters() =>
-        UpdateDiscoveryMessageCounters(NetworkMetrics.DiscoveryMessagesSentByProtocol);
+        UpdateDiscoveryMessageCounters(DiscoveryMetrics.DiscoveryMessagesSentByProtocol);
 
     public void UpdateDiscoveryTrafficCounters() =>
         UpdateDiscoveryTrafficCounters(
-            Interlocked.Read(ref NetworkMetrics.DiscoveryBytesSent),
-            Interlocked.Read(ref NetworkMetrics.DiscoveryBytesReceived));
+            Interlocked.Read(ref DiscoveryMetrics.DiscoveryBytesSent),
+            Interlocked.Read(ref DiscoveryMetrics.DiscoveryBytesReceived));
 
     internal long UpdateDiscoveryTrafficCounters(long bytesSent, long bytesReceived)
     {
