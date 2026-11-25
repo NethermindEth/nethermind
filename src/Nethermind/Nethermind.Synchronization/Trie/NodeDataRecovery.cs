@@ -157,7 +157,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         if (syncPeer.CanGetNodeData)
         {
             if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer:hide} via eth");
-            IByteArrayList? data = await syncPeer.GetNodeData([hash], cancellationToken);
+            using IByteArrayList? data = await syncPeer.GetNodeData([hash], cancellationToken);
             if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
             {
                 return data[0].ToArray();
