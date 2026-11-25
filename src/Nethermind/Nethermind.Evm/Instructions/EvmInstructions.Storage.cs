@@ -741,7 +741,13 @@ public static partial class EvmInstructions
             }
         }
 
-        if (TTracingInst.IsActive) vm.TraceOperationReady(traceExecutionCost);
+        if (TTracingInst.IsActive)
+        {
+            // EIP-8037: as in Geth, the step's cost is its execution charge alone; state gas spilled into gas_left
+            // or refilled from it shows only in the remaining gas.
+            if (TEip8037.IsActive) vm.TraceOperationGasCost(traceExecutionCost);
+            vm.TraceOperationReady(traceExecutionCost);
+        }
 
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
