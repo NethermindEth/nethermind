@@ -213,7 +213,6 @@ public class SyncServerTests
         BlockEventArgs newHead = new(Build.A.Block.WithNumber(1).TestObject);
 
         ctx.BlockTree.NewHeadBlock += Raise.EventWith(newHead);
-        ctx.BlockTree.NewHeadBlock += Raise.EventWith(newHead);
 
         using (Assert.EnterMultipleScope())
         {
@@ -221,6 +220,9 @@ public class SyncServerTests
             ctx.PeerPool.Received(1).NotifyPeerBlock -= Arg.Any<EventHandler<PeerBlockNotificationEventArgs>>();
             _ = ctx.BlockTree.DidNotReceive().BestSuggestedHeader;
         }
+
+        ctx.SyncServer.Dispose();
+        ctx.PeerPool.Received(1).NotifyPeerBlock -= Arg.Any<EventHandler<PeerBlockNotificationEventArgs>>();
     }
 
     [Test]
