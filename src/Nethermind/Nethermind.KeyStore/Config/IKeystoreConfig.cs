@@ -19,7 +19,7 @@ public interface IKeyStoreConfig : IConfig
     [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "UTF-8")]
     string KeyStoreEncoding { get; set; }
 
-    [ConfigItem(Description = "The key derivation function for new key files. Only `scrypt` is supported, in any letter case; it is written in lower case. Key files derived with `pbkdf2` can still be read. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "scrypt")]
+    [ConfigItem(Description = "The key derivation function for new key files. Only `scrypt` is supported, in any letter case; it is written in lower case. Checked when a key file is written. Key files derived with `pbkdf2` can still be read when `c * ceil(dklen / 32)` is at most `16777216`. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "scrypt")]
     string Kdf { get; set; }
 
     [ConfigItem(Description = "The cipher for new key files: `aes-128-ctr` or `aes-128-cbc`, in any letter case; it is written in lower case. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "aes-128-ctr")]

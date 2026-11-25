@@ -244,6 +244,30 @@ namespace Nethermind.Evm.Test.Tracing
 
         protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
 
+        [Test]
+        public void Collected_access_list_is_bounded_by_cold_access_gas([Values(Instruction.BALANCE, Instruction.SLOAD)] Instruction instruction)
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(0)
+                .Op(Instruction.JUMPDEST)
+                .Op(Instruction.DUP1)
+                .Op(instruction)
+                .Op(Instruction.POP)
+                .PushData(1)
+                .Op(Instruction.ADD)
+                .PushData(0x1000)
+                .Op(Instruction.GAS)
+                .Op(Instruction.GT)
+                .PushData(2)
+                .Op(Instruction.JUMPI)
+                .Done;
+
+            (AccessTxTracer tracer, _, Transaction transaction) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
+
+            (int addresses, int storageKeys) = tracer.AccessList!.Count;
+            Assert.That((ulong)(addresses + storageKeys), Is.InRange(10UL, transaction.GasLimit / GasCostOf.ColdSLoad + 2));
+        }
+
         protected (AccessTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);

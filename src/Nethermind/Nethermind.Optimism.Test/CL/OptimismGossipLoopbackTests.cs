@@ -480,13 +480,14 @@ public class OptimismGossipLoopbackTests
 
     private static async Task AssertNoSessionAfterShutdownAsync(ILocalPeer dialer, Host remote, Func<ValueTask> shutdown, bool callerStopsWaiting, CancellationToken token)
     {
+        LocalPeer localPeer = (LocalPeer)dialer;
         LocalPeer remotePeer = (LocalPeer)remote.Peer;
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task<ISession> dial = dialer.DialAsync(remote.Address, caller.Token);
         Task<ISession> remaining = dial;
         if (callerStopsWaiting)
         {
-            remaining = ((LocalPeer)dialer).DialAsync(remote.Address, token);
+            remaining = localPeer.DialAsync(remote.Address, token);
             await caller.CancelAsync();
         }
 
@@ -507,14 +508,14 @@ public class OptimismGossipLoopbackTests
         // Dial timeout is 15 s; a remote losing the connection mid-handshake can take another 30 s to drop it.
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
         bounded.CancelAfter(TimeSpan.FromSeconds(45));
-        while (remotePeer.Sessions.Count > 0 && !bounded.IsCancellationRequested)
+        while ((localPeer.Sessions.Count > 0 || remotePeer.Sessions.Count > 0) && !bounded.IsCancellationRequested)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(((LocalPeer)dialer).Sessions, Is.Empty, "shutdown prevents a late dial from admitting a session");
+            Assert.That(localPeer.Sessions, Is.Empty, "the disposed dialer left a session open");
             Assert.That(remotePeer.Sessions, Is.Empty, "the dial finished after shutdown and its session stayed open");
         }
     }

@@ -7,6 +7,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -37,7 +38,7 @@ public static partial class BeaconStateAccessors
     private static bool IsSelected(ulong modulo, BlsSignature selectionProof)
     {
         Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
-        SHA256.HashData(selectionProof.Bytes, hash);
+        ThreadSha256.HashData(selectionProof.Bytes, hash);
         return BinaryPrimitives.ReadUInt64LittleEndian(hash) % modulo == 0;
     }
 
@@ -211,7 +212,7 @@ public static partial class BeaconStateAccessors
             int shuffledIndex = SwapOrNotShuffle.ComputeShuffledIndex((int)(i % (ulong)indices.Length), indices.Length, seed);
             int candidateIndex = indices[shuffledIndex];
             BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], i / 16);
-            SHA256.HashData(preimage, randomBytes);
+            ThreadSha256.HashData(preimage, randomBytes);
             ulong randomValue = BinaryPrimitives.ReadUInt16LittleEndian(randomBytes[(int)(i % 16 * 2)..]);
             ulong effectiveBalance = state.ReadOnlyValidators[candidateIndex].EffectiveBalance;
             if (effectiveBalance * MaxRandomValue >= Presets.MaxEffectiveBalanceElectra * randomValue)
@@ -237,7 +238,7 @@ public static partial class BeaconStateAccessors
         for (int i = 0; i < proposerIndices.Length; i++)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], startSlot + (ulong)i);
-            proposerIndices[i] = (ulong)state.ComputeProposerIndex(indices, SHA256.HashData(preimage));
+            proposerIndices[i] = (ulong)state.ComputeProposerIndex(indices, ThreadSha256.HashData(preimage));
         }
         return proposerIndices;
     }

@@ -53,6 +53,8 @@ public static class BlsPublicKeySszVectorTypeConverter
 
     public static BlsPublicKey FromSpan(ReadOnlySpan<byte> span) => new(span);
 
+    public static ref readonly BlsPublicKey ValueFromSpan(ReadOnlySpan<byte> span) => ref MemoryMarshal.AsRef<BlsPublicKey>(span);
+
     public static void FromSpan(ReadOnlySpan<byte> span, Span<BlsPublicKey> values) =>
         span.Slice(0, values.Length * Length).CopyTo(MemoryMarshal.AsBytes(values));
 

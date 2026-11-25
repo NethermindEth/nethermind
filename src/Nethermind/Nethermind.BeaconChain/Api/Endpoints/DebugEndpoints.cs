@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
@@ -16,26 +15,20 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// <summary>
 /// <c>/eth/v1/debug/*</c>: the persisted state as SSZ (the checkpoint-provider path) or JSON, and fork choice.
 /// </summary>
-internal static class DebugEndpoints
+internal sealed class DebugEndpoints(BeaconApiContext ctx)
 {
-    public static void Map(WebApplication app, BeaconApiContext ctx)
-    {
-        app.MapGet("/eth/v2/debug/beacon/states/{state_id}", (HttpContext c, string state_id) => State(c, state_id, ctx.ForRequest()));
-        app.MapGet("/eth/v1/debug/beacon/fork_choice", c => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), ForkChoice));
-        app.MapGet("/eth/v1/debug/fork_choice", c => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), ForkChoice));
-    }
-
     /// <summary>
     /// The beacon-api <c>getDebugForkChoice</c> shape (no <c>data</c> envelope): the checkpoints,
     /// one entry per proto-array node, and the proposer boost root under <c>extra_data</c>, all
     /// from the importer's latest published <see cref="ForkChoiceSnapshot"/>.
     /// </summary>
-    private static Task ForkChoice(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/debug/beacon/fork_choice"), HttpGet("/eth/v1/debug/fork_choice"), Negotiated]
+    public IResult ForkChoice()
     {
         if (ctx.ForkChoiceSnapshot is not { } snapshot)
         {
-            return ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable,
-                "Fork choice has not computed a head yet.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status503ServiceUnavailable,
+                "Fork choice has not computed a head yet.");
         }
 
         ForkChoiceNodeDto[] nodes = new ForkChoiceNodeDto[snapshot.Nodes.Count];
@@ -59,8 +52,7 @@ internal static class DebugEndpoints
             nodes,
             new ForkChoiceExtraDataDto(snapshot.ProposerBoostRoot.ToString()));
 
-        c.Response.ContentType = ContentNegotiation.Json;
-        return JsonSerializer.SerializeAsync(c.Response.Body, dto, BeaconApiJson.Options, c.RequestAborted);
+        return ApiResults.Json(dto);
     }
 
     private static CheckpointDto ToCheckpointDto(CheckpointRef checkpoint) => new(checkpoint.Epoch.ToString(), checkpoint.Root.ToString());
@@ -78,22 +70,14 @@ internal static class DebugEndpoints
     /// Serves the node's persisted post-state: as the raw stored SSZ bytes (what lets another client
     /// checkpoint-sync from this node) or, decoded, as the beacon-api JSON representation.
     /// </summary>
-    private static Task State(HttpContext c, string stateId, BeaconApiContext ctx)
+    [HttpGet("/eth/v2/debug/beacon/states/{stateId}"), Negotiated(Ssz = true)]
+    public IResult State(string stateId) => ApiResults.SszOrJson(ssz: () => StateSsz(stateId), json: () => StateJson(stateId));
+
+    private IResult StateSsz(string stateId)
     {
-        ContentNegotiation.ResponseFormat? format = ContentNegotiation.Negotiate(c, sszSupported: true);
-        if (format is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
-        if (format == ContentNegotiation.ResponseFormat.Json)
-        {
-            return StateJson(c, stateId, ctx);
-        }
-
         if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState resolved, out int errorStatus, out string? errorMessage))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         ulong slot;
@@ -101,36 +85,29 @@ internal static class DebugEndpoints
         {
             slot = checkpoint.State.Slot;
         }
-        else if (ctx.Store.TryGetForkedBlock(resolved.Root, out ForkedSignedBeaconBlock? block))
-        {
-            slot = block.Slot;
-        }
-        else
+        else if (!ctx.Store.TryGetBlockSlot(resolved.Root, out slot))
         {
             // consensus-specs v1.7.0-beta.2, Electra/Fulu BeaconState: slot follows the 40-byte genesis fields.
             const int slotOffset = 40;
             if (resolved.Ssz.Length < slotOffset + sizeof(ulong))
             {
-                return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
-                    $"The state persisted for '{stateId}' ({resolved.Root}) is not decodable: SSZ is too short to contain a slot.", c.RequestAborted);
+                return ApiResults.Error(StatusCodes.Status500InternalServerError,
+                    $"The state persisted for '{stateId}' ({resolved.Root}) is not decodable: SSZ is too short to contain a slot.");
             }
 
             slot = BinaryPrimitives.ReadUInt64LittleEndian(resolved.Ssz.AsSpan(slotOffset));
         }
 
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, slot);
-
-        c.Response.ContentType = ContentNegotiation.OctetStream;
-        return c.Response.Body.WriteAsync(resolved.Ssz, c.RequestAborted).AsTask();
+        return ApiResults.Ssz(resolved.Ssz).WithConsensusVersion(ctx.Spec, slot);
     }
 
-    private static Task StateJson(HttpContext c, string stateId, BeaconApiContext ctx)
+    private IResult StateJson(string stateId)
     {
         if (!StateIdResolver.TryResolveHeld(ctx, stateId, out ResolvedState resolved))
         {
             if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState raw, out int errorStatus, out string? errorMessage))
             {
-                return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+                return ApiResults.Error(errorStatus, errorMessage!);
             }
 
             try
@@ -140,24 +117,19 @@ internal static class DebugEndpoints
             }
             catch (BeaconStateException e)
             {
-                return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
-                    $"The state persisted for '{stateId}' ({raw.Root}) is not decodable: {e.Message}", c.RequestAborted);
+                return ApiResults.Error(StatusCodes.Status500InternalServerError,
+                    $"The state persisted for '{stateId}' ({raw.Root}) is not decodable: {e.Message}");
             }
         }
 
         ApiState state = resolved.State;
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, state.Slot);
-        return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(state.Fork),
+        return ApiResults.VersionedEnvelope(ResponseEnvelope.ForkName(state.Fork),
             ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             s => state.Electra is { } electra
                 ? BeaconJsonWriter.WriteBeaconStateAsync(s, electra)
-                : BeaconJsonWriter.WriteBeaconStateAsync(s, state.Gloas!));
+                : BeaconJsonWriter.WriteBeaconStateAsync(s, state.Gloas!)).WithConsensusVersion(ctx.Spec, state.Slot);
     }
-
-    private sealed record CheckpointDto(
-        [property: JsonPropertyName("epoch")] string Epoch,
-        [property: JsonPropertyName("root")] string Root);
 
     // parent_root and execution_block_hash are required by the beacon-API Node schema, so a node
     // that has neither carries the zero root rather than omitting the field.

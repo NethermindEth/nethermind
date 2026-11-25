@@ -519,7 +519,6 @@ public class McpNodeCapabilitiesTests
     {
         public Nethermind.Evm.State.IWorldStateScopeProvider GlobalWorldState => inner.GlobalWorldState;
         public IStateReader GlobalStateReader => inner.GlobalStateReader;
-        public Nethermind.State.SnapServer.ISnapStateServer SnapStateServer => inner.SnapStateServer;
         public IReadOnlyKeyValueStore? HashServer => inner.HashServer;
         public Nethermind.Evm.State.IWorldStateScopeProvider CreateResettableWorldState() => inner.CreateResettableWorldState();
         public IOverridableWorldScope CreateOverridableWorldScope() => inner.CreateOverridableWorldScope();

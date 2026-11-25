@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Primitives;
+using Microsoft.AspNetCore.Mvc;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
@@ -23,161 +23,132 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// and encodes the result. <see cref="BeaconApiEndpoints"/> turns a <see cref="BeaconNodeApiException"/> into its status, and every
 /// other <c>/eth/v1/validator/*</c> route answers through it as not supported.
 /// </summary>
-internal static class ValidatorEndpoints
+internal sealed class ValidatorEndpoints(BeaconApiContext ctx)
 {
-    public static void Map(WebApplication app, BeaconApiContext ctx)
+    [HttpPost("/eth/v1/validator/duties/attester/{epoch}"), Negotiated]
+    public async Task<IResult> AttesterDuties(string epoch, [FromBody] string[] ids, CancellationToken cancellationToken)
     {
-        app.MapPost("/eth/v1/validator/duties/attester/{epoch}", (HttpContext c, string epoch) => ContentNegotiation.JsonOnly(c, ctx, epoch, AttesterDuties));
-        app.MapGet("/eth/v2/validator/duties/proposer/{epoch}", (HttpContext c, string epoch) => ContentNegotiation.JsonOnly(c, ctx, epoch, ProposerDuties));
-        app.MapPost("/eth/v1/validator/duties/sync/{epoch}", (HttpContext c, string epoch) => ContentNegotiation.JsonOnly(c, ctx, epoch, SyncDuties));
-        app.MapGet("/eth/v1/validator/attestation_data", c => ContentNegotiation.JsonOnly(c, ctx, AttestationData));
-        app.MapPost("/eth/v2/beacon/pool/attestations", c => SubmitAttestations(c, ctx));
-        app.MapPost("/eth/v1/validator/beacon_committee_subscriptions", c => SubscribeToBeaconCommittees(c, ctx));
-        app.MapGet("/eth/v2/validator/aggregate_attestation", c => ContentNegotiation.JsonOnly(c, ctx, AggregateAttestation));
-        app.MapPost("/eth/v2/validator/aggregate_and_proofs", c => SubmitAggregateAndProofs(c, ctx));
-        app.MapPost("/eth/v1/validator/sync_committee_subscriptions", c => SubscribeToSyncCommittees(c, ctx));
-        app.MapPost("/eth/v1/beacon/pool/sync_committees", c => SubmitSyncCommitteeMessages(c, ctx));
-        app.MapGet("/eth/v1/validator/sync_committee_contribution", c => ContentNegotiation.JsonOnly(c, ctx, ProduceContribution));
-        app.MapPost("/eth/v1/validator/contribution_and_proofs", c => SubmitContributionAndProofs(c, ctx));
-        app.MapPost("/eth/v1/validator/prepare_beacon_proposer", c => PrepareBeaconProposers(c, ctx));
-        app.MapGet("/eth/v3/validator/blocks/{slot}", (HttpContext c, string slot) => ProduceBlock(c, slot, ctx));
-        app.MapPost("/eth/v2/beacon/blocks", c => PublishBlock(c, ctx));
-        app.MapMethods("/eth/v1/validator/{**path}", ["GET", "POST"], c => Task.FromException(
-            new BeaconNodeApiException(BeaconNodeApiError.NotSupported, $"{c.Request.Method} {c.Request.Path} is not served by this node yet.")));
-    }
-
-    private static async Task AttesterDuties(HttpContext c, string epoch, BeaconApiContext ctx)
-    {
-        if (!TryParseUInt(epoch, out ulong parsedEpoch))
-        {
-            await WriteInvalid(c, $"Invalid epoch '{epoch}'.");
-            return;
-        }
-
-        if (await ReadValidatorIndices(c) is not { } indices) return;
-        DutiesResult<AttesterDuty> duties = await ctx.ValidatorApi.GetAttesterDuties(parsedEpoch, indices, c.RequestAborted);
-        await WriteDuties(c, duties, static duty => new AttesterDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.CommitteeIndex.ToString(),
+        if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
+        if (!TryParseValidatorIndices(ids, out ulong[]? indices, out string? invalidId)) return Invalid($"Invalid validator index '{invalidId}'.");
+        DutiesResult<AttesterDuty> duties = await ctx.ValidatorApi.GetAttesterDuties(parsedEpoch, indices, cancellationToken);
+        return Duties(duties, static duty => new AttesterDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.CommitteeIndex.ToString(),
             duty.CommitteeLength.ToString(), duty.CommitteesAtSlot.ToString(), duty.ValidatorCommitteeIndex.ToString(), duty.Slot.ToString()));
     }
 
-    private static async Task ProposerDuties(HttpContext c, string epoch, BeaconApiContext ctx)
+    [HttpGet("/eth/v2/validator/duties/proposer/{epoch}"), Negotiated]
+    public async Task<IResult> ProposerDuties(string epoch, CancellationToken cancellationToken)
     {
-        if (!TryParseUInt(epoch, out ulong parsedEpoch))
-        {
-            await WriteInvalid(c, $"Invalid epoch '{epoch}'.");
-            return;
-        }
-
-        DutiesResult<ProposerDuty> duties = await ctx.ValidatorApi.GetProposerDuties(parsedEpoch, c.RequestAborted);
-        await WriteDuties(c, duties, static duty => new ProposerDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.Slot.ToString()));
+        if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
+        DutiesResult<ProposerDuty> duties = await ctx.ValidatorApi.GetProposerDuties(parsedEpoch, cancellationToken);
+        return Duties(duties, static duty => new ProposerDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.Slot.ToString()));
     }
 
-    private static async Task SyncDuties(HttpContext c, string epoch, BeaconApiContext ctx)
+    [HttpPost("/eth/v1/validator/duties/sync/{epoch}"), Negotiated]
+    public async Task<IResult> SyncDuties(string epoch, [FromBody] string[] ids, CancellationToken cancellationToken)
     {
-        if (!TryParseUInt(epoch, out ulong parsedEpoch))
-        {
-            await WriteInvalid(c, $"Invalid epoch '{epoch}'.");
-            return;
-        }
-
-        if (await ReadValidatorIndices(c) is not { } indices) return;
-        DutiesResult<SyncDuty> duties = await ctx.ValidatorApi.GetSyncDuties(parsedEpoch, indices, c.RequestAborted);
-        await WriteDuties(c, duties, static duty => new SyncDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), ToStrings(duty.ValidatorSyncCommitteeIndices)));
+        if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
+        if (!TryParseValidatorIndices(ids, out ulong[]? indices, out string? invalidId)) return Invalid($"Invalid validator index '{invalidId}'.");
+        DutiesResult<SyncDuty> duties = await ctx.ValidatorApi.GetSyncDuties(parsedEpoch, indices, cancellationToken);
+        return Duties(duties, static duty => new SyncDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), ToStrings(duty.ValidatorSyncCommitteeIndices)));
     }
 
-    private static async Task AttestationData(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/validator/attestation_data"), Negotiated]
+    public async Task<IResult> AttestationData([FromQuery(Name = "slot")] string? slot, [FromQuery(Name = "committee_index")] string? committeeIndex, CancellationToken cancellationToken)
     {
-        StringValues slot = c.Request.Query["slot"];
-        StringValues committeeIndex = c.Request.Query["committee_index"];
         ulong parsedCommitteeIndex = 0;
-        if (!TryParseUInt(slot, out ulong parsedSlot) || (committeeIndex.Count > 0 && !TryParseUInt(committeeIndex, out parsedCommitteeIndex)))
+        if (!TryParseUInt(slot, out ulong parsedSlot) || (committeeIndex is not null && !TryParseUInt(committeeIndex, out parsedCommitteeIndex)))
         {
-            await WriteInvalid(c, $"Invalid slot '{slot}' or committee index '{committeeIndex}'.");
-            return;
+            return Invalid($"Invalid slot '{slot}' or committee index '{committeeIndex}'.");
         }
 
-        AttestationData data = await ctx.ValidatorApi.ProduceAttestationData(parsedSlot, parsedCommitteeIndex, c.RequestAborted);
-        await BeaconApiJson.WriteDataAsync(c, ToDto(data), c.RequestAborted);
+        AttestationData data = await ctx.ValidatorApi.ProduceAttestationData(parsedSlot, parsedCommitteeIndex, cancellationToken);
+        return ApiResults.Data(ToDto(data));
     }
 
     /// <summary>beacon-APIs <c>submitPoolAttestationsV2</c>: from Electra the body is a list of <c>SingleAttestation</c>.</summary>
-    private static async Task SubmitAttestations(HttpContext c, BeaconApiContext ctx)
+    [HttpPost("/eth/v2/beacon/pool/attestations"), Negotiated]
+    public async Task<IResult> SubmitAttestations([FromHeader(Name = ResponseEnvelope.ConsensusVersionHeader)] string? consensusVersion,
+        [FromBody] SingleAttestationDto[] items, CancellationToken cancellationToken)
     {
-        if (!await RequireElectraBody(c)) return;
-        if (await ReadItems<SingleAttestationDto, SingleAttestation>(c, "Attestation", FromDto) is not { } attestations) return;
-        await WriteFailures(c, await ctx.ValidatorApi.SubmitAttestations(attestations, c.RequestAborted), "Some attestations were not published.");
+        if (RequireElectraBody(consensusVersion) is { } wrongFork) return wrongFork;
+        if (ConvertItems<SingleAttestationDto, SingleAttestation>(items, "Attestation", FromDto, out SingleAttestation[] attestations) is { } malformed) return malformed;
+        return Failures(await ctx.ValidatorApi.SubmitAttestations(attestations, cancellationToken), "Some attestations were not published.");
     }
 
-    private static async Task SubscribeToBeaconCommittees(HttpContext c, BeaconApiContext ctx)
+    [HttpPost("/eth/v1/validator/beacon_committee_subscriptions"), Negotiated]
+    public async Task<IResult> SubscribeToBeaconCommittees([FromBody] BeaconCommitteeSubscriptionDto[] items, CancellationToken cancellationToken)
     {
-        if (await ReadItems<BeaconCommitteeSubscriptionDto, BeaconCommitteeSubscription>(c, "Subscription", FromDto) is not { } subscriptions) return;
-        await ctx.ValidatorApi.SubscribeToBeaconCommittees(subscriptions, c.RequestAborted);
+        if (ConvertItems<BeaconCommitteeSubscriptionDto, BeaconCommitteeSubscription>(items, "Subscription", FromDto, out BeaconCommitteeSubscription[] subscriptions) is { } malformed) return malformed;
+        await ctx.ValidatorApi.SubscribeToBeaconCommittees(subscriptions, cancellationToken);
+        return Results.Ok();
     }
 
     /// <summary>beacon-APIs <c>getAggregatedAttestationV2</c>: the Electra <c>Attestation</c>, versioned by its slot's fork.</summary>
-    private static async Task AggregateAttestation(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v2/validator/aggregate_attestation"), Negotiated]
+    public async Task<IResult> AggregateAttestation([FromQuery(Name = "attestation_data_root")] string? root, [FromQuery(Name = "slot")] string? slot,
+        [FromQuery(Name = "committee_index")] string? committeeIndex, CancellationToken cancellationToken)
     {
-        StringValues root = c.Request.Query["attestation_data_root"];
-        StringValues slot = c.Request.Query["slot"];
-        StringValues committeeIndex = c.Request.Query["committee_index"];
-        if (!HexConvert.TryParseHash(root.ToString(), out Hash256? parsedRoot) || !TryParseUInt(slot, out ulong parsedSlot) || !TryParseUInt(committeeIndex, out ulong parsedCommitteeIndex))
+        if (root is null || !HexConvert.TryParseHash(root, out Hash256? parsedRoot) || !TryParseUInt(slot, out ulong parsedSlot) || !TryParseUInt(committeeIndex, out ulong parsedCommitteeIndex))
         {
-            await WriteInvalid(c, $"Invalid attestation data root '{root}', slot '{slot}' or committee index '{committeeIndex}'.");
-            return;
+            return Invalid($"Invalid attestation data root '{root}', slot '{slot}' or committee index '{committeeIndex}'.");
         }
 
-        Attestation aggregate = await ctx.ValidatorApi.GetAggregateAttestation(parsedSlot, parsedRoot!, parsedCommitteeIndex, c.RequestAborted);
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, parsedSlot);
-        c.Response.ContentType = ContentNegotiation.Json;
-        await JsonSerializer.SerializeAsync(c.Response.Body, new VersionedDto<AttestationDto>(c.Response.Headers[ResponseEnvelope.ConsensusVersionHeader].ToString(), ToDto(aggregate)),
-            BeaconApiJson.Options, c.RequestAborted);
+        Attestation aggregate = await ctx.ValidatorApi.GetAggregateAttestation(parsedSlot, parsedRoot!, parsedCommitteeIndex, cancellationToken);
+        BeaconFork fork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(parsedSlot));
+        return ApiResults.Json(new VersionedDto<AttestationDto>(ResponseEnvelope.ForkName(fork), ToDto(aggregate))).WithConsensusVersion(fork);
     }
 
     /// <summary>beacon-APIs <c>publishAggregateAndProofsV2</c>: from Electra the body is a list of Electra <c>SignedAggregateAndProof</c>.</summary>
-    private static async Task SubmitAggregateAndProofs(HttpContext c, BeaconApiContext ctx)
+    [HttpPost("/eth/v2/validator/aggregate_and_proofs"), Negotiated]
+    public async Task<IResult> SubmitAggregateAndProofs([FromHeader(Name = ResponseEnvelope.ConsensusVersionHeader)] string? consensusVersion,
+        [FromBody] SignedAggregateAndProofDto[] items, CancellationToken cancellationToken)
     {
-        if (!await RequireElectraBody(c)) return;
-        if (await ReadItems<SignedAggregateAndProofDto, SignedAggregateAndProof>(c, "Aggregate", FromDto) is not { } aggregates) return;
-        await WriteFailures(c, await ctx.ValidatorApi.SubmitAggregateAndProofs(aggregates, c.RequestAborted), "Some aggregates were not published.");
+        if (RequireElectraBody(consensusVersion) is { } wrongFork) return wrongFork;
+        if (ConvertItems<SignedAggregateAndProofDto, SignedAggregateAndProof>(items, "Aggregate", FromDto, out SignedAggregateAndProof[] aggregates) is { } malformed) return malformed;
+        return Failures(await ctx.ValidatorApi.SubmitAggregateAndProofs(aggregates, cancellationToken), "Some aggregates were not published.");
     }
 
-    private static async Task SubscribeToSyncCommittees(HttpContext c, BeaconApiContext ctx)
+    [HttpPost("/eth/v1/validator/sync_committee_subscriptions"), Negotiated]
+    public async Task<IResult> SubscribeToSyncCommittees([FromBody] SyncCommitteeSubscriptionDto[] items, CancellationToken cancellationToken)
     {
-        if (await ReadItems<SyncCommitteeSubscriptionDto, SyncCommitteeSubscription>(c, "Subscription", FromDto) is not { } subscriptions) return;
-        await ctx.ValidatorApi.SubscribeToSyncCommittees(subscriptions, c.RequestAborted);
+        if (ConvertItems<SyncCommitteeSubscriptionDto, SyncCommitteeSubscription>(items, "Subscription", FromDto, out SyncCommitteeSubscription[] subscriptions) is { } malformed) return malformed;
+        await ctx.ValidatorApi.SubscribeToSyncCommittees(subscriptions, cancellationToken);
+        return Results.Ok();
     }
 
-    private static async Task SubmitSyncCommitteeMessages(HttpContext c, BeaconApiContext ctx)
+    [HttpPost("/eth/v1/beacon/pool/sync_committees"), Negotiated]
+    public async Task<IResult> SubmitSyncCommitteeMessages([FromBody] SyncCommitteeMessageDto[] items, CancellationToken cancellationToken)
     {
-        if (await ReadItems<SyncCommitteeMessageDto, SyncCommitteeMessage>(c, "Sync committee message", FromDto) is not { } messages) return;
-        await WriteFailures(c, await ctx.ValidatorApi.SubmitSyncCommitteeMessages(messages, c.RequestAborted), "Some sync committee messages were not published.");
+        if (ConvertItems<SyncCommitteeMessageDto, SyncCommitteeMessage>(items, "Sync committee message", FromDto, out SyncCommitteeMessage[] messages) is { } malformed) return malformed;
+        return Failures(await ctx.ValidatorApi.SubmitSyncCommitteeMessages(messages, cancellationToken), "Some sync committee messages were not published.");
     }
 
-    private static async Task ProduceContribution(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/validator/sync_committee_contribution"), Negotiated]
+    public async Task<IResult> ProduceContribution([FromQuery(Name = "slot")] string? slot, [FromQuery(Name = "subcommittee_index")] string? subcommitteeIndex,
+        [FromQuery(Name = "beacon_block_root")] string? root, CancellationToken cancellationToken)
     {
-        StringValues slot = c.Request.Query["slot"];
-        StringValues subcommitteeIndex = c.Request.Query["subcommittee_index"];
-        StringValues root = c.Request.Query["beacon_block_root"];
-        if (!TryParseUInt(slot, out ulong parsedSlot) || !TryParseUInt(subcommitteeIndex, out ulong parsedSubcommitteeIndex) || !HexConvert.TryParseHash(root.ToString(), out Hash256? parsedRoot))
+        if (!TryParseUInt(slot, out ulong parsedSlot) || !TryParseUInt(subcommitteeIndex, out ulong parsedSubcommitteeIndex) || root is null || !HexConvert.TryParseHash(root, out Hash256? parsedRoot))
         {
-            await WriteInvalid(c, $"Invalid slot '{slot}', subcommittee index '{subcommitteeIndex}' or beacon block root '{root}'.");
-            return;
+            return Invalid($"Invalid slot '{slot}', subcommittee index '{subcommitteeIndex}' or beacon block root '{root}'.");
         }
 
-        SyncCommitteeContribution contribution = await ctx.ValidatorApi.ProduceSyncCommitteeContribution(parsedSlot, parsedSubcommitteeIndex, parsedRoot!, c.RequestAborted);
-        await BeaconApiJson.WriteDataAsync(c, ToDto(contribution), c.RequestAborted);
+        SyncCommitteeContribution contribution = await ctx.ValidatorApi.ProduceSyncCommitteeContribution(parsedSlot, parsedSubcommitteeIndex, parsedRoot!, cancellationToken);
+        return ApiResults.Data(ToDto(contribution));
     }
 
-    private static async Task SubmitContributionAndProofs(HttpContext c, BeaconApiContext ctx)
+    [HttpPost("/eth/v1/validator/contribution_and_proofs"), Negotiated]
+    public async Task<IResult> SubmitContributionAndProofs([FromBody] SignedContributionAndProofDto[] items, CancellationToken cancellationToken)
     {
-        if (await ReadItems<SignedContributionAndProofDto, SignedContributionAndProof>(c, "Contribution", FromDto) is not { } contributions) return;
-        await WriteFailures(c, await ctx.ValidatorApi.SubmitContributionAndProofs(contributions, c.RequestAborted), "Some contributions were not published.");
+        if (ConvertItems<SignedContributionAndProofDto, SignedContributionAndProof>(items, "Contribution", FromDto, out SignedContributionAndProof[] contributions) is { } malformed) return malformed;
+        return Failures(await ctx.ValidatorApi.SubmitContributionAndProofs(contributions, cancellationToken), "Some contributions were not published.");
     }
 
-    private static async Task PrepareBeaconProposers(HttpContext c, BeaconApiContext ctx)
+    [HttpPost("/eth/v1/validator/prepare_beacon_proposer"), Negotiated]
+    public async Task<IResult> PrepareBeaconProposers([FromBody] ProposerPreparationDto[] items, CancellationToken cancellationToken)
     {
-        if (await ReadItems<ProposerPreparationDto, ProposerPreparation>(c, "Preparation", FromDto) is not { } preparations) return;
-        await ctx.ValidatorApi.PrepareBeaconProposers(preparations, c.RequestAborted);
+        if (ConvertItems<ProposerPreparationDto, ProposerPreparation>(items, "Preparation", FromDto, out ProposerPreparation[] preparations) is { } malformed) return malformed;
+        await ctx.ValidatorApi.PrepareBeaconProposers(preparations, cancellationToken);
+        return Results.Ok();
     }
 
     /// <summary>beacon-APIs <c>produceBlockV3</c>: always a full block with the local execution layer's payload, in JSON or SSZ.</summary>
@@ -185,46 +156,133 @@ internal static class ValidatorEndpoints
     /// <c>builder_boost_factor</c> is checked and ignored, as the node has no builder. <c>skip_randao_verification</c> is not honoured, so the
     /// reveal is always checked.
     /// </remarks>
-    private static async Task ProduceBlock(HttpContext c, string slot, BeaconApiContext ctx)
+    [HttpGet("/eth/v3/validator/blocks/{slot}"), Negotiated(Ssz = true)]
+    public async Task<IResult> ProduceBlock(string slot, [FromQuery(Name = "randao_reveal")] string? randaoReveal, [FromQuery(Name = "graffiti")] string? graffiti,
+        [FromQuery(Name = "builder_boost_factor")] string? builderBoostFactor, CancellationToken cancellationToken)
     {
-        StringValues randaoReveal = c.Request.Query["randao_reveal"];
-        StringValues graffiti = c.Request.Query["graffiti"];
-        StringValues builderBoostFactor = c.Request.Query["builder_boost_factor"];
         Hash256? parsedGraffiti = Hash256.Zero;
-        if (!TryParseUInt(slot, out ulong parsedSlot) || !HexConvert.TryParseSignature(randaoReveal.ToString(), out BlsSignature parsedReveal)
-            || (graffiti.Count > 0 && !HexConvert.TryParseHash(graffiti.ToString(), out parsedGraffiti)) || (builderBoostFactor.Count > 0 && !TryParseUInt(builderBoostFactor, out _)))
+        if (!TryParseUInt(slot, out ulong parsedSlot) || randaoReveal is null || !HexConvert.TryParseSignature(randaoReveal, out BlsSignature parsedReveal)
+            || (graffiti is not null && !HexConvert.TryParseHash(graffiti, out parsedGraffiti)) || (builderBoostFactor is not null && !TryParseUInt(builderBoostFactor, out _)))
         {
-            await WriteInvalid(c, $"Invalid slot '{slot}', randao reveal '{randaoReveal}', graffiti '{graffiti}' or builder boost factor '{builderBoostFactor}'.");
-            return;
+            return Invalid($"Invalid slot '{slot}', randao reveal '{randaoReveal}', graffiti '{graffiti}' or builder boost factor '{builderBoostFactor}'.");
         }
 
-        ContentNegotiation.ResponseFormat? format = ContentNegotiation.Negotiate(c, sszSupported: true);
-        if (format is null)
+        ProducedBlock produced = await ctx.ValidatorApi.ProduceBlock(parsedSlot, parsedReveal, parsedGraffiti!, cancellationToken);
+        BeaconFork fork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(parsedSlot));
+        return WithBlockValues(ApiResults.SszOrJson(
+            ssz: () => ApiResults.Ssz(EncodeBlockContents(produced)),
+            json: () => ApiResults.Write(c => WriteProducedBlock(c, ResponseEnvelope.ForkName(fork), produced))), produced).WithConsensusVersion(fork);
+    }
+
+    /// <summary>beacon-APIs <c>publishBlockV2</c> of a Fulu <c>SignedBlockContents</c>, in JSON or SSZ, with <c>broadcast_validation</c> <c>gossip</c>, its default, only.</summary>
+    /// <remarks>The body is read here rather than bound, because the JSON body binding refuses the SSZ form.</remarks>
+    [HttpPost("/eth/v2/beacon/blocks")]
+    public async Task<IResult> PublishBlock(HttpContext c, [FromHeader(Name = ResponseEnvelope.ConsensusVersionHeader)] string? consensusVersion,
+        [FromQuery(Name = "broadcast_validation")] string? broadcastValidation)
+    {
+        if (consensusVersion == "gloas") throw new BeaconNodeApiException(BeaconNodeApiError.NotSupported, "Gloas blocks are not served by this node yet.");
+        if (consensusVersion != "fulu") return Invalid($"The {ResponseEnvelope.ConsensusVersionHeader} header must name fulu.");
+        if (broadcastValidation is not null && broadcastValidation != "gossip") return Invalid($"Broadcast validation '{broadcastValidation}' is not served; only gossip is.");
+        (SignedBlockContents? contents, IResult? unreadable) = await ReadSignedBlockContents(c);
+        if (unreadable is not null) return unreadable;
+        await ctx.ValidatorApi.PublishBlock(contents!, c.RequestAborted);
+        return Results.Ok();
+    }
+
+    [HttpGet("/eth/v1/validator/{**path}")]
+    [HttpPost("/eth/v1/validator/{**path}")]
+    public static Task NotServed(HttpContext c) => Task.FromException(
+        new BeaconNodeApiException(BeaconNodeApiError.NotSupported, $"{c.Request.Method} {c.Request.Path} is not served by this node yet."));
+
+    /// <summary>Whether the <c>Eth-Consensus-Version</c> header names a fork whose bodies use the Electra containers.</summary>
+    /// <returns>The error response when it does not.</returns>
+    private static IResult? RequireElectraBody(string? consensusVersion) => consensusVersion is "electra" or "fulu" or "gloas"
+        ? null
+        : Invalid($"The {ResponseEnvelope.ConsensusVersionHeader} header must name electra or a later fork.");
+
+    /// <summary>Converts each item of a JSON array.</summary>
+    /// <returns>The error response naming the first item <paramref name="fromDto"/> refuses.</returns>
+    private static IResult? ConvertItems<TDto, TItem>(TDto[] dtos, string itemName, Func<TDto?, TItem?> fromDto, out TItem[] items) where TItem : class
+    {
+        items = new TItem[dtos.Length];
+        for (int i = 0; i < items.Length; i++)
         {
-            await ContentNegotiation.WriteNotAcceptable(c);
-            return;
+            if (fromDto(dtos[i]) is not { } item) return Invalid($"{itemName} {i} is malformed.");
+            items[i] = item;
         }
 
-        ProducedBlock produced = await ctx.ValidatorApi.ProduceBlock(parsedSlot, parsedReveal, parsedGraffiti!, c.RequestAborted);
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, parsedSlot);
-        c.Response.Headers[ExecutionPayloadBlindedHeader] = "false";
-        c.Response.Headers[ExecutionPayloadValueHeader] = produced.ExecutionPayloadValue.ToString();
-        c.Response.Headers[ConsensusBlockValueHeader] = produced.ConsensusBlockValue.ToString();
-        if (format == ContentNegotiation.ResponseFormat.Ssz)
+        return null;
+    }
+
+    /// <summary>An empty 200 when nothing was refused, or a 400 naming each refused item.</summary>
+    private static IResult Failures(IReadOnlyList<SubmissionFailure> failures, string message)
+    {
+        if (failures.Count == 0) return Results.Ok();
+        FailureDto[] refused = new FailureDto[failures.Count];
+        for (int i = 0; i < refused.Length; i++) refused[i] = new FailureDto(failures[i].Index, failures[i].Message);
+        IResult body = ApiResults.Json(new IndexedErrorDto(StatusCodes.Status400BadRequest, message, refused));
+        return ApiResults.Write(c =>
         {
-            BlockContentsWire contents = new() { Block = produced.Block, KzgProofs = new SszKzgCommitment[produced.KzgProofs.Count], Blobs = new SszBlob[produced.Blobs.Count] };
-            for (int i = 0; i < contents.KzgProofs.Length; i++) contents.KzgProofs[i] = SszKzgCommitment.FromSpan(produced.KzgProofs[i]);
-            for (int i = 0; i < contents.Blobs.Length; i++) contents.Blobs[i] = new SszBlob { Bytes = produced.Blobs[i] };
-            c.Response.ContentType = ContentNegotiation.OctetStream;
-            await c.Response.Body.WriteAsync(BlockContentsWire.Encode(contents), c.RequestAborted);
-            return;
+            c.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return body.ExecuteAsync(c);
+        });
+    }
+
+    /// <summary>Reads a Fulu <c>SignedBlockContents</c> from a JSON or SSZ body.</summary>
+    /// <returns>The contents, or the error response when they cannot be read.</returns>
+    private static async Task<(SignedBlockContents? Contents, IResult? Error)> ReadSignedBlockContents(HttpContext c)
+    {
+        bool ssz = ContentNegotiation.IsContentType(c, ContentNegotiation.OctetStream);
+        if (!ssz && !ContentNegotiation.IsJsonContentType(c))
+        {
+            return (null, ApiResults.Error(StatusCodes.Status415UnsupportedMediaType, $"Request Content-Type must be '{ContentNegotiation.Json}' or '{ContentNegotiation.OctetStream}'"));
         }
 
+        try
+        {
+            if (ssz)
+            {
+                using MemoryStream body = new();
+                await c.Request.Body.CopyToAsync(body, c.RequestAborted);
+                SignedBlockContentsWire.Decode(body.ToArray(), out SignedBlockContentsWire wire);
+                byte[][] blobBytes = new byte[wire.Blobs!.Length][];
+                for (int i = 0; i < blobBytes.Length; i++) blobBytes[i] = wire.Blobs[i].Bytes!;
+                byte[][] proofBytes = new byte[wire.KzgProofs!.Length][];
+                for (int i = 0; i < proofBytes.Length; i++) proofBytes[i] = wire.KzgProofs[i].AsSpan().ToArray();
+                return (new SignedBlockContents(wire.SignedBlock!, blobBytes, proofBytes), null);
+            }
+
+            using JsonDocument document = await JsonDocument.ParseAsync(c.Request.Body, cancellationToken: c.RequestAborted);
+            (SignedBeaconBlock block, byte[][] kzgProofs, byte[][] blobs) = BeaconJsonReader.ReadSignedBlockContents(document.RootElement);
+            // The SSZ codec checks the list limits the JSON form leaves open.
+            SignedBeaconBlock.Decode(SignedBeaconBlock.Encode(block), out SignedBeaconBlock checkedBlock);
+            return (new SignedBlockContents(checkedBlock, blobs, kzgProofs), null);
+        }
+        catch (Exception e) when (e is JsonException or FormatException or KeyNotFoundException or InvalidOperationException or InvalidDataException or ArgumentException)
+        {
+            return (null, Invalid($"Malformed block contents: {e.Message}"));
+        }
+        catch (BadHttpRequestException e)
+        {
+            return (null, ApiResults.Error(e.StatusCode, e.Message));
+        }
+    }
+
+    private static byte[] EncodeBlockContents(ProducedBlock produced)
+    {
+        BlockContentsWire contents = new() { Block = produced.Block, KzgProofs = new SszKzgCommitment[produced.KzgProofs.Count], Blobs = new SszBlob[produced.Blobs.Count] };
+        for (int i = 0; i < contents.KzgProofs.Length; i++) contents.KzgProofs[i] = SszKzgCommitment.FromSpan(produced.KzgProofs[i]);
+        for (int i = 0; i < contents.Blobs.Length; i++) contents.Blobs[i] = new SszBlob { Bytes = produced.Blobs[i] };
+        return BlockContentsWire.Encode(contents);
+    }
+
+    private static async Task WriteProducedBlock(HttpContext c, string version, ProducedBlock produced)
+    {
         c.Response.ContentType = ContentNegotiation.Json;
         await using BeaconJsonStream stream = new(c.Response.BodyWriter, c.RequestAborted);
         Utf8JsonWriter w = stream.Writer;
         w.WriteStartObject();
-        w.WriteString("version", c.Response.Headers[ResponseEnvelope.ConsensusVersionHeader].ToString());
+        w.WriteString("version", version);
         w.WriteBoolean("execution_payload_blinded", false);
         w.WriteString("execution_payload_value", produced.ExecutionPayloadValue.ToString());
         w.WriteString("consensus_block_value", produced.ConsensusBlockValue.ToString());
@@ -239,69 +297,14 @@ internal static class ValidatorEndpoints
         await stream.FlushAsync();
     }
 
-    /// <summary>beacon-APIs <c>publishBlockV2</c> of a Fulu <c>SignedBlockContents</c>, in JSON or SSZ, with <c>broadcast_validation</c> <c>gossip</c>, its default, only.</summary>
-    private static async Task PublishBlock(HttpContext c, BeaconApiContext ctx)
+    /// <summary>Adds the <c>produceBlockV3</c> headers that describe <paramref name="produced"/> to <paramref name="result"/>.</summary>
+    private static IResult WithBlockValues(IResult result, ProducedBlock produced) => ApiResults.Write(c =>
     {
-        string version = c.Request.Headers[ResponseEnvelope.ConsensusVersionHeader].ToString();
-        StringValues broadcastValidation = c.Request.Query["broadcast_validation"];
-        if (version == "gloas") throw new BeaconNodeApiException(BeaconNodeApiError.NotSupported, "Gloas blocks are not served by this node yet.");
-        if (version != "fulu")
-        {
-            await WriteInvalid(c, $"The {ResponseEnvelope.ConsensusVersionHeader} header must name fulu.");
-            return;
-        }
-
-        if (broadcastValidation.Count > 0 && broadcastValidation.ToString() != "gossip")
-        {
-            await WriteInvalid(c, $"Broadcast validation '{broadcastValidation}' is not served; only gossip is.");
-            return;
-        }
-
-        if (await ReadSignedBlockContents(c) is not { } contents) return;
-        await ctx.ValidatorApi.PublishBlock(contents, c.RequestAborted);
-    }
-
-    /// <summary>Reads a Fulu <c>SignedBlockContents</c> from a JSON or SSZ body, writing the error response itself when it cannot.</summary>
-    private static async Task<SignedBlockContents?> ReadSignedBlockContents(HttpContext c)
-    {
-        bool ssz = ContentNegotiation.IsAcceptableContentType(c, ContentNegotiation.OctetStream);
-        if (!ssz && !ContentNegotiation.IsAcceptableContentType(c, ContentNegotiation.Json))
-        {
-            await ContentNegotiation.WriteUnsupportedMediaType(c, $"{ContentNegotiation.Json}' or '{ContentNegotiation.OctetStream}");
-            return null;
-        }
-
-        try
-        {
-            if (ssz)
-            {
-                using MemoryStream body = new();
-                await c.Request.Body.CopyToAsync(body, c.RequestAborted);
-                SignedBlockContentsWire.Decode(body.ToArray(), out SignedBlockContentsWire wire);
-                byte[][] blobBytes = new byte[wire.Blobs!.Length][];
-                for (int i = 0; i < blobBytes.Length; i++) blobBytes[i] = wire.Blobs[i].Bytes!;
-                byte[][] proofBytes = new byte[wire.KzgProofs!.Length][];
-                for (int i = 0; i < proofBytes.Length; i++) proofBytes[i] = wire.KzgProofs[i].AsSpan().ToArray();
-                return new SignedBlockContents(wire.SignedBlock!, blobBytes, proofBytes);
-            }
-
-            using JsonDocument document = await JsonDocument.ParseAsync(c.Request.Body, cancellationToken: c.RequestAborted);
-            (SignedBeaconBlock block, byte[][] kzgProofs, byte[][] blobs) = BeaconJsonReader.ReadSignedBlockContents(document.RootElement);
-            // The SSZ codec checks the list limits the JSON form leaves open.
-            SignedBeaconBlock.Decode(SignedBeaconBlock.Encode(block), out SignedBeaconBlock checkedBlock);
-            return new SignedBlockContents(checkedBlock, blobs, kzgProofs);
-        }
-        catch (Exception e) when (e is JsonException or FormatException or KeyNotFoundException or InvalidOperationException or InvalidDataException or ArgumentException)
-        {
-            await WriteInvalid(c, $"Malformed block contents: {e.Message}");
-        }
-        catch (BadHttpRequestException e)
-        {
-            await ApiErrors.Write(c, e.StatusCode, e.Message, c.RequestAborted);
-        }
-
-        return null;
-    }
+        c.Response.Headers[ExecutionPayloadBlindedHeader] = "false";
+        c.Response.Headers[ExecutionPayloadValueHeader] = produced.ExecutionPayloadValue.ToString();
+        c.Response.Headers[ConsensusBlockValueHeader] = produced.ConsensusBlockValue.ToString();
+        return result.ExecuteAsync(c);
+    });
 
     private static async Task WriteHexArray(BeaconJsonStream stream, string name, IReadOnlyList<byte[]> items)
     {
@@ -315,69 +318,28 @@ internal static class ValidatorEndpoints
         stream.Writer.WriteEndArray();
     }
 
-    /// <summary>Whether the <c>Eth-Consensus-Version</c> header names a fork whose bodies use the Electra containers, writing the error response itself when not.</summary>
-    private static async Task<bool> RequireElectraBody(HttpContext c)
+    private static bool TryParseValidatorIndices(string[] ids, [NotNullWhen(true)] out ulong[]? indices, out string? invalidId)
     {
-        if (c.Request.Headers[ResponseEnvelope.ConsensusVersionHeader].ToString() is "electra" or "fulu" or "gloas") return true;
-        await WriteInvalid(c, $"The {ResponseEnvelope.ConsensusVersionHeader} header must name electra or a later fork.");
-        return false;
-    }
-
-    /// <summary>Reads a JSON array and converts each item, writing the error response itself when it cannot.</summary>
-    private static async Task<TItem[]?> ReadItems<TDto, TItem>(HttpContext c, string itemName, Func<TDto?, TItem?> fromDto) where TItem : class
-    {
-        (bool read, TDto[]? dtos) = await BeaconStatesEndpoints.TryReadJsonBody<TDto[]>(c, bodyRequired: true);
-        if (!read) return null;
-        TItem[] items = new TItem[dtos!.Length];
-        for (int i = 0; i < items.Length; i++)
-        {
-            if (fromDto(dtos[i]) is not { } item)
-            {
-                await WriteInvalid(c, $"{itemName} {i} is malformed.");
-                return null;
-            }
-
-            items[i] = item;
-        }
-
-        return items;
-    }
-
-    private static async Task WriteFailures(HttpContext c, IReadOnlyList<SubmissionFailure> failures, string message)
-    {
-        if (failures.Count == 0) return;
-        FailureDto[] refused = new FailureDto[failures.Count];
-        for (int i = 0; i < refused.Length; i++) refused[i] = new FailureDto(failures[i].Index, failures[i].Message);
-        c.Response.StatusCode = StatusCodes.Status400BadRequest;
-        c.Response.ContentType = ContentNegotiation.Json;
-        await JsonSerializer.SerializeAsync(c.Response.Body, new IndexedErrorDto(StatusCodes.Status400BadRequest, message, refused), BeaconApiJson.Options, c.RequestAborted);
-    }
-
-    /// <summary>Reads a JSON array of validator indices, writing the error response itself when it cannot.</summary>
-    private static async Task<ulong[]?> ReadValidatorIndices(HttpContext c)
-    {
-        (bool read, string[]? ids) = await BeaconStatesEndpoints.TryReadJsonBody<string[]>(c, bodyRequired: true);
-        if (!read) return null;
-        ulong[] indices = new ulong[ids!.Length];
+        indices = new ulong[ids.Length];
         for (int i = 0; i < indices.Length; i++)
         {
             if (!TryParseUInt(ids[i], out indices[i]))
             {
-                await WriteInvalid(c, $"Invalid validator index '{ids[i]}'.");
-                return null;
+                invalidId = ids[i];
+                indices = null;
+                return false;
             }
         }
 
-        return indices;
+        invalidId = null;
+        return true;
     }
 
-    private static Task WriteDuties<TDuty, TDto>(HttpContext c, DutiesResult<TDuty> duties, Func<TDuty, TDto> toDto)
+    private static IResult Duties<TDuty, TDto>(DutiesResult<TDuty> duties, Func<TDuty, TDto> toDto)
     {
         TDto[] data = new TDto[duties.Duties.Count];
         for (int i = 0; i < data.Length; i++) data[i] = toDto(duties.Duties[i]);
-        c.Response.ContentType = ContentNegotiation.Json;
-        return JsonSerializer.SerializeAsync(c.Response.Body, new DutiesDto<TDto>(duties.DependentRoot?.ToString(), duties.ExecutionOptimistic, data),
-            BeaconApiJson.Options, c.RequestAborted);
+        return ApiResults.Json(new DutiesDto<TDto>(duties.DependentRoot?.ToString(), duties.ExecutionOptimistic, data));
     }
 
     private static string[] ToStrings(IReadOnlyList<ulong> values)
@@ -387,7 +349,7 @@ internal static class ValidatorEndpoints
         return strings;
     }
 
-    private static Task WriteInvalid(HttpContext c, string message) => ApiErrors.Write(c, StatusCodes.Status400BadRequest, message, c.RequestAborted);
+    private static IResult Invalid(string message) => ApiResults.Error(StatusCodes.Status400BadRequest, message);
 
     private static bool TryParseUInt(string? value, out ulong result) => ulong.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out result);
 
@@ -487,7 +449,7 @@ internal static class ValidatorEndpoints
     private const string ExecutionPayloadValueHeader = "Eth-Execution-Payload-Value";
     private const string ConsensusBlockValueHeader = "Eth-Consensus-Block-Value";
 
-    private sealed record ProposerPreparationDto(
+    internal sealed record ProposerPreparationDto(
         [property: JsonPropertyName("validator_index")] string ValidatorIndex,
         [property: JsonPropertyName("fee_recipient")] string FeeRecipient);
 
@@ -515,69 +477,65 @@ internal static class ValidatorEndpoints
         [property: JsonPropertyName("validator_index")] string ValidatorIndex,
         [property: JsonPropertyName("validator_sync_committee_indices")] string[] ValidatorSyncCommitteeIndices);
 
-    private sealed record CheckpointDto(
-        [property: JsonPropertyName("epoch")] string Epoch,
-        [property: JsonPropertyName("root")] string Root);
-
-    private sealed record AttestationDataDto(
+    internal sealed record AttestationDataDto(
         [property: JsonPropertyName("slot")] string Slot,
         [property: JsonPropertyName("index")] string Index,
         [property: JsonPropertyName("beacon_block_root")] string BeaconBlockRoot,
         [property: JsonPropertyName("source")] CheckpointDto Source,
         [property: JsonPropertyName("target")] CheckpointDto Target);
 
-    private sealed record SingleAttestationDto(
+    internal sealed record SingleAttestationDto(
         [property: JsonPropertyName("committee_index")] string CommitteeIndex,
         [property: JsonPropertyName("attester_index")] string AttesterIndex,
         [property: JsonPropertyName("data")] AttestationDataDto Data,
         [property: JsonPropertyName("signature")] string Signature);
 
-    private sealed record BeaconCommitteeSubscriptionDto(
+    internal sealed record BeaconCommitteeSubscriptionDto(
         [property: JsonPropertyName("validator_index")] string ValidatorIndex,
         [property: JsonPropertyName("committee_index")] string CommitteeIndex,
         [property: JsonPropertyName("committees_at_slot")] string CommitteesAtSlot,
         [property: JsonPropertyName("slot")] string Slot,
         [property: JsonPropertyName("is_aggregator")] bool IsAggregator);
 
-    private sealed record AttestationDto(
+    internal sealed record AttestationDto(
         [property: JsonPropertyName("aggregation_bits")] string AggregationBits,
         [property: JsonPropertyName("data")] AttestationDataDto Data,
         [property: JsonPropertyName("signature")] string Signature,
         [property: JsonPropertyName("committee_bits")] string CommitteeBits);
 
-    private sealed record AggregateAndProofDto(
+    internal sealed record AggregateAndProofDto(
         [property: JsonPropertyName("aggregator_index")] string AggregatorIndex,
         [property: JsonPropertyName("aggregate")] AttestationDto Aggregate,
         [property: JsonPropertyName("selection_proof")] string SelectionProof);
 
-    private sealed record SignedAggregateAndProofDto(
+    internal sealed record SignedAggregateAndProofDto(
         [property: JsonPropertyName("message")] AggregateAndProofDto Message,
         [property: JsonPropertyName("signature")] string Signature);
 
-    private sealed record SyncCommitteeSubscriptionDto(
+    internal sealed record SyncCommitteeSubscriptionDto(
         [property: JsonPropertyName("validator_index")] string ValidatorIndex,
         [property: JsonPropertyName("sync_committee_indices")] string[] SyncCommitteeIndices,
         [property: JsonPropertyName("until_epoch")] string UntilEpoch);
 
-    private sealed record SyncCommitteeMessageDto(
+    internal sealed record SyncCommitteeMessageDto(
         [property: JsonPropertyName("slot")] string Slot,
         [property: JsonPropertyName("beacon_block_root")] string BeaconBlockRoot,
         [property: JsonPropertyName("validator_index")] string ValidatorIndex,
         [property: JsonPropertyName("signature")] string Signature);
 
-    private sealed record SyncCommitteeContributionDto(
+    internal sealed record SyncCommitteeContributionDto(
         [property: JsonPropertyName("slot")] string Slot,
         [property: JsonPropertyName("beacon_block_root")] string BeaconBlockRoot,
         [property: JsonPropertyName("subcommittee_index")] string SubcommitteeIndex,
         [property: JsonPropertyName("aggregation_bits")] string AggregationBits,
         [property: JsonPropertyName("signature")] string Signature);
 
-    private sealed record ContributionAndProofDto(
+    internal sealed record ContributionAndProofDto(
         [property: JsonPropertyName("aggregator_index")] string AggregatorIndex,
         [property: JsonPropertyName("selection_proof")] string SelectionProof,
         [property: JsonPropertyName("contribution")] SyncCommitteeContributionDto Contribution);
 
-    private sealed record SignedContributionAndProofDto(
+    internal sealed record SignedContributionAndProofDto(
         [property: JsonPropertyName("message")] ContributionAndProofDto Message,
         [property: JsonPropertyName("signature")] string Signature);
 

@@ -164,6 +164,24 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
     }
 
     [Test]
+    public async Task Malformed_number_in_a_query_is_400_without_naming_internal_types(
+        [Values("committees?epoch", "committees?index", "committees?slot", "randao?epoch", "sync_committees?epoch")] string parameter,
+        [Values("", "bad", "-1", "1.0", "18446744073709551616")] string value)
+    {
+        PutActiveState(TestRoot(20), 50);
+
+        using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/{parameter}={value}");
+        string raw = await response.Content.ReadAsStringAsync();
+        using JsonDocument body = JsonDocument.Parse(raw);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo(400));
+            Assert.That(raw, Does.Not.Contain("Nullable"));
+        }
+    }
+
+    [Test]
     public async Task ValidatorById_is_404_for_an_out_of_range_index_and_400_for_a_malformed_id()
     {
         Validator[] validators = PutStatusState(TestRoot(13));

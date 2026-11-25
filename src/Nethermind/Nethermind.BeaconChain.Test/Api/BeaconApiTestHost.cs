@@ -66,7 +66,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         apiConfig.Enabled = true;
         apiConfig.Host = "127.0.0.1";
         apiConfig.Port = 0;
-        Host = new BeaconApiHost(apiConfig, chainConfig, spec, StatusHolder, Clock, Store,
+        Host = new BeaconApiHost(apiConfig, spec, StatusHolder, Clock, Store,
             metadataSource, engine ?? new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, validatorApi ?? Substitute.For<IBeaconNodeValidatorApi>(), peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots, headSnapshots: headSnapshots, driver: driver);
     }
 
