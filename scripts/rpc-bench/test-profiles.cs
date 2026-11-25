@@ -43,6 +43,16 @@ foreach (var (limit, expected) in new[] { (1, 2), (3, 4) })
         var result = RpcScriptTests.Run("scripts/perf-report.cs", "compare", before, after, limit.ToString());
         RpcScriptTests.Assert(result.Code == 0 && ComparisonRowRegex().Matches(result.Output).Count == expected && result.Output.Contains("Negative") && result.Output.Contains("Positive") && result.Output.Contains("..."), result.ToString());
     });
+tests.Case("profile comparison ignores padding before the sample count", () =>
+{
+    var first = tests.Write("unpadded.folded", "root;Hot Path 5\n");
+    var second = tests.Write("padded.folded", "root;Hot Path    5\n");
+    var result = RpcScriptTests.Run("scripts/perf-report.cs", "compare", first, second, "2");
+    var rows = ComparisonRowRegex().Matches(result.Output);
+    RpcScriptTests.Assert(result.Code == 0 && rows.Count == 1 &&
+        rows[0].Value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries) is ["100.00%", "100.00%", "+0.00"] &&
+        result.Output.Contains("Hot Path"), result.ToString());
+});
 foreach (var (name, contents) in new[] { ("empty", ""), ("whitespace", " \t\n\n"), ("zero", ".NET;Frame 0\n") })
     tests.Case($"validator rejects {name}", () =>
     {

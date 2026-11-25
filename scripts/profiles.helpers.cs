@@ -84,6 +84,6 @@ internal static partial class Profiles
     private static partial Regex AddressRegex();
     [GeneratedRegex(@"\+0x[0-9a-fA-F]+\s*$")]
     private static partial Regex OffsetRegex();
-    [GeneratedRegex(@"^(.*)\s+([0-9]+)\s*$")]
+    [GeneratedRegex(@"^(.*\S)\s+([0-9]+)\s*$")]
     private static partial Regex SampleRegex();
 }
