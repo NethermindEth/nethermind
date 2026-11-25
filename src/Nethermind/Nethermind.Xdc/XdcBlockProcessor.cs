@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
 using Nethermind.Int256;
@@ -92,16 +93,15 @@ internal class XdcBlockProcessor(
         return BlockExecutionContext.WithPrevRandao(header, spec, prevRandao);
     }
 
-    protected override Block PrepareBlockForProcessing(Block suggestedBlock)
+    /// <inheritdoc/>
+    /// <remarks>
+    /// XDC enables EIP-4844 for its opcodes only: its headers have no blob gas field, so the
+    /// <see cref="BlockHeader.BlobGasUsed"/> set by the base finalization is cleared again.
+    /// </remarks>
+    protected override TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, TxReceipt[] receipts)
     {
-        XdcBlockHeader bh = suggestedBlock.Header as XdcBlockHeader;
-        XdcBlockHeader headerForProcessing = bh.CreateHeaderForProcessing();
-
-        if (!ShouldComputeStateRoot(bh))
-        {
-            headerForProcessing.StateRoot = bh.StateRoot;
-        }
-
-        return suggestedBlock.WithReplacedHeader(headerForProcessing);
+        TxReceipt[] finalized = base.FinalizeBlock(block, blockTracer, options, spec, receipts);
+        block.Header.BlobGasUsed = null;
+        return finalized;
     }
 }

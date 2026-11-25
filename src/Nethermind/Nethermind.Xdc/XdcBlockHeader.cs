@@ -117,7 +117,8 @@ public class XdcBlockHeader(
         };
     }
 
-    internal virtual XdcBlockHeader CreateHeaderForProcessing()
+    /// <inheritdoc/>
+    public override BlockHeader CloneForProcessing()
     {
         XdcBlockHeader header = new(
             ParentHash,
