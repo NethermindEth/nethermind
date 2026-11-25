@@ -895,6 +895,30 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [Test]
+    [Platform(Include = "Linux")] // creating links needs a privilege on Windows
+    public async Task Execute_LockPathIsALink_NeitherFollowsItNorStops()
+    {
+        // A dangling link that, followed, would create a file in the empty database directory and make it look populated.
+        string target = Path.Combine(_dbPath, "lock-target");
+        Directory.CreateDirectory(_dbPath);
+        File.CreateSymbolicLink(LockPath, target);
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        TestLogger logger = new();
+        _api.LogManager.Returns(new OneLoggerLogManager(new(logger)));
+
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Path.Exists(target), Is.False, "the link must not be followed");
+            Assert.That(new FileInfo(LockPath).LinkTarget, Is.EqualTo(target), "the link must stay");
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True, "the start goes on without the lock, as when the lock file cannot be opened");
+            Assert.That(logger.LogList.Any(static line => line.Contains("is a link, which the step does not follow")), Is.True, "the start must say it runs without the lock");
+        }
+    }
+
     [TestCase(1_000, 0, 2_500, TestName = "FreshDownload")]
     [TestCase(1_000, 400, 2_100, TestName = "ResumedDownload")]
     public void GetRequiredSpaceForDownload_ForGivenSizes_AddsRemainingBytesToExtractionEstimate(

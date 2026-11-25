@@ -167,6 +167,14 @@ public class InitDatabaseSnapshot(
         }
 
         string lockPath = fullPath + LockFileSuffix;
+        // Opening a link would create or lock whatever it leads to, a file in the database directory included.
+        if (new FileInfo(lockPath).LinkTarget is not null)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"The lock file {lockPath:hide} is a link, which the step does not follow, so a second process starting on the database at {dbPath:hide} at the same time is not kept out of the snapshot initialization.");
+            return null;
+        }
+
         try
         {
             Directory.CreateDirectory(parent);
