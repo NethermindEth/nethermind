@@ -1879,7 +1879,6 @@ internal static class TestRpcBlockchainExt
             blockchain.RpcConfig,
             blockchain.Bridge,
             blockchain.BlockFinder,
-            blockchain.BlockTree,
             blockchain.ReceiptFinder,
             blockchain.StateReader,
             // As OptimismPlugin wires it: a node that forwards to the sequencer has no pool.

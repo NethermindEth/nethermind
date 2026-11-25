@@ -265,7 +265,7 @@ namespace Nethermind.State
             _stateProvider.AddToBalance(address, balanceChange, spec, out oldBalance);
         }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-            => AddToBalance(address, balanceChange, spec, out UInt256 oldBalance);
+            => AddToBalance(address, balanceChange, spec, out _);
         public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             DebugGuardInScope();

@@ -509,10 +509,7 @@ namespace Nethermind.Core
     /// <summary>
     /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
-    public sealed class SystemTransaction : Transaction
-    {
-        private new const ulong GasLimit = 30_000_000UL;
-    }
+    public sealed class SystemTransaction : Transaction;
 
     /// <summary>
     /// System call like transaction that is to be executed by the node without including in the block.

@@ -37,7 +37,7 @@ public class ChannelDecoder
     private static void CopyDataWithLimit(Stream input, Stream output)
     {
         byte[] buffer = ArrayPool<byte>.Shared.Rent(4096);
-        int bytesRead = 0;
+        int bytesRead;
         int totalRead = 0;
 
         try

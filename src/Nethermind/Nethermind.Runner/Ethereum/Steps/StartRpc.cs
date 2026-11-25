@@ -86,7 +86,6 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
         {
             JsonRpcWebSocketsModule webSocketsModule = new(
                 jsonRpcProcessor,
-                jsonRpcService,
                 jsonRpcLocalStats,
                 api.LogManager,
                 api.EthereumJsonSerializer,

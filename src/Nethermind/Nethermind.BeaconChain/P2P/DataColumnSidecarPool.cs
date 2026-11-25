@@ -230,7 +230,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     /// <returns><c>false</c> when fewer are held.</returns>
     internal bool TryGetHeldColumns(Hash256 blockRoot, ulong slot, int atLeast, [NotNullWhen(true)] out DataColumnSidecar[]? held)
     {
-        UInt128 columns = UInt128.Zero;
+        UInt128 columns;
         lock (_servedLock)
         {
             if (!_reconstructionColumns.TryGet(blockRoot, out columns))

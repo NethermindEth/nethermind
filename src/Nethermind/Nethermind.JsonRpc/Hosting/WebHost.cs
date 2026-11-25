@@ -31,7 +31,6 @@ public sealed partial class WebHost : IHost, IAsyncDisposable
     private readonly IConfiguration _config;
     private readonly IServiceProvider? _applicationServices;
     private readonly ILogger _logger;
-    private readonly ILogManager _logManager;
     private readonly IStartup _startup;
 
     private readonly Lock _stopLock = new();
@@ -58,7 +57,6 @@ public sealed partial class WebHost : IHost, IAsyncDisposable
         _config = config;
         _startup = startup;
         _logger = logManager.GetLogger("Runner.JsonRpc.WebHost");
-        _logManager = logManager;
     }
 
     /// <inheritdoc/>
@@ -81,7 +79,7 @@ public sealed partial class WebHost : IHost, IAsyncDisposable
         _applicationLifetime = _applicationServices.GetRequiredService<ApplicationLifetime>();
 
         HttpContextFactory httpContextFactory = new(Services);
-        HostingApplication hostingApp = new(application, _logManager, httpContextFactory);
+        HostingApplication hostingApp = new(application, httpContextFactory);
 
         await Server.StartAsync(hostingApp, cancellationToken).ConfigureAwait(false);
         _startedServer = true;

@@ -162,8 +162,8 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
 
                 .AddSingleton<IEthApi, IJsonSerializer, ILogManager>((jsonSerializer, logManager) =>
                     new EthereumEthApi(optimismConfig.L1EthApiEndpoint!, jsonSerializer, logManager))
-                .AddSingleton<IBeaconApi, IJsonSerializer, IEthereumEcdsa, ILogManager>((jsonSerializer, ethereumEcdsa, logManager) =>
-                    new EthereumBeaconApi(new Uri(optimismConfig.L1BeaconApiEndpoint!), jsonSerializer, ethereumEcdsa, logManager))
+                .AddSingleton<IBeaconApi, IJsonSerializer, ILogManager>((jsonSerializer, logManager) =>
+                    new EthereumBeaconApi(new Uri(optimismConfig.L1BeaconApiEndpoint!), jsonSerializer, logManager))
 
                 .AddSingleton<IDecodingPipeline, DecodingPipeline>()
                 .AddSingleton<IL1Bridge, EthereumL1Bridge>()

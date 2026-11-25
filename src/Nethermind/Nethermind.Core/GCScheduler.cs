@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,6 +28,7 @@ public sealed class GCScheduler
 
     // Timer for scheduling periodic garbage collections when idle
     private readonly Timer _gcTimer;
+    [SuppressMessage("CodeQuality", "IDE0052:Remove unread private member", Justification = "Keeps the timer rooted so it is not collected and stopped.")]
     private readonly Timer? _sustainedSweepTimer;
     private readonly MallocHelper _mallocHelper;
     private readonly Stopwatch _stopwatch = new();

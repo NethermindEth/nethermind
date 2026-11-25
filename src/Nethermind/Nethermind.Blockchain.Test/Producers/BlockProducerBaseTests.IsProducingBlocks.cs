@@ -125,7 +125,6 @@ public partial class BlockProducerBaseTests
         CliqueBlockProducer blockProducer = new(
             Substitute.For<ITxSource>(),
             testRpc.BlockchainProcessor,
-            testRpc.MainWorldState,
             testRpc.Timestamper,
             Substitute.For<ICryptoRandom>(),
             Substitute.For<ISnapshotManager>(),

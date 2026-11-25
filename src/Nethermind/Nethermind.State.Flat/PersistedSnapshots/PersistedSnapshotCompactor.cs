@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Threading.Channels;
 using Nethermind.Config;
@@ -44,11 +45,11 @@ public class PersistedSnapshotCompactor(
     ILogManager logManager) : IPersistedSnapshotCompactor
 {
     // Held only to anchor the disposal order documented above (loader disposed after this).
+    [SuppressMessage("CodeQuality", "IDE0052:Remove unread private member", Justification = "Anchors the container disposal order: the loader is disposed after this compactor.")]
     private readonly IPersistedSnapshotLoader _disposeOrderingAnchor = loader;
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
     private readonly ISnapshotCatalog _catalog = catalog;
     private readonly ICompactionSchedule _schedule = schedule;
-    private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
 
     // Batches the queue holds.

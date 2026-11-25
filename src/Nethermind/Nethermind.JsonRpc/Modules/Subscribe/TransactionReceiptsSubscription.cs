@@ -20,7 +20,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 public class TransactionReceiptsSubscription : Subscription
 {
     private readonly IReceiptMonitor _receiptMonitor;
-    private readonly IBlockTree _blockTree;
     private readonly ISpecProvider _specProvider;
     private readonly HashSet<ValueHash256>? _filterHashes;
     private readonly ReceiptsEventPayloadCache<HashSet<ValueHash256>>.Membership _payloads;
@@ -29,18 +28,16 @@ public class TransactionReceiptsSubscription : Subscription
     public TransactionReceiptsSubscription(
         IJsonRpcDuplexClient jsonRpcDuplexClient,
         IReceiptMonitor receiptCanonicalityMonitor,
-        IBlockTree blockTree,
         ISpecProvider specProvider,
         ILogManager logManager,
         TransactionHashesFilter? filter)
-        : this(jsonRpcDuplexClient, receiptCanonicalityMonitor, blockTree, specProvider, logManager, CreatePayloadCache(), filter)
+        : this(jsonRpcDuplexClient, receiptCanonicalityMonitor, specProvider, logManager, CreatePayloadCache(), filter)
     {
     }
 
     internal TransactionReceiptsSubscription(
         IJsonRpcDuplexClient jsonRpcDuplexClient,
         IReceiptMonitor receiptCanonicalityMonitor,
-        IBlockTree blockTree,
         ISpecProvider specProvider,
         ILogManager logManager,
         ReceiptsEventPayloadCache<HashSet<ValueHash256>> payloads,
@@ -48,12 +45,10 @@ public class TransactionReceiptsSubscription : Subscription
         : base(jsonRpcDuplexClient, MaxQueuedBlocks)
     {
         ArgumentNullException.ThrowIfNull(receiptCanonicalityMonitor);
-        ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(logManager);
 
         _receiptMonitor = receiptCanonicalityMonitor;
-        _blockTree = blockTree;
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger<TransactionReceiptsSubscription>();
 

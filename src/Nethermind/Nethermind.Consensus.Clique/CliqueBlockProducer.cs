@@ -20,7 +20,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -280,7 +279,6 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
 public class CliqueBlockProducer : IBlockProducer
 {
-    private readonly IWorldState _stateProvider;
     private readonly ITxSource _txSource;
     private readonly IBlockchainProcessor _processor;
     private readonly ISealer _sealer;
@@ -296,7 +294,6 @@ public class CliqueBlockProducer : IBlockProducer
     public CliqueBlockProducer(
         ITxSource txSource,
         IBlockchainProcessor blockchainProcessor,
-        IWorldState stateProvider,
         ITimestamper timestamper,
         ICryptoRandom cryptoRandom,
         ISnapshotManager snapshotManager,
@@ -310,7 +307,6 @@ public class CliqueBlockProducer : IBlockProducer
         _logger = logManager?.GetClassLogger<CliqueBlockProducer>() ?? throw new ArgumentNullException(nameof(logManager));
         _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
         _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
-        _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
         _sealer = cliqueSealer ?? throw new ArgumentNullException(nameof(cliqueSealer));

@@ -20,14 +20,12 @@ public class RequestOrchestrator(
     HttpClient httpClient,
     BlockDataFetcher blockFetcher,
     PayloadAttributesGenerator attributesGenerator,
-    MessageQueue messageQueue,
     PayloadTracker payloadTracker,
     ProxyConfig config,
     ILogManager logManager)
 {
     private readonly BlockDataFetcher _blockFetcher = blockFetcher ?? throw new ArgumentNullException(nameof(blockFetcher));
     private readonly PayloadAttributesGenerator _attributesGenerator = attributesGenerator ?? throw new ArgumentNullException(nameof(attributesGenerator));
-    private readonly MessageQueue _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
     private readonly PayloadTracker _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
     private readonly ILogger _logger = logManager?.GetClassLogger<RequestOrchestrator>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));

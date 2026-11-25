@@ -208,7 +208,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     {
         RlpReader reader = new(body.Span);
         RlpReader content = reader.EnterSequence(out int itemLength);
-        BlockBody? result = null;
+        BlockBody? result;
         if (content.HasNext)
         {
             Memory<byte> contentSource = body[(itemLength - content.Remaining)..];

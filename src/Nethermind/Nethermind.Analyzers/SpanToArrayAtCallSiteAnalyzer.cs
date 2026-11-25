@@ -116,7 +116,7 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
             if (parameter.IsParams)
                 continue;
 
-            ITypeSymbol? expectedElementType = null;
+            ITypeSymbol? expectedElementType;
             ParamShape paramShape;
             if (parameter.Type is IArrayTypeSymbol arrayType)
             {

@@ -206,7 +206,6 @@ public class WebSocketExtensionsTests
         JsonRpcConfig config = new() { Enabled = true };
         JsonRpcWebSocketsModule module = new(
             new JsonRpcProcessor(service, config, Substitute.For<IFileSystem>(), new OneLoggerLogManager(new ILogger(logger))),
-            service,
             Substitute.For<IJsonRpcLocalStats>(),
             LimboLogs.Instance,
             new EthereumJsonSerializer(),

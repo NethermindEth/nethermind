@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -56,7 +55,6 @@ public partial class EthRpcModule(
     IJsonRpcConfig rpcConfig,
     IBlockchainBridge blockchainBridge,
     IBlockFinder blockFinder,
-    IBlockTree blockTree,
     IReceiptFinder receiptFinder,
     IStateReader stateReader,
     ITxPool txPool,
@@ -84,7 +82,6 @@ public partial class EthRpcModule(
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
     protected readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-    private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
     protected readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
     protected readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
     protected readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));

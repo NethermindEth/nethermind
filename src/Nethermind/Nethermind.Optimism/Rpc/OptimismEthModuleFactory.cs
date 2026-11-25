@@ -43,7 +43,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly IEthereumEcdsa _ecdsa;
     private readonly ITxSealer _sealer;
     private readonly IBlockFinder _blockFinder;
-    private readonly IBlockTree _blockTree;
     private readonly IReceiptFinder _receiptFinder;
     private readonly IEthCapabilitiesProvider _capabilitiesProvider;
     private readonly IOptimismSpecHelper _opSpecHelper;
@@ -96,7 +95,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _feeHistoryOracle = feeHistoryOracle;
         _ecdsa = ecdsa;
         _blockFinder = blockFinder;
-        _blockTree = blockTree;
         _receiptFinder = receiptFinder;
         _capabilitiesProvider = capabilitiesProvider;
         _opSpecHelper = opSpecHelper;
@@ -124,7 +122,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _rpcConfig,
             _blockchainBridgeFactory.CreateBlockchainBridge(),
             _blockFinder,
-            _blockTree,
             _receiptFinder,
             _stateReader,
             _txPool,

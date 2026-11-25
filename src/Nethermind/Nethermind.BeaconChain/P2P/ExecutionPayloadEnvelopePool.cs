@@ -107,7 +107,6 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
         Hash256? root = null;
         BlockLink? child = null;
         Hash256? fullHeadRoot = null;
-        ulong lastSlot = 0;
         bool resolved = false;
         for (int reads = 0; reads < MaxTopReads && !resolved; reads++)
         {
@@ -118,7 +117,7 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
                 return [];
             }
 
-            lastSlot = Math.Min(headSlot, count - 1 > ulong.MaxValue - startSlot ? ulong.MaxValue : startSlot + count - 1);
+            ulong lastSlot = Math.Min(headSlot, count - 1 > ulong.MaxValue - startSlot ? ulong.MaxValue : startSlot + count - 1);
             root = ReadTop(startSlot, lastSlot, headRoot, out child, out resolved);
         }
 

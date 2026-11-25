@@ -366,17 +366,6 @@ public partial class BlockProcessor(
 
     private static partial bool ShouldCalculateReceiptsInBackground(TxReceipt[] receipts);
 
-    private static int CountLogs(TxReceipt[] receipts)
-    {
-        int count = 0;
-        foreach (TxReceipt? t in receipts)
-        {
-            count += t.Logs?.Length ?? 0;
-        }
-
-        return count;
-    }
-
     private static Bloom AccumulateBlockBloom(TxReceipt[] receipts)
     {
         Bloom blockBloom = new();

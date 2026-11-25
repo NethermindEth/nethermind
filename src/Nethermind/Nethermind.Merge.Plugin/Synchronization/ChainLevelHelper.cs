@@ -184,7 +184,7 @@ public class ChainLevelHelper(
             return (anchorNumber, anchorHash);
         }
 
-        BlockInfo? parentBlockInfo = null;
+        BlockInfo? parentBlockInfo;
         Hash256 currentHash = beaconMainChainBlock.BlockHash;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do

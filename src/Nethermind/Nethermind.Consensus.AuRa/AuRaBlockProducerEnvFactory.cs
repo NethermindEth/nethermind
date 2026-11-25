@@ -92,7 +92,6 @@ internal sealed class AuRaBlockProducerEnvFactory(
                 blocksConfig,
                 logManager,
                 engineSigner,
-                specProvider,
                 gasPriceOracle,
                 reportingContractValidatorCache,
                 parameters.PosdaoTransition,
