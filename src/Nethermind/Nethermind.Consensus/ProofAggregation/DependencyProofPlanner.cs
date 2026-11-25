@@ -20,7 +20,8 @@ internal static class DependencyProofPlanner
     /// a nonce-ordered prefix of the body: two recursive merges and one whole direct leaf.</summary>
     /// <remarks>Kept to that shape, not to its former value, as the producer's direct leaf widened to
     /// <see cref="DependencyProofAggregator.BlockProductionBatchSize"/>: one wide leaf costs far less than the narrow leaves and
-    /// merges the same signatures took, so a statement of that shape still finishes well within a slot.</remarks>
+    /// merges the same signatures took. A full statement took about 3 s on 8 arm64 vCPUs and scales inversely with cores; one
+    /// made mostly of recursive inputs is over-counted, so it is cut sooner rather than later.</remarks>
     internal const long MaxScheduledStatementCost = 2 * DependencyProofAggregator.MergeCost
         + DependencyProofAggregator.BlockProductionBatchSize * DependencyProofAggregator.SignatureCost;
 

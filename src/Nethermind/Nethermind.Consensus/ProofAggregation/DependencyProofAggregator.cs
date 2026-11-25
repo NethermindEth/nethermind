@@ -71,11 +71,12 @@ public static class DependencyProofAggregator
     internal const int MergeCost = 9;
 
     /// <summary>Estimates the relative native proving cost of an input from its leaves and recursive merges.</summary>
-    /// <remarks>Signatures fold <see cref="DirectBatchSize"/> to a leaf, each generic proof counts as its own leaf, and
-    /// every node beyond the first needs one recursive merge; a recursive child losing dependencies needs a call of its own
-    /// unless the whole input fits one. Generics are counted one per leaf although the batch loop folds up to
-    /// <see cref="GenericDirectBatchSize"/> of them together, so their cost is over-stated; the estimate only ranks
-    /// alternative inputs for the same statement, which that does not disturb.</remarks>
+    /// <remarks>Signatures fold <see cref="DirectBatchSize"/> to a leaf, or <see cref="BlockProductionBatchSize"/> for a block
+    /// producer, each generic proof counts as its own leaf, and every node beyond the first needs one recursive merge; a
+    /// recursive child losing dependencies needs a call of its own unless the whole input fits one. Generics are counted one
+    /// per leaf although the batch loop folds up to <see cref="GenericDirectBatchSize"/> of them together, and a block producer's
+    /// <see cref="BlockProductionFanIn"/>-way merges are counted as pairwise ones, so both are over-stated; the estimate only
+    /// ranks alternative inputs for the same statement, which that does not disturb.</remarks>
     /// <param name="input">The input to estimate.</param>
     /// <param name="blockProduction">Whether to estimate the schedule <see cref="Prove"/> uses for a block producer.</param>
     public static long EstimatedCost(AggregationInput input, bool blockProduction = false)
