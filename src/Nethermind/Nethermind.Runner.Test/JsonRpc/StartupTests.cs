@@ -1010,7 +1010,7 @@ public class StartupTests
 
         WebApplication app = builder.Build();
         TestJsonRpcUrlCollection urls = new();
-        Startup.UseJsonRpcWebSockets(app, config, urls, new ILogger(logger), app.Lifetime.ApplicationStopping);
+        Startup.UseJsonRpcWebSockets(app, config, urls, new ILogger(logger));
 
         await app.StartAsync(cancellationToken);
         // The port is known only once Kestrel has bound it; the pipeline looks it up per request.
@@ -1031,7 +1031,7 @@ public class StartupTests
     }
 
     /// <summary>A manager whose clients serve JSON-RPC on the socket until it closes.</summary>
-    private static IWebSocketsManager JsonRpcWebSocketsManager()
+    internal static IWebSocketsManager JsonRpcWebSocketsManager()
     {
         IWebSocketsModule module = Substitute.For<IWebSocketsModule>();
         module.CreateClient(Arg.Any<WebSocket>(), Arg.Any<string>(), Arg.Any<HttpContext>()).Returns(static call =>

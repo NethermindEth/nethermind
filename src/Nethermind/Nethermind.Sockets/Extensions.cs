@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Primitives;
 using Nethermind.Logging;
 
@@ -20,19 +21,22 @@ public static class Extensions
     /// </summary>
     private static readonly TimeSpan ShutdownCloseTimeout = TimeSpan.FromSeconds(1);
 
-    /// <param name="app">The application to serve WebSockets on.</param>
-    /// <param name="stoppingToken">
-    /// Signals shutdown. Open sockets are then closed with <see cref="WebSocketCloseStatus.EndpointUnavailable"/>
-    /// (Going Away), since the server would otherwise wait for them until its shutdown timeout.
-    /// </param>
-    public static void UseWebSocketsModules(this IApplicationBuilder app, CancellationToken stoppingToken)
+    /// <summary>
+    /// Serves WebSockets through the registered <see cref="IWebSocketsManager"/>. Once the registered
+    /// <see cref="IHostApplicationLifetime"/> signals shutdown, open sockets are closed with
+    /// <see cref="WebSocketCloseStatus.EndpointUnavailable"/> (Going Away), since the server would otherwise wait for them
+    /// until its shutdown timeout.
+    /// </summary>
+    public static void UseWebSocketsModules(this IApplicationBuilder app)
     {
         IWebSocketsManager? webSocketsManager;
         ILogger logger;
+        CancellationToken stoppingToken;
         using (IServiceScope scope = app.ApplicationServices.CreateScope())
         {
             webSocketsManager = scope.ServiceProvider.GetService<IWebSocketsManager>();
             logger = scope.ServiceProvider.GetService<ILogManager>()?.GetClassLogger(typeof(Extensions)) ?? default;
+            stoppingToken = scope.ServiceProvider.GetService<IHostApplicationLifetime>()?.ApplicationStopping ?? CancellationToken.None;
         }
 
         app.Run(async (context) =>
@@ -66,9 +70,19 @@ public static class Extensions
                 using ISocketsClient socketsClient = await module.CreateClient(webSocket, clientName, context);
                 id = socketsClient.Id;
                 using CancellationTokenSource abort = new();
-                await using (stoppingToken.Register(() => _ = CloseForShutdownAsync(webSocket, abort, logger)))
+                Task closing = Task.CompletedTask;
+                try
                 {
-                    await socketsClient.ReceiveLoopAsync(abort.Token);
+                    await using (stoppingToken.Register(() => closing = CloseForShutdownAsync(webSocket, abort, logger)))
+                    {
+                        await socketsClient.ReceiveLoopAsync(abort.Token);
+                    }
+                }
+                finally
+                {
+                    // Disposing the registration waits only for the callback, which returns once the close is sent off.
+                    // The send still uses the socket and abort, so it has to end before they are disposed; it never throws.
+                    await closing;
                 }
             }
             // Open connections are aborted at shutdown, so a failure on an aborted connection is not a node error.

@@ -233,7 +233,7 @@ public class Startup : IStartup
 
         if (initConfig.WebSocketsEnabled)
         {
-            UseJsonRpcWebSockets(app, jsonRpcConfig, jsonRpcUrlCollection, logger, lifetime.ApplicationStopping);
+            UseJsonRpcWebSockets(app, jsonRpcConfig, jsonRpcUrlCollection, logger);
         }
 
         IReadOnlySet<int> healthPorts = jsonRpcUrlCollection.Values
@@ -283,9 +283,8 @@ public class Startup : IStartup
     /// <summary>
     /// Serves WebSockets on the ports that enable them. Clients that send an <c>Origin</c> that
     /// <see cref="IJsonRpcConfig.CorsOrigins"/> does not allow are turned away before a socket is accepted.
-    /// Open sockets are closed once <paramref name="stoppingToken"/> signals shutdown.
     /// </summary>
-    internal static void UseJsonRpcWebSockets(IApplicationBuilder app, IJsonRpcConfig jsonRpcConfig, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogger logger, CancellationToken stoppingToken)
+    internal static void UseJsonRpcWebSockets(IApplicationBuilder app, IJsonRpcConfig jsonRpcConfig, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogger logger)
     {
         CorsPolicy corsPolicy = CreateCorsPolicy(jsonRpcConfig);
         app.UseWebSockets(new WebSocketOptions());
@@ -296,7 +295,7 @@ public class Startup : IStartup
         builder =>
         {
             builder.UseWebSocketOriginFilter(corsPolicy, logger);
-            builder.UseWebSocketsModules(stoppingToken);
+            builder.UseWebSocketsModules();
         });
     }
 

@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
@@ -250,7 +251,7 @@ public class WebSocketExtensionsTests
         services.AddSingleton(manager);
         services.AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)));
         ApplicationBuilder app = new(services.BuildServiceProvider());
-        app.UseWebSocketsModules(CancellationToken.None);
+        app.UseWebSocketsModules();
 
         IHttpWebSocketFeature webSocketFeature = Substitute.For<IHttpWebSocketFeature>();
         webSocketFeature.IsWebSocketRequest.Returns(true);
@@ -286,7 +287,7 @@ public class WebSocketExtensionsTests
         services.AddSingleton(manager);
         services.AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)));
         ApplicationBuilder app = new(services.BuildServiceProvider());
-        app.UseWebSocketsModules(CancellationToken.None);
+        app.UseWebSocketsModules();
 
         IHttpWebSocketFeature webSocketFeature = Substitute.For<IHttpWebSocketFeature>();
         webSocketFeature.IsWebSocketRequest.Returns(true);
@@ -455,6 +456,78 @@ public class WebSocketExtensionsTests
             Assert.That(result.Closed, Is.True);
             logger.Received(cancelled ? 0 : 1).Info(Arg.Any<string>());
             logger.Received(cancelled ? 1 : 0).Trace(Arg.Any<string>());
+        }
+    }
+
+    [Test]
+    public async Task Shutdown_close_finishes_before_the_socket_is_disposed()
+    {
+        TaskCompletionSource closeSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        WebSocket socket = Substitute.For<WebSocket>();
+        socket.CloseOutputAsync(Arg.Any<WebSocketCloseStatus>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(closeSent.Task);
+        TaskCompletionSource receiveLoop = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ISocketsClient client = Substitute.For<ISocketsClient>();
+        client.Id.Returns("TestClient");
+        client.ReceiveLoopAsync(Arg.Any<CancellationToken>()).Returns(receiveLoop.Task);
+        IWebSocketsModule module = Substitute.For<IWebSocketsModule>();
+        module.CreateClient(Arg.Any<WebSocket>(), Arg.Any<string>(), Arg.Any<HttpContext>()).Returns(client);
+        IWebSocketsManager manager = Substitute.For<IWebSocketsManager>();
+        manager.GetModule("ws").Returns(module);
+        using CancellationTokenSource stopping = new();
+        IHostApplicationLifetime lifetime = Substitute.For<IHostApplicationLifetime>();
+        lifetime.ApplicationStopping.Returns(stopping.Token);
+
+        ServiceCollection services = new();
+        services.AddSingleton(manager);
+        services.AddSingleton(lifetime);
+        ApplicationBuilder app = new(services.BuildServiceProvider());
+        app.UseWebSocketsModules();
+
+        IHttpWebSocketFeature webSocketFeature = Substitute.For<IHttpWebSocketFeature>();
+        webSocketFeature.IsWebSocketRequest.Returns(true);
+        webSocketFeature.AcceptAsync(Arg.Any<WebSocketAcceptContext>()).Returns(socket);
+        DefaultHttpContext context = new();
+        context.Features.Set(webSocketFeature);
+        context.Request.Path = "/ws";
+
+        Task request = app.Build()(context);
+        await stopping.CancelAsync();
+        // The client closes while the close sent at shutdown is still in flight.
+        receiveLoop.SetResult();
+        Task first = await Task.WhenAny(request, Task.Delay(TimeSpan.FromMilliseconds(200)));
+        bool disposedDuringClose = socket.ReceivedCalls().Any(static call => call.GetMethodInfo().Name == nameof(WebSocket.Dispose));
+
+        closeSent.SetResult();
+        await request;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.Not.SameAs(request), "the request ended while the close was being sent");
+            Assert.That(disposedDuringClose, Is.False);
+            socket.Received(1).Dispose();
+            module.Received(1).RemoveClient("TestClient");
+        }
+    }
+
+    [TestCase(WebSocketState.Open, true)]
+    [TestCase(WebSocketState.CloseSent, true)]
+    [TestCase(WebSocketState.CloseReceived, false)]
+    [TestCase(WebSocketState.Closed, false)]
+    [TestCase(WebSocketState.Aborted, false)]
+    public async Task Receives_until_the_client_answers_a_close_sent_by_the_server(WebSocketState state, bool receives)
+    {
+        WebSocket socket = Substitute.For<WebSocket>();
+        socket.State.Returns(state);
+        socket.ReceiveAsync(Arg.Any<Memory<byte>>(), Arg.Any<CancellationToken>()).Returns(
+            ValueTask.FromResult(new ValueWebSocketReceiveResult(0, WebSocketMessageType.Close, true)));
+        using WebSocketMessageStream stream = new(socket, LimboLogs.Instance);
+
+        ReceiveResult result = await stream.ReceiveAsync(new byte[16], CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Closed, Is.EqualTo(receives));
+            _ = socket.Received(receives ? 1 : 0).ReceiveAsync(Arg.Any<Memory<byte>>(), Arg.Any<CancellationToken>());
         }
     }
 

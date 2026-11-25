@@ -93,7 +93,8 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
 
     public async ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
     {
-        if (_socket.State != WebSocketState.Open) return default;
+        // In CloseSent the client has yet to answer the close (e.g. one sent at shutdown), so keep reading until it does.
+        if (_socket.State is not (WebSocketState.Open or WebSocketState.CloseSent)) return default;
 
         try
         {
