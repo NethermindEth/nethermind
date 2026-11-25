@@ -2870,23 +2870,27 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private void ReleaseTransaction(TrackedSparseBlobTx state)
     {
-        if (state.TransactionPeer is null || state.TransactionBytes == 0)
+        if (state.TransactionPeer is not { } transactionPeer || state.TransactionBytes == 0)
         {
             return;
         }
 
+        // The key and its usage are resolved before any charge changes, and the refund then completes in one step: a
+        // failure leaves the body fully charged, and a repeated release finds it already refunded.
+        PublicKey peerId = transactionPeer.Id;
+        int transactionBytes = state.TransactionBytes;
         lock (_accountingLock)
         {
-            _trackedTransactionBytes -= state.TransactionBytes;
-            if (_peerUsage.TryGetValue(state.TransactionPeer.Id, out PeerUsage? usage))
+            _peerUsage.TryGetValue(peerId, out PeerUsage? usage);
+            _trackedTransactionBytes -= transactionBytes;
+            state.TransactionBytes = 0;
+            if (usage is not null)
             {
-                usage.TransactionBytes -= state.TransactionBytes;
+                usage.TransactionBytes -= transactionBytes;
                 ReleaseTrackedHashReference(usage, state.Hash);
-                RemovePeerUsageIfEmpty(state.TransactionPeer.Id, usage);
+                RemovePeerUsageIfEmpty(peerId, usage);
             }
         }
-
-        state.TransactionBytes = 0;
     }
 
     /// <param name="sourcePeers">

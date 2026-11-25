@@ -6216,6 +6216,59 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void registry_should_refund_a_body_once_when_its_peer_cleanup_is_interrupted()
+    {
+        Transaction tx = BuildSparseBlobTransaction(out _, out _);
+        using SparseBlobPoolPeerRegistry registry = CreateAttributionRegistry();
+        TestSparseBlobPeer oldSession = new(TestItem.PublicKeyC);
+        TestSparseBlobPeer newSession = new(TestItem.PublicKeyC);
+        registry.AddPeer(oldSession);
+
+        Assert.That(registry.RecordTransaction(oldSession, tx), Is.Null);
+        long bodyBytes = GetTrackedTransactionBytes(registry);
+        Assert.That(bodyBytes, Is.Positive);
+
+        // A local error interrupts the release of the body: the fourth read of the session's key, which the
+        // release makes to find the key's usage.
+        int reads = 0;
+        bool interrupted = false;
+        oldSession.ReadingId = () =>
+        {
+            if (++reads == 4)
+            {
+                interrupted = true;
+                throw new InvalidOperationException("Cleanup interrupted.");
+            }
+        };
+        try
+        {
+            Assert.That(() => registry.RemovePeer(oldSession), Throws.InvalidOperationException);
+        }
+        finally
+        {
+            oldSession.ReadingId = null;
+        }
+
+        // The body is still fully charged, so the cleanup that registering the next session finishes refunds it once.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(interrupted, Is.True);
+            Assert.That(GetTrackedTransactionBytes(registry), Is.EqualTo(bodyBytes));
+            Assert.That(GetPeerTransactionBytes(registry, oldSession.Id), Is.EqualTo(bodyBytes));
+        }
+
+        registry.AddPeer(newSession);
+        registry.Clear(tx.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetTrackedTransactionBytes(registry), Is.Zero);
+            Assert.That(GetPeerTransactionBytes(registry, newSession.Id), Is.Zero);
+            Assert.That(GetPeerTrackedHashCount(registry, newSession.Id), Is.Zero);
+            Assert.That(registry.HasRecordedTransaction(tx.Hash!), Is.False);
+        }
+    }
+
+    [Test]
     public void registry_should_complete_admission_when_disconnecting_a_differing_source_throws()
     {
         const int blobCount = 2;
@@ -7854,6 +7907,11 @@ public class Eth72ProtocolHandlerTests
             && state.GetType().GetProperty("EndedCellSources")!.GetValue(state) is ICollection endedSources
                 ? endedSources.Count
                 : 0;
+
+    private static long GetPeerTransactionBytes(SparseBlobPoolPeerRegistry registry, PublicKey peerId) =>
+        GetPeerUsage(registry, peerId) is { } usage
+            ? (long)usage.GetType().GetProperty("TransactionBytes")!.GetValue(usage)!
+            : 0;
 
     private static Transaction BuildElidedBlobTransaction(Transaction tx)
     {
