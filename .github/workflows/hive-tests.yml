@@ -53,10 +53,10 @@ on:
         required: false
         type: number
       hive-timeout:
-        description: Hive's time limit for each simulator run (--sim.timelimit, e.g. 40m); the whole run stops at 50m
+        description: Hive's time limit per simulator, n whole minutes from 1 to 340 (--sim.timelimit); Hive gets TERM n+10 minutes after it starts (KILL a minute later if still running), and the job limit is n+20
         required: false
-        default: 40m
-        type: string
+        default: 40
+        type: number
   workflow_call:
 
 concurrency:
@@ -72,7 +72,25 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      hive-timeout: ${{ steps.limits.outputs.hive-timeout }}
+      job-minutes: ${{ steps.limits.outputs.job-minutes }}
     steps:
+      - name: Check hive-timeout
+        id: limits
+        env:
+          HIVE_TIMEOUT: ${{ github.event.inputs.hive-timeout || '40' }}
+        run: |
+          # Hive's time limit per simulator, n whole minutes. In the test job, GNU timeout sends TERM to the Hive command
+          # n+10 minutes after it starts, and the job limit is n+20 minutes, which must stay within GitHub's 360-minute
+          # job maximum. Expressions have no arithmetic, so the job limit is computed here. Three digits at most keep the
+          # shell arithmetic from overflowing.
+          if [[ ! "$HIVE_TIMEOUT" =~ ^[1-9][0-9]{0,2}$ ]] || (( HIVE_TIMEOUT > 340 )); then
+            echo "::error::hive-timeout must be a whole number of minutes from 1 to 340."
+            exit 1
+          fi
+          echo "hive-timeout=$HIVE_TIMEOUT" >> "$GITHUB_OUTPUT"
+          echo "job-minutes=$(( HIVE_TIMEOUT + 20 ))" >> "$GITHUB_OUTPUT"
+
       - id: matrix
         env:
           SUITE: ${{ github.event.inputs.test-suite }}
@@ -164,7 +182,8 @@ jobs:
     name: Run Hive (${{ matrix.name || matrix.suite }})
     needs: [setup, build-image]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Hive's per-simulator limit plus 20 minutes (60 by default), computed by the setup job.
+    timeout-minutes: ${{ fromJSON(needs.setup.outputs.job-minutes) }}
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(github.event.inputs.max-parallel || '256') }}
@@ -175,7 +194,7 @@ jobs:
       BUILDARG: ${{ github.event.inputs.buildarg || '' }}
       HIVE_REPO: ${{ github.event.inputs.hive-repo || 'ethereum/hive' }}
       HIVE_BRANCH: ${{ github.event.inputs.hive-branch || 'master' }}
-      HIVE_TIMEOUT: ${{ github.event.inputs.hive-timeout || '40m' }}
+      HIVE_TIMEOUT: ${{ needs.setup.outputs.hive-timeout }}
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
@@ -218,16 +237,20 @@ jobs:
             --sim "${{ matrix.suite }}"
             --sim.loglevel "$LOG_LEVEL"
             --sim.parallelism "${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}"
-            --sim.timelimit "$HIVE_TIMEOUT")
+            --sim.timelimit "${HIVE_TIMEOUT}m")
           [[ -n "$LIMIT" ]] && hive_args+=(--sim.limit "$LIMIT")
           [[ -n "$BUILDARG" ]] && hive_args+=(--sim.buildarg "$BUILDARG")
-          # The outer limit covers what Hive's limit does not (image builds, a stuck shutdown, a second simulator):
-          # TERM at 50 minutes, KILL a minute later. That leaves about 9 of the job's 60 minutes for the set-up before
-          # this step and the upload, .NET and the results check after it, which took under 2 minutes in the runs so
-          # far; an estimate, not a bound, as the upload's retries are not capped. The status (124, or 137 if Hive
-          # had to be killed) tells the results step the run is incomplete.
+          # The outer limit covers what Hive's per-simulator limit does not (image builds, a stuck shutdown, a second
+          # simulator): with n = HIVE_TIMEOUT, GNU timeout sends TERM n+10 minutes after it starts ./hive (50 by
+          # default) and KILL a minute later if Hive is still running. The job limit is n+20 minutes from the start of
+          # the job, which leaves about 9 minutes in total for the steps before this one and the upload, .NET and the
+          # results check after it; those took under 2 minutes in the runs so far. That is an estimate, not a bound: the
+          # upload action makes up to ten attempts, with no separate total timeout. Image builds, an earlier simulator
+          # and Hive's shutdown count against the outer limit too, so it can still stop Hive before Hive's own limit
+          # ends a simulator. The status (124, or 137 if Hive had to be killed) tells the results step the run is
+          # incomplete. The setup job has checked that HIVE_TIMEOUT is a number.
           status=0
-          timeout --kill-after=1m 50m ./hive "${hive_args[@]}" || status=$?
+          timeout --kill-after=1m "$(( HIVE_TIMEOUT + 10 ))m" ./hive "${hive_args[@]}" || status=$?
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit "$status"
 
