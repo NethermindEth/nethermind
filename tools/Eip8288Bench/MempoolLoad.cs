@@ -28,9 +28,10 @@ internal static class MempoolLoad
 
     private static PrivateKey Account(int index)
     {
-        Span<byte> seed = stackalloc byte[4 + 20];
-        "eip8288-bench-acct-v1"u8.CopyTo(seed);
-        BinaryPrimitives.WriteInt32BigEndian(seed[20..], index);
+        ReadOnlySpan<byte> tag = "eip8288-bench-acct-v1"u8;
+        Span<byte> seed = stackalloc byte[tag.Length + sizeof(int)];
+        tag.CopyTo(seed);
+        BinaryPrimitives.WriteInt32BigEndian(seed[tag.Length..], index);
         return new PrivateKey(ValueKeccak.Compute(seed).ToByteArray());
     }
 
@@ -128,7 +129,7 @@ internal static class MempoolLoad
         SignaturePool pool = SignaturePool.LoadOrCreate(options.Path("pool", Path.Combine(outDir, "signatures.bin")), freshNeeded,
             options.Int("sign-parallelism", Environment.ProcessorCount));
 
-        List<Wrapper> wrappers = Build(plan, pool, random, rpc.Length, dupFraction, sharedFraction, hotSet);
+        List<Wrapper> wrappers = Build(plan, pool, random, rpc.Length, dupFraction, sharedFraction, hotSet, options.Int("accounts", 20_000));
         Console.Error.WriteLine($"built {wrappers.Count} wrappers, {wrappers.Sum(w => w.Transactions.Length)} transactions, " +
             $"{wrappers.Sum(w => (long)w.Encoded.Length) / 1024} KiB");
 
@@ -168,7 +169,7 @@ internal static class MempoolLoad
     }
 
     private static List<Wrapper> Build(List<(double AtMs, int Txs, int[] Deps)> plan, SignaturePool pool, Random random, int nodes,
-        double dupFraction, double sharedFraction, int hotSet)
+        double dupFraction, double sharedFraction, int hotSet, int accounts)
     {
         List<Wrapper> wrappers = new(plan.Count);
         int nextFresh = hotSet;
@@ -183,16 +184,20 @@ internal static class MempoolLoad
                 List<FrameDependency> deps = [];
                 for (int d = 0; d < depCounts[t]; d++)
                 {
-                    // Fresh claims stay within one wrapper's MAX_LEANSIG_DEPS_PER_WRAPPER; extra ones come from the hot set.
-                    bool hot = random.NextDouble() < sharedFraction || witnesses.Count >= Eip8288Constants.MaxLeanSigDepsPerWrapper;
-                    int index = hot ? random.Next(hotSet) : nextFresh++;
+                    int index = random.NextDouble() < sharedFraction ? random.Next(hotSet) : -1;
+                    // A hot claim this transaction already has is replaced by a fresh one, so it keeps its drawn count.
+                    if (index < 0 || deps.Contains(pool.Dependency(index))) index = nextFresh;
                     FrameDependency dependency = pool.Dependency(index);
-                    if (witnesses.ContainsKey(dependency) || deps.Contains(dependency)) continue;
-                    if (witnesses.Count >= Eip8288Constants.MaxLeanSigDepsPerWrapper) break;
-                    if (hot) shared++;
+                    // A mode-0 wrapper carries at most MAX_LEANSIG_DEPS_PER_WRAPPER witnesses; claims it already has are free.
+                    if (!witnesses.ContainsKey(dependency) && witnesses.Count >= Eip8288Constants.MaxLeanSigDepsPerWrapper) break;
+                    if (index == nextFresh) nextFresh++;
+                    else shared++;
                     deps.Add(dependency);
                     witnesses[dependency] = pool.Records[index].Witness;
                 }
+                // A full wrapper takes no further transactions: a DepVerify frame must name at least one claim.
+                if (deps.Count == 0) break;
+                if (account >= accounts) throw new InvalidOperationException($"the load needs more than the {accounts} funded genesis accounts");
                 transactions.Add(Transaction(Account(account++), deps));
             }
             transactions.Sort((a, b) => a.Hash!.Bytes.SequenceCompareTo(b.Hash!.Bytes));
@@ -265,7 +270,13 @@ internal static class MempoolLoad
     private static async Task Listen(int node, Uri uri, Stopwatch clock, ConcurrentDictionary<(int, Hash256), double> seen, CancellationToken token)
     {
         using ClientWebSocket socket = new();
-        await socket.ConnectAsync(uri, token);
+        try { await socket.ConnectAsync(uri, token); }
+        catch (Exception exception) when (exception is WebSocketException or HttpRequestException)
+        {
+            // A node that is down shows up as missing coverage rather than costing the run its results.
+            Console.Error.WriteLine($"node {node}: cannot subscribe: {exception.Message}");
+            return;
+        }
         await socket.SendAsync("""{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newPendingTransactions"]}"""u8.ToArray(),
             WebSocketMessageType.Text, true, token);
         byte[] buffer = new byte[64 * 1024];
@@ -287,6 +298,10 @@ internal static class MempoolLoad
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception exception) when (exception is WebSocketException or IOException or JsonException)
+        {
+            Console.Error.WriteLine($"node {node}: subscription lost after {seen.Count} arrivals: {exception.Message}");
+        }
     }
 
     private static void Write(string outDir, Options options, List<Wrapper> wrappers, Submission[] primary, Submission?[] duplicate,

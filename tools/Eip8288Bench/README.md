@@ -8,7 +8,9 @@ through `run-eip8288-calibration.yml` with `suite=nethermind-bench`.
   `DependencyProofAggregator.Prove` path with a fresh `DependencyProofCache` per repeat. Reported per N: proving wall time,
   process CPU (cores busy), peak RSS of that repeat (`VmHWM` reset through `clear_refs`), native proving calls (leaves and
   merges), proof size, verification of the final proof (median of five), and the time to check the N wrapper signatures.
-  A set fits the slot when its slowest repeat is within `SLOT_MS - RESERVE_MS`, by default 12 s less 4 s reserved for
+  Each set runs in two shapes: `production`, the path a builder runs today (16-signature leaves, merged two at a time), and
+  `wide`, leaves of up to `MaxRawWitnessesPerStep` = 256 signatures merged the same way, the fewest native calls the backend
+  allows. A set fits the slot when its slowest repeat is within `SLOT_MS - RESERVE_MS`, by default 12 s less 4 s reserved for
   building, executing and propagating the block.
 - **A, mempool**: `NODES` Nethermind containers, each pinned to its own `NODE_CPUS` cpuset with a `NODE_MEMORY` limit and
   tc netem on its egress, peered statically to about `DEGREE` others, take a Poisson stream of mode-0 wrappers through

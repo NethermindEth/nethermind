@@ -88,10 +88,15 @@ internal sealed class SignaturePool
                 RedirectStandardError = true,
                 ArgumentList = { "--sign-message", Convert.ToHexString(message.Bytes), output }
             })!;
-            string stderr = process.StandardError.ReadToEnd();
-            process.StandardOutput.ReadToEnd();
-            if (!process.WaitForExit(TimeSpan.FromMinutes(2))) process.Kill(entireProcessTree: true);
-            if (process.ExitCode != 0) throw new InvalidOperationException($"fixtures --sign-message failed: {stderr}");
+            Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+            Task<string> stderr = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(TimeSpan.FromMinutes(2)))
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit();
+                throw new TimeoutException("fixtures --sign-message did not finish in two minutes");
+            }
+            if (process.ExitCode != 0) throw new InvalidOperationException($"fixtures --sign-message failed: {stderr.Result}{stdout.Result}");
             byte[] witness = File.ReadAllBytes(output);
             if (witness.Length != Eip8288Constants.LeanSphincsWitnessBytes) throw new InvalidDataException("unexpected witness length");
             return witness;

@@ -27,7 +27,9 @@ export BENCH_NETHERMIND_COMMIT BENCH_LEAN_PACKAGE BENCH_BIN=$out/bin
 } > "$out/host.txt"
 
 # Published once in the SDK container, so the host needs only docker.
-docker run --rm -v "$root:/src" -v "$BENCH_BIN:/bin-out" -w /src mcr.microsoft.com/dotnet/sdk:10.0 \
+mkdir -p "$BENCH_BIN"
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e DOTNET_CLI_HOME=/tmp -v "$root:/src" -v "$BENCH_BIN:/bin-out" -w /src \
+  mcr.microsoft.com/dotnet/sdk:10.0 \
   dotnet publish tools/Eip8288Bench/Eip8288Bench.csproj -c Release -r "$rid" --self-contained false -o /bin-out
 
 if [[ ,$scenarios, == *,builder,* ]]; then
@@ -43,6 +45,7 @@ if [[ ,$scenarios, == *,mempool,* ]]; then
   if [[ -n $BASELINE_REF ]]; then
     baseline=$out/baseline-src
     rm -rf "$baseline"
+    git -C "$root" worktree prune
     # By branch or tag name only: a commit SHA could name a fork-only commit, which GitHub serves through upstream too.
     upstream=https://github.com/NethermindEth/nethermind.git
     git -C "$root" fetch -q --no-tags "$upstream" "refs/heads/$BASELINE_REF" 2>/dev/null ||

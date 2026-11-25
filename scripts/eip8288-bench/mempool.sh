@@ -98,7 +98,8 @@ done
 for _ in $(seq 60); do
   low=0
   for ((i = 0; i < NODES; i++)); do
-    peers=$(( $(rpc "$i" net_peerCount | sed -E 's/.*"result":"(0x[0-9a-f]+)".*/\1/') ))
+    count=$(rpc "$i" net_peerCount | sed -nE 's/.*"result":"(0x[0-9a-f]+)".*/\1/p')
+    peers=$(( ${count:-0} ))
     (( peers >= 1 )) || low=1
   done
   (( low == 0 )) && break; sleep 2
@@ -121,7 +122,7 @@ load_cpus=$(cpuset "$NODES")
 docker run --name "$prefix-load" --network "$net" --cpuset-cpus "$load_cpus" -v "$BENCH_BIN:/bench:ro" -v "$out:/out" \
   -v "$(dirname "$(realpath -m "$POOL")"):/pool" -e BENCH_NETHERMIND_COMMIT -e BENCH_LEAN_PACKAGE -e BENCH_MACHINE_TYPE \
   mcr.microsoft.com/dotnet/runtime:10.0 dotnet /bench/Eip8288Bench.dll load --rpc="$rpcs" --ws="$wss" --out=/out \
-  --pool="/pool/$(basename "$POOL")" --rate="$RATE" --seconds="$SECONDS_TO_RUN" --grace-seconds="$GRACE_SECONDS" \
+  --pool="/pool/$(basename "$POOL")" --accounts="${ACCOUNTS:-20000}" --rate="$RATE" --seconds="$SECONDS_TO_RUN" --grace-seconds="$GRACE_SECONDS" \
   ${DEPS:+--deps=$DEPS} ${TXS_PER_WRAPPER:+--txs-per-wrapper=$TXS_PER_WRAPPER} ${DUP_FRACTION:+--dup-fraction=$DUP_FRACTION} \
   ${SHARED_FRACTION:+--shared-fraction=$SHARED_FRACTION} ${SEED:+--seed=$SEED} --sign-parallelism="$NODE_CPUS" | tee "$out/load.txt"
 
