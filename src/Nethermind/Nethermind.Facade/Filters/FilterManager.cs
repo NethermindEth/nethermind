@@ -71,16 +71,16 @@ namespace Nethermind.Facade.Filters
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             ArgumentNullException.ThrowIfNull(receiptMonitor);
             ArgumentNullException.ThrowIfNull(logManager);
-            _blocks = new FilterEventLog<BlockEvent>(filterStore);
+            _unstoredReceipts = receiptConfig.StoreReceipts ? null : new UnstoredReceipts();
+            _blocks = new FilterEventLog<BlockEvent>(filterStore, _unstoredReceipts is { } receipts ? receipts.ClearCanonical : null);
             _blockHashes = new FilterEventLog<Hash256>(filterStore);
             _pendingTransactions = new FilterEventLog<PendingTransaction>(filterStore);
-            if (receiptConfig.StoreReceipts)
+            if (_unstoredReceipts is null)
             {
                 receiptMonitor.ReceiptsInserted += OnCanonicalReceiptsInserted;
             }
             else
             {
-                _unstoredReceipts = new UnstoredReceipts();
                 blockTree.BlockAddedToMain += OnBlockAddedToMain;
                 blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
             }
@@ -125,7 +125,6 @@ namespace Nethermind.Facade.Filters
             _blocks.Untrack(e.FilterId);
             _blockHashes.Untrack(e.FilterId);
             _pendingTransactions.Untrack(e.FilterId);
-            if (!_blocks.IsTracking) _unstoredReceipts?.ClearCanonical();
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
@@ -145,12 +144,14 @@ namespace Nethermind.Facade.Filters
             if (e.PreviousBlock is { } previous) OnBlockRemovedFromMain(previous.Header);
             BlockHeader header = e.Block.Header;
             if (!TryMoveCanonicalTip(header, removed: false)) return;
-            if (header.Hash is { } hash && _unstoredReceipts!.TryTakePending(hash.ValueHash256, out TxReceipt[]? receipts))
+            if (_unstoredReceipts is { } receiptCache && header.Hash is { } hash
+                && receiptCache.TryTakePending(hash.ValueHash256, out TxReceipt[]? receipts))
             {
                 if (_blocks.IsTracking)
                 {
-                    _unstoredReceipts.AddCanonical(hash.ValueHash256, receipts);
-                    PublishReceipts(header, receipts, removed: false);
+                    BlockEvent item = new(header.Timestamp, header.Bloom, receipts, false, _eip8116.IsEnabled(header.Number, header.Timestamp));
+                    _blocks.Append(item, (Cache: receiptCache, Hash: hash.ValueHash256, Receipts: receipts),
+                        static state => state.Cache.AddCanonical(state.Hash, state.Receipts));
                 }
             }
             else
@@ -379,7 +380,7 @@ namespace Nethermind.Facade.Filters
         /// and the garbage collector releases the rest. Only reads that advance a cursor keep a filter alive in
         /// <see cref="FilterStore"/>, so a filter that stops polling times out and stops holding events back.
         /// </remarks>
-        private sealed class FilterEventLog<TEvent>(FilterStore filterStore)
+        private sealed class FilterEventLog<TEvent>(FilterStore filterStore, Action? onLastFilterRemoved = null)
         {
             private readonly Lock _lock = new();
             private readonly Dictionary<int, Cursor> _cursors = [];
@@ -420,6 +421,7 @@ namespace Nethermind.Facade.Filters
                     if (_cursors.Remove(filterId) && _cursors.Count == 0)
                     {
                         Volatile.Write(ref _isTracking, false);
+                        onLastFilterRemoved?.Invoke();
                     }
                 }
             }
@@ -441,10 +443,26 @@ namespace Nethermind.Facade.Filters
                         return;
                     }
 
-                    Node node = new(item, _tail.Sequence + 1);
-                    _tail.Next = node;
-                    _tail = node.After;
+                    AppendCore(item);
                 }
+            }
+
+            public void Append<TState>(TEvent item, TState state, Action<TState> beforeAppend)
+            {
+                lock (_lock)
+                {
+                    if (_cursors.Count == 0) return;
+
+                    beforeAppend(state);
+                    AppendCore(item);
+                }
+            }
+
+            private void AppendCore(TEvent item)
+            {
+                Node node = new(item, _tail.Sequence + 1);
+                _tail.Next = node;
+                _tail = node.After;
             }
 
             /// <summary>
