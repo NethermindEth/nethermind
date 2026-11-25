@@ -108,12 +108,29 @@ public partial record BeaconChainSpec
     /// no concrete state type for, rather than silently treating it as Electra.
     /// </summary>
     /// <exception cref="StateTransition.BeaconStateException"><paramref name="epoch"/> predates Electra.</exception>
+    /// <exception cref="NotSupportedException">A <see cref="Forks"/> entry scheduled after the Gloas entry is live at <paramref name="epoch"/>.</exception>
     public BeaconFork ForkAtEpoch(ulong epoch)
     {
-        if (epoch >= GloasForkEpoch) return BeaconFork.Gloas;
+        if (epoch >= GloasForkEpoch)
+        {
+            ThrowIfForkAfterGloasIsLive(epoch);
+            return BeaconFork.Gloas;
+        }
         if (epoch >= FuluForkEpoch) return BeaconFork.Fulu;
         if (epoch >= ElectraForkEpoch) return BeaconFork.Electra;
         throw new StateTransition.BeaconStateException($"Epoch {epoch} predates Electra (fork epoch {ElectraForkEpoch}); this driver has no state type for it");
+    }
+
+    private void ThrowIfForkAfterGloasIsLive(ulong epoch)
+    {
+        int gloasIndex = Array.FindIndex(Forks, entry => entry.Version.AsSpan().SequenceEqual(GloasForkVersion));
+        if (gloasIndex < 0) return;
+
+        for (int index = gloasIndex + 1; index < Forks.Length; index++)
+        {
+            if (Forks[index].Epoch <= epoch)
+                throw new NotSupportedException($"Epoch {epoch} is in the fork with version {Forks[index].Version.ToHexString(true)}, scheduled after Gloas, which this driver does not support");
+        }
     }
 
     /// <summary>

@@ -350,8 +350,10 @@ public class CheckpointSync(
             ForkedBeaconState.OfGloas gloas => gloas.State.Fork!.CurrentVersion!,
             _ => throw new NotSupportedException($"Unhandled beacon state shape {state.GetType().Name}"),
         };
-        foreach (ForkScheduleEntry entry in spec.Forks)
+        int gloasIndex = Array.FindIndex(spec.Forks, entry => entry.Version.AsSpan().SequenceEqual(spec.GloasForkVersion));
+        for (int index = 0; index < spec.Forks.Length; index++)
         {
+            ForkScheduleEntry entry = spec.Forks[index];
             if (entry.Version.AsSpan().SequenceEqual(currentVersion))
             {
                 if (entry.Epoch < spec.ElectraForkEpoch)
@@ -364,9 +366,8 @@ public class CheckpointSync(
                     throw new NotSupportedException("Electra checkpoint upgrade not implemented yet");
                 }
 
-                // By version identity, not activation epoch: Fulu and Gloas may activate in the same epoch.
-                BeaconFork versionFork = currentVersion.AsSpan().SequenceEqual(spec.GloasForkVersion) ? BeaconFork.Gloas
-                    : entry.Epoch < spec.GloasForkEpoch || entry.Epoch == spec.FuluForkEpoch ? BeaconFork.Fulu
+                BeaconFork versionFork = index == gloasIndex ? BeaconFork.Gloas
+                    : gloasIndex < 0 || index < gloasIndex ? BeaconFork.Fulu
                     : throw new NotSupportedException($"Checkpoint state fork version {currentVersion.ToHexString(true)} belongs to a fork scheduled after Gloas, which this driver does not support. {remedy}");
                 if (versionFork != state.Fork)
                 {
