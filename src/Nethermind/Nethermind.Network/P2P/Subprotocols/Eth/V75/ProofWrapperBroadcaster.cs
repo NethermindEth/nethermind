@@ -412,15 +412,17 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
         try { hashes = WrapperBodies.ParseWrapper(wrapper, out shape, out coverage); }
         catch (RlpException) { return false; }
         ValueHash256[] encodingHashes = WrapperCompaction.EncodingHashes(wrapper);
-        WrapperAnnouncement announcement;
-        try { announcement = WrapperAnnouncement.Create(wrapper, shape.Mode, coverage, WrapperMetadata.InlineFor(wrapper)); }
+        WrapperMetadata manifest;
+        try { manifest = WrapperMetadata.Of(wrapper); }
         catch (RlpException) { return false; }
+        WrapperAnnouncement announcement = WrapperAnnouncement.Create(wrapper, shape.Mode, coverage,
+            shape.Mode == MempoolWrapper.ModeDirect && manifest.Count <= Eth75Protocol.MaxInlineTransactions ? manifest : null);
         Outbox outbox = new();
         lock (_gate)
         {
             // A wrapper validated under a verifier the target fork no longer uses is never offered.
             if (_disposed || verifier != _verifier
-                || !_store.TryAdd(new(announcement, (byte[])wrapper.Clone(), hashes, verifier, shape, encodingHashes))) return false;
+                || !_store.TryAdd(new(announcement, (byte[])wrapper.Clone(), hashes, verifier, shape, encodingHashes, manifest))) return false;
             _tombstones.Remove(announcement.Hash);
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers)

@@ -101,8 +101,11 @@ internal sealed class WrapperRateLimit(double perSecond, TimeProvider clock)
 internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxStoreBytes, int maxObjects = WrapperTransportLimits.MaxStoreObjects)
 {
     internal sealed class Entry(WrapperAnnouncement announcement, byte[] wrapper, ValueHash256[] hashes, Eip8288Verifier verifier, WrapperShape shape,
-        ValueHash256[] encodingHashes)
+        ValueHash256[] encodingHashes, WrapperMetadata manifest)
     {
+        /// <summary>The metadata of all the wrapper's transactions.</summary>
+        public WrapperMetadata Manifest { get; } = manifest;
+
         /// <summary>The encoding hashes of the wrapper's transactions, in order, against which hash references are made.</summary>
         public ValueHash256[] EncodingHashes { get; } = encodingHashes;
 
@@ -118,7 +121,7 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         /// <summary>The consensus hashes of the wrapper's <c>transactions</c>, in order.</summary>
         public ValueHash256[] Hashes { get; } = hashes;
         public LinkedListNode<ValueHash256>? Node { get; set; }
-        public long Bytes { get; } = wrapper.Length + 256 + hashes.Length * 96L;
+        public long Bytes { get; } = wrapper.Length + 256 + hashes.Length * 96L + manifest.Encoded.Length;
     }
 
     private readonly Dictionary<ValueHash256, Entry> _objects = [];

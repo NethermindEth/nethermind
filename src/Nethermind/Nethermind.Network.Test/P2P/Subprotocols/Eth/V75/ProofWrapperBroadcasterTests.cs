@@ -1158,6 +1158,58 @@ public class ProofWrapperBroadcasterTests
         }
     }
 
+    // EIP-8437: claims found false against a held wrapper of the announced hash, or metadata found false against a transaction
+    // held in a validated wrapper, are discarded with their sender before any fetch; true metadata for a held transaction is not.
+    [TestCase("held wrapper, false metadata", true)]
+    [TestCase("held wrapper, false length", true)]
+    [TestCase("held transaction, false gas", true)]
+    [TestCase("held transaction, true metadata", false)]
+    public void Announced_claims_are_checked_against_held_wrappers_and_transactions(string scenario, bool penalized)
+    {
+        using WrapperTestNode node = new();
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2), c = FrameTransaction(3);
+        byte[] held = DirectWrapper(a), other = DirectWrapper(a, c);
+        node.AddPending(a);
+        Assert.That(node.Broadcaster.PublishWrapper(held), Is.True);
+        FakeWrapperLink link = new() { ProtocolVersion = EthVersions.Eth75 };
+        WrapperPeer peer = node.Connect(link);
+        WrapperAnnouncement truth = Describe(held), otherTruth = Describe(other);
+        WrapperAnnouncement announcement = scenario switch
+        {
+            "held wrapper, false metadata" => Announcement(0, truth.Length, truth.Hash, null, WrapperMetadata.InlineFor(DirectWrapper(b))),
+            "held wrapper, false length" => Announcement(0, truth.Length + 1, truth.Hash, null, truth.Metadata),
+            "held transaction, false gas" => Announcement(0, otherTruth.Length, otherTruth.Hash, null,
+                WrapperMetadata.Of(other, static (ref Eth75RlpReader _) => 1)),
+            _ => Announcement(0, otherTruth.Length, otherTruth.Hash, null, otherTruth.Metadata)
+        };
+
+        node.Broadcaster.OnAnnounce(peer, new([announcement]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Has.Length.EqualTo(penalized ? 1 : 0));
+            Assert.That(link.Sent<GetProofWrappersMessage>(), penalized ? Is.Empty : Has.Length.EqualTo(1));
+        }
+    }
+
+    // EIP-8437 lets metadata choose fetches: a mode-0 wrapper listing only pending transactions adds no coverage and is not
+    // fetched, unless an eth/75 peer, which is served only direct witnesses, is connected and no held mode-0 wrapper carries them.
+    [Test]
+    public void Direct_wrapper_of_pending_transactions_is_fetched_only_for_eth75_peers_lacking_them([Values] bool eth75Peer, [Values] bool heldDirect)
+    {
+        using WrapperTestNode node = new();
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
+        node.AddPending(a, b);
+        if (heldDirect) Assert.That(node.Broadcaster.PublishWrapper(DirectWrapper(a, b)), Is.True);
+        if (eth75Peer) node.Connect(new FakeWrapperLink("eth75") { ProtocolVersion = EthVersions.Eth75 });
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+
+        node.Broadcaster.OnAnnounce(peer, new([Describe(DirectWrapper(a))]));
+
+        Assert.That(link.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(eth75Peer && !heldDirect ? 1 : 0));
+    }
+
     // EIP-8437: metadata that differs from what the returned wrapper's transactions give is a mismatch of its server, checked
     // before proof verification.
     [TestCase(true)]
