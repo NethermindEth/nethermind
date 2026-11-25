@@ -26,6 +26,7 @@ namespace Nethermind.Runner.JsonRpc
         IFileSystem fileSystem) : IDisposable
     {
         private const int OperationCancelledError = 125;
+        private const int ListenBacklog = 128;
         private static readonly TimeSpan AcceptRetryDelay = TimeSpan.FromMilliseconds(100);
         private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcIpcRunner>();
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats = jsonRpcLocalStats;
@@ -60,10 +61,7 @@ namespace Nethermind.Runner.JsonRpc
 
                     DeleteSocketFileIfExists(path);
 
-                    _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-                    _server.Bind(new UnixDomainSocketEndPoint(path));
-                    TryRestrictSocketPermissions(path);
-                    _server.Listen(0);
+                    _server = CreateListener(path, TryRestrictSocketPermissions);
                 }
             }
             catch (Exception ex)
@@ -88,6 +86,33 @@ namespace Nethermind.Runner.JsonRpc
                 socket.SendTimeout = _jsonRpcConfig.Timeout;
 
                 _ = Task.Run(() => HandleIpcConnection(socket, cancellationToken), CancellationToken.None);
+            }
+        }
+
+        /// <summary>
+        /// Binds the IPC socket and starts listening on it.
+        /// </summary>
+        /// <param name="path">The Unix domain socket path.</param>
+        /// <param name="onBound">Invoked after the socket file exists and before any client can connect.</param>
+        /// <remarks>
+        /// A Unix domain socket refuses a connection (<c>EAGAIN</c> for a non-blocking client) as soon as more than
+        /// <c>backlog</c> connections wait to be accepted, so the backlog must cover clients that open several
+        /// connections at once, e.g. a consensus client using separate eth and engine connections.
+        /// </remarks>
+        internal static Socket CreateListener(string path, Action<string>? onBound = null)
+        {
+            Socket server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            try
+            {
+                server.Bind(new UnixDomainSocketEndPoint(path));
+                onBound?.Invoke(path);
+                server.Listen(ListenBacklog);
+                return server;
+            }
+            catch
+            {
+                server.Dispose();
+                throw;
             }
         }
 

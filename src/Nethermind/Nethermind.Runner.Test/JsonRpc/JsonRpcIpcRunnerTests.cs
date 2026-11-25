@@ -121,6 +121,31 @@ public class JsonRpcIpcRunnerTests
             Substitute.For<IJsonRpcLocalStats>(), new EthereumJsonSerializer(), files);
     }
 
+    [Test]
+    [Platform(Include = "Linux")]
+    public void CreateListener_queues_connections_opened_before_the_first_accept()
+    {
+        const int clients = 8;
+        using TempPath path = TempPath.GetTempFile();
+        UnixDomainSocketEndPoint endPoint = new(path.Path);
+        using Socket listener = JsonRpcIpcRunner.CreateListener(path.Path);
+        Socket[] connections = new Socket[clients];
+        try
+        {
+            for (int i = 0; i < clients; i++)
+            {
+                // Non-blocking, as async clients connect: a full backlog fails the connect instead of delaying it
+                connections[i] = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified) { Blocking = false };
+                Socket connection = connections[i];
+                Assert.That(() => connection.Connect(endPoint), Throws.Nothing, $"connection {i + 1} opened while none is accepted yet");
+            }
+        }
+        finally
+        {
+            foreach (Socket? connection in connections) connection?.Dispose();
+        }
+    }
+
     private static readonly TestCaseData[] ShutdownAcceptErrors =
     [
         new TestCaseData(new SocketException((int)SocketError.OperationAborted)).SetName("listener disposed while accepting"),
