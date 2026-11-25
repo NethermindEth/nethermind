@@ -6034,6 +6034,74 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
     }
 
+    [Test]
+    public void registry_should_release_failed_cells_whole_when_preparing_their_accounting_fails()
+    {
+        const int blobCount = 1;
+        Transaction tx = BuildSparseBlobTransaction(blobCount, out byte[][] fullCells);
+        BlobCellMask firstEndedMask = BlobCellMask.FromIndices([4]);
+        BlobCellMask secondEndedMask = BlobCellMask.FromIndices([9]);
+        BlobCellMask keptMask = BlobCellMask.FromIndices([77]);
+        byte[][] firstEndedCells = CopyWithCorruptedCell(
+            BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, firstEndedMask, blobCount), cellIndex: 0, byteIndex: 0);
+        byte[][] secondEndedCells = BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, secondEndedMask, blobCount);
+        byte[][] keptCells = BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, keptMask, blobCount);
+        using SparseBlobPoolPeerRegistry registry = CreateAttributionRegistry();
+        FaultingPublicKey firstOldKey = new(TestItem.PublicKeyA);
+        TestSparseBlobPeer transactionPeer = new(TestItem.PublicKeyC);
+        TestSparseBlobPeer keptCellPeer = new(TestItem.PublicKeyE);
+        TestSparseBlobPeer firstOldSession = new(firstOldKey);
+        TestSparseBlobPeer firstNewSession = new(TestItem.PublicKeyA);
+        TestSparseBlobPeer secondOldSession = new(TestItem.PublicKeyD);
+        TestSparseBlobPeer secondNewSession = new(TestItem.PublicKeyD);
+        int submissions = 0;
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+        {
+            if (++submissions == 1)
+            {
+                // Two cell sources' sessions end while the pool checks the first tuple, and both nodes reconnect.
+                registry.AddPeer(firstNewSession);
+                registry.AddPeer(secondNewSession);
+
+                // A local error interrupts the next hash of the first ended source's key: preparing the accounting
+                // of the cells that remain.
+                firstOldKey.FailOnHash(1);
+            }
+
+            return IsValidSparseTuple(call.Arg<Transaction>()) ? AcceptTxResult.Accepted : AcceptTxResult.InvalidBlobProofs;
+        });
+        AddAnnouncingPeers(registry, tx.Hash!, BlobCellMask.Full, transactionPeer);
+        registry.AddPeer(keptCellPeer);
+        registry.AddPeer(firstOldSession);
+        registry.AddPeer(secondOldSession);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.RecordCells(firstOldSession, tx.Hash!, firstEndedMask, firstEndedCells), Is.True);
+            Assert.That(registry.RecordCells(secondOldSession, tx.Hash!, secondEndedMask, secondEndedCells), Is.True);
+            Assert.That(registry.RecordCells(keptCellPeer, tx.Hash!, keptMask, keptCells), Is.True);
+        }
+
+        AcceptTxResult? result = AcceptTxResult.Invalid;
+        Assert.That(() => result = registry.RecordTransaction(transactionPeer, tx), Throws.Nothing);
+
+        // The failed cells were released whole, nothing was kept, and the failed check ended as usual.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstOldKey.Failed, Is.True);
+            Assert.That(result, Is.Null);
+            Assert.That(GetEarlyCellsBytes(registry), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, keptCellPeer.Id), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, firstNewSession.Id), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, secondNewSession.Id), Is.Zero);
+            Assert.That(registry.HasRecordedTransaction(tx.Hash!), Is.False);
+            Assert.That(GetTrackedTransactionBytes(registry), Is.Zero);
+        }
+
+        registry.Clear(tx.Hash!);
+        Assert.That(IsTracked(registry, tx.Hash!), Is.False);
+    }
+
     public enum KeptCellSessionEnd
     {
         ReplacedWhileKept,
@@ -7972,6 +8040,34 @@ public class Eth72ProtocolHandlerTests
         {
             Disconnecting?.Invoke();
             Disconnects.Add((reason, details));
+        }
+    }
+
+    /// <summary>A key whose hash code fails once when asked to, which interrupts an operation that hashes it.</summary>
+    private sealed class FaultingPublicKey(PublicKey key) : PublicKey(key.Bytes)
+    {
+        private int _hashesBeforeFailure = -1;
+
+        public bool Failed { get; private set; }
+
+        /// <summary>Makes the <paramref name="hashNumber"/>-th next hash of this key throw, once.</summary>
+        public void FailOnHash(int hashNumber) => _hashesBeforeFailure = hashNumber - 1;
+
+        public override int GetHashCode()
+        {
+            if (_hashesBeforeFailure == 0)
+            {
+                _hashesBeforeFailure = -1;
+                Failed = true;
+                throw new InvalidOperationException("Hashing failed.");
+            }
+
+            if (_hashesBeforeFailure > 0)
+            {
+                _hashesBeforeFailure--;
+            }
+
+            return base.GetHashCode();
         }
     }
 

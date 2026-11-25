@@ -2043,9 +2043,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     /// Must be called under <c>state.Lock</c>.
     /// </summary>
     /// <remarks>
-    /// The remaining cells are prepared before any bytes are released, and the bytes of every removed source are then
-    /// released in one step. If preparing them fails, the accounting of <paramref name="cells"/> is still intact, so
-    /// they are released whole and nothing is kept.
+    /// The remaining cells and the source keys of their accounting are prepared before any bytes are released, and the
+    /// bytes of every removed source are then released in one accounting step. If preparing them fails, the accounting
+    /// of <paramref name="cells"/> is still intact, so they are released whole and nothing is kept.
     /// </remarks>
     /// <returns>The remaining cells, or <c>null</c> when none remain and all their bytes were released.</returns>
     private PendingCellsBuffer? RemoveEndedSources(
@@ -2061,6 +2061,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
 
         PendingCellsBuffer? remaining = cells;
+        HashSet<PublicKey>? sourcePeers = null;
         bool removed = false;
         try
         {
@@ -2072,6 +2073,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     remaining = next;
                     removed = true;
                 }
+            }
+
+            if (removed && remaining is { } projected)
+            {
+                sourcePeers = GetSourcePeers(cells, projected);
             }
         }
         catch (Exception e)
@@ -2086,7 +2092,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return cells;
         }
 
-        if (remaining is { } retained && TryReplaceCellsAccounting(hash, cells, retained))
+        if (remaining is { } retained && TryReplaceCellsAccounting(hash, cells, retained, sourcePeers: sourcePeers))
         {
             return retained;
         }
@@ -2883,11 +2889,15 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         state.TransactionBytes = 0;
     }
 
+    /// <param name="sourcePeers">
+    /// The keys of the sources of both buffers when the caller has prepared them (<see cref="GetSourcePeers"/>).
+    /// </param>
     private bool TryReplaceCellsAccounting(
         ValueHash256 hash,
         PendingCellsBuffer? existing,
         in PendingCellsBuffer replacement,
-        ISparseBlobPoolPeer? requiredActivePeer = null)
+        ISparseBlobPoolPeer? requiredActivePeer = null,
+        HashSet<PublicKey>? sourcePeers = null)
     {
         long globalDelta = replacement.ByteLength - (existing?.ByteLength ?? 0);
         lock (_accountingLock)
@@ -2902,20 +2912,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 return false;
             }
 
-            HashSet<PublicKey> sourcePeers = [];
-            if (existing is { } current)
-            {
-                for (int i = 0; i < current.Sources.Length; i++)
-                {
-                    sourcePeers.Add(current.Sources[i].PeerId);
-                }
-            }
-
-            for (int i = 0; i < replacement.Sources.Length; i++)
-            {
-                sourcePeers.Add(replacement.Sources[i].PeerId);
-            }
-
+            sourcePeers ??= GetSourcePeers(existing, replacement);
             foreach (PublicKey peerId in sourcePeers)
             {
                 long oldBytes = existing?.GetByteLength(peerId) ?? 0;
@@ -2956,6 +2953,25 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             return true;
         }
+    }
+
+    private static HashSet<PublicKey> GetSourcePeers(PendingCellsBuffer? existing, in PendingCellsBuffer replacement)
+    {
+        HashSet<PublicKey> sourcePeers = [];
+        if (existing is { } current)
+        {
+            for (int i = 0; i < current.Sources.Length; i++)
+            {
+                sourcePeers.Add(current.Sources[i].PeerId);
+            }
+        }
+
+        for (int i = 0; i < replacement.Sources.Length; i++)
+        {
+            sourcePeers.Add(replacement.Sources[i].PeerId);
+        }
+
+        return sourcePeers;
     }
 
     private void ReleaseCells(TrackedSparseBlobTx state)
