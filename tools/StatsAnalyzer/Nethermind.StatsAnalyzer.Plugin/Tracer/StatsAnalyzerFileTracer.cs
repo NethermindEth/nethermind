@@ -50,15 +50,17 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
 
     public override void EndBlockTrace()
     {
-        TxTracer tracer = Tracer;
-        ulong initialBlockNumber = _initialBlock;
-        ulong currentBlockNumber = _currentBlock;
-        bool skip = _skipThisBlock;
-
-        ResetBufferAndTracer();
-
-        if (!skip)
+        if (_fileTracingQueueSize < 1)
         {
+            ResetBufferAndTracer();
+        }
+        else if (IsWriteDue())
+        {
+            TxTracer tracer = Tracer;
+            ulong initialBlockNumber = _initialBlock;
+            ulong currentBlockNumber = _currentBlock;
+            ResetBufferAndTracer();
+
             Enqueue(() =>
             {
                 Ct.ThrowIfCancellationRequested();
@@ -76,13 +78,15 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
         base.EndBlockTrace();
     }
 
+    private bool IsWriteDue()
+    {
+        if (_skipThisBlock) return false;
+        _pos = (_pos + 1) % _writeFreq;
+        return _pos == 0;
+    }
+
     private void Enqueue(Action work)
     {
-        if (_fileTracingQueueSize < 1) return;
-
-        _pos = (_pos + 1) % _writeFreq;
-        if (_pos != 0) return;
-
         // Chain via ContinueWith so the runtime starts the task itself rather
         // than leaving it in Created state where Wait/WaitAll would race.
         Task previous = _lastTask;
