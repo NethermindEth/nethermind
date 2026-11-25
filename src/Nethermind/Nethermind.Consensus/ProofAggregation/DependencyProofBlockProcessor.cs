@@ -117,7 +117,7 @@ internal sealed class DependencyProofBlockProcessor(
                 AggregationInput input = producing is null ? new() : DependencyProofAggregator.Combine(producing.LeanProduction.ProofInputs, deps);
                 try
                 {
-                    proof = DependencyProofAggregator.Prove(input, _dependencyProofCache, verifier, in depsHash, token);
+                    proof = DependencyProofAggregator.Prove(input, _dependencyProofCache, verifier, in depsHash, token, blockProduction: true);
                 }
                 // A prover that cannot take the statement now leaves the body to what is already proven, as a deadline would.
                 catch (LeanProverBusyException) when (producing is not null && leanProofStore is not null)

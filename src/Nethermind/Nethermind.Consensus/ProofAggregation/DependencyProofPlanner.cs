@@ -18,10 +18,12 @@ internal static class DependencyProofPlanner
 
     /// <summary>Estimated cost (<see cref="DependencyProofAggregator.EstimatedCost"/>) above which a scheduled statement is cut to
     /// a nonce-ordered prefix of the body: two recursive merges and one whole direct leaf.</summary>
-    /// <remarks>Kept to that shape, not to its former value, as <see cref="DependencyProofAggregator.DirectBatchSize"/> widened:
-    /// a merge and a full leaf cost roughly the same wall time either way, so the bound still stands for about the same work.</remarks>
+    /// <remarks>Kept to that shape, not to its former value, as the producer's direct leaf widened to
+    /// <see cref="DependencyProofAggregator.BlockProductionBatchSize"/>: one wide leaf costs far less than the narrow leaves and
+    /// merges the same signatures took. A full statement took about 3 s on 8 arm64 vCPUs and scales inversely with cores; one
+    /// made mostly of recursive inputs is over-counted, so it is cut sooner rather than later.</remarks>
     internal const long MaxScheduledStatementCost = 2 * DependencyProofAggregator.MergeCost
-        + DependencyProofAggregator.DirectBatchSize * DependencyProofAggregator.SignatureCost;
+        + DependencyProofAggregator.BlockProductionBatchSize * DependencyProofAggregator.SignatureCost;
 
     /// <summary>Offers the verified recursive proofs of the inclusion lists as reusable statements.</summary>
     /// <remarks>
@@ -70,7 +72,7 @@ internal static class DependencyProofPlanner
             foreach (FrameDependency dependency in narrowed.InnerDeps)
                 if (!narrowedNeeded.Contains(dependency)) discards.Add(dependency);
             AggregationInput narrowing = new() { RecursiveProofs = [narrowed], Discards = discards };
-            if (DependencyProofAggregator.EstimatedCost(narrowing) <= MaxScheduledStatementCost)
+            if (DependencyProofAggregator.EstimatedCost(narrowing, blockProduction: true) <= MaxScheduledStatementCost)
             {
                 cache.Schedule(narrowedTarget, Eip8288Dependencies.ComputeDepsHash(narrowedTarget), narrowing, verifier, store);
                 return;
@@ -100,12 +102,12 @@ internal static class DependencyProofPlanner
         {
             List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(set);
             AggregationInput best = DependencyProofAggregator.Combine(producing.LeanProduction.ProofInputs, canonical);
-            long bestCost = DependencyProofAggregator.EstimatedCost(best);
+            long bestCost = DependencyProofAggregator.EstimatedCost(best, blockProduction: true);
             foreach (RecursiveProofInput parent in overlaps)
             {
                 if (!Overlaps(parent, set)) continue;
                 AggregationInput extended = DependencyProofAggregator.Combine(producing.LeanProduction.ProofInputs, canonical, parent);
-                long extendedCost = DependencyProofAggregator.EstimatedCost(extended);
+                long extendedCost = DependencyProofAggregator.EstimatedCost(extended, blockProduction: true);
                 if (extendedCost < bestCost) (best, bestCost) = (extended, extendedCost);
             }
             return (best, bestCost);

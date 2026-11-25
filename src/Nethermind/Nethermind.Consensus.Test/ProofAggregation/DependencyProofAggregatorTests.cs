@@ -562,6 +562,52 @@ public class DependencyProofAggregatorTests
         }
     }
 
+    [TestCase(1, 0, 0, new[] { 1 })]
+    [TestCase(16, 0, 0, new[] { 16 })]
+    [TestCase(17, 0, 0, new[] { 17 })]
+    [TestCase(256, 0, 0, new[] { 256 })]
+    [TestCase(257, 0, 0, new[] { 129, 128 })]
+    [TestCase(500, 0, 0, new[] { 250, 250 })]
+    [TestCase(500, 0, 3, new[] { 250, 250 })]
+    [TestCase(17, 0, 9, new[] { 17 })]
+    [TestCase(300, 5, 2, new[] { 150, 150, 4, 1 })]
+    [TestCase(20, 0, 5, new[] { 20 })]
+    public void Block_production_folds_signatures_in_the_fewest_equal_leaves(int signatures, int generics, int recursive, int[] leaves)
+    {
+        FrameDependency[] direct = [.. Enumerable.Range(0, generics)
+            .Select(static i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"wide-stark:{i}"), default)),
+            .. Enumerable.Range(0, signatures).Select(static i => Sphincs($"wide:{i}"))];
+        RecursiveProofInput[] children = [.. Enumerable.Range(0, recursive).Select(static i =>
+        {
+            FrameDependency[] inner = [Sphincs($"wide-child:{i}"), Sphincs($"wide-child:{i}:b")];
+            return new RecursiveProofInput(inner, LeanProofTestEnvelope.Create(inner));
+        })];
+        AggregationInput input = new()
+        {
+            Deps = direct,
+            Witnesses = [.. direct.Select(static _ => (ReadOnlyMemory<byte>)new byte[] { 1 })],
+            RecursiveProofs = children
+        };
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([.. direct, .. children.SelectMany(static c => c.InnerDeps)]);
+        EnvelopeBoundedVerifier narrow = new();
+        EnvelopeBoundedVerifier wide = new();
+
+        byte[] mempoolProof = DependencyProofAggregator.Prove(input, narrow, Eip8288Verifier.Pinned, hash);
+        byte[] blockProof = DependencyProofAggregator.Prove(input, wide, Eip8288Verifier.Pinned, hash, blockProduction: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockProof, Is.EqualTo(mempoolProof), "both schedules prove the same statement");
+            Assert.That(wide.VerifyDependencyProof(hash, Eip8288Constants.AggregatedVk, blockProof), Is.True);
+            Assert.That(wide.ProvingInputs.Where(static i => i.Deps.Count != 0).Select(static i => i.Deps.Count), Is.EqualTo(leaves));
+            Assert.That(wide.ProvingInputs.Select(static i => i.RecursiveProofs.Count),
+                Has.All.LessThanOrEqualTo(DependencyProofAggregator.BlockProductionFanIn));
+            Assert.That(wide.ProvingInputs.Where(static i => i.Deps.Count != 0).Select(static i => i.RecursiveProofs.Count),
+                Has.All.LessThanOrEqualTo(2), "a wide leaf never shares a call with a wide merge");
+            Assert.That(wide.ProvingInputs, Has.Count.LessThanOrEqualTo(narrow.ProvingInputs.Count));
+        }
+    }
+
     [Test]
     public void Large_generic_witnesses_use_separate_leaves_before_recursive_union()
     {

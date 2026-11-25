@@ -338,7 +338,7 @@ public class Eip8288BlockProductionTests
     public async Task Scheduled_statement_finishes_after_a_later_slot_starts()
     {
         // More than one leaf, so the statement folds over several native calls; one longer than a slot must still finish and be stored.
-        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, DependencyProofAggregator.DirectBatchSize + 1)
+        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, DependencyProofAggregator.BlockProductionBatchSize + 1)
             .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"slow-{i}"), default)));
         AggregationInput input = new() { Deps = deps, Witnesses = [.. deps.Select(_ => (ReadOnlyMemory<byte>)new byte[] { 1 })] };
         using ManualResetEventSlim entered = new();
@@ -939,15 +939,18 @@ public class Eip8288BlockProductionTests
     {
         CountingVerifier verifier = new();
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
-        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
-        // Three whole leaves and two merges, above MaxScheduledStatementCost, so the statement is cut to a prefix.
-        const int leaf = DependencyProofAggregator.DirectBatchSize;
-        FrameDependency[] backlog = [.. Enumerable.Range(0, 3 * leaf).Select(i =>
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs, static builder => builder.AddSingleton<IGenesisPostProcessor>(
+            new FunctionalGenesisPostProcessor(static genesis => genesis.Header.GasLimit = 100_000_000)));
+        // Two whole leaves and a merge, above MaxScheduledStatementCost, so the statement is cut to a prefix. A sender pins at
+        // most LeanProofStore.MaxSenderPinnedRecords witnesses, so two senders submit a leaf each.
+        const int leaf = DependencyProofAggregator.BlockProductionBatchSize;
+        FrameDependency[] backlog = [.. Enumerable.Range(0, 2 * leaf).Select(i =>
             new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"backlog-{i}"), default))];
         for (int i = 0; i < backlog.Length; i++)
         {
             proofs.AddVerified([backlog[i]], [[1]], null);
-            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, backlog[i], [(UInt256)(i + 1)]), TxHandlingOptions.PersistentBroadcast),
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, backlog[i], [], nonce: (ulong)(i % leaf),
+                    key: i < leaf ? TestItem.PrivateKeyB : TestItem.PrivateKeyC), TxHandlingOptions.PersistentBroadcast),
                 Is.EqualTo(AcceptTxResult.Accepted));
         }
 
@@ -957,8 +960,8 @@ public class Eip8288BlockProductionTests
         // The widest nonce-ordered prefix whose estimate still fits the bound, which need not end on a leaf boundary.
         int widest = 1;
         while (widest < backlog.Length
-               && DependencyProofAggregator.EstimatedCost(new AggregationInput { Deps = backlog[..(widest + 1)], Witnesses = new ReadOnlyMemory<byte>[widest + 1] })
-                  <= DependencyProofPlanner.MaxScheduledStatementCost) widest++;
+               && DependencyProofAggregator.EstimatedCost(new AggregationInput { Deps = backlog[..(widest + 1)], Witnesses = new ReadOnlyMemory<byte>[widest + 1] },
+                      blockProduction: true) <= DependencyProofPlanner.MaxScheduledStatementCost) widest++;
         HashSet<FrameDependency> all = [.. backlog];
         Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == widest), Is.True.After(5000, 20));
         Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Length > widest), Is.False);
@@ -1002,7 +1005,7 @@ public class Eip8288BlockProductionTests
         await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
 
         AggregationInput wideInput = new() { Deps = wide, Witnesses = new ReadOnlyMemory<byte>[wide.Length] };
-        Assert.That(DependencyProofAggregator.EstimatedCost(wideInput), Is.LessThanOrEqualTo(DependencyProofPlanner.MaxScheduledStatementCost));
+        Assert.That(DependencyProofAggregator.EstimatedCost(wideInput, blockProduction: true), Is.LessThanOrEqualTo(DependencyProofPlanner.MaxScheduledStatementCost));
         HashSet<FrameDependency> all = [.. backlog, .. wide];
         Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Intersect(wide).Any()), Is.True.After(5000, 20));
     }

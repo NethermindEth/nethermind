@@ -228,7 +228,7 @@ public class NativeBlockProductionTests
         }
     }
 
-    private sealed class CountingNativeVerifier : ILeanProofVerifier
+    internal sealed class CountingNativeVerifier : ILeanProofVerifier
     {
         public int ProofCalls { get; private set; }
         public void EnsureAvailable() => NativeLeanProofVerifier.Instance.EnsureAvailable();

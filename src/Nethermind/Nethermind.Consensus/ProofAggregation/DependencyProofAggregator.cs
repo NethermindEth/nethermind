@@ -14,11 +14,24 @@ public static class DependencyProofAggregator
 {
     /// <summary>Target serialized-witness size for each direct proving batch, in bytes.</summary>
     public const long MaxProductionWitnessBytes = 4 * 1024 * 1024;
-    // The pinned guest folds two recursive inputs per step and discards at most MaxProofDependencies per step, while
+    // Mempool aggregation folds two recursive inputs per step and the guest discards at most MaxProofDependencies per step, while
     // EIP-8288 bounds discards by the sum of a step's input dependency lists. Wider sets, such as the running wrapper aggregate
     // with every inclusion-list proof, fold over bounded steps of a binary tree, pruning each child separately; only the slot
     // deadline bounds the rounds.
     private const int MaxRecursiveChildren = 2;
+    /// <summary>Recursive inputs one block-production merge folds together.</summary>
+    /// <remarks>The pinned guest takes up to <see cref="Eip8288Constants.MaxRecursiveInputsPerStep"/>. Merging sixteen proofs
+    /// of sixteen signatures on 8 arm64 vCPUs took 5.7 s pairwise (15 calls), 3.4 s four at a time, 3.0 s eight at a time and
+    /// 2.6 s sixteen at once, while the prover's peak memory, which its allocator keeps for the life of the process, rose
+    /// from 1.2 to 2.3, 3.4 and 4.9 GiB. Eight takes most of that gain at about the 3.1 GiB a whole
+    /// <see cref="BlockProductionBatchSize"/> leaf already needs.</remarks>
+    internal const int BlockProductionFanIn = 8;
+    /// <summary>Fresh signatures one block-production direct leaf takes at most: the native step bound.</summary>
+    /// <remarks>A block producer proves its statement itself, so no other producer waits behind its longest call, which
+    /// <see cref="DirectBatchSize"/> bounds for mempool aggregation. Its signatures are split into the fewest equal leaves
+    /// within this bound: on 8 arm64 vCPUs 200 signatures took 1.2 s in one call where 13 leaves of 16 and their merges took
+    /// 6.3 s, and 500 took 3.1 s in three calls against 16.4 s in 63.</remarks>
+    internal const int BlockProductionBatchSize = Eip8288Constants.MaxRawWitnessesPerStep;
     /// <summary>Fresh signatures folded into one direct leaf, so one native call.</summary>
     /// <remarks>A recursive merge costs about nine signatures, so fewer, wider leaves cost less than more, narrower ones.
     /// Four came from the former in-tree BLAKE2s-to-Keccak backend, whose raw proving witness made wide direct batches
@@ -58,22 +71,27 @@ public static class DependencyProofAggregator
     internal const int MergeCost = 9;
 
     /// <summary>Estimates the relative native proving cost of an input from its leaves and recursive merges.</summary>
-    /// <remarks>Signatures fold <see cref="DirectBatchSize"/> to a leaf, each generic proof counts as its own leaf, and
-    /// every node beyond the first needs one recursive merge; a recursive child losing dependencies needs a call of its own
-    /// unless the whole input fits one. Generics are counted one per leaf although the batch loop folds up to
-    /// <see cref="GenericDirectBatchSize"/> of them together, so their cost is over-stated; the estimate only ranks
-    /// alternative inputs for the same statement, which that does not disturb.</remarks>
-    public static long EstimatedCost(AggregationInput input)
+    /// <remarks>Signatures fold <see cref="DirectBatchSize"/> to a leaf, or <see cref="BlockProductionBatchSize"/> for a block
+    /// producer, each generic proof counts as its own leaf, and every node beyond the first needs one recursive merge; a
+    /// recursive child losing dependencies needs a call of its own unless the whole input fits one. Generics are counted one
+    /// per leaf although the batch loop folds up to <see cref="GenericDirectBatchSize"/> of them together, and a block producer's
+    /// <see cref="BlockProductionFanIn"/>-way merges are counted as pairwise ones, so both are over-stated; the estimate only
+    /// ranks alternative inputs for the same statement, which that does not disturb.</remarks>
+    /// <param name="input">The input to estimate.</param>
+    /// <param name="blockProduction">Whether to estimate the schedule <see cref="Prove"/> uses for a block producer.</param>
+    public static long EstimatedCost(AggregationInput input, bool blockProduction = false)
     {
+        int signatureLeaf = blockProduction ? BlockProductionBatchSize : DirectBatchSize;
         int signatures = 0, generics = 0;
         foreach (FrameDependency dependency in input.Deps)
             if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) generics++;
             else signatures++;
-        long nodes = (signatures + DirectBatchSize - 1) / DirectBatchSize + generics + input.RecursiveProofs.Count;
+        long nodes = (signatures + signatureLeaf - 1) / signatureLeaf + generics + input.RecursiveProofs.Count;
         long calls = Math.Max(0, nodes - 1);
         if (input.Discards.Count != 0)
         {
-            if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= LeafCapacity(generics))
+            if (input.RecursiveProofs.Count <= OneCallChildren(input.Deps.Count, blockProduction)
+                && input.Deps.Count <= LeafCapacity(generics, signatureLeaf))
                 calls = Math.Max(calls, 1);
             else
             {
@@ -224,8 +242,28 @@ public static class DependencyProofAggregator
             : new() { Deps = deps, Witnesses = witnesses!, RecursiveProofs = input.RecursiveProofs, Discards = input.Discards };
     }
 
+    /// <summary>The recursive inputs one call folds alongside <paramref name="directDeps"/> direct witnesses.</summary>
+    /// <remarks>A wide merge shares no call with a direct leaf, so a block producer's peak stays that of the larger of the two.</remarks>
+    private static int OneCallChildren(int directDeps, bool blockProduction) =>
+        blockProduction && directDeps == 0 ? BlockProductionFanIn : MaxRecursiveChildren;
+
     /// <summary>The widest direct leaf holding <paramref name="generics"/> leanSTARK dependencies.</summary>
-    private static int LeafCapacity(int generics) => generics == 0 ? DirectBatchSize : GenericDirectBatchSize;
+    private static int LeafCapacity(int generics, int signatureLeaf = DirectBatchSize) => generics == 0 ? signatureLeaf : GenericDirectBatchSize;
+
+    /// <summary>Orders direct dependencies signatures first and sizes signature leaves to the fewest equal ones within
+    /// <see cref="BlockProductionBatchSize"/>.</summary>
+    private static (int[] Order, int SignatureLeaf) EqualSignatureLeaves(IReadOnlyList<FrameDependency> deps)
+    {
+        int[] order = new int[deps.Count];
+        int signatures = 0;
+        for (int i = 0; i < deps.Count; i++)
+            if (deps[i].Scheme != Eip8288Constants.LeanStarkScheme) order[signatures++] = i;
+        int next = signatures;
+        for (int i = 0; i < deps.Count; i++)
+            if (deps[i].Scheme == Eip8288Constants.LeanStarkScheme) order[next++] = i;
+        int leaves = Math.Max(1, (signatures + BlockProductionBatchSize - 1) / BlockProductionBatchSize);
+        return (order, Math.Max(1, (signatures + leaves - 1) / leaves));
+    }
 
     /// <summary>The leanSTARK dependencies among <paramref name="deps"/>.</summary>
     private static int GenericCount(IReadOnlyList<FrameDependency> deps)
@@ -237,10 +275,20 @@ public static class DependencyProofAggregator
     }
 
     /// <summary>Folds inputs in bounded batches before generating the final recursive proof.</summary>
-    /// <remarks>Every step proves and verifies under <paramref name="forkVerifier"/>'s <c>AGGREGATED_VK</c>.</remarks>
+    /// <remarks>Every step proves and verifies under <paramref name="forkVerifier"/>'s <c>AGGREGATED_VK</c>. The schedule changes
+    /// only how many native calls fold the input, not the statement proven.</remarks>
+    /// <param name="input">The witnesses, recursive proofs and discards to fold.</param>
+    /// <param name="verifier">The prover of each step.</param>
+    /// <param name="forkVerifier">The fork's <c>AGGREGATED_VK</c>.</param>
+    /// <param name="depsHash">The dependency digest of the statement proven.</param>
+    /// <param name="cancellationToken">Stops the fold between native calls.</param>
+    /// <param name="blockProduction">Whether a block producer proves its own statement: signatures fold in the fewest equal
+    /// leaves of up to <see cref="BlockProductionBatchSize"/> and recursive inputs merge <see cref="BlockProductionFanIn"/> at a
+    /// time, instead of the <see cref="DirectBatchSize"/> leaves and pairwise merges that keep each mempool aggregation call short.</param>
     public static byte[] Prove(AggregationInput input, ILeanProofVerifier verifier, Eip8288Verifier forkVerifier, in ValueHash256 depsHash,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool blockProduction = false)
     {
+        int fanIn = blockProduction ? BlockProductionFanIn : MaxRecursiveChildren;
         byte[] aggregatedVk = forkVerifier.AggregatedVk.ToByteArray();
         cancellationToken.ThrowIfCancellationRequested();
         if (input.Deps.Count != input.Witnesses.Count) throw new ArgumentException("Witness count mismatch", nameof(input));
@@ -264,7 +312,8 @@ public static class DependencyProofAggregator
                 return parent.Proof.ToArray();
             }
         }
-        if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= LeafCapacity(GenericCount(input.Deps))
+        if (input.RecursiveProofs.Count <= OneCallChildren(input.Deps.Count, blockProduction)
+            && input.Deps.Count <= LeafCapacity(GenericCount(input.Deps), blockProduction ? BlockProductionBatchSize : DirectBatchSize)
             && input.Discards.Count <= Eip8288Constants.MaxProofDependencies
             && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)
             && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes)
@@ -287,6 +336,9 @@ public static class DependencyProofAggregator
             else if (!removed.IsSupersetOf(child.InnerDeps))
                 children.Add(ProveChild(new() { RecursiveProofs = [child] }, child.InnerDeps, removed));
         }
+        int signatureLeaf = DirectBatchSize;
+        int[]? order = null;
+        if (blockProduction) (order, signatureLeaf) = EqualSignatureLeaves(input.Deps);
         for (int offset = 0; offset < input.Deps.Count;)
         {
             List<FrameDependency> deps = [];
@@ -295,21 +347,22 @@ public static class DependencyProofAggregator
             int generics = 0;
             do
             {
-                FrameDependency dependency = input.Deps[offset];
-                ReadOnlyMemory<byte> witness = input.Witnesses[offset];
+                int index = order?[offset] ?? offset;
+                FrameDependency dependency = input.Deps[index];
+                ReadOnlyMemory<byte> witness = input.Witnesses[index];
                 long entrySize = Eip8288Constants.DependencyTripleLength + 4L + witness.Length;
                 if (deps.Count > 0 && bytes + entrySize > MaxProductionWitnessBytes) break;
                 int withThis = generics + (dependency.Scheme == Eip8288Constants.LeanStarkScheme ? 1 : 0);
-                if (deps.Count > 0 && deps.Count >= LeafCapacity(withThis)) break;
+                if (deps.Count > 0 && deps.Count >= LeafCapacity(withThis, signatureLeaf)) break;
                 generics = withThis;
-                deps.Add(input.Deps[offset]);
+                deps.Add(dependency);
                 witnesses.Add(witness);
                 bytes += entrySize;
                 offset++;
             } while (offset < input.Deps.Count);
             if (deps.Count != 0) children.Add(ProveChild(new() { Deps = deps, Witnesses = witnesses }, deps));
         }
-        while (children.Count > MaxRecursiveChildren
+        while (children.Count > fanIn
             || InputSize(new() { RecursiveProofs = children }) > Eip8288Constants.MaxAggregationInputBytes)
         {
             List<RecursiveProofInput> next = [];
@@ -327,7 +380,7 @@ public static class DependencyProofAggregator
                     deps.AddRange(child.InnerDeps);
                     bytes += entrySize;
                     offset++;
-                } while (offset < children.Count && batch.Count < MaxRecursiveChildren);
+                } while (offset < children.Count && batch.Count < fanIn);
                 next.Add(batch.Count == 1 ? batch[0] : ProveChild(new() { RecursiveProofs = batch }, deps));
             }
             if (next.Count >= children.Count) throw new InvalidOperationException("Recursive inputs cannot fit the native aggregation bound.");
