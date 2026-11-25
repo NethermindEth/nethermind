@@ -35,7 +35,7 @@ public class ConsoleAsyncLoggerTests
             finally
             {
                 error.Release.Set();
-                flush.GetAwaiter().GetResult();
+                Assert.That(flush.Wait(TimeSpan.FromSeconds(10)), Is.True);
             }
 
             Assert.That(error.ToString(), Does.Contain("first").And.Contain("second").And.Contain("third"));
