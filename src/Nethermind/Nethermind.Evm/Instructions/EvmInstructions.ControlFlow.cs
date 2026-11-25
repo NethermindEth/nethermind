@@ -575,7 +575,10 @@ public static partial class EvmInstructions
     {
         ulong newAccountCost = !chargesNewAccount ? 0
             : (TSpec.IsEip8038Enabled ? Eip8038Constants.AccountWrite : 0) + (TEip8037.IsActive ? 0 : GasCostOf.NewAccount);
-        vm.TraceOperationReady(SelfDestructGas<TSpec>() + accessCost + newAccountCost + transientCreateCost, error);
+        ulong gasCost = SelfDestructGas<TSpec>() + accessCost + newAccountCost + transientCreateCost;
+        // EIP-8037: as in Geth, a step that runs costs its execution charge; state gas spilled into gas_left shows only in the remaining gas.
+        if (TEip8037.IsActive && error is null) vm.TraceOperationGasCost(gasCost);
+        vm.TraceOperationReady(gasCost, error);
     }
 
     /// <summary>Reports a SELFDESTRUCT before Berlin that cannot pay its base charge, at the cost Geth's gas function prices with the new-account charge.</summary>

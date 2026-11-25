@@ -3468,8 +3468,9 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
             string expectedStep = $"step:{extra + forwarded}:{entryGas}:{refund}:{inputs}:{requested}:0:{(newAccount ? 0 : 10)}:{(!newAccount).ToString().ToLowerInvariant()}";
             Assert.That(result, Is.EqualTo(JsonSerializer.Serialize(new[] { expectedStep, $"enter:{forwarded + (value != 0 ? 2300UL : 0)}", "exit:0:" })));
             Assert.That(TestState.GetBalance(target), Is.EqualTo((UInt256)(uint)((newAccount ? 0 : 10) + (opcode == Instruction.CALL ? value : 0))));
+            // As in Geth, the struct log and the JavaScript step both leave out the state gas spilled into gas_left.
             GethTxTraceEntry callEntry = native.Entries.First(entry => entry.Opcode == opcode.ToString());
-            Assert.That(callEntry.GasCost, Is.EqualTo(extra + forwarded + stateSpill));
+            Assert.That(callEntry.GasCost, Is.EqualTo(extra + forwarded));
         }
     }
 
