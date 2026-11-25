@@ -69,8 +69,6 @@ public class OptimismPlugin(ChainSpec chainSpec, IOptimismConfig optimismConfig)
         Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
     }
 
-    public Type ApiType => typeof(OptimismNethermindApi);
-
     public IModule Module => new OptimismModule(chainSpec, optimismConfig);
 }
 
@@ -81,7 +79,6 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
         base.Load(builder);
 
         builder
-            .AddSingleton<NethermindApi, OptimismNethermindApi>()
             .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 

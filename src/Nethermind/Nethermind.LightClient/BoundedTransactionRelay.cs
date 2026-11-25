@@ -259,7 +259,6 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
     Transaction? ITxPool.GetBestTx() => null;
     IEnumerable<Transaction> ITxPool.GetBestTxOfEachSender() => [];
     ulong ITxPool.GetLatestPendingNonce(Address address) => 0;
-    bool ITxPool.AcceptTxWhenNotSynced { get; set; }
     long ITxPool.PendingTransactionsAdded => 0;
     Transaction[] IPendingTxsBySender.GetPendingLightBlobTransactionsBySender(Address address) => [];
     long IPendingTxsBySender.GetRemovalGeneration(Address sender) => 0;

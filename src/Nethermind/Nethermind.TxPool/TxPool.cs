@@ -76,6 +76,7 @@ namespace Nethermind.TxPool
         private readonly string? _specChangeValidationFingerprint;
         private readonly ISpecChangeValidationStorage? _specChangeValidationStorage;
         private readonly bool _blobReorgsSupportEnabled;
+        private readonly bool _acceptTxWhenNotSynced;
         private readonly IProcessedBlobTxStorage? _processedBlobTxStorage;
         private readonly IncludedBlobLocations? _includedBlobLocations;
         // Head loop only: the new head's blob txs, mapped to the copy a reorg re-add read back from the processed rows.
@@ -234,7 +235,7 @@ namespace Nethermind.TxPool
                 && _specChangeValidationFingerprint is not null
                 ? blobTxStorage as ISpecChangeValidationStorage
                 : null;
-            AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
+            _acceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _processedBlobTxStorage = _blobReorgsSupportEnabled ? blobTxStorage as IProcessedBlobTxStorage : null;
             _includedBlobLocations = _processedBlobTxStorage is null ? null : new IncludedBlobLocations(IncludedBlobMaxBlockDistance);
@@ -913,7 +914,7 @@ namespace Nethermind.TxPool
                             EvictUnreferenceableRecentRootTransactions(unreferenceable);
                             RevalidateFrameTransactions(args.Block);
 
-                            if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || reorganised)
+                            if (!_headInfo.IsSyncing || _acceptTxWhenNotSynced || reorganised)
                             {
                                 _hashCache.ClearCurrentBlockCache();
                             }
@@ -1692,7 +1693,6 @@ namespace Nethermind.TxPool
                 _logger.Trace($"Removed a peer from TX pool: {peer.Id}");
         }
 
-        public bool AcceptTxWhenNotSynced { get; set; }
         public bool SupportsBlobs { get; }
         public long PendingTransactionsAdded => Volatile.Read(ref _pendingTransactionsAdded);
 
@@ -1750,7 +1750,7 @@ namespace Nethermind.TxPool
         {
             // Only what SubmitTx settles without reading the body: a syncing pool answers Syncing first.
             if (GetType() != typeof(TxPool)
-                || (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
+                || (!_acceptTxWhenNotSynced && _headInfo.IsSyncing)
                 || !_hashCache.Get(in hash))
             {
                 return false;
@@ -1772,7 +1772,7 @@ namespace Nethermind.TxPool
                                   && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
 
-            if (!AcceptTxWhenNotSynced &&
+            if (!_acceptTxWhenNotSynced &&
                 _headInfo.IsSyncing &&
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
@@ -1932,7 +1932,7 @@ namespace Nethermind.TxPool
 
         public AnnounceResult NotifyAboutTx(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler)
         {
-            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
+            if (!_acceptTxWhenNotSynced && _headInfo.IsSyncing)
             {
                 return AnnounceResult.Delayed;
             }

@@ -160,7 +160,6 @@ public class Eth69ReceiptsServingBenchmarks
 
         public void HintBlock(Hash256 hash, ulong number, ISyncPeer receivedFrom) { }
         public void AddNewBlock(Block block, ISyncPeer node) { }
-        public void StopNotifyingPeersAboutNewBlocks() { }
         public MemoryManager<byte> GetBlockAccessListRlp(Hash256 blockHash) => null;
         public MemoryManager<byte> FindBlockRlp(Hash256 hash) => null;
         public BlockHeader FindHeader(Hash256 hash) => null;

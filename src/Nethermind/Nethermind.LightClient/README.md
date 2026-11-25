@@ -239,15 +239,22 @@ The console prints live beacon, execution and SNAP peer counts every 12 seconds 
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
 serve the selected state, state queries return an error after 30 seconds.
 Wallet execution requests race at most two suppliers, use only a verified response,
-and cancel and join the other attempt. Bulk hosted storage pages and trie-node
-updates use one supplier at a time, with retries on other peers, avoiding duplicate
-large downloads. Account, storage and bytecode reads have
+and cancel and join the other attempt. Bulk block data and speculative history
+requests use one 250 ms backup delay per round. A failed supplier can be replaced
+immediately. If the delay has started, the replacement uses the remaining time.
+Bulk hosted storage pages and trie-node updates use one supplier at a time, with
+retries on other peers.
+Account, storage and bytecode reads have
 separate 32 MiB verified caches shared by RPC, EVM and hosted-account refreshes.
 Authenticated headers have another 32 MiB cache; each read rechecks the requested
 number and state root and returns an independent mutable copy.
 Concurrent misses share one download; canceling one caller does not cancel the
-other callers. Cache keys bind accounts to the world-state root, storage to its
-authenticated storage root and slot, and bytecode to its code hash.
+other callers. The client serves genesis and can answer peer requests for its
+two most recently advertised finalized headers when it has matching bytes at
+publication. Before Gloas, the beacon light-client header authenticates the execution
+hash and state root directly, so serving the execution header depends on an
+earlier execution peer lookup. Cache keys bind accounts to the world-state root,
+storage to its authenticated storage root and slot, and bytecode to its code hash.
 Both P2P stacks use Nethermind's automatic IPv4/IPv6 IP resolver and its bounded
 retry, refresh and address-validation behavior. The resolved public address is
 used in discovery records; IP detection does not open or forward router/firewall
@@ -806,7 +813,12 @@ mainnet, Hoodi, Sepolia and Gnosis schedules. Gnosis uses five-second slots,
 Gloas authenticates an execution block
 hash through the payload bid's parent-block hash; the client then retrieves the matching execution
 header by hash before serving its state. Consequently the newest authenticated
-Gloas execution head inherently trails its attested beacon head by one slot.
+Gloas execution head trails its attested beacon head by at least one slot.
+Consensus publication shares the completed header cache and peer pool with RPC.
+Its finalized and optimistic workers share in-flight lookups for the same hash.
+The two consensus request slots are separate from the four used for other
+block-data requests. Each consensus lookup has a three-second budget,
+after which the publisher can retry the newest authenticated candidate.
 Gloas has synthetic fork-boundary
 tests and has authenticated native Sepolia bootstrap and subsequent optimistic
 updates from connected peers.

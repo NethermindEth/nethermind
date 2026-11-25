@@ -2259,17 +2259,18 @@ public class BeaconPeerTransportTests
 
     [Test]
     [CancelAfter(10_000)]
-    public async Task Bootstrap_retries_when_a_supplier_arrives_or_the_search_interval_expires(
+    public async Task Bootstrap_queries_an_admitted_supplier_without_waiting_for_a_pending_request(
         [Values("waiting", "in flight", "interval")] string arrival, CancellationToken token)
     {
         await using BootstrapAbsenceFixture fixture = new();
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
-        TaskCompletionSource<LightClientBootstrap> unavailable = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<LightClientBootstrap> slowResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<LightClientBootstrap>? pendingRequest = null;
         BootstrapSession? pending = arrival == "in flight" ? fixture.Add() : null;
         if (pending is not null)
         {
             pending.Session.DialAsync<LightClientBootstrapProtocol, Hash256, LightClientBootstrap>(Arg.Any<Hash256>(), Arg.Any<CancellationToken>())
-                .Returns(call => unavailable.Task.WaitAsync(call.Arg<CancellationToken>()));
+                .Returns(call => pendingRequest = slowResponse.Task.WaitAsync(call.Arg<CancellationToken>()));
         }
 
         Task<LightClientBootstrap> bootstrap = fixture.BootstrapAsync(stop.Token);
@@ -2282,8 +2283,13 @@ public class BeaconPeerTransportTests
             if (arrival == "interval") fixture.Clock.Expire();
             else fixture.NotifyPeerAdmitted(supplier.Peer);
 
-            if (pending is not null) unavailable.SetException(BootstrapUnavailable());
             Assert.That(await bootstrap.WaitAsync(token), Is.SameAs(fixture.Bootstrap));
+            if (pending is not null)
+            {
+                Assert.That(pendingRequest?.IsCanceled, Is.True);
+                await pending.Session.Received(1).DialAsync<LightClientBootstrapProtocol, Hash256, LightClientBootstrap>(
+                    Arg.Any<Hash256>(), Arg.Any<CancellationToken>());
+            }
         }
         finally
         {
