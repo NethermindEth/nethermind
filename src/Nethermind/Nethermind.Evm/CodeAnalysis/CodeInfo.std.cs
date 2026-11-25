@@ -40,6 +40,8 @@ public sealed partial class CodeInfo
                 : code;
     }
 
+    internal static partial CodeInfo ForInitCode(ReadOnlyMemory<byte> initCode, int callDepth) => new(initCode);
+
     public partial ReadOnlyMemory<byte> Code => ViewOf(_code);
 
     public partial ReadOnlySpan<byte> CodeSpan
