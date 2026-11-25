@@ -85,11 +85,7 @@ internal sealed class DebugEndpoints(BeaconApiContext ctx)
         {
             slot = checkpoint.State.Slot;
         }
-        else if (ctx.Store.TryGetForkedBlock(resolved.Root, out ForkedSignedBeaconBlock? block))
-        {
-            slot = block.Slot;
-        }
-        else
+        else if (!ctx.Store.TryGetBlockSlot(resolved.Root, out slot))
         {
             // consensus-specs v1.7.0-beta.2, Electra/Fulu BeaconState: slot follows the 40-byte genesis fields.
             const int slotOffset = 40;
