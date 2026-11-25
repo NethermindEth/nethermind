@@ -11,8 +11,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
-/// <summary>Drives background aggregation on the EIP-8288 cadence, producing mode-1 wrappers over bounded subsets that together
-/// cover the pending dependency-bearing transactions, and offers each new one over <c>eth/73</c>.</summary>
+/// <summary>Drives background aggregation on the EIP-8288 cadence, producing mode-1 wrappers over the hash-prefix buckets of
+/// pending dependency-bearing transactions this node is drawn to prove, and offers each new one over <c>eth/73</c>.</summary>
 /// <remarks>Peers fetch the announced wrapper on demand, so an unchanged wrapper is never sent or announced again.</remarks>
 public sealed class ProofWrapperProducer(ProofWrapperService wrappers, ProofWrapperBroadcaster broadcaster, ILogManager logManager,
     TimeProvider? timeProvider = null) : IAsyncDisposable, IDisposable

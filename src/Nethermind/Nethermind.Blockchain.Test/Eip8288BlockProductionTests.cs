@@ -213,6 +213,9 @@ public class Eip8288BlockProductionTests
             ValueKeccak.Compute("background-second"), default);
         Transaction first = CreateTransaction(chain, firstDependency, [1]);
         Transaction second = CreateTransaction(chain, secondDependency, [2]);
+        // One background wrapper covers the body only when both transactions share a hash-prefix bucket.
+        for (UInt256 key = 3; ProofWrapperService.BucketOf(second.Hash!) != ProofWrapperService.BucketOf(first.Hash!); key++)
+            second = CreateTransaction(chain, secondDependency, [key]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
@@ -1370,12 +1373,18 @@ public class Eip8288BlockProductionTests
             return tx;
         }
 
+        // Each build takes the next hash-prefix bucket, so as many builds as buckets cover every one.
         static Hash256[] Aggregated(ProofWrapperService wrappers)
         {
-            Result<byte[]> built = wrappers.BuildWrapper();
-            if (!built.IsSuccess) return [];
-            RlpReader reader = new(built.Data!);
-            return [.. MempoolWrapperDecoder.Instance.Decode(ref reader)!.Transactions.Select(static tx => tx.Hash!)];
+            HashSet<Hash256> aggregated = [];
+            for (int i = 0; i < ProofWrapperService.BucketCount; i++)
+            {
+                Result<byte[]> built = wrappers.BuildWrapper();
+                if (!built.IsSuccess) continue;
+                RlpReader reader = new(built.Data!);
+                aggregated.UnionWith(MempoolWrapperDecoder.Instance.Decode(ref reader)!.Transactions.Select(static tx => tx.Hash!));
+            }
+            return [.. aggregated];
         }
     }
 
