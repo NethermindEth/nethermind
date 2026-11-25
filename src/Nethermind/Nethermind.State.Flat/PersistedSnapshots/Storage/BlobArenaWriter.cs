@@ -33,15 +33,18 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 public sealed class BlobArenaWriter : IDisposable
 {
     private const int BufferSize = 1024 * 1024;
+    // Room for the largest trie-node RLP plus the pad that keeps it within one page.
+    private const int MinBufferSize = 2 * PageLayout.PageSize;
 
     private readonly BlobArenaManager _manager;
     private readonly BlobArenaFile _file;
     private readonly ushort _blobArenaId;
     private readonly long _startOffset;
     private readonly FileStream _stream;
-    // Held at Count == Capacity so AsSpan() exposes the whole 1 MiB buffer; the writer slices
-    // the free tail with its own _buffered cursor (same shape as ArenaBufferWriter).
-    private readonly NativeMemoryList<byte> _buffer = new(BufferSize, BufferSize);
+    // Held at Count == Capacity so AsSpan() exposes the whole buffer; the writer slices
+    // the free tail with its own _buffered cursor (same shape as ArenaBufferWriter). Sized from
+    // the caller's estimate, so a writer of a few hundred bytes does not allocate and zero 1 MiB.
+    private NativeMemoryList<byte> _buffer;
     private int _buffered;
     // File-absolute offset of the next byte to write. Starts at _startOffset (the file's
     // frontier when this writer was opened) and advances with each write and any inserted
@@ -59,8 +62,10 @@ public sealed class BlobArenaWriter : IDisposable
     /// meantime, the file self-cleans (manager's array-slot ref is still 1, so the file
     /// stays alive — it only goes away on manager shutdown or sweep).
     /// </summary>
-    internal BlobArenaWriter(BlobArenaManager manager, BlobArenaFile file, long startOffset, FileStream stream)
+    internal BlobArenaWriter(BlobArenaManager manager, BlobArenaFile file, long startOffset, FileStream stream, long estimatedSize)
     {
+        int bufferSize = (int)Math.Clamp(estimatedSize, MinBufferSize, BufferSize);
+        _buffer = new NativeMemoryList<byte>(bufferSize, bufferSize);
         _manager = manager;
         _file = file;
         _blobArenaId = file.BlobArenaId;
@@ -170,7 +175,15 @@ public sealed class BlobArenaWriter : IDisposable
 
     private Span<byte> EnsureBufferSpace(int sizeHint)
     {
-        if (sizeHint > _buffer.Count - _buffered) FlushBuffer();
+        if (sizeHint > _buffer.Count - _buffered)
+        {
+            FlushBuffer();
+            if (sizeHint > _buffer.Count)
+            {
+                _buffer.Dispose();
+                _buffer = new NativeMemoryList<byte>(sizeHint, sizeHint);
+            }
+        }
         return _buffer.AsSpan()[_buffered..];
     }
 

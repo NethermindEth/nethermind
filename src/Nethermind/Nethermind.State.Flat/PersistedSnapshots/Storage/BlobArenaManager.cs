@@ -101,6 +101,15 @@ public sealed class BlobArenaManager : IDisposable
     /// </summary>
     public BlobArenaWriter CreateWriter(long estimatedSize)
     {
+        BlobArenaFile file = ReserveFile(estimatedSize, out long startOffset);
+        // The file is reserved and leased for this writer, so opening its stream and allocating the
+        // write buffer need not hold up the other writers on the manager lock.
+        FileStream stream = file.OpenWriteStream(startOffset);
+        return new BlobArenaWriter(this, file, startOffset, stream, estimatedSize);
+    }
+
+    private BlobArenaFile ReserveFile(long estimatedSize, out long startOffset)
+    {
         using Lock.Scope scope = _lock.EnterScope();
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -120,7 +129,6 @@ public sealed class BlobArenaManager : IDisposable
 
         ushort fileId;
         BlobArenaFile file;
-        long startOffset;
         if (chosen is ushort existing)
         {
             fileId = existing;
@@ -149,8 +157,7 @@ public sealed class BlobArenaManager : IDisposable
             throw new InvalidOperationException(
                 $"Blob arena {fileId} is mid-cleanup; cannot open writer.");
 
-        FileStream stream = file.OpenWriteStream(startOffset);
-        return new BlobArenaWriter(this, file, startOffset, stream);
+        return file;
     }
 
     /// <summary>

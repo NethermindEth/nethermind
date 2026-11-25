@@ -17,14 +17,14 @@ public sealed class ArenaWriter : IDisposable
     private readonly long _startOffset;
     private bool _completed;
 
-    internal ArenaWriter(ArenaManager manager, ArenaFile file, bool dedicated, long startOffset, Stream stream)
+    internal ArenaWriter(ArenaManager manager, ArenaFile file, bool dedicated, long startOffset, Stream stream, long estimatedSize)
     {
         _manager = manager;
         _file = file;
         _dedicated = dedicated;
         _startOffset = startOffset;
         long firstOffset = (-startOffset) & PageLayout.PageMask;
-        _writer = new ArenaBufferWriter(stream, firstOffset);
+        _writer = new ArenaBufferWriter(stream, firstOffset, estimatedSize);
     }
 
     public ref ArenaBufferWriter GetWriter() => ref _writer;

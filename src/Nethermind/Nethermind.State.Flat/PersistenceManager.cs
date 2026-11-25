@@ -117,7 +117,8 @@ public class PersistenceManager(
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
-    /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>. When it finds no conversion and a positive
+    /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>, and not while the next boundary is finalized
+    /// and merely short of the finalized trigger's depth gate. When it finds no conversion and a positive
     /// <c>MaxInMemorySnapshotBytes</c> is exceeded, the next in-memory snapshot is force-persisted if that
     /// leaves at least <c>MinReorgDepth</c> blocks above the new base.
     /// </remarks>
@@ -187,7 +188,15 @@ public class PersistenceManager(
         }
 
         // ---- Phase 2: conversion to the persisted-snapshot tier ----
-        ConversionCandidate? conversion = _enableLongFinality && snapshotRepository.SnapshotCount > _maxInMemoryBaseSnapshotCount
+        // The finalized trigger above gates on the depth of the snapshot this job was queued for, while
+        // SnapshotCount also counts the blocks committed since. While catching up, that backlog alone pushes
+        // the count past the limit although finality is not stalled, and converting then routes every block
+        // through the persisted tier. With the next boundary finalized and only its depth gate pending, the
+        // jobs already queued persist it to RocksDB, so conversion waits for them.
+        bool finalizedPersistPending = !held && finalizedBlockNumber >= nextBoundary
+            && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) < _minReorgDepth;
+        ConversionCandidate? conversion = _enableLongFinality && !finalizedPersistPending
+            && snapshotRepository.SnapshotCount > _maxInMemoryBaseSnapshotCount
             ? TryFindSnapshotToConvert(currentPersistedState) : null;
         if (!held && conversion is null && _maxInMemorySnapshotBytes > 0 && snapshotsDepth > _minReorgDepth
             && snapshotRepository.InMemoryBytes > _maxInMemorySnapshotBytes

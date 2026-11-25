@@ -802,6 +802,29 @@ public class PersistenceManagerTests
         toConvert?.Base?.Dispose();
     }
 
+    [TestCase(5UL, true, TestName = "DetermineSnapshotAction_OverSnapshotCount_FinalityStalled_Converts")]
+    [TestCase(16UL, false, TestName = "DetermineSnapshotAction_OverSnapshotCount_BoundaryFinalizedBelowDepthGate_WaitsForPersist")]
+    public void DetermineSnapshotAction_OverSnapshotCount_ConvertsOnlyWhenFinalityStalls(ulong finalizedBlock, bool expectConversion)
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 0, enableLongFinality: true, maxInMemoryBaseSnapshotCount: 0);
+
+        using Snapshot expected = CreateSnapshot(Block0, CreateStateId(16), compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(finalizedBlock);
+
+        // The queued height is within MinReorgDepth of the next boundary (16), so the finalized trigger does not fire yet.
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) =
+            pm.DetermineSnapshotAction(CreateStateId(16 + ByteBudgetMinReorgDepth - 1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+            Assert.That(toConvert is not null, Is.EqualTo(expectConversion));
+        }
+        toConvert?.Compacted?.Dispose();
+        toConvert?.Base?.Dispose();
+    }
+
     [TestCase(0UL, 100UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_NoByteBudget_ReturnsNull")]
     [TestCase(1UL, 100UL, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_ForcesPersistAboveFloor")]
     [TestCase(1UL, 50UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsBelowMinReorgDepth")]
