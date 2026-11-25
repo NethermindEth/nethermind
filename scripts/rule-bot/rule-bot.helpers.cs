@@ -1204,7 +1204,7 @@ static partial class RuleBot
                 $"- `{Unshipped}` gets one appended row, so a `*.md` code owner has to approve.", "",
                 "<details><summary>Precision sample</summary>", ""]);
             foreach (var label in LoadOr<List<Label>>(Path.Combine(data, "labels.json")))
-                lines.Add($"- `{Show(label.File)}:{Show(label.Line)}` {Show(label.LabelName)}: {label.Reason ?? ""}");
+                lines.Add($"- `{Show(label.File)}:{Show(label.Line)}` {Show(label.LabelName)}, matches stated reason: {Show(label.MatchesWhy)}: {label.Reason ?? ""}");
             lines.AddRange(["", "</details>"]);
         }
         lines.AddRange(["", "## Revert", "", "Revert this PR, or set the rule to `none` in `.editorconfig`:", "", "```", string.Join('\n', ids.Select(i => $"dotnet_diagnostic.{i}.severity = none")), "```", "",

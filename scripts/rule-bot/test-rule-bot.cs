@@ -596,6 +596,22 @@ var tests = new (string Name, Func<Task> Body)[]
         Equal(1, await Code("route-b", "--data", directory.Path));
     }),
 
+    ("test_body_shows_whether_each_sampled_label_matches_the_stated_reason", async () =>
+    {
+        using var directory = new TempDirectory();
+        string In(string name) => Path.Combine(directory.Path, name);
+        File.WriteAllText(In("candidates.json"), """{"decisions":[],"packages":[],"chosen":{"route":"B","cluster":"c","ids":["NETH050"],"prod":5,"test":0,"slug":"s"}}""");
+        File.WriteAllText(In("gates.json"), """{"c":{"prs":1,"pass":true,"validity":1,"examples":[]}}""");
+        File.WriteAllText(In("hits.json"), """{"counts":{},"solutions":["a.slnx"],"hits":[]}""");
+        File.WriteAllText(In("labels.json"), """[{"label":"true_positive","file":"a.cs","line":1,"reason":"r","matches_why":true},{"label":"true_positive","file":"b.cs","line":2,"reason":"r","matches_why":false}]""");
+        var code = 0;
+        await Quiet(async () => code = await Run(["body", "--data", directory.Path, "--out", In("body.md")], default));
+        Equal(0, code);
+        var lines = File.ReadAllLines(In("body.md"));
+        True(lines.Any(l => l.Contains("a.cs:1") && l.Contains("matches stated reason: True")));
+        True(lines.Any(l => l.Contains("b.cs:2") && l.Contains("matches stated reason: False")));
+    }),
+
     ("test_ci_solutions_follow_build_workflows", Sync(() =>
     {
         var workflows = Path.Combine(repositoryRoot, ".github", "workflows");
