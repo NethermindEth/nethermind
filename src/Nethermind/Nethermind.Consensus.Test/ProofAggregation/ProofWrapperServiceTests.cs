@@ -847,6 +847,77 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // A peer's bucket aggregate this node admitted and relayed stays held for its builder and inclusion lists, whether or not the
+    // node drew that bucket and even after a flood of other valid aggregates through the store's bounded recursive cache.
+    [Test]
+    public async Task Relayed_bucket_aggregate_stays_held_through_a_flood_whatever_the_draw()
+    {
+        LeanProofStore peerStore = new(FrameTxSigHash.ComputeValue);
+        Transaction[] bucket = [.. new[] { TestItem.KeccakA, TestItem.KeccakB }.Select(key =>
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"bucket:5:{key}"), default);
+            peerStore.AddVerified([dependency], [[1]], null);
+            return InBucket(5, CreateTransaction(dependency, key));
+        })];
+        byte[] wrapper = CreateService(bucket, peerStore, new FakeLeanProofVerifier(true)).BuildWrapper().Data!;
+        List<FrameDependency> deps = [.. Decode(wrapper).Deps];
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        // The node already holds the transactions' direct witnesses, as from their senders' mode-0 wrappers.
+        store.AddVerified(deps, [.. deps.Select(static _ => new byte[] { 1 })], null);
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        ProofWrapperService service = CreateService([], store, new FakeLeanProofVerifier(true), pool: pool, aggregationProbability: 0);
+
+        Assert.That((await service.AcceptDetailedAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        for (int i = 0; i < 2048; i++)
+            store.AddCachedRecursive([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"flood:{i}"), default)], [2]);
+        Assert.That(store.TryGetRecursiveProof(deps, out _), Is.False, "the flood evicts it from the cache alone");
+        Result refreshed = service.RefreshWrapper();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refreshed.Error, Is.EqualTo(ProofWrapperService.NoBucketSelected));
+            Assert.That(store.TryGetRecursiveProof(deps, out _), Is.True);
+            Assert.That(store.SmallestProving(deps)?.InnerDeps, Is.EqualTo(deps), "an inclusion list can attach it");
+            Assert.That(store.WidestProving(deps, new HashSet<FrameDependency>())?.InnerDeps, Is.EqualTo(deps), "a builder can take it");
+        }
+    }
+
+    // A flooded bucket costs a selected node one wrapper per cycle within the proving budget, highest fees first, and every other
+    // bucket's aggregate is still produced and held for the builder.
+    [Test]
+    public void Flooded_bucket_stays_within_its_budget_and_does_not_starve_the_others()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Transaction[] flood = [.. Enumerable.Range(0, 64).Select(i =>
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"flood:{i}"), default);
+            store.AddVerified([dependency], [[1]], null);
+            Transaction transaction = InBucket(0, CreateTransaction(dependency, TestItem.KeccakA));
+            transaction.GasBottleneck = (ulong)(1_000 + i);
+            return transaction;
+        })];
+        Transaction[] others = OnePerBucket(store, [.. Enumerable.Range(1, ProofWrapperService.BucketCount - 1)]);
+        foreach (Transaction transaction in others) transaction.GasBottleneck = 1;
+        ProofWrapperService service = CreateService([.. flood, .. others], store, new FakeLeanProofVerifier(true));
+        List<MempoolWrapper> produced = [];
+
+        Assert.That(service.RefreshWrapper(() => produced.Add(Decode(service.GetLatestWrapper().Data!))), Is.EqualTo(Result.Success));
+
+        MempoolWrapper flooded = produced.Single(static wrapper => ProofWrapperService.BucketOf(wrapper.Transactions[0].Hash!) == 0);
+        int taken = flooded.Transactions.Count;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(produced, Has.Count.EqualTo(ProofWrapperService.BucketCount));
+            Assert.That(taken, Is.InRange(1, flood.Length - 1), "the flooded bucket's wrapper stays within the proving budget");
+            Assert.That(flooded.Transactions.Select(static tx => tx.Hash),
+                Is.EquivalentTo(flood.OrderByDescending(static tx => tx.GasBottleneck).Take(taken).Select(static tx => tx.Hash)));
+            foreach (Transaction other in others)
+                Assert.That(store.SmallestProving(Eip8288Dependencies.ForTransaction(other, FrameTxSigHash.ComputeValue)), Is.Not.Null,
+                    "every other bucket's aggregate is held for the builder");
+        }
+    }
+
     // Within a bucket aggregation takes the highest fees first, as many as fit one wrapper, and carries them in canonical order.
     [Test]
     public void Bucket_takes_its_highest_fees_first_and_carries_them_in_canonical_order()

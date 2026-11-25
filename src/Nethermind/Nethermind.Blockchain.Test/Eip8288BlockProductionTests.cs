@@ -1129,6 +1129,39 @@ public class Eip8288BlockProductionTests
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
+    // A deadline rebuild keeps a held aggregate of each hash-prefix bucket and merges them, rather than reusing one statement.
+    [Test]
+    public async Task Deadline_production_merges_a_held_aggregate_of_each_bucket()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("bucket-first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("bucket-second"), default);
+        Transaction firstTransaction = CreateTransaction(chain, first, [1]);
+        Transaction secondTransaction = CreateTransaction(chain, second, [2]);
+        for (UInt256 key = 3; ProofWrapperService.BucketOf(secondTransaction.Hash!) == ProofWrapperService.BucketOf(firstTransaction.Hash!); key++)
+            secondTransaction = CreateTransaction(chain, second, [key]);
+        foreach (FrameDependency dependency in (FrameDependency[])[first, second])
+        {
+            proofs.AddVerified([dependency], [[1]], null);
+            proofs.AddCachedRecursive([dependency], Eip8288Dependencies.ComputeDepsHash([dependency]).ToByteArray());
+        }
+        foreach (Transaction transaction in (Transaction[])[firstTransaction, secondTransaction])
+            Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        using CancellationTokenSource deadline = new();
+        Block? block = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        List<FrameDependency> both = Eip8288Dependencies.Canonicalize([first, second]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block!.Transactions, Is.EquivalentTo(new[] { firstTransaction, secondTransaction }));
+            Assert.That(block.DependencyProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(both).ToByteArray()));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the bucket statements are merged once, at the deadline");
+        }
+    }
+
     [Test]
     public async Task Deadline_production_prefers_the_proven_set_that_keeps_the_most_transactions()
     {
@@ -1294,7 +1327,7 @@ public class Eip8288BlockProductionTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(notReady!.Proven, Is.EquivalentTo(new[] { listedDependency }), "the list's statement wins over the larger unlisted one");
+            Assert.That(notReady!.Proven, Does.Contain(listedDependency), "the list's statement is kept, whatever else fills the step");
             Assert.That(proofs.TryGetRecursiveProof([listedDependency], out _), Is.True, "the rebuild reuses the verified list proof");
         }
     }

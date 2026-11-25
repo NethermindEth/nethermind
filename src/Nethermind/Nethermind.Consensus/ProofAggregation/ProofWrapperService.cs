@@ -63,6 +63,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     internal const int MaxStandingStatements = 4096;
 
+    /// <summary>The latest aggregate of each bucket this node built or relayed, kept in the store's recursive cache every cycle;
+    /// guarded by itself.</summary>
+    /// <remarks>The store evicts its cached recursive proofs least recently used first, so a flood of valid wrappers could
+    /// otherwise push out the aggregates a builder or inclusion list takes, whichever buckets this node proves. At most one per
+    /// bucket is kept, each under the verifier it was validated with.</remarks>
+    private readonly (List<FrameDependency> Deps, byte[] Proof, Eip8288Verifier Verifier)?[] _bucketAggregates =
+        new (List<FrameDependency>, byte[], Eip8288Verifier)?[BucketCount];
+
     /// <summary>Encoded transaction and dependency bytes a produced mode-1 wrapper may carry: <c>MAX_WRAPPER_BYTES</c> less the
     /// largest aggregate proof and the list framing.</summary>
     internal const int MaxWrapperContentBytes = Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes - 64;
@@ -425,7 +433,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             int rejected = decoded.Transactions.Count - pooled;
             if ((admission.IsSuccess || admitted != 0 && rejected <= admitted) && relay is not null && RefreshVerifier() == verifier)
             {
-                if (decoded.RecursiveStark is not null) MarkStanding(Eip8288Dependencies.ComputeDepsHash(decoded.Deps));
+                if (decoded.RecursiveStark is { } relayed)
+                {
+                    MarkStanding(Eip8288Dependencies.ComputeDepsHash(decoded.Deps));
+                    KeepBucketAggregate(decoded.Transactions, decoded.Deps, relayed.StarkProof, verifier);
+                }
                 WrapperValidated?.Invoke(relay, verifier);
             }
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
@@ -854,6 +866,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             using IDisposable request = DependencyProofCache.Background(cancellationToken);
             if (RefreshVerifier() is not { } verifier) return Result.Fail(WrappersUnavailable);
+            RetainBucketAggregates(verifier);
             uint selected = SelectedBuckets();
             if (selected == 0) return Result.Fail(NoBucketSelected);
             List<Bucket> buckets = PlanBuckets(verifier, selected, cancellationToken);
@@ -1052,6 +1065,37 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (!_standingStatements.Add(depsHash)) return;
             _standingOrder.Enqueue(depsHash);
             if (_standingOrder.Count > MaxStandingStatements) _standingStatements.Remove(_standingOrder.Dequeue());
+        }
+    }
+
+    /// <summary>Keeps <paramref name="proof"/> as its bucket's latest aggregate when every one of <paramref name="transactions"/> is
+    /// in that bucket.</summary>
+    private void KeepBucketAggregate(IReadOnlyList<Transaction> transactions, IReadOnlyList<FrameDependency> deps, byte[] proof,
+        Eip8288Verifier verifier)
+    {
+        if (transactions.Count == 0) return;
+        int bucket = BucketOf(transactions[0].Hash!);
+        for (int i = 1; i < transactions.Count; i++)
+            if (BucketOf(transactions[i].Hash!) != bucket) return;
+        lock (_bucketAggregates) _bucketAggregates[bucket] = ([.. deps], proof, verifier);
+    }
+
+    /// <summary>Touches each bucket's kept aggregate in the store's recursive cache, dropping those of an earlier verifier.</summary>
+    private void RetainBucketAggregates(Eip8288Verifier verifier)
+    {
+        lock (_bucketAggregates)
+        {
+            for (int bucket = 0; bucket < _bucketAggregates.Length; bucket++)
+            {
+                if (_bucketAggregates[bucket] is not { } held) continue;
+                if (held.Verifier != verifier)
+                {
+                    _bucketAggregates[bucket] = null;
+                    continue;
+                }
+                lock (_commitLock)
+                    if (RefreshVerifier() == verifier) leanProofStore.AddCachedRecursive(held.Deps, held.Proof);
+            }
         }
     }
 
@@ -1272,6 +1316,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             RecursiveProofInput parent = new(deps, proof!);
             // Only a statement published as a wrapper may stand for its bucket.
             MarkStanding(hash);
+            KeepBucketAggregate(transactions, deps, proof!, verifier);
             Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), parent, verifier));
             return Result<byte[]>.Success(returnEncoded ? encoded : []);
         }
