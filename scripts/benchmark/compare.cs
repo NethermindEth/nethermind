@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 //
-// Print a Markdown comparison of two joined BenchmarkDotNet runs.
+// Print a Markdown comparison of two BenchmarkDotNet runs, including the runner's grouped resume layout.
 //
 //   compare.cs <base artifacts directory> <head artifacts directory>
 //
@@ -64,10 +64,7 @@ return 0;
 static Dictionary<string, Result?> Load(string artifactsDirectory)
 {
     Dictionary<string, Result?> results = [];
-    var resultsDirectory = Path.Combine(artifactsDirectory, "results");
-    if (!Directory.Exists(resultsDirectory)) return results;
-
-    foreach (var path in Directory.EnumerateFiles(resultsDirectory, "*-report-full-compressed.json"))
+    foreach (var path in ReportPaths(artifactsDirectory))
     {
         using var document = JsonDocument.Parse(File.ReadAllBytes(path));
         foreach (var benchmark in document.RootElement.GetProperty("Benchmarks").EnumerateArray())
@@ -98,6 +95,29 @@ static Dictionary<string, Result?> Load(string artifactsDirectory)
     }
 
     return results;
+}
+
+static IEnumerable<string> ReportPaths(string artifactsDirectory)
+{
+    var hasFlatReports = false;
+    foreach (var path in ReportsIn(artifactsDirectory))
+    {
+        hasFlatReports = true;
+        yield return path;
+    }
+
+    // Don't mix a regular run's reports with stale resume groups under the same root.
+    if (hasFlatReports) yield break;
+    foreach (var path in ReportsIn(Path.Combine(artifactsDirectory, "runner-job"))) yield return path;
+    foreach (var path in ReportsIn(Path.Combine(artifactsDirectory, "own-job"))) yield return path;
+}
+
+static IEnumerable<string> ReportsIn(string artifactsDirectory)
+{
+    var resultsDirectory = Path.Combine(artifactsDirectory, "results");
+    return Directory.Exists(resultsDirectory)
+        ? Directory.EnumerateFiles(resultsDirectory, "*-report-full-compressed.json")
+        : [];
 }
 
 static bool TryGetObject(JsonElement element, string property, out JsonElement value) =>
