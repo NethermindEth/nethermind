@@ -23,12 +23,32 @@ public class CompositeNodeSource : INodeSource, IDisposable
         using CancellationTokenSource disposeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationToken feedToken = disposeCts.Token;
         Channel<Node> ch = Channel.CreateBounded<Node>(1);
+        int remainingSources = _nodeSources.Length;
+
+        if (remainingSources == 0)
+        {
+            ch.Writer.TryComplete();
+        }
 
         using ArrayPoolList<Task> feedTasks = _nodeSources.Select(async innerSource =>
         {
-            await foreach (Node node in innerSource.DiscoverNodes(feedToken))
+            try
             {
-                await ch.Writer.WriteAsync(node, feedToken);
+                await foreach (Node node in innerSource.DiscoverNodes(feedToken))
+                {
+                    await ch.Writer.WriteAsync(node, feedToken);
+                }
+            }
+            catch (Exception exception)
+            {
+                ch.Writer.TryComplete(exception);
+            }
+            finally
+            {
+                if (Interlocked.Decrement(ref remainingSources) == 0)
+                {
+                    ch.Writer.TryComplete();
+                }
             }
         }).ToPooledList(_nodeSources.Length * 16);
 
@@ -43,13 +63,7 @@ public class CompositeNodeSource : INodeSource, IDisposable
         {
             await disposeCts.CancelAsync();
             ch.Writer.TryComplete();
-            try
-            {
-                await Task.WhenAll(feedTasks.AsSpan());
-            }
-            catch (OperationCanceledException) when (feedToken.IsCancellationRequested)
-            {
-            }
+            await Task.WhenAll(feedTasks.AsSpan());
         }
     }
 
