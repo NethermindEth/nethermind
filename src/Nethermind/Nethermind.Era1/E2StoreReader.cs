@@ -138,7 +138,11 @@ public class E2StoreReader : IDisposable
         // Verify that its a block index
         _ = ReadEntry(_fileLength - indexLength - HeaderSize, EntryTypes.BlockIndex);
 
-        _startBlock = ReadUInt64(_fileLength - indexLength);
+        long startBlock = ReadInt64(_fileLength - indexLength);
+        if (startBlock < 0)
+            throw new EraFormatException($"Invalid starting block number {startBlock} in index.");
+
+        _startBlock = (ulong)startBlock;
     }
 
     public ulong First

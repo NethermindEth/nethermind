@@ -446,15 +446,16 @@ A `false` result describes consensus freshness, not hosted-cache completeness or
 historical log coverage; requested data still has to be fetched and verified.
 `eth_capabilities` reports the authenticated head and supported resource types.
 It omits `oldestBlock` because actual retention depends on the supplying peers.
-Historical state selectors are limited to 32 ancestors of either the finalized
-head or the authenticated optimistic head. A wallet's pinned prior
-optimistic hash remains usable when the native head advances, provided it is
-still an ancestor in that window; orphan hashes fail canonical validation.
+Historical state selectors are limited to 128 ancestors of the newest
+authenticated execution head. A newer optimistic head sets that window even
+when the finalized head authenticates the requested ancestor. A wallet's
+pinned hash remains usable while it is canonical and in that window.
 Only authenticated canonical state is served, including when EIP-1898
 `requireCanonical` is false or omitted. Unknown block hashes return `-32001`;
 known non-canonical hashes return `-32000` when `requireCanonical` is true and
-`-32001` otherwise, because their state is unavailable to this client. State availability within that range
-still depends on a SNAP peer retaining the state root.
+`-32001` otherwise, because their state is unavailable to this client. This
+window bounds header verification. Serving the state still requires a SNAP
+peer that retains the selected state root.
 At most two historical state requests run concurrently. Additional requests wait
 up to five seconds for capacity before returning an overload error; cancellation
 removes a queued request. Current-head reads use independent admission.

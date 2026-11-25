@@ -242,6 +242,10 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
         }
 
+        // Geth defaults an omitted fee cap to zero, so a tip alone fails its tip check before the base fee check.
+        if (tx.GetTipAboveFeeCapError(spec) is { } tipAboveFeeCap)
+            return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(tipAboveFeeCap), ErrorCodes.InvalidInput);
+
         GethTraceOptions effective = (options ?? GethTraceOptions.Default) with
         {
             NoBaseFee = !call.ShouldSetBaseFee(),
@@ -281,6 +285,10 @@ public class DebugRpcModule(
         catch (InvalidTransactionException ex)
         {
             return TracingFailed<GethLikeTxTrace>(ex);
+        }
+        catch (NativeTracerConfigException ex)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
         catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(effective))
         {
@@ -531,6 +539,10 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, cancellationToken, WithBufferedLimit(options));
         }
+        catch (NativeTracerConfigException ex)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
         catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
@@ -567,6 +579,10 @@ public class DebugRpcModule(
         try
         {
             transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
+        }
+        catch (NativeTracerConfigException ex)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
         catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
         {
@@ -610,6 +626,10 @@ public class DebugRpcModule(
         try
         {
             transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, cancellationToken, WithBufferedLimit(options));
+        }
+        catch (NativeTracerConfigException ex)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
         catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
         {
@@ -665,9 +685,6 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null, CancellationToken cancellationToken = default)
     {
-        if (options?.ParsedTimeout.Error is not null && string.IsNullOrEmpty(options.Tracer))
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("invalid argument 1", ErrorCodes.InvalidParams);
-
         Block? block = TryGetBlockAndCheckState(blockRlp, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? blockError, requireCompleteInput: true);
         if (blockError is not null)
         {
@@ -701,13 +718,14 @@ public class DebugRpcModule(
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            or InvalidDataException { InnerException: NativeTracerConfigException }
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
-        catch (TraceDurationFormatException)
+        catch (TraceDurationFormatException exception)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("invalid argument 1", ErrorCodes.InvalidParams);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (GethTraceDeadlineException exception)
         {
@@ -786,6 +804,7 @@ public class DebugRpcModule(
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            or InvalidDataException { InnerException: NativeTracerConfigException }
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
@@ -846,6 +865,7 @@ public class DebugRpcModule(
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            or InvalidDataException { InnerException: NativeTracerConfigException }
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
@@ -883,7 +903,7 @@ public class DebugRpcModule(
             return stateError;
         }
 
-        if (CanStreamBlockTrace(options))
+        if (options?.ParsedTimeout.Error is null && CanStreamBlockTrace(options))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) => debugBridge.GetBlockTrace(block, token, options, writer, pipeWriter)));
@@ -898,7 +918,9 @@ public class DebugRpcModule(
         {
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
-        catch (JavaScriptTraceFailure exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            or InvalidDataException { InnerException: NativeTracerConfigException }
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
@@ -959,21 +981,11 @@ public class DebugRpcModule(
         return ResultWrapper<StorageRangeResult>.Success(new StorageRangeResult(range));
     }
 
-    public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null) => throw new NotImplementedException();
-
-    public ResultWrapper<object> debug_dumpBlock(BlockParameter blockParameter) => throw new NotImplementedException();
-
-    public ResultWrapper<GcStats> debug_gcStats() => throw new NotImplementedException();
-
     public ResultWrapper<byte[]> debug_getBlockRlp(ulong blockNumber) =>
         GetBlockRlpOrFail(new BlockParameter(blockNumber));
 
     public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash) =>
         GetBlockRlpOrFail(new BlockParameter(hash));
-
-    public ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter) => throw new NotImplementedException();
-
-    public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter) => throw new NotImplementedException();
 
     public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) =>
         ResultWrapper<bool>.Success(debugBridge.UpdateHeadBlock(blockParameter));

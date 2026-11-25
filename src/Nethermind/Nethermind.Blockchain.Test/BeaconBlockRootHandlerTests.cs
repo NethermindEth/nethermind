@@ -258,7 +258,5 @@ public class BeaconBlockRootHandlerTests
         public ref readonly TxExecutionContext TxExecutionContext => ref inner.TxExecutionContext;
         public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
         public void SetTxExecutionContext(in TxExecutionContext context) => inner.SetTxExecutionContext(in context);
-        public int OpCodeCount => inner.OpCodeCount;
-        public void FlushMetricsCounters() => inner.FlushMetricsCounters();
     }
 }

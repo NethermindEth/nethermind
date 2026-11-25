@@ -296,6 +296,5 @@ namespace Nethermind.Blockchain
             public ulong Safe => safe;
             public ulong Finalized => finalized;
         }
-        bool IsProcessingBlock { get; set; }
     }
 }

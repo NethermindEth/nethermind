@@ -31,7 +31,7 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
     Func<Task>? getNextHeadChange = null, TimeProvider? timeProvider = null)
     : IDisposable
 {
-    private const ulong HistoricalStateDepth = 32;
+    private const ulong HistoricalStateDepth = 128;
     private const ulong BlockHistoryDepth = 256;
     private const ulong TransactionSearchFinalizedDepth = 15;
     private const long LogResultCacheCapacity = 32 * 1024 * 1024;
@@ -226,7 +226,7 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
         VerifiedHead? latest = await LatestForSelectorAsync(selector, cancellationToken);
         using DataRequest admission = new(cancellationToken);
         BlockHeader newest = selector.ValueKind != JsonValueKind.Undefined
-            ? await ResolveDataHeaderAsync(selector, byHash, cancellationToken, pinnedLatest: latest, requireCanonical: requireCanonical)
+            ? await ResolveDataHeaderAsync(selector, byHash, cancellationToken, latest, requireCanonical: requireCanonical)
                 ?? throw new RpcException(-32001, "Requested authenticated fee history is unavailable.")
             : await execution.GetHeaderAsync(latest!, cancellationToken);
         blocks = checked((int)Math.Min((ulong)blocks, newest.Number + 1));
@@ -330,7 +330,7 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
             selector = ParseBlockSelector(selector, hashOnly, out bool requireCanonical, out bool byHash);
             VerifiedHead? latest = await LatestForSelectorAsync(selector, cancellationToken);
             using DataRequest admission = new(cancellationToken);
-            BlockHeader? header = await ResolveDataHeaderAsync(selector, byHash, cancellationToken, pinnedLatest: latest, requireCanonical: requireCanonical);
+            BlockHeader? header = await ResolveDataHeaderAsync(selector, byHash, cancellationToken, latest, requireCanonical: requireCanonical);
             if (header is null) return BoundedJson.Null;
             return kind switch
             {
@@ -385,12 +385,11 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
     }
 
     private async Task<BlockHeader?> ResolveDataHeaderAsync(JsonElement selector, bool hashOnly,
-        CancellationToken cancellationToken, VerifiedHead? pinnedFinalized = null, bool stateHistory = false,
-        VerifiedHead? pinnedLatest = null, bool requireCanonical = false)
+        CancellationToken cancellationToken, VerifiedHead? latest, VerifiedHead? pinnedFinalized = null,
+        bool stateHistory = false, bool requireCanonical = false)
     {
         if (!hashOnly && selector.ValueEquals("latest"u8))
-            return await execution.GetHeaderAsync(pinnedLatest ?? await LatestHeadAsync(cancellationToken), cancellationToken);
-        VerifiedHead? latest = pinnedLatest ?? getLatestHead?.Invoke();
+            return await execution.GetHeaderAsync(latest ?? await LatestHeadAsync(cancellationToken), cancellationToken);
         if (hashOnly)
         {
             Hash256 requested = new(ReadParameterData(selector, 32));
@@ -401,7 +400,7 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
             BlockHeader candidate;
             try { candidate = await execution.GetHeaderByHashAsync(requested, cancellationToken); }
             catch (ExecutionDataUnavailableException) { return null; }
-            VerifiedHead anchor = SelectHistoryAnchor(finalizedHead, latest, candidate.Number, stateHistory ? HistoricalStateDepth : BlockHistoryDepth);
+            VerifiedHead anchor = SelectHistoryAnchor(finalizedHead, latest, candidate.Number, stateHistory);
             BlockHeader canonical = await execution.GetCanonicalHeaderAsync(anchor, candidate.Number, cancellationToken);
             if (canonical.Number != candidate.Number) throw new InvalidDataException("Canonical header has an unexpected block number.");
             if (canonical.Hash != requested)
@@ -417,7 +416,7 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
             return await execution.GetHeaderAsync(latest, cancellationToken);
         VerifiedHead head = pinnedFinalized ?? getHead();
         if (parsed > (UInt256)(latest ?? head).Number) return null;
-        VerifiedHead numberAnchor = SelectHistoryAnchor(head, latest, parsed, stateHistory ? HistoricalStateDepth : BlockHistoryDepth);
+        VerifiedHead numberAnchor = SelectHistoryAnchor(head, latest, parsed, stateHistory);
         return await execution.GetCanonicalHeaderAsync(numberAnchor, (ulong)parsed, cancellationToken);
     }
 
@@ -670,7 +669,7 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
             return (latest, false);
         VerifiedHead finalized = getHead();
         if (number == (UInt256)finalized.Number) return (finalized, false);
-        return await HistoricalStateHeadAsync(SelectHistoryAnchor(finalized, latest, number, HistoricalStateDepth), number, cancellationToken);
+        return await HistoricalStateHeadAsync(SelectHistoryAnchor(finalized, latest, number, stateHistory: true), number, cancellationToken);
     }
 
     private async Task<(VerifiedHead Head, bool Historical)> HistoricalStateHashAsync(VerifiedHead finalized, VerifiedHead? latest, JsonElement hash,
@@ -679,10 +678,10 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
         await AcquireHistoricalStateAsync(cancellationToken);
         try
         {
-            BlockHeader header = await ResolveDataHeaderAsync(hash, hashOnly: true, cancellationToken, finalized, stateHistory: true,
-                pinnedLatest: latest, requireCanonical: requireCanonical)
+            BlockHeader header = await ResolveDataHeaderAsync(hash, hashOnly: true, cancellationToken, latest, finalized,
+                stateHistory: true, requireCanonical: requireCanonical)
                 ?? throw new RpcException(-32001, "Requested authenticated block was not found.");
-            VerifiedHead anchor = SelectHistoryAnchor(finalized, latest, header.Number, HistoricalStateDepth);
+            VerifiedHead anchor = SelectHistoryAnchor(finalized, latest, header.Number, stateHistory: true);
             return (new(anchor.Slot, header.Number, header.Hash!, header.StateRoot!), true);
         }
         catch
@@ -722,10 +721,12 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
             throw new RpcException(-32000, "Too many concurrent historical state requests.");
     }
 
-    private static VerifiedHead SelectHistoryAnchor(VerifiedHead finalized, VerifiedHead? latest, UInt256 number, ulong depth)
+    private static VerifiedHead SelectHistoryAnchor(VerifiedHead finalized, VerifiedHead? latest, UInt256 number, bool stateHistory)
     {
         VerifiedHead anchor = number > (UInt256)finalized.Number && latest is not null ? latest : finalized;
-        if (number > (UInt256)anchor.Number || number > ulong.MaxValue || anchor.Number - (ulong)number > depth)
+        ulong tip = stateHistory && latest is not null ? Math.Max(anchor.Number, latest.Number) : anchor.Number;
+        ulong depth = stateHistory ? HistoricalStateDepth : BlockHistoryDepth;
+        if (number > (UInt256)anchor.Number || tip - (ulong)number > depth)
             throw new RpcException(-32001, "Block is outside the verified history window.");
         return anchor;
     }

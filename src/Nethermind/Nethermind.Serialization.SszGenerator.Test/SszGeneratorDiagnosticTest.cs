@@ -19,14 +19,18 @@ public class SszGeneratorDiagnosticTest
 {
     private const int ProgressiveContainerStackAllocationLimit = 32;
 
-    [TestCase("=> 4;", "=> 8;")]
-    [TestCase("{ return 4; }", "=> 8;")]
-    [TestCase("=> 4;", "{ return 8; }")]
-    public void Preset_selection_preserves_expression_and_block_bodies(string defaultBody, string alternateBody)
+    [TestCase("public static int Length() ", "=> 4;", "=> 8;", "")]
+    [TestCase("public static int Length() ", "{ return 4; }", "=> 8;", "")]
+    [TestCase("public static int Length() ", "=> 4;", "{ return 8; }", "")]
+    [TestCase("public static int Value { get ", "=> 4;", "{ return 8; }", "} public static int Length() => Value;")]
+    [TestCase("static int four = 4, eight = 8; public static ref readonly int Value { get ", "=> ref four;", "{ return ref eight; }", "} public static int Length() => Value;")]
+    [TestCase("public struct Holder { public int Value; public Holder(bool _) ", "=> Value = 4;", "{ Value = 8; }", "} public static int Length() => new Holder(true).Value;")]
+    public void Preset_selection_preserves_expression_and_block_bodies(string member, string defaultBody, string alternateBody, string rest)
     {
-        string declaration = "public static class Preset { public static bool Alternate; public static int Length() ";
+        string declaration = "public static class Preset { public static bool Alternate; " + member;
+        rest += "}";
         MethodInfo select = CreateSszGenerator().GetType().GetMethod("SelectPresetBodies", BindingFlags.NonPublic | BindingFlags.Static)!;
-        string generated = (string)select.Invoke(null, [declaration + defaultBody + "}", declaration + alternateBody + "}", "Alternate"])!;
+        string generated = (string)select.Invoke(null, [declaration + defaultBody + rest, declaration + alternateBody + rest, "Alternate"])!;
         CSharpCompilation compilation = CSharpCompilation.Create("Preset" + Guid.NewGuid().ToString("N"),
             [CSharpSyntaxTree.ParseText(generated)], BuildMetadataReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         using MemoryStream stream = new();
@@ -54,19 +58,22 @@ public class SszGeneratorDiagnosticTest
     [TestCase(33, false)]
     [TestCase(32, true)]
     [TestCase(33, true)]
-    public void Generated_scratch_boundaries_preserve_roots(int fieldCount, bool progressive)
+    [TestCase(1, true, 31)]
+    [TestCase(1, true, 32)]
+    public void Generated_scratch_boundaries_preserve_roots(int fieldCount, bool progressive, int leadingGap = 0)
     {
         StringBuilder members = new();
         for (int i = 0; i < fieldCount; i++)
         {
-            if (progressive) members.AppendLine($"[SszField({i})]");
+            if (progressive) members.AppendLine($"[SszField({leadingGap + i})]");
             members.AppendLine($"public ulong Field{i} {{ get; set; }} = {i + 1};");
         }
         string source = $$"""
             using System;
             using Nethermind.Int256;
             using Nethermind.Serialization.Ssz;
-            [SszContainer]
+            // Without locals init, stale stack memory would show up in the root.
+            [SszContainer, System.Runtime.CompilerServices.SkipLocalsInit]
             public partial class BoundaryContainer
             {
                 {{members}}
@@ -81,21 +88,21 @@ public class SszGeneratorDiagnosticTest
             }
             """;
         CSharpParseOptions options = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
-        RunGenerator(source, options, $"ScratchBoundary{fieldCount}{progressive}", out Compilation compilation);
+        RunGenerator(source, options, $"ScratchBoundary{fieldCount}{progressive}{leadingGap}", out Compilation compilation);
         using MemoryStream stream = new();
         Microsoft.CodeAnalysis.Emit.EmitResult emitted = compilation.Emit(stream);
         Assert.That(emitted.Success, Is.True, string.Join(Environment.NewLine, emitted.Diagnostics));
         Assembly assembly = Assembly.Load(stream.ToArray());
         (UInt256 actual, long allocated) = ((UInt256, long))assembly.GetType("BoundaryContainer")!.GetMethod("Measure")!.Invoke(null, null)!;
 
-        UInt256[] fields = new UInt256[fieldCount];
-        for (int i = 0; i < fieldCount; i++) fields[i] = (ulong)(i + 1);
+        UInt256[] fields = new UInt256[leadingGap + fieldCount];
+        for (int i = 0; i < fieldCount; i++) fields[leadingGap + i] = (ulong)(i + 1);
         UInt256 expected;
         if (progressive)
         {
             Merkle.MerkleizeProgressive(out expected, fields);
-            byte[] activeFields = new byte[(fieldCount + 7) / 8];
-            for (int i = 0; i < fieldCount; i++) activeFields[i / 8] |= (byte)(1 << (i % 8));
+            byte[] activeFields = new byte[(fields.Length + 7) / 8];
+            for (int i = leadingGap; i < fields.Length; i++) activeFields[i / 8] |= (byte)(1 << (i % 8));
             Merkle.MixInActiveFields(ref expected, activeFields);
         }
         else
@@ -105,7 +112,7 @@ public class SszGeneratorDiagnosticTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.EqualTo(expected));
-            Assert.That(allocated, progressive && fieldCount > ProgressiveContainerStackAllocationLimit ? Is.GreaterThan(0) : Is.Zero);
+            Assert.That(allocated, progressive && fields.Length > ProgressiveContainerStackAllocationLimit ? Is.GreaterThan(0) : Is.Zero);
         }
     }
 
@@ -607,7 +614,7 @@ public class SszGeneratorDiagnosticTest
             assemblyName,
             [syntaxTree],
             BuildMetadataReferences(),
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
 
         GeneratorDriver driver = CSharpGeneratorDriver.Create(CreateSszGenerator())
             .WithUpdatedParseOptions(parseOptions);

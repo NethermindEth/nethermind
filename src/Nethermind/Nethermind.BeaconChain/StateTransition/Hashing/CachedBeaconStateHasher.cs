@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Threading;
 using Nethermind.BeaconChain.Types;
@@ -896,7 +895,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
             pair[0] = left;
             pair[1] = right;
             Span<byte> hash = stackalloc byte[32];
-            SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(pair), hash);
+            ThreadSha256.HashData(MemoryMarshal.Cast<UInt256, byte>(pair), hash);
             return new UInt256(hash);
         }
     }

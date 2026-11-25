@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
@@ -65,6 +66,26 @@ public class BeaconPivotTests
             Assert.That(pivot.PivotHash, Is.EqualTo(pivotHeader.GetOrCalculateHash()));
             Assert.That(pivot.PivotNumber, Is.EqualTo(pivotHeader.Number));
             Assert.That(pivot.PivotDestinationNumber, Is.EqualTo(expectedPivotDestinationNumber));
+        }
+    }
+
+    [Test]
+    public void Forkchoice_can_restart_beacon_sync_from_a_lower_header()
+    {
+        using MemDb db = new();
+        BeaconPivot pivot = new(_syncConfig, db, _blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
+        BeaconSync sync = new(pivot, _blockTree, _syncConfig, Substitute.For<IBlockCacheService>(), AlwaysPoS.Instance, LimboLogs.Instance);
+        BlockHeader provisional = Build.A.BlockHeader.WithNumber(1002).WithHash(TestItem.KeccakA).TestObject;
+        BlockHeader selected = Build.A.BlockHeader.WithNumber(1001).WithHash(TestItem.KeccakB).TestObject;
+        pivot.EnsurePivot(provisional, updateOnlyIfNull: true);
+
+        sync.InitBeaconHeaderSync(selected);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivot.PivotHash, Is.EqualTo(selected.Hash));
+            Assert.That(pivot.PivotNumber, Is.EqualTo(selected.Number));
+            Assert.That(_blockTree.LowestInsertedBeaconHeader, Is.SameAs(selected));
         }
     }
 }

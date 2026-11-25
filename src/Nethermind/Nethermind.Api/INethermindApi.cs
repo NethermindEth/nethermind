@@ -15,8 +15,6 @@ namespace Nethermind.Api
     public interface INethermindApi : IApiWithNetwork
     {
         public T Config<T>() where T : IConfig => ConfigProvider.GetConfig<T>();
-
-        (IApiWithNetwork GetFromApi, INethermindApi SetInApi) ForRpc => (this, this);
     }
 
     public static class NethermindApiExtensions

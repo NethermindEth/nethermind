@@ -5,12 +5,12 @@ using System;
 #if !GLOAS
 using System.Collections;
 #endif
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Ssz.Merkleization;
 #if GLOAS
 using EpochArithmetic = Nethermind.BeaconChain.StateTransition.GloasStateAccessors;
 #else
@@ -164,7 +164,7 @@ public static partial class BlockProcessing
         ReadOnlySpan<byte> credentials = validator.WithdrawalCredentials!.Bytes;
         if (credentials[0] != Presets.BlsWithdrawalPrefix)
             throw new BeaconStateException($"Validator {change.ValidatorIndex} does not have BLS withdrawal credentials");
-        if (!credentials[1..].SequenceEqual(SHA256.HashData(change.FromBlsPubkey.Bytes).AsSpan(1)))
+        if (!credentials[1..].SequenceEqual(ThreadSha256.HashData(change.FromBlsPubkey.Bytes).AsSpan(1)))
             throw new BeaconStateException("BLS change pubkey does not match the withdrawal credentials");
         const string invalidSignature = "Invalid BLS to execution change signature";
         if (verifySignature && !ForkSignatureSets.VerifyBlsToExecutionChange(state, signedChange, batch?.Defer(invalidSignature), spec))
@@ -368,7 +368,7 @@ public static partial class BlockProcessing
             throw new BeaconStateException(invalidSignature);
 
         Span<byte> mix = stackalloc byte[32];
-        SHA256.HashData(body.RandaoReveal.Bytes, mix);
+        ThreadSha256.HashData(body.RandaoReveal.Bytes, mix);
         ReadOnlySpan<byte> currentMix = state.GetRandaoMix(epoch).Bytes;
         for (int i = 0; i < mix.Length; i++)
         {
