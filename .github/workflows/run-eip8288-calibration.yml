@@ -129,7 +129,7 @@ jobs:
           # BASH_ENV or any other variable that changes what runs.
           allowed=' AVERAGE_CPUS AVERAGE_MEMORY BASELINE_REF MEMPOOL_RUNS COUNTS WARMUPS REPEATS SLOT_MS RESERVE_MS NODES DEGREE
             NODE_CPUS NODE_MEMORY DELAY_MS JITTER_MS UP_MBIT LOSS_PCT RATE SECONDS_TO_RUN WARMUP_SECONDS GRACE_SECONDS DEPS
-            TXS_PER_WRAPPER DUP_FRACTION SHARED_FRACTION SEED ACCOUNTS '
+            TXS_PER_WRAPPER DUP_FRACTION SHARED_FRACTION SEED ACCOUNTS SHAPES '
           read -ra settings <<< "$BENCH_ENV"
           for setting in ${settings[@]+"${settings[@]}"}; do
             [[ $setting =~ ^([A-Z][A-Z0-9_]*)=[A-Za-z0-9_.,:/-]*$ ]] || fail "bench_env must be space-separated NAME=value words"
