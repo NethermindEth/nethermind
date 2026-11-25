@@ -3,6 +3,8 @@
 
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -181,8 +183,8 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
                     elementType,
                     isSpan,
                     spanTypes,
-                    context.ContainingSymbol,
-                    context.Compilation);
+                    toArrayCall,
+                    context);
             }
             else
             {
@@ -212,14 +214,17 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         ITypeSymbol elementType,
         bool callerIsSpan,
         SpanTypes spanTypes,
-        ISymbol? containingSymbol,
-        Compilation compilation)
+        IInvocationOperation toArrayCall,
+        OperationAnalysisContext context)
     {
         IMethodSymbol currentOriginal = currentMethod.OriginalDefinition;
         ImmutableArray<IParameterSymbol> currentParams = currentOriginal.Parameters;
+        ISymbol? containingSymbol = context.ContainingSymbol;
         ISymbol? containingOriginal = containingSymbol?.OriginalDefinition;
         ISymbol withinAccessibility = containingSymbol?.ContainingType ?? containingSymbol ?? currentMethod.ContainingType;
         string? bestMatch = null;
+        bool rebound = false;
+        IMethodSymbol? reboundMethod = null;
 
         foreach (IMethodSymbol candidate in overloads)
         {
@@ -239,7 +244,7 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
             if (candidate.TypeParameters.Length != currentOriginal.TypeParameters.Length)
                 continue;
             // Suggesting an inaccessible overload would produce uncompilable code.
-            if (!compilation.IsSymbolAccessibleWithin(candidate, withinAccessibility))
+            if (!context.Compilation.IsSymbolAccessibleWithin(candidate, withinAccessibility))
                 continue;
 
             string? matchKind = MatchingSpanParamKind(
@@ -264,6 +269,19 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
             if (!otherParamsMatch)
                 continue;
 
+            if (HasTypeParameterConstraints(candidate))
+            {
+                // A matching signature is not enough: the compiler must accept the type arguments at this call.
+                if (!rebound)
+                {
+                    reboundMethod = BindSpanCall(context.Operation, toArrayCall);
+                    rebound = true;
+                }
+
+                if (!SymbolEqualityComparer.Default.Equals(reboundMethod?.OriginalDefinition, candidate.OriginalDefinition))
+                    continue;
+            }
+
             // Prefer Span<T> overload when caller already has Span<T> (matches without conversion).
             if (callerIsSpan && matchKind == "Span")
                 return "Span";
@@ -271,6 +289,30 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         }
 
         return bestMatch;
+    }
+
+    private static bool HasTypeParameterConstraints(IMethodSymbol method)
+    {
+        foreach (ITypeParameterSymbol parameter in method.TypeParameters)
+        {
+            if (parameter.HasReferenceTypeConstraint || parameter.HasValueTypeConstraint || parameter.HasUnmanagedTypeConstraint
+                || parameter.HasNotNullConstraint || parameter.HasConstructorConstraint || !parameter.ConstraintTypes.IsEmpty)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static IMethodSymbol? BindSpanCall(IOperation call, IInvocationOperation toArrayCall)
+    {
+        if (call.SemanticModel is not { } model
+            || call.Syntax is not InvocationExpressionSyntax invocation
+            || toArrayCall.Instance?.Syntax is not ExpressionSyntax span)
+            return null;
+
+        InvocationExpressionSyntax rewritten = invocation.ReplaceNode(toArrayCall.Syntax, span);
+        return model.GetSpeculativeSymbolInfo(invocation.SpanStart, rewritten, SpeculativeBindingOption.BindAsExpression)
+            .Symbol as IMethodSymbol;
     }
 
     private static string? MatchingSpanParamKind(

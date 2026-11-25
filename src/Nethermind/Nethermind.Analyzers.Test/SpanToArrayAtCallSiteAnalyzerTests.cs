@@ -164,6 +164,22 @@ public class SpanToArrayAtCallSiteAnalyzerTests
     }
 
     [Test]
+    public async Task Constrained_generic_overload_reports_only_when_available()
+    {
+        string source = """
+            using System;
+            class C
+            {
+                static int Count<T>(T[] values) => values.Length;
+                static int Count<T>(ReadOnlySpan<T> values) where T : unmanaged => values.Length;
+                static int CountLabels(ReadOnlySpan<string> labels) => Count<string>(labels.ToArray());
+                static int CountNumbers(ReadOnlySpan<int> numbers) => Count<int>({|#0:numbers.ToArray()|});
+            }
+            """;
+        await Verify(source, Diagnostic().WithLocation(0).WithArguments("Count", "ReadOnlySpan", "int"));
+    }
+
+    [Test]
     public async Task Inaccessible_span_overload_no_diagnostic()
     {
         // Helper.M(byte[]) is public; Helper.M(Span<byte>) is private. From outside the class
