@@ -308,7 +308,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
             ? codeChange.IsAdopted ? GetAdoptedCode(codeChange.CodeHash) : codeChange.Code
             : _parentWorldState is { } worldState
-                ? ReadParentAccount(worldState, address) is { } account ? _parentReader!.GetCode(account.CodeHash.ValueHash256) : Array.Empty<byte>()
+                ? ReadParentAccount(worldState, address) is { } account ? worldState.GetCode(account.CodeHash.ValueHash256) : Array.Empty<byte>()
                 : _parentReader!.GetCode(address);
     }
 
