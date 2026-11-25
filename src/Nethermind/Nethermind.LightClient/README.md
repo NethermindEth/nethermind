@@ -256,9 +256,6 @@ hash and state root directly, so serving the execution header depends on an
 earlier execution peer lookup. Cache keys bind accounts to the world-state root,
 storage to its authenticated storage root and slot, and bytecode to its code hash.
 
-The light client uses a 4 MiB Keccak cache and workstation garbage collection.
-`DOTNET_gcServer=1` selects server garbage collection.
-
 Both P2P stacks use Nethermind's automatic IPv4/IPv6 IP resolver and its bounded
 retry, refresh and address-validation behavior. The resolved public address is
 used in discovery records; IP detection does not open or forward router/firewall
@@ -286,11 +283,17 @@ Example request:
 Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/json -Body '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0x0000000000000000000000000000000000000000","latest"]}'
 ```
 
+### Runtime defaults
+
+The light client uses a 4 MiB Keccak cache and workstation garbage collection.
+Set `DOTNET_gcServer=1` to use server garbage collection.
+
 ## Metrics
 
 `GET /metrics` exports Prometheus metrics on the same HTTP listener, under the
-same Host/origin policy. HTTP scrapes can negotiate compression with
-`Accept-Encoding`. The [Docker deployment](Deployment/README.md)
+same Host/origin policy. Plain HTTP scrapes can negotiate compression with
+`Accept-Encoding`. Direct HTTPS scrapes receive uncompressed responses.
+The [Docker deployment](Deployment/README.md)
 includes a scraper and Grafana dashboard. Keep these operational endpoints private.
 
 The `nethermind_light_client_` metrics cover startup/readiness, authenticated
