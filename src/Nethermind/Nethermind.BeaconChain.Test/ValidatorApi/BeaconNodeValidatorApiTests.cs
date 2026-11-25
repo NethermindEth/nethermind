@@ -57,7 +57,8 @@ public class BeaconNodeValidatorApiTests
     public enum Flaw { None, NonZeroIndex, FutureSlot, TargetEpoch, UnknownBlock, CommitteeIndex, NotInCommittee, Signature, TargetNotAncestor, NotFinalizedDescendant }
 
     [TestCase(0UL, true, false, false)]
-    [TestCase(2UL, true, true, false)]
+    [TestCase(2UL, true, false, false)] // missed slots
+    [TestCase(33UL, true, true, false)] // more than an epoch behind
     [TestCase(1UL, false, false, true)]
     public async Task Syncing_status_and_head_root_follow_the_published_head(ulong headLag, bool executionInSync, bool syncing, bool optimistic)
     {
@@ -177,10 +178,10 @@ public class BeaconNodeValidatorApiTests
     }
 
     [Test]
-    public async Task Attestation_data_votes_for_the_head_with_the_source_of_its_state_processed_to_the_slot([Values] bool crossesEpoch)
+    public async Task Attestation_data_votes_for_the_head_with_the_source_of_its_state_processed_to_the_slot([Values] bool crossesEpoch, [Values(1UL, 3UL)] ulong slotsAfterHead)
     {
         ulong headSlot = crossesEpoch ? EpochStart - 1 : HeadSlot;
-        ulong slot = headSlot + 1;
+        ulong slot = headSlot + slotsAfterHead;
         Hash256 headRoot = crossesEpoch ? ParentRoot : HeadRoot;
         BeaconStateFulu state = HeadState(headSlot);
         // Every validator voted for the head epoch's target, so epoch processing at its end justifies it.
@@ -221,8 +222,8 @@ public class BeaconNodeValidatorApiTests
             api => api.GetAttesterDuties(HeadEpoch + 1, [0], CancellationToken.None).AsTask(), BeaconNodeApiError.NotSupported);
         yield return Refused("Duties on a Gloas head", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Gloas,
             api => api.GetProposerDuties(HeadEpoch, CancellationToken.None).AsTask(), BeaconNodeApiError.NotSupported);
-        yield return Refused("Attestation data while the head lags", HeadSlot + 2, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
-            api => api.ProduceAttestationData(HeadSlot + 2, 0, CancellationToken.None).AsTask(), BeaconNodeApiError.NotReady);
+        yield return Refused("Attestation data while the head lags", HeadSlot + Presets.SlotsPerEpoch + 1, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
+            api => api.ProduceAttestationData(HeadSlot + Presets.SlotsPerEpoch + 1, 0, CancellationToken.None).AsTask(), BeaconNodeApiError.NotReady);
         yield return Refused("Attestation data on an optimistic head", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Optimistic,
             api => api.ProduceAttestationData(HeadSlot, 0, CancellationToken.None).AsTask(), BeaconNodeApiError.NotReady);
         yield return Refused("Attestation data for a slot other than the current one", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
