@@ -381,7 +381,10 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (!_blockTree.CanAcceptNewBlocks) return Task.FromResult<HeadersSyncBatch?>(null);
                 do
                 {
+                    ulong? lowestBefore = LowestInsertedBlockHeader?.Number;
                     HandleDependentBatches(cancellationToken);
+                    // A stalled dependency must not keep the reset read lock busy.
+                    if (LowestInsertedBlockHeader?.Number == lowestBefore) break;
                 } while (PendingIsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
 
                 HeadersSyncBatch? batch;

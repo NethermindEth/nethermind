@@ -1305,6 +1305,60 @@ public class FastHeadersSyncTests
         Assert.That(batch!.EndNumber, Is.EqualTo(pivot.Number));
     }
 
+    // With the memory budget full, a pass that connects a dependency must not end the loop: PrepareRequest keeps inserting
+    // the dependencies that connect before it requests more headers.
+    [Test]
+    public async Task PrepareRequest_inserts_every_dependency_that_connects_before_requesting_more()
+    {
+        IBlockTree remote = Build.A.BlockTree().WithPostMergeRules().OfHeadersOnly.OfChainLength(5001).TestObject;
+        BlockHeader pivot = remote.FindHeader(5000, BlockTreeLookupOptions.None)!;
+        TestSyncConfig syncConfig = CreatePivotSyncConfig(pivot);
+        syncConfig.FastHeadersMemoryBudget = 1;
+        BlockTreeBuilder builder = Build.A.BlockTree().WithoutSettingHead.WithSyncConfig(syncConfig);
+        builder.TestObject.SyncPivot = (pivot.Number, pivot.Hash!);
+        using HeadersSyncFeed feed = CreateFeed(builder, syncConfig);
+        feed.InitializeFeed();
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+
+        using HeadersSyncBatch top = (await feed.PrepareRequest())!;
+        List<HeadersSyncBatch> lower = [];
+        for (int i = 0; i < 10; i++) lower.Add((await feed.PrepareRequest())!);
+        foreach (HeadersSyncBatch batch in lower)
+        {
+            AnswerFrom(remote, batch, peer);
+            feed.HandleResponse(batch);
+        }
+        Assert.That(Dependencies(feed).Count, Is.EqualTo(lower.Count));
+        AnswerFrom(remote, top, peer);
+        feed.HandleResponse(top);
+
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+        using HeadersSyncBatch? next = await Task.Run(() => feed.PrepareRequest(timeout.Token)).WaitAsync(timeout.Token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next?.EndNumber, Is.EqualTo(lower[^1].StartNumber - 1), "the next request continues below the dependencies");
+            Assert.That(builder.TestObject.LowestInsertedHeader?.Number, Is.EqualTo(lower[^1].StartNumber));
+            Assert.That(Dependencies(feed).Count, Is.Zero);
+        }
+    }
+
+    private static TestSyncConfig CreatePivotSyncConfig(BlockHeader pivot) => new()
+    {
+        FastSync = true,
+        PivotNumber = pivot.Number,
+        PivotHash = pivot.Hash!.ToString(),
+        PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!,
+    };
+
+    private static void AnswerFrom(IBlockTree remoteBlockTree, HeadersSyncBatch batch, PeerInfo peer)
+    {
+        batch.Response = remoteBlockTree.FindHeaders(
+            remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash!, batch.RequestSize, 0, false)!;
+        batch.ResponseSourcePeer = peer;
+    }
+
+    private static HeadersSyncFeed CreateFeed(BlockTreeBuilder builder, TestSyncConfig syncConfig) =>
+        CreateFeed(builder, syncConfig, Substitute.For<IPoSSwitcher>());
     private static Func<BlockTreeBuilder> SharedDbsBlockTreeBuilderFactory(TestSyncConfig syncConfig)
     {
         TestMemDb blocksDb = new();
