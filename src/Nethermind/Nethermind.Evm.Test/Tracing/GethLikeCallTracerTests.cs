@@ -1149,6 +1149,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         int oversize = checked((int)spec.MaxCodeSize + 1);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, oversize, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, oversize, false);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, oversize, false, (byte)0xEF);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1024, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, 1024, true);
@@ -1156,10 +1157,11 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(ChildDepositCases))]
-    public void Child_create_code_deposit_diagnostic(ForkActivation activation, Instruction opcode, int length, bool onlyTopCall)
+    public void Child_create_code_deposit_diagnostic(ForkActivation activation, Instruction opcode, int length, bool onlyTopCall,
+        byte firstByte = 0)
     {
         IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
-        byte[] initCode = DepositInitCode(length);
+        byte[] initCode = DepositInitCode(length, firstByte);
         byte[] salt = new byte[32];
         Prepare create = opcode == Instruction.CREATE
             ? Prepare.EvmCode.Create(initCode, 0)
@@ -1205,7 +1207,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(child.Type, Is.EqualTo(opcode));
-                string? error = success ? null : "contract creation code storage out of gas";
+                string? error = success ? null
+                    : firstByte == 0xEF ? "invalid code: must not begin with 0xef" : "contract creation code storage out of gas";
                 Assert.That(child.Error, Is.EqualTo(error));
                 Assert.That(child.To, Is.EqualTo(success ? address : null));
                 Assert.That(child.Input.ToArray(), Is.EqualTo(initCode));

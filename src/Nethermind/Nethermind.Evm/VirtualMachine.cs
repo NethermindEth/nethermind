@@ -1472,7 +1472,8 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <remarks>
     /// Before EIP-8037, Geth charges the deposit before it checks the EIP-170 size (go-ethereum #33601), so oversized
     /// code the frame cannot pay for runs out of code storage gas; from EIP-8037 the size is checked first. Every order
-    /// fails the frame alike, so it changes only the reported error.
+    /// fails the frame alike, so it changes only the reported error. The pre-EIP-8037 price repeats
+    /// <see cref="CodeDepositHandler.CalculateCost(IReleaseSpec, int)"/>, which prices no oversized code.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceCodeDepositError(IReleaseSpec spec, int codeLength, ulong gasAvailable, bool hasEnoughGas)
