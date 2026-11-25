@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
@@ -805,7 +806,9 @@ public class GethGenesisLoaderTests
                         "0x0000000000000000000000000000000000000000000000000000000000000003": "0x03",
                         "f0": "0x04",
                         "20": "10",
-                        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff": "0x05"
+                        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff": "0x05",
+                        "f": "0x06",
+                        "0x123": "0x07"
                     }
                 }
             }
@@ -819,7 +822,9 @@ public class GethGenesisLoaderTests
             [3] = "03",
             [0xf0] = "04",
             [0x20] = "10",
-            [UInt256.MaxValue] = "05"
+            [UInt256.MaxValue] = "05",
+            [0xf] = "06",
+            [0x123] = "07"
         }));
     }
 
@@ -834,15 +839,13 @@ public class GethGenesisLoaderTests
         Assert.That(chainSpec.Allocations![new Address("0x0000000000000000000000000000000000000001")].Storage!.Keys, Is.EqualTo(new[] { UInt256.Zero }));
     }
 
-    [Test]
-    public void Rejects_storage_key_longer_than_32_bytes()
-    {
-        string key = new('1', 66);
-
+    [TestCase("111111111111111111111111111111111111111111111111111111111111111111")]
+    [TestCase("0xzz")]
+    [TestCase("g")]
+    public void Rejects_invalid_storage_key(string key) =>
         Assert.That(() => LoadStandardGethGenesis(allocJson: $$"""
             { "0x0000000000000000000000000000000000000001": { "balance": "0x1", "storage": { "{{key}}": "0x01" } } }
-            """), Throws.TypeOf<InvalidDataException>());
-    }
+            """), Throws.TypeOf<InvalidDataException>().With.InnerException.TypeOf<JsonException>());
 
     public static IEnumerable<TestCaseData> GethGenesisDetectionCases
     {
