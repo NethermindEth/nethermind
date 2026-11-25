@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -38,6 +39,111 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    private static IEnumerable<TestCaseData> TimeoutSelectorCases()
+    {
+        foreach (string method in new[] { "debug_traceCall", "debug_traceTransaction", "debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBadBlock" })
+        {
+            foreach (bool streamMode in new[] { false, true })
+            {
+                foreach (string kind in new[] { "noop", "mux-empty", "mux-null", "mux-omitted" })
+                    yield return new TestCaseData(method, false, streamMode, kind, "abc");
+                yield return new TestCaseData(method, true, streamMode, "mux-empty", "abc");
+            }
+        }
+        foreach (string method in new[] { "debug_traceCall", "debug_traceBadBlock" })
+            foreach (string kind in new[] { "mux-empty", "mux-null", "mux-omitted" })
+                foreach (string timeout in new[] { "5s", "5" })
+                    yield return new TestCaseData(method, false, false, kind, timeout);
+    }
+
+    [TestCaseSource(nameof(TimeoutSelectorCases))]
+    public async Task Debug_trace_invalid_duration_is_validated_after_selector(
+        string method, bool missing, bool streamMode, string kind, string timeout)
+    {
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        Block block = context.Blockchain.BlockTree.Head!;
+        if (method == "debug_traceBadBlock") context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
+        Dictionary<string, object?> options = new()
+        {
+            ["tracer"] = kind == "noop" ? "noopTracer" : "muxTracer",
+            ["timeout"] = timeout,
+            ["streamMode"] = streamMode
+        };
+        if (kind == "mux-empty") options["tracerConfig"] = new { };
+        if (kind == "mux-null") options["tracerConfig"] = null;
+        object[] parameters = method switch
+        {
+            "debug_traceCall" => [new { to = TestItem.AddressC.ToString() }, missing ? TestItem.KeccakA.ToString() : "latest", options],
+            "debug_traceTransaction" => [missing ? TestItem.KeccakA : transaction.Hash!, options],
+            "debug_traceBlock" => [missing ? "0x00" : Rlp.Encode(block).ToHexString(true), options],
+            "debug_traceBlockByNumber" => [missing ? "0x7fffffff" : $"0x{block.Number:x}", options],
+            _ => [missing ? TestItem.KeccakA : block.Hash!, options]
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (!missing && timeout != "abc")
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That(json["result"], Is.Not.Null, response);
+            }
+            else
+            {
+                Assert.That(json["result"], Is.Null, response);
+                if (!missing)
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("time: invalid duration \"abc\""), response);
+                }
+                else
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(method == "debug_traceBlock" ? ErrorCodes.InvalidInput : ErrorCodes.ResourceNotFound), response);
+                    Assert.That((string?)json["error"]?["message"], Does.Not.Contain("duration").And.Not.Contain("invalid argument 2"), response);
+                }
+            }
+        }
+    }
+
+    [Test]
+    public async Task Debug_standard_file_trace_ignores_timeout_strings(
+        [Values("debug_standardTraceBlockToFile", "debug_standardTraceBadBlockToFile")] string method,
+        [Values("abc", "5s")] string timeout, [Values] bool missing)
+    {
+        using Context context = await Context.Create();
+        await AddBlockWithTransfer(context);
+        Block block = context.Blockchain.BlockTree.Head!;
+        if (method == "debug_standardTraceBadBlockToFile") context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
+        using JsonRpcResponse response = await RpcTest.TestRequest(context.DebugRpcModule, method,
+            missing ? TestItem.KeccakA : block.Hash!, new { timeout });
+        IEnumerable<string>? paths = (response as ResultWrapper<IEnumerable<string>>)?.Data;
+        try
+        {
+            if (missing)
+            {
+                Assert.That(response.TryGetError(out Error? error), Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
+                    Assert.That(error?.Message, Does.Not.Contain("duration").And.Not.Contain("invalid argument"));
+                }
+            }
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(response.TryGetError(out _), Is.False);
+                    Assert.That(paths?.Count(), Is.EqualTo(1));
+                }
+            }
+        }
+        finally
+        {
+            foreach (string path in paths ?? []) File.Delete(path);
+        }
+    }
+
     [Test]
     public async Task Debug_single_trace_javascript_callback_errors_keep_their_message(
         [Values("debug_traceCall", "debug_traceTransaction")] string method,
@@ -173,7 +279,7 @@ public partial class DebugRpcModuleTests
                 {
                     Assert.That(parsed["result"], Is.Null);
                     Assert.That(parsed["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000));
-                    Assert.That(parsed["error"]?["message"]?.Value<string>(), Does.Contain("Cannot parse 'bad'"));
+                    Assert.That(parsed["error"]?["message"]?.Value<string>(), Does.Contain("time: invalid duration \"bad\""));
                 }
                 else
                 {
@@ -235,13 +341,13 @@ public partial class DebugRpcModuleTests
         int expectedCode = scenario switch
         {
             "unknown" => ErrorCodes.ResourceNotFound,
-            "native" or "config" or "config-valid-timeout" => ErrorCodes.InvalidInput,
+            "native" or "extension" or "config" or "config-valid-timeout" => ErrorCodes.InvalidInput,
             _ => ErrorCodes.InvalidParams
         };
         string? diagnostic = scenario switch
         {
             "unknown" => "transaction not found",
-            "native" => "Cannot parse 'bad' as a duration",
+            "native" or "extension" => "time: invalid duration \"bad\"",
             "config" or "config-valid-timeout" => "Cannot convert",
             _ => null
         };
@@ -249,13 +355,13 @@ public partial class DebugRpcModuleTests
         {
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
             Assert.That(json["result"], Is.Null, response);
-            if (diagnostic is not null) Assert.That(json["error"]?.ToString(), Does.Contain(diagnostic), response);
+            if (diagnostic is not null) Assert.That((string?)json["error"]?["message"], Does.Contain(diagnostic), response);
         }
     }
 
     [Test]
     public async Task Debug_traceTransaction_timeout_wire_contract(
-        [Values("bad", "type", "oversized", "5s", "0s", "-1s", "4294968s")] string duration)
+        [Values("bad", "type", "oversized", "5s", "0s", "-1s", "4294968s", "00:00:05", "5")] string duration)
     {
         using Context context = await Context.Create();
         Transaction transaction = await AddBlockWithTransfer(context);
@@ -279,7 +385,7 @@ public partial class DebugRpcModuleTests
                             : !known
                                 ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"transaction not found"},"id":67}"""
                                 : duration == "bad"
-                                    ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}"""
+                                    ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"time: invalid duration \"bad\""},"id":67}"""
                                     : tracer is null
                                         ? """{"jsonrpc":"2.0","result":{"structLogs":[],"gas":21000,"failed":false,"returnValue":"0x"},"id":67}"""
                                         : """{"jsonrpc":"2.0","result":{},"id":67}""";
@@ -308,7 +414,7 @@ public partial class DebugRpcModuleTests
         string expected;
         if (timeout == "bad")
         {
-            expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}""";
+            expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"time: invalid duration \"bad\""},"id":67}""";
         }
         else if (timeout is "0s" or "-1s")
         {

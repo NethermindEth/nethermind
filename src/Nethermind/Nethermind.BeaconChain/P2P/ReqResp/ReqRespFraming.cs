@@ -112,7 +112,7 @@ public static class ReqRespFraming
         }
     }
 
-    public static Task WriteResponseChunkAsync(Stream stream, byte result, ReadOnlyMemory<byte> contextBytes, ReadOnlyMemory<byte> ssz, CancellationToken token)
+    public static Task WriteResponseChunkAsync(Stream stream, byte result, ReadOnlyMemory<byte> contextBytes, ReadOnlySpan<byte> ssz, CancellationToken token)
     {
         using MemoryStream buffer = new();
         buffer.WriteByte(result);
@@ -120,7 +120,7 @@ public static class ReqRespFraming
         WriteVarint(buffer, (ulong)ssz.Length);
         using (SnappyStream snappy = new(buffer, CompressionMode.Compress, leaveOpen: true))
         {
-            snappy.Write(ssz.Span);
+            snappy.Write(ssz);
             snappy.Flush();
         }
 
@@ -130,7 +130,7 @@ public static class ReqRespFraming
     public static Task WriteErrorChunkAsync(Stream stream, byte result, string message, CancellationToken token)
     {
         byte[] encoded = Encoding.UTF8.GetBytes(message);
-        return WriteResponseChunkAsync(stream, result, default, encoded.AsMemory(0, Math.Min(encoded.Length, MaxErrorMessageSize)), token);
+        return WriteResponseChunkAsync(stream, result, default, encoded.AsSpan(0, Math.Min(encoded.Length, MaxErrorMessageSize)), token);
     }
 
     /// <summary>Reads the next response chunk, or <c>null</c> on a clean end of stream.</summary>

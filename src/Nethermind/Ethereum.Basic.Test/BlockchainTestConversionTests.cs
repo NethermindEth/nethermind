@@ -39,6 +39,39 @@ public class BlockchainTestConversionTests
         Assert.That(tests.Single().ForkName, Is.EqualTo(network));
     }
 
+    [Test]
+    public void ConvertToEngineReorgTests_LoadsBlockDagAndSteps()
+    {
+        string json = """
+            {
+              "tests/reorg/test.py::test_case[fork_ParisToShanghaiAtTime15k-blockchain_test_engine_reorg]": {
+                "network": "ParisToShanghaiAtTime15k",
+                "pre": {},
+                "blocks": {
+                  "a1": { "parent": "genesis", "payload": { "params": [{ "blockHash": "0x01" }], "newPayloadVersion": "1" } },
+                  "b1": { "parent": "a1", "payload": { "params": [{ "blockHash": "0x02" }], "newPayloadVersion": "2" } }
+                },
+                "steps": [
+                  { "type": "newPayload", "block": "a1", "expect": [{ "id": "valid", "status": "VALID" }], "branches": {} },
+                  { "type": "assertHead", "latest": "genesis" }
+                ]
+              }
+            }
+            """;
+
+        EngineReorgTest test = (EngineReorgTest)JsonToEthereumTest.ConvertToEngineReorgTests(System.Text.Encoding.UTF8.GetBytes(json)).Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(test.Network, Is.EqualTo(Nethermind.Specs.Forks.Paris.Instance));
+            Assert.That(test.NetworkAfterTransition, Is.EqualTo(Nethermind.Specs.Forks.Shanghai.Instance));
+            Assert.That(test.TransitionForkActivation?.Timestamp, Is.EqualTo(15_000));
+            Assert.That(test.ReorgBlocks.Select(static b => (b.Key, b.Value.Parent, b.Value.Payload.NewPayloadVersion)),
+                Is.EqualTo(new[] { ("a1", "genesis", "1"), ("b1", "a1", "2") }));
+            Assert.That(test.Steps.Select(static s => s.GetProperty("type").GetString()), Is.EqualTo(new[] { "newPayload", "assertHead" }));
+        }
+    }
+
     [TestCase("AmsterdamBPOIncrease", 21, 28, 0xd6f3c4)]
     [TestCase("AmsterdamToBPOIncreaseAtTime15k", 21, 28, 0xd6f3c4)]
     [TestCase("AmsterdamBPODecrease", 9, 14, 0x729e16)]

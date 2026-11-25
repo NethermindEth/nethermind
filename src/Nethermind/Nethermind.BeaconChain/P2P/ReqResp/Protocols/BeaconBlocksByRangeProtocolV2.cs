@@ -89,7 +89,7 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
             for (ulong offset = 0; offset < count && offset <= ulong.MaxValue - request.StartSlot; offset++)
             {
                 ulong slot = request.StartSlot + offset;
-                if (store.TryGetCanonicalRoot(slot, out Hash256? root) && store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block))
+                if (store.TryGetCanonicalRoot(slot, out Hash256? root) && store.TryGetStoredBlock(root, out StoredBlock block))
                 {
                     // BeaconBlocksByRange: each parent_root MUST match the preceding block, so a reorg mid-reply ends the reply.
                     if (previousRoot is not null && block.ParentRoot != previousRoot)
@@ -97,7 +97,7 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
                         break;
                     }
 
-                    await WriteBlockChunkAsync(stream, block, cts);
+                    await WriteBlockChunkAsync(stream, block.Slot, block.Ssz, cts);
                     previousRoot = root;
                 }
             }

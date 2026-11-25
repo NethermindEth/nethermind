@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
@@ -120,9 +119,11 @@ public sealed class EraImporter(
         ulong partitionSize = _maxEraSize;
         if (blockNumber + partitionSize < suggestFromBlock)
         {
-            ConcurrentQueue<ulong> partitionStartBlocks = new();
-            for (; blockNumber + partitionSize < suggestFromBlock && blockNumber + partitionSize < to; blockNumber += partitionSize)
-                partitionStartBlocks.Enqueue(blockNumber);
+            ulong firstPartitionStart = blockNumber;
+            ulong partitionLimit = Math.Min(suggestFromBlock, to);
+            ulong partitionCount = partitionLimit > blockNumber ? (partitionLimit - blockNumber - 1) / partitionSize : 0;
+            blockNumber += partitionCount * partitionSize;
+            ulong nextPartition = 0;
 
             int concurrency = eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency;
             Task[] workers = new Task[concurrency];
@@ -130,8 +131,10 @@ public sealed class EraImporter(
             {
                 workers[i] = Task.Run(async () =>
                 {
-                    while (partitionStartBlocks.TryDequeue(out ulong partStart))
+                    ulong partition;
+                    while ((partition = Interlocked.Increment(ref nextPartition) - 1) < partitionCount)
                     {
+                        ulong partStart = firstPartitionStart + partition * partitionSize;
                         for (ulong j = 0; j < partitionSize; j++)
                         {
                             await ImportBlock(partStart + j);

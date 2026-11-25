@@ -2666,8 +2666,6 @@ public partial class EngineModuleTests
         public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true) =>
             inner.ValidateSuggestedBlock(block, parent, out error, validateHashes);
 
-        public bool ValidateWithdrawals(Block block, out string? error) => inner.ValidateWithdrawals(block, out error);
-
         public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
             inner.ValidateBodyAgainstHeader(header, toBeValidated, out error);
     }
@@ -3180,7 +3178,7 @@ public partial class EngineModuleTests
         chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Pause();
         // The loop releases the forkchoice's wait for the commit before it leaves the block, and the rewind refuses
         // until the loop is idle.
-        Assert.That(() => chain.BlockProcessingQueue.IsEmpty && !chain.BlockTree.IsProcessingBlock, Is.True.After((int)GateTimeout.TotalMilliseconds, 10),
+        Assert.That(() => chain.BlockProcessingQueue.IsEmpty && !chain.Container.Resolve<BlockProcessingTracker>().IsProcessingBlock, Is.True.After((int)GateTimeout.TotalMilliseconds, 10),
             "precondition: the paused processing loop has drained");
         ResultWrapper<bool> rewind = byHash
             ? debug.debug_resetHead(blocks[0].BlockHash!)

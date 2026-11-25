@@ -53,12 +53,6 @@ namespace Nethermind.Consensus.Processing
             /// <summary>Discards transaction events and references retained by the processing attempt.</summary>
             /// <remarks>Decorators must forward this call. The block processor invokes it on every exit, including failures.</remarks>
             void ClearTransactionProcessedEvents() { }
-
-            // Optional per-tx timing instrumentation. Default no-op implementations let executors that
-            // don't capture per-tx timing (block production, simulation, invalid-tx) ignore these.
-            void SetupTxTimingMetrics(Block block) { }
-            long StartTxTimer() => 0;
-            void StopTxTimer(int i, long txStart) { }
         }
     }
 }
