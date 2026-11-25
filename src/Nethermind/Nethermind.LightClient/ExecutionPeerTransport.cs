@@ -70,6 +70,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 {
     private const int ExecutionRequestLimit = 4;
     private const int ExecutionBulkLimit = ExecutionRequestLimit - 1;
+    private const int ConsensusHeaderRequestLimit = 2;
     private const int SnapRequestLimit = 8;
     // Two concurrent proof RPCs leave SNAP capacity for other state reads.
     private const int ProofStorageConcurrency = 3;
@@ -92,6 +93,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private readonly PayloadCache<ReadOnlyBlockAccessList> _blockAccessLists;
     private readonly SemaphoreSlim _executionDataRequests = new(ExecutionRequestLimit, ExecutionRequestLimit);
     private readonly SemaphoreSlim _executionBulkRequests = new(ExecutionBulkLimit, ExecutionBulkLimit);
+    private readonly SemaphoreSlim _consensusHeaderRequests = new(ConsensusHeaderRequestLimit, ConsensusHeaderRequestLimit);
     private readonly MemoryCache _peerCooldowns = new(new MemoryCacheOptions { SizeLimit = PeerFeedbackCapacity });
     private readonly Lock _cooldownLock = new();
     private readonly ConditionalWeakTable<PeerInfo, PeerPerformance> _peerPerformance = [];
@@ -812,14 +814,15 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     public async Task<BlockHeader> GetHeaderByHashAsync(Hash256 hash, CancellationToken cancellationToken)
     {
         Hash256 key = new(hash.ValueHash256);
-        BlockHeader retained = await _headers.GetAsync(key, stopping => RequestHeaderAsync(key, stopping), cancellationToken);
+        BlockHeader retained = await _headers.GetAsync(key,
+            stopping => RequestHeaderAsync(key, _executionDataRequests, stopping), cancellationToken);
         return CopyHeader(retained);
     }
 
     internal async Task<BlockHeader> GetConsensusHeaderAsync(Hash256 hash, CancellationToken cancellationToken)
     {
         Hash256 key = new(hash.ValueHash256);
-        // A long or shared RPC lookup must not keep the publisher on an older consensus candidate.
+        // RPC work can occupy every shared execution slot while the publisher needs to advance.
         BlockHeader retained = await _headers.GetAsync(key, FetchAsync, cancellationToken, independentDownload: true);
         return CopyHeader(retained);
 
@@ -827,7 +830,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         {
             using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(ConsensusHeaderTimeoutSeconds), _clock);
             using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, stopping);
-            try { return await RequestHeaderAsync(key, attempt.Token); }
+            try { return await RequestHeaderAsync(key, _consensusHeaderRequests, attempt.Token); }
             catch (OperationCanceledException) when (timeout.IsCancellationRequested && !stopping.IsCancellationRequested)
             {
                 throw new ExecutionDataUnavailableException("Timed out waiting for the execution header authenticated by consensus.");
@@ -835,15 +838,15 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
     }
 
-    private Task<BlockHeader> RequestHeaderAsync(Hash256 key, CancellationToken cancellationToken) =>
-        RequestExecutionAsync(AllocationContexts.Headers, async (peer, token) =>
+    private Task<BlockHeader> RequestHeaderAsync(Hash256 key, SemaphoreSlim requests, CancellationToken cancellationToken) =>
+        RequestFromPeersAsync(AllocationContexts.Headers, requests, static peer => peer, async (peer, token) =>
         {
             BlockHeader header = await peer.GetHeadBlockHeader(new Hash256(key.ValueHash256), token)
                 ?? throw new ExecutionDataUnavailableException("Execution peer does not have the requested header.");
             BlockHeader snapshot = CopyHeader(header);
             if (snapshot.Hash != key) throw new InvalidDataException("Execution peer returned a header inconsistent with the requested hash.");
             return snapshot;
-        }, cancellationToken, failureMessage: "No execution peer supplied the requested execution header.");
+        }, cancellationToken, canServe: null, failureMessage: "No execution peer supplied the requested execution header.");
 
     public async Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken)
     {
@@ -1410,16 +1413,17 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         CancellationToken cancellationToken, Func<ISyncPeer, bool>? canServe = null,
         string failureMessage = BlockDataUnavailable, HeaderPrefetch? prefetch = null,
         bool hedge = true) =>
-        RequestFromPeersAsync(context, static peer => peer, request, cancellationToken, canServe, failureMessage,
+        RequestFromPeersAsync(context, context == AllocationContexts.Snap ? _snapRequests : _executionDataRequests,
+            static peer => peer, request, cancellationToken, canServe, failureMessage,
             prefetch: prefetch, hedge: hedge);
 
     private Task<T> RequestAsync<T>(Func<ISnapSyncPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
         string operation = "proof") =>
-        RequestFromPeersAsync(AllocationContexts.Snap,
+        RequestFromPeersAsync(AllocationContexts.Snap, _snapRequests,
             static peer => peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap) ? snap : null,
             request, cancellationToken, null, "No execution peer supplied a valid SNAP proof for the selected verified state.", operation);
 
-    private async Task<T> RequestFromPeersAsync<TPeer, T>(AllocationContexts context, Func<ISyncPeer, TPeer?> selectPeer,
+    private async Task<T> RequestFromPeersAsync<TPeer, T>(AllocationContexts context, SemaphoreSlim requests, Func<ISyncPeer, TPeer?> selectPeer,
         Func<TPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
         Func<ISyncPeer, bool>? canServe, string failureMessage, string? operation = null,
         HeaderPrefetch? prefetch = null, bool hedge = true) where TPeer : class
@@ -1430,7 +1434,6 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             ? new Activity("LightClientPeerRequest").SetIdFormat(ActivityIdFormat.W3C).Start() : null;
         if (trace)
             _logger.Debug($"LC peer id={diagnostic?.Id} parent={diagnostic?.ParentId} context={context} operation={operation ?? context.ToString()}");
-        SemaphoreSlim requests = context == AllocationContexts.Snap ? _snapRequests : _executionDataRequests;
         // Speculation must leave the header lane available until its trusted cursor arrives.
         bool bulk = context is not (AllocationContexts.Headers or AllocationContexts.Snap) || prefetch is not null;
         bool bulkAcquired = false;
@@ -1814,6 +1817,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         await _bodies.DisposeAsync();
         await _receipts.DisposeAsync();
         await _headers.DisposeAsync();
+        _consensusHeaderRequests.Dispose();
         await _accounts.DisposeAsync();
         await _storage.DisposeAsync();
         await _code.DisposeAsync();

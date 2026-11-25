@@ -665,6 +665,40 @@ public class TransportTests
 
     [Test]
     [CancelAfter(5000)]
+    public async Task Consensus_headers_can_be_fetched_with_full_rpc_slots_and_a_stalled_consensus_lookup(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1, chainLength: 6);
+        ExecutionPeer peer = peers.Ordered[0];
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peer.BeforeResponse = (_, stopping) => release.Task.WaitAsync(stopping);
+
+        Task<BlockHeader>[] rpc = peers.Chain.Take(4)
+            .Select(header => peers.Transport.GetHeaderByHashAsync(header.Hash!, token)).ToArray();
+        Task<BlockHeader> finalized = peers.Transport.GetConsensusHeaderAsync(peers.Chain[^2].Hash!, token);
+        try
+        {
+            for (int i = 0; i < rpc.Length + 1; i++) await peers.Started.Reader.ReadAsync(token);
+            peer.BeforeResponse = null;
+
+            BlockHeader optimistic = await peers.Transport.GetConsensusHeaderAsync(peers.Header.Hash!, token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(optimistic.Hash, Is.EqualTo(peers.Header.Hash));
+                Assert.That(rpc.All(static request => !request.IsCompleted), Is.True);
+                Assert.That(finalized.IsCompleted, Is.False);
+                Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 6 }));
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            Task pending = Task.WhenAll(rpc.Append(finalized));
+            await pending.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(5000)]
     public async Task Consensus_header_lookup_retries_with_the_next_supplier_after_two_stalled_peers(CancellationToken token)
     {
         await using ExecutionPeers peers = new(3);
@@ -3495,10 +3529,12 @@ public class TransportTests
 
     [Test]
     [CancelAfter(5000)]
-    public async Task Execution_peer_can_fetch_the_advertised_authenticated_headers([Values] bool includeHeader, CancellationToken token)
+    public async Task Execution_peer_can_fetch_the_advertised_authenticated_headers([Values] bool includeHeader, [Values] bool republish,
+        CancellationToken token)
     {
         await using ExecutionPeers peers = new(1);
-        ISyncServer server = Services(peers.Transport).Resolve<ISyncServer>();
+        ExecutionPeerTransport.LightSyncServer server =
+            (ExecutionPeerTransport.LightSyncServer)Services(peers.Transport).Resolve<ISyncServer>();
         BlockHeader previous = peers.Chain[^2];
         Hash256 previousHash = previous.Hash!;
         await peers.Transport.GetConsensusHeaderAsync(previousHash, token);
@@ -3507,6 +3543,7 @@ public class TransportTests
         Hash256 advertisedHash = peers.Head.BlockHash;
         if (includeHeader) await peers.Transport.GetConsensusHeaderAsync(advertisedHash, token);
         peers.Transport.UpdateHead(peers.Head, peers.Header.Timestamp);
+        if (republish) server.UpdateHead(peers.Head with { Slot = peers.Head.Slot + 1 }, peers.Header.Timestamp);
 
         using IOwnedReadOnlyList<byte> advertised = server.FindHeadersRlp(advertisedHash, 1, 0, false);
         using IOwnedReadOnlyList<byte> prior = server.FindHeadersRlp(previousHash, 2, 0, true);
@@ -3625,6 +3662,31 @@ public class TransportTests
             release.TrySetResult();
             await request.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
+    }
+
+    [Test]
+    [CancelAfter(5000)]
+    public async Task Bulk_replacement_uses_the_remaining_round_grace(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(3);
+        TaskCompletionSource failPrimary = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peers.Ordered[0].BeforeResponse = async (_, stopping) =>
+        {
+            await failPrimary.Task.WaitAsync(stopping);
+            throw new ExecutionDataUnavailableException("The primary has no requested data.");
+        };
+        peers.Ordered[1].BeforeResponse = static (_, stopping) => Task.Delay(Timeout.Infinite, stopping);
+
+        Task request = peers.Request(AllocationContexts.Bodies, token);
+        await peers.Started.Reader.ReadAsync(token);
+        peers.Clock.Advance(BulkHedgeDelay - TimeSpan.FromMilliseconds(10));
+        failPrimary.SetResult();
+        await peers.Started.Reader.ReadAsync(token);
+        Assert.That(peers.Counts(AllocationContexts.Bodies), Is.EqualTo(new[] { 1, 1, 0 }));
+
+        peers.Clock.Advance(TimeSpan.FromMilliseconds(10));
+        await request.WaitAsync(token);
+        Assert.That(peers.Counts(AllocationContexts.Bodies), Is.EqualTo(new[] { 1, 1, 1 }));
     }
 
     private static readonly TimeSpan BulkHedgeDelay = TimeSpan.FromMilliseconds(250);

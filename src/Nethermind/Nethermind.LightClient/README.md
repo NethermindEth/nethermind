@@ -240,9 +240,10 @@ local JSON-RPC request with its result and elapsed time. If no SNAP peer can
 serve the selected state, state queries return an error after 30 seconds.
 Wallet execution requests race at most two suppliers, use only a verified response,
 and cancel and join the other attempt. Bulk block data and speculative history
-requests give the first supplier 250 ms before starting a backup. A failed
-supplier can be replaced immediately. Bulk hosted storage pages and trie-node
-updates use one supplier at a time, with retries on other peers.
+requests use one 250 ms backup delay per round. A failed supplier can be replaced
+immediately. If the delay has started, the replacement uses the remaining time.
+Bulk hosted storage pages and trie-node updates use one supplier at a time, with
+retries on other peers.
 Account, storage and bytecode reads have
 separate 32 MiB verified caches shared by RPC, EVM and hosted-account refreshes.
 Authenticated headers have another 32 MiB cache; each read rechecks the requested
@@ -813,10 +814,11 @@ Gloas authenticates an execution block
 hash through the payload bid's parent-block hash; the client then retrieves the matching execution
 header by hash before serving its state. Consequently the newest authenticated
 Gloas execution head trails its attested beacon head by at least one slot.
-Consensus publication shares completed headers and peer capacity with RPC.
+Consensus publication shares the completed header cache and peer pool with RPC.
 Its finalized and optimistic workers share in-flight lookups for the same hash.
-These lookups have a three-second budget and run independently of pending RPC
-downloads, so recovery can retry the newest authenticated candidate.
+The two consensus request slots are separate from the four used for other
+block-data requests. Each consensus lookup has a three-second budget,
+after which the publisher can retry the newest authenticated candidate.
 Gloas has synthetic fork-boundary
 tests and has authenticated native Sepolia bootstrap and subsequent optimistic
 updates from connected peers.
