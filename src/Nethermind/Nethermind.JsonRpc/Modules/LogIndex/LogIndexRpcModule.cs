@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Db.LogIndex;
@@ -32,18 +33,28 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
             return ResultWrapper<IEnumerable<long>>.Fail($"Block {logFilter.ToBlock} is not found.", ErrorCodes.UnknownBlockError);
 
         // Enumerated here so storage failures become JSON-RPC errors instead of breaking response serialization,
-        // stopping one block past the limit so a long indexed range is not loaded in full
+        // stopping one block past the limit so a long indexed range is not loaded in full.
+        // The pooled list is the result itself; the response returns it to the pool once serialized
         int maxResults = jsonRpcConfig.MaxLogsPerResponse;
-        List<long> blockNumbers = [];
-        foreach (long blockNumber in storage.EnumerateBlockNumbersFor(logFilter, (ulong)from, (ulong)to))
+        ArrayPoolList<long> blockNumbers = new(0);
+        bool transferred = false;
+        try
         {
-            if (maxResults > 0 && blockNumbers.Count == maxResults)
-                return ResultWrapper<IEnumerable<long>>.Fail($"Too many blocks requested. Max blocks per response is {maxResults}.", ErrorCodes.LimitExceeded);
+            foreach (long blockNumber in storage.EnumerateBlockNumbersFor(logFilter, (ulong)from, (ulong)to))
+            {
+                if (maxResults > 0 && blockNumbers.Count == maxResults)
+                    return ResultWrapper<IEnumerable<long>>.Fail($"Too many blocks requested. Max blocks per response is {maxResults}.", ErrorCodes.LimitExceeded);
 
-            blockNumbers.Add(blockNumber);
+                blockNumbers.Add(blockNumber);
+            }
+
+            transferred = true;
+            return ResultWrapper<IEnumerable<long>>.Success(blockNumbers);
         }
-
-        return ResultWrapper<IEnumerable<long>>.Success(blockNumbers.ToArray());
+        finally
+        {
+            if (!transferred) blockNumbers.Dispose();
+        }
     }
 
     public ResultWrapper<LogIndexStatus> logIndex_status() => ResultWrapper<LogIndexStatus>.Success(new()

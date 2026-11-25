@@ -25,11 +25,13 @@ public class LogIndexRpcModuleTests
     private const long HeadNumber = 10;
     private const int MaxResults = 3;
 
-    [TestCase("""{"fromBlock":"latest","toBlock":"latest"}""")]
-    [TestCase("""{"fromBlock":"0x1","toBlock":"0x5","topics":[null]}""")]
-    [TestCase("""{"fromBlock":"0x1","toBlock":"0x5","topics":[[],null]}""")]
-    [TestCase("""{"fromBlock":"0x1","toBlock":"0x5","address":[]}""")]
-    public async Task logIndex_blockNumbers_without_address_or_topics_returns_invalid_params(string filter)
+    [Test]
+    public async Task logIndex_blockNumbers_without_address_or_topics_returns_invalid_params(
+        [Values(
+            """{"fromBlock":"latest","toBlock":"latest"}""",
+            """{"fromBlock":"0x1","toBlock":"0x5","topics":[null]}""",
+            """{"fromBlock":"0x1","toBlock":"0x5","topics":[[],null]}""",
+            """{"fromBlock":"0x1","toBlock":"0x5","address":[]}""")] string filter)
     {
         string serialized = await RpcTest.TestSerializedRequest(CreateModule(EnabledStorage()), "logIndex_blockNumbers", filter);
 
