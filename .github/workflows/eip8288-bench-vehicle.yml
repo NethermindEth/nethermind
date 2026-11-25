@@ -1,0 +1,165 @@
+name: EIP-8288 bench vehicle
+
+# Push-triggered stand-in for run-eip8288-calibration.yml with suite=nethermind-bench until that workflow is on master:
+# runs scripts/eip8288-bench/run.sh from NETHERMIND_REF on an ephemeral GCE VM. Inputs come from
+# .github/eip8288-bench.inputs.
+on:
+  push:
+    branches: [test/eip8288-bench-vehicle]
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      machine: ${{ steps.env.outputs.machine }}
+      model: ${{ steps.env.outputs.model }}
+      ref: ${{ steps.env.outputs.ref }}
+      scenarios: ${{ steps.env.outputs.scenarios }}
+      bench_env: ${{ steps.env.outputs.bench_env }}
+      timeout: ${{ steps.env.outputs.timeout }}
+    steps:
+      - name: Read inputs
+        id: env
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api -H "Accept: application/vnd.github.raw" \
+            "repos/${{ github.repository }}/contents/.github/eip8288-bench.inputs?ref=${{ github.sha }}" > inputs.env
+          set -a; . ./inputs.env; set +a
+          [[ $BENCH_ENV =~ ^([A-Z][A-Z0-9_]*=[A-Za-z0-9_.,:/-]*( +|$))*$ ]] || { echo "::error::BENCH_ENV must be NAME=value words"; exit 1; }
+          { echo "machine=$MACHINE_TYPE"; echo "model=$PROVISIONING_MODEL"; echo "ref=$NETHERMIND_REF"; echo "scenarios=$BENCH_SCENARIOS"
+            echo "bench_env=$BENCH_ENV"; echo "timeout=$TIMEOUT_MINUTES"; } | tee -a "$GITHUB_OUTPUT"
+
+  create_a_runner:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      runner_label: ${{ steps.label.outputs.value }}
+    steps:
+      - name: Derive runner label
+        id: label
+        run: echo "value=eip8288-bench-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Create a Runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: ${{ steps.label.outputs.value }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          machine_type: ${{ needs.resolve.outputs.machine }}
+          local_ssd_count: 0
+          boot_disk_size: 200
+          provisioning_model: ${{ needs.resolve.outputs.model }}
+          max_run_duration: 4h
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+  bench:
+    needs: [resolve, create_a_runner]
+    runs-on: ${{ needs.create_a_runner.outputs.runner_label }}
+    timeout-minutes: 200
+    env:
+      RUN_DIR: eip8288-bench-${{ github.run_id }}
+    steps:
+      - name: Run the Nethermind EIP-8288 benchmarks
+        env:
+          NETHERMIND_REF: ${{ needs.resolve.outputs.ref }}
+          BENCH_SCENARIOS: ${{ needs.resolve.outputs.scenarios }}
+          BENCH_ENV: ${{ needs.resolve.outputs.bench_env }}
+          BENCH_MACHINE_TYPE: ${{ needs.resolve.outputs.machine }}
+          TIMEOUT_MINUTES: ${{ needs.resolve.outputs.timeout }}
+        run: |
+          set -euo pipefail
+          scratch=$RUNNER_TEMP/$RUN_DIR
+          rm -rf "$scratch"
+          mkdir -p "$scratch/out"
+          git clone -q --filter=blob:none https://github.com/NethermindEth/nethermind.git "$scratch/nethermind"
+          git -C "$scratch/nethermind" -c advice.detachedHead=false checkout -q "$NETHERMIND_REF"
+          echo "nethermind $NETHERMIND_REF at $(git -C "$scratch/nethermind" rev-parse HEAD)"
+          read -ra settings <<< "$BENCH_ENV"
+          timeout "${TIMEOUT_MINUTES}m" env ${settings[@]+"${settings[@]}"} \
+            "$scratch/nethermind/scripts/eip8288-bench/run.sh" "$scratch/out" "$BENCH_SCENARIOS"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          out=$RUNNER_TEMP/$RUN_DIR/out
+          [[ ! -f $out/host.txt ]] || { echo '```'; cat "$out/host.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [[ ! -f $out/summary.md ]] || head -c 900000 "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eip8288-bench-${{ needs.resolve.outputs.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/${{ env.RUN_DIR }}/out
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/**/bin
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/baseline-src
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/**/signatures.bin
+          if-no-files-found: warn
+          retention-days: 30
+
+  destroy_runner:
+    needs: [resolve, create_a_runner, bench]
+    if: always() && needs.create_a_runner.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Destroy Runner
+        id: destroy
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: ${{ needs.create_a_runner.outputs.runner_label || format('eip8288-bench-{0}-{1}', github.run_id, github.run_attempt) }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          expect_instance: ${{ needs.create_a_runner.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+      - name: Report teardown
+        if: always()
+        env:
+          INSTANCE: ${{ steps.destroy.outputs.instance_name }}
+          TERMINATED_BY: ${{ steps.destroy.outputs.terminated_by }}
+          PREEMPTED: ${{ steps.destroy.outputs.preempted }}
+        run: echo "instance=${INSTANCE} terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"

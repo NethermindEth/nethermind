@@ -1,0 +1,8 @@
+# Inputs for eip8288-bench-vehicle.yml. Edit and push to re-run; a push-triggered stand-in until
+# run-eip8288-calibration.yml (suite=nethermind-bench) is on master.
+MACHINE_TYPE=c3-standard-88
+PROVISIONING_MODEL=SPOT
+NETHERMIND_REF=feature/eip8288-eth76-benchmarks
+BENCH_SCENARIOS=builder,mempool
+BENCH_ENV="COUNTS=20,200 REPEATS=5 NODES=4 DEGREE=3 MEMPOOL_RUNS=1 SECONDS_TO_RUN=60"
+TIMEOUT_MINUTES=120
