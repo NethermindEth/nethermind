@@ -1543,8 +1543,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer) // no GVM trick for ZK
                     : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
 
-                Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
-                VirtualMachine.FlushMetricsCounters();
                 gasAvailable = state.Gas;
 
                 if (_tracerFlags.IsTracingAccess)
