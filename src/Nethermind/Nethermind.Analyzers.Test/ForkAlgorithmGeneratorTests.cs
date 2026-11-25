@@ -145,6 +145,9 @@ public class ForkAlgorithmGeneratorTests
                 public static ForkState Run(ForkBody body)
                 {
                     ForkSignatureSets.Verify();
+            #if GLOAS
+                    ForkEpochProcessing.ProcessEpoch();
+            #endif
             #if HEZE
                     return new ForkState { Slot = 3 };
             #elif GLOAS
@@ -160,8 +163,8 @@ public class ForkAlgorithmGeneratorTests
         string[] expected =
         [
             "class BlockProcessing|BeaconStateFulu Run(BeaconBlockBody body)|SignatureSets.Verify|Slot = 1",
-            "class GloasBlockProcessing|BeaconStateGloas Run(BeaconBlockBodyGloas body)|GloasSignatureSets.Verify|Slot = 2",
-            "class HezeBlockProcessing|BeaconStateHeze Run(BeaconBlockBodyHeze body)|HezeSignatureSets.Verify|Slot = 3",
+            "class GloasBlockProcessing|BeaconStateGloas Run(BeaconBlockBodyGloas body)|GloasSignatureSets.Verify|GloasEpochProcessing.ProcessEpoch|Slot = 2",
+            "class HezeBlockProcessing|BeaconStateHeze Run(BeaconBlockBodyHeze body)|HezeSignatureSets.Verify|HezeEpochProcessing.ProcessEpoch|Slot = 3",
         ];
         GeneratedSourceResult[] sources = result.Results.Single().GeneratedSources.ToArray();
         Assert.That(sources.Select(static source => source.HintName), Is.EqualTo(new[] { "BlockProcessing.forks.g.cs", "GloasBlockProcessing.forks.g.cs", "HezeBlockProcessing.forks.g.cs" }));

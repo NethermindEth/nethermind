@@ -14,7 +14,8 @@ namespace Nethermind.BeaconChain.Generators;
 /// Fork differences are compile-time branches; emitted methods retain concrete state types and calls.
 /// The property is a comma-separated list ordered by activation; <c>Nethermind.BeaconChain.csproj</c> sets it. The first fork keeps the
 /// unprefixed names; each later fork prefixes or suffixes them with its name and defines its own upper-case symbol
-/// and those of the forks between it and the first one.
+/// and those of the forks between it and the first one. On the command line, escape the commas as <c>%2C</c>
+/// (<c>-p:BeaconForkTemplates=Fulu%2CGloas%2CHeze</c>) because <c>-p</c> also splits on <c>,</c>.
 /// </remarks>
 [Generator]
 public sealed class ForkAlgorithmGenerator : IIncrementalGenerator
