@@ -83,24 +83,27 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
-    public async Task InitializeAsync_ChecksumMismatch_DeletesDatabase()
+    public async Task InitializeAsync_ChecksumMismatch_StopsAndKeepsWhatItExtracted()
     {
         byte[] archive = TestArchive.BuildTarZst(TestArchive.BuildFiles());
         _server.Content = archive;
         _config.Checksum = Convert.ToHexString(SHA256.HashData([9, 9, 9]));
         SnapshotCheckpoint checkpoint = CreateCheckpoint();
 
-        await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None),
+            "the node must not start on a database extracted from an unverified snapshot"))!;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Directory.Exists(_dbPath), Is.False, "a database extracted from an unverified snapshot must be deleted");
+            Assert.That(exception.Message, Does.Contain("delete its contents by hand"), "the error must say what to do");
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "what the stream extracted must stay for the operator");
+            Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay, so a later start stops too");
             Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when the checksum fails");
         }
     }
 
     [Test]
-    public async Task InitializeAsync_CorruptArchive_DeletesDatabaseWithoutThrowing()
+    public async Task InitializeAsync_CorruptArchive_StopsAndKeepsTheMarker()
     {
         byte[] garbage = new byte[50_000];
         new Random(42).NextBytes(garbage);
@@ -108,29 +111,32 @@ public class StreamingSnapshotInitializerTests
         _config.Checksum = Convert.ToHexString(SHA256.HashData(garbage));
         SnapshotCheckpoint checkpoint = CreateCheckpoint();
 
-        await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
+        Assert.That(await Assert.CatchAsync(() => CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None)), Is.Not.Null,
+            "a corrupt archive must stop the start");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Directory.Exists(_dbPath), Is.False, "a corrupt archive must not leave a partially extracted database behind");
+            Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay, so a later start stops too");
             Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when extraction fails");
         }
     }
 
     [Test]
-    public async Task InitializeAsync_ArchiveWithSymlinkEntry_DeletesDatabaseWithoutThrowing()
+    public async Task InitializeAsync_ArchiveWithSymlinkEntry_StopsWithoutCreatingTheLink()
     {
         byte[] archive = TestArchive.BuildTarZstWithSymlink();
         _server.Content = archive;
         _config.Checksum = Convert.ToHexString(SHA256.HashData(archive));
         SnapshotCheckpoint checkpoint = CreateCheckpoint();
 
-        await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
+        await Assert.ThatAsync(() => CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None),
+            Throws.InstanceOf<IOException>().With.Message.Contains("unsupported type"),
+            "an archive with link entries must be rejected, because links can escape the database directory");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Directory.Exists(_dbPath), Is.False,
-                "an archive with link entries must be rejected and the partial extraction deleted, because links can escape the database directory");
+            Assert.That(Path.Exists(Path.Combine(_dbPath, "escape")), Is.False, "the link entry must not be extracted");
+            Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay, so a later start stops too");
             Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when extraction is rejected");
         }
     }
@@ -158,14 +164,14 @@ public class StreamingSnapshotInitializerTests
         _config.Checksum = Convert.ToHexString(SHA256.HashData(archive));
         SnapshotCheckpoint checkpoint = CreateCheckpoint();
 
-        await CreateInitializer(connections: 1).InitializeAsync(checkpoint, CancellationToken.None);
+        await Assert.ThatAsync(() => CreateInitializer(connections: 1).InitializeAsync(checkpoint, CancellationToken.None),
+            Throws.InstanceOf<IOException>(), "the node must not start on the database extracted from the mixed stream");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started),
                 "a source rotated to equal-length content with no entity tag must be caught by the checksum instead of completing");
-            Assert.That(SnapshotDatabase.Exists(_dbPath), Is.False,
-                "the database extracted from the mixed stream must be deleted");
+            Assert.That(File.Exists(MarkerPath), Is.True, "the database extracted from the mixed stream must stay marked");
         }
     }
 
@@ -182,7 +188,7 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
-    public async Task InitializeAsync_ArchiveNotMatchingStripComponents_DeletesDatabaseAndThrows()
+    public async Task InitializeAsync_ArchiveNotMatchingStripComponents_KeepsTheMarkerAndThrows()
     {
         byte[] archive = TestArchive.BuildTarZstWithoutTopLevelDirectory();
         _server.Content = archive;
@@ -197,8 +203,8 @@ public class StreamingSnapshotInitializerTests
         {
             Assert.That(exception.Message, Does.Contain("StripComponents"),
                 "the failure must point the operator at the strip configuration");
-            Assert.That(SnapshotDatabase.Exists(_dbPath), Is.False,
-                "the partially created database directory must be cleaned up before failing");
+            Assert.That(File.Exists(MarkerPath), Is.True,
+                "the database directory must stay marked, so a later start stops too");
             Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started),
                 "the checkpoint must not advance when nothing was extracted");
         }
@@ -215,26 +221,24 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
-    public async Task InitializeAsync_SourceChangesOnce_RestartsAndCompletesWithNewSource()
+    public async Task InitializeAsync_SourceChanges_StopsWithoutRestarting()
     {
-        Dictionary<string, byte[]> oldFiles = TestArchive.BuildFiles(seed: 42);
-        byte[] oldArchive = TestArchive.BuildTarZst(oldFiles);
-        Dictionary<string, byte[]> newFiles = TestArchive.BuildFiles(seed: 43);
-        byte[] newArchive = TestArchive.BuildTarZst(newFiles);
+        byte[] oldArchive = TestArchive.BuildTarZst(TestArchive.BuildFiles(seed: 42));
+        byte[] newArchive = TestArchive.BuildTarZst(TestArchive.BuildFiles(seed: 43));
         Assert.That(oldArchive.Length, Is.GreaterThan(TestChunkSize), "precondition: the old archive must span multiple chunks so the switch happens mid-download");
         _server.Content = oldArchive;
         _server.SwitchSourceAfterRequests(2, newArchive, "\"v2\"");
         _config.Checksum = Convert.ToHexString(SHA256.HashData(newArchive));
         SnapshotCheckpoint checkpoint = CreateCheckpoint();
 
-        await CreateInitializer(connections: 1).InitializeAsync(checkpoint, CancellationToken.None);
+        await Assert.CatchAsync<SnapshotSourceChangedException>(() => CreateInitializer(connections: 1).InitializeAsync(checkpoint, CancellationToken.None),
+            "a restart would extract the new source over what the first attempt wrote");
 
-        AssertExtracted(newFiles);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(File.Exists(Path.Combine(_dbPath, "state/a42.sst")), Is.False,
-                "files extracted from the abandoned first attempt must not survive the restart");
-            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Completed), "a source change must restart the download and complete with the new object");
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state/a43.sst")), Is.False, "the new source must not be extracted over the partial data");
+            Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay, so a later start stops too");
+            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when the download never completes");
         }
     }
 
@@ -253,46 +257,6 @@ public class StreamingSnapshotInitializerTests
         AssertExtracted(files);
         Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Completed),
             "a transient probe failure must be retried instead of failing node startup");
-    }
-
-    [Test]
-    public async Task InitializeAsync_SourceKeepsChanging_GivesUpWithoutThrowing()
-    {
-        _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
-        _server.RotateETagEveryRequest = true;
-        SnapshotCheckpoint checkpoint = CreateCheckpoint();
-
-        await CreateInitializer(connections: 1).InitializeAsync(checkpoint, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Directory.Exists(_dbPath), Is.False,
-                "after exhausting the restart budget the partial database must be deleted so the node can continue without a snapshot");
-            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when the download never completes");
-        }
-    }
-
-    [Test]
-    [Platform(Include = "Linux")] // creating links needs a privilege on Windows
-    public async Task InitializeAsync_CleanupMeetsLinkWithMissingTarget_StopsWithTheLinkError()
-    {
-        _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
-        _config.Checksum = Convert.ToHexString(SHA256.HashData(_server.Content));
-        // The disk behind db/state is gone, so the extraction fails on it and the cleanup that follows meets the link.
-        string link = Path.Combine(_dbPath, "state");
-        string target = Path.Combine(_tempDir.Path, "unmounted", "state");
-        Directory.CreateDirectory(_dbPath);
-        Directory.CreateSymbolicLink(link, target);
-
-        await Assert.ThatAsync(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
-            Throws.InstanceOf<IOException>().With.Message.Contains("missing or cannot be read"));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(new DirectoryInfo(link).LinkTarget, Is.EqualTo(target), "the cleanup must keep the link");
-            Assert.That(File.Exists(Path.Combine(_dbPath, ".nethermind-snapshot-extracting")), Is.True,
-                "a cleanup that stopped must keep the marker, so the next start cleans up again");
-        }
     }
 
     [Test]
@@ -331,24 +295,7 @@ public class StreamingSnapshotInitializerTests
         Assert.That(File.Exists(existing), Is.True, "a marker that cannot be written must stop the start before anything is deleted");
     }
 
-    [Test]
-    [Platform(Include = "Linux")] // creating links needs a privilege on Windows
-    public async Task InitializeAsync_DatabaseLinkWithMissingTarget_ThrowsWithoutReplacingIt()
-    {
-        _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
-        _config.Checksum = Convert.ToHexString(SHA256.HashData(_server.Content));
-        string target = Path.Combine(_tempDir.Path, "unmounted");
-        Directory.CreateSymbolicLink(_dbPath, target);
-
-        await Assert.ThatAsync(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
-            Throws.InstanceOf<IOException>().With.Message.Contains("missing or cannot be read"));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(new DirectoryInfo(_dbPath).LinkTarget, Is.EqualTo(target), "the extraction must not replace the link with a plain directory");
-            Assert.That(Directory.Exists(target), Is.False, "nothing may be extracted behind a link whose disk is missing");
-        }
-    }
+    private string MarkerPath => Path.Combine(_dbPath, ".nethermind-snapshot-extracting");
 
     private StreamingSnapshotInitializer CreateInitializer(int connections = 2, IDriveInfo[]? drives = null) =>
         new(_config, _server.Url, _dbPath, drives ?? [],

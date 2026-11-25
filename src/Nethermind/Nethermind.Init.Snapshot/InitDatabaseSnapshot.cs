@@ -25,7 +25,6 @@ public class InitDatabaseSnapshot(
     [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives) : IStep
 {
     private const int MaxStreamingConnections = 16;
-    private const int ExtractionRestartDelaySeconds = 5;
     private const int InitialRetryDelaySeconds = 5;
     private const int MaxRetryDelaySeconds = 300;
     private const int ChecksumBufferSize = 65536;
@@ -65,16 +64,13 @@ public class InitDatabaseSnapshot(
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        // Only the extraction's own marker lets this step delete database content: the checkpoint lives in the snapshot
-        // directory, which can change or be lost, and cannot tell a partial extraction from a synced database.
+        // This step deletes nothing in the database directory. The checkpoint lives in the snapshot directory, which can
+        // change or be lost, and cannot tell a partial extraction from a synced database; the marker shows one, and stays
+        // until the operator has emptied the directory.
         if (SnapshotDatabase.HasUnfinishedExtraction(dbPath))
-        {
-            if (_logger.IsInfo)
-                _logger.Info("Extraction did not complete last time. Restarting. To interrupt press Ctrl^C");
-            await Task.Delay(TimeSpan.FromSeconds(ExtractionRestartDelaySeconds), cancellationToken).ConfigureAwait(false);
-            SnapshotDatabase.Delete(dbPath);
-        }
-        else if (SnapshotDatabase.Exists(dbPath))
+            throw new IOException(SnapshotDatabase.UnfinishedExtraction(dbPath));
+
+        if (SnapshotDatabase.Exists(dbPath))
         {
             if (checkpoint.Read() < SnapshotStage.Extracted)
             {
@@ -89,7 +85,6 @@ public class InitDatabaseSnapshot(
             return;
         }
 
-        // Also after the cleanup above: a stop between the Extracted checkpoint and the marker removal leaves both.
         if (checkpoint.Read() >= SnapshotStage.Extracted)
         {
             if (_logger.IsWarn)
@@ -145,11 +140,11 @@ public class InitDatabaseSnapshot(
     }
 
     /// <summary>
-    /// Keeps a second start on the same database path out until this one returns. It could otherwise see this start's
-    /// marker, wait the restart delay and delete what this start extracted, finished or not. The lock is a file next to
-    /// the database directory, outside what a cleanup deletes, held open with <see cref="FileShare.None"/>: on Unix an
-    /// advisory flock, which the kernel releases when the process exits. The file is never deleted: a process that opened
-    /// it just before would then hold its lock on a file that the next start no longer finds.
+    /// Keeps a second start on the same database path out until this one returns. It would otherwise download into the
+    /// same archive and checkpoint while this one works; the marker alone keeps it from extracting into the same
+    /// directory. The lock is a file next to the database directory, held open with <see cref="FileShare.None"/>: on Unix
+    /// an advisory flock, which the kernel releases when the process exits. The file is never deleted: a process that
+    /// opened it just before would then hold its lock on a file that the next start no longer finds.
     /// </summary>
     private FileStream? LockDatabase(string dbPath)
     {
@@ -271,7 +266,18 @@ public class InitDatabaseSnapshot(
 
         SnapshotDatabase.BeginExtraction(dbPath);
         SnapshotExtractor extractor = new(api.LogManager);
-        await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Nothing is deleted: the marker keeps every later start from taking the partial extraction for a database.
+            if (_logger.IsError)
+                _logger.Error($"Snapshot extraction did not finish. {SnapshotDatabase.UnfinishedExtraction(dbPath)}");
+            throw;
+        }
+
         checkpoint.Advance(SnapshotStage.Extracted);
         SnapshotDatabase.CompleteExtraction(dbPath);
     }
