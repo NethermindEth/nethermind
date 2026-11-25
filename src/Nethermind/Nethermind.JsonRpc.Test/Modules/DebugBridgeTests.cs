@@ -116,6 +116,22 @@ public class DebugBridgeTests
         receiptFinder.DidNotReceiveWithAnyArgs().Get(default(Block)!);
     }
 
+    [Test]
+    public async Task GetFromDb_with_unknown_database_returns_invalid_params()
+    {
+        await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        IDebugRpcModule module = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+
+        using JsonRpcResponse response = await RpcTest.TestRequest(module, "debug_getFromDb", "0x", "0x");
+
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error.Message, Does.StartWith("Unknown database, expected one of: "));
+        }
+    }
+
     public enum ProcessingState { Running, PausedExecuting, PausedQueued, PausedIdle }
 
     public enum HistoricalSync { Complete, CompleteDeepRewind, CompleteWithoutRewind, Headers, Bodies, Receipts, ReceiptsInactive, AccessLists, DeleteProgressFloor, BodyFloor, ReceiptFloor, AccessListFloor, BodyAboveHead, AccessListActivation, AccessListActivationGap, AccessListActivationFloor, AccessListActivationRepeatedRewind }
