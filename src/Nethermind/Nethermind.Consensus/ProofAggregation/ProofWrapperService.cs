@@ -63,13 +63,16 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     internal const int MaxStandingStatements = 4096;
 
-    /// <summary>The latest aggregate of each bucket this node built or relayed, kept in the store's recursive cache every cycle;
+    /// <summary>The best aggregate of each bucket this node built or relayed, kept in the store's recursive cache every cycle;
     /// guarded by itself.</summary>
     /// <remarks>The store evicts its cached recursive proofs least recently used first, so a flood of valid wrappers could
     /// otherwise push out the aggregates a builder or inclusion list takes, whichever buckets this node proves. At most one per
-    /// bucket is kept, each under the verifier it was validated with.</remarks>
-    private readonly (List<FrameDependency> Deps, byte[] Proof, Eip8288Verifier Verifier)?[] _bucketAggregates =
-        new (List<FrameDependency>, byte[], Eip8288Verifier)?[BucketCount];
+    /// bucket is kept, under the verifier it was validated with. A newer one replaces it only when covering at least as many
+    /// still-pending transactions, so a peer cannot displace it with a narrower one; it is dropped once none of its transactions
+    /// is pending.</remarks>
+    private readonly BucketAggregate?[] _bucketAggregates = new BucketAggregate?[BucketCount];
+
+    private sealed record BucketAggregate(ValueHash256[] Transactions, List<FrameDependency> Deps, byte[] Proof, Eip8288Verifier Verifier);
 
     /// <summary>Encoded transaction and dependency bytes a produced mode-1 wrapper may carry: <c>MAX_WRAPPER_BYTES</c> less the
     /// largest aggregate proof and the list framing.</summary>
@@ -1068,16 +1071,33 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
     }
 
-    /// <summary>Keeps <paramref name="proof"/> as its bucket's latest aggregate when every one of <paramref name="transactions"/> is
-    /// in that bucket.</summary>
+    /// <summary>Keeps <paramref name="proof"/> as its bucket's aggregate when every one of <paramref name="transactions"/> is in that
+    /// bucket and it covers at least as many pending transactions as the one held.</summary>
     private void KeepBucketAggregate(IReadOnlyList<Transaction> transactions, IReadOnlyList<FrameDependency> deps, byte[] proof,
         Eip8288Verifier verifier)
     {
         if (transactions.Count == 0) return;
         int bucket = BucketOf(transactions[0].Hash!);
-        for (int i = 1; i < transactions.Count; i++)
+        ValueHash256[] hashes = new ValueHash256[transactions.Count];
+        for (int i = 0; i < transactions.Count; i++)
+        {
             if (BucketOf(transactions[i].Hash!) != bucket) return;
-        lock (_bucketAggregates) _bucketAggregates[bucket] = ([.. deps], proof, verifier);
+            hashes[i] = transactions[i].Hash!.ValueHash256;
+        }
+        lock (_bucketAggregates)
+        {
+            if (_bucketAggregates[bucket] is { } held && held.Verifier == verifier
+                && PendingCount(hashes) < PendingCount(held.Transactions)) return;
+            _bucketAggregates[bucket] = new(hashes, [.. deps], proof, verifier);
+        }
+    }
+
+    private int PendingCount(ValueHash256[] transactions)
+    {
+        int pending = 0;
+        foreach (ValueHash256 hash in transactions)
+            if (txPool.TryGetPendingTransaction(hash, out _)) pending++;
+        return pending;
     }
 
     /// <summary>Touches each bucket's kept aggregate in the store's recursive cache, dropping those of an earlier verifier.</summary>
@@ -1088,7 +1108,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             for (int bucket = 0; bucket < _bucketAggregates.Length; bucket++)
             {
                 if (_bucketAggregates[bucket] is not { } held) continue;
-                if (held.Verifier != verifier)
+                if (held.Verifier != verifier || !IsAnyPending(held.Transactions))
                 {
                     _bucketAggregates[bucket] = null;
                     continue;

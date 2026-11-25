@@ -113,8 +113,9 @@ internal sealed class DependencyProofBlockProcessor(
                     (HashSet<FrameDependency> limit, int kept) = producing.LeanProduction.DependencyLimit is null
                         ? includable.ChooseBucketLimit(proven)
                         : includable.ChooseProvenLimit(proven);
-                    // Only the latest payload's unrestricted body is worth proving, and only when the rebuild leaves some of it out.
-                    if (latest && producing.LeanProduction.DependencyLimit is null && kept < block.Transactions.Length
+                    // Only the latest payload is worth proving: its unrestricted body when the rebuild leaves some of it out, else a
+                    // rebuild whose bucket merge did not fit, unless a scheduled statement already covers it.
+                    if (latest && (producing.LeanProduction.DependencyLimit is not null || kept < block.Transactions.Length)
                         && !_dependencyProofCache.IsScheduledWithin(attempted))
                         DependencyProofPlanner.ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept,
                             leanProofStore, verifier, _dependencyProofCache);

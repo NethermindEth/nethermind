@@ -848,7 +848,8 @@ public class ProofWrapperServiceTests
     }
 
     // A peer's bucket aggregate this node admitted and relayed stays held for its builder and inclusion lists, whether or not the
-    // node drew that bucket and even after a flood of other valid aggregates through the store's bounded recursive cache.
+    // node drew that bucket, through a narrower aggregate ground into the same bucket and a flood of other valid aggregates
+    // through the store's bounded recursive cache; it is let go once none of its transactions is pending.
     [Test]
     public async Task Relayed_bucket_aggregate_stays_held_through_a_flood_whatever_the_draw()
     {
@@ -860,26 +861,41 @@ public class ProofWrapperServiceTests
             return InBucket(5, CreateTransaction(dependency, key));
         })];
         byte[] wrapper = CreateService(bucket, peerStore, new FakeLeanProofVerifier(true)).BuildWrapper().Data!;
+        byte[] narrow = CreateService([bucket[0]], peerStore, new FakeLeanProofVerifier(true)).BuildWrapper().Data!;
         List<FrameDependency> deps = [.. Decode(wrapper).Deps];
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         // The node already holds the transactions' direct witnesses, as from their senders' mode-0 wrappers.
         store.AddVerified(deps, [.. deps.Select(static _ => new byte[] { 1 })], null);
+        Transaction[] pending = bucket;
         ITxPool pool = Substitute.For<ITxPool>();
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
         ProofWrapperService service = CreateService([], store, new FakeLeanProofVerifier(true), pool: pool, aggregationProbability: 0);
+        pool.GetPendingTransactions().Returns(_ => pending);
 
-        Assert.That((await service.AcceptDetailedAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
-        for (int i = 0; i < 2048; i++)
-            store.AddCachedRecursive([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"flood:{i}"), default)], [2]);
+        ProofWrapperAcceptanceStatus[] accepted = [(await service.AcceptDetailedAsync(wrapper)).Status, (await service.AcceptDetailedAsync(narrow)).Status];
+        Assert.That(accepted, Is.All.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        Flood(0);
         Assert.That(store.TryGetRecursiveProof(deps, out _), Is.False, "the flood evicts it from the cache alone");
         Result refreshed = service.RefreshWrapper();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(refreshed.Error, Is.EqualTo(ProofWrapperService.NoBucketSelected));
-            Assert.That(store.TryGetRecursiveProof(deps, out _), Is.True);
+            Assert.That(store.TryGetRecursiveProof(deps, out _), Is.True, "the narrower aggregate does not displace it");
             Assert.That(store.SmallestProving(deps)?.InnerDeps, Is.EqualTo(deps), "an inclusion list can attach it");
             Assert.That(store.WidestProving(deps, new HashSet<FrameDependency>())?.InnerDeps, Is.EqualTo(deps), "a builder can take it");
+        }
+
+        pending = [];
+        service.RefreshWrapper();
+        Flood(1);
+        service.RefreshWrapper();
+        Assert.That(store.TryGetRecursiveProof(deps, out _), Is.False, "it is let go once none of its transactions is pending");
+
+        void Flood(int round)
+        {
+            for (int i = 0; i < 2048; i++)
+                store.AddCachedRecursive([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"flood:{round}:{i}"), default)], [2]);
         }
     }
 

@@ -1162,6 +1162,33 @@ public class Eip8288BlockProductionTests
         }
     }
 
+    // A rebuild whose inputs do not merge within the deadline bound, although held statements kept the whole body, falls back to
+    // one statement and still schedules the rest off path.
+    [Test]
+    public async Task Deadline_rebuild_too_wide_to_merge_still_schedules_its_body()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        UInt256 key = 1;
+        for (int bucket = 0; bucket < ProofWrapperService.BucketCount; bucket++)
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"wide-{bucket}"), default);
+            proofs.AddVerified([dependency], [[1]], null);
+            proofs.AddCachedRecursive([dependency], Eip8288Dependencies.ComputeDepsHash([dependency]).ToByteArray());
+            Transaction transaction = CreateTransaction(chain, dependency, [key++]);
+            while (ProofWrapperService.BucketOf(transaction.Hash!) != bucket) transaction = CreateTransaction(chain, dependency, [key++]);
+            Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        using CancellationTokenSource deadline = new();
+        Block? block = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Each leanSTARK witness is its own leaf, so folding sixteen of them exceeds MaxDeadlineMergeCost.
+        Assert.That(block!.Transactions, Has.Length.LessThan(ProofWrapperService.BucketCount));
+        Assert.That(() => verifier.ProofCalls, Is.Positive.After(5000, 20), "the rest of the body is proven off path");
+    }
+
     [Test]
     public async Task Deadline_production_prefers_the_proven_set_that_keeps_the_most_transactions()
     {
