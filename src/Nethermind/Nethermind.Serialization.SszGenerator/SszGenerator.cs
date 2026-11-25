@@ -1100,9 +1100,12 @@ internal static partial class SszCodecHelpers
         return $"UInt256 {rootName}; {MerkleizeRootAssignmentStatement(property, expression, rootName)} merkleizer.Feed({rootName});";
     }
 
+    private static bool IsBasicCollection(SszProperty m) =>
+        (m.Kind & (Kind.Collection | Kind.BitList | Kind.ProgressiveBitList)) != Kind.None && m.Type.Kind == Kind.Basic;
+
     private static string DynamicLength(SszType container, SszProperty m)
     {
-        if ((m.Kind & (Kind.Collection | Kind.BitList | Kind.ProgressiveBitList)) != Kind.None && m.Type.Kind == Kind.Basic)
+        if (IsBasicCollection(m))
         {
             string length = m.Kind is Kind.BitList or Kind.ProgressiveBitList
                 ? $"(container.{m.Name} is not null ? container.{m.Name}.Length / 8 + 1 : 1)"
@@ -1119,6 +1122,21 @@ internal static partial class SszCodecHelpers
         // A null reference-typed property contributes zero bytes to the variable-length region —
         // matches the static-field encode's "skip on null" behaviour and keeps offsets consistent.
         return m.IsNullable ? $"(container.{m.Name} is null ? 0 : {call})" : call;
+    }
+
+    /// <summary>Emits the encode of a variable-size member at <paramref name="start"/>, declaring <paramref name="end"/> as the offset past it.</summary>
+    private static string VariableEncodeStatement(SszType decl, SszProperty property, string start, string end)
+    {
+        string expression = $"container.{property.Name}";
+        bool requiresNullGuard = RequiresNullGuard(property);
+        if (IsBasicCollection(property))
+        {
+            string nullGuard = requiresNullGuard ? $"if ({expression} is not null) " : string.Empty;
+            return $"int {end} = {start} + {DynamicLength(decl, property)}; {nullGuard}{EncodeStatement($"data.Slice({start}, {end} - {start})", property, expression)}";
+        }
+
+        string call = $"{property.Type.StaticMemberAccess}.Encode(data.Slice({start}), {EncodeValueExpression(property, expression)})";
+        return $"int {end} = {start} + {(requiresNullGuard || property.IsNullable ? $"({expression} is null ? 0 : {call})" : call)};";
     }
 
     private static string ByteArrayLiteral(byte[] value) => $"[{string.Join(", ", value)}]";
@@ -1252,7 +1270,7 @@ internal static partial class SszCodecHelpers
         try
         {
             List<SszProperty> variables = decl.Members.Where(m => m.IsVariable).ToList();
-            IEnumerable<string> BuildStaticEncodeLines(SszType d)
+            IEnumerable<string> BuildEncodeLines(SszType d)
             {
                 int localStaticOffset = 0;
                 int localOffsetIndex = 0;
@@ -1262,7 +1280,7 @@ internal static partial class SszCodecHelpers
                     if (m.IsVariable)
                     {
                         localOffsetIndex++;
-                        line = $"EncodeSszOffset(data.Slice({localStaticOffset}, 4), offset{localOffsetIndex});";
+                        line = $"EncodeSszOffset(data.Slice({localStaticOffset}, 4), offset{localOffsetIndex}); {VariableEncodeStatement(d, m, $"offset{localOffsetIndex}", $"offset{localOffsetIndex + 1}")}";
                     }
                     else
                     {
@@ -1370,15 +1388,16 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
+    public static int Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
-            return;
+            return 0;
         }")}
 {Whitespace}
         {ValidationStatement(decl, variables[0], $"container.{variables[0].Name}")}
-        {(RequiresNullGuard(variables[0]) ? $"if (container.{variables[0].Name} is not null) " : string.Empty)}{EncodeStatement("data", variables[0], $"container.{variables[0].Name}")}
+        {VariableEncodeStatement(decl, variables[0], "0", "length")}
+        return length;
     }}
 {Whitespace}
     public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
@@ -1388,7 +1407,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
+    public static int Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
 {Whitespace}
         int offset = items.Length * {(SszType.PointerLength)};
@@ -1398,10 +1417,9 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             EncodeSszOffset(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
-            int length = GetLength(item);
-            Encode(data.Slice(offset, length), item);
-            offset += length;
+            offset += Encode(data.Slice(offset), item);
         }}
+        return offset;
     }}
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName} container)
@@ -1563,20 +1581,20 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
+    public static int Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
-            return;
+            return 0;
         }")}
 {Whitespace}
 {Shift(2, ValidationStatements(decl, decl.Members!, "container"))}
 {Whitespace}
-{Shift(2, variables.Select((_, i) => $"int offset{i + 1} = {(i == 0 ? decl.StaticLength : $"offset{i} + {DynamicLength(decl, variables[i - 1])}")};"))}
+        {(variables.Any() ? $"int offset1 = {decl.StaticLength};" : string.Empty)}
 {Whitespace}
-{Shift(2, BuildStaticEncodeLines(decl))}
+{Shift(2, BuildEncodeLines(decl))}
 {Whitespace}
-{Shift(2, variables.Select((m, i) => (RequiresNullGuard(m) ? $"if (container.{m.Name} is not null) " : "") + EncodeStatement($"data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1})", m, $"container.{m.Name}")))}
+        return {(variables.Any() ? $"offset{variables.Count + 1}" : decl.StaticLength.ToString())};
     }}
 {Whitespace}
     public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
@@ -1586,7 +1604,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
+    public static int Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
 {Whitespace}
         {(decl.IsVariable ? @$"int offset = items.Length * {(SszType.PointerLength)};
@@ -1596,9 +1614,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             EncodeSszOffset(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
-            int length = GetLength(item);
-            Encode(data.Slice(offset, length), item);
-            offset += length;
+            offset += Encode(data.Slice(offset), item);
         }}" : @$"int offset = 0;
         foreach({decl.TypeReferenceName} item in items)
         {{
@@ -1606,6 +1622,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
             {(decl.IsStruct ? string.Empty : "if (item is null) data.Slice(offset, length).Clear(); else ")}Encode(data.Slice(offset, length), item);
             offset += length;
         }}")}
+        return offset;
     }}
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName} container)
@@ -1779,27 +1796,27 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
+    public static int Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
-            return;
+            return 0;
         }")}
-        ValidateSszExactLength(data.Length, GetLength(container), nameof({decl.TypeReferenceName}));
         data[0] = (byte)container.Selector;
 {Whitespace}
         switch(container.Selector) {{
 {Shift(3, decl.CompatibleUnionMembers!.Select(m =>
 {
     string expression = $"container.{m.Name}";
-    string target = "data.Slice(1)";
-    string encode = NullClearingEncodeStatement(target, m, expression, EncodeStatement(target, m, expression));
-    return $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: {encode} break;";
+    string target = $"data.Slice(1, {m.StaticLength})";
+    string encode = m.IsVariable
+        ? $"{VariableEncodeStatement(decl, m, "1", "end")} return end;"
+        : $"{NullClearingEncodeStatement(target, m, expression, EncodeStatement(target, m, expression))} return 1 + {m.StaticLength};";
+    return $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: {{ {ValidationStatement(decl, m, expression)} {encode} }}";
 }))}
             default:
-                ThrowInvalidSszData(nameof({decl.TypeReferenceName}), $""unsupported union selector {{(byte)container.Selector}}."");
-                break;
-        }};
+                return ThrowInvalidSszData<int>(nameof({decl.TypeReferenceName}), $""unsupported union selector {{(byte)container.Selector}}."");
+        }}
     }}
 {Whitespace}
     public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
@@ -1809,7 +1826,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
+    public static int Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
         int offset = items.Length * {(SszType.PointerLength)};
         int itemOffset = 0;
@@ -1817,10 +1834,9 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             EncodeSszOffset(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
-            int length = GetLength(item);
-            Encode(data.Slice(offset, length), item);
-            offset += length;
+            offset += Encode(data.Slice(offset), item);
         }}
+        return offset;
     }}
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName}[] container)
