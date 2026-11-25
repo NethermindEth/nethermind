@@ -48,9 +48,8 @@ namespace Nethermind.TxPool.Collections
         private protected readonly WorstValueHeap<TValue, TKey> _worstSortedValues;
         protected KeyValuePair<TValue, TKey>? _worstValue = null;
         private TValue[]? _snapshot;
-        private SnapshotDictionary<TGroupKey, TValue[]>? _productionSnapshot;
+        private volatile SnapshotDictionary<TGroupKey, TValue[]>? _productionSnapshot;
         private SnapshotDictionary<TGroupKey, TValue[]>? _productionSnapshotBeforeBulkUpdate;
-        private bool _isProductionSnapshotUsed;
 
         /// <summary>
         /// Constructor
@@ -155,37 +154,11 @@ namespace Nethermind.TxPool.Collections
         /// Membership changes invalidate cached arrays. In-place value updates remain visible through their
         /// references and must not reorder a bucket without invalidating its snapshot.
         /// Unfiltered calls also cache the dictionary; filtered calls reuse only the bucket arrays.
-        /// While a bulk update runs, an unfiltered call returns the pool as it was before that update without
-        /// waiting for the lock; see <see cref="BeginBulkUpdateNonLocked"/>.
         /// </remarks>
         internal IDictionary<TGroupKey, TValue[]> GetProductionSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
         {
-            if (where is null && Volatile.Read(ref _productionSnapshotBeforeBulkUpdate) is { } beforeBulkUpdate)
-                return beforeBulkUpdate;
-
             using McsLock.Disposable lockRelease = Lock.Acquire();
-            return GetProductionSnapshotNonLocked(where);
-        }
-
-        /// <summary>Publishes the current production snapshot for lock-free reads until <see cref="EndBulkUpdateNonLocked"/>.</summary>
-        /// <remarks>
-        /// A bulk update holds the lock for as long as it takes, and block production must not wait for it. The
-        /// producer then builds from the pool as it was before the update: it executes every candidate and skips
-        /// those the update would have removed. Pools that never served a production snapshot skip the copy.
-        /// </remarks>
-        private protected void BeginBulkUpdateNonLocked()
-        {
-            if (_isProductionSnapshotUsed)
-                Volatile.Write(ref _productionSnapshotBeforeBulkUpdate, GetProductionSnapshotNonLocked(where: null));
-        }
-
-        /// <summary>Stops serving the snapshot <see cref="BeginBulkUpdateNonLocked"/> published.</summary>
-        private protected void EndBulkUpdateNonLocked() => Volatile.Write(ref _productionSnapshotBeforeBulkUpdate, null);
-
-        private SnapshotDictionary<TGroupKey, TValue[]> GetProductionSnapshotNonLocked(Predicate<(TGroupKey key, TValue first)>? where)
-        {
-            _isProductionSnapshotUsed |= where is null;
-            if (where is null && _productionSnapshot is not null) return _productionSnapshot;
+            if (where is null && _productionSnapshot is { } cachedSnapshot) return cachedSnapshot;
             if (_buckets.Count == 0) return _productionSnapshot ??= new([], 0);
 
             KeyValuePair<TGroupKey, TValue[]>[] entries = new KeyValuePair<TGroupKey, TValue[]>[_buckets.Count];
@@ -203,6 +176,14 @@ namespace Nethermind.TxPool.Collections
             if (where is null) _productionSnapshot = snapshot;
             return snapshot;
         }
+
+        /// <summary>Reuses cached membership even if a bulk update is removing some of its transactions.</summary>
+        internal IDictionary<TGroupKey, TValue[]> GetProductionSnapshotAllowingPreUpdateMembership() =>
+            _productionSnapshot ?? Volatile.Read(ref _productionSnapshotBeforeBulkUpdate) ?? GetProductionSnapshot();
+
+        private protected void BeginBulkUpdateNonLocked() => Volatile.Write(ref _productionSnapshotBeforeBulkUpdate, _productionSnapshot);
+
+        private protected void EndBulkUpdateNonLocked() => Volatile.Write(ref _productionSnapshotBeforeBulkUpdate, null);
 
         /// <summary>
         /// Gets all items of requested group.

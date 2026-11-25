@@ -326,26 +326,41 @@ public class TxDistinctSortedPoolTests
     }
 
     [Test]
-    public void Production_snapshot_shows_the_pool_before_a_running_update([Values] bool blobs)
+    public void Production_snapshot_reuses_cached_membership_before_and_during_a_bulk_update()
     {
-        TxDistinctSortedPool pool = Pool(blobs, AccountTx(0, 100, TestItem.KeccakA), OtherSenderTx("other", 100));
-        pool.GetProductionSnapshot();
+        TxDistinctSortedPool pool = Pool(blobs: false, AccountTx(0, 100, TestItem.KeccakA), OtherSenderTx("other", 100));
+        IDictionary<AddressAsKey, Transaction[]> cached = pool.GetProductionSnapshotAllowingPreUpdateMembership();
+        pool.UpdateGroup(Sender, default,
+            (in AccountStruct _, EnhancedSortedSet<Transaction> _, ref Transaction? _, TxDistinctSortedPool.UpdateTransactionDelegate _) =>
+                Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership(), Is.SameAs(cached)));
 
-        List<IDictionary<AddressAsKey, Transaction[]>> duringUpdate = [];
         pool.UpdatePool(Substitute.For<IAccountStateProvider>(),
             (in AccountStruct _, EnhancedSortedSet<Transaction> bucket, ref Transaction? lastElement, TxDistinctSortedPool.UpdateTransactionDelegate updateTx) =>
             {
-                // The update holds the pool lock, which is not reentrant, so only a lock-free read gets through.
-                duringUpdate.Add(pool.GetProductionSnapshot());
+                Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership(), Is.SameAs(cached));
                 updateTx(bucket, bucket.Min!, changedGasBottleneck: null, lastElement);
             });
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(duringUpdate, Has.Count.EqualTo(2));
-            Assert.That(duringUpdate[1], Has.Count.EqualTo(2), "the second bucket still sees the first one's removed transaction");
-            Assert.That(pool.GetProductionSnapshot(), Is.Empty);
-        }
+        Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership(), Is.Empty);
+    }
+
+    [Test]
+    public void Bulk_update_leaves_an_invalidated_production_snapshot_to_the_next_reader()
+    {
+        Transaction first = AccountTx(0, 100, TestItem.KeccakA);
+        TxDistinctSortedPool pool = Pool(blobs: false, first);
+        pool.GetProductionSnapshotAllowingPreUpdateMembership();
+        Transaction next = AccountTx(1, 100, TestItem.KeccakB);
+        pool.TryInsert(next.Hash!, next);
+
+        pool.UpdatePool(Substitute.For<IAccountStateProvider>(),
+            (in AccountStruct _, EnhancedSortedSet<Transaction> _, ref Transaction? _, TxDistinctSortedPool.UpdateTransactionDelegate _) =>
+            {
+                // A cache miss takes the non-reentrant lock already held by this update.
+                Assert.That(() => pool.GetProductionSnapshotAllowingPreUpdateMembership(), Throws.InvalidOperationException);
+            });
+
+        Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership()[Sender], Is.EqualTo(new[] { first, next }));
     }
 
     private static Transaction[] TreeOrder(TxDistinctSortedPool pool)

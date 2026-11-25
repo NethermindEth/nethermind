@@ -3067,7 +3067,8 @@ namespace Nethermind.TxPool
         {
             long forkStateVersion = Volatile.Read(ref _forkStateVersion);
             IDictionary<AddressAsKey, Transaction[]> transactions =
-                SelectReadySenders(_transactions.GetProductionSnapshot(), filterToReadyTx, baseFee);
+                SelectReadySenders(_transactions.GetProductionSnapshotAllowingPreUpdateMembership(), filterToReadyTx, baseFee);
+            // Blob selection reserves slots before execution, so a stale candidate can displace an includable one.
             IDictionary<AddressAsKey, Transaction[]> blobTransactions =
                 SelectReadySenders(_blobTransactions.GetProductionSnapshot(), filterToReadyTx, baseFee);
 
