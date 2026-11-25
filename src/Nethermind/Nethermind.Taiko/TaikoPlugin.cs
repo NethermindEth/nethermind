@@ -54,8 +54,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-    public bool MustInitialize => true;
-
     public string SealEngineType => Core.SealEngineType.Taiko;
 
     public IModule Module => new TaikoModule();

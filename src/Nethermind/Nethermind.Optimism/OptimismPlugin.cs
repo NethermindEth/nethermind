@@ -69,8 +69,6 @@ public class OptimismPlugin(ChainSpec chainSpec, IOptimismConfig optimismConfig)
         Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
     }
 
-    public bool MustInitialize => true;
-
     public IModule Module => new OptimismModule(chainSpec, optimismConfig);
 }
 

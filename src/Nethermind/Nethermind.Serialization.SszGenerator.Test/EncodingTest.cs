@@ -7,11 +7,15 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Serialization.Ssz.Merkleization;
@@ -33,10 +37,13 @@ public class EncodingTest
             byte[] encoded = PresetContainer.Encode(value);
             Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(encoded.AsSpan(count * 8)), Is.EqualTo(count * 8 + 4));
             PresetContainer.Decode(encoded, out PresetContainer decoded);
+            PresetContainer.RefReader reader = new(encoded);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(decoded.Head.Values, Has.Length.EqualTo(count));
                 Assert.That(decoded.Tail, Is.EqualTo(value.Tail));
+                Assert.That(reader.Head.Values.Count, Is.EqualTo(count));
+                Assert.That(ToArray(reader.Tail, static item => item), Is.EqualTo(value.Tail));
             }
             UInt256 tail = new(1, 2, 3, 4);
             if (!alternate) tail = HashConcat(tail, UInt256.Zero);
@@ -484,6 +491,53 @@ public class EncodingTest
             Assert.That(decoded.Items[0].Items![0].Fixed2, Is.EqualTo([2UL, 3UL]));
             Assert.That(decoded.Items[1].Items, Has.Length.EqualTo(1));
             Assert.That(decoded.Items[1].Items![0].Fixed2, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Encode_nested_variable_values_reports_the_bytes_written([Values(0, 1, 2, 40)] int itemCount, [Values(0, 3)] int spareBytes)
+    {
+        ProgressiveVarTestStructList[] items = [.. Enumerable.Range(0, itemCount).Select(static i => new ProgressiveVarTestStructList
+        {
+            Items = [.. Enumerable.Range(0, i % 3).Select(j => new VariableC { Fixed1 = (ulong)i, Fixed2 = new ulong[j + (i % 4)] })],
+        })];
+        NestedProgressiveListContainer container = new() { Items = items };
+        byte[] expectedItems = EncodeWithOffsets([.. items.Select(static item => VariableC.Encode(item.Items))]);
+        byte[] expected = [.. LittleEndian(4), .. expectedItems];
+        byte[] buffer = new byte[expected.Length + spareBytes];
+        byte[] itemsBuffer = new byte[expectedItems.Length + spareBytes];
+
+        int written = NestedProgressiveListContainer.Encode(buffer, container);
+        int itemsWritten = ProgressiveVarTestStructList.Encode(itemsBuffer, items);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written, Is.EqualTo(expected.Length));
+            Assert.That(itemsWritten, Is.EqualTo(expectedItems.Length));
+            Assert.That(buffer, Is.EqualTo((byte[])[.. expected, .. new byte[spareBytes]]));
+            Assert.That(itemsBuffer, Is.EqualTo((byte[])[.. expectedItems, .. new byte[spareBytes]]));
+            Assert.That(Encode(container), Is.EqualTo(expected));
+            Assert.That(ProgressiveVarTestStructList.Encode(items), Is.EqualTo(expectedItems));
+            Assert.That(NestedProgressiveListContainer.Encode([container, container]), Is.EqualTo(EncodeWithOffsets([expected, expected])));
+        }
+
+        static byte[] LittleEndian(int value)
+        {
+            byte[] bytes = new byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(bytes, value);
+            return bytes;
+        }
+
+        static byte[] EncodeWithOffsets(byte[][] parts)
+        {
+            int offset = parts.Length * sizeof(int);
+            List<byte> encoded = [];
+            foreach (byte[] part in parts)
+            {
+                encoded.AddRange(LittleEndian(offset));
+                offset += part.Length;
+            }
+            return [.. encoded, .. parts.SelectMany(static part => part)];
         }
     }
 
@@ -1071,6 +1125,146 @@ public class EncodingTest
         }
     }
 
+    [Test]
+    public void RefReader_reads_every_member_kind()
+    {
+        ComplexStruct value = MakeComplexStruct();
+        byte[] encoded = Encode(value);
+        byte[] bitVector = new byte[2];
+        value.BitVec!.CopyTo(bitVector, 0);
+
+        ComplexStruct.RefReader reader = new(encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.Test1, Is.EqualTo(value.Test1));
+            Assert.That(ToArray(reader.Test2, static item => item), Is.EqualTo(value.Test2));
+            Assert.That(ToArray(reader.Test3, static item => item), Is.EqualTo(value.Test3));
+            Assert.That(reader.FixedC.Fixed2, Is.EqualTo(value.FixedC.Fixed2));
+            Assert.That(reader.VariableC.Fixed1, Is.EqualTo(value.VariableC.Fixed1));
+            Assert.That(ToArray(reader.VariableC.Fixed2, static item => item), Is.EqualTo(value.VariableC.Fixed2));
+            Assert.That(ToArray(reader.FixedCVec, static item => item.Fixed2), Is.EqualTo(value.FixedCVec.Select(static item => item.Fixed2)));
+            Assert.That(ToArray(reader.FixedCList, static item => item.Fixed2), Is.EqualTo(value.FixedCList.Select(static item => item.Fixed2)));
+            Assert.That(ToArray(reader.VariableCVec, static item => ToArray(item.Fixed2, static x => x)), Is.EqualTo(value.VariableCVec.Select(static item => item.Fixed2)));
+            Assert.That(ToArray(reader.VariableCList, static item => ToArray(item.Fixed2, static x => x)), Is.EqualTo(value.VariableCList.Select(static item => item.Fixed2)));
+            Assert.That(reader.Test2Union.Selector, Is.EqualTo(value.Test2Union.Selector));
+            Assert.That(reader.Test2Union.PreviousValue, Is.EqualTo(value.Test2Union.PreviousValue));
+            Assert.That(ToArray(reader.Test2UnionVec, static item => item.CurrentValue), Is.EqualTo(value.Test2UnionVec!.Select(static item => item.CurrentValue)));
+            Assert.That(ToArray(reader.Test2UnionList, static item => item.CurrentValue), Is.EqualTo(value.Test2UnionList!.Select(static item => item.CurrentValue)));
+            Assert.That(reader.BitVec.ToArray(), Is.EqualTo(bitVector));
+            // Bits 0 and 2 of a 4-bit list, then the sentinel.
+            Assert.That(reader.BitList2.ToArray(), Is.EqualTo(Bytes.FromHexString("15")));
+        }
+    }
+
+    [Test]
+    public void RefReader_reads_leaves_as_values_or_bytes()
+    {
+        LeafContainer value = new()
+        {
+            Hash = TestItem.KeccakA,
+            Address = TestItem.AddressA,
+            Bloom = new Bloom(Enumerable.Repeat((byte)7, Bloom.ByteLength).ToArray()),
+            Enum = PrimitiveEnum.Two,
+            Reference = new TestBytes48(Enumerable.Repeat((byte)9, TestBytes48SszVectorTypeConverter.Length).ToArray()),
+            Hashes = [TestItem.KeccakB, TestItem.KeccakC],
+            Blooms = [Bloom.Empty, new Bloom(Enumerable.Repeat((byte)3, Bloom.ByteLength).ToArray())],
+            Addresses = [TestItem.AddressB, TestItem.AddressC],
+            AddressVector = [TestItem.AddressD, TestItem.AddressE],
+            Enums = [PrimitiveEnum.Max, PrimitiveEnum.One],
+            Bytes = Bytes.FromHexString("010203"),
+        };
+
+        byte[] encoded = Encode(value);
+        LeafContainer.RefReader reader = new(encoded);
+
+        ValueHash256 hash = reader.Hash;
+        ref readonly ValueAddress address = ref reader.Address;
+        ReadOnlySpan<ValueAddress> addresses = reader.Addresses;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hash, Is.EqualTo(value.Hash.ValueHash256));
+            Assert.That(address.ToAddress(), Is.EqualTo(value.Address));
+            Assert.That(Unsafe.AreSame(in encoded[ValueHash256.MemorySize], in Unsafe.As<ValueAddress, byte>(ref Unsafe.AsRef(in address))), Is.True, "address is not copied");
+            Assert.That(MemoryMarshal.AsBytes(addresses).Overlaps(encoded), Is.True, "addresses are not copied");
+            Assert.That(addresses.ToArray().Select(static item => item.ToAddress()), Is.EqualTo(value.Addresses));
+            Assert.That(reader.AddressVector.ToArray().Select(static item => item.ToAddress()), Is.EqualTo(value.AddressVector));
+            Assert.That(reader.Bloom.ToArray(), Is.EqualTo(value.Bloom.Bytes.ToArray()));
+            Assert.That(reader.Enum, Is.EqualTo(value.Enum));
+            Assert.That(reader.Reference.ToArray(), Is.EqualTo(value.Reference.Data.ToArray()));
+            Assert.That(ToArray(reader.Hashes, static item => item), Is.EqualTo(value.Hashes.Select(static item => item.ValueHash256)));
+            Assert.That(ToArray(reader.Blooms, static item => item.ToArray()), Is.EqualTo(value.Blooms.Select(static item => item.Bytes.ToArray())));
+            Assert.That(ToArray(reader.Enums, static item => item), Is.EqualTo(value.Enums));
+            Assert.That(reader.Bytes.ToArray(), Is.EqualTo(value.Bytes));
+        }
+    }
+
+    [Test]
+    public void RefReader_reads_every_container_shape()
+    {
+        byte[] listItself = ByteListItself.Encode([new() { Bytes = [4, 5] }, new() { Bytes = [] }]);
+        byte[] progressiveBits = Encode(new ProgressiveBitlistContainer { Bits = MakeSampleBits10() });
+        byte[] nested = Encode(new NestedProgressiveListContainer
+        {
+            Items = [new() { Items = [new() { Fixed1 = 1, Fixed2 = [2, 3] }] }, new() { Items = [] }],
+        });
+        byte[] generic = Encode(new GenericContainerOwner { Inner = new() { Head = 5, Value = new() { Fixed1 = 6, Fixed2 = [7] } } });
+
+        ProgressiveContainerSample.RefReader progressive = new(Encode(new ProgressiveContainerSample { Head = 1, Tail = 2 }));
+        ShadowDerived.RefReader derived = new(Encode(new ShadowDerived { A = 3, X = 4 }));
+        GenericContainer<VariableC>.RefReader inner = new GenericContainerOwner.RefReader(generic).Inner;
+        VariableC.RefReader typeParameter = new(inner.Value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((progressive.Head, progressive.Tail), Is.EqualTo((1UL, 2UL)));
+            Assert.That((derived.A, derived.X), Is.EqualTo((3UL, 4U)));
+            Assert.That((inner.Head, typeParameter.Fixed1), Is.EqualTo((5UL, 6UL)));
+            Assert.That(ToArray(typeParameter.Fixed2, static item => item), Is.EqualTo([7UL]));
+            Assert.That(ToArray(new SszListReader<ByteListItself.RefReader>(listItself, 0, static item => new(item)), static item => item.Bytes.ToArray()),
+                Is.EqualTo(new byte[][] { [4, 5], [] }));
+            Assert.That(new ProgressiveBitlistContainer.RefReader(progressiveBits).Bits.ToArray(), Is.EqualTo(progressiveBits[4..]));
+            Assert.That(ToArray(new NestedProgressiveListContainer.RefReader(nested).Items, static item => ToArray(item.Items, static x => ToArray(x.Fixed2, static y => y))),
+                Is.EqualTo(new ulong[][][] { [[2, 3]], [] }));
+        }
+    }
+
+    [Test]
+    public void RefReader_does_not_allocate()
+    {
+        byte[] encoded = Encode(MakeComplexStruct());
+
+        ulong sum = 0;
+        for (int i = 0; i < 100; i++) Read();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 100; i++) Read();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sum, Is.Not.Zero);
+            Assert.That(allocated, Is.Zero);
+        }
+
+        void Read()
+        {
+            ComplexStruct.RefReader reader = new(encoded);
+            sum += reader.Test1 + reader.FixedC.Fixed1 + reader.Test2Union.PreviousValue + reader.BitVec[0] + reader.BitList2[0];
+            foreach (ulong item in reader.Test3) sum += item;
+            foreach (FixedC.RefReader item in reader.FixedCList) sum += item.Fixed1;
+            foreach (VariableC.RefReader item in reader.VariableCList)
+            {
+                foreach (ulong value in item.Fixed2) sum += value;
+            }
+        }
+    }
+
+    [TestCase(-1)]
+    [TestCase(2)]
+    public void RefReader_list_rejects_index_out_of_range(int index) =>
+        Assert.That(() => new SingleListContainer.RefReader(Encode(new SingleListContainer { Items = [1, 2] })).Items[index],
+            Throws.InstanceOf<ArgumentOutOfRangeException>());
+
     [TestCaseSource(nameof(InvalidInputCases))]
     public void Encoding_rejects_invalid_input(Action action) =>
         Assert.That(action, Throws.InstanceOf<InvalidDataException>());
@@ -1090,6 +1284,35 @@ public class EncodingTest
             T.Encode(buffer, value);
             return buffer;
         }
+    }
+
+    private static ComplexStruct MakeComplexStruct() => new()
+    {
+        Test1 = 11,
+        Test2 = Enumerable.Range(0, 10).Select(static i => (ulong)i).ToArray(),
+        Test3 = [12, 13],
+        FixedC = new FixedC { Fixed1 = 14, Fixed2 = 15 },
+        VariableC = new VariableC { Fixed1 = 16, Fixed2 = [17, 18, 19] },
+        FixedCVec = Enumerable.Range(0, 10).Select(static i => new FixedC { Fixed2 = (ulong)i }).ToArray(),
+        FixedCList = [new FixedC { Fixed1 = 20, Fixed2 = 21 }],
+        VariableCVec = Enumerable.Range(0, 10).Select(static i => new VariableC { Fixed2 = [(ulong)i] }).ToArray(),
+        VariableCList = [new VariableC { Fixed2 = [22, 23] }, new VariableC { Fixed2 = [] }, new VariableC { Fixed2 = [24] }],
+        Test2Union = new CompatibleNumberUnion { Selector = CompatibleNumberUnionSelector.PreviousValue, PreviousValue = 25 },
+        Test2UnionVec = Enumerable.Range(0, 10).Select(MakeCurrentValue).ToArray(),
+        Test2UnionList = [MakeCurrentValue(26)],
+        BitVec = MakeSampleBits10(),
+        BitList2 = new BitArray([true, false, true, false]),
+    };
+
+    private static CompatibleNumberUnion MakeCurrentValue(int value) =>
+        new() { Selector = CompatibleNumberUnionSelector.CurrentValue, CurrentValue = (ulong)value };
+
+    private static TResult[] ToArray<T, TResult>(SszListReader<T> items, Func<T, TResult> select) where T : allows ref struct
+    {
+        TResult[] result = new TResult[items.Count];
+        int index = 0;
+        foreach (T item in items) result[index++] = select(item);
+        return result;
     }
 
     private static byte[] Encode<T>(T value) where T : ISszCodec<T> =>
@@ -1126,6 +1349,40 @@ public class EncodingTest
             .SetName("Encode rejects vectors with the wrong length");
         yield return new TestCaseData((Action)(() => Encode(new SingleListContainer { Items = [1UL, 2UL, 3UL, 4UL, 5UL] })))
             .SetName("Encode rejects lists above the declared limit");
+        yield return new TestCaseData((Action)(() => _ = new FixedC.RefReader(new byte[15])))
+            .SetName("RefReader rejects fixed container input of the wrong length");
+        yield return new TestCaseData((Action)(() => _ = new VariableC.RefReader(new byte[4])))
+            .SetName("RefReader rejects truncated variable container input");
+        yield return new TestCaseData((Action)(() => _ = new DoubleListContainer.RefReader(Bytes.FromHexString("0400000008000000"))))
+            .SetName("RefReader rejects offsets that point into the fixed section");
+        yield return new TestCaseData((Action)(() => _ = new DoubleListContainer.RefReader(Bytes.FromHexString("0800000007000000"))))
+            .SetName("RefReader rejects offsets that are out of order");
+        yield return new TestCaseData((Action)(() => _ = new DoubleListContainer.RefReader(Bytes.FromHexString("0800000009000000"))))
+            .SetName("RefReader rejects offsets that point past the end");
+        yield return new TestCaseData((Action)(() => _ = new SingleListContainer.RefReader(Bytes.FromHexString("0400000001")).Items))
+            .SetName("RefReader rejects a list with a partial item");
+        yield return new TestCaseData((Action)(() => _ = new SingleListContainer.RefReader([4, 0, 0, 0, .. new byte[40]]).Items))
+            .SetName("RefReader rejects lists above the declared limit");
+        yield return new TestCaseData((Action)(() => _ = new ByteListItself.RefReader(new byte[4]).Bytes))
+            .SetName("RefReader rejects byte lists above the declared limit");
+        yield return new TestCaseData((Action)(() => _ = new NullableCompatibleUnionVectorContainer.RefReader([4, 0, 0, 0, 4, 0, 0, 0, .. CompatibleNumberUnion.Encode(MakeCurrentValue(1))]).Items))
+            .SetName("RefReader rejects vectors with the wrong length");
+        yield return new TestCaseData((Action)(() => _ = new SszListReader<ByteListItself.RefReader>(Bytes.FromHexString("060000000000"), 0, static item => new(item))))
+            .SetName("RefReader rejects a misaligned first item offset");
+        yield return new TestCaseData((Action)(() => _ = new SszListReader<ByteListItself.RefReader>(Bytes.FromHexString("0800000004000000"), 0, static item => new(item))[0]))
+            .SetName("RefReader rejects item offsets that are out of order");
+        yield return new TestCaseData((Action)(() => _ = new SszListReader<ByteListItself.RefReader>(Bytes.FromHexString("0800000009000000"), 0, static item => new(item))[0]))
+            .SetName("RefReader rejects item offsets that point past the end");
+        yield return new TestCaseData((Action)(() => _ = new BitVectorContainer.RefReader(Bytes.FromHexString("00000000000000000004")).Bits))
+            .SetName("RefReader rejects bitvectors with unused bits set");
+        yield return new TestCaseData((Action)(() => _ = new ProgressiveBitlistContainer.RefReader(Bytes.FromHexString("0400000000")).Bits))
+            .SetName("RefReader rejects bitlists without a sentinel bit");
+        yield return new TestCaseData((Action)(() => _ = new CompatibleNumberUnion.RefReader([99])))
+            .SetName("RefReader rejects unknown compatible union selector");
+        yield return new TestCaseData((Action)(() => _ = new CompatibleBoolUnion.RefReader([1, 1, 0])))
+            .SetName("RefReader rejects compatible union trailing bytes");
+        yield return new TestCaseData((Action)(() => _ = new CompatibleNumberUnion.RefReader(CompatibleNumberUnion.Encode(MakeCurrentValue(1))).PreviousValue))
+            .SetName("RefReader rejects reading a compatible union member that is not selected");
     }
 
     /// <summary>The EIP-7495 root of a progressive container whose fields have the roots 1, 2, ... in the order of <paramref name="fieldIndices"/>.</summary>
