@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -12,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
@@ -35,6 +37,21 @@ public class RlpDecoderTests
                 Rlp.Decode<NonNullableItem>(ref reader);
             });
             Assert.Throws<NotSupportedException>(static () => Rlp.Encode(new NonNullableItem()));
+        }
+    }
+
+    [Test]
+    public void Decoder_registration_failure_keeps_the_cause()
+    {
+        Assembly assembly = Substitute.For<Assembly>();
+        assembly.GetExportedTypes().Returns([typeof(ThrowingConstructorDecoder)]);
+
+        ArgumentException? exception = Assert.Throws<ArgumentException>(() => Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: false));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.InnerException, Is.InstanceOf<TargetInvocationException>());
+            Assert.That(exception.GetBaseException().Message, Is.EqualTo(ThrowingConstructorDecoder.Error));
         }
     }
 
@@ -657,6 +674,22 @@ public class RlpDecoderTests
 
     private sealed class NonNullableItem
     {
+    }
+
+    private sealed class ThrowingConstructorDecoder : RlpDecoder<NonNullableItem>
+    {
+        public const string Error = "decoder constructor failure";
+
+        public ThrowingConstructorDecoder() => throw new InvalidOperationException(Error);
+
+        public override int GetLength(NonNullableItem? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
+
+        public override void Encode(ref RlpWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
+
+        protected override NonNullableItem DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
     }
 
     private sealed class NonNullableItemDecoder : RlpDecoder<NonNullableItem>
