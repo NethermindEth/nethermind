@@ -79,6 +79,7 @@ public class BeaconApiHostTests : BeaconApiFixture
         "GET /eth/v2/debug/beacon/states/{stateId} ssz+json",
         "GET /eth/v2/validator/aggregate_attestation json",
         "GET /eth/v2/validator/duties/proposer/{epoch} json",
+        "GET /eth/v3/validator/blocks/{slot} ssz+json",
         "POST /eth/v1/beacon/pool/sync_committees json body:*/*",
         "POST /eth/v1/beacon/states/{stateId}/validator_balances json body:*/*",
         "POST /eth/v1/beacon/states/{stateId}/validator_identities ssz+json body:*/*",
@@ -87,8 +88,10 @@ public class BeaconApiHostTests : BeaconApiFixture
         "POST /eth/v1/validator/contribution_and_proofs json body:*/*",
         "POST /eth/v1/validator/duties/attester/{epoch} json body:*/*",
         "POST /eth/v1/validator/duties/sync/{epoch} json body:*/*",
+        "POST /eth/v1/validator/prepare_beacon_proposer json body:*/*",
         "POST /eth/v1/validator/sync_committee_subscriptions json body:*/*",
         "POST /eth/v1/validator/{**path} none",
+        "POST /eth/v2/beacon/blocks none",
         "POST /eth/v2/beacon/pool/attestations json body:*/*",
         "POST /eth/v2/validator/aggregate_and_proofs json body:*/*",
     ];
