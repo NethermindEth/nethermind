@@ -59,6 +59,16 @@ replays the block with the same binary. It writes `bin/25532382-divisions.nti`
 after every hint is accepted and the public result matches. The normal trusted
 guest can run the resulting input. Regenerate it when the guest arithmetic changes.
 
+## Run without the native tries
+
+```bash
+make build-witness-fallback
+make verify GUEST_NAME=nethermind-trusted-fallback INPUT=25532382.nti GUEST_INPUT=Trusted EXPECTED_DIGEST=<digest>
+```
+
+`EXPECTED_DIGEST` is the digest that `StatelessInputGen convert` prints for the input. This guest refuses libairbender's tries, so the block runs on the managed witness
+nodes, which it decodes from the input on first use.
+
 ## Notes
 
 - The image keeps its unwind tables, so an exception is caught by the

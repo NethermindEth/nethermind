@@ -91,6 +91,12 @@ $(GUEST_DIR)/bin/trusted-input-test.hex: $(MAKEFILE_DIR)/../../../scripts/ci/air
 	mkdir -p "$(@D)"
 	dotnet run --file "$<" -- "$@"
 
+# The trusted-input guest with libairbender's tries refused, so that a block runs on the managed witness nodes.
+.PHONY: build-witness-fallback
+build-witness-fallback: dotnet-build
+	$(MAKE) -o dotnet-build build GUEST_INPUT=Trusted GUEST_NAME=nethermind-trusted-fallback \
+		GUEST_SUBSTITUTIONS='$(GUEST_SUBSTITUTIONS) --substitution $(SRC_DIR)/witness-fallback.xml'
+
 # Record and replay the same arithmetic build. INPUT is an unhinted framed .nti under bin/.
 .PHONY: record-division
 record-division:

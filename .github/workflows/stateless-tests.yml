@@ -124,6 +124,11 @@ jobs:
         working-directory: src/Nethermind/Nethermind.Stateless.AirbenderGuest
         run: make test-trusted-input GUEST_INPUT=Trusted
 
+      - name: Build the Airbender guest without native tries
+        if: matrix.vm == 'airbender' && matrix.input == 'Trusted'
+        working-directory: src/Nethermind/Nethermind.Stateless.AirbenderGuest
+        run: make build-witness-fallback
+
       - name: Upload guest binary
         uses: actions/upload-artifact@v7
         with:
@@ -252,6 +257,19 @@ jobs:
             grep -q "public_values=${{ steps.expected.outputs.digest }}" "$RUNNER_TEMP/run.log" || \
               { echo "::error::Public values mismatch"; exit 1; }
           fi
+
+      - name: Verify the block on the managed witness nodes
+        if: matrix.vm == 'airbender' && matrix.input == 'Trusted'
+        working-directory: src/Nethermind/${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          make verify GUEST_NAME=nethermind-trusted-fallback INPUT="${{ steps.expected.outputs.input }}" GUEST_INPUT=Trusted EXPECTED_DIGEST="${{ steps.expected.outputs.digest }}" 2>&1 | tee "$RUNNER_TEMP/fallback.log"
+          grep -q "${{ steps.expected.outputs.output }}" "$RUNNER_TEMP/fallback.log" || \
+            { echo "::error::Output mismatch"; exit 1; }
+          # The native tries save cycles, so an equal count would mean both guests took the same path.
+          native=$(grep -m1 -oE 'Cycles: [0-9]+' "$RUNNER_TEMP/run.log" | cut -d' ' -f2)
+          fallback=$(grep -m1 -oE 'Cycles: [0-9]+' "$RUNNER_TEMP/fallback.log" | cut -d' ' -f2)
+          (( fallback > native )) || { echo "::error::The fallback guest ran $fallback cycles, the native one $native"; exit 1; }
 
       - name: Verify malformed hints fall back to recovery
         if: matrix.vm == 'airbender' && matrix.input == 'Trusted'
