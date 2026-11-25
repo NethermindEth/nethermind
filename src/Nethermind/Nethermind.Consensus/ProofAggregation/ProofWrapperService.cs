@@ -1009,7 +1009,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             foreach (Candidate candidate in ranked) dependencies.UnionWith(candidate.Deps);
             List<RecursiveProofInput> parents = leanProofStore.ProvenOverlaps(dependencies, MaxHeldExtensions);
             if (previousProof is { } own) parents.Add(own);
-            ranked.RemoveAll(candidate => !leanProofStore.TryGetInput(candidate.Deps, out _));
+            // A transaction that cannot be a wrapper on its own, such as one whose inputs are unavailable, would fail every prefix.
+            List<Candidate> usable = new(ranked.Count);
+            for (int i = 0; i < ranked.Count; i++)
+                if (TryBucket(ranked, i, 1, parents) is not null) usable.Add(ranked[i]);
+            ranked = usable;
             // The longest fitting prefix by binary search. Extending a held aggregate trades discards as the prefix grows, so cost
             // is not strictly monotone and the search may stop short of a prefix that fits; the rest only waits a cycle.
             Bucket? best = null;

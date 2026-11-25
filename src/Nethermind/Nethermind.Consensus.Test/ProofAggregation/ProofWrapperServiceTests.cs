@@ -907,6 +907,33 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // A transaction over the proving budget on its own, ranked first, is still a wrapper of its own rather than stalling its bucket,
+    // and the transactions behind it are taken once it leaves the pool.
+    [Test]
+    public void Over_budget_transaction_ranked_first_does_not_stall_its_bucket()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Dictionary<FrameDependency, byte[]> witnesses = [];
+        Transaction wide = InBucket(0, WitnessedTransaction(store, witnesses, 0, sphincs: (int)ProofWrapperService.MaxWrapperProvingCost + 1));
+        wide.GasBottleneck = 100;
+        Transaction small = InBucket(0, WitnessedTransaction(store, witnesses, 1, sphincs: 1));
+        small.GasBottleneck = 1;
+        Transaction[] pending = [wide, small];
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService(pending, store, new FakeLeanProofVerifier(true), pool: pool);
+        pool.GetPendingTransactions().Returns(_ => pending);
+
+        Result<byte[]> first = service.BuildWrapper();
+        pending = [small];
+        Result<byte[]> second = service.BuildWrapper();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.IsSuccess ? Decode(first.Data!).Transactions.Select(static tx => tx.Hash) : null, Is.EqualTo(new[] { wide.Hash }), first.Error);
+            Assert.That(second.IsSuccess ? Decode(second.Data!).Transactions.Select(static tx => tx.Hash) : null, Is.EqualTo(new[] { small.Hash }), second.Error);
+        }
+    }
+
     // A proof whose wrapper was never published, as its selection changed while proving, does not stand for what is left of the
     // bucket: that is proven and published.
     [Test]
