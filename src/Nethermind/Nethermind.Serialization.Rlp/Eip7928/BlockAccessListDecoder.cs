@@ -68,6 +68,27 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         return itemCount;
     }
 
+    public static int Validate(ReadOnlySpan<byte> encodedBlockAccessList)
+    {
+        RlpReader reader = new(encodedBlockAccessList);
+        RlpReader accounts = reader.EnterSequence(out int accountsLength);
+        int itemCount = accounts.CountItems(_accountsLimit);
+        ReadOnlySpan<byte> lastAddress = default;
+        while (accounts.HasNext)
+        {
+            ReadOnlySpan<byte> address = AccountChangesDecoder.Validate(ref accounts, ref itemCount);
+            if (!lastAddress.IsEmpty && address.SequenceCompareTo(lastAddress) <= 0)
+            {
+                ThrowAccountChangesOutOfOrder();
+            }
+            lastAddress = address;
+        }
+
+        reader.ExitSequence(in accounts, accountsLength);
+        reader.CheckEnd();
+        return itemCount;
+    }
+
     private static int CountSequenceItems(ReadOnlySpan<byte> encodedSequence) =>
         new RlpReader(encodedSequence).EnterSequence(out _).CountItems();
 

@@ -358,23 +358,44 @@ public partial class EngineModuleTests
         }
     }
 
-    [TestCase("0x", "Error decoding block access list: Must be a complete RLP list")]
-    [TestCase("0x80", "Error decoding block access list: Must be a complete RLP list")]
-    [TestCase("0xc1", "Error decoding block access list: Must be a complete RLP list")]
-    [TestCase("0xf8", "Error decoding block access list: Must be a complete RLP list")]
-    [TestCase("0xf800", "Error decoding block access list: Must be a complete RLP list")]
-    [TestCase("0xf838", "Error decoding block access list: Must be a complete RLP list")]
-    [TestCase("0xff", "Error decoding block access list: Must be a complete RLP list")]
-    [TestCase("0xc0c0", "Error decoding block access list: Must be a complete RLP list")]
-    [TestCase("0xf6da940000000000000000000000000000000000000000c0c0c0c0c0da940000000000000000000000000000000000000000c0c0c0c0c0", "Error decoding block access list:")]
-    [TestCase("0xf83cdd940000000000000000000000000000000000000001c0c0c3c20101c0c0dd940000000000000000000000000000000000000001c0c0c3c20102c0c0", "Error decoding block access list: Account changes were in incorrect order.")]
-    [TestCase("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Error decoding block access list:")]
-    public async Task NewPayloadV5_rejects_malformed_block_access_list(string encodedBlockAccessList, string expectedValidationError)
+    private static IEnumerable<TestCaseData> MalformedBlockAccessListSource
+    {
+        get
+        {
+            yield return new TestCaseData("0x", "Error decoding block access list: Must be a complete RLP list", true);
+            yield return new TestCaseData("0x", "Error decoding block access list: Must be a complete RLP list", false);
+            yield return new TestCaseData("0x80", "Error decoding block access list: Must be a complete RLP list", true);
+            yield return new TestCaseData("0x80", "Error decoding block access list: Must be a complete RLP list", false);
+            yield return new TestCaseData("0xc1", "Error decoding block access list: Must be a complete RLP list", true);
+            yield return new TestCaseData("0xc1", "Error decoding block access list: Must be a complete RLP list", false);
+            yield return new TestCaseData("0xf8", "Error decoding block access list: Must be a complete RLP list", true);
+            yield return new TestCaseData("0xf8", "Error decoding block access list: Must be a complete RLP list", false);
+            yield return new TestCaseData("0xf800", "Error decoding block access list: Must be a complete RLP list", true);
+            yield return new TestCaseData("0xf800", "Error decoding block access list: Must be a complete RLP list", false);
+            yield return new TestCaseData("0xf838", "Error decoding block access list: Must be a complete RLP list", true);
+            yield return new TestCaseData("0xf838", "Error decoding block access list: Must be a complete RLP list", false);
+            yield return new TestCaseData("0xff", "Error decoding block access list: Must be a complete RLP list", true);
+            yield return new TestCaseData("0xff", "Error decoding block access list: Must be a complete RLP list", false);
+            yield return new TestCaseData("0xc0c0", "Error decoding block access list: Must be a complete RLP list", true);
+            yield return new TestCaseData("0xc0c0", "Error decoding block access list: Must be a complete RLP list", false);
+            yield return new TestCaseData("0xf6da940000000000000000000000000000000000000000c0c0c0c0c0da940000000000000000000000000000000000000000c0c0c0c0c0", "Error decoding block access list:", true);
+            yield return new TestCaseData("0xf6da940000000000000000000000000000000000000000c0c0c0c0c0da940000000000000000000000000000000000000000c0c0c0c0c0", "Error decoding block access list:", false);
+            yield return new TestCaseData("0xf83cdd940000000000000000000000000000000000000001c0c0c3c20101c0c0dd940000000000000000000000000000000000000001c0c0c3c20102c0c0", "Error decoding block access list: Account changes were in incorrect order.", true);
+            yield return new TestCaseData("0xf83cdd940000000000000000000000000000000000000001c0c0c3c20101c0c0dd940000000000000000000000000000000000000001c0c0c3c20102c0c0", "Error decoding block access list: Account changes were in incorrect order.", false);
+            yield return new TestCaseData("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Error decoding block access list:", true);
+            yield return new TestCaseData("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Error decoding block access list:", false);
+            yield return new TestCaseData("0xe3e2940000000000000000000000000000000000000001c0c0c5c480820080c3c20105c0", "Error decoding block access list: Non-canonical integer", true);
+            yield return new TestCaseData("0xe3e2940000000000000000000000000000000000000001c0c0c5c480820080c3c20105c0", "Error decoding block access list: Non-canonical integer", false);
+        }
+    }
+
+    [TestCaseSource(nameof(MalformedBlockAccessListSource))]
+    public async Task NewPayloadV5_rejects_malformed_block_access_list(string encodedBlockAccessList, string expectedValidationError, bool isParentKnown)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         Block block = Build.A.Block
             .WithNumber(chain.BlockTree.Head!.Number + 1)
-            .WithParentHash(chain.BlockTree.HeadHash!)
+            .WithParentHash(isParentKnown ? chain.BlockTree.HeadHash! : TestItem.KeccakF)
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)

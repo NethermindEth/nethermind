@@ -114,7 +114,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
             return false;
         }
 
-        if (!IsWithinItemLimit(encodedBlockAccessList, GasLimit, out error))
+        if (!IsValidWithinItemLimit(encodedBlockAccessList, GasLimit, out error))
         {
             return false;
         }
@@ -136,6 +136,19 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
 
         return TryDecodeBlockAccessList(encodedBlockAccessList, out blockAccessList, out error);
+    }
+
+    private static bool IsValidWithinItemLimit(byte[] encodedBlockAccessList, ulong gasLimit, [NotNullWhen(false)] out string? error)
+    {
+        try
+        {
+            return IsWithinItemLimit(BlockAccessListDecoder.Validate(encodedBlockAccessList), gasLimit, out error);
+        }
+        catch (RlpReaderException e)
+        {
+            error = $"Error decoding block access list: {e.Message}";
+            return false;
+        }
     }
 
     private static bool IsWithinItemLimit(byte[] encodedBlockAccessList, ulong gasLimit, [NotNullWhen(false)] out string? error)
