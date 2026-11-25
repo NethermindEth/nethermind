@@ -1247,15 +1247,29 @@ public class SyncServerTests
         }
     }
 
+    [Test]
+    public void FindHeadersRlp_in_reverse_with_a_skip_from_a_side_block_finds_only_that_block([Values(1, 2)] int skip, [Values] bool batched)
+    {
+        BlockTreeBuilder builder = BuildBlockTree(out CountingChainLevelInfoRepository levels);
+        BlockTree tree = builder.TestObject;
+        Block sideBlock = Build.A.Block.WithParent(tree.FindBlock(SideBlockNumber - 1, BlockTreeLookupOptions.None)!).WithDifficulty(1).TestObject;
+        tree.SuggestBlock(sideBlock);
+
+        using IOwnedReadOnlyList<byte> rlp = FindHeadersRlp(builder, levels, batched, sideBlock.Hash!, 3, skip, true);
+
+        Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(new HeaderDecoder().Encode(sideBlock.Header)));
+    }
+
     /// <remarks>
-    /// A forward walk stops at a level without a main chain block, so the batched read answers it alone. A reverse walk
-    /// takes the best block of such a level, so the walk answers it.
+    /// A forward walk stops at a level without a main chain block, so the batched read answers it alone. Before the
+    /// merge a reverse walk takes the best block of such a level and goes on, so the walk answers it.
     /// </remarks>
     [Test]
     public void FindHeadersRlp_with_a_skip_answers_as_the_walk_at_a_level_without_a_main_chain_block([Values] bool reverse)
     {
         BlockTreeBuilder builder = BuildBlockTree(out CountingChainLevelInfoRepository levels);
         BlockTree tree = builder.TestObject;
+        BlockHeader[] mainChain = [.. Enumerable.Range(0, 20).Select(number => tree.FindHeader((ulong)number, BlockTreeLookupOptions.None)!)];
         ulong holeNumber;
         if (reverse)
         {
@@ -1274,8 +1288,13 @@ public class SyncServerTests
         using IOwnedReadOnlyList<byte> rlp = FindHeadersRlp(builder, levels, batched: true, startHash, 5, 2, reverse);
         int walkLevelReads = levels.LevelReads;
 
+        ulong[] expectedNumbers = reverse ? [19, 16, 13, 10, 7] : [14, 17];
+        HeaderDecoder decoder = new();
+        byte[] expected = [.. expectedNumbers.SelectMany(number => decoder.Encode(mainChain[number]))];
+
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(expected));
             Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(EncodeHeadersTheTreeFinds(tree, startHash, 5, 2, reverse)));
             Assert.That(levels.BatchedReads, Is.Positive);
             Assert.That(walkLevelReads, reverse ? Is.Positive : Is.Zero, "levels read by the walk");
@@ -1310,6 +1329,30 @@ public class SyncServerTests
         {
             Assert.That(tree.FindHash(10), Is.Not.EqualTo(start.Hash), "reorg ran");
             Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(EncodeHeadersTheTreeFinds(tree, start.Hash!, 1, 0, false)));
+        }
+    }
+
+    /// <remarks>
+    /// The walk reads level 16 once to find the second header and again to recheck it before it takes 13. The second
+    /// read finds another main chain block at 16, as a reorg between the two reads would leave it, so the reply ends at 16.
+    /// </remarks>
+    [Test]
+    public void FindHeadersRlp_in_reverse_with_a_skip_stops_at_a_header_that_left_the_main_chain_during_the_walk()
+    {
+        BlockTreeBuilder builder = BuildBlockTree(out CountingChainLevelInfoRepository levels);
+        BlockTree tree = builder.TestObject;
+        BlockHeader start = tree.FindHeader(19, BlockTreeLookupOptions.None)!;
+        BlockHeader second = tree.FindHeader(16, BlockTreeLookupOptions.None)!;
+        levels.MainChainChangeOnRead = (16, 2, TestItem.KeccakA);
+
+        using IOwnedReadOnlyList<byte> rlp = FindHeadersRlp(builder, levels, batched: false, start.Hash!, 3, 2, true);
+
+        HeaderDecoder decoder = new();
+        byte[] expected = [.. decoder.Encode(start), .. decoder.Encode(second)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(levels.MainChainChanged, Is.True, "level 16 changed on its second read");
+            Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(expected));
         }
     }
 
@@ -1352,7 +1395,20 @@ public class SyncServerTests
         public int BatchedLevels { get; private set; }
         public int LevelReads { get; private set; }
 
-        public void ResetCounts() => BatchedReads = BatchedLevels = LevelReads = 0;
+        /// <summary>
+        /// A level whose main chain block is <c>Hash</c> on its <c>Read</c>-th single level read since
+        /// <see cref="ResetCounts"/>, as a reorg between two reads of it would leave it.
+        /// </summary>
+        public (ulong Number, int Read, Hash256 Hash)? MainChainChangeOnRead { get; set; }
+        public bool MainChainChanged { get; private set; }
+        private int _readsOfChangedLevel;
+
+        public void ResetCounts()
+        {
+            BatchedReads = BatchedLevels = LevelReads = _readsOfChangedLevel = 0;
+            MainChainChanged = false;
+        }
+
         public void ClearCache() => ((IClearableCache)inner).ClearCache();
 
         public void Delete(ulong number, BatchWrite? batch = null) => inner.Delete(number, batch);
@@ -1362,7 +1418,11 @@ public class SyncServerTests
         public ChainLevelInfo? LoadLevel(ulong number)
         {
             LevelReads++;
-            return inner.LoadLevel(number);
+            ChainLevelInfo? level = inner.LoadLevel(number);
+            if (level is null || MainChainChangeOnRead is not { } change || change.Number != number || ++_readsOfChangedLevel != change.Read) return level;
+
+            MainChainChanged = true;
+            return new ChainLevelInfo(true, new BlockInfo(change.Hash, level.BlockInfos[0].TotalDifficulty));
         }
 
         public ChainLevelInfo? LoadLevelWithoutCaching(ulong number)

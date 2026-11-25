@@ -345,13 +345,24 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 throw new EthSyncException("Incoming headers request for more than 1024 headers");
             }
 
+            int maxHeaders = (int)msg.MaxHeaders;
+            int skip = (int)msg.Skip;
+            if ((ulong)msg.Skip > int.MaxValue)
+            {
+                // A skip above int.MaxValue is not served: only the first header is, which is also what geth returns
+                // while no block lies that far away. Narrowed to an int, such a skip would be negative: a step of zero
+                // repeats the first header, and a wrapped one walks a forward request back.
+                maxHeaders = Math.Min(maxHeaders, 1);
+                skip = 0;
+            }
+
             Hash256 startingHash = msg.StartBlockHash;
             startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
 
             IOwnedReadOnlyList<byte> headers =
                 startingHash is null || cancellationToken.IsCancellationRequested
                     ? ArrayPoolList<byte>.Empty()
-                    : SyncServer.FindHeadersRlp(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
+                    : SyncServer.FindHeadersRlp(startingHash, maxHeaders, skip, msg.Reverse == 1);
 
             return Task.FromResult(new BlockHeadersMessage { EncodedHeaders = headers });
         }

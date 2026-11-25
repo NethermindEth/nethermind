@@ -77,6 +77,9 @@ namespace Nethermind.Synchronization
 
         private const int NewHeadBlockRangeUpdateFrequency = 32;
         internal const int NodeDataSoftResponseByteLimit = 2 * MemorySizes.MiB;
+        // The most keys of one node data request that are looked up, found or not, as geth v1.10.26 limited it
+        // (2 * maxNodeDataServe in eth/protocols/eth/handlers.go)
+        private const int NodeDataLookupLimit = 2048;
         // An Amsterdam mainnet header is about 700 bytes long
         private const int HeaderRlpLengthEstimate = 720;
 
@@ -635,12 +638,14 @@ namespace Nethermind.Synchronization
 
         public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
-            using DeferredRlpItemList.Builder builder = new(keys.Count);
+            int lookups = Math.Min(keys.Count, NodeDataLookupLimit);
+            // One entry per key looked up, after the root entry
+            using DeferredRlpItemList.Builder builder = new(lookups + 1);
             DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
             int count = 0;
             long byteCount = 0;
 
-            for (int i = 0; i < keys.Count; i++)
+            for (int i = 0; i < lookups; i++)
             {
                 if (byteCount > NodeDataSoftResponseByteLimit || cancellationToken.IsCancellationRequested) break;
 
