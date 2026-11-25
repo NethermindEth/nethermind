@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Types;
 
@@ -23,6 +24,9 @@ public static class SignedBeaconBlockCodec
 
     /// <summary>Offset of <c>parent_root</c>: <c>slot</c> and <c>proposer_index</c> precede it in the message of every fork.</summary>
     internal const int ParentRootOffset = SlotPrefixLength + sizeof(ulong);
+
+    /// <summary>Offset of <c>state_root</c>: it follows <c>parent_root</c> in the message of every fork.</summary>
+    internal const int StateRootOffset = ParentRootOffset + Hash256.Size;
 
     /// <summary>Whether a block at <paramref name="slot"/> has the Gloas shape.</summary>
     internal static bool IsGloasSlot(ulong slot, BeaconChainSpec spec) => spec.GetEpoch(slot) >= spec.GloasForkEpoch;

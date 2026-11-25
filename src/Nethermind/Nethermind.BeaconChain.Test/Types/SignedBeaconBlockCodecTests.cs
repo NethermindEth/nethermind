@@ -63,7 +63,7 @@ public class SignedBeaconBlockCodecTests
         Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(ssz), Is.EqualTo(SignedBeaconBlockCodec.MessageOffset));
         Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(ssz.AsSpan(SignedBeaconBlockCodec.MessageOffset)), Is.EqualTo(gloas ? FirstGloasSlot : FirstGloasSlot - 1));
         Assert.That(new Hash256(ssz.AsSpan(SignedBeaconBlockCodec.ParentRootOffset, Hash256.Size)), Is.EqualTo(parentRoot));
-        Assert.That(new Hash256(ssz.AsSpan(SignedBeaconBlockCodec.ParentRootOffset + Hash256.Size, Hash256.Size)), Is.EqualTo(stateRoot));
+        Assert.That(new Hash256(ssz.AsSpan(SignedBeaconBlockCodec.StateRootOffset, Hash256.Size)), Is.EqualTo(stateRoot));
     }
 
     [Test]
