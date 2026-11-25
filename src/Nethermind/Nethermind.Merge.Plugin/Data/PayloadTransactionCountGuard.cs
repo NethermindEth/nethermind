@@ -58,10 +58,21 @@ public sealed class PayloadTransactionCountGuard(IBlockTree? blockTree, IPoSSwit
         if ((UInt128)payload.Transactions.Length <= maxTransactions) return true;
 
         error = $"Transaction count {payload.Transactions.Length} exceeds {maxTransactions}, the most the parent gas limit allows";
-        // Paris reports a PoW latest valid ancestor as zero.
-        if (!poSSwitcher.IsPostMerge(parent)) latestValidHash = Keccak.Zero;
-        else if (blockTree.WasProcessed(parent.Number, payload.ParentHash)) latestValidHash = payload.ParentHash;
+        latestValidHash = GetLatestValidHashOfInvalidChild(blockTree, parent, payload.ParentHash);
         return false;
+    }
+
+    public Hash256? GetLatestValidHashOfInvalidChild(Hash256 parentHash)
+    {
+        BlockHeader? parent = blockTree?.FindHeader(parentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        return parent is null ? null : GetLatestValidHashOfInvalidChild(blockTree!, parent, parentHash);
+    }
+
+    private Hash256? GetLatestValidHashOfInvalidChild(IBlockTree tree, BlockHeader parent, Hash256 parentHash)
+    {
+        // Paris reports a PoW latest valid ancestor as zero.
+        if (!poSSwitcher.IsPostMerge(parent)) return Keccak.Zero;
+        return tree.WasProcessed(parent.Number, parentHash) ? parentHash : null;
     }
 
     /// <summary>Caps <paramref name="gasLimit"/> at the most a child of <paramref name="parent"/> can have.</summary>

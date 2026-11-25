@@ -171,13 +171,15 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                     return ValidationResult.Invalid;
                 }
 
+                bool isOverItemLimit = false;
                 bool decoded = executionPayload is ExecutionPayloadV4 executionPayloadV4
                     ? isParentUnknown
                         ? executionPayloadV4.TryDeferBlockAccessListDecode(out error)
-                        : executionPayloadV4.TryDecodeBlockAccessList(boundedGasLimit, out _, out error)
-                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, boundedGasLimit, out _, out error);
+                        : executionPayloadV4.TryDecodeBlockAccessList(boundedGasLimit, out _, out error, out isOverItemLimit)
+                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, boundedGasLimit, out _, out error, out isOverItemLimit);
                 if (!decoded)
                 {
+                    if (isOverItemLimit) latestValidHash = transactionCountGuard?.GetLatestValidHashOfInvalidChild(executionPayload.ParentHash);
                     return ValidationResult.Invalid;
                 }
             }

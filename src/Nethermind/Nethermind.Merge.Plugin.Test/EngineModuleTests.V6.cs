@@ -461,6 +461,7 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(status.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(status.LatestValidHash, Is.EqualTo(payload.ParentHash));
             Assert.That(status.ValidationError, Does.StartWith("BlockAccessListGasLimitExceeded"));
         }
     }
@@ -481,6 +482,7 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(response.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
             Assert.That(response.Data.ValidationError, Does.StartWith("BlockAccessListGasLimitExceeded"));
         }
     }

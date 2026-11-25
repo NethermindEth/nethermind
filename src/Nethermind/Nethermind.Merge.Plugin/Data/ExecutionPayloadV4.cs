@@ -57,7 +57,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
             }
             else
             {
-                if (!TryDecodeBlockAccessList(GasLimit, out ReadOnlyBlockAccessList? blockAccessList, out string? error))
+                if (!TryDecodeBlockAccessList(GasLimit, out ReadOnlyBlockAccessList? blockAccessList, out string? error, out _))
                 {
                     return Result<Block>.Fail(error);
                 }
@@ -77,8 +77,10 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     internal bool TryDecodeBlockAccessList(
         ulong gasLimit,
         [NotNullWhen(true)] out ReadOnlyBlockAccessList? blockAccessList,
-        [NotNullWhen(false)] out string? error)
+        [NotNullWhen(false)] out string? error,
+        out bool isOverItemLimit)
     {
+        isOverItemLimit = false;
         byte[]? encodedBlockAccessList = BlockAccessList;
         if (encodedBlockAccessList is null)
         {
@@ -91,10 +93,11 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         {
             blockAccessList = _decodedBlockAccessList
                 ?? throw new InvalidOperationException("Cached block access list is missing.");
-            return IsWithinItemLimit(blockAccessList.ItemCount, gasLimit, out error);
+            isOverItemLimit = !IsWithinItemLimit(blockAccessList.ItemCount, gasLimit, out error);
+            return !isOverItemLimit;
         }
 
-        if (!TryDecodeBlockAccessList(encodedBlockAccessList, gasLimit, out blockAccessList, out error))
+        if (!TryDecodeBlockAccessList(encodedBlockAccessList, gasLimit, out blockAccessList, out error, out isOverItemLimit))
         {
             return false;
         }
@@ -114,7 +117,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
             return false;
         }
 
-        if (!IsValidWithinItemLimit(encodedBlockAccessList, GasLimit, out error))
+        if (!IsValidWithinItemLimit(encodedBlockAccessList, GasLimit, out error, out _))
         {
             return false;
         }
@@ -127,9 +130,10 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         byte[] encodedBlockAccessList,
         ulong gasLimit,
         [NotNullWhen(true)] out ReadOnlyBlockAccessList? blockAccessList,
-        [NotNullWhen(false)] out string? error)
+        [NotNullWhen(false)] out string? error,
+        out bool isOverItemLimit)
     {
-        if (!IsWithinItemLimit(encodedBlockAccessList, gasLimit, out error))
+        if (!IsWithinItemLimit(encodedBlockAccessList, gasLimit, out error, out isOverItemLimit))
         {
             blockAccessList = null;
             return false;
@@ -138,30 +142,40 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         return TryDecodeBlockAccessList(encodedBlockAccessList, out blockAccessList, out error);
     }
 
-    private static bool IsValidWithinItemLimit(byte[] encodedBlockAccessList, ulong gasLimit, [NotNullWhen(false)] out string? error)
+    private static bool IsValidWithinItemLimit(byte[] encodedBlockAccessList, ulong gasLimit, [NotNullWhen(false)] out string? error, out bool isOverItemLimit)
     {
+        isOverItemLimit = false;
+        int itemCount;
         try
         {
-            return IsWithinItemLimit(BlockAccessListDecoder.Validate(encodedBlockAccessList), gasLimit, out error);
+            itemCount = BlockAccessListDecoder.Validate(encodedBlockAccessList);
         }
         catch (RlpReaderException e)
         {
             error = $"Error decoding block access list: {e.Message}";
             return false;
         }
+
+        isOverItemLimit = !IsWithinItemLimit(itemCount, gasLimit, out error);
+        return !isOverItemLimit;
     }
 
-    private static bool IsWithinItemLimit(byte[] encodedBlockAccessList, ulong gasLimit, [NotNullWhen(false)] out string? error)
+    private static bool IsWithinItemLimit(byte[] encodedBlockAccessList, ulong gasLimit, [NotNullWhen(false)] out string? error, out bool isOverItemLimit)
     {
+        isOverItemLimit = false;
+        int itemCount;
         try
         {
-            return IsWithinItemLimit(BlockAccessListDecoder.CountItems(encodedBlockAccessList), gasLimit, out error);
+            itemCount = BlockAccessListDecoder.CountItems(encodedBlockAccessList);
         }
         catch (RlpReaderException e)
         {
             error = $"Error decoding block access list: {e.Message}";
             return false;
         }
+
+        isOverItemLimit = !IsWithinItemLimit(itemCount, gasLimit, out error);
+        return !isOverItemLimit;
     }
 
     internal static bool TryDecodeBlockAccessList(
