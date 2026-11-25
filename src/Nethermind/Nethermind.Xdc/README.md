@@ -382,9 +382,6 @@ those blocks. XDC therefore rebuilds them as part of state sync:
   reachable epoch switch and the pivot.
 - [`XdcStateSyncPivot`](XdcStateSyncPivot.cs) walks those gap blocks as intermediate sync targets, storing each
   snapshot as its state becomes available, before finalising on the real pivot.
-- [`XdcStateSyncDownloader`](P2P/XdcStateSyncDownloader.cs) and
-  [`XdcStateSyncAllocationStrategyFactory`](XdcStateSyncAllocationStrategyFactory.cs) adapt peer allocation to
-  that multi-target flow.
 - [`XdcBeaconSyncStrategy`](XdcBeaconSyncStrategy.cs) neutralises the merge/beacon code paths and reports the
   configured pivot as the sync target.
 
