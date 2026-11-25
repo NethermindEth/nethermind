@@ -46,7 +46,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         // faithfully re-executes every transaction and produces the same GasUsed as the
         // producer. Gated on IsUnzenEnabled so the meter stays dormant pre-Unzen (matches
         // the validator-side gate in TaikoBlockProcessor.ProcessBlock).
-        bool producingBlock = (processingOptions & ProcessingOptions.ProducingBlock) != 0;
+        bool producingBlock = processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock);
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         bool enforceZkGas = producingBlock
                             && zkGasMeterHolder is not null

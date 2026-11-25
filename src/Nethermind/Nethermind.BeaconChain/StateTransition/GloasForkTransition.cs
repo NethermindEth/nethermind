@@ -3,13 +3,13 @@
 
 using System.Buffers.Binary;
 using System.Collections;
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -280,7 +280,7 @@ public static class GloasForkTransition
         Span<byte> preimage = stackalloc byte[32 + 8];
         domainSeed.Bytes.CopyTo(preimage);
         BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], slot);
-        byte[] seed = SHA256.HashData(preimage);
+        byte[] seed = ThreadSha256.HashData(preimage);
 
         List<int> indices = [];
         for (int i = 0; i < committees.CommitteesPerSlot; i++)
@@ -325,7 +325,7 @@ public static class GloasForkTransition
             if (offset == 0)
             {
                 BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], i / 16);
-                SHA256.HashData(preimage, randomBytes);
+                ThreadSha256.HashData(preimage, randomBytes);
             }
 
             int nextIndex = (int)(i % (ulong)indices.Count);

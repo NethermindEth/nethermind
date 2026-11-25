@@ -266,7 +266,6 @@ namespace Nethermind.TxPool
         /// <returns>The outcome of the merge attempt.</returns>
         BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);
         ulong GetLatestPendingNonce(Address address);
-        event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
         event EventHandler<TxEventArgs> EvictedPending;

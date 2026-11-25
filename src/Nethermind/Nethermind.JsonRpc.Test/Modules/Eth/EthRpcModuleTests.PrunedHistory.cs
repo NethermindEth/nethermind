@@ -291,7 +291,7 @@ public partial class EthRpcModuleTests
         Hash256 txHash = inTheBody ? block.Transactions[1].Hash! : TestItem.KeccakD;
         // History pruning deletes the receipts before the body and leaves the index entries. A compact entry of a
         // transaction reorganised out of this height resolves to the block now canonical there.
-        test.ReceiptStorage.RemoveReceipts(number, block.Hash!);
+        test.Container.Resolve<IReceiptPruner>().RemoveReceipts(number, block.Hash!);
         if (!inTheBody) TransactionIndex(test).Set(txHash, Rlp.Encode(number));
         test.BlockTree.UpdateLowestServedBlock(number + 1);
         EvictBlocks(test);
@@ -404,7 +404,7 @@ public partial class EthRpcModuleTests
     private static async Task<Block> PruneBlockBelowTheServedFloor(TestRpcBlockchain test)
     {
         Block block = await DeleteBodyBelowTheServedFloor(test);
-        test.ReceiptStorage.RemoveReceipts(block.Number, block.Hash!);
+        test.Container.Resolve<IReceiptPruner>().RemoveReceipts(block.Number, block.Hash!);
         EvictBlocks(test);
 
         using (Assert.EnterMultipleScope())

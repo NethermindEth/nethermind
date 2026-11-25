@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -20,7 +19,6 @@ public class WorldStateManager : IWorldStateManager
     private readonly ReadOnlyDb _readaOnlyCodeCb;
     private readonly IDbProvider _dbProvider;
     private readonly BlockingVerifyTrie _blockingVerifyTrie;
-    private readonly ILastNStateRootTracker? _lastNStateRootTracker;
     private readonly IStateHeaderProvider _stateHeaderProvider;
 
     public WorldStateManager(
@@ -29,8 +27,7 @@ public class WorldStateManager : IWorldStateManager
         IDbProvider dbProvider,
         StateBoundaryStore boundaryStore,
         IStateHeaderProvider stateHeaderProvider,
-        ILogManager logManager,
-        ILastNStateRootTracker? lastNStateRootTracker = null
+        ILogManager logManager
     )
     {
         _dbProvider = dbProvider;
@@ -47,10 +44,6 @@ public class WorldStateManager : IWorldStateManager
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
         _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb, logManager);
         _stateHeaderProvider = stateHeaderProvider;
-        _lastNStateRootTracker = lastNStateRootTracker;
-        SnapStateServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
-            ? NoopSnapServer.Instance
-            : new SnapStateServer(_readOnlyTrieStore, _logManager, _lastNStateRootTracker);
     }
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
@@ -58,8 +51,6 @@ public class WorldStateManager : IWorldStateManager
     public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
 
     public IStateReader GlobalStateReader { get; }
-
-    public ISnapStateServer SnapStateServer { get; }
 
     public IWorldStateScopeProvider CreateResettableWorldState() => new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _stateHeaderProvider, _logManager);
 

@@ -1506,8 +1506,6 @@ public class EvmExecutorTests
     }
 
     [TestCase("empty", ErrorCodes.InvalidParams)]
-    [TestCase("null-block", ErrorCodes.InvalidParams)]
-    [TestCase("null-call", ErrorCodes.InvalidParams)]
     [TestCase("too-many-blocks", ErrorCodes.ClientLimitExceededError)]
     [TestCase("blocks-out-of-order", ErrorCodes.InvalidInputBlocksOutOfOrder)]
     [TestCase("malformed", ErrorCodes.InvalidParams)]
@@ -1519,8 +1517,6 @@ public class EvmExecutorTests
         object payload = scenario switch
         {
             "empty" => new { blockStateCalls = Array.Empty<object>() },
-            "null-block" => new { blockStateCalls = new object?[] { null } },
-            "null-call" => new { blockStateCalls = new[] { new { calls = new object?[] { null } } } },
             "too-many-blocks" => new { blockStateCalls = Enumerable.Repeat(new { calls = Array.Empty<object>() }, 17).ToArray() },
             "blocks-out-of-order" => new
             {
@@ -1537,6 +1533,25 @@ public class EvmExecutorTests
             await rpc.InvokeAsync("eth_simulateV1", JsonSerializer.SerializeToElement(new[] { payload }), CancellationToken.None));
 
         Assert.That(error!.Code, Is.EqualTo(expectedCode));
+    }
+
+    [TestCase("null-block")]
+    [TestCase("null-call")]
+    public async Task Simulate_reads_null_entries_as_empty_objects(string scenario)
+    {
+        FakeSource source = new([0x00]);
+        using ShanghaiBackend backend = new(source);
+        object payload = scenario == "null-block"
+            ? new { blockStateCalls = new object?[] { null } }
+            : new { blockStateCalls = new[] { new { calls = new object?[] { null } } } };
+
+        JsonElement blocks = (JsonElement)await backend.Rpc.InvokeAsync("eth_simulateV1", JsonSerializer.SerializeToElement(new[] { payload }), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(blocks[0].GetProperty("calls").GetArrayLength(), Is.EqualTo(scenario == "null-block" ? 0 : 1));
+        }
     }
 
     [Test]

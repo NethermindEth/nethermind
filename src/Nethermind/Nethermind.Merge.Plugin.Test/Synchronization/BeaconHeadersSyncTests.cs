@@ -34,6 +34,7 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
+using PeerRequestType = Nethermind.Stats.RequestType;
 
 namespace Nethermind.Merge.Plugin.Test.Synchronization;
 
@@ -480,6 +481,100 @@ public class BeaconHeadersSyncTests
             Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant), "merged, so the feed went to sleep");
             Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(JoinNumber + 1));
         }
+    }
+
+    [Test]
+    public async Task Prepare_request_uses_replacement_pivot_after_peer_sizing()
+    {
+        Context ctx = new() { SyncConfig = new SyncConfig { FastSync = true } };
+        ctx.SetupRemoteBlockTreeOfLength(111);
+        const ulong height = 100;
+        Lock pivotLock = ctx.BeaconPivot.HeaderSyncLock!;
+        TaskCompletionSource<int?> size = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ctx.PeerPool.EstimateRequestLimit(PeerRequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<int?>(8), _ =>
+            {
+                started.TrySetResult();
+                return size.Task;
+            });
+
+        ctx.BeaconSync.InitBeaconHeaderSync(ctx.RemoteBlockTree.FindHeader(height)!);
+        ctx.Feed.InitializeFeed();
+        using HeadersSyncBatch? first = await ctx.Feed.PrepareRequest();
+        Assert.That(first?.EndNumber, Is.EqualTo(height - 1));
+
+        Task<HeadersSyncBatch?> pending = Task.Run(() => ctx.Feed.PrepareRequest());
+        TimeSpan timeout = TimeSpan.FromSeconds(5);
+        bool pivotLockAvailable = false;
+        ulong? replacementEnd;
+        try
+        {
+            await started.Task.WaitAsync(timeout);
+            if (pivotLock.TryEnter())
+            {
+                pivotLockAvailable = true;
+                try
+                {
+                    BlockHeader replacement = Build.A.BlockHeader.WithNumber(height).WithParentHash(TestItem.KeccakB).TestObject;
+                    ctx.BeaconSync.InitBeaconHeaderSync(replacement);
+                }
+                finally
+                {
+                    pivotLock.Exit();
+                }
+            }
+        }
+        finally
+        {
+            size.TrySetResult(8);
+            using HeadersSyncBatch? replacement = await pending.WaitAsync(timeout);
+            replacementEnd = replacement?.EndNumber;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivotLockAvailable, Is.True);
+            Assert.That(replacementEnd, Is.EqualTo(height - 1));
+        }
+    }
+
+    [TestCase(90UL)]
+    [TestCase(100UL)]
+    public async Task When_pivot_changes_the_feed_discards_outstanding_old_branch_responses(ulong selectedHeight)
+    {
+        Context ctx = new()
+        {
+            SyncConfig = new SyncConfig
+            {
+                FastSync = true,
+                PivotNumber = 0,
+                PivotHash = Keccak.Zero.ToString(),
+                PivotTotalDifficulty = "0"
+            },
+        };
+        ctx.SetupRemoteBlockTreeOfLength(111);
+        const uint high = 100;
+        ctx.BeaconSync.InitBeaconHeaderSync(ctx.RemoteBlockTree.FindHeader(high)!);
+        ctx.Feed.InitializeFeed();
+
+        using HeadersSyncBatch? oldRequest = await ctx.Feed.PrepareRequest();
+        Assert.That(oldRequest?.EndNumber, Is.EqualTo(high - 1));
+
+        BlockHeader selected = Build.A.BlockHeader.WithNumber(selectedHeight).WithParentHash(TestItem.KeccakB).TestObject;
+        ctx.BeaconSync.InitBeaconHeaderSync(selected);
+
+        Hash256 oldStart = ctx.RemoteBlockTree.FindHeader(oldRequest!.StartNumber)!.GetOrCalculateHash();
+        oldRequest.Response = ctx.RemoteBlockTree.FindHeaders(oldStart, oldRequest.RequestSize, 0, false)!;
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(oldRequest);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.Ignored));
+            Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(selected.Hash));
+        }
+
+        using HeadersSyncBatch? second = await ctx.Feed.PrepareRequest();
+        Assert.That(second?.EndNumber, Is.EqualTo(selectedHeight - 1));
     }
 
     [Test]

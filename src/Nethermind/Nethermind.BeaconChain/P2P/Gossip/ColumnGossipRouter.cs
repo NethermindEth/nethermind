@@ -1052,9 +1052,7 @@ public sealed class ColumnGossipRouter(
 
             try
             {
-                imported = store.TryGetForkedBlock(blockRoot, out ForkedSignedBeaconBlock? forked) && forked is ForkedSignedBeaconBlock.OfFulu fulu
-                    ? fulu.Block.Signature
-                    : null;
+                imported = store.TryGetStoredBlock(blockRoot, out StoredBlock block) && !block.IsGloas ? block.Signature : null;
             }
             catch (Exception e) when (e is BeaconStateException or InvalidDataException)
             {

@@ -96,6 +96,6 @@ public class BlocksProtocolForkDecodeTests
             ReadBlockChunksAsync(stream, maxBlocks, ProtocolId);
 
         public Task WriteBlockAsync(Stream stream, ForkedSignedBeaconBlock block, CancellationTokenSource cts) =>
-            WriteBlockChunkAsync(stream, block, cts);
+            WriteBlockChunkAsync(stream, block.Slot, SignedBeaconBlockCodec.Encode(block, Spec), cts);
     }
 }

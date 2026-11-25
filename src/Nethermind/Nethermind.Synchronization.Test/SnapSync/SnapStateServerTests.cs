@@ -1053,7 +1053,7 @@ public class SnapStateServerTests
         await chain.BuildSomeBlocks(chainLength);
 
         ISyncConfig syncConfig = chain.Container.Resolve<ISyncConfig>();
-        ISnapStateServer server = chain.WorldStateManager.SnapStateServer!;
+        ISnapStateServer server = chain.Container.Resolve<ISnapStateServer>();
 
         ulong depth = syncConfig.SnapServingMaxDepth - 1;
         ulong boundaryNumber = chain.BlockTree.Head!.Number - depth;

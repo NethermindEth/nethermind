@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Threading;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
@@ -167,7 +166,7 @@ internal sealed class MerkleChunkTree(int depth)
         pair[0] = left;
         pair[1] = right;
         Span<byte> hash = stackalloc byte[32];
-        SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(pair), hash);
+        ThreadSha256.HashData(MemoryMarshal.Cast<UInt256, byte>(pair), hash);
         return new UInt256(hash);
     }
 }

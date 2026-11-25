@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -16,6 +19,17 @@ namespace Nethermind.Blockchain.Test;
 public class ChainHeadInfoProviderTests
 {
     private const ulong HeadGasLimit = 30_000_000;
+
+    [Test]
+    public async Task Test_chain_reports_the_shared_processing_state()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+        BlockProcessingTracker tracker = chain.Container.Resolve<BlockProcessingTracker>();
+        tracker.IsProcessingBlock = true;
+        Assert.That(chain.ChainHeadInfoProvider.IsProcessingBlock, Is.True);
+        tracker.IsProcessingBlock = false;
+        Assert.That(chain.ChainHeadInfoProvider.IsProcessingBlock, Is.False);
+    }
 
     [TestCase(9_999_999UL, 12_000_000UL, TestName = "seeds_from_the_processed_head_while_syncing")]
     [TestCase(9_999_999UL, 9_999_999UL, TestName = "seeds_from_the_processed_head_when_synced")]
@@ -81,6 +95,6 @@ public class ChainHeadInfoProviderTests
     {
         IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Cancun.Instance);
-        return new ChainHeadInfoProvider(specProvider, blockTree, Substitute.For<IReadOnlyStateProvider>());
+        return new ChainHeadInfoProvider(specProvider, blockTree, Substitute.For<IReadOnlyStateProvider>(), new());
     }
 }
