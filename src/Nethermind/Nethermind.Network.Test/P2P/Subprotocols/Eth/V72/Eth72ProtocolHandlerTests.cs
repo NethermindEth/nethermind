@@ -5047,11 +5047,17 @@ public class Eth72ProtocolHandlerTests
         Assert.That(registry.RecordCells(lastCellPeer, tx.Hash!, secondMask, [secondCell, secondCell]), Is.True);
         Assert.That(registry.RecordTransaction(transactionPeer, tx), Is.Null);
 
+        // A shape failure is not a failed proof check, so nothing is kept for attribution and the body is released.
         using (Assert.EnterMultipleScope())
         {
             Assert.That(transactionPeer.Disconnects, Is.Empty);
             Assert.That(firstCellPeer.Disconnects, Is.Empty);
             Assert.That(lastCellPeer.Disconnects, Is.Empty);
+            Assert.That(GetEarlyCellsBytes(registry), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, firstCellPeer.Id), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, lastCellPeer.Id), Is.Zero);
+            Assert.That(registry.HasRecordedTransaction(tx.Hash!), Is.False);
+            Assert.That(GetTrackedTransactionBytes(registry), Is.Zero);
         }
     }
 
