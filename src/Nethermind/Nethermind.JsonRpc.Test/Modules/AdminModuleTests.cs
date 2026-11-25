@@ -387,16 +387,29 @@ public class AdminModuleTests
     public async Task AdminPeerMethods_ReturnTimeoutSourceToPool(
         [Values("admin_addPeer", "admin_removePeer", "admin_addTrustedPeer", "admin_removeTrustedPeer")] string method)
     {
+        TaskCompletionSource<bool> write = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
+        staticNodesManager.AddAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        staticNodesManager.RemoveAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        trustedNodesManager.RemoveAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(staticNodesManager, trustedNodesManager);
+
         TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
         try
         {
-            await (method switch
+            Task<ResultWrapper<bool>> call = method switch
             {
-                "admin_addPeer" => _adminRpcModule.admin_addPeer(_enodeString),
-                "admin_removePeer" => _adminRpcModule.admin_removePeer(_enodeString),
-                "admin_addTrustedPeer" => _adminRpcModule.admin_addTrustedPeer(_enodeString),
-                _ => _adminRpcModule.admin_removeTrustedPeer(_enodeString),
-            });
+                "admin_addPeer" => adminRpcModule.admin_addPeer(_enodeString),
+                "admin_removePeer" => adminRpcModule.admin_removePeer(_enodeString),
+                "admin_addTrustedPeer" => adminRpcModule.admin_addTrustedPeer(_enodeString),
+                _ => adminRpcModule.admin_removeTrustedPeer(_enodeString),
+            };
+
+            Assert.That(TimeoutTestHelper.WasReturned(timeout), Is.False, "the pending write still holds the token");
+            write.SetResult(true);
+            await call;
 
             using (Assert.EnterMultipleScope())
             {
