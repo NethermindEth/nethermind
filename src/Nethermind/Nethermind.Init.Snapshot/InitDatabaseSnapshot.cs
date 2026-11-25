@@ -62,7 +62,6 @@ public class InitDatabaseSnapshot(
         // Held until this method returns, on every path: before the checkpoint, the marker or the database is read.
         using FileStream? databaseLock = LockDatabase(dbPath);
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
-        Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
         // This step deletes nothing in the database directory. The checkpoint lives in the snapshot directory, which can
         // change or be lost, and cannot tell a partial extraction from a synced database; the marker shows one, and stays
@@ -84,6 +83,14 @@ public class InitDatabaseSnapshot(
 
             return;
         }
+
+        // The archive, the checkpoint and its temporary file go into the snapshot directory, so it must lie outside the
+        // database directory, which the extraction claims only while it is empty, and the file name must name a file in it.
+        if (!IsPlainFileName(snapshotConfig.SnapshotFileName))
+            throw new InvalidOperationException($"Snapshot.SnapshotFileName must be a plain file name, without a directory, got '{(SensitiveLogMasking.Enabled ? "[redacted]" : snapshotConfig.SnapshotFileName)}'.");
+        if (IsWithin(snapshotConfig.SnapshotDirectory, dbPath))
+            throw new InvalidOperationException($"Snapshot.SnapshotDirectory ({(SensitiveLogMasking.Enabled ? "[redacted]" : snapshotConfig.SnapshotDirectory)}) is the database directory at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} or lies inside it, and the snapshot extraction must find that directory empty. Nothing was downloaded or written. Set Snapshot.SnapshotDirectory to a directory outside the database directory, then restart.");
+        Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
         if (checkpoint.Read() >= SnapshotStage.Extracted)
         {
@@ -178,6 +185,19 @@ public class InitDatabaseSnapshot(
                 _logger.Warn($"Could not take the lock file {lockPath:hide}, so a second process starting on the database at {dbPath:hide} at the same time is not kept out of the snapshot initialization. Error: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)}");
             return null;
         }
+    }
+
+    // No directory part, so not rooted either.
+    private static bool IsPlainFileName(string name) => name is not ("" or "." or "..") && Path.GetFileName(name) == name;
+
+    // Whether the path is the directory or lies inside it, comparing full paths as configured: links are not resolved, letter
+    // case counts, and only whole path components match.
+    private static bool IsWithin(string path, string directory)
+    {
+        string fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        string fullDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        return fullPath == fullDirectory
+            || fullPath.StartsWith(Path.EndsInDirectorySeparator(fullDirectory) ? fullDirectory : fullDirectory + Path.DirectorySeparatorChar, StringComparison.Ordinal);
     }
 
     // How a FileShare.None handle held elsewhere is reported: ERROR_SHARING_VIOLATION on Windows, and on Unix the errno

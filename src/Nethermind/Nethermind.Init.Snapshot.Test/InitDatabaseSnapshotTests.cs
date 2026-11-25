@@ -646,6 +646,97 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [TestCase("", false, TestName = "Execute_SnapshotDirectoryIsTheDatabaseDirectory_StopsBeforeAnyRequest")]
+    [TestCase("", true, TestName = "Execute_StreamingWithTheDatabaseDirectoryAsSnapshotDirectory_StopsBeforeAnyRequest")]
+    [TestCase("snapshot", false, TestName = "Execute_SnapshotDirectoryInsideTheDatabaseDirectory_StopsBeforeAnyRequest")]
+    [TestCase("other/../snapshot/", true, TestName = "Execute_StreamingWithASnapshotDirectoryInsideTheDatabaseDirectory_StopsBeforeAnyRequest")]
+    public async Task Execute_SnapshotDirectoryInTheDatabase_StopsBeforeAnyRequest(string inside, bool streaming)
+    {
+        using FlakySnapshotServer server = StreamingServer();
+        _snapshotConfig.Streaming = streaming;
+        _snapshotConfig.SnapshotDirectory = Path.Combine(_dbPath, inside);
+        // Bounded: a start that went on would keep retrying its download into a snapshot directory it did not create.
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+
+        InvalidOperationException exception = (await Assert.ThrowsAsync<InvalidOperationException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("Snapshot.SnapshotDirectory"), "the start must name the setting to change");
+            Assert.That(server.RequestCount, Is.Zero, "nothing may be downloaded");
+            Assert.That(Directory.Exists(_dbPath), Is.False, "nothing may be created in the database directory, the snapshot directory included");
+        }
+    }
+
+    [TestCase("sub/snapshot.tar.zst", TestName = "Execute_SnapshotFileNameWithADirectory_StopsBeforeAnyRequest")]
+    [TestCase("../snapshot.tar.zst", TestName = "Execute_SnapshotFileNameOutsideTheSnapshotDirectory_StopsBeforeAnyRequest")]
+    [TestCase("in the database", TestName = "Execute_RootedSnapshotFileName_StopsBeforeAnyRequest")]
+    [TestCase("..", TestName = "Execute_SnapshotFileNameOfTheParentDirectory_StopsBeforeAnyRequest")]
+    public async Task Execute_SnapshotFileNameThatIsNoPlainName_StopsBeforeAnyRequest(string name)
+    {
+        using FlakySnapshotServer server = StreamingServer();
+        _snapshotConfig.Streaming = false;
+        _snapshotConfig.SnapshotFileName = name == "in the database" ? Path.Combine(_dbPath, "snapshot.tar.zst") : name;
+        string[] staging = Directory.GetFileSystemEntries(_snapshotConfig.SnapshotDirectory);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+
+        InvalidOperationException exception = (await Assert.ThrowsAsync<InvalidOperationException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("Snapshot.SnapshotFileName"), "the start must name the setting to change");
+            Assert.That(server.RequestCount, Is.Zero, "nothing may be downloaded");
+            Assert.That(Directory.Exists(_dbPath), Is.False, "nothing may be written into the database directory");
+            Assert.That(Directory.GetFileSystemEntries(_snapshotConfig.SnapshotDirectory), Is.EquivalentTo(staging), "nothing may be written into the snapshot directory");
+        }
+    }
+
+    [TestCase(false, TestName = "Execute_SnapshotDirectoryBesideTheDatabaseWithTheSameStart_Initializes")]
+    [TestCase(true, TestName = "Execute_DatabaseThatHoldsContentAndTheSnapshotDirectorySetting_KeepsItAsBefore")]
+    public async Task Execute_SnapshotDirectoryThatNeedsNoCheck_GoesOnAsBefore(bool populated)
+    {
+        using FlakySnapshotServer server = StreamingServer();
+        // Beside: whole path components count, so db-snapshot is not inside db.
+        _snapshotConfig.SnapshotDirectory = populated ? Path.Combine(_dbPath, "snapshot") : _dbPath + "-snapshot";
+        string synced = Path.Combine(_dbPath, "state", "000001.sst");
+        if (populated)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(synced)!);
+            File.WriteAllBytes(synced, [1, 2, 3]);
+        }
+
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (populated)
+            {
+                Assert.That(File.Exists(synced), Is.True, "a database that holds data is kept, whatever the setting");
+                Assert.That(server.RequestCount, Is.Zero, "the snapshot must be skipped");
+                Assert.That(Directory.Exists(_snapshotConfig.SnapshotDirectory), Is.False, "nothing may be created in the database directory");
+            }
+            else
+            {
+                Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "a directory beside the database is a valid setting");
+            }
+        }
+    }
+
+    // Streaming from a server that counts the requests it gets.
+    private FlakySnapshotServer StreamingServer()
+    {
+        FlakySnapshotServer server = new();
+        byte[] archive = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        server.Content = archive;
+        _snapshotConfig.SnapshotFileName = "snapshot.tar.zst";
+        _snapshotConfig.DownloadUrl = server.Url;
+        _snapshotConfig.Streaming = true;
+        _snapshotConfig.Checksum = Convert.ToHexString(SHA256.HashData(archive));
+        return server;
+    }
+
     private static bool CanList(string directory)
     {
         try
