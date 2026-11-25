@@ -41,6 +41,11 @@ namespace Nethermind.JsonRpc
         public static ResultWrapper<T> Fail(string error, int errorCode, T outputData) =>
             new() { Result = Result.Fail(error), ErrorCode = errorCode, Data = outputData, HasErrorData = true };
 
+        // Keeps the signature compiled plugins bind to. It has no default, so Fail(error, errorCode) still resolves to
+        // the overload below, and a positional bool resolves here rather than to outputData when T is bool.
+        public static ResultWrapper<T> Fail(string error, int errorCode, bool isTemporary) =>
+            Fail(error, errorCode, isTemporary, isRequestError: false);
+
         public static ResultWrapper<T> Fail(string error, int errorCode, bool isTemporary = false, bool isRequestError = false) =>
             new() { Result = Result.Fail(error), ErrorCode = errorCode, IsTemporary = isTemporary, IsRequestError = isRequestError };
 
