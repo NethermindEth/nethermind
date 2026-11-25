@@ -1200,14 +1200,20 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                             ? merged
                             : addedCells;
 
-                    // Everything the update needs is read before the accounting commits it, so that the buffer and the
-                    // record of its ended sources change together.
+                    // Everything the update needs is read and computed before the accounting commits it, so that the
+                    // buffer, its deadlines and the record of its ended sources change together.
                     DateTimeOffset now = _timestamper.UtcNowOffset;
+                    DateTimeOffset cellsExpiresAt = now + EarlyCellsTtl;
+                    DateTimeOffset? expiresAt = GetTouchedExpiresAt(state, now);
                     if (TryReplaceCellsAccounting(hash.ValueHash256, state.Cells, replacement, peer))
                     {
                         state.Cells = replacement;
-                        state.CellsExpiresAt = now + EarlyCellsTtl;
-                        Touch(state, now);
+                        state.CellsExpiresAt = cellsExpiresAt;
+                        if (expiresAt is { } touchedExpiresAt)
+                        {
+                            state.ExpiresAt = touchedExpiresAt;
+                        }
+
                         if (state.EndedCellSources is not null)
                         {
                             KeepEndedSourcesOf(state, replacement, addedCells.LastSourcePeerId);
@@ -2760,13 +2766,22 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private void Touch(TrackedSparseBlobTx state, DateTimeOffset now)
     {
+        if (GetTouchedExpiresAt(state, now) is { } expiresAt)
+        {
+            state.ExpiresAt = expiresAt;
+        }
+    }
+
+    /// <summary>The expiry that <see cref="Touch"/> sets at <paramref name="now"/>, or <c>null</c> when it keeps the current one.</summary>
+    private static DateTimeOffset? GetTouchedExpiresAt(TrackedSparseBlobTx state, DateTimeOffset now)
+    {
         if (state.Submitted)
         {
-            return;
+            return null;
         }
 
         DateTimeOffset slidingExpiration = now + TrackedStateTtl;
-        state.ExpiresAt = slidingExpiration < state.MaxExpiresAt ? slidingExpiration : state.MaxExpiresAt;
+        return slidingExpiration < state.MaxExpiresAt ? slidingExpiration : state.MaxExpiresAt;
     }
 
     private bool TryReserveAnnouncement(ISparseBlobPoolPeer peer, ValueHash256 hash, bool retained)

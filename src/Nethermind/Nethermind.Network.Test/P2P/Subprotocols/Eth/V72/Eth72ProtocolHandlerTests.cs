@@ -6270,6 +6270,95 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
+    [TestCase(10, true)]
+    [TestCase(30, false)]
+    public void registry_should_keep_the_ended_session_record_with_its_cells_when_a_cell_deadline_overflows(
+        int secondsBeforeLimit,
+        bool submitted)
+    {
+        const int blobCount = 1;
+        Transaction tx = BuildSparseBlobTransaction(blobCount, out byte[][] fullCells);
+        BlobCellMask endedMask = BlobCellMask.FromIndices([4]);
+        BlobCellMask laterMask = BlobCellMask.FromIndices([9, 10]);
+        BlobCellMask otherMask = BlobCellMask.FromIndices([77]);
+        byte[][] endedCells = CopyWithCorruptedCell(
+            BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, endedMask, blobCount), cellIndex: 0, byteIndex: 0);
+        byte[][] laterCells = BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, laterMask, blobCount);
+        byte[][] otherCells = BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, otherMask, blobCount);
+        int sourceBytes = blobCount * CkzgLib.Ckzg.BytesPerCell;
+        DateTimeOffset start = DateTimeOffset.UtcNow;
+        DateTimeOffset now = start;
+        ITimestamper timestamper = Substitute.For<ITimestamper>();
+        timestamper.UtcNowOffset.Returns(_ => now);
+        // No maintenance runs, so the state is not expired while the clock is near its limit.
+        using SparseBlobPoolPeerRegistry registry = CreateAttributionRegistry(new ManualTimerFactory(), timestamper);
+        TestSparseBlobPeer transactionPeer = new(TestItem.PublicKeyC);
+        TestSparseBlobPeer otherCellPeer = new(TestItem.PublicKeyD);
+        TestSparseBlobPeer oldSession = new(TestItem.PublicKeyA);
+        TestSparseBlobPeer newSession = new(TestItem.PublicKeyA);
+        SubmitWithCellProofCheck();
+        int merges = 0;
+        _transactionPool.MergeBlobCells(tx.Hash!, Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>()).Returns(_ =>
+        {
+            if (++merges == 1)
+            {
+                // The cell source's session ends while its cells are merged, and the same node reconnects.
+                registry.AddPeer(newSession);
+            }
+
+            return BlobCellMergeResult.TransactionUnavailable;
+        });
+        registry.AddPeer(transactionPeer);
+        registry.AddPeer(otherCellPeer);
+        registry.AddPeer(oldSession);
+
+        if (submitted)
+        {
+            // An admitted transaction keeps its state for cells merged after admission, and its deadline stays fixed.
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(registry.RecordTransaction(transactionPeer, tx), Is.Null);
+                Assert.That(
+                    registry.RecordCells(transactionPeer, tx.Hash!, otherMask, otherCells),
+                    Is.True);
+                Assert.That(registry.HasRecordedTransaction(tx.Hash!), Is.False);
+                Assert.That(IsTracked(registry, tx.Hash!), Is.True);
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.RecordCells(oldSession, tx.Hash!, endedMask, endedCells), Is.True);
+            Assert.That(registry.RecordCells(otherCellPeer, tx.Hash!, otherMask, otherCells), Is.True);
+            Assert.That(registry.TryApplyRecordedCells(tx.Hash!), Is.False);
+            Assert.That(GetEndedCellSourceCount(registry, tx.Hash!), Is.EqualTo(1));
+        }
+
+        // Near the largest time, only the 15-second cell deadline (10 s before the limit, for an admitted state whose
+        // deadline does not slide) or only the one-minute state deadline (30 s before it) cannot be computed: the ended
+        // session's cells and their record stay together.
+        now = DateTimeOffset.MaxValue - TimeSpan.FromSeconds(secondsBeforeLimit);
+        Assert.That(
+            () => registry.RecordCells(newSession, tx.Hash!, laterMask, laterCells),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetEndedCellSourceCount(registry, tx.Hash!), Is.EqualTo(1));
+            Assert.That(GetPeerEarlyCellBytes(registry, newSession.Id), Is.EqualTo(sourceBytes));
+            Assert.That(GetEarlyCellsBytes(registry), Is.EqualTo(2 * sourceBytes));
+        }
+
+        // The same record succeeds at an ordinary time and replaces the ended session's cells with the new session's.
+        now = start;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.RecordCells(newSession, tx.Hash!, laterMask, laterCells), Is.True);
+            Assert.That(GetEndedCellSourceCount(registry, tx.Hash!), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, newSession.Id), Is.EqualTo(2 * sourceBytes));
+            Assert.That(GetEarlyCellsBytes(registry), Is.EqualTo(3 * sourceBytes));
+        }
+    }
+
     public enum KeptCellSessionEnd
     {
         ReplacedWhileKept,
