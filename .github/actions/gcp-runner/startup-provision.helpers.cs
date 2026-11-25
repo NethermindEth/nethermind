@@ -102,7 +102,7 @@ static partial class StartupProvision
             await Apt("install", "ca-certificates", "curl", "jq", "git", "git-lfs", "unzip", "zip", "tar", "make", "build-essential", "screen", "lshw", "dmidecode", "fio", "python3", "python3-venv");
             await Stage("runner-install");
             Environment.CurrentDirectory = runner;
-            await Run("curl", "-fsSL", "-o", "runner.tar.gz", $"https://github.com/actions/runner/releases/download/v{version}/actions-runner-linux-x64-{version}.tar.gz");
+            await Run("curl", "-fsSL", "-o", "runner.tar.gz", $"https://github.com/actions/runner/releases/download/v{version}/actions-runner-linux-{(arch == "arm64" ? "arm64" : "x64")}-{version}.tar.gz");
             await Run("tar", "xzf", "runner.tar.gz");
             File.Delete("runner.tar.gz");
             await Run("./bin/installdependencies.sh");
