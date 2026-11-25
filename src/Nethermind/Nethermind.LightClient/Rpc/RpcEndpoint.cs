@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Hosting;
@@ -128,12 +129,32 @@ internal static class RpcEndpoint
         {
             using JsonDocument document = JsonDocument.Parse(body);
             JsonElement request = document.RootElement;
-            return request.ValueKind == JsonValueKind.Object && request.TryGetProperty("method", out JsonElement method)
-                && method.ValueKind == JsonValueKind.String && (method.ValueEquals("eth_sendRawTransaction")
-                    || method.ValueEquals("eth_sendRawTransactionSync") || method.ValueEquals("eth_call") || method.ValueEquals("eth_estimateGas")
-                    || method.ValueEquals("eth_createAccessList") || method.ValueEquals("eth_simulateV1") || method.ValueEquals("debug_traceCall"));
+            if (request.ValueKind == JsonValueKind.Object) return AllowsLargeRequest(request, standalone: true);
+            if (request.ValueKind != JsonValueKind.Array) return false;
+
+            int ordinaryBytes = body.Length;
+            int envelopes = 0;
+            foreach (JsonElement entry in request.EnumerateArray())
+            {
+                // Leave excess envelopes in the ordinary body budget and let the processor answer the limit error.
+                if (++envelopes > MaxBatchEnvelopes) break;
+                if (AllowsLargeRequest(entry))
+                    ordinaryBytes -= JsonMarshal.GetRawUtf8Value(entry).Length;
+            }
+            return ordinaryBytes <= StandardRequestBodySize;
         }
         catch (JsonException) { return true; }
+    }
+
+    private static bool AllowsLargeRequest(JsonElement request, bool standalone = false)
+    {
+        try
+        {
+            return request.ValueKind == JsonValueKind.Object && request.TryGetProperty("method", out JsonElement method)
+                && method.ValueKind == JsonValueKind.String && (method.ValueEquals("eth_call") || method.ValueEquals("eth_estimateGas")
+                    || method.ValueEquals("eth_createAccessList") || method.ValueEquals("eth_simulateV1") || method.ValueEquals("debug_traceCall")
+                    || standalone && (method.ValueEquals("eth_sendRawTransaction") || method.ValueEquals("eth_sendRawTransactionSync")));
+        }
         catch (InvalidOperationException) { return false; }
     }
 
