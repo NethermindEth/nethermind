@@ -26,6 +26,7 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -1878,6 +1879,8 @@ internal static class TestRpcBlockchainExt
         @this.WithEthRpcModule(blockchain => new OptimismEthRpcModule(
             blockchain.RpcConfig,
             blockchain.Bridge,
+            blockchain.Container.Resolve<FilterStore>(),
+            blockchain.Container.Resolve<FilterManager>(),
             blockchain.BlockFinder,
             blockchain.BlockTree,
             blockchain.ReceiptFinder,
