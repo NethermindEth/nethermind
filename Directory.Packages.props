@@ -83,6 +83,7 @@
     <PackageVersion Include="NLog.Targets.Seq" Version="4.0.2" />
     <PackageVersion Include="NonBlocking" Version="2.1.2" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
+    <PackageVersion Include="NuGet.Packaging" Version="8.0.0" />
     <PackageVersion Include="NUnit" Version="5.0.0" />
     <PackageVersion Include="NUnit.Analyzers" Version="4.15.0" />
     <PackageVersion Include="NUnit3TestAdapter" Version="6.3.0" />

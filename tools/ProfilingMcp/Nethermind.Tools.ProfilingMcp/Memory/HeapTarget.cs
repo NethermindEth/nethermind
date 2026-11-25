@@ -45,7 +45,7 @@ internal static class HeapTarget
 
         ClrInfo clr = dataTarget.ClrVersions[0];
         if (dataTarget.FileLocator is TargetRootLocator)
-            DebuggingLibraries.RequireGlibc(dataTarget.EnumerateModules().Select(static m => m.FileName));
+            DebuggingLibraries.RequireGlibc(ModuleFiles(dataTarget));
 
         // In a sidecar, ClrMD would load the DAC next to the target's runtime, a native library the target controls, into a root process;
         // a trusted copy for that version is loaded instead. ClrMD reads the runtime's version as 0.0 there, so its version check is skipped.
@@ -56,6 +56,12 @@ internal static class HeapTarget
             throw new InvalidOperationException("The heap cannot be walked right now (the process is probably in the middle of a GC). Try again.");
 
         return runtime;
+
+        static IEnumerable<string> ModuleFiles(DataTarget dataTarget)
+        {
+            foreach (ModuleInfo module in dataTarget.EnumerateModules())
+                yield return module.FileName;
+        }
     }
 
     private sealed class TargetRootLocator : IFileLocator

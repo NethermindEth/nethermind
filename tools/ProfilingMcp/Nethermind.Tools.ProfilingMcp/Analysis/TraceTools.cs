@@ -74,7 +74,7 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
         CancellationToken cancellationToken = default)
     {
         string stacks = Path.Combine(paths.Snapshots, WorkspacePaths.NewFileName($"pid{pid}-native", NativeSampler.Extension));
-        (string PerfMap, int Methods)? jit = await NativeSampler.CollectAsync(pid, ToolArguments.Window(seconds), stacks, cancellationToken);
+        (string PerfMap, int Methods, bool LeftOn)? jit = await NativeSampler.CollectAsync(pid, ToolArguments.Window(seconds), stacks, cancellationToken);
         IReadOnlyList<FunctionStat> functions = FoldedStacks.Read(File.ReadLines(stacks));
 
         StringBuilder sb = new();
@@ -82,9 +82,11 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
         sb.Append(jit switch
         {
             null => "JIT-compiled code is unnamed ([memfd:doublemapper] or [unknown]): the process is not .NET, or its diagnostics port is unavailable.\n",
-            ({ } map, 0) => $"JIT-compiled code is unnamed: the runtime wrote no perf map at {map}.\n",
-            (_, int methods) => $"JIT-compiled code is named from the runtime's perf map ({methods:N0} methods).\n",
+            ({ } map, 0, _) => $"JIT-compiled code is unnamed: the runtime wrote no perf map at {map}.\n",
+            (_, int methods, _) => $"JIT-compiled code is named from the runtime's perf map ({methods:N0} methods).\n",
         });
+        if (jit is ({ } perfMap, _, true))
+            sb.Append($"The perf map at {perfMap} was left on: the process writes jit dumps, and turning the map off would end those too.\n");
 
         List<FunctionStat> threads = [];
         foreach (FunctionStat f in functions)

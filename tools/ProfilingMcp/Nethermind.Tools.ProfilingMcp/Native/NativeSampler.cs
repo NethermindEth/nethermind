@@ -29,12 +29,16 @@ public static class NativeSampler
     internal const int RecordAttempts = 4;
 
     /// <summary>Records <paramref name="pid"/> for <paramref name="duration"/> and writes its stacks to <paramref name="output"/>.</summary>
-    /// <returns>Where the runtime's perf map was read and how many JIT-compiled methods it named; null for a process without a .NET diagnostics port.</returns>
+    /// <returns>
+    /// Where the runtime's perf map was read, how many JIT-compiled methods it named, and whether a map this sample turned on was left on;
+    /// null for a process without a .NET diagnostics port.
+    /// </returns>
     /// <remarks>
     /// Samples of one process are serialized across sessions, since each turns the perf map on and off. A map that was on before, because the
-    /// process was started with <c>DOTNET_PerfMapEnabled</c> or someone else enabled it, is left on and its files are kept.
+    /// process was started with <c>DOTNET_PerfMapEnabled</c> or someone else enabled it, is left on and its files are kept. So is a map turned on
+    /// for a process that writes jit dumps, since turning the map off ends those too.
     /// </remarks>
-    public static async Task<(string PerfMap, int Methods)?> CollectAsync(int pid, TimeSpan duration, string output, CancellationToken cancellationToken)
+    public static async Task<(string PerfMap, int Methods, bool LeftOn)?> CollectAsync(int pid, TimeSpan duration, string output, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsLinux())
             throw new PlatformNotSupportedException("native_sample needs perf, which runs on Linux only; profile a container or a Linux host.");
@@ -43,8 +47,18 @@ public static class NativeSampler
         string data = output + ".perf.data";
         IReadOnlyDictionary<string, string> environment = ReadEnvironment(pid);
         string perfMap = PerfMapPath(pid, environment);
-        DiagnosticsClient? runtime = PerfMapAlreadyOn(environment, File.Exists(perfMap)) ? null : EnablePerfMap(pid);
-        bool isDotNet = runtime is not null || File.Exists(perfMap);
+        DateTime started = StartTime(pid);
+        bool mapWritten = WrittenSince(perfMap, started);
+        DiagnosticsClient? runtime = null;
+        if (!PerfMapAlreadyOn(environment, mapWritten))
+        {
+            // A map an earlier process left must not lend its addresses to this one's.
+            File.Delete(perfMap);
+            runtime = EnablePerfMap(pid);
+        }
+
+        bool isDotNet = runtime is not null || mapWritten;
+        bool leaveOn = runtime is not null && WritesJitDumps(environment, WrittenSince(Path.Combine(Path.GetDirectoryName(perfMap)!, $"jit-{pid}.dump"), started));
         try
         {
             // Build ids are skipped: perf script reads each library by path, from the target's mount namespace.
@@ -56,19 +70,27 @@ public static class NativeSampler
             PerfScriptFolder folder = new(jit);
             await RunPerfAsync(["script", "--input", data, "-F", "comm,tid,ip,sym,dso"], folder.Add, cancellationToken);
             await File.WriteAllLinesAsync(output, folder.Fold(), cancellationToken);
-            return isDotNet ? (perfMap, jit.Count) : null;
+            return isDotNet ? (perfMap, jit.Count, leaveOn) : null;
         }
         finally
         {
             try
             {
-                File.Delete(data);
+                DeleteRecording(data);
             }
             finally
             {
-                DisablePerfMap(runtime, perfMap);
+                if (!leaveOn)
+                    DisablePerfMap(runtime, perfMap);
             }
         }
+    }
+
+    /// <summary>Deletes a recording, and the copy perf keeps of an earlier one at the same path, as a failed attempt of <see cref="RecordAsync"/> leaves.</summary>
+    internal static void DeleteRecording(string data)
+    {
+        File.Delete(data);
+        File.Delete(data + ".old");
     }
 
     /// <summary>
@@ -120,10 +142,36 @@ public static class NativeSampler
         return true;
     }
 
-    /// <summary>Whether the runtime writes its perf map without being asked: its environment enables it, or the map exists already.</summary>
+    /// <summary>Whether the runtime writes its perf map without being asked: its environment enables it, or the running process wrote the map.</summary>
     /// <remarks><c>PerfMapEnabled</c> 1 writes the map and jit dumps, 3 the map only, and 2 jit dumps only, which needs the map turned on.</remarks>
-    internal static bool PerfMapAlreadyOn(IReadOnlyDictionary<string, string> environment, bool mapExists) =>
-        mapExists || Setting(environment, "PerfMapEnabled")?.Trim() is "1" or "3";
+    internal static bool PerfMapAlreadyOn(IReadOnlyDictionary<string, string> environment, bool mapWritten) =>
+        mapWritten || Setting(environment, "PerfMapEnabled")?.Trim() is "1" or "3";
+
+    /// <summary>Whether the runtime writes jit dumps, which <see cref="DiagnosticsClient.DisablePerfMap"/> would end along with the map.</summary>
+    internal static bool WritesJitDumps(IReadOnlyDictionary<string, string> environment, bool jitDumpWritten) =>
+        jitDumpWritten || Setting(environment, "PerfMapEnabled")?.Trim() is "1" or "2";
+
+    /// <summary>Whether <paramref name="path"/> was written since <paramref name="started"/>, as opposed to missing or left by an earlier process with the same PID.</summary>
+    /// <remarks>
+    /// The runtime leaves its perf map behind when it exits, and a container's first process has the same PID after a restart. The start time is
+    /// known to within a second, so a file written up to a second before it counts as the running process's.
+    /// </remarks>
+    internal static bool WrittenSince(string path, DateTime started) =>
+        File.Exists(path) && File.GetLastWriteTimeUtc(path).AddSeconds(1) >= started;
+
+    /// <summary>When <paramref name="pid"/> started, in UTC, or <see cref="DateTime.MinValue"/> when that cannot be read, so that any file counts as its own.</summary>
+    private static DateTime StartTime(int pid)
+    {
+        try
+        {
+            using Process process = Process.GetProcessById(pid);
+            return process.StartTime.ToUniversalTime();
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException or Win32Exception)
+        {
+            return DateTime.MinValue;
+        }
+    }
 
     /// <summary>A runtime setting from the environment, under the <c>DOTNET_</c> prefix or the older <c>COMPlus_</c> one.</summary>
     private static string? Setting(IReadOnlyDictionary<string, string> environment, string setting) =>

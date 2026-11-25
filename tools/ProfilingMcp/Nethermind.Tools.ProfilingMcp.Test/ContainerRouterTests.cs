@@ -71,6 +71,16 @@ public class ContainerRouterTests
     [TestCase("", ExpectedResult = false)]
     public bool Tells_servers_from_the_idle_process_and_the_target(string cmdline) => ContainerSidecar.IsServer(cmdline);
 
+    [TestCase(null, ExpectedResult = null)]
+    [TestCase("", ExpectedResult = null)]
+    [TestCase("host", ExpectedResult = "shares the host's process namespace (--pid=host)")]
+    [TestCase("container:3f2a6b", ExpectedResult = "shares the process namespace of another container (--pid=container:3f2a6b)")]
+    public string? Refuses_a_target_without_a_process_namespace_of_its_own(string? pidMode) => ContainerSidecar.CheckPidMode(pidMode);
+
+    [Test]
+    public void Keeps_the_results_of_a_container_apart_from_one_that_later_takes_its_name() =>
+        Assert.That(ContainerSidecar.VolumeName("hoodi", "3f2a6b9c1d0e" + new string('a', 52)), Is.Not.EqualTo(ContainerSidecar.VolumeName("hoodi", "9c1d0e3f2a6b" + new string('a', 52))));
+
     [TestCase("/tmp", ExpectedResult = null)]
     [TestCase("/tmp/dotnet", ExpectedResult = null)]
     [TestCase("/var/tmp", ExpectedResult = null)]

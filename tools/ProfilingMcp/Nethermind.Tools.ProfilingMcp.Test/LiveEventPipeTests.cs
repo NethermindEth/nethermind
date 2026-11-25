@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Diagnostics.NETCore.Client;
 using Nethermind.Tools.ProfilingMcp.Analysis;
 using Nethermind.Tools.ProfilingMcp.EventPipe;
+using Nethermind.Tools.ProfilingMcp.Memory;
 using NUnit.Framework;
 
 namespace Nethermind.Tools.ProfilingMcp.Test;
@@ -80,17 +81,10 @@ public class LiveEventPipeTests
         if (!OperatingSystem.IsLinux())
             Assert.Ignore("Stopping a process with SIGSTOP needs Linux.");
 
-        // The server's sidecar mode with no idle limit is a .NET process that does nothing at all.
-        string server = Path.Combine(AppContext.BaseDirectory, "Nethermind.Tools.ProfilingMcp");
-        ProcessStartInfo info = new(server, ContainerSidecar.IdleOption) { UseShellExecute = false };
-        info.Environment[ContainerSidecar.IdleMinutesVariable] = "0";
-        using Process target = Process.Start(info)!;
+        using Process target = await StartIdleProcessAsync(cancellationToken);
         TimeSpan stopTimeout = CpuSampler.StopTimeout;
         try
         {
-            while (!DiagnosticsClient.GetPublishedProcesses().Contains(target.Id))
-                await Task.Delay(100, cancellationToken);
-
             CpuSampler.StopTimeout = TimeSpan.FromSeconds(3);
             Task sample = CpuSampler.CollectAsync(target.Id, TimeSpan.FromSeconds(2), _trace, cancellationToken);
             while (!File.Exists(_trace) || new FileInfo(_trace).Length == 0)
@@ -115,6 +109,30 @@ public class LiveEventPipeTests
 
     [Test]
     [CancelAfter(120_000)]
+    public async Task Write_dump_leaves_no_dump_behind_when_cancelled(CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsLinux())
+            Assert.Ignore("Starts the server's Linux build as the target.");
+
+        string workspace = Directory.CreateTempSubdirectory("dump-").FullName;
+        using Process target = await StartIdleProcessAsync(cancellationToken);
+        try
+        {
+            using CancellationTokenSource cancelled = new();
+            await cancelled.CancelAsync();
+
+            Assert.That(async () => await new MemoryTools(WorkspacePaths.At(workspace)).WriteDumpAsync(target.Id, cancelled.Token), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(Directory.GetFiles(workspace, "*", SearchOption.AllDirectories), Is.Empty);
+        }
+        finally
+        {
+            target.Kill();
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    [Test]
+    [CancelAfter(120_000)]
     public async Task Alloc_sample_finds_the_allocated_type(CancellationToken cancellationToken)
     {
         using CancellationTokenSource stop = new();
@@ -132,6 +150,26 @@ public class LiveEventPipeTests
         AllocationProfile profile = AllocationSampler.Read(_trace, include: null);
 
         Assert.That(profile.ByType.Select(static t => t.Name), Has.Some.EndsWith(nameof(Allocated)));
+    }
+
+    /// <summary>Starts the server's sidecar mode with no idle limit, a .NET process that does nothing at all, and waits for its diagnostics port.</summary>
+    private static async Task<Process> StartIdleProcessAsync(CancellationToken cancellationToken)
+    {
+        ProcessStartInfo info = new(Path.Combine(AppContext.BaseDirectory, "Nethermind.Tools.ProfilingMcp"), ContainerSidecar.IdleOption) { UseShellExecute = false };
+        info.Environment[ContainerSidecar.IdleMinutesVariable] = "0";
+        Process process = Process.Start(info)!;
+        try
+        {
+            while (!DiagnosticsClient.GetPublishedProcesses().Contains(process.Id))
+                await Task.Delay(100, cancellationToken);
+            return process;
+        }
+        catch
+        {
+            process.Kill();
+            process.Dispose();
+            throw;
+        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

@@ -117,8 +117,52 @@ public class NativeSamplerTests
     [TestCase("DOTNET_PerfMapEnabled", "0", false, ExpectedResult = false)]
     [TestCase("DOTNET_PerfMapEnabled", "2", false, ExpectedResult = false)]
     [TestCase(null, null, true, ExpectedResult = true)]
-    public bool Leaves_a_perf_map_alone_that_was_on_before(string? variable, string? value, bool mapExists) =>
-        NativeSampler.PerfMapAlreadyOn(variable is null ? [] : new Dictionary<string, string> { [variable] = value! }, mapExists);
+    public bool Leaves_a_perf_map_alone_that_was_on_before(string? variable, string? value, bool mapWritten) =>
+        NativeSampler.PerfMapAlreadyOn(variable is null ? [] : new Dictionary<string, string> { [variable] = value! }, mapWritten);
+
+    [TestCase(null, null, false, ExpectedResult = false)]
+    [TestCase("DOTNET_PerfMapEnabled", "2", false, ExpectedResult = true)]
+    [TestCase("COMPlus_PerfMapEnabled", "1", false, ExpectedResult = true)]
+    [TestCase("DOTNET_PerfMapEnabled", "3", false, ExpectedResult = false)]
+    [TestCase(null, null, true, ExpectedResult = true)]
+    public bool Leaves_the_map_on_for_a_process_that_writes_jit_dumps(string? variable, string? value, bool jitDumpWritten) =>
+        NativeSampler.WritesJitDumps(variable is null ? [] : new Dictionary<string, string> { [variable] = value! }, jitDumpWritten);
+
+    [TestCase(-300.0, ExpectedResult = false)]
+    [TestCase(-0.5, ExpectedResult = true, Description = "the start time is known to within a second")]
+    [TestCase(300.0, ExpectedResult = true)]
+    [TestCase(null, ExpectedResult = false)]
+    public bool Tells_a_map_of_the_running_process_from_one_an_earlier_process_left(double? writtenSecondsAfterStart)
+    {
+        DateTime started = DateTime.UtcNow;
+        string map = Path.Combine(Path.GetTempPath(), $"perf-{Guid.NewGuid():N}.map");
+        try
+        {
+            if (writtenSecondsAfterStart is { } seconds)
+            {
+                File.WriteAllText(map, "");
+                File.SetLastWriteTimeUtc(map, started.AddSeconds(seconds));
+            }
+
+            return NativeSampler.WrittenSince(map, started);
+        }
+        finally
+        {
+            File.Delete(map);
+        }
+    }
+
+    [Test]
+    public void Deletes_a_recording_with_the_copy_perf_kept_of_a_failed_one()
+    {
+        string data = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.perf.data");
+        File.WriteAllText(data, "");
+        File.WriteAllText(data + ".old", "");
+
+        NativeSampler.DeleteRecording(data);
+
+        Assert.That(File.Exists(data) || File.Exists(data + ".old"), Is.False);
+    }
 
     [TestCase(null, ExpectedResult = "/proc/7/root/tmp/perf-7.map")]
     [TestCase("/data/maps/", ExpectedResult = "/proc/7/root/data/maps/perf-7.map")]
@@ -146,7 +190,7 @@ public class NativeSamplerTests
         string? perfMap = null;
         try
         {
-            (string PerfMap, int Methods)? jit = await NativeSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(1), output, cancellationToken);
+            (string PerfMap, int Methods, bool LeftOn)? jit = await NativeSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(1), output, cancellationToken);
             perfMap = jit?.PerfMap;
 
             using (Assert.EnterMultipleScope())

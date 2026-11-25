@@ -6,4 +6,9 @@
     <ProjectReference Include="../Nethermind.Tools.ProfilingMcp/Nethermind.Tools.ProfilingMcp.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The signature of Microsoft.NETCore.App.Runtime.linux-x64 11.0.0 from nuget.org. -->
+    <EmbeddedResource Include="runtime-pack.signature.p7s" LogicalName="runtime-pack.signature.p7s" />
+  </ItemGroup>
+
 </Project>

@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Security.Cryptography.Pkcs;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Nethermind.Tools.ProfilingMcp.Memory;
 using NUnit.Framework;
@@ -59,20 +63,71 @@ public class DebuggingLibrariesTests
     [Test]
     public void Picks_its_own_dac_for_a_preview_by_the_version_the_host_compares()
     {
-        string runtimeConfig = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.runtimeconfig.json");
-        File.WriteAllText(runtimeConfig, """{"runtimeOptions":{"includedFrameworks":[{"name":"Microsoft.NETCore.App","version":"11.0.0-rc.2.26502.107"}]}}""");
+        string server = Directory.CreateTempSubdirectory().FullName;
+        File.WriteAllText(Path.Combine(server, "Nethermind.Tools.ProfilingMcp.runtimeconfig.json"),
+            """{"runtimeOptions":{"includedFrameworks":[{"name":"Microsoft.NETCore.App","version":"11.0.0-rc.2.26502.107"}]}}""");
         try
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(DebuggingLibraries.OwnVersion(runtimeConfig), Is.EqualTo("11.0.0-rc.2.26502.107"));
-                Assert.That(DebuggingLibraries.OwnVersion(runtimeConfig + ".missing"), Is.EqualTo(Environment.Version.ToString(3)));
+                Assert.That(DebuggingLibraries.TrustedDac("/usr/share/dotnet/shared/Microsoft.NETCore.App/11.0.0-rc.2.26502.107/libcoreclr.so", server, Path.Combine(server, "supplied")),
+                    Is.EqualTo(Path.Combine(server, "libmscordaccore.so")), "Environment.Version drops the preview's suffix, so it would not match");
+                Assert.That(DebuggingLibraries.OwnVersion(Path.Combine(server, "missing.runtimeconfig.json")), Is.EqualTo(Environment.Version.ToString(3)));
             }
         }
         finally
         {
-            File.Delete(runtimeConfig);
+            Directory.Delete(server, recursive: true);
         }
+    }
+
+    [Test]
+    public void Trusts_the_certificate_microsoft_signs_runtime_packs_with()
+    {
+        SignedCms signature = RuntimePackSignature();
+
+        Assert.That(() => DebuggingLibraries.CheckSigner(signature.SignerInfos[0].Certificate, signature.Certificates), Throws.Nothing);
+    }
+
+    [Test]
+    public void Refuses_a_signer_under_another_root([Values(DebuggingLibraries.MicrosoftSigner, "CN=Someone Else")] string subject)
+    {
+        using RSA rootKey = RSA.Create(2048);
+        CertificateRequest rootRequest = new("CN=DigiCert Trusted Root G4, OU=www.digicert.com, O=DigiCert Inc, C=US", rootKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        rootRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        using X509Certificate2 root = rootRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+        using RSA signerKey = RSA.Create(2048);
+        CertificateRequest signerRequest = new(subject, signerKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        signerRequest.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.3")], false));
+        using X509Certificate2 signer = signerRequest.Create(root, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddMonths(1), [1, 2, 3, 4]);
+
+        Assert.That(() => DebuggingLibraries.CheckSigner(signer, [root, signer]), Throws.InstanceOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void Refuses_a_runtime_pack_that_is_unsigned_or_changed([Values] bool signed)
+    {
+        using MemoryStream package = new();
+        using (ZipArchive zip = new(package, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (StreamWriter nuspec = new(zip.CreateEntry("microsoft.netcore.app.runtime.linux-x64.nuspec").Open()))
+                nuspec.Write("""<package><metadata><id>Microsoft.NETCore.App.Runtime.linux-x64</id><version>11.0.0</version></metadata></package>""");
+            using (Stream dac = zip.CreateEntry("runtimes/linux-x64/native/libmscordaccore.so").Open())
+                dac.Write([1, 2, 3]);
+            if (signed)
+            {
+                ZipArchiveEntry entry = zip.CreateEntry(".signature.p7s", CompressionLevel.NoCompression);
+                // NuGet reads a signature only from an entry without file attributes, as packages are signed.
+                entry.ExternalAttributes = 0;
+                using Stream file = entry.Open();
+                file.Write(RuntimePackSignature().Encode());
+            }
+        }
+
+        package.Position = 0;
+
+        Assert.That(async () => await DebuggingLibraries.VerifyAsync(package, CancellationToken.None),
+            Throws.InstanceOf<InvalidDataException>().With.Message.Contains(signed ? "signature does not check out" : "not signed"));
     }
 
     [Test]
@@ -139,6 +194,16 @@ public class DebuggingLibrariesTests
         DebuggingLibraries.AreNeededBy(tool, new Dictionary<string, JsonElement> { ["target"] = JsonSerializer.SerializeToElement(target) });
 
     /// <summary>A download that breaks after its first bytes.</summary>
+    private static SignedCms RuntimePackSignature()
+    {
+        using Stream resource = typeof(DebuggingLibrariesTests).Assembly.GetManifestResourceStream("runtime-pack.signature.p7s")!;
+        using MemoryStream bytes = new();
+        resource.CopyTo(bytes);
+        SignedCms signature = new();
+        signature.Decode(bytes.ToArray());
+        return signature;
+    }
+
     private sealed class FailingStream : MemoryStream
     {
         private bool _started;

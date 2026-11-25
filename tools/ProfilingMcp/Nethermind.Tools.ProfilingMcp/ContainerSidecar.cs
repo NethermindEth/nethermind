@@ -116,7 +116,7 @@ internal static class ContainerSidecar
                 // Reaching the target's files through /proc/1/root needs it when the target runs as another user than root.
                 "--cap-add", "SYS_PTRACE",
                 .. perfmon,
-                "--volume", $"profmcp-home-{target.Name}:/profmcp-home",
+                "--volume", $"{VolumeName(target.Name, target.Id)}:/profmcp-home",
                 // The client finds diagnostic sockets in its temp folder; the sidecar's own runtime must not create one there.
                 "--env", $"TMPDIR={TargetRoot}{target.TempFolder}",
                 "--env", "DOTNET_EnableDiagnostics=0",
@@ -143,6 +143,21 @@ internal static class ContainerSidecar
         string[] parts = kernelVersion.Split('.', 3);
         return parts.Length >= 2 && int.TryParse(parts[0], out int major) && int.TryParse(parts[1], out int minor) && (major, minor).CompareTo((5, 8)) >= 0;
     }
+
+    /// <summary>The volume for a target's results, named after its ID as well as its name, so a container that later takes the name gets another.</summary>
+    internal static string VolumeName(string name, string id) => $"profmcp-home-{name}-{id[..12]}";
+
+    /// <summary>Says why the sidecar cannot profile a target with the PID mode docker inspect reports, or returns null when it can.</summary>
+    /// <remarks>
+    /// The sidecar joins the target's process namespace and reaches the target's files through that namespace's first process, and the
+    /// namespace ends with that process. Both hold only for a target with a namespace of its own, not one that joined the host's or another container's.
+    /// </remarks>
+    internal static string? CheckPidMode(string? pidMode) => pidMode switch
+    {
+        null or "" or "private" => null,
+        "host" => "shares the host's process namespace (--pid=host)",
+        _ => $"shares the process namespace of another container (--pid={pidMode})",
+    };
 
     private static async Task<bool> IsRunningAsync(string[] engine, string container, CancellationToken cancellationToken)
     {
@@ -214,7 +229,7 @@ internal static class ContainerSidecar
     internal static bool IsServer(string cmdline)
     {
         string[] arguments = cmdline.Split('\0', StringSplitOptions.RemoveEmptyEntries);
-        return arguments.Length > 0 && arguments[0] == ServerPath && !arguments.Contains(IdleOption);
+        return arguments.Length > 0 && arguments[0] == ServerPath && Array.IndexOf(arguments, IdleOption) < 0;
     }
 
     /// <summary>Run inside the sidecar: makes a target's own temp folder resolve at the same path in the sidecar.</summary>
@@ -364,6 +379,9 @@ internal static class ContainerSidecar
         JsonElement root = inspection.RootElement;
         if (!root.GetProperty("State").GetProperty("Running").GetBoolean())
             throw new InvalidOperationException($"Container '{container}' is not running.");
+
+        if (CheckPidMode(root.TryGetProperty("HostConfig", out JsonElement host) && host.TryGetProperty("PidMode", out JsonElement mode) ? mode.GetString() : null) is { } pidProblem)
+            throw new InvalidOperationException($"Container '{container}' {pidProblem}, which the sidecar does not support: it finds the target as the first process of that namespace.");
 
         JsonElement config = root.GetProperty("Config");
         Dictionary<string, string> environment = [];

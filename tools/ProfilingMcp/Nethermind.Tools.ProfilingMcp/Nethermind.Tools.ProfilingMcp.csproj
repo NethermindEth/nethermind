@@ -12,6 +12,7 @@
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="NuGet.Packaging" />
   </ItemGroup>
 
   <ItemGroup>

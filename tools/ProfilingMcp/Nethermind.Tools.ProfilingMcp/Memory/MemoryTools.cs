@@ -251,26 +251,25 @@ public sealed class MemoryTools(WorkspacePaths paths)
     public async Task<string> WriteDumpAsync([Description("Process ID.")] int pid, CancellationToken cancellationToken = default)
     {
         string path = Path.Combine(paths.Heap, WorkspacePaths.NewFileName($"pid{pid}", ".dmp"));
-        if (paths.Sidecar is null)
-        {
-            await new DiagnosticsClient(pid).WriteDumpAsync(DumpType.WithHeap, path, logDumpGeneration: false, cancellationToken);
-            return $"Dump written: {path} ({Size(new FileInfo(path).Length)})";
-        }
-
-        // The target's runtime writes the dump, as the target's user and without access to the sidecar's files, so it goes to the
-        // target's temp folder, where the runtime keeps its diagnostic socket, and is moved from there.
-        string inTarget = Path.Combine(Path.GetTempPath(), Path.GetFileName(path));
+        // In a sidecar, the target's runtime writes the dump as the target's user and without access to the sidecar's files, so it goes to
+        // the target's temp folder, where the runtime keeps its diagnostic socket, and is moved from there.
+        string written = paths.Sidecar is null ? path : Path.Combine(Path.GetTempPath(), Path.GetFileName(path));
+        bool kept = false;
         try
         {
             // Cancelling the request would only stop waiting: the runtime goes on and creates the file later, after it was deleted here,
-            // leaving a dump as large as the process in the target's file system. So the dump is waited for, then removed when cancelled.
-            await new DiagnosticsClient(pid).WriteDumpAsync(DumpType.WithHeap, inTarget[ContainerSidecar.TargetRoot.Length..], logDumpGeneration: false, CancellationToken.None);
+            // leaving a dump as large as the process behind. So the dump is waited for, then removed when cancelled.
+            await new DiagnosticsClient(pid).WriteDumpAsync(DumpType.WithHeap, paths.Sidecar is null ? path : written[ContainerSidecar.TargetRoot.Length..],
+                logDumpGeneration: false, CancellationToken.None);
             cancellationToken.ThrowIfCancellationRequested();
-            File.Move(inTarget, path);
+            if (written != path)
+                File.Move(written, path);
+            kept = true;
         }
         finally
         {
-            File.Delete(inTarget);
+            if (!kept)
+                File.Delete(written);
         }
 
         return $"Dump written: {path} ({Size(new FileInfo(path).Length)})";
