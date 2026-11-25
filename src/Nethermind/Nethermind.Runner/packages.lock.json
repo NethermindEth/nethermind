@@ -1038,24 +1038,6 @@
           "Nethermind.Numerics.Int256": "[1.15.0, )"
         }
       },
-      "nethermind.shutter": {
-        "type": "Project",
-        "dependencies": {
-          "Google.Protobuf": "[3.36.2, )",
-          "Nethermind.Blockchain": "[2.3.0-preview, )",
-          "Nethermind.Consensus": "[2.3.0-preview, )",
-          "Nethermind.Core": "[2.3.0-preview, )",
-          "Nethermind.Crypto": "[2.3.0-preview, )",
-          "Nethermind.Init": "[2.3.0-preview, )",
-          "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.2.0, )",
-          "Nethermind.Logging.Microsoft": "[2.3.0-preview, )",
-          "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
-          "Nethermind.Network.Discovery": "[2.3.0-preview, )",
-          "Nethermind.Network.Libp2p": "[2.3.0-preview, )",
-          "Nethermind.Serialization.Ssz": "[2.3.0-preview, )",
-          "Nethermind.Specs": "[2.3.0-preview, )"
-        }
-      },
       "nethermind.sockets": {
         "type": "Project",
         "dependencies": {

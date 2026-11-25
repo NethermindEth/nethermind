@@ -499,7 +499,6 @@ public class MetricsTests
             typeof(Synchronization.Metrics),
             typeof(Trie.Metrics),
             typeof(Trie.Pruning.Metrics),
-            typeof(Shutter.Metrics),
             typeof(History.Metrics)
         ];
         TestErrorLogManager logManager = new();
