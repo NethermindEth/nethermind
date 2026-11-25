@@ -356,9 +356,10 @@ public class HostTests
             rpcRequest.Headers.Host = statusRequest.Headers.Host;
             rpcRequest.Headers.Add("Origin", "http://unconfigured.example");
             using HttpResponseMessage rpcResponse = await rpc.SendAsync(rpcRequest, token);
+            // The Windows sender compiles its P/Invoke with Add-Type, which can take over 15 s on a cold CI runner, so only the child's exit gets the shutdown deadline.
+            await SendInterruptAsync(client.Id, token);
             using CancellationTokenSource shutdownDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             shutdownDeadline.CancelAfter(TimeSpan.FromSeconds(15));
-            await SendInterruptAsync(client.Id, shutdownDeadline.Token);
             try { await client.WaitForExitAsync(shutdownDeadline.Token); }
             catch (OperationCanceledException) when (shutdownDeadline.IsCancellationRequested)
             {
