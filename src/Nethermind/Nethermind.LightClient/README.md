@@ -289,7 +289,8 @@ Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/js
 ## Metrics
 
 `GET /metrics` exports Prometheus metrics on the same HTTP listener, under the
-same Host/origin policy. The [Docker deployment](Deployment/README.md)
+same Host/origin policy. HTTP scrapes can negotiate compression with
+`Accept-Encoding`. The [Docker deployment](Deployment/README.md)
 includes a scraper and Grafana dashboard. Keep these operational endpoints private.
 
 The `nethermind_light_client_` metrics cover startup/readiness, authenticated
