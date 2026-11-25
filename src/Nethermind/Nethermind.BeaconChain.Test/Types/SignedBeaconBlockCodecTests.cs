@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.IO;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Types;
@@ -36,6 +37,33 @@ public class SignedBeaconBlockCodecTests
         Assert.That(decoded, gloas ? Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>() : Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
         Assert.That(decoded.Slot, Is.EqualTo(slot));
         Assert.That(SignedBeaconBlockCodec.Encode(decoded, Sepolia), Is.EqualTo(ssz));
+    }
+
+    [Test]
+    public void Prefix_offsets_point_at_the_slot_and_roots_in_every_fork_shape([Values] bool gloas)
+    {
+        Hash256 parentRoot = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+        Hash256 stateRoot = new("0x2222222222222222222222222222222222222222222222222222222222222222");
+        byte[] ssz;
+        if (gloas)
+        {
+            SignedBeaconBlockGloas block = CreateMinimalGloasBlock(FirstGloasSlot, parentRoot);
+            block.Message!.StateRoot = stateRoot;
+            ssz = SignedBeaconBlockGloas.Encode(block);
+        }
+        else
+        {
+            SignedBeaconBlock block = CreateMinimalBlock(FirstGloasSlot - 1);
+            block.Message!.ParentRoot = parentRoot;
+            block.Message.StateRoot = stateRoot;
+            ssz = SignedBeaconBlock.Encode(block);
+        }
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(ssz), Is.EqualTo(SignedBeaconBlockCodec.MessageOffset));
+        Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(ssz.AsSpan(SignedBeaconBlockCodec.MessageOffset)), Is.EqualTo(gloas ? FirstGloasSlot : FirstGloasSlot - 1));
+        Assert.That(new Hash256(ssz.AsSpan(SignedBeaconBlockCodec.ParentRootOffset, Hash256.Size)), Is.EqualTo(parentRoot));
+        Assert.That(new Hash256(ssz.AsSpan(SignedBeaconBlockCodec.StateRootOffset, Hash256.Size)), Is.EqualTo(stateRoot));
     }
 
     [Test]
