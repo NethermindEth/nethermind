@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Security.Cryptography;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.BeaconChain.Spec;
 
@@ -30,7 +30,7 @@ public static class ForkDigest
         BinaryPrimitives.WriteUInt64LittleEndian(input, blobParameters.Epoch);
         BinaryPrimitives.WriteUInt64LittleEndian(input[8..], blobParameters.MaxBlobsPerBlock);
         Span<byte> mask = stackalloc byte[32];
-        SHA256.HashData(input, mask);
+        ThreadSha256.HashData(input, mask);
 
         for (int i = 0; i < digest.Length; i++)
         {
