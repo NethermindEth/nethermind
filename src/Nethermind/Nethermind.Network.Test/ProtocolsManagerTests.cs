@@ -482,6 +482,13 @@ public class ProtocolsManagerTests
             return this;
         }
 
+        public Context VerifySnappyEnabled(bool enabled)
+        {
+            Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
+            Assert.That(_pipeline.Get<ZeroNettyP2PHandler>().SnappyEnabled, Is.EqualTo(enabled));
+            return this;
+        }
+
         public Context VerifyProtocolVersion(string protocol, int version)
         {
             Assert.That(_manager.GetHighestProtocolVersion(protocol), Is.EqualTo(version));
@@ -646,6 +653,16 @@ public class ProtocolsManagerTests
             .Init()
             .ReceiveHello()
             .VerifyPingSenderSet();
+
+    [TestCase((byte)5, true)]
+    [TestCase((byte)4, false)]
+    public void Enables_snappy_once_for_admitted_v5_hello(byte p2pVersion, bool snappy) => When
+            .CreateIncomingSession()
+            .ActivateChannel()
+            .Handshake()
+            .Init()
+            .ReceiveHello(p2pVersion)
+            .VerifySnappyEnabled(snappy);
 
     [Test]
     public void Compresses_peer_manager_disconnect_after_v5_hello() => When
