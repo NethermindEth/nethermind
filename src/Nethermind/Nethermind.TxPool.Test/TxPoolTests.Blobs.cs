@@ -4325,7 +4325,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             // Access tx1 via single lookup — this re-populates tx1 in cache, evicting tx2
-            Assert.That(TryGetBlobAndProofV1(tx1.BlobVersionedHashes![0]!, out byte[] _, out ReadOnlyMemory<byte> _), Is.True);
+            Assert.That(_txPool.TryGetPendingBlobTransaction(tx1.Hash!, out _), Is.True);
 
             // Now batch lookup: tx1 from cache (just accessed), tx2 from DB
             byte[][] requestedHashes = [tx1.BlobVersionedHashes![0]!, tx2.BlobVersionedHashes![0]!];

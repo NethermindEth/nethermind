@@ -37,15 +37,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     public bool TryGetBlobAndProofV0(
        byte[] requestedBlobVersionedHash,
        [NotNullWhen(true)] out byte[]? blob,
-       [NotNullWhen(true)] out byte[]? proof) => TryGetBlobAndProof(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V0,
-           static (proofs, index) => proofs.AsSpan(index * Ckzg.BytesPerProof, Ckzg.BytesPerProof).ToArray());
-
-    private bool TryGetBlobAndProof<TProof>(
-        byte[] requestedBlobVersionedHash,
-        [NotNullWhen(true)] out byte[]? blob,
-        [NotNullWhen(true)] out TProof? proof,
-        ProofVersion requiredVersion,
-        Func<byte[], int, TProof> proofSelector)
+       [NotNullWhen(true)] out byte[]? proof)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
 
@@ -60,12 +52,12 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                         if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
                             && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
                         {
-                            if (wrapper.Version != requiredVersion || !wrapper.HasFullBlobs())
+                            if (wrapper.Version != ProofVersion.V0 || !wrapper.HasFullBlobs())
                             {
                                 continue;
                             }
                             blob = wrapper.Blobs[indexOfBlob];
-                            proof = proofSelector(wrapper.Proofs, indexOfBlob)!;
+                            proof = wrapper.Proofs.AsSpan(indexOfBlob * Ckzg.BytesPerProof, Ckzg.BytesPerProof).ToArray();
                             return true;
                         }
                     }
