@@ -23,6 +23,11 @@ namespace Nethermind.Facade.Filters
         private readonly Lock _locker = new();
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new();
         private readonly ITimer _timer;
+        private readonly int _maxFiltersPerOwner;
+        private readonly Func<object?>? _ownerResolver;
+        private readonly Lock _ownersLocker = new();
+        private readonly Dictionary<int, object> _filterOwners = [];
+        private readonly Dictionary<object, int> _ownerFilterCounts = [];
 
         public bool FilterExists(int filterId) => _filters.ContainsKey(filterId);
 
@@ -55,8 +60,13 @@ namespace Nethermind.Facade.Filters
         // https://github.com/dotnet/runtime/pull/38296
         private IEnumerator<KeyValuePair<int, FilterBase>>? _enumerator;
 
-        public FilterStore(ITimerFactory timerFactory, int timeout = 15 * 60 * 1000, int cleanupInterval = 5 * 60 * 1000)
+        /// <param name="maxFiltersPerOwner">The max number of filters one owner can have saved at once, <c>0</c> for no limit.</param>
+        /// <param name="ownerResolver">Returns the owner of the filter being saved, or <see langword="null"/> when it has none and is not limited.</param>
+        public FilterStore(ITimerFactory timerFactory, int timeout = 15 * 60 * 1000, int cleanupInterval = 5 * 60 * 1000,
+            int maxFiltersPerOwner = 0, Func<object?>? ownerResolver = null)
         {
+            _maxFiltersPerOwner = maxFiltersPerOwner;
+            _ownerResolver = ownerResolver;
             _timeout = TimeSpan.FromMilliseconds(timeout);
             _timer = timerFactory.CreateTimer(TimeSpan.FromMilliseconds(cleanupInterval));
             _timer.AutoReset = false;
@@ -142,6 +152,11 @@ namespace Nethermind.Facade.Filters
                 return false;
             }
 
+            if (_maxFiltersPerOwner > 0)
+            {
+                ReleaseOwnerSlot(filterId);
+            }
+
             FilterRemoved?.Invoke(this, new FilterEventArgs(filterId));
             return true;
         }
@@ -150,9 +165,14 @@ namespace Nethermind.Facade.Filters
 
         internal event EventHandler<FilterEventArgs>? FilterSaved;
 
+        /// <exception cref="FilterLimitExceededException">The owner of the filter already has the max number of filters saved.</exception>
         public void SaveFilter(FilterBase filter)
         {
-            if (!_filters.TryAdd(filter.Id, filter))
+            if (_maxFiltersPerOwner > 0 && _ownerResolver?.Invoke() is { } owner)
+            {
+                AddOwnedFilter(filter, owner);
+            }
+            else if (!_filters.TryAdd(filter.Id, filter))
             {
                 throw new InvalidOperationException($"Filter with ID {filter.Id} already exists");
             }
@@ -163,6 +183,43 @@ namespace Nethermind.Facade.Filters
             }
 
             FilterSaved?.Invoke(this, new FilterEventArgs(filter.Id));
+        }
+
+        private void AddOwnedFilter(FilterBase filter, object owner)
+        {
+            lock (_ownersLocker)
+            {
+                _ownerFilterCounts.TryGetValue(owner, out int count);
+                if (count >= _maxFiltersPerOwner)
+                {
+                    throw new FilterLimitExceededException(_maxFiltersPerOwner);
+                }
+
+                if (!_filters.TryAdd(filter.Id, filter))
+                {
+                    throw new InvalidOperationException($"Filter with ID {filter.Id} already exists");
+                }
+
+                _ownerFilterCounts[owner] = count + 1;
+                _filterOwners[filter.Id] = owner;
+            }
+        }
+
+        private void ReleaseOwnerSlot(int filterId)
+        {
+            lock (_ownersLocker)
+            {
+                if (!_filterOwners.Remove(filterId, out object? owner)) return;
+
+                if (_ownerFilterCounts[owner] == 1)
+                {
+                    _ownerFilterCounts.Remove(owner);
+                }
+                else
+                {
+                    _ownerFilterCounts[owner]--;
+                }
+            }
         }
 
         private int GetFilterId(bool generateId)

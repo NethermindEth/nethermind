@@ -291,6 +291,16 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
     int FiltersTimeout { get; set; }
 
+    [ConfigItem(
+        Description = """
+            The max number of filters a single client can have installed at once with `eth_newFilter`,
+            `eth_newBlockFilter` and `eth_newPendingTransactionFilter`. A client is a WebSocket or IPC connection,
+            or the remote IP address for HTTP, so clients behind a shared proxy count together.
+            Calls beyond the limit return error `-32005`. `0` to lift the limit.
+            """,
+        DefaultValue = "1000")]
+    int MaxFiltersPerClient { get; set; }
+
     [ConfigItem(Description = "Preload rpc modules. Useful in rpc provider to reduce latency on first request.", DefaultValue = "false")]
     bool PreloadRpcModules { get; set; }
 

@@ -48,6 +48,10 @@ namespace Nethermind.JsonRpc
         /// <summary>Address of the remote caller, or <see langword="null"/> when the transport has none (IPC).</summary>
         public IPAddress? RemoteAddress { get; init; }
 
+        /// <summary>Identifies the client for per-client limits: the connection for WebSocket and IPC, the remote address for HTTP.</summary>
+        /// <remarks><see langword="null"/> when the transport gives no way to tell clients apart.</remarks>
+        public object? ClientKey => (object?)DuplexClient ?? (RemoteAddress?.IsIPv4MappedToIPv6 == true ? RemoteAddress.MapToIPv4() : RemoteAddress);
+
         /// <summary>Raw <c>X-Forwarded-For</c> header values of the request, empty when absent.</summary>
         /// <remarks>
         /// Set by the client or any proxy on the way, so it is only fit for logging, never for trust decisions.
