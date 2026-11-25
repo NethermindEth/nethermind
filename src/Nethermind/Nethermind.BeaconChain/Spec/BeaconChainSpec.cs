@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.BeaconChain.Crypto;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -58,6 +59,8 @@ public partial record BeaconChainSpec
     public ulong ChainId { get; init; }
     /// <summary>Default checkpoint-sync provider for this network, used when no override is configured.</summary>
     public string? CheckpointSyncUrl { get; init; }
+    /// <summary>Verifies the signatures checked without a <see cref="PubkeyCache"/> key, such as deposits.</summary>
+    public ISignatureVerifier SignatureVerifier { get; init; } = BlsSignatureVerifier.Instance;
     public required ulong SecondsPerSlot { get; init; }
     public required ulong SlotsPerEpoch { get; init; }
     public required ulong GenesisTime { get; init; }

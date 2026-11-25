@@ -164,7 +164,7 @@ public class BlockSignatureBatchVectorTests
         try
         {
             if (batched)
-                BlockSignatureBatch.Run(batch => handler.Apply(ctx, operand, batch));
+                BlockSignatureBatch.Run(BlsSignatureVerifier.Instance, batch => handler.Apply(ctx, operand, batch));
             else
                 handler.Apply(ctx, operand, null);
         }

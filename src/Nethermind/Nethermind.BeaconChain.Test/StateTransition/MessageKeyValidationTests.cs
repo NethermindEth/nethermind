@@ -35,7 +35,7 @@ public class MessageKeyValidationTests
         bid.Signature = SignatureFor(kind, bid.Signature);
         AssertPairingHolds(kind, key, bid.Signature, Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(bid.Message!), state.GetDomain(DomainType.BeaconBuilder)));
 
-        BlockSignatureBatch? batch = batched ? new BlockSignatureBatch() : null;
+        BlockSignatureBatch? batch = batched ? new BlockSignatureBatch(BlsSignatureVerifier.Instance) : null;
         Action process = () =>
         {
             GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: true, batch);
@@ -101,7 +101,7 @@ public class MessageKeyValidationTests
         SignedBlsToExecutionChange signed = new() { Message = change, Signature = SignatureFor(kind, Sign(sk, signingRoot)) };
         AssertPairingHolds(kind, key, signed.Signature, signingRoot);
 
-        BlockSignatureBatch? batch = batched ? new BlockSignatureBatch() : null;
+        BlockSignatureBatch? batch = batched ? new BlockSignatureBatch(BlsSignatureVerifier.Instance) : null;
         Action process = () =>
         {
             if (gloas)

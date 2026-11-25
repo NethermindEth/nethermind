@@ -535,7 +535,7 @@ public class CheckpointSync(
             Bls.P1Affine publicKey = new(stackalloc long[Bls.P1Affine.Sz]);
             return block.ProposerIndex < (ulong)validators.Length
                 && BlsSignatureSet.TryKeyValidate(validators[(int)block.ProposerIndex].Pubkey.Bytes, publicKey)
-                && BlsSigner.Verify(publicKey, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
+                && spec.SignatureVerifier.Verify(publicKey, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
         }
     }
 
