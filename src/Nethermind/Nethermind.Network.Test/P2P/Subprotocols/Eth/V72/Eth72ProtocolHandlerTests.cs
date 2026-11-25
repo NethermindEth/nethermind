@@ -6366,6 +6366,110 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
+    public enum InterruptedPeerCleanup
+    {
+        Removal,
+        Replacement,
+        BodyPeerRemoval
+    }
+
+    [TestCase(InterruptedPeerCleanup.Removal)]
+    [TestCase(InterruptedPeerCleanup.Replacement)]
+    [TestCase(InterruptedPeerCleanup.BodyPeerRemoval)]
+    public void registry_should_dispatch_requests_owed_before_a_peer_cleanup_is_interrupted(InterruptedPeerCleanup cleanup)
+    {
+        Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells, out byte[][] fullCells);
+        BlobCellMask otherMask = BlobCellMask.FromIndices([77]);
+        using SparseBlobPoolPeerRegistry registry = CreateAttributionRegistry();
+        FaultingPublicKey alternateKey = new(TestItem.PublicKeyE);
+        TestSparseBlobPeer transactionPeer = new(TestItem.PublicKeyC);
+        TestSparseBlobPeer removedPeer = new(TestItem.PublicKeyD);
+        TestSparseBlobPeer replacementPeer = new(TestItem.PublicKeyD);
+        TestSparseBlobPeer alternatePeer = new(alternateKey);
+        Action interruptedCleanup;
+        if (cleanup == InterruptedPeerCleanup.BodyPeerRemoval)
+        {
+            // The body peer also sent cells and another peer sent the rest; the tuple waits for the pool.
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.AlreadyKnown);
+            byte[][] otherCells = BlobCellsHelper.SelectFlattenedCells(
+                fullCells, BlobCellMask.Full, otherMask, tx.BlobVersionedHashes!.Length);
+            AddAnnouncingPeers(registry, tx.Hash!, BlobCellMask.Full, alternatePeer);
+            registry.AddPeer(transactionPeer);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(registry.RecordCells(transactionPeer, tx.Hash!, cellMask, cells), Is.True);
+                Assert.That(registry.RecordCells(alternatePeer, tx.Hash!, otherMask, otherCells), Is.True);
+                Assert.That(registry.RecordTransaction(transactionPeer, tx), Is.Null);
+                Assert.That(registry.HasRecordedTransaction(tx.Hash!), Is.True);
+            }
+
+            // Removing the body peer releases the body and chooses the other cell source for a new one; a local
+            // error then interrupts the accounting of the cells left after the body peer's are stripped.
+            alternateKey.FailOnHash(2);
+            interruptedCleanup = () => registry.RemovePeer(transactionPeer);
+        }
+        else
+        {
+            // The removed peer has an unanswered request, and another peer announced the same cells since.
+            AddAnnouncingPeers(registry, tx.Hash!, cellMask, removedPeer);
+            registry.AddPeer(transactionPeer);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(registry.RecordTransaction(transactionPeer, tx), Is.Null);
+                Assert.That(registry.TryRequestCells(tx.Hash!, cellMask, TestItem.PublicKeyF), Is.True);
+                Assert.That(removedPeer.CellRequests, Is.EqualTo(new[] { (tx.Hash!, cellMask) }));
+            }
+
+            AddAnnouncingPeers(registry, tx.Hash!, cellMask, alternatePeer);
+
+            // A local error interrupts the cleanup after it released the unanswered request.
+            bool failRead = true;
+            transactionPeer.ReadingId = () =>
+            {
+                if (failRead)
+                {
+                    failRead = false;
+                    throw new InvalidOperationException("Cleanup interrupted.");
+                }
+            };
+            interruptedCleanup = cleanup == InterruptedPeerCleanup.Removal
+                ? () => registry.RemovePeer(removedPeer)
+                : () => registry.AddPeer(replacementPeer);
+        }
+
+        Assert.That(() => interruptedCleanup(), Throws.InvalidOperationException);
+        transactionPeer.ReadingId = null;
+
+        // The requests owed before the error were still sent.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetCachedPeerCount(registry), Is.EqualTo(GetRegisteredPeerCount(registry)));
+            if (cleanup == InterruptedPeerCleanup.BodyPeerRemoval)
+            {
+                Assert.That(alternateKey.Failed, Is.True);
+                Assert.That(alternatePeer.TransactionRequests, Is.EqualTo(new[] { tx.Hash! }));
+                Assert.That(alternatePeer.CellRequests, Is.EqualTo(new[] { (tx.Hash!, cellMask) }));
+            }
+            else
+            {
+                Assert.That(alternatePeer.CellRequests, Is.EqualTo(new[] { (tx.Hash!, cellMask) }));
+                Assert.That(removedPeer.CellRequests, Has.Count.EqualTo(1));
+                Assert.That(registry.RecordAnnouncement(replacementPeer, tx.Hash!, cellMask), Is.False);
+            }
+        }
+
+        if (cleanup == InterruptedPeerCleanup.Replacement)
+        {
+            // The replacement was not registered; registering it again succeeds.
+            registry.AddPeer(replacementPeer);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(registry.RecordAnnouncement(replacementPeer, tx.Hash!, cellMask), Is.True);
+                Assert.That(GetCachedPeerCount(registry), Is.EqualTo(GetRegisteredPeerCount(registry)));
+            }
+        }
+    }
+
     [Test]
     public void registry_should_complete_admission_when_disconnecting_a_differing_source_throws()
     {
@@ -8010,6 +8114,16 @@ public class Eth72ProtocolHandlerTests
         GetPeerUsage(registry, peerId) is { } usage
             ? (long)usage.GetType().GetProperty("TransactionBytes")!.GetValue(usage)!
             : 0;
+
+    private static int GetCachedPeerCount(SparseBlobPoolPeerRegistry registry) =>
+        (int)typeof(SparseBlobPoolPeerRegistry)
+            .GetField("_peerCount", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(registry)!;
+
+    private static int GetRegisteredPeerCount(SparseBlobPoolPeerRegistry registry) =>
+        ((ICollection)typeof(SparseBlobPoolPeerRegistry)
+            .GetField("_peers", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(registry)!).Count;
 
     private static Transaction BuildElidedBlobTransaction(Transaction tx)
     {
