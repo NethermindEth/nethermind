@@ -254,15 +254,16 @@ public class MempoolWrapperTests
         Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>());
     }
 
+    // EIP-8437: a reserved scheme decodes, so validation discards it without penalty; a nonzero scheme padding is malformed.
     [Test]
-    public void Wrapper_rejects_noncanonical_scheme_word([Values] bool unknownScheme)
+    public void Wrapper_decodes_a_reserved_scheme_but_rejects_a_noncanonical_scheme_word([Values] bool reservedScheme)
     {
         byte[] dependency = new byte[Eip8288Constants.DependencyTripleLength];
-        dependency[31] = unknownScheme ? (byte)0xff : Eip8288Constants.LeanSphincsScheme;
-        if (!unknownScheme) dependency[0] = 1;
+        dependency[31] = reservedScheme ? (byte)0xff : Eip8288Constants.LeanSphincsScheme;
+        if (!reservedScheme) dependency[0] = 1;
         Rlp encoded = Rlp.Encode(Rlp.Encode([Rlp.Encode(Encoded([Sphincs("a")]))]), Rlp.Encode(0UL),
             Rlp.Encode(Rlp.Encode([Rlp.Encode(dependency)]), Rlp.Encode([Rlp.Encode(new byte[] { 1 })])));
-        Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>());
+        Assert.That(() => Decode(encoded), reservedScheme ? Throws.Nothing : Throws.InstanceOf<RlpException>());
     }
 
     // EIP-8288 Test Case 12: empty transaction lists, unresolved hash references, non-frame or malformed transactions and

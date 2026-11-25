@@ -194,9 +194,6 @@ public static class Eip8288Dependencies
     /// <summary>Whether a dependency scheme is enabled: leanSPHINCS and leanSTARK.</summary>
     public static bool IsAcceptedScheme(byte scheme) => scheme is Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme;
 
-    /// <summary>Whether a dependency scheme is one EIP-8288 defines.</summary>
-    public static bool IsKnownScheme(byte scheme) => scheme is Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme;
-
     /// <summary>The leanSTARK dependencies in <paramref name="dependencies"/>, repeats included.</summary>
     public static int CountLeanStark(IEnumerable<FrameDependency> dependencies)
     {

@@ -135,6 +135,7 @@ public class Eip8437ClientCaseTests
     // mismatched announced hashes remain penalizable (see ProofWrapperBroadcasterTests for the verifier change).
     [TestCase("proof", false)]
     [TestCase("dependency union", false)]
+    [TestCase("reserved scheme", false)]
     [TestCase("announced hash", true)]
     public async Task Proof_and_dependency_failures_are_discarded_without_penalty(string scenario, bool penalized)
     {
@@ -142,6 +143,7 @@ public class Eip8437ClientCaseTests
         byte[] wrapper = scenario switch
         {
             "dependency union" => MismatchedUnion(a, b),
+            "reserved scheme" => DirectWrapper(a, FrameTransaction(2, 0x12)),
             _ => Wrapper(64, a, b)
         };
         using WrapperTestNode node = new();

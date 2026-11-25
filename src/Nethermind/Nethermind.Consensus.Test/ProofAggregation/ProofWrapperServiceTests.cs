@@ -1890,11 +1890,11 @@ public class ProofWrapperServiceTests
         }).Bytes;
     }
 
-    // leanSTARK is accepted like leanSPHINCS; a scheme EIP-8288 does not define is
-    // malformed encoding.
+    // leanSTARK is accepted like leanSPHINCS; a reserved scheme is a dependency-rule failure, invalid rather than malformed
+    // (EIP-8437).
     [TestCase(Eip8288Constants.LeanStarkScheme, ProofWrapperAcceptanceStatus.Accepted)]
-    [TestCase((byte)0x99, ProofWrapperAcceptanceStatus.Malformed)]
-    public async Task LeanStark_dependency_is_accepted_and_an_undefined_scheme_malformed(byte scheme, ProofWrapperAcceptanceStatus expected)
+    [TestCase((byte)0x99, ProofWrapperAcceptanceStatus.Invalid)]
+    public async Task LeanStark_dependency_is_accepted_and_a_reserved_scheme_invalid(byte scheme, ProofWrapperAcceptanceStatus expected)
     {
         Transaction transaction = CreateTransaction(new(scheme, TestItem.KeccakA.ValueHash256, default), TestItem.KeccakA);
         ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true));
