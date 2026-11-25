@@ -693,12 +693,13 @@ public class BeaconNodeValidatorApiTests
         switch (flaw)
         {
             case ContributionFlaw.AggregatorIndex: signed = Sign(state, new ContributionAndProof { AggregatorIndex = 1000, Contribution = contribution, SelectionProof = signed.Message!.SelectionProof }, aggregator); break;
-            case ContributionFlaw.SelectionProof: signed = Sign(state, new ContributionAndProof
-            {
-                AggregatorIndex = (ulong)aggregator,
-                Contribution = contribution,
-                SelectionProof = SelectionProof(state, aggregators[1], HeadSlot, 0),
-            }, aggregator); break;
+            case ContributionFlaw.SelectionProof:
+                signed = Sign(state, new ContributionAndProof
+                {
+                    AggregatorIndex = (ulong)aggregator,
+                    Contribution = contribution,
+                    SelectionProof = SelectionProof(state, aggregators[1], HeadSlot, 0),
+                }, aggregator); break;
             case ContributionFlaw.AggregatorSignature: signed = Sign(state, signed.Message!, aggregators[1]); break;
         }
 
