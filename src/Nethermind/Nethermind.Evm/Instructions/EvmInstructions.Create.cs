@@ -210,7 +210,7 @@ public static partial class EvmInstructions
         if (isTransientCreate)
         {
             // EIP-8360: no account-creation charge; the target access is priced as an EIP-8038 account access.
-            if (!TSpec.TryConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, contractAddress))
+            if (!TSpec.TryConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, contractAddress))
                 goto OutOfGas;
             if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(contractAddress))
                 goto OutOfGas;

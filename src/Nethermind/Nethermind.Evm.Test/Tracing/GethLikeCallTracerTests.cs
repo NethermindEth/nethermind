@@ -526,7 +526,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             Assert.That(hasStorage, Is.EqualTo(expectedError is null));
             if (hasStorage)
                 Assert.That(storage.GetProperty("0x" + new string('0', 64)).GetString(), Is.EqualTo("0x" + expectedValue.ToString("x64")));
-            Assert.That(lastStorage.Refund, Is.EqualTo(expectedValue == 0 ? (long?)spec.GasCosts.SClearRefund : null));
+            Assert.That(lastStorage.Refund, Is.Null, "the counter before the SSTORE");
         }
 
         using JsonDocument streamed = ExecuteStreamingTrace(block, tx, GethTraceOptions.Default with { DisableStack = disableStack });
@@ -926,6 +926,11 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             if (outcome == ChildOutcome.Revert)
             {
                 Assert.That(frame.Error, Is.EqualTo("execution reverted"), "revert error");
+            }
+
+            if (outcome == ChildOutcome.StackOverflow)
+            {
+                Assert.That(frame.Error, Is.EqualTo("stack limit reached 1024 (1023)"), "stack overflow error");
             }
 
             if (depth == 2)
@@ -1862,6 +1867,50 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             }
             """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    [Test(Description = "Like geth, a SELFDESTRUCT that runs out of gas paying for the new beneficiary account reports no frame")]
+    public void Test_CallTrace_SelfDestruct_OutOfGas_OmitsFrame([Values] bool enoughGas)
+    {
+        Address beneficiary = new("0x00000000000000000000000000000000000000be");
+        byte[] childCode = Prepare.EvmCode.PushData(beneficiary).Op(Instruction.SELFDESTRUCT).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1);
+        TestState.InsertCode(TestItem.AddressC, childCode, Spec);
+        // The new account charge of 25000 runs after the beneficiary access, so 10000 gas reaches it but cannot pay it.
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, enoughGas ? 50000 : 10000).Op(Instruction.POP).STOP().Done;
+
+        (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        using GethLikeTxTrace trace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
+        NativeCallTracerCallFrame child = ((NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!).Calls.AssertSingle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(child.Error, Is.EqualTo(enoughGas ? null : "out of gas"));
+            Assert.That(child.Calls.Select(static frame => frame.Type), Is.EqualTo(enoughGas ? new[] { Instruction.SELFDESTRUCT } : Array.Empty<Instruction>()));
+        }
+    }
+
+    [Test(Description = "Like geth, the EIP-7708 transfer log of a SELFDESTRUCT comes before its frame")]
+    public void Test_CallTrace_SelfDestruct_TransferLog_Position()
+    {
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        LogEntry transferLog = new(TestItem.AddressA, [], [Keccak.Zero]);
+
+        tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportSelfDestruct(TestItem.AddressB, 1, TestItem.AddressC);
+        tracer.ReportLog(transferLog);
+        tracer.ReportActionEnd(90000, ReadOnlyMemory<byte>.Empty);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(10000, 10000), [], [transferLog]);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Logs.AssertSingle().Position, Is.Zero);
+            Assert.That(root.Calls.AssertSingle().Type, Is.EqualTo(Instruction.SELFDESTRUCT));
+        }
     }
 
     public enum CreateOutcome { Success, Revert, InvalidOpcode, AddressCollision }
