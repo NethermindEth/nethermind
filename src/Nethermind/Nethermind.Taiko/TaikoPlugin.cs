@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -58,8 +57,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string SealEngineType => Core.SealEngineType.Taiko;
 
     public IModule Module => new TaikoModule();
-
-    public Type ApiType => typeof(TaikoNethermindApi);
 }
 
 public class TaikoModule : Module
@@ -69,7 +66,6 @@ public class TaikoModule : Module
         base.Load(builder);
 
         builder
-            .AddSingleton<NethermindApi, TaikoNethermindApi>()
             .AddModule(new BaseMergePluginModule())
             .AddModule(new TaikoSynchronizerModule())
 
