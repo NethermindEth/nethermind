@@ -27,6 +27,7 @@ using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
 using NSubstitute;
 using NUnit.Framework;
+using System.Buffers.Binary;
 using System.Net;
 using System.Security.Cryptography;
 using Nethermind.Blockchain.Headers;
@@ -85,6 +86,48 @@ public class EraImporterTests
         Assert.That(
             () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, accumulatorPath),
             Throws.Nothing);
+    }
+
+    [Test]
+    public async Task Import_WhenRangeEndsAtEraBoundary_ImportsAllBlocks()
+    {
+        const int chainLength = 17;
+        await using ImportEnvironment env = await CreateImportEnvironment(chainLength,
+            b => b.AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true }));
+
+        await env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong i = 1; i < chainLength; i++)
+            {
+                Assert.That(env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None), Is.Not.Null, $"block {i}");
+            }
+        }
+    }
+
+    [TestCase(1L << 62)]
+    [TestCase(-1L)]
+    [TestCase(17L)]
+    public async Task Import_WhenEraFileStartsOutsideItsEpoch_Throws(long startBlock)
+    {
+        await using ImportEnvironment env = await CreateImportEnvironment();
+
+        string lastEraFile = System.IO.Directory.GetFiles(env.ExportPath)
+            .Where(static f => System.IO.Path.GetExtension(f) is ".erae" or ".ere")
+            .Order(StringComparer.Ordinal)
+            .Last();
+        byte[] bytes = await System.IO.File.ReadAllBytesAsync(lastEraFile);
+        int blockCount = (int)BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(bytes.Length - sizeof(long)));
+        int componentCount = (int)BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(bytes.Length - 2 * sizeof(long)));
+        int startBlockOffset = bytes.Length - 2 * sizeof(long) - blockCount * componentCount * sizeof(long) - sizeof(long);
+        BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(startBlockOffset), startBlock);
+        await System.IO.File.WriteAllBytesAsync(lastEraFile, bytes);
+
+        Assert.That(
+            () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null),
+            startBlock < 0 ? Throws.InstanceOf<EraException>().With.Message.Contains("Invalid starting block number") : Throws.TypeOf<EraVerificationException>().With.Message.Contains("outside the epoch"));
+        Assert.That(() => System.IO.File.Open(lastEraFile, System.IO.FileMode.Open, System.IO.FileAccess.ReadWrite, System.IO.FileShare.None).Dispose(), Throws.Nothing);
     }
 
     [Test]

@@ -114,8 +114,6 @@ public class SyncedTxGossipPolicyTests
             }
         }
 
-        public event EventHandler<SyncModeChangedEventArgs> Preparing { add { } remove { } }
-        public event EventHandler<SyncModeChangedEventArgs> Changing { add { } remove { } }
         public event EventHandler<SyncModeChangedEventArgs>? Changed
         {
             add

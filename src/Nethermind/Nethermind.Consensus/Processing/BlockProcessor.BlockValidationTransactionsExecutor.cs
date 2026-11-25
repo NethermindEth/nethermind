@@ -3,7 +3,6 @@
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -33,24 +32,31 @@ public partial class BlockProcessor
 
         public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
-            SetupTxTimingMetrics(block);
-
-            bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
-
-            for (int i = 0; i < block.Transactions.Length; i++)
+            _txTimings = PerTxTimingCollector.Prepare(block.Transactions.Length);
+            try
             {
-                token.ThrowIfCancellationRequested();
-                Transaction currentTx = block.Transactions[i];
+                bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
 
-                ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
-
-                if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
+                for (int i = 0; i < block.Transactions.Length; i++)
                 {
-                    ThrowInvalidBlockForGasLimit(block);
-                }
-            }
+                    token.ThrowIfCancellationRequested();
+                    Transaction currentTx = block.Transactions[i];
 
-            return [.. receiptsTracer.TxReceipts];
+                    ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+
+                    if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
+                    {
+                        ThrowInvalidBlockForGasLimit(block);
+                    }
+                }
+
+                return [.. receiptsTracer.TxReceipts];
+            }
+            finally
+            {
+                // The collector snapshot owns the list after the block, so the executor must not keep it.
+                _txTimings = null;
+            }
 
             [DebuggerHidden]
             [DoesNotReturn]
@@ -59,7 +65,7 @@ public partial class BlockProcessor
 
         protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
         {
-            long txStart = StartTxTimer();
+            long txStart = PerTxTimingCollector.Start(_txTimings);
             TransactionResult result;
             try
             {
@@ -68,36 +74,11 @@ public partial class BlockProcessor
             finally
             {
                 // Stop the timer even on failure so a slow-block log captures the failing tx's time
-                StopTxTimer(index, txStart);
+                PerTxTimingCollector.Stop(_txTimings, index, txStart);
             }
             if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
             if (_transactionProcessedEventHandler is { HasSubscribers: true } handler)
                 handler.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
-        }
-
-        public void SetupTxTimingMetrics(Block block)
-        {
-            // Compile-time switch: when ExecutionMetricsFlag.IsActive folds to false the JIT
-            // elides the entire setup path (and the StartTxTimer/StopTxTimer bodies below).
-            if (!ExecutionMetricsFlag.IsActive) return;
-            _txTimings = PerTxTimingCollector.Prepare(block.Transactions.Length);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public long StartTxTimer()
-        {
-            if (!ExecutionMetricsFlag.IsActive) return 0;
-            return _txTimings is not null ? Stopwatch.GetTimestamp() : 0;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void StopTxTimer(int i, long txStart)
-        {
-            if (!ExecutionMetricsFlag.IsActive) return;
-            if (_txTimings is { } timings)
-            {
-                PerTxTimingCollector.Record(timings, i, Stopwatch.GetElapsedTime(txStart).Ticks);
-            }
         }
 
         [DoesNotReturn, StackTraceHidden]

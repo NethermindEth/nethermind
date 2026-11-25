@@ -397,8 +397,6 @@ public class LogIndexReorgTests
     /// <remarks>It offers no receipts iterator, so the builder reads every block with <see cref="Get(Block, bool, bool)"/>. NSubstitute cannot proxy the iterator's ref struct out parameter.</remarks>
     private sealed class ObservedReceiptStorage(IReceiptStorage inner, Func<Block, TxReceipt[]> onRead) : IReceiptStorage
     {
-        public ulong MigratedBlockNumber { get => inner.MigratedBlockNumber; set => inner.MigratedBlockNumber = value; }
-
         public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts { add { } remove { } }
         public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted { add { } remove { } }
 
@@ -418,8 +416,6 @@ public class LogIndexReorgTests
         public void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null) =>
             inner.Insert(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
         public bool HasBlock(ulong blockNumber, Hash256 hash) => inner.HasBlock(blockNumber, hash);
-        public void EnsureCanonical(Block block) => inner.EnsureCanonical(block);
         public void RemoveReceipts(Block block) => inner.RemoveReceipts(block);
-        public void RemoveReceipts(ulong blockNumber, Hash256 blockHash) => inner.RemoveReceipts(blockNumber, blockHash);
     }
 }

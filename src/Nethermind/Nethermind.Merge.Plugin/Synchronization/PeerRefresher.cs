@@ -19,6 +19,7 @@ using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.Optimism")]
 namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class PeerRefresher : IPeerRefresher, IAsyncDisposable

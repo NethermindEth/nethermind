@@ -12,10 +12,6 @@ namespace Nethermind.Synchronization.ParallelSync
     {
         SyncMode Current { get; }
 
-        event EventHandler<SyncModeChangedEventArgs> Preparing;
-
-        event EventHandler<SyncModeChangedEventArgs> Changing;
-
         event EventHandler<SyncModeChangedEventArgs> Changed;
 
         Task StartAsync();

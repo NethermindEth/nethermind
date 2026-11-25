@@ -18,7 +18,7 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class PosForwardHeaderProvider : PowForwardHeaderProvider
+public class PosForwardHeaderProvider : PowForwardHeaderProvider, IDisposable
 {
     private const int CacheBatchMultiplier = 4;
 
@@ -246,5 +246,5 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
         }
     }
 
-    internal void UnsubscribeForTest() => _blockTree.OnUpdateMainChain -= BlockTreeOnUpdateMainChain;
+    public void Dispose() => _blockTree.OnUpdateMainChain -= BlockTreeOnUpdateMainChain;
 }

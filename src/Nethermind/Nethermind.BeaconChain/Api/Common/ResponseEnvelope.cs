@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Common;
@@ -87,9 +87,9 @@ internal static class ResponseEnvelope
         foreach (Hash256 child in children)
         {
             if (!ExecutionOptimistic(ctx, child)
-                && ctx.Store.TryGetForkedBlock(child, out ForkedSignedBeaconBlock? childBlock)
-                && childBlock is ForkedSignedBeaconBlock.OfGloas { Block.Message.Body.SignedExecutionPayloadBid.Message.ParentBlockHash: { } builtOn }
-                && builtOn == payloadHash)
+                && ctx.Store.TryGetStoredBlock(child, out StoredBlock childBlock)
+                && childBlock.IsGloas
+                && childBlock.Bid.ParentBlockHash == payloadHash)
             {
                 return false;
             }
@@ -122,7 +122,4 @@ internal static class ResponseEnvelope
     public static bool IsFinalized(BeaconApiContext ctx, ApiState state, Hash256 root) =>
         state.Slot <= ctx.StatusSource.CurrentStatus.FinalizedEpoch * ctx.Spec.SlotsPerEpoch
         && IsFinalized(ctx, state.LatestBlockHeader.Slot, root);
-
-    public static void ApplyConsensusVersionHeader(HttpContext ctx, BeaconChainSpec spec, ulong slot) =>
-        ctx.Response.Headers[ConsensusVersionHeader] = ForkName(spec.ForkAtEpoch(spec.GetEpoch(slot)));
 }
