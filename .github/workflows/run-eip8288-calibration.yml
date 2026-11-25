@@ -125,7 +125,16 @@ jobs:
           [[ $NETHERMIND_REF =~ ^$name$ ]] || fail "nethermind_ref must be a branch, tag or commit"
           [[ $BENCH_SCENARIOS =~ ^(builder|mempool)(,(builder|mempool))*$ ]] || fail "bench_scenarios must be builder and/or mempool"
           # run.sh reads these from its environment; plain values only, so they cannot reach a command line as code.
-          [[ $BENCH_ENV =~ ^([A-Z][A-Z0-9_]*=[A-Za-z0-9_.,:/-]*( +|$))*$ ]] || fail "bench_env must be space-separated NAME=value words"
+          # Only the benchmark settings run.sh and its scripts read, with plain values, so bench_env cannot set PATH, LD_PRELOAD,
+          # BASH_ENV or any other variable that changes what runs.
+          allowed=' AVERAGE_CPUS AVERAGE_MEMORY BASELINE_REF MEMPOOL_RUNS COUNTS WARMUPS REPEATS SLOT_MS RESERVE_MS NODES DEGREE
+            NODE_CPUS NODE_MEMORY DELAY_MS JITTER_MS UP_MBIT LOSS_PCT RATE SECONDS_TO_RUN WARMUP_SECONDS GRACE_SECONDS DEPS
+            TXS_PER_WRAPPER DUP_FRACTION SHARED_FRACTION SEED ACCOUNTS '
+          read -ra settings <<< "$BENCH_ENV"
+          for setting in ${settings[@]+"${settings[@]}"}; do
+            [[ $setting =~ ^([A-Z][A-Z0-9_]*)=[A-Za-z0-9_.,:/-]*$ ]] || fail "bench_env must be space-separated NAME=value words"
+            [[ ${allowed//[[:space:]]/ } == *" ${BASH_REMATCH[1]} "* ]] || fail "bench_env does not take ${BASH_REMATCH[1]}"
+          done
           if [[ ! $TIMEOUT_MINUTES =~ ^[1-9][0-9]{0,2}$ ]] || (( TIMEOUT_MINUTES > 360 )); then fail "timeout_minutes must be 1-360"; fi
           disk=$BOOT_DISK_TYPE
           if [[ $disk == auto ]]; then
@@ -188,6 +197,8 @@ jobs:
   calibrate:
     name: Calibrate
     needs: [resolve, create_a_runner]
+    # Benchmark code runs here; it needs no token scope.
+    permissions: {}
     runs-on: ${{ needs.create_a_runner.outputs.runner_label }}
     timeout-minutes: ${{ fromJSON(needs.resolve.outputs.job_timeout) }}
     env:
@@ -228,10 +239,22 @@ jobs:
           scratch=$RUNNER_TEMP/$RUN_DIR
           rm -rf "$scratch"
           mkdir -p "$scratch/out"
-          git clone -q --filter=blob:none https://github.com/NethermindEth/nethermind.git "$scratch/nethermind"
-          git -C "$scratch/nethermind" -c advice.detachedHead=false checkout -q "$NETHERMIND_REF"
-          echo "nethermind $NETHERMIND_REF at $(git -C "$scratch/nethermind" rev-parse HEAD)"
+          repo=$scratch/nethermind
+          git clone -q --filter=blob:none https://github.com/NethermindEth/nethermind.git "$repo"
+          # The ref must be an upstream branch or tag, or a commit one of them contains: GitHub serves fork-only commits
+          # through the upstream repository too, and they must not run here unreviewed.
+          if sha=$(git -C "$repo" rev-parse -q --verify "refs/remotes/origin/$NETHERMIND_REF^{commit}") ||
+             sha=$(git -C "$repo" rev-parse -q --verify "refs/tags/$NETHERMIND_REF^{commit}"); then :
+          elif [[ $NETHERMIND_REF =~ ^[0-9a-f]{40}$ ]] && git -C "$repo" cat-file -e "$NETHERMIND_REF^{commit}" 2>/dev/null &&
+               [[ -n $(git -C "$repo" for-each-ref --count=1 --contains "$NETHERMIND_REF" refs/remotes/origin refs/tags) ]]; then
+            sha=$NETHERMIND_REF
+          else
+            echo "::error::nethermind_ref must be an upstream branch, tag, or full commit SHA contained in one"; exit 1
+          fi
+          git -C "$repo" -c advice.detachedHead=false checkout -q "$sha"
+          echo "nethermind $NETHERMIND_REF at $sha"
           read -ra settings <<< "$BENCH_ENV"
+          # run.sh fetches BASELINE_REF as an upstream branch or tag name only.
           timeout "${TIMEOUT_MINUTES}m" env ${settings[@]+"${settings[@]}"} \
             "$scratch/nethermind/scripts/eip8288-bench/run.sh" "$scratch/out" "$BENCH_SCENARIOS"
 
