@@ -281,6 +281,8 @@ public sealed class BeaconP2P : IAsyncDisposable
             .. GossipTopics.SubscribedTopicNames,
             .. GossipTopics.GloasTopicNames,
             .. GossipTopics.BeaconAttestationTopicNames,
+            .. GossipTopics.SyncCommitteeTopicNames,
+            GossipTopics.SyncCommitteeContributionAndProof,
             GossipTopics.LightClientFinalityUpdate,
             GossipTopics.LightClientOptimisticUpdate,
             .. Enumerable.Range(0, (int)Eip7594DasConstants.DataColumnSidecarSubnetCount).Select(static subnet => GossipTopics.DataColumnSidecarTopicName((ulong)subnet)),

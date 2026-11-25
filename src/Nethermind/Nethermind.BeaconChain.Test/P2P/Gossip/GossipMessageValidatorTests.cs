@@ -105,6 +105,11 @@ public class GossipMessageValidatorTests
         yield return Case("attestation subnet past the last one", Topic(FuluDigest, "beacon_attestation_64"), validBlock, MessageValidity.Rejected, null, GossipDropReason.UnknownTopic);
         yield return Case("attestation on a subnet this node has not joined", Topic(FuluDigest, GossipTopics.BeaconAttestationTopicNames[3]), validBlock, MessageValidity.Ignored, null, GossipDropReason.UnjoinedSubnet);
         yield return Case("attestation on a Gloas digest", Topic(GloasDigest, GossipTopics.BeaconAttestationTopicNames[3]), validBlock, MessageValidity.Ignored, null, GossipDropReason.UnjoinedSubnet);
+
+        yield return Case("sync committee subnet past the last one", Topic(FuluDigest, "sync_committee_4"), validBlock, MessageValidity.Rejected, null, GossipDropReason.UnknownTopic);
+        yield return Case("sync committee message on a subnet this node has not joined", Topic(FuluDigest, GossipTopics.SyncCommitteeTopicNames[1]), validBlock, MessageValidity.Ignored, null, GossipDropReason.UnjoinedSubnet);
+        yield return Case("contribution while no sync committee subnet is joined", Topic(FuluDigest, GossipTopics.SyncCommitteeContributionAndProof), validBlock, MessageValidity.Ignored, null, GossipDropReason.UnjoinedSubnet);
+        yield return Case("contribution on a Gloas digest", Topic(GloasDigest, GossipTopics.SyncCommitteeContributionAndProof), validBlock, MessageValidity.Ignored, null, GossipDropReason.UnjoinedSubnet);
     }
 
     /// <summary>
@@ -140,7 +145,8 @@ public class GossipMessageValidatorTests
         (GossipMessageValidator validator, GossipRouter router, List<object> raised) = Create();
 
         string label = GossipTopics.TryParse(topic, out _, out string? name)
-            && (Array.IndexOf(GossipTopics.SubscribedTopicNames, name) >= 0 || Array.IndexOf(GossipTopics.GloasTopicNames, name) >= 0 || Array.IndexOf(GossipTopics.BeaconAttestationTopicNames, name) >= 0)
+            && (Array.IndexOf(GossipTopics.SubscribedTopicNames, name) >= 0 || Array.IndexOf(GossipTopics.GloasTopicNames, name) >= 0 || Array.IndexOf(GossipTopics.BeaconAttestationTopicNames, name) >= 0
+                || Array.IndexOf(GossipTopics.SyncCommitteeTopicNames, name) >= 0 || name == GossipTopics.SyncCommitteeContributionAndProof)
             ? name! : "unhandled";
         StringLabel key = new(label);
         long before = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key);

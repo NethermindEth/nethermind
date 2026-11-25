@@ -69,6 +69,34 @@ public sealed class Web3SignerClient(IValidatorClientConfig config, BeaconChainS
             $"the aggregate of {publicKey} for slot {aggregate.Data.Slot}", cancellationToken);
     }
 
+    /// <inheritdoc/>
+    public ValueTask<BlsSignature> SignSyncCommitteeMessage(BlsPublicKey publicKey, ulong slot, Hash256 beaconBlockRoot, CancellationToken cancellationToken) =>
+        Sign(publicKey, Request("SYNC_COMMITTEE_MESSAGE", DomainType.SyncCommittee, spec.GetEpoch(slot), beaconBlockRoot)
+            with
+        { SyncCommitteeMessage = new SyncCommitteeMessageDto(beaconBlockRoot.ToString(), slot.ToString()) },
+            $"the sync committee message of {publicKey} for slot {slot}", cancellationToken);
+
+    /// <inheritdoc/>
+    public ValueTask<BlsSignature> SignSyncCommitteeSelectionProof(BlsPublicKey publicKey, ulong slot, ulong subcommitteeIndex, CancellationToken cancellationToken) =>
+        Sign(publicKey, Request("SYNC_COMMITTEE_SELECTION_PROOF", DomainType.SyncCommitteeSelectionProof, spec.GetEpoch(slot),
+                SszRoots.HashTreeRoot(new SyncAggregatorSelectionData { Slot = slot, SubcommitteeIndex = subcommitteeIndex }))
+            with
+        { SyncAggregatorSelectionData = new SyncAggregatorSelectionDataDto(slot.ToString(), subcommitteeIndex.ToString()) },
+            $"the sync committee selection proof of {publicKey} for slot {slot} and subcommittee {subcommitteeIndex}", cancellationToken);
+
+    /// <inheritdoc/>
+    public ValueTask<BlsSignature> SignContributionAndProof(BlsPublicKey publicKey, ContributionAndProof contributionAndProof, CancellationToken cancellationToken)
+    {
+        SyncCommitteeContribution contribution = contributionAndProof.Contribution!;
+        ContributionAndProofDto data = new(contributionAndProof.AggregatorIndex.ToString(), contributionAndProof.SelectionProof.ToString(),
+            new SyncCommitteeContributionDto(contribution.Slot.ToString(), contribution.BeaconBlockRoot!.ToString(), contribution.SubcommitteeIndex.ToString(),
+                HexConvert.BitVectorToHex(contribution.AggregationBits!), contribution.Signature.ToString()));
+        return Sign(publicKey, Request("SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF", DomainType.ContributionAndProof, spec.GetEpoch(contribution.Slot), SszRoots.HashTreeRoot(contributionAndProof))
+            with
+        { ContributionAndProof = data },
+            $"the contribution of {publicKey} for slot {contribution.Slot} and subcommittee {contribution.SubcommitteeIndex}", cancellationToken);
+    }
+
     public void Dispose() => Http.Dispose();
 
     /// <summary>A signing request of <paramref name="type"/> for an object whose root is <paramref name="objectRoot"/>, signed under <paramref name="domainType"/> of <paramref name="epoch"/>.</summary>
@@ -139,6 +167,15 @@ public sealed class Web3SignerClient(IValidatorClientConfig config, BeaconChainS
 
         [JsonPropertyName("aggregate_and_proof"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public VersionedDto? AggregateAndProof { get; init; }
+
+        [JsonPropertyName("sync_committee_message"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public SyncCommitteeMessageDto? SyncCommitteeMessage { get; init; }
+
+        [JsonPropertyName("sync_aggregator_selection_data"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public SyncAggregatorSelectionDataDto? SyncAggregatorSelectionData { get; init; }
+
+        [JsonPropertyName("contribution_and_proof"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ContributionAndProofDto? ContributionAndProof { get; init; }
     }
 
     private sealed record ForkInfoDto(
@@ -177,6 +214,26 @@ public sealed class Web3SignerClient(IValidatorClientConfig config, BeaconChainS
         [property: JsonPropertyName("data")] AttestationDataDto Data,
         [property: JsonPropertyName("signature")] string Signature,
         [property: JsonPropertyName("committee_bits")] string CommitteeBits);
+
+    private sealed record SyncCommitteeMessageDto(
+        [property: JsonPropertyName("beacon_block_root")] string BeaconBlockRoot,
+        [property: JsonPropertyName("slot")] string Slot);
+
+    private sealed record SyncAggregatorSelectionDataDto(
+        [property: JsonPropertyName("slot")] string Slot,
+        [property: JsonPropertyName("subcommittee_index")] string SubcommitteeIndex);
+
+    private sealed record ContributionAndProofDto(
+        [property: JsonPropertyName("aggregator_index")] string AggregatorIndex,
+        [property: JsonPropertyName("selection_proof")] string SelectionProof,
+        [property: JsonPropertyName("contribution")] SyncCommitteeContributionDto Contribution);
+
+    private sealed record SyncCommitteeContributionDto(
+        [property: JsonPropertyName("slot")] string Slot,
+        [property: JsonPropertyName("beacon_block_root")] string BeaconBlockRoot,
+        [property: JsonPropertyName("subcommittee_index")] string SubcommitteeIndex,
+        [property: JsonPropertyName("aggregation_bits")] string AggregationBits,
+        [property: JsonPropertyName("signature")] string Signature);
 
     private sealed record SigningResponse([property: JsonPropertyName("signature")] string? Signature);
 }

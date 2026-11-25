@@ -28,9 +28,15 @@ public static partial class BeaconStateAccessors
     public static ulong ComputeEpochAtSlot(ulong slot) => slot / Presets.SlotsPerEpoch;
 
     /// <summary>The spec's <c>is_aggregator</c> (validator.md) for a committee of <paramref name="committeeSize"/> members.</summary>
-    internal static bool IsAggregator(int committeeSize, BlsSignature selectionProof)
+    internal static bool IsAggregator(int committeeSize, BlsSignature selectionProof) =>
+        IsSelected(Math.Max(1, (ulong)committeeSize / Presets.TargetAggregatorsPerCommittee), selectionProof);
+
+    /// <summary>altair/validator.md <c>is_sync_committee_aggregator</c>.</summary>
+    internal static bool IsSyncCommitteeAggregator(BlsSignature selectionProof) =>
+        IsSelected(Math.Max(1, (ulong)SyncCommitteeContribution.SubcommitteeSize / Presets.TargetAggregatorsPerSyncSubcommittee), selectionProof);
+
+    private static bool IsSelected(ulong modulo, BlsSignature selectionProof)
     {
-        ulong modulo = Math.Max(1, (ulong)committeeSize / Presets.TargetAggregatorsPerCommittee);
         Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
         ThreadSha256.HashData(selectionProof.Bytes, hash);
         return BinaryPrimitives.ReadUInt64LittleEndian(hash) % modulo == 0;

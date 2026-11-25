@@ -4,6 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.BeaconChain.P2P.Gossip;
@@ -36,6 +37,9 @@ public static class GossipTopics
     /// <summary>Gloas <c>payload_attestation_message</c> (EIP-7732).</summary>
     public const string PayloadAttestationMessage = "payload_attestation_message";
 
+    /// <summary>Altair <c>sync_committee_contribution_and_proof</c>.</summary>
+    public const string SyncCommitteeContributionAndProof = "sync_committee_contribution_and_proof";
+
     /// <summary>phase0/p2p-interface.md <c>ATTESTATION_SUBNET_COUNT</c>.</summary>
     public const ulong AttestationSubnetCount = 64;
 
@@ -51,6 +55,7 @@ public static class GossipTopics
     private const int DigestHexLength = 8;
     private const string DataColumnSidecarPrefix = "data_column_sidecar_";
     private const string BeaconAttestationPrefix = "beacon_attestation_";
+    private const string SyncCommitteePrefix = "sync_committee_";
     private const ulong EpochsKeptAfterFork = 2;
     private const ulong EpochsJoinedBeforeFork = 1;
 
@@ -58,15 +63,18 @@ public static class GossipTopics
     private static readonly HashSet<string> GlobalTopicNames =
     [
         BeaconBlock, BeaconAggregateAndProof, VoluntaryExit, ProposerSlashing, AttesterSlashing,
-        "sync_committee_contribution_and_proof", "bls_to_execution_change",
+        SyncCommitteeContributionAndProof, "bls_to_execution_change",
         LightClientFinalityUpdate, LightClientOptimisticUpdate,
         "execution_payload_bid", ExecutionPayload, PayloadAttestationMessage, "proposer_preferences",
     ];
 
-    private static readonly string[] SubnetTopicPrefixes = [BeaconAttestationPrefix, "sync_committee_", "blob_sidecar_", DataColumnSidecarPrefix];
+    private static readonly string[] SubnetTopicPrefixes = [BeaconAttestationPrefix, SyncCommitteePrefix, "blob_sidecar_", DataColumnSidecarPrefix];
 
     /// <summary>The <c>beacon_attestation_{subnet_id}</c> topic name of each attestation subnet, indexed by subnet.</summary>
-    public static readonly string[] BeaconAttestationTopicNames = CreateBeaconAttestationTopicNames();
+    public static readonly string[] BeaconAttestationTopicNames = CreateSubnetTopicNames(BeaconAttestationPrefix, AttestationSubnetCount);
+
+    /// <summary>The <c>sync_committee_{subnet_id}</c> topic name of each sync committee subnet, indexed by subnet.</summary>
+    public static readonly string[] SyncCommitteeTopicNames = CreateSubnetTopicNames(SyncCommitteePrefix, SyncCommitteeContribution.SubnetCount);
 
     /// <summary>Builds the full topic string for a fork digest and topic name.</summary>
     public static string Topic(byte[] forkDigest, string name) => $"/eth2/{forkDigest.ToHexString()}/{name}/ssz_snappy";
@@ -133,6 +141,11 @@ public static class GossipTopics
     /// <param name="subnetId">The subnet the name carries, or <see cref="ulong.MaxValue"/> when its decimal digits overflow.</param>
     public static bool TryParseBeaconAttestationTopicName(string name, out ulong subnetId) => TryParseSubnetTopicName(name, BeaconAttestationPrefix, out subnetId);
 
+    /// <summary>Whether <paramref name="name"/> is a <c>sync_committee_{subnet_id}</c> topic name.</summary>
+    /// <param name="name">The topic name.</param>
+    /// <param name="subnetId">The subnet the name carries, or <see cref="ulong.MaxValue"/> when its decimal digits overflow.</param>
+    public static bool TryParseSyncCommitteeTopicName(string name, out ulong subnetId) => TryParseSubnetTopicName(name, SyncCommitteePrefix, out subnetId);
+
     /// <summary>phase0/validator.md <c>compute_subnet_for_attestation</c>.</summary>
     public static ulong ComputeSubnetForAttestation(ulong committeesPerSlot, ulong slot, ulong committeeIndex) =>
         (committeesPerSlot * (slot % Presets.SlotsPerEpoch) + committeeIndex) % AttestationSubnetCount;
@@ -153,12 +166,12 @@ public static class GossipTopics
         return true;
     }
 
-    private static string[] CreateBeaconAttestationTopicNames()
+    private static string[] CreateSubnetTopicNames(string prefix, ulong subnetCount)
     {
-        string[] names = new string[AttestationSubnetCount];
-        for (ulong subnet = 0; subnet < AttestationSubnetCount; subnet++)
+        string[] names = new string[subnetCount];
+        for (ulong subnet = 0; subnet < subnetCount; subnet++)
         {
-            names[subnet] = $"{BeaconAttestationPrefix}{subnet}";
+            names[subnet] = $"{prefix}{subnet}";
         }
 
         return names;

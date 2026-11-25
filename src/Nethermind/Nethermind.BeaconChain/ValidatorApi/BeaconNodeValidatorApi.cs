@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
@@ -29,10 +30,15 @@ namespace Nethermind.BeaconChain.ValidatorApi;
 /// choice. The call waits for that verdict, at most a third of a slot, and publishes the aggregate once accepted.
 /// </para>
 /// <para>
+/// Sync committee messages and contributions go through their gossip checks in <see cref="SyncCommitteeValidator"/> on the calling thread
+/// against the same snapshot, are published, and are pooled in the <see cref="SyncCommitteePool"/> contributions are served from; they never
+/// reach the worker, as fork choice does not count them.
+/// </para>
+/// <para>
 /// The worker captures head states only while <see cref="HeadSnapshotHolder.CaptureState"/> is set. The first call that needs
 /// one sets it, so a node without a validator client pays nothing, and that call is refused as not ready.
 /// </para>
-/// <para>Only the attest and aggregate paths are served; a Gloas head or slot is refused as not supported.</para>
+/// <para>Only the attest, aggregate and sync committee paths are served; a Gloas head or slot is refused as not supported.</para>
 /// </remarks>
 public sealed class BeaconNodeValidatorApi(
     BeaconChainSpec spec,
@@ -44,7 +50,10 @@ public sealed class BeaconNodeValidatorApi(
     GossipRouter gossip,
     SingleAttestationValidator attestationValidator,
     AttestationPool attestationPool,
-    AttestationSubnets attestationSubnets) : IBeaconNodeValidatorApi
+    AttestationSubnets attestationSubnets,
+    SyncCommitteeValidator syncCommitteeValidator,
+    SyncCommitteePool syncCommitteePool,
+    SyncCommitteeSubnets syncCommitteeSubnets) : IBeaconNodeValidatorApi
 {
     /// <summary>Slots the head may lag the wall clock by and still count as synced, as <c>/eth/v1/node/syncing</c> counts them.</summary>
     private const ulong ReadySyncDistance = 1;
@@ -312,20 +321,109 @@ public sealed class BeaconNodeValidatorApi(
         throw NotServed("POST /eth/v2/beacon/blocks");
 
     /// <inheritdoc/>
-    public ValueTask SubscribeToSyncCommittees(IReadOnlyList<SyncCommitteeSubscription> subscriptions, CancellationToken cancellationToken) =>
-        throw NotServed("POST /eth/v1/validator/sync_committee_subscriptions");
+    /// <remarks>
+    /// The subnet of each position is joined at once, until the subscription's <c>until_epoch</c> (<see cref="SyncCommitteeSubnets"/>): the
+    /// validator client chooses how far ahead of its period it subscribes.
+    /// </remarks>
+    /// <exception cref="BeaconNodeApiException">
+    /// <see cref="BeaconNodeApiError.InvalidRequest"/> for a position outside the committee or an <c>until_epoch</c> after the next sync
+    /// committee period; then nothing is subscribed.
+    /// </exception>
+    public ValueTask SubscribeToSyncCommittees(IReadOnlyList<SyncCommitteeSubscription> subscriptions, CancellationToken cancellationToken)
+    {
+        ulong currentEpoch = slotClock.CurrentEpoch;
+        ulong endEpoch = (currentEpoch / Presets.EpochsPerSyncCommitteePeriod + 2) * Presets.EpochsPerSyncCommitteePeriod;
+        foreach (SyncCommitteeSubscription subscription in subscriptions)
+        {
+            if (subscription.UntilEpoch > endEpoch) throw InvalidRequest($"Until epoch {subscription.UntilEpoch} is after the next sync committee period, which ends at epoch {endEpoch}.");
+            foreach (ulong position in subscription.SyncCommitteeIndices)
+            {
+                if (position >= Presets.SyncCommitteeSize) throw InvalidRequest($"Sync committee index {position} is not below the committee size {Presets.SyncCommitteeSize}.");
+            }
+        }
+
+        // Checking the messages of a joined subnet needs the head state.
+        headSnapshots.CaptureState = true;
+        foreach (SyncCommitteeSubscription subscription in subscriptions)
+        {
+            foreach (ulong position in subscription.SyncCommitteeIndices)
+                syncCommitteeSubnets.Add(position / SyncCommitteeContribution.SubcommitteeSize, subscription.UntilEpoch);
+        }
+
+        syncCommitteeSubnets.Update(currentEpoch);
+        return default;
+    }
 
     /// <inheritdoc/>
-    public ValueTask<IReadOnlyList<SubmissionFailure>> SubmitSyncCommitteeMessages(IReadOnlyList<SyncCommitteeMessage> messages, CancellationToken cancellationToken) =>
-        throw NotServed("POST /eth/v1/beacon/pool/sync_committees");
+    /// <remarks>
+    /// Applies the altair/p2p-interface.md <c>sync_committee_{subnet_id}</c> checks against the head snapshot for every subnet of the
+    /// validator, except the per-subnet "already seen" IGNORE, which guards relays rather than a node's own validators.
+    /// </remarks>
+    public ValueTask<IReadOnlyList<SubmissionFailure>> SubmitSyncCommitteeMessages(IReadOnlyList<SyncCommitteeMessage> messages, CancellationToken cancellationToken)
+    {
+        foreach (SyncCommitteeMessage message in messages) RefuseGloas(spec.GetEpoch(message.Slot));
+        RequireHeadState();
+
+        List<SubmissionFailure> failures = [];
+        for (int i = 0; i < messages.Count; i++)
+        {
+            SyncCommitteeCheck check = syncCommitteeValidator.CheckMessage(messages[i], subnet: null);
+            if ((check.Refusal ?? Publish(messages[i], check.Subnets)) is { } refusal) failures.Add(new SubmissionFailure(i, refusal));
+        }
+
+        return new(failures);
+    }
 
     /// <inheritdoc/>
-    public ValueTask<SyncCommitteeContribution> ProduceSyncCommitteeContribution(ulong slot, ulong subcommitteeIndex, Hash256 beaconBlockRoot, CancellationToken cancellationToken) =>
-        throw NotServed("GET /eth/v1/validator/sync_committee_contribution");
+    /// <remarks>Served from the <see cref="SyncCommitteePool"/>, which aggregates every message the node validated for the vote.</remarks>
+    /// <exception cref="BeaconNodeApiException">
+    /// <see cref="BeaconNodeApiError.NotReady"/> while the block is optimistic (beacon-APIs <c>produceSyncCommitteeContribution</c>), and
+    /// <see cref="BeaconNodeApiError.InvalidRequest"/> for a subcommittee index past the last.
+    /// </exception>
+    public ValueTask<SyncCommitteeContribution> ProduceSyncCommitteeContribution(ulong slot, ulong subcommitteeIndex, Hash256 beaconBlockRoot, CancellationToken cancellationToken)
+    {
+        RefuseGloas(spec.GetEpoch(slot));
+        if (subcommitteeIndex >= SyncCommitteeContribution.SubnetCount) throw InvalidRequest($"Subcommittee index {subcommitteeIndex} is not below {SyncCommitteeContribution.SubnetCount}.");
+        foreach (ForkChoiceSnapshotNode node in headSnapshots.Current?.ForkChoice?.Nodes ?? [])
+        {
+            if (node.Root == beaconBlockRoot && node.ExecutionStatus == ExecutionStatus.Optimistic) throw NotReady($"Block {beaconBlockRoot} is optimistic.");
+        }
+
+        return new(syncCommitteePool.GetContribution(slot, beaconBlockRoot, subcommitteeIndex)
+            ?? throw new BeaconNodeApiException(BeaconNodeApiError.NotFound, $"No sync committee message of subcommittee {subcommitteeIndex} at slot {slot} for block {beaconBlockRoot} is held."));
+    }
 
     /// <inheritdoc/>
-    public ValueTask<IReadOnlyList<SubmissionFailure>> SubmitContributionAndProofs(IReadOnlyList<SignedContributionAndProof> contributions, CancellationToken cancellationToken) =>
-        throw NotServed("POST /eth/v1/validator/contribution_and_proofs");
+    /// <remarks>
+    /// Applies the altair/p2p-interface.md <c>sync_committee_contribution_and_proof</c> checks against the head snapshot. A contribution
+    /// ignored because gossip already covers it, by its aggregator or by a superset of its bits, is neither published again nor refused:
+    /// the network has it.
+    /// </remarks>
+    public ValueTask<IReadOnlyList<SubmissionFailure>> SubmitContributionAndProofs(IReadOnlyList<SignedContributionAndProof> contributions, CancellationToken cancellationToken)
+    {
+        foreach (SignedContributionAndProof contribution in contributions)
+        {
+            if (contribution.Message?.Contribution is { } contributed) RefuseGloas(spec.GetEpoch(contributed.Slot));
+        }
+
+        RequireHeadState();
+        List<SubmissionFailure> failures = [];
+        for (int i = 0; i < contributions.Count; i++)
+        {
+            SignedContributionAndProof contribution = contributions[i];
+            SyncCommitteeCheck check = syncCommitteeValidator.CheckContribution(contribution);
+            string? refusal = check switch
+            {
+                { Validity: MessageValidity.Accepted } => Publish(GossipTopics.Topic(ForkDigest.Compute(spec, spec.GetEpoch(contribution.Message!.Contribution!.Slot)), GossipTopics.SyncCommitteeContributionAndProof),
+                    Snappy.CompressToArray(SignedContributionAndProof.Encode(contribution)), "contribution"),
+                { Validity: MessageValidity.Ignored, Reason: GossipDropReason.Duplicate } => null,
+                _ => check.Refusal,
+            };
+            if (refusal is not null) failures.Add(new SubmissionFailure(i, refusal));
+        }
+
+        return new(failures);
+    }
 
     /// <returns>Why the aggregate was not published, or <c>null</c>.</returns>
     private async Task<string?> SubmitAggregate(SignedAggregateAndProof aggregate, CancellationToken cancellationToken)
@@ -400,6 +498,21 @@ public sealed class BeaconNodeValidatorApi(
     private string? Publish(SingleAttestation attestation, ulong subnet) =>
         Publish(GossipTopics.Topic(ForkDigest.Compute(spec, spec.GetEpoch(attestation.Data!.Slot)), GossipTopics.BeaconAttestationTopicNames[subnet]),
             Snappy.CompressToArray(SingleAttestation.Encode(attestation)), "attestation");
+
+    /// <summary>Publishes <paramref name="message"/> on each sync committee subnet set in <paramref name="subnets"/>.</summary>
+    /// <returns>Why the message was not published, or <c>null</c>.</returns>
+    private string? Publish(SyncCommitteeMessage message, ulong subnets)
+    {
+        byte[] digest = ForkDigest.Compute(spec, spec.GetEpoch(message.Slot));
+        byte[] compressed = Snappy.CompressToArray(SyncCommitteeMessage.Encode(message));
+        for (int subnet = 0; subnet < SyncCommitteeContribution.SubnetCount; subnet++)
+        {
+            if ((subnets >> subnet & 1) != 0 && Publish(GossipTopics.Topic(digest, GossipTopics.SyncCommitteeTopicNames[subnet]), compressed, "sync committee message") is { } refusal)
+                return refusal;
+        }
+
+        return null;
+    }
 
     /// <returns>Why the message was not published, or <c>null</c>.</returns>
     private string? Publish(string topic, byte[] message, string what)

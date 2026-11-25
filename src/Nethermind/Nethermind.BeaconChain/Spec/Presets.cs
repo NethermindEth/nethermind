@@ -87,6 +87,9 @@ public static class Presets
     public const int SyncCommitteeSize = Minimal ? 32 : 512;
     public static readonly ulong EpochsPerSyncCommitteePeriod = Minimal ? 8UL : IsGnosis ? 512UL : 256UL;
 
+    /// <summary><c>TARGET_AGGREGATORS_PER_SYNC_SUBCOMMITTEE</c> (altair/validator.md is_sync_committee_aggregator).</summary>
+    public const ulong TargetAggregatorsPerSyncSubcommittee = 16;
+
     // Bellatrix — updated penalty values (still in force for Electra rewards/penalties)
     public const ulong InactivityPenaltyQuotientBellatrix = 16_777_216;
     public const ulong ProportionalSlashingMultiplierBellatrix = 3;

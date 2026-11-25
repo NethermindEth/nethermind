@@ -56,6 +56,10 @@ public class ValidatorEndpointsTests : BeaconApiFixture
             (Action<IBeaconNodeValidatorApi>)(api => api.GetAggregateAttestation(FuluSlot, OtherRoot, 2, Arg.Any<CancellationToken>()).Returns(new ValueTask<Attestation>(Aggregate()))),
             $$$$"""{"version":"fulu","data":{"aggregation_bits":"0x0d","data":{"slot":"7","index":"0","beacon_block_root":"{{{{Root}}}}","source":{"epoch":"1","root":"{{{{Root}}}}"},"target":{"epoch":"2","root":"{{{{OtherRoot}}}}"}},"signature":"{{{{Signature}}}}","committee_bits":"0x0400000000000000"}}""")
             .SetName("Aggregate attestation, versioned by the fork of its slot");
+        yield return new TestCaseData(HttpMethod.Get, $"/eth/v1/validator/sync_committee_contribution?slot=7&subcommittee_index=1&beacon_block_root={Root}", null,
+            (Action<IBeaconNodeValidatorApi>)(api => api.ProduceSyncCommitteeContribution(7, 1, Root, Arg.Any<CancellationToken>()).Returns(new ValueTask<SyncCommitteeContribution>(Contribution()))),
+            $$$$"""{"data":{"slot":"7","beacon_block_root":"{{{{Root}}}}","subcommittee_index":"1","aggregation_bits":"0x05000000000000000000000000000000","signature":"{{{{Signature}}}}"}}""")
+            .SetName("Sync committee contribution");
     }
 
     [TestCaseSource(nameof(ServedRoutes))]
@@ -98,6 +102,31 @@ public class ValidatorEndpointsTests : BeaconApiFixture
                     Signature = Signature,
                 }), "Some aggregates were not published.", refused)
                 .SetName($"Aggregate and proofs, {(refused ? "one refused" : "all published")}");
+            yield return new TestCaseData("/eth/v1/beacon/pool/sync_committees", $$"""{"slot":"7","beacon_block_root":"{{Root}}","validator_index":"9","signature":"{{Signature}}"}""",
+                (Func<IBeaconNodeValidatorApi, IReadOnlyList<SubmissionFailure>, Func<byte[][]>>)((api, failures) =>
+                {
+                    byte[][] submitted = [];
+                    api.SubmitSyncCommitteeMessages(Arg.Do<IReadOnlyList<SyncCommitteeMessage>>(messages => submitted = [.. messages.Select(SyncCommitteeMessage.Encode)]), Arg.Any<CancellationToken>())
+                        .Returns(new ValueTask<IReadOnlyList<SubmissionFailure>>(failures));
+                    return () => submitted;
+                }),
+                SyncCommitteeMessage.Encode(new SyncCommitteeMessage { Slot = 7, BeaconBlockRoot = Root, ValidatorIndex = 9, Signature = Signature }), "Some sync committee messages were not published.", refused)
+                .SetName($"Pool sync committee messages, {(refused ? "one refused" : "all published")}");
+            yield return new TestCaseData("/eth/v1/validator/contribution_and_proofs",
+                $$$"""{"message":{"aggregator_index":"9","selection_proof":"{{{OtherSignature}}}","contribution":{"slot":"7","beacon_block_root":"{{{Root}}}","subcommittee_index":"1","aggregation_bits":"0x05000000000000000000000000000000","signature":"{{{Signature}}}"}},"signature":"{{{Signature}}}"}""",
+                (Func<IBeaconNodeValidatorApi, IReadOnlyList<SubmissionFailure>, Func<byte[][]>>)((api, failures) =>
+                {
+                    byte[][] submitted = [];
+                    api.SubmitContributionAndProofs(Arg.Do<IReadOnlyList<SignedContributionAndProof>>(contributions => submitted = [.. contributions.Select(SignedContributionAndProof.Encode)]), Arg.Any<CancellationToken>())
+                        .Returns(new ValueTask<IReadOnlyList<SubmissionFailure>>(failures));
+                    return () => submitted;
+                }),
+                SignedContributionAndProof.Encode(new SignedContributionAndProof
+                {
+                    Message = new ContributionAndProof { AggregatorIndex = 9, Contribution = Contribution(), SelectionProof = OtherSignature },
+                    Signature = Signature,
+                }), "Some contributions were not published.", refused)
+                .SetName($"Contribution and proofs, {(refused ? "one refused" : "all published")}");
         }
     }
 
@@ -120,15 +149,21 @@ public class ValidatorEndpointsTests : BeaconApiFixture
     public async Task Committee_subscriptions_are_decoded_and_passed_on()
     {
         IReadOnlyList<BeaconCommitteeSubscription> subscribed = [];
+        IReadOnlyList<SyncCommitteeSubscription> syncSubscribed = [];
         _api.SubscribeToBeaconCommittees(Arg.Do<IReadOnlyList<BeaconCommitteeSubscription>>(subscriptions => subscribed = subscriptions), Arg.Any<CancellationToken>()).Returns(ValueTask.CompletedTask);
+        _api.SubscribeToSyncCommittees(Arg.Do<IReadOnlyList<SyncCommitteeSubscription>>(subscriptions => syncSubscribed = subscriptions), Arg.Any<CancellationToken>()).Returns(ValueTask.CompletedTask);
 
         using HttpResponseMessage response = await Send(HttpMethod.Post, "/eth/v1/validator/beacon_committee_subscriptions",
             """[{"validator_index":"1","committee_index":"2","committees_at_slot":"3","slot":"4","is_aggregator":true},{"validator_index":"5","committee_index":"0","committees_at_slot":"1","slot":"6","is_aggregator":false}]""",
             consensusVersion: null);
+        using HttpResponseMessage syncResponse = await Send(HttpMethod.Post, "/eth/v1/validator/sync_committee_subscriptions",
+            """[{"validator_index":"1","sync_committee_indices":["0","130"],"until_epoch":"256"}]""", consensusVersion: null);
 
         using IDisposable scope = Assert.EnterMultipleScope();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That((response.StatusCode, syncResponse.StatusCode), Is.EqualTo((HttpStatusCode.OK, HttpStatusCode.OK)));
         Assert.That(subscribed, Is.EqualTo(new[] { new BeaconCommitteeSubscription(1, 2, 3, 4, IsAggregator: true), new BeaconCommitteeSubscription(5, 0, 1, 6, IsAggregator: false) }));
+        Assert.That(syncSubscribed.Select(static subscription => (subscription.ValidatorIndex, subscription.SyncCommitteeIndices, subscription.UntilEpoch)),
+            Is.EqualTo(new[] { (1UL, (IReadOnlyList<ulong>)[0UL, 130UL], 256UL) }));
     }
 
     [TestCase("POST", "/eth/v1/validator/duties/attester/x", """["1"]""", null, TestName = "An epoch that is not a uint64")]
@@ -144,6 +179,10 @@ public class ValidatorEndpointsTests : BeaconApiFixture
     [TestCase("GET", "/eth/v2/validator/aggregate_attestation?attestation_data_root=0xcd&slot=1&committee_index=0", null, null, TestName = "An aggregate attestation with a short data root")]
     [TestCase("POST", "/eth/v2/validator/aggregate_and_proofs", "[]", null, TestName = "Aggregates without a consensus version")]
     [TestCase("POST", "/eth/v2/validator/aggregate_and_proofs", """[{"message":{"aggregator_index":"1"},"signature":"0x00"}]""", "fulu", TestName = "An aggregate missing its fields")]
+    [TestCase("POST", "/eth/v1/validator/sync_committee_subscriptions", """[{"validator_index":"1","sync_committee_indices":["x"],"until_epoch":"1"}]""", null, TestName = "A sync committee subscription with an index that is not a uint64")]
+    [TestCase("POST", "/eth/v1/beacon/pool/sync_committees", """[{"slot":"1"}]""", null, TestName = "A sync committee message missing its fields")]
+    [TestCase("GET", "/eth/v1/validator/sync_committee_contribution?slot=1&subcommittee_index=0", null, null, TestName = "A sync committee contribution without a block root")]
+    [TestCase("POST", "/eth/v1/validator/contribution_and_proofs", """[{"message":{"aggregator_index":"1","selection_proof":"0x00","contribution":{"slot":"1"}},"signature":"0x00"}]""", null, TestName = "A contribution missing its fields")]
     public async Task Malformed_requests_are_refused_before_the_api_is_called(string method, string path, string? body, string? consensusVersion)
     {
         using HttpResponseMessage response = await Send(new HttpMethod(method), path, body, consensusVersion);
@@ -175,6 +214,16 @@ public class ValidatorEndpointsTests : BeaconApiFixture
         Data = Data(),
         Signature = Signature,
         CommitteeBits = new BitArray(64) { [2] = true },
+    };
+
+    /// <summary>A contribution of subcommittee 1, whose members 0 and 2 signed.</summary>
+    private static SyncCommitteeContribution Contribution() => new()
+    {
+        Slot = 7,
+        BeaconBlockRoot = Root,
+        SubcommitteeIndex = 1,
+        AggregationBits = new BitArray(SyncCommitteeContribution.SubcommitteeSize) { [0] = true, [2] = true },
+        Signature = Signature,
     };
 
     private static AttestationData Data() => new()

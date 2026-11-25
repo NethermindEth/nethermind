@@ -37,6 +37,8 @@ public class Metrics
     internal static ulong ValidatorAttestationsSubmittedCount;
     internal static ulong ValidatorSignerFailuresCount;
     internal static ulong ValidatorAggregatesSubmittedCount;
+    internal static ulong ValidatorSyncCommitteeMessagesSubmittedCount;
+    internal static ulong ValidatorSyncCommitteeContributionsSubmittedCount;
     private static long _headSlotDelay;
     private static int _peerCount;
     private static long _lastBlockImportMs;
@@ -149,4 +151,16 @@ public class Metrics
     [KeyIsLabel("reason")]
     [Description("Aggregation duties of the configured validators that published no aggregate, by closed-cardinality reason.")]
     public static ConcurrentDictionary<StringLabel, long> BeaconChainValidatorAggregationsSkipped { get; } = new();
+    [CounterMetric]
+    [Description("Sync committee messages of the configured validators that the node accepted and published.")]
+    public static ulong BeaconChainValidatorSyncCommitteeMessagesSubmitted { get => Volatile.Read(ref ValidatorSyncCommitteeMessagesSubmittedCount); set => Volatile.Write(ref ValidatorSyncCommitteeMessagesSubmittedCount, value); }
+    [KeyIsLabel("reason")]
+    [Description("Sync committee message duties of the configured validators that published no message, by closed-cardinality reason.")]
+    public static ConcurrentDictionary<StringLabel, long> BeaconChainValidatorSyncCommitteeMessagesSkipped { get; } = new();
+    [CounterMetric]
+    [Description("Sync committee contributions of the configured validators that the node accepted and published.")]
+    public static ulong BeaconChainValidatorSyncCommitteeContributionsSubmitted { get => Volatile.Read(ref ValidatorSyncCommitteeContributionsSubmittedCount); set => Volatile.Write(ref ValidatorSyncCommitteeContributionsSubmittedCount, value); }
+    [KeyIsLabel("reason")]
+    [Description("Sync committee aggregation duties of the configured validators that published no contribution, by closed-cardinality reason.")]
+    public static ConcurrentDictionary<StringLabel, long> BeaconChainValidatorSyncCommitteeContributionsSkipped { get; } = new();
 }

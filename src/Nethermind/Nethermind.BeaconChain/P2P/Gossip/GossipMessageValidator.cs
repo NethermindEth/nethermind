@@ -4,6 +4,7 @@
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Libp2p.Core;
@@ -47,10 +48,11 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
     /// <summary>Whether <paramref name="topic"/> is a <c>data_column_sidecar_{subnet_id}</c> topic.</summary>
     internal static bool IsColumn(string topic) => GossipTopics.TryParse(topic, out _, out string? name) && GossipTopics.TryParseDataColumnSidecarTopicName(name!, out _);
 
-    /// <summary>Whether <paramref name="topic"/> carries attestations, aggregates or payload attestations, small votes that come in their hundreds each slot.</summary>
+    /// <summary>Whether <paramref name="topic"/> carries attestations, aggregates, payload attestations or sync committee messages or contributions, small votes that come in their hundreds each slot.</summary>
     internal static bool IsVote(string topic) =>
         GossipTopics.TryParse(topic, out _, out string? name)
-        && (name is GossipTopics.BeaconAggregateAndProof or GossipTopics.PayloadAttestationMessage || GossipTopics.TryParseBeaconAttestationTopicName(name, out _));
+        && (name is GossipTopics.BeaconAggregateAndProof or GossipTopics.PayloadAttestationMessage or GossipTopics.SyncCommitteeContributionAndProof
+            || GossipTopics.TryParseBeaconAttestationTopicName(name, out _) || GossipTopics.TryParseSyncCommitteeTopicName(name, out _));
 
     /// <summary>Validates <paramref name="message"/> and consumes it when it passes.</summary>
     /// <param name="verdict">The message's pending verdict, which a consumer takes over when the checks continue in the import pipeline.</param>
@@ -98,12 +100,15 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
 
         column = GossipTopics.TryParseDataColumnSidecarTopicName(name!, out subnetId);
         bool attestation = GossipTopics.TryParseBeaconAttestationTopicName(name!, out ulong attestationSubnet);
-        if ((column && subnetId >= Eip7594DasConstants.DataColumnSidecarSubnetCount) || (attestation && attestationSubnet >= GossipTopics.AttestationSubnetCount))
+        bool syncCommittee = GossipTopics.TryParseSyncCommitteeTopicName(name!, out ulong syncCommitteeSubnet);
+        if ((column && subnetId >= Eip7594DasConstants.DataColumnSidecarSubnetCount) || (attestation && attestationSubnet >= GossipTopics.AttestationSubnetCount)
+            || (syncCommittee && syncCommitteeSubnet >= SyncCommitteeContribution.SubnetCount))
         {
             return MessageValidity.Rejected;
         }
 
-        return TryGetFork(digest!, out gloas) && (column || attestation || IsHandled(name!, gloas)) ? null : MessageValidity.Ignored;
+        return TryGetFork(digest!, out gloas) && (column || attestation || syncCommittee || name is GossipTopics.SyncCommitteeContributionAndProof || IsHandled(name!, gloas))
+            ? null : MessageValidity.Ignored;
     }
 
     private static string[] CreateColumnTopicNames()
@@ -119,7 +124,9 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
 
     private static bool IsHandledName(string name) =>
         Array.IndexOf(GossipTopics.SubscribedTopicNames, name) >= 0 || Array.IndexOf(GossipTopics.GloasTopicNames, name) >= 0
-        || (GossipTopics.TryParseBeaconAttestationTopicName(name, out ulong subnet) && subnet < GossipTopics.AttestationSubnetCount);
+        || (GossipTopics.TryParseBeaconAttestationTopicName(name, out ulong subnet) && subnet < GossipTopics.AttestationSubnetCount)
+        || (GossipTopics.TryParseSyncCommitteeTopicName(name, out ulong syncCommitteeSubnet) && syncCommitteeSubnet < SyncCommitteeContribution.SubnetCount)
+        || name is GossipTopics.SyncCommitteeContributionAndProof;
 
     private static bool IsHandled(string name, bool gloas) =>
         Array.IndexOf(GossipTopics.SubscribedTopicNames, name) >= 0 || (gloas && Array.IndexOf(GossipTopics.GloasTopicNames, name) >= 0);

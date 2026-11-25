@@ -30,6 +30,7 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
     private EnrForkId _forkId;
     private byte[] _nextForkDigest;
     private byte[]? _attnets;
+    private byte[]? _syncnets;
 
     /// <param name="externalIp">The advertised address, under <c>ip</c>/<c>tcp</c>/<c>udp</c> when IPv4 and <c>ip6</c>/<c>tcp6</c>/<c>udp6</c> when IPv6; <c>null</c> advertises no endpoint.</param>
     /// <param name="sequence">The sequence of the first record, above any this identity published before.</param>
@@ -82,16 +83,23 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
     /// <summary>Publishes <paramref name="attnets"/> under the <c>attnets</c> entry, or drops the entry for <c>null</c>, and bumps the ENR sequence when it changed.</summary>
     /// <param name="attnets">The SSZ attestation subnet bitvector, <c>null</c> when no bit is set (phase0/p2p-interface.md: the entry MAY then be left out).</param>
     /// <returns><see langword="true"/> when a new record was published; <see langword="false"/> when unchanged.</returns>
-    public bool UpdateAttnets(byte[]? attnets)
+    public bool UpdateAttnets(byte[]? attnets) => UpdateSubnets(ref _attnets, attnets);
+
+    /// <summary>Publishes <paramref name="syncnets"/> under the <c>syncnets</c> entry, or drops the entry for <c>null</c>, and bumps the ENR sequence when it changed.</summary>
+    /// <param name="syncnets">The SSZ sync committee subnet bitvector, <c>null</c> when no bit is set.</param>
+    /// <returns><see langword="true"/> when a new record was published; <see langword="false"/> when unchanged.</returns>
+    internal bool UpdateSyncnets(byte[]? syncnets) => UpdateSubnets(ref _syncnets, syncnets);
+
+    private bool UpdateSubnets(ref byte[]? advertised, byte[]? subnets)
     {
         lock (_updateLock)
         {
-            if (attnets is null ? _attnets is null : _attnets is not null && Bytes.AreEqual(attnets, _attnets))
+            if (subnets is null ? advertised is null : advertised is not null && Bytes.AreEqual(subnets, advertised))
             {
                 return false;
             }
 
-            _attnets = attnets;
+            advertised = subnets;
             _current = Build(_forkId, _nextForkDigest, _current.EnrSequence + 1);
             return true;
         }
@@ -147,6 +155,7 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
         record.SetEntry(new CustodyGroupCountEntry(_custodyGroupCount));
         record.SetEntry(new NfdEntry(nextForkDigest));
         if (_attnets is not null) record.SetEntry(new AttnetsEntry(_attnets));
+        if (_syncnets is not null) record.SetEntry(new SyncnetsEntry(_syncnets));
         record.EnrSequence = sequence;
         _signer.Sign(record);
         return record;

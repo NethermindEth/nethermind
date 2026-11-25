@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.ValidatorClient;
 
@@ -26,6 +27,22 @@ public interface IValidatorSigner
     /// <summary>Signs an aggregate and its selection proof under <c>DOMAIN_AGGREGATE_AND_PROOF</c> of the aggregate's epoch (phase0/validator.md "Broadcast aggregate").</summary>
     /// <exception cref="ValidatorSignerException">The signer refused, such as for an unknown key, or could not be reached.</exception>
     ValueTask<BlsSignature> SignAggregateAndProof(BlsPublicKey publicKey, AggregateAndProof aggregateAndProof, CancellationToken cancellationToken);
+
+    /// <summary>Signs <paramref name="beaconBlockRoot"/> under <c>DOMAIN_SYNC_COMMITTEE</c> of the epoch of <paramref name="slot"/>: the sync committee message of the slot (altair/validator.md "Prepare sync committee message").</summary>
+    /// <exception cref="ValidatorSignerException">The signer refused, such as for an unknown key, or could not be reached.</exception>
+    ValueTask<BlsSignature> SignSyncCommitteeMessage(BlsPublicKey publicKey, ulong slot, Hash256 beaconBlockRoot, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Signs the <c>SyncAggregatorSelectionData</c> of <paramref name="slot"/> and <paramref name="subcommitteeIndex"/> under
+    /// <c>DOMAIN_SYNC_COMMITTEE_SELECTION_PROOF</c> of the slot's epoch: the selection proof that decides whether the validator aggregates
+    /// its subcommittee (altair/validator.md "Aggregation selection").
+    /// </summary>
+    /// <exception cref="ValidatorSignerException">The signer refused, such as for an unknown key, or could not be reached.</exception>
+    ValueTask<BlsSignature> SignSyncCommitteeSelectionProof(BlsPublicKey publicKey, ulong slot, ulong subcommitteeIndex, CancellationToken cancellationToken);
+
+    /// <summary>Signs a contribution and its selection proof under <c>DOMAIN_CONTRIBUTION_AND_PROOF</c> of the contribution's epoch (altair/validator.md "Broadcast sync committee contribution").</summary>
+    /// <exception cref="ValidatorSignerException">The signer refused, such as for an unknown key, or could not be reached.</exception>
+    ValueTask<BlsSignature> SignContributionAndProof(BlsPublicKey publicKey, ContributionAndProof contributionAndProof, CancellationToken cancellationToken);
 }
 
 /// <summary>A signature that was not produced; the duty it was for is skipped.</summary>

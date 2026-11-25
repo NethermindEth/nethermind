@@ -310,17 +310,23 @@ public sealed class BeaconDiscovery(
 
     /// <summary>Republishes the ENR with <paramref name="attnets"/> under its <c>attnets</c> entry, with a bumped sequence number when it changed.</summary>
     /// <remarks>phase0/p2p-interface.md: the ENR MUST carry <c>MetaData.attnets</c> while any bit is set. Before <see cref="Start"/> there is no record to update.</remarks>
-    internal void UpdateLocalAttnets(BitArray attnets)
+    internal void UpdateLocalAttnets(BitArray attnets) => UpdateLocalSubnets("attnets", attnets, static (enr, advertised) => enr.UpdateAttnets(advertised));
+
+    /// <summary>Republishes the ENR with <paramref name="syncnets"/> under its <c>syncnets</c> entry, with a bumped sequence number when it changed.</summary>
+    /// <remarks>altair/p2p-interface.md: the entry mirrors <c>MetaData.syncnets</c>. Before <see cref="Start"/> there is no record to update.</remarks>
+    internal void UpdateLocalSyncnets(BitArray syncnets) => UpdateLocalSubnets("syncnets", syncnets, static (enr, advertised) => enr.UpdateSyncnets(advertised));
+
+    private void UpdateLocalSubnets(string key, BitArray subnets, Func<BeaconNodeRecordProvider, byte[]?, bool> update)
     {
         lock (_enrLock)
         {
             if (_localEnr is null) return;
-            byte[] bytes = new byte[(attnets.Length + 7) / 8];
-            attnets.CopyTo(bytes, 0);
-            byte[]? advertised = attnets.HasAnySet() ? bytes : null;
+            byte[] bytes = new byte[(subnets.Length + 7) / 8];
+            subnets.CopyTo(bytes, 0);
+            byte[]? advertised = subnets.HasAnySet() ? bytes : null;
             // EIP-778: persist before publication so a restart cannot reuse a sequence peers may already hold.
             PersistEnrSequence(LocalNodeRecord.EnrSequence + 1);
-            if (_localEnr.UpdateAttnets(advertised) && _logger.IsDebug) _logger.Debug($"Updated beacon chain ENR attnets, sequence {LocalNodeRecord.EnrSequence}");
+            if (update(_localEnr, advertised) && _logger.IsDebug) _logger.Debug($"Updated beacon chain ENR {key}, sequence {LocalNodeRecord.EnrSequence}");
         }
     }
 
