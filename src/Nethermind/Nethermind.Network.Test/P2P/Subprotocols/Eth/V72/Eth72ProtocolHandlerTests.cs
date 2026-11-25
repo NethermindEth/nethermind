@@ -6605,15 +6605,28 @@ public class Eth72ProtocolHandlerTests
             Assert.That(GetCachedPeerCount(registry), Is.EqualTo(GetRegisteredPeerCount(registry)));
             if (cleanup == InterruptedPeerCleanup.BodyPeerRemoval)
             {
+                // The body was released, so a new one is owed; the body peer's cells were not stripped yet, so their
+                // columns are not requested.
                 Assert.That(alternateKey.Failed, Is.True);
                 Assert.That(alternatePeer.TransactionRequests, Is.EqualTo(new[] { tx.Hash! }));
-                Assert.That(alternatePeer.CellRequests, Is.EqualTo(new[] { (tx.Hash!, cellMask) }));
+                Assert.That(alternatePeer.CellRequests, Is.Empty);
             }
             else
             {
                 Assert.That(alternatePeer.CellRequests, Is.EqualTo(new[] { (tx.Hash!, cellMask) }));
                 Assert.That(removedPeer.CellRequests, Has.Count.EqualTo(1));
                 Assert.That(registry.RecordAnnouncement(replacementPeer, tx.Hash!, cellMask), Is.False);
+            }
+        }
+
+        if (cleanup == InterruptedPeerCleanup.BodyPeerRemoval)
+        {
+            // The body peer's next session registers: the body peer's cells are stripped now, and only then requested.
+            registry.AddPeer(new TestSparseBlobPeer(TestItem.PublicKeyC));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(alternatePeer.CellRequests, Is.EqualTo(new[] { (tx.Hash!, cellMask) }));
+                Assert.That(alternatePeer.TransactionRequests, Is.EqualTo(new[] { tx.Hash! }));
             }
         }
 

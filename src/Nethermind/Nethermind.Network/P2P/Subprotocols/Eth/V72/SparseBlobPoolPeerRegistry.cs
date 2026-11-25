@@ -426,18 +426,19 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                         && state.Cells is { } currentCells
                         && currentCells.TryRemoveSource(peerId, out PendingCellsBuffer? remainingCells))
                     {
-                        BlobCellMask remainingMask = remainingCells?.CellMask ?? BlobCellMask.Empty;
-                        retryMask |= currentCells.CellMask.Except(remainingMask);
+                        // The stripped columns are owed only once the strip is in place, so that a failure before it
+                        // does not request columns the buffer still holds.
                         if (remainingCells is { } retained
                             && TryReplaceCellsAccounting(trackedHash, currentCells, retained))
                         {
                             state.Cells = retained;
                             ForgetEndedSource(state, peerId);
+                            retryMask |= currentCells.CellMask.Except(retained.CellMask);
                         }
                         else
                         {
-                            retryMask |= currentCells.CellMask;
                             DiscardCells(state);
+                            retryMask |= currentCells.CellMask;
                         }
                     }
                     else if ((state.Submitting || state.ApplyingRecordedCells)
