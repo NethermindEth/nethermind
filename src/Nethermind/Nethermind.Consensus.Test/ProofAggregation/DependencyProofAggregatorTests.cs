@@ -571,6 +571,7 @@ public class DependencyProofAggregatorTests
     [TestCase(500, 0, 3, new[] { 250, 250 })]
     [TestCase(17, 0, 9, new[] { 17 })]
     [TestCase(300, 5, 2, new[] { 150, 150, 4, 1 })]
+    [TestCase(20, 0, 5, new[] { 20 })]
     public void Block_production_folds_signatures_in_the_fewest_equal_leaves(int signatures, int generics, int recursive, int[] leaves)
     {
         FrameDependency[] direct = [.. Enumerable.Range(0, generics)
@@ -601,6 +602,8 @@ public class DependencyProofAggregatorTests
             Assert.That(wide.ProvingInputs.Where(static i => i.Deps.Count != 0).Select(static i => i.Deps.Count), Is.EqualTo(leaves));
             Assert.That(wide.ProvingInputs.Select(static i => i.RecursiveProofs.Count),
                 Has.All.LessThanOrEqualTo(DependencyProofAggregator.BlockProductionFanIn));
+            Assert.That(wide.ProvingInputs.Where(static i => i.Deps.Count != 0).Select(static i => i.RecursiveProofs.Count),
+                Has.All.LessThanOrEqualTo(2), "a wide leaf never shares a call with a wide merge");
             Assert.That(wide.ProvingInputs, Has.Count.LessThanOrEqualTo(narrow.ProvingInputs.Count));
         }
     }

@@ -90,7 +90,7 @@ public static class DependencyProofAggregator
         long calls = Math.Max(0, nodes - 1);
         if (input.Discards.Count != 0)
         {
-            if (input.RecursiveProofs.Count <= (blockProduction ? BlockProductionFanIn : MaxRecursiveChildren)
+            if (input.RecursiveProofs.Count <= OneCallChildren(input.Deps.Count, blockProduction)
                 && input.Deps.Count <= LeafCapacity(generics, signatureLeaf))
                 calls = Math.Max(calls, 1);
             else
@@ -242,6 +242,11 @@ public static class DependencyProofAggregator
             : new() { Deps = deps, Witnesses = witnesses!, RecursiveProofs = input.RecursiveProofs, Discards = input.Discards };
     }
 
+    /// <summary>The recursive inputs one call folds alongside <paramref name="directDeps"/> direct witnesses.</summary>
+    /// <remarks>A wide merge shares no call with a direct leaf, so a block producer's peak stays that of the larger of the two.</remarks>
+    private static int OneCallChildren(int directDeps, bool blockProduction) =>
+        blockProduction && directDeps == 0 ? BlockProductionFanIn : MaxRecursiveChildren;
+
     /// <summary>The widest direct leaf holding <paramref name="generics"/> leanSTARK dependencies.</summary>
     private static int LeafCapacity(int generics, int signatureLeaf = DirectBatchSize) => generics == 0 ? signatureLeaf : GenericDirectBatchSize;
 
@@ -307,7 +312,7 @@ public static class DependencyProofAggregator
                 return parent.Proof.ToArray();
             }
         }
-        if (input.RecursiveProofs.Count <= fanIn
+        if (input.RecursiveProofs.Count <= OneCallChildren(input.Deps.Count, blockProduction)
             && input.Deps.Count <= LeafCapacity(GenericCount(input.Deps), blockProduction ? BlockProductionBatchSize : DirectBatchSize)
             && input.Discards.Count <= Eip8288Constants.MaxProofDependencies
             && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)
