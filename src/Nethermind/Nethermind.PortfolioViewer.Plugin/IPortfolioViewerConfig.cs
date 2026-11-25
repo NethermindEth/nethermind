@@ -15,4 +15,8 @@ public interface IPortfolioViewerConfig : IConfig
     /// <summary>Comma-separated localhost ports probed to discover sibling nodes for the multi-chain view.</summary>
     [ConfigItem(Description = "Comma-separated localhost ports probed to discover sibling Nethermind nodes on other chains for the multi-chain portfolio viewer.", DefaultValue = "8545,8546,8547,8548,8549,8550")]
     string SiblingProbePorts { get; set; }
+
+    /// <summary>Whether to serve the IPFS gateway and pin endpoints, which forward to a local IPFS node. Disabled by default.</summary>
+    [ConfigItem(Description = "Whether to serve the `/portfolio-ipfs` endpoints, which forward NFT media requests and pins to a local IPFS (Kubo) node.", DefaultValue = "false")]
+    bool IpfsEnabled { get; set; }
 }

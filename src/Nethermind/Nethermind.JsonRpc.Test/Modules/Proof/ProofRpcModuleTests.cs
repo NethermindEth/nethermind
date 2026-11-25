@@ -400,6 +400,7 @@ public class ProofRpcModuleTests
         Hash256 txHash = block.Transactions[0].Hash!;
 
         ITracer tracer = Substitute.For<ITracer>();
+        tracer.TraceReceipts(Arg.Is<Block>(candidate => candidate.Hash == block.Hash)).Returns(Array.Empty<TxReceipt>());
         IDisposable scopeCloser = Substitute.For<IDisposable>();
         IOverridableEnv<ITracer> tracerEnv = Substitute.For<IOverridableEnv<ITracer>>();
         tracerEnv.TryBuildAndOverrideAtTarget(null!, null, null, out _).ReturnsForAnyArgs(call =>
@@ -412,8 +413,7 @@ public class ProofRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, false);
 
-        // The receipts tracer is left empty only if the substitute really stood in for the block retrace.
-        tracer.ReceivedWithAnyArgs(1).Trace(null!, null!);
+        tracer.Received(1).TraceReceipts(Arg.Is<Block>(candidate => candidate.Hash == block.Hash));
         scopeCloser.Received(1).Dispose();
         Assert.That(response, Is.EqualTo(
             """{"jsonrpc":"2.0","error":{"code":-32002,"message":"Unable to re-execute block 1 (0xda4b91...9f813d) for a receipt proof"},"id":67}"""));

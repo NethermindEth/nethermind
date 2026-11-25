@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -10,7 +9,17 @@ namespace Nethermind.Blockchain.Receipts
     public static class ReceiptsExtensions
     {
         public static TxReceipt ForTransaction(this TxReceipt[] receipts, Hash256 txHash)
-            => receipts.FirstOrDefault(r => r.TxHash == txHash);
+        {
+            foreach (TxReceipt receipt in receipts)
+            {
+                if (receipt.TxHash == txHash)
+                {
+                    return receipt;
+                }
+            }
+
+            return null;
+        }
 
 
         public static int GetBlockLogFirstIndex(this TxReceipt[] receipts, int receiptIndex)

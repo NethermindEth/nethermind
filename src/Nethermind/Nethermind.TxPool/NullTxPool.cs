@@ -14,7 +14,7 @@ namespace Nethermind.TxPool
     public class NullTxPool : ITxPool
     {
         public bool SupportsBlobs => false;
-        private NullTxPool() { }
+        protected NullTxPool() { }
 
         public static NullTxPool Instance { get; } = new();
 
@@ -141,12 +141,6 @@ namespace Nethermind.TxPool
         public ulong GetLatestPendingNonce(Address address) => 0;
 
         public AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
-
-        public event EventHandler<TxEventArgs> NewDiscovered
-        {
-            add { }
-            remove { }
-        }
 
         public event EventHandler<TxEventArgs> NewPending
         {

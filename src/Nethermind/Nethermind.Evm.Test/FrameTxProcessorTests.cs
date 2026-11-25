@@ -135,6 +135,26 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void Execute_FlushesFrameExecutionMetrics()
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer));
+        long opCodesBefore = Metrics.OpCodes;
+        long sstoreBefore = Metrics.SstoreOpcode;
+
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its metrics.
+        Assert.That(Process(tx).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.OpCodes - opCodesBefore, Is.GreaterThan(0), "opcode count");
+            Assert.That(Metrics.SstoreOpcode - sstoreBefore, Is.EqualTo(1), "SSTORE count");
+        }
+    }
+
+    [Test]
     public void FrameTransactions_RequireActivation([Values] bool simulate, [Values] bool enabled)
     {
         _spec.IsEip8141Enabled = enabled;

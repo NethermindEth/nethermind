@@ -13,6 +13,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using FastEnumUtility;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -619,21 +620,21 @@ namespace Nethermind.Network
 
                 if (preCandidate.Node.Port == 0)
                 {
-                    _currentSelection.Counters.Increment(ActivePeerSelectionCounter.FilteredByZeroPort.ToString());
+                    _currentSelection.Counters.Increment(nameof(ActivePeerSelectionCounter.FilteredByZeroPort));
                     continue;
                 }
 
                 (bool Result, NodeStatsEventType? DelayReason) delayResult = preCandidate.Stats.IsConnectionDelayed(nowUTC);
                 if (delayResult.Result)
                 {
-                    _currentSelection.Counters.Increment(delayResult.DelayReason.ToString());
+                    _currentSelection.Counters.Increment(delayResult.DelayReason is { } reason ? FastEnum.ToString(reason) : string.Empty);
 
                     continue;
                 }
 
                 if (preCandidate.Stats.FailedCompatibilityValidation.HasValue)
                 {
-                    _currentSelection.Counters.Increment(ActivePeerSelectionCounter.Incompatible.ToString());
+                    _currentSelection.Counters.Increment(nameof(ActivePeerSelectionCounter.Incompatible));
                     _currentSelection.Incompatible.Add(preCandidate);
                     continue;
                 }

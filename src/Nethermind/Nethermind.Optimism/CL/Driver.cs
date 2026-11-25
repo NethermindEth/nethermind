@@ -6,10 +6,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.L1Bridge;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism.CL;
 
@@ -36,6 +38,12 @@ public class Driver : IDisposable
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
+        ArgumentNullException.ThrowIfNull(engineParameters.L1ChainId);
+        if (!ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(engineParameters.L1ChainId.Value, out IForkAwareSpecProvider? l1SpecProvider))
+        {
+            throw new ArgumentException($"Fork schedule of L1 chain {engineParameters.L1ChainId} is unknown.", nameof(engineParameters));
+        }
+
         _l1Bridge = l1Bridge;
         _l2BlockTime = engineParameters.L2BlockTime.Value;
         _logger = logManager.GetClassLogger<Driver>();
@@ -45,15 +53,20 @@ public class Driver : IDisposable
         _executionEngineManager = executionEngineManager;
 
         _derivationPipeline = new DerivationPipeline(
-            new PayloadAttributesDeriver(
-                _systemConfigDeriver,
-                new DepositTransactionBuilder(chainId, engineParameters)),
+            CreatePayloadAttributesDeriver(_systemConfigDeriver, engineParameters, chainId, l1SpecProvider),
             l1Bridge,
             l2GenesisTimestamp,
             _l2BlockTime,
             chainId,
             logManager);
     }
+
+    internal static PayloadAttributesDeriver CreatePayloadAttributesDeriver(
+        ISystemConfigDeriver systemConfigDeriver,
+        CLChainSpecEngineParameters engineParameters,
+        ulong chainId,
+        ISpecProvider l1SpecProvider) =>
+        new(systemConfigDeriver, new DepositTransactionBuilder(chainId, engineParameters), l1SpecProvider, engineParameters.PectraBlobScheduleTimestamp);
 
     private ulong _currentDerivedBlock;
     private ulong _currentFinalizedL1Block;

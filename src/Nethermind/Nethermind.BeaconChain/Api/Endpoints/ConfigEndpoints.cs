@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
@@ -12,15 +12,8 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
 /// <summary><c>/eth/v1/config/*</c>: spec constants, fork schedule, deposit contract.</summary>
-internal static class ConfigEndpoints
+internal sealed class ConfigEndpoints(BeaconApiContext ctx)
 {
-    public static void Map(WebApplication app, BeaconApiContext ctx)
-    {
-        app.MapGet("/eth/v1/config/spec", c => ContentNegotiation.JsonOnly(c, ctx, Spec));
-        app.MapGet("/eth/v1/config/fork_schedule", c => ContentNegotiation.JsonOnly(c, ctx, ForkSchedule));
-        app.MapGet("/eth/v1/config/deposit_contract", c => ContentNegotiation.JsonOnly(c, ctx, DepositContract));
-    }
-
     /// <summary>The network config's <c>DEPOSIT_CONTRACT_ADDRESS</c>, or <c>null</c> for a chain this driver has no network config for.</summary>
     /// <remarks>
     /// From consensus-specs v1.7.0-beta.4 <c>configs/mainnet.yaml</c> and the eth-clients <c>hoodi</c> and
@@ -36,15 +29,16 @@ internal static class ConfigEndpoints
         _ => null,
     };
 
-    private static Task DepositContract(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/config/deposit_contract"), Negotiated]
+    public IResult DepositContract()
     {
         if (DepositContractAddress(ctx.Spec.ChainId) is not { } address)
         {
-            return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
-                $"No deposit contract is configured for chain {ctx.Spec.ChainId}.", c.RequestAborted);
+            return ApiResults.Error(StatusCodes.Status500InternalServerError,
+                $"No deposit contract is configured for chain {ctx.Spec.ChainId}.");
         }
 
-        return BeaconApiJson.WriteDataAsync(c, new DepositContractDto(ctx.Spec.ChainId.ToString(), address), c.RequestAborted);
+        return ApiResults.Data(new DepositContractDto(ctx.Spec.ChainId.ToString(), address));
     }
 
     /// <remarks>
@@ -54,7 +48,8 @@ internal static class ConfigEndpoints
     /// Constants tables come from <see cref="SpecConstants.All"/>. <c>SECONDS_PER_SLOT</c>, which that config
     /// no longer lists, stays for tooling that still reads it.
     /// </remarks>
-    private static Task Spec(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/config/spec"), Negotiated]
+    public IResult Spec()
     {
         BeaconChainSpec spec = ctx.Spec;
         Dictionary<string, object> data = [with(SpecValues.Mainnet.Count + SpecConstants.All.Count + 4)];
@@ -99,7 +94,7 @@ internal static class ConfigEndpoints
             ? new Dictionary<string, string>[] { new() { ["EPOCH"] = "353024", ["GAS_LIMIT"] = "200000000" } }
             : Array.Empty<Dictionary<string, string>>();
 
-        return BeaconApiJson.WriteDataAsync(c, data, c.RequestAborted);
+        return ApiResults.Data(data);
     }
 
     /// <summary>Replaces the mainnet values of the keys that differ per network and that <see cref="BeaconChainSpec"/> does not hold.</summary>
@@ -158,7 +153,8 @@ internal static class ConfigEndpoints
         }
     }
 
-    private static Task ForkSchedule(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/config/fork_schedule"), Negotiated]
+    public IResult ForkSchedule()
     {
         ForkScheduleEntry[] forks = ctx.Spec.Forks;
         ForkDto[] data = new ForkDto[forks.Length];
@@ -171,15 +167,10 @@ internal static class ConfigEndpoints
                 forks[i].Epoch.ToString());
         }
 
-        return BeaconApiJson.WriteDataAsync(c, data, c.RequestAborted);
+        return ApiResults.Data(data);
     }
 
     private sealed record DepositContractDto(
         [property: JsonPropertyName("chain_id")] string ChainId,
         [property: JsonPropertyName("address")] string Address);
-
-    private sealed record ForkDto(
-        [property: JsonPropertyName("previous_version")] string PreviousVersion,
-        [property: JsonPropertyName("current_version")] string CurrentVersion,
-        [property: JsonPropertyName("epoch")] string Epoch);
 }

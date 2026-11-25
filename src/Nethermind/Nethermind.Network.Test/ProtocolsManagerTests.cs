@@ -804,6 +804,8 @@ public class ProtocolsManagerTests
         public SessionState State => SessionState.Disconnected;
         public SessionState BestStateReached => SessionState.Disconnected;
         public bool IsClosing => true;
+        public bool IsChannelClosed => false;
+        public bool IsOutboundBufferFull => false;
         public PublicKey RemoteNodeId => null!;
         public PublicKey ObsoleteRemoteNodeId => null!;
         public string RemoteHost { get; set; } = string.Empty;
@@ -849,6 +851,5 @@ public class ProtocolsManagerTests
         public void InitiateDisconnect(DisconnectReason disconnectReason, string details) => throw new NotSupportedException();
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details) => throw new NotSupportedException();
         public void Handshake(PublicKey handshakeRemoteNodeId) => throw new NotSupportedException();
-        public void StartTrackingSession() => throw new NotSupportedException();
     }
 }

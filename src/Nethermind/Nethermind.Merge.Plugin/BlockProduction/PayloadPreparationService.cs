@@ -288,43 +288,51 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
-            do
+            try
             {
-                if (token.IsCancellationRequested)
+                do
                 {
-                    return;
-                }
+                    if (token.IsCancellationRequested)
+                    {
+                        return;
+                    }
 
-                TimeSpan dynamicDelay = CalculateImprovementDelay(startDateTime, startTimestamp);
-                if (dynamicDelay == Timeout.InfiniteTimeSpan)
-                {
-                    // If we can't finish before that cutoff, skip the improvement
-                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, no more time in slot");
-                    return;
-                }
+                    TimeSpan dynamicDelay = CalculateImprovementDelay(startDateTime, startTimestamp);
+                    if (dynamicDelay == Timeout.InfiniteTimeSpan)
+                    {
+                        // If we can't finish before that cutoff, skip the improvement
+                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, no more time in slot");
+                        return;
+                    }
 
-                // If we reach here, we still have time for an improvement build (which still responds to cancellation)
-                if (txPoolBehindParent)
+                    // If we reach here, we still have time for an improvement build (which still responds to cancellation)
+                    if (txPoolBehindParent)
+                    {
+                        if (await WaitForTxPoolHead(parentHeader.Hash, dynamicDelay, token)) break;
+                    }
+                    else
+                    {
+                        await Core.Extensions.TaskExtensions.DelaySafe(dynamicDelay, token);
+                    }
+
+                    // Loop the delay if no new txs have been added, and while not cancelled.
+                    // Is no point in rebuilding an identical block.
+                } while (added == _txPool.PendingTransactionsAdded);
+
+                // Stop only when the round is cancelled (payload retrieved, production cancelled, cleaned up or shut down) and this context is disposed.
+                if (!token.IsCancellationRequested || !blockImprovementContext.Disposed)
                 {
-                    if (await WaitForTxPoolHead(parentHeader.Hash, dynamicDelay, token)) break;
+                    BlockProductionSnapshot best = blockImprovementContext.Best;
+                    ImproveBlock(payloadId, parentHeader, payloadAttributes, best.CurrentBestBlock ?? currentBestBlock, startDateTime, best.BlockFees, cts);
                 }
                 else
                 {
-                    await Core.Extensions.TaskExtensions.DelaySafe(dynamicDelay, token);
+                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, its improvement was cancelled and this build's context disposed");
                 }
-
-                // Loop the delay if no new txs have been added, and while not cancelled.
-                // Is no point in rebuilding an identical block.
-            } while (added == _txPool.PendingTransactionsAdded);
-
-            if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
-            {
-                BlockProductionSnapshot best = blockImprovementContext.Best;
-                ImproveBlock(payloadId, parentHeader, payloadAttributes, best.CurrentBestBlock ?? currentBestBlock, startDateTime, best.BlockFees, cts);
             }
-            else
+            catch (Exception e)
             {
-                if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, it was retrieved");
+                if (_logger.IsError) _logger.Error($"Block improvement for payload {payloadId} failed", e);
             }
         });
 

@@ -75,6 +75,7 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
     [TestCase("{}")]
     [TestCase("{\"ids\":null,\"statuses\":null}")]
     [TestCase("{\"ids\":[],\"statuses\":[]}")]
+    [TestCase("{\"IDS\":[\"1\"]}", TestName = "Validators_post_property_names_are_case_sensitive")]
     public async Task Validators_post_without_filters_returns_the_whole_registry(string body)
     {
         using HttpResponseMessage response = await Post("validators", body);
@@ -166,7 +167,7 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
     [Test]
     public async Task Errors_follow_the_published_responses(
         [Values("validators", "validator_balances", "validator_identities")] string endpoint,
-        [Values("bad_id", "unknown_slot", "unknown_state_root", "bad_validator_id", "malformed_body", "null_body", "not_json", "not_acceptable")] string scenario)
+        [Values("bad_id", "unknown_slot", "unknown_state_root", "bad_validator_id", "malformed_body", "null_body", "wrong_shape", "not_json", "json_suffix", "not_acceptable")] string scenario)
     {
         string ids = endpoint == "validators" ? "{\"ids\":[\"1\"]}" : "[\"1\"]";
         (string stateId, string body, string contentType, string accept, HttpStatusCode expected) = scenario switch
@@ -177,12 +178,39 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
             "bad_validator_id" => (StateSlot.ToString(), ids.Replace("\"1\"", "\"0x12\""), Json, Json, HttpStatusCode.BadRequest),
             "malformed_body" => (StateSlot.ToString(), "{[", Json, Json, HttpStatusCode.BadRequest),
             "null_body" => (StateSlot.ToString(), "null", Json, Json, HttpStatusCode.BadRequest),
+            "wrong_shape" => (StateSlot.ToString(), "5", Json, Json, HttpStatusCode.BadRequest),
             "not_json" => (StateSlot.ToString(), ids, "text/plain", Json, HttpStatusCode.UnsupportedMediaType),
+            "json_suffix" => (StateSlot.ToString(), ids, "application/vnd.test+json", Json, HttpStatusCode.UnsupportedMediaType),
             _ => (StateSlot.ToString(), ids, Json, "text/plain", HttpStatusCode.NotAcceptable),
         };
 
         using HttpResponseMessage response = await Post(endpoint, body, accept, contentType, stateId);
         await BeaconApiTestHost.AssertErrorAsync(response, expected);
+    }
+
+    /// <summary>RFC 8259 section 11: JSON has no charset parameter, so one never decides whether a body is read.</summary>
+    [Test]
+    public async Task Json_body_charset_is_ignored([Values("validators", "validator_balances", "validator_identities")] string endpoint)
+    {
+        using HttpRequestMessage request = new(HttpMethod.Post, $"/eth/v1/beacon/states/{StateSlot}/{endpoint}")
+        {
+            Content = new StringContent(endpoint == "validators" ? "{\"ids\":[\"1\"]}" : "[\"1\"]"),
+        };
+        request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse($"{Json}; charset=unknown");
+        using HttpResponseMessage response = await _host.Client.SendAsync(request);
+        JsonElement data = await ReadEnvelope(response, expectedFinalized: false);
+        Assert.That(data.EnumerateArray().Select(e => e.GetProperty("index").GetString()), Is.EqualTo(new[] { "1" }));
+    }
+
+    [Test]
+    public async Task Body_past_the_server_limit_is_413_with_the_error_envelope([Values("validators", "validator_balances", "validator_identities")] string endpoint)
+    {
+        using HttpRequestMessage request = new(HttpMethod.Post, $"/eth/v1/beacon/states/{StateSlot}/{endpoint}") { Content = new ByteArrayContent(new byte[30_000_001]) };
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue(Json);
+        // Lets the server refuse the declared length before the body is sent.
+        request.Headers.ExpectContinue = true;
+        using HttpResponseMessage response = await _host.Client.SendAsync(request);
+        await BeaconApiTestHost.AssertErrorAsync(response, HttpStatusCode.RequestEntityTooLarge);
     }
 
     [TestCase("{\"statuses\":[\"active\",\"pending\",\"active\"]}", TestName = "Validators_post_with_a_repeated_status_is_400")]

@@ -34,6 +34,13 @@ namespace Nethermind.Synchronization.FastSync
 
         private const StateSyncBatch EmptyBatch = null;
 
+        /// <summary>The deepest path below a state leaf at which healing removes a node an earlier root left.</summary>
+        /// <remarks>
+        /// A node deeper on the path of an account needs two account hashes sharing 16 bytes, which takes about 2^64
+        /// hashes to find, so checking all 64 nibbles would only cost reads.
+        /// </remarks>
+        private const int DeepestStateLeafPathChecked = 32;
+
         private static readonly AccountDecoder AccountDecoder = new();
 
         private readonly DetailedProgress _data;
@@ -50,8 +57,6 @@ namespace Nethermind.Synchronization.FastSync
 
         private readonly ReaderWriterLockSlim _stateDbLock = new();
         private readonly ReaderWriterLockSlim _codeDbLock = new();
-
-        private long _handleWatch = new();
 
         private Hash256 _rootNode = Keccak.EmptyTreeHash;
         private int _rootSaved;
@@ -305,9 +310,7 @@ namespace Nethermind.Synchronization.FastSync
                                 $"Handle watch {elapsedTime:N0}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)elapsedTime / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
-                    Interlocked.Add(ref _handleWatch, (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds);
                     _data.LastDbReads = _data.DbChecks;
-                    _data.AverageTimeInHandler = _handleWatch / (decimal)_data.ProcessedRequestsCount;
 
                     Interlocked.Add(ref _data.HandledNodesCount, nonEmptyResponses);
                     return result;
@@ -525,6 +528,15 @@ namespace Nethermind.Synchronization.FastSync
                         Interlocked.Increment(ref _data.StateWasThere);
                         _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
                         return AddNodeResult.AlreadySaved;
+                    }
+
+                    if (syncItem.NodeDataType != NodeDataType.Code)
+                    {
+                        // A node is saved only once its children are, so a round that moves on to a new root in between
+                        // leaves the node of an earlier root over children it changed, which a store keyed by path keeps
+                        // at the same path. Removing it makes a later root that has it again go down through it. The read
+                        // lock keeps SaveNode out, so the node of this root cannot be saved at the path meanwhile.
+                        _store.RemoveMismatchedNode(syncItem.Address, syncItem.Path, syncItem.Hash);
                     }
 
                     Interlocked.Increment(ref _data.StateWasNotThere);
@@ -870,6 +882,7 @@ namespace Nethermind.Synchronization.FastSync
 
                         // Add nibbles to StateSyncItem.PathNibbles
                         TreePath childPath = currentStateSyncItem.Path.Append(trieNode.Key);
+                        RemoveSkippedNodes(currentStateSyncItem, childPath);
 
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
@@ -926,6 +939,7 @@ namespace Nethermind.Synchronization.FastSync
                             Debug.Assert(finalStorageRoot.Length == 64);
 
                             Hash256 address = finalStorageRoot.Path.ToCommitment();
+                            RemoveSkippedNodes(currentStateSyncItem, finalStorageRoot.Truncate(DeepestStateLeafPathChecked + 1));
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, address, TreePath.Empty, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult == AddNodeResult.AlreadySaved)
@@ -961,6 +975,33 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsError) _logger.Error($"Unknown value {currentStateSyncItem.NodeDataType} of {nameof(NodeDataType)} at {currentStateSyncItem.Hash}");
                     invalidNodes++;
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Removes the nodes stored at the paths between <paramref name="node"/> and <paramref name="next"/>, where this
+        /// root has no node.
+        /// </summary>
+        /// <remarks>
+        /// Healing goes from an extension straight to its child, and from a state leaf straight to its storage, so it never
+        /// checks those paths. A node an earlier root left there would stop a later root that has it again above the
+        /// child, which this round may remove or replace. This runs before the child is added, so a round that moves on in
+        /// between leaves no node above a removed child.
+        /// </remarks>
+        private void RemoveSkippedNodes(StateSyncItem node, in TreePath next)
+        {
+            _stateDbLock.EnterReadLock();
+            try
+            {
+                // No node hashes to zero, so this removes whichever node is stored.
+                for (int length = node.Path.Length + 1; length < next.Length; length++)
+                {
+                    _store.RemoveMismatchedNode(node.Address, next.Truncate(length), ValueKeccak.Zero);
+                }
+            }
+            finally
+            {
+                _stateDbLock.ExitReadLock();
             }
         }
 
