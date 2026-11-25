@@ -3,13 +3,13 @@
 
 using System.Buffers.Binary;
 using System.Collections;
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Ssz.Merkleization;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 using Body = Nethermind.BeaconChain.Legacy.Deneb.BeaconBlockBody;
 
@@ -460,7 +460,7 @@ internal class Transition(BeaconChainSpec spec)
             for (ulong i = 0; i < Presets.SlotsPerEpoch; i++)
             {
                 BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], startSlot + i);
-                proposers[i] = (ulong)SampleByEffectiveBalance(state, active, SHA256.HashData(preimage), count: 1)[0];
+                proposers[i] = (ulong)SampleByEffectiveBalance(state, active, ThreadSha256.HashData(preimage), count: 1)[0];
             }
         }
         state.ProposerLookahead = proposers;
@@ -483,7 +483,7 @@ internal class Transition(BeaconChainSpec spec)
             if (i % 32 == 0)
             {
                 BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], i / 32);
-                SHA256.HashData(preimage, randomBytes);
+                ThreadSha256.HashData(preimage, randomBytes);
             }
             if (state.ReadOnlyValidators[candidate].EffectiveBalance * LegacyPresets.MaxRandomByte >= Presets.MaxEffectiveBalance * randomBytes[(int)(i % 32)])
                 sampled[found++] = candidate;
