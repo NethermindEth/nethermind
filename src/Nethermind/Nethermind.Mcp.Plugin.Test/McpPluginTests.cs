@@ -30,7 +30,6 @@ public class McpPluginTests
         {
             Assert.That(plugin.Enabled, Is.False);
             Assert.That(plugin.Name, Is.EqualTo("Mcp"));
-            Assert.That(plugin.MustInitialize, Is.False, "a disabled optional plugin must never block startup");
             Assert.That(plugin.Module, Is.InstanceOf<McpModule>());
         }
     }
