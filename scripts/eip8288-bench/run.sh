@@ -8,7 +8,7 @@
 #
 # scenarios: comma-separated `builder`, `mempool`. Environment: MEMPOOL_RUNS [3] runs per mempool arm, AVERAGE_CPUS [8] and AVERAGE_MEMORY [16g] for the
 # average-validator profile, BASELINE_REF [feature/eip8288-eth75], the NethermindEth/nethermind branch or
-# commit built for the eth/75 arm of the mempool comparison (empty to skip it), plus the variables builder.sh and mempool.sh read.
+# tag built for the eth/75 arm of the mempool comparison (empty to skip it), plus the variables builder.sh and mempool.sh read.
 set -euo pipefail
 
 out=$(realpath -m "$1"); scenarios=$2
@@ -43,7 +43,10 @@ if [[ ,$scenarios, == *,mempool,* ]]; then
   if [[ -n $BASELINE_REF ]]; then
     baseline=$out/baseline-src
     rm -rf "$baseline"
-    git -C "$root" fetch -q --no-tags https://github.com/NethermindEth/nethermind.git "$BASELINE_REF"
+    # By branch or tag name only: a commit SHA could name a fork-only commit, which GitHub serves through upstream too.
+    upstream=https://github.com/NethermindEth/nethermind.git
+    git -C "$root" fetch -q --no-tags "$upstream" "refs/heads/$BASELINE_REF" 2>/dev/null ||
+      git -C "$root" fetch -q --no-tags "$upstream" "refs/tags/$BASELINE_REF"
     git -C "$root" worktree add --detach "$baseline" FETCH_HEAD
     git -C "$baseline" rev-parse HEAD > "$out/baseline-commit.txt"
     docker build -t nethermind:eip8288-bench-baseline --build-arg COMMIT_HASH="$(cat "$out/baseline-commit.txt")" "$baseline"
