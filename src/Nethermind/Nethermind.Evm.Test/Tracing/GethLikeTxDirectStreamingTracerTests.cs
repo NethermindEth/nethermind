@@ -62,9 +62,37 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
             }
             else
             {
-                Assert.That(RefundAt(logs, "SSTORE"), Is.EqualTo(sClearRefund));
+                Assert.That(RefundAt(logs, "SSTORE"), Is.Null);
                 Assert.That(RefundAt(logs, "STOP"), Is.EqualTo(sClearRefund));
             }
+        }
+    }
+
+    [Test]
+    public void Streams_execution_cost_of_an_sstore_that_refills_state_gas_on_Amsterdam([Values] bool reservoirFunded)
+    {
+        (Block block, Transaction transaction) = PrepareSetClearSetSlotTx(reservoirFunded);
+
+        List<StructLog> logs = StreamLogs(GethTraceOptions.Default,
+            tracer => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),
+            transaction);
+
+        Assert.That(logs.Where(static l => l.Op == "SSTORE").ElementAt(1).GasCost, Is.EqualTo(Eip8038Constants.WarmAccess));
+    }
+
+    [Test]
+    public void Streams_refund_counter_before_a_failing_sstore()
+    {
+        (Block block, Transaction transaction) = PrepareChildClearOutOfGasTx();
+
+        StructLog sstore = StreamLogs(GethTraceOptions.Default,
+            tracer => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),
+            transaction).Single(static l => l.Op == "SSTORE");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sstore.Error, Is.Not.Null);
+            Assert.That(sstore.Refund, Is.Null);
         }
     }
 
@@ -170,7 +198,7 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(RefundAt(logs, "SELFDESTRUCT"), Is.EqualTo(destroyRefund));
+            Assert.That(RefundAt(logs, "SELFDESTRUCT"), Is.Null);
             Assert.That(RefundAt(logs, "STOP"), Is.EqualTo(destroyRefund));
         }
     }

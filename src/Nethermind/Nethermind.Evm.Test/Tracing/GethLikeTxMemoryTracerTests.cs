@@ -162,6 +162,23 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
+    /// <remarks>
+    /// The SSTORE that restores the slot gives back the state gas that the first SSTORE took from the gas left, so
+    /// the gas left can grow across it.
+    /// </remarks>
+    [Test]
+    public void Sstore_that_refills_state_gas_reports_its_execution_cost_on_Amsterdam([Values] bool reservoirFunded)
+    {
+        (Block block, Transaction transaction) = PrepareSetClearSetSlotTx(reservoirFunded);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        GethTxTraceEntry restore = trace.Entries.Where(static e => e.Opcode == "SSTORE").ElementAt(1);
+        Assert.That(restore.GasCost, Is.EqualTo(Eip8038Constants.WarmAccess));
+    }
+
     private static TestCaseData[] AmsterdamOutOfGasOperations()
     {
         byte[] sstore = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done;
@@ -734,8 +751,25 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(sstore.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
+            Assert.That(sstore.Refund, Is.Null, "the counter before the clearing SSTORE");
             Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund after the clearing SSTORE");
+        }
+    }
+
+    [Test]
+    public void Failing_sstore_reports_refund_counter_before_it()
+    {
+        (Block block, Transaction transaction) = PrepareChildClearOutOfGasTx();
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        GethTxTraceEntry sstore = trace.Entries.Single(e => e.Opcode == "SSTORE");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sstore.Error, Is.Not.Null);
+            Assert.That(sstore.Refund, Is.Null);
         }
     }
 

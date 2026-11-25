@@ -7,5 +7,6 @@ public enum TestType
 {
     Blockchain,
     State,
-    Transaction
+    Transaction,
+    EngineReorg
 }

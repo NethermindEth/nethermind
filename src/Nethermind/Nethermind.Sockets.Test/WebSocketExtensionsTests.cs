@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
@@ -45,6 +46,7 @@ public class WebSocketExtensionsTests
 
         public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
         {
+            LargestReceiveBuffer = Math.Max(LargestReceiveBuffer, buffer.Count);
             // Had to use Array.Fill as it is more performant
             Array.Fill(buffer.Array, (byte)0, buffer.Offset, buffer.Count);
             Payload?.CopyTo(buffer.Array, buffer.Offset);
@@ -61,6 +63,7 @@ public class WebSocketExtensionsTests
 
         public long SentBytes { get; private set; }
         public int SentEndMessages { get; private set; }
+        public int LargestReceiveBuffer { get; private set; }
 
         public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
         {
@@ -101,7 +104,8 @@ public class WebSocketExtensionsTests
             "TestClient",
             new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
             Substitute.For<IJsonSerializer>(),
-            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API,
+            false);
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
@@ -314,11 +318,31 @@ public class WebSocketExtensionsTests
             "TestClient",
             new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
             Substitute.For<IJsonSerializer>(),
-            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API,
+            false);
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
         await webSocketsClient.Received(1000).ProcessAsync(Arg.Is<ArraySegment<byte>>(static ba => ba.Count == 1234), cts.Token);
+    }
+
+    [Test]
+    public async Task Empty_messages_are_processed_only_when_enabled([Values] bool processEmptyMessages)
+    {
+        Queue<WebSocketReceiveResult> receiveResults = new([
+            new(0, WebSocketMessageType.Text, true),
+            new(1, WebSocketMessageType.Text, true),
+            new(0, WebSocketMessageType.Close, true),
+        ]);
+        WebSocketMock socket = new(receiveResults);
+        SocketClient<WebSocketMessageStream> client = Substitute.ForPartsOf<SocketClient<WebSocketMessageStream>>(
+            "TestClient", new WebSocketMessageStream(socket, NullLogManager.Instance), Substitute.For<IJsonSerializer>(),
+            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API, processEmptyMessages);
+
+        await client.ReceiveLoopAsync(CancellationToken.None);
+
+        await client.Received(processEmptyMessages ? 1 : 0).ProcessAsync(Arg.Is<ArraySegment<byte>>(data => data.Count == 0), CancellationToken.None);
+        await client.Received(1).ProcessAsync(Arg.Is<ArraySegment<byte>>(data => data.Count == 1), CancellationToken.None);
     }
 
     [Test]
@@ -338,7 +362,8 @@ public class WebSocketExtensionsTests
             "TestClient",
             new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
             Substitute.For<IJsonSerializer>(),
-            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API,
+            false);
 
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
@@ -347,7 +372,7 @@ public class WebSocketExtensionsTests
     }
 
     [Test]
-    public async Task Throws_on_too_long_message()
+    public async Task Throws_on_too_long_message([Values(64 * 1024 + 1, 1024 * 1024)] int maxRequestSize)
     {
         Queue<WebSocketReceiveResult> receiveResult = new();
         for (int i = 0; i < 2 * 1024; i++)
@@ -363,11 +388,16 @@ public class WebSocketExtensionsTests
             "TestClient",
             new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
             Substitute.For<IJsonSerializer>(),
-            (int)1.MB);
+            maxRequestSize,
+            false);
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.ReceiveLoopAsync(cts.Token));
         await webSocketsClient.DidNotReceive().ProcessAsync(Arg.Any<ArraySegment<byte>>(), cts.Token);
+        byte[] maximumRental = ArrayPool<byte>.Shared.Rent(maxRequestSize);
+        int maximumPooledLength = maximumRental.Length;
+        ArrayPool<byte>.Shared.Return(maximumRental);
+        Assert.That(mock.LargestReceiveBuffer, Is.LessThanOrEqualTo(maximumPooledLength));
     }
 
     [Test, MaxTime(5000)]
@@ -383,7 +413,8 @@ public class WebSocketExtensionsTests
             "TestClient",
             new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
             Substitute.For<IJsonSerializer>(),
-            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+            SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API,
+            false);
 
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
     }
@@ -401,6 +432,27 @@ public class WebSocketExtensionsTests
             else await stream.WriteAsync(data, CancellationToken.None);
         }, Throws.TypeOf<IOException>());
         Assert.That(mock.SentBytes, Is.Zero);
+    }
+
+    [Test]
+    public async Task Text_only_streams_reject_binary_messages_without_changing_the_default(
+        [Values] bool textOnly, [Values(WebSocketMessageType.Text, WebSocketMessageType.Binary)] WebSocketMessageType messageType)
+    {
+        WebSocketMock socket = new(new Queue<WebSocketReceiveResult>([new(1, messageType, true)])) { Payload = [0x7b] };
+        using WebSocketMessageStream stream = textOnly
+            ? new(socket, NullLogManager.Instance, textOnly: true)
+            : new(socket, NullLogManager.Instance);
+        byte[] buffer = new byte[1];
+
+        ReceiveResult received = await stream.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+        bool rejected = textOnly && messageType == WebSocketMessageType.Binary;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received.Closed, Is.EqualTo(rejected));
+            Assert.That(received.Read, Is.EqualTo(rejected ? 0 : 1));
+            Assert.That(received.EndOfMessage, Is.EqualTo(!rejected));
+        }
     }
 
     [Test]

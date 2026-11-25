@@ -5860,6 +5860,29 @@ public class Eth72ProtocolHandlerTests
         return false;
     }
 
+    [Test, NonParallelizable]
+    public void Ignores_unsolicited_pooled_response_with_tracing_disabled() =>
+        WithTracingDisabled(should_ignore_malformed_unsolicited_pooled_response_without_decoding_payload);
+
+    [Test, NonParallelizable]
+    public void Ignores_stale_cells_response_with_tracing_disabled() =>
+        WithTracingDisabled(should_retry_timed_out_cells_request_and_ignore_stale_response_while_new_request_is_active);
+
+    private void WithTracingDisabled(Action test)
+    {
+        bool wasEnabled = NetworkDiagTracer.IsEnabled;
+        try
+        {
+            NetworkDiagTracer.IsEnabled = false;
+            RecreateHandler(logManager: NullLogManager.Instance);
+            test();
+        }
+        finally
+        {
+            NetworkDiagTracer.IsEnabled = wasEnabled;
+        }
+    }
+
     private void RecreateHandler(
         int providerProbabilityPercent = 15,
         IBackgroundTaskScheduler? backgroundTaskScheduler = null,

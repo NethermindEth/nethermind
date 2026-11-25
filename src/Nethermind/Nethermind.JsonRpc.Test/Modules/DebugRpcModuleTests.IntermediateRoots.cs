@@ -43,7 +43,7 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_intermediateRoots_returns_one_root_per_transaction([Values] bool withWithdrawals)
+    public async Task Debug_intermediateRoots_returns_one_root_per_transaction([Values] bool withWithdrawals, [Values(null, "abc", "5s", "5")] string? timeout)
     {
         using Context context = await Context.Create(new TestSpecProvider(Shanghai.Instance));
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
@@ -60,7 +60,9 @@ public partial class DebugRpcModuleTests
             context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
         }
 
-        ResultWrapper<IReadOnlyCollection<Hash256>> result = context.DebugRpcModule.debug_intermediateRoots(block.Hash!);
+        using JsonRpcResponse response = await RpcTest.TestRequest(context.DebugRpcModule, "debug_intermediateRoots", block.Hash!, new { timeout });
+        ResultWrapper<IReadOnlyCollection<Hash256>> result = response as ResultWrapper<IReadOnlyCollection<Hash256>>
+            ?? throw new AssertionException("Expected roots from replay, not a timeout binding error.");
 
         using (Assert.EnterMultipleScope())
         {

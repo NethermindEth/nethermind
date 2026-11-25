@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
@@ -88,11 +89,8 @@ public class GeneratedBlockAccessList
     {
         foreach (AccountChangesAtIndex sourceAccount in other.AccountChanges)
         {
-            if (!_accountChanges.TryGetValue(sourceAccount.Address, out GeneratedAccountChanges? target))
-            {
-                target = new GeneratedAccountChanges(sourceAccount.Address);
-                _accountChanges.Add(sourceAccount.Address, target);
-            }
+            GeneratedAccountChanges target = CollectionsMarshal.GetValueRefOrAddDefault(_accountChanges, sourceAccount.Address, out _)
+                ??= new GeneratedAccountChanges(sourceAccount.Address);
             target.Merge(sourceAccount);
         }
     }

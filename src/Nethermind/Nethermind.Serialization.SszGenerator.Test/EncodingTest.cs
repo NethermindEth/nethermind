@@ -63,8 +63,7 @@ public class EncodingTest
         UInt256 expected;
         if (progressive)
         {
-            MerkleizeProgressiveSpec([(UInt256)1, (UInt256)2], out expected);
-            expected = MixInActiveFieldsSpec(expected, 0b00000101);
+            expected = ProgressiveContainerSpec(0, 2);
         }
         else
         {
@@ -880,19 +879,19 @@ public class EncodingTest
         }
     }
 
-    [Test]
-    public void Merkleize_progressive_container_mixes_in_active_fields()
+    [TestCaseSource(nameof(ProgressiveContainerCases))]
+    public void Merkleize_progressive_container_mixes_in_active_fields<T>(T container, int[] fieldIndices) where T : ISszCodec<T>
     {
-        ProgressiveContainerSample container = new() { Head = 1, Tail = 2 };
-
         Merkleize(container, out UInt256 actual);
 
-        UInt256 headRoot = MerkleizeWithConverter(container.Head, UInt64SszBasicTypeConverter.Feed);
-        UInt256 tailRoot = MerkleizeWithConverter(container.Tail, UInt64SszBasicTypeConverter.Feed);
-        MerkleizeProgressiveSpec([headRoot, tailRoot], out UInt256 expected);
-        expected = MixInActiveFieldsSpec(expected, 0b00000101);
+        Assert.That(actual, Is.EqualTo(ProgressiveContainerSpec(fieldIndices)));
+    }
 
-        Assert.That(actual, Is.EqualTo(expected));
+    private static IEnumerable<TestCaseData> ProgressiveContainerCases()
+    {
+        yield return new TestCaseData(new ProgressiveContainerSample { Head = 1, Tail = 2 }, new[] { 0, 2 });
+        yield return new TestCaseData(new ProgressiveLeadingGapSample { Head = 1, Tail = 2 }, new[] { 1, 2 });
+        yield return new TestCaseData(new ProgressiveManyGapsSample { Head = 1, Middle = 2, Tail = 3 }, new[] { 3, 10, 25 });
     }
 
     [Test]
@@ -1129,12 +1128,19 @@ public class EncodingTest
             .SetName("Encode rejects lists above the declared limit");
     }
 
-    private static UInt256 MixInActiveFieldsSpec(UInt256 root, byte activeFields)
+    /// <summary>The EIP-7495 root of a progressive container whose fields have the roots 1, 2, ... in the order of <paramref name="fieldIndices"/>.</summary>
+    private static UInt256 ProgressiveContainerSpec(params int[] fieldIndices)
     {
-        Span<byte> chunk = stackalloc byte[32];
-        chunk.Clear();
-        chunk[0] = activeFields;
-        return HashConcat(root, new UInt256(chunk));
+        UInt256[] fieldRoots = new UInt256[fieldIndices[^1] + 1];
+        UInt256 activeFields = UInt256.Zero;
+        for (int i = 0; i < fieldIndices.Length; i++)
+        {
+            fieldRoots[fieldIndices[i]] = (ulong)(i + 1);
+            activeFields |= UInt256.One << fieldIndices[i];
+        }
+
+        MerkleizeProgressiveSpec(fieldRoots, out UInt256 root);
+        return HashConcat(root, activeFields);
     }
 
     private static UInt256 ProgressiveMerkleizeBytes(ReadOnlySpan<byte> bytes)

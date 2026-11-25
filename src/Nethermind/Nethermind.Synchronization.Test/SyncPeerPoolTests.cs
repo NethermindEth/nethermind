@@ -845,6 +845,17 @@ public class SyncPeerPoolTests
     }
 
     [Test]
+    public async Task Allocate_after_disposal_rejects_even_an_available_peer()
+    {
+        Context ctx = new();
+        await SetupPeers(ctx, 1);
+        await ctx.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 0));
+    }
+
+    [Test]
     public async Task Dispose_while_waiting_does_not_hang()
     {
         Context ctx = new();
@@ -1087,6 +1098,23 @@ public class SyncPeerPoolTests
         BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
 
         Assert.That(result, Is.SameAs(requested));
+    }
+
+    [Test, NonParallelizable]
+    public async Task Failed_refresh_releases_its_timeout_timer()
+    {
+        await using Context ctx = new();
+        ctx.Pool.Start();
+        SimpleSyncPeerMock[] peers = Enumerable.Range(0, 20).Select(static i => new SimpleSyncPeerMock(TestItem.PublicKeys[i])).ToArray();
+        foreach (SimpleSyncPeerMock peer in peers)
+            peer.SetHeaderFailure(new InvalidOperationException("Refresh failed"));
+
+        long before = Timer.ActiveCount;
+        foreach (SimpleSyncPeerMock peer in peers)
+            ctx.Pool.AddPeer(peer);
+
+        Assert.That(() => peers.All(static peer => peer.DisconnectRequested), Is.True.After(10_000, 10));
+        Assert.That(() => Timer.ActiveCount - before, Is.LessThan(peers.Length / 2).After(2_000, 20));
     }
 
     private async Task<SimpleSyncPeerMock[]> SetupPeers(Context ctx, int count)

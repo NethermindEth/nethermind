@@ -256,11 +256,13 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual SystemTransactionProcessor<TGasPolicy> CreateSystemTransactionProcessor() =>
             new(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
 
+        protected virtual bool UsesSystemTransactionProcessor(Transaction tx) => tx.IsSystem();
+
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             // Warmup keeps real fee/nonce semantics, so it must not route to the system processor.
-            TransactionResult result = tx.IsSystem() || opts == ExecutionOptions.SkipValidation
+            TransactionResult result = UsesSystemTransactionProcessor(tx) || opts == ExecutionOptions.SkipValidation
                 ? GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts)
                 : Execute(tx, tracer, opts);
 
@@ -832,9 +834,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             codeInsertRefunds = 0;
             long preAuthorizationStateGasUsed = TGasPolicy.GetStateGasUsed(in gasAvailable);
-            // Tracks each authority's delegation status as of tx start, so AUTH_BASE refills can tell
-            // a pre-existing delegation from one installed earlier in the same tx.
-            Dictionary<Address, bool>? delegatedBeforeTx = null;
+            // Authorities delegated when first seen or set earlier in the tx. Only an authority's own tuples
+            // change its delegation, so a first sighting sees the pre-tx status and AUTH_BASE is charged once.
             HashSet<Address>? delegationSetFor = spec.IsEip8037Enabled ? [] : null;
             HashSet<Address>? writtenAccounts = null;
             if (spec.IsEip8037Enabled)
@@ -857,13 +858,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
                     if (spec.IsEip8037Enabled)
                     {
-                        delegatedBeforeTx ??= [];
-                        if (!delegatedBeforeTx.TryGetValue(authority, out bool delegatedBefore))
-                        {
-                            delegatedBefore = hasDelegation;
-                            delegatedBeforeTx[authority] = delegatedBefore;
-                        }
-
                         bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
 
                         if (!accountExists && !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost()))
@@ -880,13 +874,10 @@ namespace Nethermind.Evm.TransactionProcessing
                             }
                         }
 
-                        if (!clearsDelegation)
+                        if ((!clearsDelegation || hasDelegation) && delegationSetFor!.Add(authority) && !hasDelegation
+                            && !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetPerAuthBaseStateCost()))
                         {
-                            if (!delegatedBefore && delegationSetFor!.Add(authority)
-                                && !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetPerAuthBaseStateCost()))
-                            {
-                                return false;
-                            }
+                            return false;
                         }
                     }
 
@@ -1421,7 +1412,6 @@ namespace Nethermind.Evm.TransactionProcessing
                             ref gasAvailable,
                             spec,
                             in accessTracker,
-                            isTracingAccess: false,
                             delegationAddress);
 
                         if (topFrameOutOfGas)
@@ -1991,7 +1981,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ulong spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
 
-            if (ShouldRefundGas(tx, opts, in gasPrice))
+            if (ShouldRefundGas(tx, opts, in gasPrice) && (spec.IsEip8037Enabled || substate.ShouldRevert || substate.IsError || !substate.DestroyListContains(tx.SenderAddress)))
                 PayRefund(tx, (tx.GasLimit - spentGasAfterFloor) * gasPrice, spec);
 
             return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, (ulong)blockStateGas, Math.Max(spentGas, floorGasLong), refund > 0 ? (ulong)refund : 0);
