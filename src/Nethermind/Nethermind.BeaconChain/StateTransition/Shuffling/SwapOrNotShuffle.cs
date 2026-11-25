@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Threading;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.BeaconChain.StateTransition.Shuffling;
 
@@ -42,13 +42,13 @@ public static class SwapOrNotShuffle
         for (int round = 0; round < rounds; round++)
         {
             buf[SeedSize] = (byte)round;
-            SHA256.HashData(buf[..PivotViewSize], hash);
+            ThreadSha256.HashData(buf[..PivotViewSize], hash);
             int pivot = (int)(BinaryPrimitives.ReadUInt64LittleEndian(hash) % (ulong)listSize);
 
             int flip = (int)(((long)pivot + listSize - index) % listSize);
             int position = Math.Max(index, flip);
             BinaryPrimitives.WriteInt32LittleEndian(buf[PivotViewSize..], position >> 8);
-            SHA256.HashData(buf, hash);
+            ThreadSha256.HashData(buf, hash);
 
             int bit = (hash[(position & 0xff) >> 3] >> (position & 0x07)) & 0x01;
             index = bit == 1 ? flip : index;
@@ -79,7 +79,7 @@ public static class SwapOrNotShuffle
         while (true)
         {
             buf[SeedSize] = (byte)round;
-            SHA256.HashData(buf[..PivotViewSize], source);
+            ThreadSha256.HashData(buf[..PivotViewSize], source);
             int pivot = (int)(BinaryPrimitives.ReadUInt64LittleEndian(source) % (ulong)listSize);
 
             // First mirror: swap-or-not the range [0, pivot] around its midpoint.
@@ -133,7 +133,7 @@ public static class SwapOrNotShuffle
     private static void SwapOrNotChunk(Span<int> input, Span<byte> buf, Span<byte> source, int hi, int count, int lo)
     {
         MixInPosition(buf, hi >> 8);
-        SHA256.HashData(buf, source);
+        ThreadSha256.HashData(buf, source);
         byte byteV = source[(hi & 0xff) >> 3];
 
         for (int k = 0; k < count; k++)
@@ -144,7 +144,7 @@ public static class SwapOrNotShuffle
             if ((j & 0xff) == 0xff)
             {
                 MixInPosition(buf, j >> 8);
-                SHA256.HashData(buf, source);
+                ThreadSha256.HashData(buf, source);
             }
 
             if ((j & 0x07) == 0x07)

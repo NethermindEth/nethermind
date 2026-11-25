@@ -81,9 +81,9 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
 
             foreach (Hash256 root in request.Roots ?? [])
             {
-                if (store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block))
+                if (store.TryGetStoredBlock(root, out StoredBlock block))
                 {
-                    await WriteBlockChunkAsync(stream, block, cts);
+                    await WriteBlockChunkAsync(stream, block.Slot, block.Ssz, cts);
                 }
             }
         }

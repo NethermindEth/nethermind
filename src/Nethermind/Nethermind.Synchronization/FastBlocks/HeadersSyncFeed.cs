@@ -382,19 +382,33 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
+        public override async Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {
+            HeadersSyncBatch? batch = PrepareRequest(null, cancellationToken, out bool needsRequestSize);
+            if (!needsRequestSize) return batch;
+
+            int requestSize = await _syncPeerPool.EstimateRequestLimit(RequestType.Headers, _approximateAllocationStrategy,
+                AllocationContexts.Headers, cancellationToken) ?? GethSyncLimits.MaxHeaderFetch;
+            return PrepareRequest(requestSize, cancellationToken, out _);
+        }
+
+        protected virtual HeadersSyncBatch? PrepareRequest(int? requestSize, CancellationToken cancellationToken, out bool needsRequestSize)
+        {
+            needsRequestSize = false;
             _resetLock.EnterReadLock();
             try
             {
-                if (!_blockTree.CanAcceptNewBlocks) return Task.FromResult<HeadersSyncBatch?>(null);
-                do
+                if (!_blockTree.CanAcceptNewBlocks) return null;
+                if (requestSize is null)
                 {
-                    ulong? lowestBefore = LowestInsertedBlockHeader?.Number;
-                    HandleDependentBatches(cancellationToken);
-                    // A dependency that does not connect would otherwise keep this loop, and the reset read lock, busy forever.
-                    if (LowestInsertedBlockHeader?.Number == lowestBefore) break;
-                } while (PendingIsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
+                    do
+                    {
+                        ulong? lowestBefore = LowestInsertedBlockHeader?.Number;
+                        HandleDependentBatches(cancellationToken);
+                        // A stalled dependency must not keep the reset read lock busy.
+                        if (LowestInsertedBlockHeader?.Number == lowestBefore) break;
+                    } while (PendingIsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
+                }
 
                 HeadersSyncBatch? batch;
                 bool retryPending;
@@ -422,7 +436,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         catch (BlockTreeNotReadyException)
                         {
                             RetainResponse(batch);
-                            return Task.FromResult<HeadersSyncBatch?>(null);
+                            return null;
                         }
                         catch (OperationCanceledException)
                         {
@@ -433,7 +447,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         {
                             RequeueAsNewBatch(batch);
                             if (_logger.IsError) _logger.Error($"Failed to insert retained batch {batch}", e);
-                            return Task.FromResult<HeadersSyncBatch?>(null);
+                            return null;
                         }
                         finally
                         {
@@ -441,17 +455,17 @@ namespace Nethermind.Synchronization.FastBlocks
                         }
                     }
                     if (++retainedBatchesProcessed >= maxRetainedBatchesToProcess)
-                        return Task.FromResult<HeadersSyncBatch?>(null);
+                        return null;
                 }
                 if (batch is null && ShouldBuildANewBatch())
                 {
-                    // Set the request size depending on the approximate allocation strategy.
-                    // NOTE: Cannot await because of the lock.
-                    int requestSize =
-                        _syncPeerPool.EstimateRequestLimit(RequestType.Headers, _approximateAllocationStrategy, AllocationContexts.Headers, cancellationToken).Result
-                        ?? GethSyncLimits.MaxHeaderFetch;
+                    if (requestSize is null)
+                    {
+                        needsRequestSize = true;
+                        return null;
+                    }
 
-                    batch = ProcessPersistedHeadersOrBuildNewBatch(requestSize, cancellationToken, out retryPending);
+                    batch = ProcessPersistedHeadersOrBuildNewBatch(requestSize.Value, cancellationToken, out retryPending);
                     if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
@@ -460,7 +474,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (!_blockTree.CanAcceptNewBlocks || batch.Response is not null)
                     {
                         EnqueuePending(batch);
-                        return Task.FromResult<HeadersSyncBatch?>(null);
+                        return null;
                     }
                     if (retryPending)
                     {
@@ -476,12 +490,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     LogStateOnPrepare();
                 }
 
-                return Task.FromResult(batch);
-            }
-            catch (Exception ex)
-            {
-                // Explicitly wrap exception in Task
-                return Task.FromException<HeadersSyncBatch?>(ex);
+                return batch;
             }
             finally
             {

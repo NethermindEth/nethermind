@@ -22,4 +22,12 @@ public class CLChainSpecEngineParametersTests
             Assert.That(parameters.SystemTransactionTo, Is.EqualTo(new Address("0x4200000000000000000000000000000000000015")));
         }
     }
+
+    [Test]
+    public void Chain_spec_reads_pectra_blob_schedule_timestamp()
+    {
+        CLChainSpecEngineParameters parameters = new EthereumJsonSerializer().Deserialize<CLChainSpecEngineParameters>("""{"l1ChainId":11155111,"pectraBlobScheduleTimestamp":1742486400}""")!;
+
+        Assert.That(parameters.PectraBlobScheduleTimestamp, Is.EqualTo(1742486400UL));
+    }
 }

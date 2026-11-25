@@ -5,11 +5,11 @@ using System;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Ssz.Merkleization;
 #if GLOAS
 using AccessorState = Nethermind.BeaconChain.Types.BeaconStateGloas;
 using LegacyState = Nethermind.BeaconChain.Types.BeaconStateGloas;
@@ -69,7 +69,7 @@ public static partial class BeaconStateAccessors
         domainType.CopyTo(preimage);
         BinaryPrimitives.WriteUInt64LittleEndian(preimage[4..], epoch);
         mix.Bytes.CopyTo(preimage[12..]);
-        return new Hash256(SHA256.HashData(preimage));
+        return new Hash256(ThreadSha256.HashData(preimage));
     }
 
     /// <summary>Returns the total amount queued in <c>pending_partial_withdrawals</c> for a validator.</summary>

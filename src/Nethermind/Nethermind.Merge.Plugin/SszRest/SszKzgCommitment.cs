@@ -28,6 +28,6 @@ public struct SszKzgCommitment
         return result;
     }
 
-    public ReadOnlySpan<byte> AsSpan() =>
+    public readonly ReadOnlySpan<byte> AsSpan() =>
         MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<SszKzgCommitment, byte>(ref Unsafe.AsRef(in this)), KzgCommitmentLength);
 }

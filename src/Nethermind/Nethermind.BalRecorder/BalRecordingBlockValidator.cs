@@ -19,9 +19,6 @@ public class BalRecordingBlockValidator(IBlockValidator inner, BalRecorderSpecSw
     public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
         inner.ValidateOrphaned(header, out error);
 
-    public bool ValidateWithdrawals(Block block, out string? error) =>
-        inner.ValidateWithdrawals(block, out error);
-
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) =>
         inner.ValidateOrphanedBlock(block, out error);
 

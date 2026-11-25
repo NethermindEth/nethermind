@@ -47,6 +47,31 @@ public class DataColumnSidecarContainerTests
     }
 
     [Test]
+    public void RefReader_reads_byte_structs_in_place()
+    {
+        DataColumnSidecar sidecar = CreateRepresentative();
+        Validator validator = new() { Pubkey = new BlsPublicKey(Enumerable.Repeat((byte)0x88, BlsPublicKey.Length).ToArray()), WithdrawalCredentials = Hash(0xB0) };
+        byte[] encodedSidecar = DataColumnSidecar.Encode(sidecar);
+        byte[] encodedValidator = Validator.Encode(validator);
+
+        DataColumnSidecar.RefReader sidecarReader = new(encodedSidecar);
+        ReadOnlySpan<byte> cell = sidecarReader.Column[1].AsSpan();
+        ReadOnlySpan<byte> proof = sidecarReader.KzgProofs[1].AsSpan();
+        ReadOnlySpan<byte> signature = sidecarReader.SignedBlockHeader.Signature.Bytes;
+        ReadOnlySpan<byte> pubkey = new Validator.RefReader(encodedValidator).Pubkey.Bytes;
+
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(cell.ToArray(), Is.EqualTo(sidecar.Column![1].AsSpan().ToArray()));
+        Assert.That(cell.Overlaps(encodedSidecar), Is.True, "cell is not copied");
+        Assert.That(proof.ToArray(), Is.EqualTo(sidecar.KzgProofs![1].AsSpan().ToArray()));
+        Assert.That(proof.Overlaps(encodedSidecar), Is.True, "proof is not copied");
+        Assert.That(signature.ToArray(), Is.EqualTo(sidecar.SignedBlockHeader!.Signature.Bytes.ToArray()));
+        Assert.That(signature.Overlaps(encodedSidecar), Is.True, "signature is not copied");
+        Assert.That(pubkey.ToArray(), Is.EqualTo(validator.Pubkey.Bytes.ToArray()));
+        Assert.That(pubkey.Overlaps(encodedValidator), Is.True, "pubkey is not copied");
+    }
+
+    [Test]
     public void Round_trips_through_ssz_encode_decode_with_a_stable_root()
     {
         DataColumnSidecar original = CreateRepresentative();

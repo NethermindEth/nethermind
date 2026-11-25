@@ -75,6 +75,11 @@ namespace Nethermind.KeyStore
         private const long MaxScryptWork = 1L << 24;
         private const string ScryptLimits = "scrypt may use at most 2 GiB of memory and n * r * p of at most 16777216";
 
+        // Work limit for pbkdf2 on read. pbkdf2 runs c iterations per started 32-byte block of derived key; the limit
+        // leaves headroom above eth-keyfile's default of 1000000 iterations for 32 bytes.
+        private const long MaxPbkdf2Work = 1L << 24;
+        private const string Pbkdf2Limits = "pbkdf2 may run at most 16777216 iterations, c for every 32 bytes of dklen";
+
         private readonly PrivateKeyGenerator _privateKeyGenerator;
         private readonly IKeyStoreConfig _config;
         private readonly IJsonSerializer _jsonSerializer;
@@ -180,6 +185,11 @@ namespace Nethermind.KeyStore
                     if (kdfParams.C is not int c || c <= 0)
                     {
                         return (null, Result.Fail("Incorrect key: pbkdf2 requires a positive c"));
+                    }
+
+                    if (!IsWithinPbkdf2Limits(c, dkLen))
+                    {
+                        return (null, Result.Fail($"Unsupported pbkdf2 parameters: c {c}, dklen {dkLen}; {Pbkdf2Limits}"));
                     }
 
                     derivedKey = Rfc2898DeriveBytes.Pbkdf2(passBytes, salt, c, HashAlgorithmName.SHA256, dkLen);
@@ -417,6 +427,10 @@ namespace Nethermind.KeyStore
         /// <remarks>Expects positive <paramref name="r"/> and <paramref name="p"/>. Divides the limits, so nothing overflows.</remarks>
         internal static bool IsWithinScryptLimits(int n, int r, int p) =>
             n + 2L * p + 3 <= MaxScryptMemory / (128L * r) && (long)n * r <= MaxScryptWork / p;
+
+        /// <summary>Whether pbkdf2 with these parameters stays within the work a key file may ask for.</summary>
+        /// <remarks>Expects positive <paramref name="c"/> and <paramref name="dkLen"/>. Computes in long, so nothing overflows.</remarks>
+        internal static bool IsWithinPbkdf2Limits(int c, int dkLen) => (long)c * ((dkLen + 31L) / 32) <= MaxPbkdf2Work;
 
         // Accepts the MAC key of the Web3 Secret Storage definition, derived bytes 16..31, and, for a dklen other than 32,
         // the last 16 derived bytes, which Nethermind key files with such a dklen use.

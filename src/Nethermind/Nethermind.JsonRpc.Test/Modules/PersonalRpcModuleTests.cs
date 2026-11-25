@@ -98,6 +98,15 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public async Task Personal_send_transaction_is_not_available()
+        {
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
+            JsonElement transaction = JsonSerializer.Deserialize<JsonElement>("{}");
+            string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_sendTransaction", transaction, "testPass");
+            Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32601,"message":"the method personal_sendTransaction does not exist/is not available"},"id":67}"""));
+        }
+
+        [Test]
         public async Task Personal_sign_with_passphrase_does_not_unlock_account()
         {
             string passphrase = "testPass";
