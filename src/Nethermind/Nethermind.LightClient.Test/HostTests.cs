@@ -322,6 +322,7 @@ public class HostTests
             "--depsfile", Path.Combine(application, "Nethermind.LightClient.deps.json"), assembly,
             "--checkpoint-url", $"https://127.0.0.1:{port}", "--urls", "http://0.0.0.0:0", "--data-dir", directory,
         }) start.ArgumentList.Add(argument);
+        using Process interrupter = await StartInterruptSenderAsync(token);
         using Process client = Process.Start(start)!;
         try
         {
@@ -358,7 +359,7 @@ public class HostTests
             using HttpResponseMessage rpcResponse = await rpc.SendAsync(rpcRequest, token);
             using CancellationTokenSource shutdownDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             shutdownDeadline.CancelAfter(TimeSpan.FromSeconds(15));
-            await SendInterruptAsync(client.Id, shutdownDeadline.Token);
+            await SendInterruptAsync(interrupter, client.Id, shutdownDeadline.Token);
             try { await client.WaitForExitAsync(shutdownDeadline.Token); }
             catch (OperationCanceledException) when (shutdownDeadline.IsCancellationRequested)
             {
@@ -376,6 +377,8 @@ public class HostTests
         {
             if (!client.HasExited) client.Kill(entireProcessTree: true);
             await client.WaitForExitAsync(CancellationToken.None);
+            if (!interrupter.HasExited) interrupter.Kill(entireProcessTree: true);
+            await interrupter.WaitForExitAsync(CancellationToken.None);
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     }
@@ -1128,47 +1131,67 @@ public class HostTests
         return builder.Build();
     }
 
-    private static async Task SendInterruptAsync(int clientId, CancellationToken cancellationToken)
+    /// <summary>Starts a process that sends the console interrupt to the child whose id is written to its standard input.</summary>
+    /// <remarks>
+    /// Returns once the sender is ready, so callers can start it before the child: its startup, including the
+    /// Windows interop compilation, must not delay the interrupt past the child's 10-second checkpoint request timeout.
+    /// </remarks>
+    private static async Task<Process> StartInterruptSenderAsync(CancellationToken cancellationToken)
     {
-        ProcessStartInfo start = new(OperatingSystem.IsWindows() ? "powershell.exe" : "kill")
+        ProcessStartInfo start = new(OperatingSystem.IsWindows() ? "powershell.exe" : "sh")
         {
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
         };
         if (OperatingSystem.IsWindows())
         {
             start.ArgumentList.Add("-NoProfile");
             start.ArgumentList.Add("-Command");
-            start.ArgumentList.Add($$"""
+            start.ArgumentList.Add("""
                 $ErrorActionPreference = 'Stop'
                 Add-Type -Name ConsoleSignal -Namespace LightClientTests -MemberDefinition @'
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool FreeConsole();
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool AttachConsole(uint pid);
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool GenerateConsoleCtrlEvent(uint signal, uint group);
                 '@
+                [Console]::Out.WriteLine('ready')
+                $clientId = [uint32][Console]::In.ReadLine()
                 [LightClientTests.ConsoleSignal]::FreeConsole() | Out-Null
-                if (![LightClientTests.ConsoleSignal]::AttachConsole({{clientId}})) { throw 'Cannot attach to the test child console.' }
+                if (![LightClientTests.ConsoleSignal]::AttachConsole($clientId)) { throw 'Cannot attach to the test child console.' }
                 try {
-                    if (![LightClientTests.ConsoleSignal]::GenerateConsoleCtrlEvent(1, {{clientId}})) { throw 'Cannot send Ctrl+Break to the child process group.' }
+                    if (![LightClientTests.ConsoleSignal]::GenerateConsoleCtrlEvent(1, $clientId)) { throw 'Cannot send Ctrl+Break to the child process group.' }
                 } finally { [LightClientTests.ConsoleSignal]::FreeConsole() | Out-Null }
                 """);
         }
         else
         {
-            start.ArgumentList.Add("-TERM");
-            start.ArgumentList.Add(clientId.ToString());
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("echo ready && read -r id && exec kill -TERM \"$id\"");
         }
-        using Process sender = Process.Start(start)!;
+        Process sender = Process.Start(start)!;
         try
         {
-            await sender.WaitForExitAsync(cancellationToken);
-            Assert.That(sender.ExitCode, Is.Zero, "The interrupt must reach only the owned child process.");
+            string? line;
+            do line = await sender.StandardOutput.ReadLineAsync(cancellationToken);
+            while (line is not null and not "ready");
+            Assert.That(line, Is.EqualTo("ready"), "The interrupt sender must start before the child.");
+            return sender;
         }
-        finally
+        catch
         {
             if (!sender.HasExited) sender.Kill(entireProcessTree: true);
-            await sender.WaitForExitAsync(CancellationToken.None);
+            sender.Dispose();
+            throw;
         }
+    }
+
+    private static async Task SendInterruptAsync(Process sender, int clientId, CancellationToken cancellationToken)
+    {
+        await sender.StandardInput.WriteLineAsync(clientId.ToString(CultureInfo.InvariantCulture).AsMemory(), cancellationToken);
+        await sender.WaitForExitAsync(cancellationToken);
+        Assert.That(sender.ExitCode, Is.Zero, "The interrupt must reach only the owned child process.");
     }
 }
 
