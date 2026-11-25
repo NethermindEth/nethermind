@@ -1,0 +1,7 @@
+{
+  "repository": "eez-association/eez-rollupX",
+  "revision": "c1dafa6113425fce74bdba8c32ae8b0d7a7ba5ae",
+  "source_path": "crates/eez-control-rpc/conformance/native-profile-v1.json",
+  "sha256": "d3df2a1bdd85556d440db0475e3751da123b5f3ab27166e4134cffdedfcec462",
+  "scope": "Independent encoding vectors only; not execution or settlement authorization."
+}

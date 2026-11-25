@@ -17,6 +17,8 @@
     <ProjectReference Include="../Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="../Nethermind.Consensus.Ethash/Nethermind.Consensus.Ethash.csproj" />
     <ProjectReference Include="../Nethermind.Db.Rocks/Nethermind.Db.Rocks.csproj" />
+    <ProjectReference Include="../Nethermind.Eez.Execution/Nethermind.Eez.Execution.csproj" />
+    <ProjectReference Include="../Nethermind.Eez.Rpc/Nethermind.Eez.Rpc.csproj" />
     <ProjectReference Include="../Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="../Nethermind.Logging.Microsoft/Nethermind.Logging.Microsoft.csproj" />
     <ProjectReference Include="../Nethermind.Logging.NLog/Nethermind.Logging.NLog.csproj" />

@@ -382,7 +382,7 @@ public class StatelessInputGeneratorTests
             new TestSpecProvider(Osaka.Instance), new CancellationToken(canceled: true)), Throws.InstanceOf<OperationCanceledException>());
     }
 
-    internal static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true, byte[]? recoveryCall = null)
+    internal static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true, byte[]? recoveryCall = null, Transaction? transaction = null)
     {
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
@@ -432,7 +432,7 @@ public class StatelessInputGeneratorTests
         };
         try
         {
-            Transaction tx = Build.A.Transaction.WithTo(requests ? spec.DepositContractAddress! : TestItem.AddressB).WithGasLimit(1_000_000)
+            Transaction tx = transaction ?? Build.A.Transaction.WithTo(requests ? spec.DepositContractAddress! : TestItem.AddressB).WithGasLimit(1_000_000)
                 .WithGasPrice(1).SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
             Transaction[] transactions = recoveryCall is null ? [tx] :
             [
@@ -446,9 +446,14 @@ public class StatelessInputGeneratorTests
                 .WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).WithTransactions(transactions).TestObject;
             StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance);
             using IDisposable scope = env.WorldState.BeginScope(parent);
-            (Block block, _) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);
+            (Block block, TxReceipt[] receipts) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);
             block.DisposeAccountChanges();
-            Assert.That(block.ExecutionRequests, Has.Length.EqualTo(!requests ? 0 : amsterdam ? 5 : 3));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(block.ExecutionRequests, Has.Length.EqualTo(!requests ? 0 : amsterdam ? 5 : 3));
+                if (transaction is not null)
+                    Assert.That(receipts[0].StatusCode, Is.EqualTo(StatusCode.Success), "The supplied transaction must execute successfully.");
+            }
             return (block, witness, specProvider);
         }
         catch

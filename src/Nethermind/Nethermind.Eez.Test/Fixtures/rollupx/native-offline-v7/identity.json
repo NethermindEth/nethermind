@@ -1,0 +1,9 @@
+{
+  "gnosis_l1": false,
+  "l2_system_address": "0xfffffffffffffffffffffffffffffffffffffffe",
+  "proof_system": "0x948b3c65b89df0b4894abe91e6d02fe579834f8f",
+  "registry_address": "0x71c95911e9a5d330f4d621842ec243ee1343292e",
+  "rollup_id": 1,
+  "rollup_manager_address": "0xbcf26943c0197d2ee0e5d05c716be60cc2761508",
+  "vkey": "0xb1bfe68060d84db5ca2f0398bef39ea34e3cd1cef9ecf58c73de8df4d45d186b"
+}

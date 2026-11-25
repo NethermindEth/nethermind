@@ -1,0 +1,85 @@
+name: EEZ checks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Select EEZ checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      unit: ${{ steps.scope.outputs.unit }}
+      streaming: ${{ steps.scope.outputs.streaming }}
+      live: ${{ steps.scope.outputs.live }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: ./.github/actions/setup-dotnet
+      - name: Check CI selection and dependency boundaries
+        run: dotnet run --file scripts/eez/test-checks.cs
+      - name: Fetch the exact comparison base when needed
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$BASE_SHA" != 0000000000000000000000000000000000000000 ]] && ! git cat-file -e "$BASE_SHA^{commit}"; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          fi
+      - name: Select checks from the complete change list
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          EEZ_FULL: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        run: dotnet run --file scripts/eez/select-checks.cs
+
+  tests:
+    name: Compatibility and streaming
+    needs: changes
+    if: needs.changes.outputs.unit == 'true'
+    uses: ./.github/workflows/eez-streaming-tests.yml
+    with:
+      conformance: ${{ needs.changes.outputs.streaming == 'true' }}
+
+  live:
+    name: Live integration
+    needs: changes
+    if: needs.changes.outputs.live != 'none' && needs.changes.result == 'success'
+    uses: ./.github/workflows/eez-devnet-tests.yml
+    with:
+      selection: ${{ needs.changes.outputs.live }}
+
+  complete:
+    name: EEZ checks
+    needs: [changes, tests, live]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every selected check
+        env:
+          SCOPE_RESULT: ${{ needs.changes.result }}
+          TESTS_REQUIRED: ${{ needs.changes.outputs.unit }}
+          TESTS_RESULT: ${{ needs.tests.result }}
+          LIVE_REQUIRED: ${{ needs.changes.outputs.live }}
+          LIVE_RESULT: ${{ needs.live.result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          if [[ "$TESTS_REQUIRED" == true ]]; then test "$TESTS_RESULT" = success; else test "$TESTS_RESULT" = skipped; fi
+          if [[ "$LIVE_REQUIRED" != none ]]; then test "$LIVE_RESULT" = success; else test "$LIVE_RESULT" = skipped; fi

@@ -421,6 +421,12 @@ Nethermind SendPolicy plugin. Without the option, submissions are relayed as bef
 | `eth_sendRawTransaction` | Local envelope, signature, fork and authenticated state checks, followed by execution P2P relay; blob sidecars are KZG verified |
 | `eth_sendRawTransactionSync` | Local readiness checks and execution P2P relay, followed by a bounded wait for an authenticated receipt |
 
+In EEZ mode, `latest` and `finalized` use the RollupX block committed in
+the EEZ registry at the finalized L1 head. The EEZ execution rules apply
+to single-call execution. Block simulation (`eth_simulateV1`) and
+transaction replay (`debug_traceTransaction`) are available on the built-in
+networks and return `-32601` in EEZ mode.
+
 State methods default to `"latest"` when their block parameter is omitted. They accept an explicit `"finalized"` or `"latest"` selector,
 an authenticated block number, or an EIP-1898 object naming its hash/number.
 Wallets and dapps can use `"latest"` for the recent sync-committee-authenticated

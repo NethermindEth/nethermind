@@ -46,7 +46,6 @@ using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
-using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -138,6 +137,13 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     internal ExecutionPeerTransport(string network, ILogManager logManager, VerifiedHead? head = null, ulong timestamp = 0,
         string? dataDirectory = null, Address[]? hostedAccounts = null, int port = 30307,
         TimeProvider? clock = null)
+        : this(ExecutionNetwork.Ethereum(network), logManager, head, timestamp, dataDirectory, hostedAccounts, port, clock)
+    {
+    }
+
+    internal ExecutionPeerTransport(ExecutionNetwork network, ILogManager logManager, VerifiedHead? head = null, ulong timestamp = 0,
+        string? dataDirectory = null, Address[]? hostedAccounts = null, int port = 30307,
+        TimeProvider? clock = null)
     {
         _clock = clock ?? TimeProvider.System;
         _bodies = new(BodySize, _stop.Token);
@@ -155,31 +161,25 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         _ = typeof(EthashChainSpecEngineParameters).Assembly;
         _ = typeof(AuRaChainSpecEngineParameters).Assembly;
         TypeDiscovery.Initialize();
-        (string chainSpecFile, Hash256 genesisHash) = network switch
-        {
-            "mainnet" => ("foundation.json", KnownHashes.MainnetGenesis),
-            "hoodi" => ("hoodi.json", KnownHashes.HoodiGenesis),
-            "sepolia" => ("sepolia.json", KnownHashes.SepoliaGenesis),
-            "gnosis" => ("gnosis.json", KnownHashes.GnosisGenesis),
-            _ => throw new ArgumentException("Supported networks: mainnet, hoodi, sepolia, gnosis.", nameof(network)),
-        };
+        Hash256 genesisHash = network.GenesisHash;
         ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), logManager)
-            .LoadEmbeddedOrFromFile(chainSpecFile);
-        bool isGnosis = network == "gnosis";
+            .LoadEmbeddedOrFromFile(network.ChainSpecFile);
+        bool isGnosis = network.IsGnosis;
         if (isGnosis) AuRaChainSpecLoader.ProcessChainSpec(chainSpec);
         (chainSpec.Genesis ?? throw new InvalidOperationException("Chain spec has no genesis block")).Header.Hash = genesisHash;
         _syncServer = new LightSyncServer(chainSpec, head, timestamp);
         InitConfig init = new() { DiagnosticMode = DiagnosticMode.MemDb, DataDir = "src/Nethermind/artifacts/lightclient-execution" };
         if (dataDirectory is not null)
         {
-            string executionDirectory = Path.GetFullPath(Path.Combine(dataDirectory, "el", network));
+            string executionDirectory = Path.GetFullPath(Path.Combine(dataDirectory, "el", network.Name));
             init.DataDir = executionDirectory;
             init.BaseDbPath = Path.Combine(executionDirectory, "db");
         }
         NetworkConfig net = new()
         {
-            // Gnosis has no ethdisco.net tree; its chainspec supplies discv5-capable EL bootnodes.
-            DiscoveryDns = isGnosis ? string.Empty : $"enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@snap.{network}.ethdisco.net",
+            DiscoveryDns = network.DiscoveryDns ?? string.Empty,
+            Bootnodes = network.Bootnodes,
+            StaticPeers = network.StaticPeers,
             P2PPort = port,
             DiscoveryPort = port,
             MaxActivePeers = 32,
@@ -192,7 +192,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         DiscoveryConfig discovery = new()
         {
             DiscoveryVersion = isGnosis ? DiscoveryVersion.All : DiscoveryVersion.V5,
-            UseDefaultDiscv5Bootnodes = !isGnosis,
+            UseDefaultDiscv5Bootnodes = network.UseDefaultDiscv5Bootnodes,
         };
         KeyStoreConfig keyStore = new() { KeyStoreDirectory = Path.GetFullPath(dataDirectory ?? init.DataDir) };
         ConfigProvider config = new(init, net, sync, discovery, keyStore, new FlatDbConfig { Enabled = false });
@@ -205,9 +205,10 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                 .AddModule(new AuRaWithdrawalModule());
         }
         builder.RegisterModule(new LightExecutionOverrides(_syncServer, _transactionRelay, _stop.Token));
+        if (network.ExecutionRules is not null) builder.RegisterModule(network.ExecutionRules);
         if (dataDirectory is not null)
         {
-            string directory = Path.Combine(dataDirectory, "el", network, "discovery");
+            string directory = Path.Combine(dataDirectory, "el", network.Name, "discovery");
             builder.Register(context => BoundedEnrStorage.OpenDb(directory, context.Resolve<ILogManager>()))
                 .Keyed<IFullDb>(DbNames.DiscoveryV5Nodes).SingleInstance();
             builder.Register(context => new BoundedEnrStorage(new NetworkStorage(
@@ -236,7 +237,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
         _logHistory = new(() =>
         {
-            string? directory = dataDirectory is null ? null : Path.GetFullPath(Path.Combine(dataDirectory, "el", network, "log-history"));
+            string? directory = dataDirectory is null ? null : Path.GetFullPath(Path.Combine(dataDirectory, "el", network.Name, "log-history"));
             IDb db = directory is null ? new MemDb("lightClientLogHeaders") : FinalizedHeaderHistory.OpenDb(directory, logManager);
             try
             {

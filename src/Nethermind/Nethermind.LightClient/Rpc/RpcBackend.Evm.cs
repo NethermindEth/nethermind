@@ -28,6 +28,7 @@ internal sealed partial class RpcBackend
     internal Task<GethLikeTxTrace> TraceTransactionAsync(Hash256 hash, GethTraceOptions? options, CancellationToken token)
     {
         if (calls is null) throw new RpcException(-32601, "Method is not supported by the verified RPC.");
+        if (!calls.SupportsBlockExecution) throw new RpcException(-32601, "Transaction replay is unavailable on this execution network.");
         TimeSpan timeout = EvmExecutor.TraceTimeLimit(options);
         if (options!.StateOverrides is not null || options.BlockOverrides is not null)
             throw new RpcException(-32602, "Transaction tracing uses the authenticated block context and state.");

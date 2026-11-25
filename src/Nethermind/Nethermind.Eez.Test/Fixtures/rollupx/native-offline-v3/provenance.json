@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/eez-association/eez-rollupX",
+  "revision": "d8e8b9cbf63afba6ba9a69a807fac22bd11075d7",
+  "capture": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional",
+  "history_runtime": "crates/eez-protocol/src/l1_history/runtime.bin",
+  "scope": "Unchanged upstream capture and runtime. Thirty sealed blocks for independent cold execution replay. This does not certify settlement or live interoperability.",
+  "sha256": {
+    "README.md": "dfbd734bbf325ec1426becbcd585dd0563784b3bb6012169e7edd64d50f53968",
+    "chain-config.json": "d8c9a7fb39cdae275677c49280557297624d9742effb54c545d4c598d57cf114",
+    "identity.json": "5190cf87bde6841fcd85bff8cfe0850e8928a007d4e88a65b94693045662f984",
+    "l1-genesis.json": "e6ee06b5b82152792a3a20362efdf3ae556724abff283136edb8b170d3d76be4",
+    "l2-genesis.json": "58668206fe901be129b6717390f50d3e0afedf2147a54d6273dcf8f63d8e8820",
+    "request.v2.protobuf": "3d0fb79d722820a1727fcf145e75d2c686d4d5cd95cd4d439c08c28c39bb4d7e",
+    "response.json": "55acf711e19f97ee0bff6c65df6ae2d40ed368e9765f6f2cd8c9d25e7f9424f9",
+    "history-runtime.bin": "96346a9e3a6556370f78e82d6b65cbadc805e63564143aa46a09f31d250d87ac"
+  }
+}

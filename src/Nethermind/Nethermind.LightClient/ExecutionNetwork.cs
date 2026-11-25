@@ -1,0 +1,47 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Autofac;
+using Nethermind.Config;
+using Nethermind.Core.Crypto;
+using Nethermind.Specs;
+
+namespace Nethermind.LightClient;
+
+internal sealed record ExecutionNetwork(string Name, string ChainSpecFile, Hash256 GenesisHash, string? DiscoveryDns,
+    NetworkNode[] Bootnodes)
+{
+    internal Module? ExecutionRules { get; init; }
+    internal string? StaticPeers { get; init; }
+    internal bool IsGnosis { get; init; }
+    internal bool UseDefaultDiscv5Bootnodes { get; init; }
+
+    private const string EthereumDnsTree = "enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@snap.{0}.ethdisco.net";
+
+    internal static ExecutionNetwork Ethereum(string name) => name switch
+    {
+        "mainnet" => Known(name, "foundation.json", KnownHashes.MainnetGenesis),
+        "hoodi" => Known(name, "hoodi.json", KnownHashes.HoodiGenesis),
+        "sepolia" => Known(name, "sepolia.json", KnownHashes.SepoliaGenesis),
+        "gnosis" => new(name, "gnosis.json", KnownHashes.GnosisGenesis, null, []) { IsGnosis = true },
+        _ => throw new ArgumentException("Supported networks: mainnet, hoodi, sepolia, gnosis.", nameof(name)),
+    };
+
+    internal static ExecutionNetwork Custom(string name, string genesisFile, Hash256 genesisHash, string? discoveryDns,
+        string? bootnodes)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name is "." or "..")
+            throw new ArgumentException("Execution network name must be a plain directory name.", nameof(name));
+        string[] entries = bootnodes?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+        NetworkNode[] nodes = Array.ConvertAll(entries, static node => new NetworkNode(node));
+        if (discoveryDns is null && nodes.Length == 0)
+            throw new ArgumentException("A custom execution network needs a discovery DNS tree or bootnodes.");
+        return new(name, Path.GetFullPath(genesisFile), genesisHash, discoveryDns, nodes)
+        {
+            StaticPeers = entries.Length == 0 ? null : string.Join(',', entries),
+        };
+    }
+
+    private static ExecutionNetwork Known(string name, string chainSpecFile, Hash256 genesisHash) =>
+        new(name, chainSpecFile, genesisHash, string.Format(EthereumDnsTree, name), []) { UseDefaultDiscv5Bootnodes = true };
+}

@@ -6,6 +6,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -84,6 +85,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
                 ctx.Resolve<BalTxProcessorFactory>(),
+                ctx.Resolve<ExecutionRequestsOptions>(),
                 zeroNonceStorageAccountsTransition: ctx.Resolve<ZeroNonceStorageAccountsTransition>()))
             .AddScoped(core));
 

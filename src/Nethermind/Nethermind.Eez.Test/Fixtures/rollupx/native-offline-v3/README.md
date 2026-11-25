@@ -1,0 +1,25 @@
+# Native offline bidirectional settlement fixture
+
+Captured from `cross_chain::minimal_bidirectional_cross_chain_smoke` with
+`EEZ_TEST_PROOF_SIGNER_NO_NETWORK=1`. The source-built signer ran under the
+outbound-network-denying launcher, and the native manager accepted its signature.
+The process test independently checked the public input and canonical L2 safe hash.
+The captured execution includes recorded native history transactions and their
+metered gas with history 0x46/version 1. Cross-chain transactions use
+versionless 0x45 with identities bound to the L2 EVM chain ID, intended L1
+parent and zero-based complete-group ordinal in the full Live Sync block. Complete cross-chain groups clear
+SYSTEM/EEZL2 residue before their checkpoints; ordinary fees reach FeeVault.
+
+`request.v2.protobuf` is the complete length-delimited `prove.v2.ClientFrame`
+sequence reconstructed by the test proxy. It contains all L2 witnesses and L1
+ancestry. `response.json` fixes the native signature, digest, byte count and request
+Keccak. The local genesis documents and public Anvil deployment identities are
+required for cold independent replay. No RPC endpoint, operator secret or cache is
+part of this fixture.
+
+Source details and the executed command are recorded in
+[the implementation audit](../../../../../docs/audits/2026-10-27-source-counter/README.md).
+
+This capture includes the fixed FeeVault predeploy, its initial owner/recipient,
+the single `Profile` commitment and validation-contract version 3. The sole
+prover service remains `prove.v2.Prover`; its protobuf messages are unchanged.

@@ -118,6 +118,15 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         return new IndexedTrieRoot.Calculator<byte[], EncodedTransactionEncoder>(encodedTransactions, default).Calculate();
     }
 
+    public static Hash256 CalculateRoot(ReadOnlySpan<ReadOnlyMemory<byte>> encodedTransactions)
+    {
+        foreach (ReadOnlyMemory<byte> value in encodedTransactions)
+        {
+            if (value.IsEmpty) return CalculateSparseRoot<ReadOnlyMemory<byte>, EncodedMemoryEncoder>(encodedTransactions, default);
+        }
+        return new IndexedTrieRoot.Calculator<ReadOnlyMemory<byte>, EncodedMemoryEncoder>(encodedTransactions, default).Calculate(canBeParallel: false);
+    }
+
     private static Hash256 CalculateSparseRoot<T, TEncoder>(ReadOnlySpan<T> values, TEncoder encoder)
         where TEncoder : struct, IndexedTrieRoot.IValueEncoder<T>
     {

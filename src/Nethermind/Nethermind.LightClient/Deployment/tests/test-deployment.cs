@@ -209,7 +209,11 @@ internal static partial class DeploymentTests
     private static async Task CheckTrimmingAsync()
     {
         using ScratchDirectory scratch = new();
-        string[] retained = ["Nethermind.LightClient.dll", "Nethermind.LightClient.pdb", "ClearScript.Core.dll", "ClearScript.V8.dll", "runtimes/linux-x64/native/librocksdb.so", "kzg_trusted_setup.txt"];
+        string[] retained =
+        [
+            "Nethermind.LightClient.dll", "Nethermind.LightClient.pdb", "Nethermind.Eez.Execution.dll", "Nethermind.Eez.Rpc.dll",
+            "ClearScript.Core.dll", "ClearScript.V8.dll", "runtimes/linux-x64/native/librocksdb.so", "kzg_trusted_setup.txt",
+        ];
         string[] removed = ["ClearScript.V8.ICUData.dll", "runtimes/linux-x64/native/ClearScriptV8.linux-x64.so", "runtimes/linux-arm64/native/ClearScriptV8.linux-arm64.so.pem", "Data/JSTracers/4byte.js", "Nethermind.JsonRpc.SourceGenerator.Build", "Nethermind.JsonRpc.SourceGenerator.Build.exe", "Nethermind.JsonRpc.SourceGenerator.Build.dll", "Nethermind.JsonRpc.SourceGenerator.Build.deps.json", "Nethermind.JsonRpc.SourceGenerator.Build.runtimeconfig.json"];
         foreach (string name in retained.Concat(removed))
         {

@@ -24,12 +24,15 @@ namespace Nethermind.Serialization.Rlp
         public const int NonceLength = 8;
 
         private readonly ISpecProvider? _specProvider;
+        private readonly RlpLimit _extraDataLimit = RlpLimit.DefaultLimit;
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
         public HeaderDecoder() { }
 
         /// <param name="specProvider">Resolves EIP-7668 activation, which allows a zero-length logs bloom.</param>
         public HeaderDecoder(ISpecProvider? specProvider) => _specProvider = specProvider;
+
+        public HeaderDecoder(ISpecProvider? specProvider, RlpLimit extraDataLimit) : this(specProvider) => _extraDataLimit = extraDataLimit;
 
         protected override BlockHeader? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
@@ -60,7 +63,7 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpReaderException($"Expected collection count of {Bloom.ByteLength}, got 0");
             }
 
-            byte[] extraData = fields.DecodeByteArray<TCanonicalChecks>();
+            byte[] extraData = fields.DecodeByteArray<TCanonicalChecks>(_extraDataLimit);
 
             BlockHeader blockHeader = DecodeSealAndCreateHeader(
                 ref fields, parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData);

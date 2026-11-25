@@ -56,6 +56,7 @@ internal sealed partial class EvmExecutor
         .AddSingleton(withdrawalProcessorFactory ?? new WithdrawalProcessorFactory(logs))
         .AddScoped<IWithdrawalProcessor, IWithdrawalProcessorFactory, IWorldState, ITransactionProcessor>(
             static (factory, state, processor) => factory.Create(state, processor))
+        .AddSingleton(ExecutionRequestsOptions.Default)
         .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
         .AddScoped<BalTxProcessorFactory>()
         .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
