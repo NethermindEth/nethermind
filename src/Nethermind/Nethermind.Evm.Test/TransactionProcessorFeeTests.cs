@@ -531,6 +531,140 @@ public class TransactionProcessorFeeTests
         }
     }
 
+    public enum SettlementPath { Success, Revert, ExceptionalHalt, ContractCollision, CodeDepositFailure, SimpleTransfer }
+
+    private const ulong SettlementBaseFee = 1;
+    private const ulong SettlementPriorityFee = 2;
+
+    [Test]
+    public void Settled_gas_adjustment_flows_into_receipt_header_and_fees([Values] SettlementPath path)
+    {
+        const ulong gasRefund = 1_000;
+        _spec.FeeCollector = TestItem.AddressC;
+        Block block = BuildSettlementPathBlock(path, out EvmExceptionType expectedException);
+        Transaction tx = block.Transactions[0];
+        GasAdjustingTransactionProcessor processor = CreateGasAdjustingProcessor(gasRefund, reject: false);
+
+        FeesTracer feesTracer = new();
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(feesTracer);
+        receiptsTracer.StartNewBlockTrace(block);
+        receiptsTracer.StartNewTxTrace(tx);
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, _spec), receiptsTracer);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        ulong gasUsed = processor.SpentGasBeforeAdjustment - gasRefund;
+        TxReceipt receipt = receiptsTracer.TxReceipts[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(result.EvmExceptionType, Is.EqualTo(expectedException));
+            Assert.That(processor.Calls, Is.EqualTo(1));
+            Assert.That(receipt.GasUsed, Is.EqualTo(gasUsed));
+            Assert.That(receipt.GasUsedTotal, Is.EqualTo(gasUsed));
+            Assert.That(block.Header.GasUsed, Is.EqualTo(gasUsed));
+            Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)(SettlementPriorityFee * gasUsed)));
+            Assert.That(feesTracer.BurntFees, Is.EqualTo((UInt256)(SettlementBaseFee * gasUsed)));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)(SettlementPriorityFee * gasUsed)));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressC), Is.EqualTo((UInt256)(SettlementBaseFee * gasUsed)));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether - (SettlementBaseFee + SettlementPriorityFee) * gasUsed));
+        }
+    }
+
+    [Test]
+    public void Settled_gas_adjustment_can_reject_transaction([Values(SettlementPath.Success, SettlementPath.SimpleTransfer)] SettlementPath path)
+    {
+        Block block = BuildSettlementPathBlock(path, out _);
+        GasAdjustingTransactionProcessor processor = CreateGasAdjustingProcessor(gasRefund: 0, reject: true);
+
+        TransactionResult result = processor.Execute(block.Transactions[0], new BlockExecutionContext(block.Header, _spec), NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(processor.Calls, Is.EqualTo(1));
+            Assert.That(block.Header.GasUsed, Is.Zero);
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    private Block BuildSettlementPathBlock(SettlementPath path, out EvmExceptionType expectedException)
+    {
+        TransactionBuilder<Transaction> builder = Build.A.Transaction
+            .WithType(TxType.EIP1559).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(SettlementPriorityFee).WithGasLimit(100_000).WithValue(0);
+        expectedException = EvmExceptionType.None;
+        switch (path)
+        {
+            case SettlementPath.Success:
+                builder.To(InstallCode(Prepare.EvmCode.Op(Instruction.STOP).Done));
+                break;
+            case SettlementPath.Revert:
+                builder.To(InstallCode(Prepare.EvmCode.Revert(0, 0).Done));
+                expectedException = EvmExceptionType.Revert;
+                break;
+            case SettlementPath.ExceptionalHalt:
+                builder.To(InstallCode(Prepare.EvmCode.Op(Instruction.INVALID).Done));
+                expectedException = EvmExceptionType.BadInstruction;
+                break;
+            case SettlementPath.ContractCollision:
+                _stateProvider.CreateAccount(ContractAddress.From(TestItem.AddressA, 0), 0, 1);
+                _stateProvider.Commit(_spec);
+                builder.WithCode(Prepare.EvmCode.Op(Instruction.STOP).Done);
+                expectedException = EvmExceptionType.TransactionCollision;
+                break;
+            case SettlementPath.CodeDepositFailure:
+                // EIP-3541 rejects deployed code starting with 0xEF.
+                builder.WithCode(Prepare.EvmCode
+                    .PushData(0xEF).PushData(0).Op(Instruction.MSTORE8)
+                    .PushData(1).PushData(0).Op(Instruction.RETURN)
+                    .Done);
+                expectedException = EvmExceptionType.InvalidCode;
+                break;
+            case SettlementPath.SimpleTransfer:
+                builder.To(TestItem.AddressD);
+                break;
+        }
+
+        Transaction tx = builder.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        return Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressB).WithBaseFeePerGas(SettlementBaseFee).WithTransactions(tx).WithGasLimit(30_000_000)
+            .TestObject;
+    }
+
+    private Address InstallCode(byte[] code)
+    {
+        _stateProvider.CreateAccount(TestItem.AddressD, 0);
+        _stateProvider.InsertCode(TestItem.AddressD, code, _spec);
+        _stateProvider.Commit(_spec);
+        return TestItem.AddressD;
+    }
+
+    private GasAdjustingTransactionProcessor CreateGasAdjustingProcessor(ulong gasRefund, bool reject) =>
+        new(_specProvider, _stateProvider,
+            new EthereumVirtualMachine(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance),
+            new EthereumCodeInfoRepository(_stateProvider), gasRefund, reject);
+
+    /// <summary>Lowers each transaction's settled gas by <paramref name="gasRefund"/> and credits the sender for it, or rejects the transaction.</summary>
+    private sealed class GasAdjustingTransactionProcessor(
+        ISpecProvider specProvider, IWorldState worldState, IVirtualMachine virtualMachine, ICodeInfoRepository codeInfoRepository, ulong gasRefund, bool reject)
+        : EthereumTransactionProcessorBase(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, LimboLogs.Instance)
+    {
+        public int Calls { get; private set; }
+        public ulong SpentGasBeforeAdjustment { get; private set; }
+
+        protected override RefundResult AdjustSettledGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+            in UInt256 effectiveGasPrice, in GasConsumed gas)
+        {
+            Calls++;
+            SpentGasBeforeAdjustment = gas.SpentGas;
+            if (reject) return RefundResult.Invalid(TransactionResult.MalformedTransaction);
+
+            PayRefund(tx, gasRefund * effectiveGasPrice, spec);
+            return gas with { SpentGas = gas.SpentGas - gasRefund, OperationGas = gas.OperationGas - gasRefund };
+        }
+    }
+
     private sealed class FeeAccountRecorder(IWorldState state, params Address[] feeAccounts) : WorldStateDecorator(state)
     {
         public int Touches { get; set; }

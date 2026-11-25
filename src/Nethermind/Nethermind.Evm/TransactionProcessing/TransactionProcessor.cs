@@ -495,6 +495,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out RefundResult refundResult) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out refundResult);
 
+            if (refundResult.Result)
+                refundResult = AdjustSettledGas(tx, header, spec, opts, in opcodeGasPrice, refundResult.Gas);
+
             if (!refundResult.Result)
                 return InvalidStateGasResult(tx, spec, restore, deleteCallerAccount, in senderReservedGasPayment, refundResult.Result);
 
@@ -628,6 +631,9 @@ namespace Nethermind.Evm.TransactionProcessing
             TGasPolicy standardGas = intrinsicGas.Standard;
             long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
             RefundResult refundResult = Refund(tx, header, spec, opts, in substate, in gasAvailable, in opcodeGasPrice, codeInsertRefunds: 0, in floorGas, in standardGas, postIntrinsicStateReservoir);
+            if (refundResult.Result)
+                refundResult = AdjustSettledGas(tx, header, spec, opts, in opcodeGasPrice, refundResult.Gas);
+
             if (!refundResult.Result)
                 return InvalidStateGasResult(tx, spec, restore, deleteCallerAccount, in senderReservedGasPayment, refundResult.Result);
 
@@ -1986,6 +1992,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, (ulong)blockStateGas, Math.Max(spentGas, floorGasLong), refund > 0 ? (ulong)refund : 0);
         }
+
+        /// <summary>Adjusts a transaction's settled gas before it is added to the block's gas used and fees are paid on it.</summary>
+        /// <remarks>
+        /// Runs once per executed non-frame transaction, whatever its outcome. Unspent gas is already refunded, so an
+        /// override that lowers the gas credits the sender the difference through <see cref="PayRefund"/>. Returning
+        /// <see cref="RefundResult.Invalid"/> rejects the transaction, but block building does not roll back its state changes.
+        /// </remarks>
+        /// <param name="effectiveGasPrice">The price unspent gas is refunded at.</param>
+        protected virtual RefundResult AdjustSettledGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+            in UInt256 effectiveGasPrice, in GasConsumed gas) => gas;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long CalculateTopLevelCreateIntrinsicStateRefund(
