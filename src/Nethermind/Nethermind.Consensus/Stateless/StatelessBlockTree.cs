@@ -224,12 +224,6 @@ public class StatelessBlockTree : IBlockTree, IBlockhashCache, IHeaderFinder
         set => throw new NotSupportedException();
     }
 
-    public bool IsProcessingBlock
-    {
-        get => throw new NotSupportedException();
-        set => throw new NotSupportedException();
-    }
-
     public void NewOldestBlock(ulong oldestBlock) => throw new NotImplementedException();
 
     public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => throw new NotImplementedException();

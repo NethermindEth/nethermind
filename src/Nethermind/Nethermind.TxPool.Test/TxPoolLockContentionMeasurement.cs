@@ -303,7 +303,7 @@ public class TxPoolLockContentionMeasurement
 
     private TxPool CreatePool(TxPoolConfig config, IFrameTxPrefixSimulator? simulator)
     {
-        ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(_specProvider, _blockTree), _blockTree, _state);
+        ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(_specProvider, _blockTree), _blockTree, _state, new());
 
         return new TxPool(
             new EthereumEcdsa(_specProvider.ChainId),

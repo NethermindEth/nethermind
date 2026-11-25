@@ -26,7 +26,7 @@ namespace Nethermind.Init.Steps.Migrations
 {
     public class ReceiptFixMigration(
         IBlockTree blockTree,
-        IReceiptStorage receiptStorage,
+        IReceiptMigrationStore receiptStorage,
         ISyncPeerPool syncPeerPool,
         ISyncConfig syncConfig,
         ISpecProvider specProvider,
@@ -77,7 +77,7 @@ namespace Nethermind.Init.Steps.Migrations
         private class MissingReceiptsFixVisitor(
             ulong startLevel,
             ulong endLevel,
-            IReceiptStorage receiptStorage,
+            IReceiptMigrationStore receiptStorage,
             ILogManager logManager,
             ISyncPeerPool syncPeerPool,
             ISpecProvider specProvider,
@@ -85,7 +85,7 @@ namespace Nethermind.Init.Steps.Migrations
             CancellationToken cancellationToken
             ) : ReceiptsVerificationVisitor(startLevel, endLevel, receiptStorage, logManager)
         {
-            private readonly IReceiptStorage _receiptStorage = receiptStorage;
+            private readonly IReceiptMigrationStore _receiptStorage = receiptStorage;
             private readonly TimeSpan _delay = TimeSpan.FromSeconds(5);
 
             public override async Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken ct)

@@ -19,6 +19,7 @@ using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Healing;
+using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -238,12 +239,14 @@ public class PruningTrieStoreModule : Module
     {
         public IWorldStateManager WorldStateManager { get; }
         public IPruningTrieStateAdminRpcModule AdminRpcModule { get; }
+        public ISnapStateServer SnapStateServer { get; }
 
         public PruningTrieStateFactoryOutput(PruningTrieStateFactory factory)
         {
-            (IWorldStateManager worldStateManager, IPruningTrieStateAdminRpcModule adminRpc) = factory.Build();
+            (IWorldStateManager worldStateManager, IPruningTrieStateAdminRpcModule adminRpc, ISnapStateServer snapStateServer) = factory.Build();
             WorldStateManager = worldStateManager;
             AdminRpcModule = adminRpc;
+            SnapStateServer = snapStateServer;
         }
     }
 }

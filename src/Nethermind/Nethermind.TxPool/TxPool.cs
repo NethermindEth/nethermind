@@ -56,6 +56,8 @@ namespace Nethermind.TxPool
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _hashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
+        private readonly IIncomingTxFilter[] _samplingHashFilters;
+        private readonly IIncomingTxFilter[] _samplingPostHashFilters;
 
         private readonly HashCache _hashCache;
         private readonly TxBroadcaster _broadcaster;
@@ -412,6 +414,9 @@ namespace Nethermind.TxPool
             }
 
             _postHashFilters = postHashFilters.ToArray();
+            // Sampling precedes submission, so keep the hash unmarked and defer proofs until the cells arrive.
+            _samplingHashFilters = Array.FindAll(_hashFilters, static filter => filter is not AlreadyKnownTxFilter);
+            _samplingPostHashFilters = Array.FindAll(_postHashFilters, static filter => filter is not BlobProofsTxFilter);
 
             int? reportMinutes = txPoolConfig.ReportMinutes;
             if (_logger.IsInfo && reportMinutes.HasValue)
@@ -1020,7 +1025,6 @@ namespace Nethermind.TxPool
             if (previousBlock is not null)
             {
                 Metrics.TransactionsReorged += previousBlock.Transactions.Length;
-                bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Header).IsEip155Enabled;
                 Transaction[] txs = previousBlock.Transactions;
                 for (int i = 0; i < txs.Length; i++)
                 {
@@ -1032,7 +1036,7 @@ namespace Nethermind.TxPool
                     {
                         continue;
                     }
-                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
+                    SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
                 }
 
                 if (_blobReorgsSupportEnabled
@@ -1057,7 +1061,7 @@ namespace Nethermind.TxPool
 
                             blobTx.SenderAddress = senderAddress;
                         }
-                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
+                        SubmitTx(blobTx, TxHandlingOptions.None, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
                     }
                     if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
@@ -1744,11 +1748,9 @@ namespace Nethermind.TxPool
 
         bool IRecyclableTxPool.TrySubmitKnown(in ValueHash256 hash)
         {
-            // Only what SubmitTx settles without reading the body: a syncing pool answers Syncing first,
-            // and a NewDiscovered subscriber is handed the transaction itself.
+            // Only what SubmitTx settles without reading the body: a syncing pool answers Syncing first.
             if (GetType() != typeof(TxPool)
                 || (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
-                || NewDiscovered is not null
                 || !_hashCache.Get(in hash))
             {
                 return false;
@@ -1795,14 +1797,6 @@ namespace Nethermind.TxPool
             // assign a sequence number to transaction so we can order them by arrival times when
             // gas prices are exactly the same
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);
-
-            EventHandler<TxEventArgs>? discovered = NewDiscovered;
-            if (discovered is not null)
-            {
-                canRecycle = false;
-                PooledBlobBuffers.Disown(tx);
-                discovered(this, new TxEventArgs(tx));
-            }
 
             if (_logger.IsTrace)
             {
@@ -1976,9 +1970,8 @@ namespace Nethermind.TxPool
                 }
             }
 
-            foreach (IIncomingTxFilter filter in _hashFilters)
+            foreach (IIncomingTxFilter filter in skipSamplingDeferredFilters ? _samplingHashFilters : _hashFilters)
             {
-                if (skipSamplingDeferredFilters && filter is AlreadyKnownTxFilter) continue;
                 AcceptTxResult accepted = filter.Accept(tx, ref state, handlingOptions);
                 if (!accepted) return accepted;
             }
@@ -1986,15 +1979,9 @@ namespace Nethermind.TxPool
             // Validators and later filters can be supplied by plugins and retain the transaction.
             canRecycle = false;
             PooledBlobBuffers.Disown(tx);
-            filters = _postHashFilters;
+            filters = skipSamplingDeferredFilters ? _samplingPostHashFilters : _postHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
-                if (skipSamplingDeferredFilters
-                    && filters[i] is BlobProofsTxFilter)
-                {
-                    continue;
-                }
-
                 AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted) return accepted;
@@ -3169,7 +3156,6 @@ namespace Nethermind.TxPool
 
         public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash) && !_hashCache.HasInvalidBlobProofs(in hash);
 
-        public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
         public event EventHandler<TxEventArgs>? RemovedPending;
         public event EventHandler<TxEventArgs>? EvictedPending;

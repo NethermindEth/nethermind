@@ -939,7 +939,7 @@ public class LogIndexBuilderTests
         BlockTreeBuilder treeBuilder = Build.A.BlockTree().WithSpecProvider(specProvider);
         IBlockTree tree = treeBuilder.TestObject;
         TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
-        IReceiptStorage CreateReceiptStorage() => new ContainerBuilder()
+        IReceiptMigrationStore CreateReceiptStorage() => new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ReceiptConfig { CompactReceiptStore = compactReceipts, DeferredPersistence = false }))
             .AddSingleton(specProvider)
             .AddSingleton(tree)
@@ -947,9 +947,9 @@ public class LogIndexBuilderTests
             .AddSingleton<IColumnsDb<ReceiptsColumns>>(receiptsDb)
             .Build()
             .AddTo(_testDisposables)
-            .Resolve<IReceiptStorage>();
+            .Resolve<IReceiptMigrationStore>();
 
-        IReceiptStorage writer = CreateReceiptStorage();
+        IReceiptMigrationStore writer = CreateReceiptStorage();
         Block[] blocks = new Block[blockCount + 1];
         TxReceipt[][] receipts = new TxReceipt[blocks.Length][];
         blocks[0] = Build.A.Block.Genesis.TestObject;
@@ -974,7 +974,7 @@ public class LogIndexBuilderTests
         tree.SyncPivot = (blocks[^1].Number, blocks[^1].Hash!);
         _config.MaxReorgDepth = 0;
         // A fresh instance starts with an empty receipts cache; the writer filled its own.
-        IReceiptStorage reader = source is ReceiptsSource.Cache ? writer : CreateReceiptStorage();
+        IReceiptMigrationStore reader = source is ReceiptsSource.Cache ? writer : CreateReceiptStorage();
         if (source is ReceiptsSource.LegacyKey)
             reader.MigratedBlockNumber = (ulong)blocks.Length;
         _receiptStorage = reader;

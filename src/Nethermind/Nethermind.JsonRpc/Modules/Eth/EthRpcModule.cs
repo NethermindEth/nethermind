@@ -55,6 +55,8 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 public partial class EthRpcModule(
     IJsonRpcConfig rpcConfig,
     IBlockchainBridge blockchainBridge,
+    FilterStore filterStore,
+    FilterManager filterManager,
     IBlockFinder blockFinder,
     IBlockTree blockTree,
     IReceiptFinder receiptFinder,
@@ -467,19 +469,25 @@ public partial class EthRpcModule(
         return null;
     }
 
-    public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
+    public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction) =>
+        DecodeRawTransaction(transaction) is { } tx ? await SendTx(tx) : InvalidRawTransaction();
+
+    /// <summary>Decodes the payload of <c>eth_sendRawTransaction</c>, or returns <c>null</c> when it is not valid transaction RLP.</summary>
+    protected static Transaction? DecodeRawTransaction(byte[] transaction)
     {
         try
         {
-            Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(transaction,
+            return TxRlpDecoder.DecodeCompleteNotNull(transaction,
                 RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
-            return await SendTx(tx);
         }
         catch (RlpReaderException)
         {
-            return ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
+            return null;
         }
     }
+
+    protected static ResultWrapper<Hash256> InvalidRawTransaction() =>
+        ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
 
     public virtual ResultWrapper<SignTransactionResult> eth_signTransaction(SignableTransactionForRpc rpcTx)
     {
@@ -1057,20 +1065,23 @@ public partial class EthRpcModule(
     {
         BlockParameter fromBlock = filter.FromBlock;
         BlockParameter toBlock = filter.ToBlock;
-        int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
-        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+        LogFilter logFilter = filterStore.CreateLogFilter(fromBlock, toBlock, filter.Address, filter.Topics);
+        filterStore.SaveFilter(logFilter);
+        return ResultWrapper<UInt256?>.Success((UInt256)logFilter.Id);
     }
 
     public ResultWrapper<UInt256?> eth_newBlockFilter()
     {
-        int filterId = _blockchainBridge.NewBlockFilter();
-        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+        BlockFilter filter = filterStore.CreateBlockFilter();
+        filterStore.SaveFilter(filter);
+        return ResultWrapper<UInt256?>.Success((UInt256)filter.Id);
     }
 
     public ResultWrapper<UInt256?> eth_newPendingTransactionFilter()
     {
-        int filterId = _blockchainBridge.NewPendingTransactionFilter();
-        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+        PendingTransactionFilter filter = filterStore.CreatePendingTransactionFilter();
+        filterStore.SaveFilter(filter);
+        return ResultWrapper<UInt256?>.Success((UInt256)filter.Id);
     }
 
     public ResultWrapper<bool?> eth_uninstallFilter(UInt256 filterId)
@@ -1081,43 +1092,24 @@ public partial class EthRpcModule(
         if (filterId > int.MaxValue)
             return ResultWrapper<bool?>.Success(false);
 
-        return ResultWrapper<bool?>.Success(_blockchainBridge.UninstallFilter((int)filterId));
+        return ResultWrapper<bool?>.Success(filterStore.RemoveFilter((int)filterId));
     }
 
     public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)
     {
         int id = filterId <= int.MaxValue ? (int)filterId : -1;
-        FilterType filterType = _blockchainBridge.GetFilterType(id);
-        switch (filterType)
+        return filterStore.GetFilter<FilterBase>(id) switch
         {
-            case FilterType.BlockFilter:
-                {
-                    return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
-                }
-            case FilterType.PendingTransactionFilter:
-                {
-                    return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetPendingTransactionFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
-                }
-            case FilterType.LogFilter:
-                {
-                    return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
-                }
-            default:
-                {
-                    return ResultWrapper<IEnumerable<object>>.Fail($"Filter type {filterType} is not supported.", ErrorCodes.InvalidInput);
-                }
-        }
+            null => ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput),
+            LogFilter => ResultWrapper<IEnumerable<object>>.Success(filterManager.PollLogs(id)),
+            PendingTransactionFilter => ResultWrapper<IEnumerable<object>>.Success(filterManager.PollPendingTransactionHashes(id)),
+            _ => ResultWrapper<IEnumerable<object>>.Success(filterManager.PollBlockHashes(id))
+        };
     }
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
     {
-        LogFilter? logFilter = filterId <= int.MaxValue ? _blockchainBridge.GetLogFilter((int)filterId) : null;
+        LogFilter? logFilter = filterId <= int.MaxValue ? filterStore.GetFilter<LogFilter>((int)filterId) : null;
         return logFilter is null
             ? ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput)
             : GetLogs(logFilter, logFilter.FromBlock, logFilter.ToBlock);

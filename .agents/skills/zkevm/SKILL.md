@@ -108,5 +108,6 @@ The pinned blocks in `Nethermind.Stateless.ZiskGuest/inputs.json` are ZisK-frame
    - the `hash` values in `inputs.json`
    - the URL date in `stateless-tests.yml`
    - the URL date in `stateless-benchmarks.yml`. On a PR with changed hashes, the benchmark reads the head's `inputs.json` and downloads from this URL, so a stale date fails the checksum.
+   - the URL date in `.github/zkvm-ab/inputs.cs`. The zkVM guest A/B workflow checks downloaded files against `inputs.json` too.
 
    `output` and `digest` change only if `NewPayloadRequest` itself changed.
