@@ -141,6 +141,25 @@ public class TransactionTraceBoundaryTests
         }
     }
 
+    [TestCase(-1, 0)]
+    [TestCase(0, 0)]
+    [TestCase(1, 1)]
+    [TestCase(2, 0)]
+    public void Completion_uses_the_known_position_for_duplicate_hashes(int knownIndex, int expectedIndex)
+    {
+        Transaction[] transactions = [Rlp.Decode<Transaction>(Encoded[0], RlpBehaviors.SkipTypedWrapping), Rlp.Decode<Transaction>(Encoded[0], RlpBehaviors.SkipTypedWrapping)];
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+        TransactionTraceBoundary boundary = (TransactionTraceBoundary)TransactionTraceBoundary.WrapAt(NullBlockTracer.Instance, transactions[0].Hash!, knownIndex);
+        Assert.That(boundary.IndexOf(block), Is.EqualTo(expectedIndex));
+        boundary.StartNewBlockTrace(block);
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            boundary.StartNewTxTrace(transactions[i]);
+            boundary.EndTxTrace();
+            Assert.That(boundary.IsComplete, Is.EqualTo(i >= expectedIndex));
+        }
+    }
+
     private static TransactionTraceBoundary Boundary(Hash256 hash) =>
         (TransactionTraceBoundary)TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, hash);
 

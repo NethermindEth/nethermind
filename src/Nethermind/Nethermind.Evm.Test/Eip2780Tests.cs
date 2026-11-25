@@ -39,7 +39,7 @@ public class Eip2780Tests
         EthereumGasPolicy gas = EthereumGasPolicy.FromULong(1_000_000);
         using StackAccessTracker tracker = new();
         if (prewarm) tracker.WarmUp(TestItem.AddressB);
-        Assert.That(EthereumGasPolicy.TryConsumeAccountAccessGas(ref gas, spec, in tracker, isTracingAccess: false, TestItem.AddressB), Is.True);
+        Assert.That(EthereumGasPolicy.TryConsumeAccountAccessGas(ref gas, spec, in tracker, TestItem.AddressB), Is.True);
         return 1_000_000 - EthereumGasPolicy.GetRemainingGas(in gas);
     }
 

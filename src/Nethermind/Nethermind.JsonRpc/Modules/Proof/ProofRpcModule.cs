@@ -13,7 +13,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
@@ -41,7 +40,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
     {
         // Registry-resolved so AuRa chains encode headers with step + signature (see AuRaHeaderModule).
         private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
-        private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
         private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, poSSwitcher, jsonRpcConfig);
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter, CancellationToken cancellationToken = default) =>
@@ -112,11 +110,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             using Scope<ITracer> _ = scope;
 
-            BlockReceiptsTracer receiptsTracer = new();
-            receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
-            scope.Component.Trace(block, receiptsTracer);
-
-            TxReceipt[] tracedReceipts = receiptsTracer.TxReceipts.ToArray();
+            TxReceipt[] tracedReceipts = scope.Component.TraceReceipts(block);
             // Backstop: a retrace that does not reproduce every transaction would still yield a proof of the wrong trie.
             if (tracedReceipts.Length != txs.Length)
             {
@@ -127,11 +121,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            if (spec.IsEip8116Enabled)
-            {
-                tracedReceipts.SetEip8116GasUsed();
-            }
-
             int logIndexStart = spec.IsEip8116Enabled ? 0 : GetLogIndexStart(txs, storedReceipts, txIndex);
 
             TxReceipt provenReceipt = new(receipt) { Index = txIndex, BlockHash = block.Hash, BlockNumber = block.Number };
@@ -261,6 +250,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index) => TxTrie.CalculateProof(txs, index);
 
-        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index) => ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptEncoder);
+        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index) =>
+            ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie));
     }
 }

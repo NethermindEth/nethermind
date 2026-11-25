@@ -1126,16 +1126,19 @@ internal static partial class SszCodecHelpers
     private static string ProgressiveContainerMerkleizeBody(SszType decl)
     {
         string activeFields = ByteArrayLiteral(decl.ActiveFieldsBytes ?? []);
-        IEnumerable<string> memberRoots = decl.Members!.Select((m, index) =>
+        IEnumerable<string> memberRoots = decl.Members!.Select(m =>
         {
             string validation = ValidationStatement(decl, m, $"container.{m.Name}");
-            string merkleize = MerkleizeRootAssignmentStatement(m, $"container.{m.Name}", $"subRoots[{index}]");
+            string merkleize = MerkleizeRootAssignmentStatement(m, $"container.{m.Name}", $"subRoots[{m.FieldIndex}]");
             return string.IsNullOrEmpty(validation) ? merkleize : $"{validation} {merkleize}";
         });
 
         return string.Join("\n",
         [
-            $"Span<UInt256> subRoots = {(decl.Members!.Length <= ProgressiveContainerStackAllocationLimit ? "stackalloc" : "new")} UInt256[{decl.Members.Length}];",
+            $"Span<UInt256> subRoots = {(decl.ActiveFieldsBitLength <= ProgressiveContainerStackAllocationLimit ? "stackalloc" : "new")} UInt256[{decl.ActiveFieldsBitLength}];",
+            ..(decl.Members!.Length < decl.ActiveFieldsBitLength
+                ? new[] { "// EIP-7495: positions without a field are zero leaves.", "subRoots.Clear();" }
+                : []),
             ..memberRoots,
             "Merkle.MerkleizeProgressive(out root, subRoots);",
             $"Merkle.MixInActiveFields(ref root, {activeFields});",

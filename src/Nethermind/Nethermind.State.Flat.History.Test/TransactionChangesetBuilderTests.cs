@@ -646,7 +646,7 @@ public class TransactionChangesetBuilderTests
         {
             token.WaitHandle.WaitOne();
             Stopping.SetResult();
-            Release.Wait();
+            Release.Wait(CancellationToken.None);
         }
 
         public void Dispose() => Release.Dispose();

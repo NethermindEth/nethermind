@@ -49,6 +49,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("[0, 1, 255]", "[0,1,255]")]
     [TestCase("toHex(new Uint8Array([]))", "\"0x\"")]
     [TestCase("toHex(new Uint8Array([0, 1, 255]))", "\"0x0001ff\"")]
+    [TestCase("toHex([256, 511, -1, 1.9, Infinity, -Infinity, NaN])", "\"0x00ffff01000000\"")]
+    [TestCase("toHex([undefined, null, 'x', '2', true, , 3])", "\"0x00000002010003\"")]
+    [TestCase("toHex(['0x10', '0b11', '0o77', ' 7 ', { valueOf: function() { return 37; } }])", "\"0x10033f0725\"")]
+    [TestCase("(Uint8Array.from = function() { return new Uint8Array([9]); }, Array.prototype[Symbol.iterator] = function* () { yield 9; }, toHex([1, 2]))", "\"0x0102\"")]
     [TestCase("({ DUP1: 'a', PUSH1: 'b', LOG2: 'c', Foo: 'd', add: 'e' })", "{\"DUP1\":\"a\",\"PUSH1\":\"b\",\"LOG2\":\"c\",\"Foo\":\"d\",\"add\":\"e\"}")]
     [TestCase("({ counts: { SSTORE: 'x' } })", "{\"counts\":{\"SSTORE\":\"x\"}}")]
     [TestCase("[{ DUP1: 1 }]", "[{\"DUP1\":1}]")]
@@ -147,11 +151,11 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(() => input.ToAddress(), Throws.TypeOf<ArgumentException>());
 
     [Test]
-    public void Address_conversion_validates_even_discarded_bytes([Values(-1, 256)] int invalidByte, [Values(1, 21)] int length)
+    public void Address_conversion_wraps_out_of_range_elements([Values(-1, 256)] int element, [Values(1, 21)] int length)
     {
         int[] input = new int[length];
-        input[0] = invalidByte;
-        Assert.That(() => input.ToAddress(), Throws.TypeOf<OverflowException>());
+        input[^1] = element;
+        Assert.That(input.ToAddress(), Is.EqualTo(new Address(new byte[Address.Size - 1].Append((byte)element).ToArray())));
     }
 
     [Test]
@@ -745,7 +749,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
-    [TestCase("ctx.Input.ToArray().CopyTo(ctx.Output, 0);", "written", TestName = "Output host member")]
+    [TestCase("ctx.Input.ToArray().CopyTo(ctx.Output, 0);", "rejected", TestName = "Output host member")]
     [TestCase("""
               var nativeUint8Array = Uint8Array, args = [];
               Uint8Array = function(arg) { args.push(arg); return new nativeUint8Array(arg); };
@@ -1315,10 +1319,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void noop_tracer_legacy()
+    public void noop_tracer_legacy([Values("noopTracer_legacy", "noopTracerLegacy")] string name)
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-                GetTracer("noopTracer_legacy"),
+                GetTracer(name),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
@@ -1348,10 +1352,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void prestate_tracer()
+    public void prestate_tracer([Values("prestateTracer_legacy", "prestateTracerLegacy")] string name)
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-                GetTracer("prestateTracer_legacy"),
+                GetTracer(name),
                 NestedCalls(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
@@ -1360,10 +1364,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void call_tracer()
+    public void call_tracer([Values("callTracer_legacy", "callTracerLegacy", "callTracerLegacy.js")] string name)
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-                GetTracer("callTracer_legacy"),
+                GetTracer(name),
                 NestedCalls(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
@@ -1372,10 +1376,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void _4byte_tracer_legacy()
+    public void _4byte_tracer_legacy([Values("4byteTracer_legacy", "4byteTracerLegacy")] string name)
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-                GetTracer("4byteTracer_legacy"),
+                GetTracer(name),
                 CallWithInput(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
@@ -1484,6 +1488,29 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Tracer_objects_can_be_stringified()
+    {
+        const string userTracer = """
+            {
+                retVal: [],
+                step: function(log, db) { if (this.retVal.length === 0) this.retVal.push(JSON.stringify(log)); },
+                enter: function(frame) { this.retVal.push(JSON.stringify(frame)); },
+                exit: function(result) { this.retVal.push(JSON.stringify(result)); },
+                fault: function(log, db) { },
+                result: function(ctx, db) { this.retVal.push(Object.keys(JSON.parse(JSON.stringify(ctx))).join()); return this.retVal; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                NestedCalls(),
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo(
+            """["{\"op\":{},\"stack\":{},\"memory\":{},\"contract\":{}}","{}","{}","{}","{}","type,from,to,coinbase,input,gas,gasUsed,gasPrice,value,block,output,blockHash,txIndex,txHash"]"""));
+    }
+
+    [Test]
     public void Completed_results_keep_big_integer_values_after_repeated_disposal()
     {
         const string valueTracer = """
@@ -1516,7 +1543,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         const string failingTracer = "{ fault: function() { }, result: function() { throw new Error('result failed'); } }";
         using (GethLikeBlockJavaScriptTracer tracer = GetTracer(failingTracer))
         {
-            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.InstanceOf(typeof(IScriptEngineException)));
+            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.TypeOf<InvalidDataException>()
+                .With.Message.EqualTo("Error: result failed in server-side tracer function 'result'")
+                .And.InnerException.InstanceOf<ScriptEngineException>());
         }
 
         const string recoveringTracer = "{ fault: function() { }, result: function() { return toHex(toWord('1')); } }";
@@ -2470,7 +2499,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+            if (before == "trace timeout")
+                Assert.That(failure, Is.TypeOf<GethTraceDeadlineException>().With.Message.EqualTo("execution timeout"));
+            else
+                Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
             Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
         }
     }
@@ -2493,7 +2525,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         });
         // On a slow runner the timeout can expire during the warm-up; the hook then refuses to start, as it should.
         try { for (int i = 0; i < 200; i++) tracer.SetOperationStack(default); }
-        catch (Exception exception) when (JavaScriptTraceFailure.IsInterruption(exception)) { }
+        catch (GethTraceDeadlineException) { }
         bool expired = WaitForInterrupt(engine);
         armed = true;
 
@@ -2502,7 +2534,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         {
             Assert.That(expired, Is.True);
             Assert.That(busy, Is.False);
-            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+            Assert.That(failure, Is.TypeOf<GethTraceDeadlineException>().With.Message.EqualTo("execution timeout"));
         }
     }
 
@@ -2579,7 +2611,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Stopwatch elapsed = Stopwatch.StartNew();
         if (busyResult)
         {
-            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<ScriptInterruptedException>());
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<GethTraceDeadlineException>().With.Message.EqualTo("execution timeout"));
             Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
         }
         else

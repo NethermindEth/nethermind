@@ -14,7 +14,7 @@ namespace Nethermind.TxPool
     public class NullTxPool : ITxPool
     {
         public bool SupportsBlobs => false;
-        private NullTxPool() { }
+        protected NullTxPool() { }
 
         public static NullTxPool Instance { get; } = new();
 
@@ -45,6 +45,8 @@ namespace Nethermind.TxPool
         public void AddPeer(ITxPoolPeer peer) { }
 
         public void RemovePeer(PublicKey nodeId) { }
+
+        public void RemovePeer(ITxPoolPeer peer) { }
 
         public bool ContainsTx(Hash256 hash, TxType txType) => false;
 

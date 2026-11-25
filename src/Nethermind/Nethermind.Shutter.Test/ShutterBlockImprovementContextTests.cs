@@ -30,7 +30,7 @@ public class ShutterBlockImprovementContextTests
         const ulong slotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;
 
         IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
-        blockProducer.BuildBlock(default, default, default, default, default).ReturnsForAnyArgs(Task.FromResult<Block?>(null));
+        blockProducer.BuildBlock(default, default, default, default, default, default).ReturnsForAnyArgs(Task.FromResult<Block?>(null));
         SlotTime slotTime = new(0, new Timestamper(DateTimeOffset.FromUnixTimeSeconds((long)slotTimestamp).UtcDateTime), ShutterTestsCommon.SlotLength, TimeSpan.Zero);
         Block block = Build.A.Block.TestObject;
         PayloadAttributes payloadAttributes = new() { Timestamp = slotTimestamp };
@@ -132,7 +132,7 @@ public class ShutterBlockImprovementContextTests
     {
         const ulong slotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;
         IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
-        blockProducer.BuildBlock(default, default, default, default, default).ReturnsForAnyArgs(build);
+        blockProducer.BuildBlock(default, default, default, default, default, default).ReturnsForAnyArgs(build);
         IShutterTxSignal txSignal = Substitute.For<IShutterTxSignal>();
         txSignal.HaveTransactionsArrived(Arg.Any<ulong>()).Returns(true);
         SlotTime slotTime = new(0, new Timestamper(DateTimeOffset.FromUnixTimeSeconds((long)slotTimestamp).UtcDateTime), ShutterTestsCommon.SlotLength, TimeSpan.Zero);

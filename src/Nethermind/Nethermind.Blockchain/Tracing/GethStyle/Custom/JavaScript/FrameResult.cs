@@ -10,8 +10,10 @@ public class FrameResult
 {
     private ITypedArray<byte>? _outputConverted;
     private byte[] _output;
+    [NoScriptAccess]
     public ulong GasUsed { get; set; }
 
+    [NoScriptAccess]
     public byte[] Output
     {
         get => _output;
@@ -22,6 +24,7 @@ public class FrameResult
         }
     }
 
+    [NoScriptAccess]
     public string? Error { get; set; }
     public ulong getGasUsed() => GasUsed;
     public ITypedArray<byte> getOutput() => _outputConverted ??= Output.ToTypedScriptArray();

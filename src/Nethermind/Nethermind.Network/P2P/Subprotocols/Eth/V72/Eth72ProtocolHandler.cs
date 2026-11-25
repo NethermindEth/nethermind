@@ -197,7 +197,7 @@ public class Eth72ProtocolHandler(
 
                     if (!_sentPooledTransactionRequests.TryClaim(requestId, out PooledTransactionRequests.Request requestedHashes))
                     {
-                        ReportIn($"Uncorrelated {nameof(PooledTransactionsMessage66)} response ID {requestId} ignored", size);
+                        if (Logger.IsTrace || NetworkDiagTracer.IsEnabled) ReportIn($"Uncorrelated {nameof(PooledTransactionsMessage66)} response ID {requestId} ignored", size);
                         return true;
                     }
 
@@ -247,7 +247,7 @@ public class Eth72ProtocolHandler(
                             RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerUnanswered);
                         }
 
-                        ReportIn($"Stale {nameof(CellsMessage72)} response ID {requestId} ignored", size);
+                        if (Logger.IsTrace || NetworkDiagTracer.IsEnabled) ReportIn($"Stale {nameof(CellsMessage72)} response ID {requestId} ignored", size);
                         return true;
                     }
 

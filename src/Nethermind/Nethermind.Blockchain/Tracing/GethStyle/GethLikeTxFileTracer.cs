@@ -227,6 +227,9 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     public override void ReportCodeDepositError(string error) => _codeDepositError = error;
 
     /// <inheritdoc/>
+    protected override bool ReportsRefundAfterOperation => true;
+
+    /// <inheritdoc/>
     /// <remarks>
     /// As in Geth, the designated INVALID opcode is written as an executed step that costs no gas, followed by its
     /// fault record. Defined opcodes that fail on their operands with the same error keep a single error record.

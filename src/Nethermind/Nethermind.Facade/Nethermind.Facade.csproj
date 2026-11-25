@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.LightClient" />
     <PackageReference Include="NonBlocking" />
   </ItemGroup>
 

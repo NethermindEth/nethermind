@@ -130,6 +130,13 @@ namespace Nethermind.Consensus.AuRa
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
 
+            IDictionary<ulong, IDictionary<Address, byte[]>> rewriteBytecode = specParam.RewriteBytecode;
+            (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. specParam.RewriteBytecodeTimestampParsed];
+            if (rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp.Length > 0)
+            {
+                builder.AddSingleton(new ContractRewriter(rewriteBytecode, rewriteBytecodeTimestamp));
+            }
+
             if (Rlp.GetDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
 
@@ -226,12 +233,10 @@ namespace Nethermind.Consensus.AuRa
         /// <summary>
         /// Some validation component that is active in RPC and validation but not in block producer.
         /// </summary>
-        /// <param name="parameters"></param>
         /// <param name="specProvider"></param>
         /// <param name="txAuRaFilterBuilders"></param>
         /// <param name="gasLimitOverrideFactory"></param>
         private class AuraValidationModule(
-            AuRaChainSpecEngineParameters parameters,
             TxAuRaFilterBuilders txAuRaFilterBuilders,
             AuRaGasLimitOverrideFactory gasLimitOverrideFactory
         ) : Module, IBlockValidationModule
@@ -240,14 +245,9 @@ namespace Nethermind.Consensus.AuRa
             {
                 ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
-                IDictionary<ulong, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
-                (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. parameters.RewriteBytecodeTimestampParsed];
-                ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
-
                 AuRaContractGasLimitOverride? gasLimitOverride = gasLimitOverrideFactory.GetGasLimitCalculator();
 
                 builder.AddSingleton(txFilter);
-                if (contractRewriter is not null) builder.AddSingleton(contractRewriter);
                 if (gasLimitOverride is not null) builder.AddSingleton(gasLimitOverride);
             }
         }
