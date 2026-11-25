@@ -255,7 +255,6 @@ publication. Before Gloas, the beacon light-client header authenticates the exec
 hash and state root directly, so serving the execution header depends on an
 earlier execution peer lookup. Cache keys bind accounts to the world-state root,
 storage to its authenticated storage root and slot, and bytecode to its code hash.
-
 Both P2P stacks use Nethermind's automatic IPv4/IPv6 IP resolver and its bounded
 retry, refresh and address-validation behavior. The resolved public address is
 used in discovery records; IP detection does not open or forward router/firewall

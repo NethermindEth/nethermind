@@ -20,7 +20,7 @@ public class KeccakCacheBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        if (AppContext.TryGetSwitch("Nethermind.Core.KeccakCache.Compact", out bool compact) && compact)
+        if (AppContext.TryGetSwitch(KeccakCache.CompactCacheSwitch, out bool compact) && compact)
             throw new InvalidOperationException("This benchmark requires the default Keccak cache capacity.");
 
         Random random = new(1729);

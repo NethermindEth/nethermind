@@ -33,6 +33,8 @@ namespace Nethermind.Core.Test
                 return;
             }
 
+            Assert.That(KeccakCache.Count, Is.EqualTo((nuint)(1 << 19)));
+
             ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
             {
                 UseShellExecute = false,
