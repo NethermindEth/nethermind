@@ -174,8 +174,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
             return false;
         }
 
-        isOverItemLimit = !IsWithinItemLimit(itemCount, gasLimit, out error);
-        return !isOverItemLimit;
+        return IsWithinItemLimit(itemCount, gasLimit, out error)
+            || IsValidWithinItemLimit(encodedBlockAccessList, gasLimit, out error, out isOverItemLimit);
     }
 
     internal static bool TryDecodeBlockAccessList(

@@ -488,6 +488,27 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV5_rejects_a_malformed_access_list_over_the_parent_gas_limit_without_latest_valid_hash()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        ExecutionPayloadV4 payload = await GetPayloadV6OnHead(chain);
+        payload.GasLimit = 1UL << 50;
+        byte[] encodedBlockAccessList = EncodeStorageReadsAccessList((int)(chain.BlockTree.Head!.GasLimit * 2 / Eip7928Constants.ItemCost));
+        int firstAddress = encodedBlockAccessList.AsSpan().IndexOf(Bytes.Concat([0x94], Address.FromNumber(1).Bytes));
+        encodedBlockAccessList[firstAddress + Address.Size] = byte.MaxValue;
+        payload.BlockAccessList = encodedBlockAccessList;
+
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(response.Data.LatestValidHash, Is.Null);
+            Assert.That(response.Data.ValidationError, Is.EqualTo("Error decoding block access list: Account changes were in incorrect order."));
+        }
+    }
+
+    [Test]
     public async Task NewPayload_validates_a_deferred_access_list_without_access_list_execution()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance, configurer: static builder => builder
