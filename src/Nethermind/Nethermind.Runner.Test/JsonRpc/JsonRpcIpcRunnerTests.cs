@@ -70,10 +70,7 @@ public class JsonRpcIpcRunnerTests
     public async Task Queued_start_after_disposal_leaves_the_socket_path_alone()
     {
         IFileSystem files = Substitute.For<IFileSystem>();
-        IConfigProvider config = Substitute.For<IConfigProvider>();
-        config.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig());
-        JsonRpcIpcRunner runner = new(Substitute.For<IJsonRpcProcessor>(), config, LimboLogs.Instance,
-            Substitute.For<IJsonRpcLocalStats>(), new EthereumJsonSerializer(), files);
+        JsonRpcIpcRunner runner = CreateRunner(files);
         runner.Dispose();
 
         using TempPath socketPath = TempPath.GetTempFile();
@@ -81,6 +78,47 @@ public class JsonRpcIpcRunnerTests
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
         await runner.StartServer(path, timeout.Token);
         files.File.DidNotReceive().Exists(path);
+    }
+
+    [Test]
+    public async Task Dispose_during_startup_waits_for_the_listener_and_then_closes_it()
+    {
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        IFileSystem files = Substitute.For<IFileSystem>();
+        JsonRpcIpcRunner runner = CreateRunner(files);
+
+        using TempPath socketPath = TempPath.GetTempFile();
+        string path = socketPath.Path;
+        files.File.Exists(path).Returns(_ =>
+        {
+            entered.Set();
+            release.Wait(TimeSpan.FromSeconds(10));
+            return false;
+        });
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+
+        Task start = Task.Run(() => runner.StartServer(path, timeout.Token));
+        entered.Wait(TimeSpan.FromSeconds(10));
+        Task dispose = Task.Run(runner.Dispose);
+        bool disposedDuringStartup = dispose.Wait(TimeSpan.FromMilliseconds(500));
+        release.Set();
+        await dispose;
+        Task first = await Task.WhenAny(start, Task.Delay(TimeSpan.FromSeconds(5)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disposedDuringStartup, Is.False, "dispose must wait for the listener startup to finish");
+            Assert.That(first, Is.SameAs(start), "the accept loop must stop on the listener closed by dispose");
+        }
+    }
+
+    private static JsonRpcIpcRunner CreateRunner(IFileSystem files)
+    {
+        IConfigProvider config = Substitute.For<IConfigProvider>();
+        config.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig());
+        return new(Substitute.For<IJsonRpcProcessor>(), config, LimboLogs.Instance,
+            Substitute.For<IJsonRpcLocalStats>(), new EthereumJsonSerializer(), files);
     }
 
     private static readonly TestCaseData[] ShutdownAcceptErrors =
