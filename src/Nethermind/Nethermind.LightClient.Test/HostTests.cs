@@ -540,6 +540,7 @@ public class HostTests
     [TestCase("ordinary", StatusCodes.Status413PayloadTooLarge)]
     [TestCase("submission", StatusCodes.Status413PayloadTooLarge)]
     [TestCase("limit", StatusCodes.Status200OK)]
+    [TestCase("boundary", StatusCodes.Status200OK)]
     [TestCase("oversized_tail", StatusCodes.Status413PayloadTooLarge)]
     public async Task Large_http_batches_admit_evm_calls_within_the_ordinary_body_budget(string batch, int expectedStatus)
     {
@@ -547,6 +548,7 @@ public class HostTests
         string oversizedData = "0x" + new string('0', RpcTestDriver.StandardRequestBodySize);
         object call = new { jsonrpc = "2.0", id = 1, method = "eth_call", @params = new[] { new { data = callData } } };
         object estimate = new { jsonrpc = "2.0", id = 2, method = "eth_estimateGas", @params = new[] { new { data = callData } } };
+        object oversizedCall = new { jsonrpc = "2.0", id = 3, method = "eth_call", @params = new[] { new { data = oversizedData } } };
         IEnumerable<object> notifications = Enumerable.Repeat<object>(new { jsonrpc = "2.0", method = "eth_chainId" },
             RpcTestDriver.MaxBatchEnvelopes - 2);
         object[] requests = batch switch
@@ -555,7 +557,8 @@ public class HostTests
             "ordinary" => [call, new { jsonrpc = "2.0", id = 2, method = "eth_chainId", @params = new[] { oversizedData } }],
             "submission" => [call, new { jsonrpc = "2.0", id = 2, method = "eth_sendRawTransaction", @params = new[] { oversizedData } }],
             "limit" => [call, estimate, .. notifications],
-            _ => [call, estimate, .. notifications, new { jsonrpc = "2.0", id = 3, method = "eth_call", @params = new[] { new { data = oversizedData } } }],
+            "boundary" => [call, estimate, .. notifications.Skip(1), oversizedCall],
+            _ => [call, estimate, .. notifications, oversizedCall],
         };
         List<string> methods = [];
 
@@ -569,13 +572,25 @@ public class HostTests
         Assert.That(status, Is.EqualTo(expectedStatus));
         if (expectedStatus == StatusCodes.Status200OK)
         {
-            bool atLimit = batch == "limit";
+            bool atExecutionLimit = batch is "limit" or "boundary";
             Assert.That(response.ValueKind, Is.EqualTo(JsonValueKind.Array));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(methods, Is.EqualTo(new[] { "eth_call", "eth_estimateGas" }
-                    .Concat(Enumerable.Repeat("eth_chainId", atLimit ? RpcTestDriver.MaxBatchCount - 2 : 1))));
-                Assert.That(response.EnumerateArray().Select(item => item.GetProperty("id").GetInt32()), Is.EqualTo(atLimit ? new[] { 1, 2 } : new[] { 1, 2, 3 }));
+                    .Concat(Enumerable.Repeat("eth_chainId", atExecutionLimit ? RpcTestDriver.MaxBatchCount - 2 : 1))));
+                Assert.That(response.EnumerateArray().Select(item => item.GetProperty("id").GetInt32()),
+                    Is.EqualTo(batch == "limit" ? new[] { 1, 2 } : new[] { 1, 2, 3 }));
+            }
+
+            if (batch == "boundary")
+            {
+                JsonElement error = response[2].GetProperty("error");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+                    Assert.That(error.GetProperty("message").GetString(),
+                        Does.StartWith($"A batch may execute at most {RpcTestDriver.MaxBatchCount} requests"));
+                }
             }
         }
         else
