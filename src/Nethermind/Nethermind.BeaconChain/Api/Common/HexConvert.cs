@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -82,5 +84,49 @@ internal static class HexConvert
         }
 
         return bytes.ToHexString(withZeroX: true);
+    }
+
+    /// <summary>Encodes an SSZ bitlist, its bits followed by the sentinel bit that marks its length, as a <c>0x</c>-prefixed hex string.</summary>
+    public static string BitListToHex(BitArray bits)
+    {
+        byte[] bytes = new byte[bits.Length / 8 + 1];
+        bits.CopyTo(bytes, 0);
+        bytes[^1] |= (byte)(1 << (bits.Length % 8));
+        return bytes.ToHexString(withZeroX: true);
+    }
+
+    /// <summary>Parses a <c>0x</c>-prefixed SSZ bitlist of at most <paramref name="limit"/> bits.</summary>
+    public static bool TryParseBitList(string? s, int limit, [NotNullWhen(true)] out BitArray? bits)
+    {
+        bits = null;
+        if (!TryParseBytes(s, out byte[]? bytes) || bytes.Length == 0 || bytes[^1] == 0) return false;
+        int length = (bytes.Length - 1) * 8 + BitOperations.Log2(bytes[^1]);
+        if (length > limit) return false;
+        bits = new BitArray(bytes) { Length = length };
+        return true;
+    }
+
+    /// <summary>Parses a <c>0x</c>-prefixed SSZ bitvector of <paramref name="length"/> bits, whose unused high bits must be zero.</summary>
+    public static bool TryParseBitVector(string? s, int length, [NotNullWhen(true)] out BitArray? bits)
+    {
+        bits = null;
+        if (!TryParseBytes(s, out byte[]? bytes) || bytes.Length != (length + 7) / 8 || (length % 8 != 0 && bytes[^1] >> (length % 8) != 0)) return false;
+        bits = new BitArray(bytes) { Length = length };
+        return true;
+    }
+
+    private static bool TryParseBytes(string? s, [NotNullWhen(true)] out byte[]? bytes)
+    {
+        bytes = null;
+        if (string.IsNullOrEmpty(s) || !s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) return false;
+        try
+        {
+            bytes = Bytes.FromHexString(s);
+            return true;
+        }
+        catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentException)
+        {
+            return false;
+        }
     }
 }

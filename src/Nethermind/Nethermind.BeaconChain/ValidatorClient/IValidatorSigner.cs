@@ -18,6 +18,14 @@ public interface IValidatorSigner
     /// <summary>Signs an attestation under <c>DOMAIN_BEACON_ATTESTER</c> of its target epoch (phase0/validator.md "Aggregate signature").</summary>
     /// <exception cref="ValidatorSignerException">The signer refused, such as for a slashable vote or an unknown key, or could not be reached.</exception>
     ValueTask<BlsSignature> SignAttestation(BlsPublicKey publicKey, AttestationData data, CancellationToken cancellationToken);
+
+    /// <summary>Signs <paramref name="slot"/> under <c>DOMAIN_SELECTION_PROOF</c> of its epoch: the selection proof that decides whether the validator aggregates (phase0/validator.md "Aggregation selection").</summary>
+    /// <exception cref="ValidatorSignerException">The signer refused, such as for an unknown key, or could not be reached.</exception>
+    ValueTask<BlsSignature> SignAggregationSlot(BlsPublicKey publicKey, ulong slot, CancellationToken cancellationToken);
+
+    /// <summary>Signs an aggregate and its selection proof under <c>DOMAIN_AGGREGATE_AND_PROOF</c> of the aggregate's epoch (phase0/validator.md "Broadcast aggregate").</summary>
+    /// <exception cref="ValidatorSignerException">The signer refused, such as for an unknown key, or could not be reached.</exception>
+    ValueTask<BlsSignature> SignAggregateAndProof(BlsPublicKey publicKey, AggregateAndProof aggregateAndProof, CancellationToken cancellationToken);
 }
 
 /// <summary>A signature that was not produced; the duty it was for is skipped.</summary>

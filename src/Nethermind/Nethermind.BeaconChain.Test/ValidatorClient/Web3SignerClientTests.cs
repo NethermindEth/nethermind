@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -13,9 +14,10 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.BeaconChain.Test.ValidatorClient;
 
 /// <remarks>
-/// The request and response are the <c>ATTESTATION</c> example of the Web3Signer eth2 signing OpenAPI
-/// (Consensys/web3signer <c>openapi-specs/eth2/signing/paths/sign.yaml</c>), so the signing root computed here is
-/// checked against the one Web3Signer published for the same object, fork version and genesis validators root.
+/// The requests and response are the <c>ATTESTATION</c>, <c>AGGREGATION_SLOT</c> and <c>AGGREGATE_AND_PROOF_V2 (FULU)</c> examples of the
+/// Web3Signer eth2 signing OpenAPI (Consensys/web3signer <c>openapi-specs/eth2/signing/paths/sign.yaml</c>), so the signing roots of the first
+/// two are checked against the ones Web3Signer published for the same object, fork version and genesis validators root. The root published
+/// with the aggregate example does not follow from its object under the Electra containers; that case expects the root of a separate SSZ computation.
 /// </remarks>
 public class Web3SignerClientTests
 {
@@ -27,7 +29,11 @@ public class Web3SignerClientTests
     {
         GenesisValidatorsRoot = new Hash256("0x04700007fabc8282644aed6d1c7c9e21d38a03a0c4ba193f3afe428824b3a673"),
         Forks = [new ForkScheduleEntry(Bytes.FromHexString("0x00000001"), 0)],
+        ElectraForkEpoch = 0,
+        FuluForkEpoch = 0,
     };
+
+    private const string ForkInfo = """{"fork":{"previous_version":"0x00000001","current_version":"0x00000001","epoch":"0"},"genesis_validators_root":"0x04700007fabc8282644aed6d1c7c9e21d38a03a0c4ba193f3afe428824b3a673"}""";
 
     private static readonly AttestationData Data = new()
     {
@@ -40,8 +46,21 @@ public class Web3SignerClientTests
 
     public enum Answer { SlashingProtection, UnknownKey, BadRequest, ServerError, NoSignature, Unreachable, Timeout, CallerCancels }
 
-    [Test]
-    public async Task Posts_the_attestation_with_its_fork_info_and_signing_root_and_reads_the_signature()
+    private static IEnumerable<TestCaseData> SigningRequests()
+    {
+        yield return new TestCaseData((Func<Web3SignerClient, BlsPublicKey, ValueTask<BlsSignature>>)((signer, key) => signer.SignAttestation(key, Data, CancellationToken.None)),
+            $$$$"""{"type":"ATTESTATION","fork_info":{{{{ForkInfo}}}},"signingRoot":"0x548c9a015f4c96cb8b1ddbbdfca85846f85bf9f344a434c140f378cdfb5341f0","attestation":{"slot":"32","index":"0","beacon_block_root":"0xb2eedb01adbd02c828d5eec09b4c70cbba12ffffba525ebf48aca33028e8ad89","source":{"epoch":"0","root":"0x0000000000000000000000000000000000000000000000000000000000000000"},"target":{"epoch":"0","root":"0xb2eedb01adbd02c828d5eec09b4c70cbba12ffffba525ebf48aca33028e8ad89"}}}""")
+            .SetName("ATTESTATION");
+        yield return new TestCaseData((Func<Web3SignerClient, BlsPublicKey, ValueTask<BlsSignature>>)((signer, key) => signer.SignAggregationSlot(key, 119, CancellationToken.None)),
+            $$$$"""{"type":"AGGREGATION_SLOT","fork_info":{{{{ForkInfo}}}},"signingRoot":"0x1fb90dd6e8b2670e6949347bc4eaacd37f9b6cc6e42c559973e362c800e853b9","aggregation_slot":{"slot":"119"}}""")
+            .SetName("AGGREGATION_SLOT");
+        yield return new TestCaseData((Func<Web3SignerClient, BlsPublicKey, ValueTask<BlsSignature>>)((signer, key) => signer.SignAggregateAndProof(key, AggregateAndProof(), CancellationToken.None)),
+            $$$$"""{"type":"AGGREGATE_AND_PROOF_V2","fork_info":{{{{ForkInfo}}}},"signingRoot":"0x1180bcb41bda522b3420274c6e4931c37ecf4eef99a57e4d04fc81e82b2ced40","aggregate_and_proof":{"version":"FULU","data":{"aggregator_index":"1","aggregate":{"aggregation_bits":"0x0000000000000000000000000000000000000000000101","data":{"slot":"0","index":"0","beacon_block_root":"0x100814c335d0ced5014cfa9d2e375e6d9b4e197381f8ce8af0473200fdc917fd","source":{"epoch":"0","root":"0x0000000000000000000000000000000000000000000000000000000000000000"},"target":{"epoch":"0","root":"0x100814c335d0ced5014cfa9d2e375e6d9b4e197381f8ce8af0473200fdc917fd"}},"signature":"0xa627242e4a5853708f4ebf923960fb8192f93f2233cd347e05239d86dd9fb66b721ceec1baeae6647f498c9126074f1101a87854d674b6eebc220fd8c3d8405bdfd8e286b707975d9e00a56ec6cbbf762f23607d490f0bbb16c3e0e483d51875","committee_bits":"0x0000000000000001"},"selection_proof":"0xa63f73a03f1f42b1fd0a988b614d511eb346d0a91c809694ef76df5ae021f0f144d64e612d735bc8820950cf6f7f84cd0ae194bfe3d4242fe79688f83462e3f69d9d33de71aab0721b7dab9d6960875e5fdfd26b171a75fb51af822043820c47"}}}""")
+            .SetName("AGGREGATE_AND_PROOF_V2");
+    }
+
+    [TestCaseSource(nameof(SigningRequests))]
+    public async Task Posts_the_object_with_its_fork_info_and_signing_root_and_reads_the_signature(Func<Web3SignerClient, BlsPublicKey, ValueTask<BlsSignature>> sign, string expectedBody)
     {
         string? url = null, accept = null, body = null;
         using Web3SignerClient signer = Signer(async (request, cancellationToken) =>
@@ -50,12 +69,12 @@ public class Web3SignerClientTests
             return Respond(HttpStatusCode.OK, $$"""{"signature":"{{Signature}}"}""");
         }, TimeSpan.FromMinutes(1));
 
-        BlsSignature signature = await signer.SignAttestation(new BlsPublicKey(Bytes.FromHexString(PublicKey)), Data, CancellationToken.None);
+        BlsSignature signature = await sign(signer, new BlsPublicKey(Bytes.FromHexString(PublicKey)));
 
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(url, Is.EqualTo($"http://signer.test:9000/api/v1/eth2/sign/{PublicKey}"));
         Assert.That(accept, Is.EqualTo("application/json"));
-        Assert.That(body, Is.EqualTo("""{"type":"ATTESTATION","fork_info":{"fork":{"previous_version":"0x00000001","current_version":"0x00000001","epoch":"0"},"genesis_validators_root":"0x04700007fabc8282644aed6d1c7c9e21d38a03a0c4ba193f3afe428824b3a673"},"signingRoot":"0x548c9a015f4c96cb8b1ddbbdfca85846f85bf9f344a434c140f378cdfb5341f0","attestation":{"slot":"32","index":"0","beacon_block_root":"0xb2eedb01adbd02c828d5eec09b4c70cbba12ffffba525ebf48aca33028e8ad89","source":{"epoch":"0","root":"0x0000000000000000000000000000000000000000000000000000000000000000"},"target":{"epoch":"0","root":"0xb2eedb01adbd02c828d5eec09b4c70cbba12ffffba525ebf48aca33028e8ad89"}}}"""));
+        Assert.That(body, Is.EqualTo(expectedBody));
         Assert.That(signature, Is.EqualTo(new BlsSignature(Bytes.FromHexString(Signature))));
     }
 
@@ -96,6 +115,24 @@ public class Web3SignerClientTests
         Assert.That(async () => await signer.SignAttestation(new BlsPublicKey(Bytes.FromHexString(PublicKey)), Data, caller.Token), refused is null
             ? Throws.InstanceOf<OperationCanceledException>()
             : Throws.TypeOf<ValidatorSignerException>().With.Property(nameof(ValidatorSignerException.Refused)).EqualTo(refused));
+    }
+
+    /// <summary>The <c>AGGREGATE_AND_PROOF_V2 (FULU)</c> example's aggregate: committee 56, whose member at position 168 of 176 attests.</summary>
+    private static AggregateAndProof AggregateAndProof()
+    {
+        Hash256 blockRoot = new("0x100814c335d0ced5014cfa9d2e375e6d9b4e197381f8ce8af0473200fdc917fd");
+        return new AggregateAndProof
+        {
+            AggregatorIndex = 1,
+            Aggregate = new Attestation
+            {
+                AggregationBits = new BitArray(176) { [168] = true },
+                Data = new AttestationData { BeaconBlockRoot = blockRoot, Source = new Checkpoint { Root = Hash256.Zero }, Target = new Checkpoint { Root = blockRoot } },
+                Signature = new BlsSignature(Bytes.FromHexString("0xa627242e4a5853708f4ebf923960fb8192f93f2233cd347e05239d86dd9fb66b721ceec1baeae6647f498c9126074f1101a87854d674b6eebc220fd8c3d8405bdfd8e286b707975d9e00a56ec6cbbf762f23607d490f0bbb16c3e0e483d51875")),
+                CommitteeBits = new BitArray(64) { [56] = true },
+            },
+            SelectionProof = new BlsSignature(Bytes.FromHexString("0xa63f73a03f1f42b1fd0a988b614d511eb346d0a91c809694ef76df5ae021f0f144d64e612d735bc8820950cf6f7f84cd0ae194bfe3d4242fe79688f83462e3f69d9d33de71aab0721b7dab9d6960875e5fdfd26b171a75fb51af822043820c47")),
+        };
     }
 
     private static Web3SignerClient Signer(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond, TimeSpan requestTimeout) =>

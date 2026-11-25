@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -51,6 +52,10 @@ public class ValidatorEndpointsTests : BeaconApiFixture
             (Action<IBeaconNodeValidatorApi>)(api => api.ProduceAttestationData(7, 3, Arg.Any<CancellationToken>()).Returns(new ValueTask<AttestationData>(Data()))),
             $$$$"""{"data":{"slot":"7","index":"0","beacon_block_root":"{{{{Root}}}}","source":{"epoch":"1","root":"{{{{Root}}}}"},"target":{"epoch":"2","root":"{{{{OtherRoot}}}}"}}}""")
             .SetName("Attestation data");
+        yield return new TestCaseData(HttpMethod.Get, $"/eth/v2/validator/aggregate_attestation?attestation_data_root={OtherRoot}&slot={FuluSlot}&committee_index=2", null,
+            (Action<IBeaconNodeValidatorApi>)(api => api.GetAggregateAttestation(FuluSlot, OtherRoot, 2, Arg.Any<CancellationToken>()).Returns(new ValueTask<Attestation>(Aggregate()))),
+            $$$$"""{"version":"fulu","data":{"aggregation_bits":"0x0d","data":{"slot":"7","index":"0","beacon_block_root":"{{{{Root}}}}","source":{"epoch":"1","root":"{{{{Root}}}}"},"target":{"epoch":"2","root":"{{{{OtherRoot}}}}"}},"signature":"{{{{Signature}}}}","committee_bits":"0x0400000000000000"}}""")
+            .SetName("Aggregate attestation, versioned by the fork of its slot");
     }
 
     [TestCaseSource(nameof(ServedRoutes))]
@@ -63,22 +68,67 @@ public class ValidatorEndpointsTests : BeaconApiFixture
         Assert.That(await ReadSuccessfulBodyAsync(response), Is.EqualTo(expected));
     }
 
-    [Test]
-    public async Task Pool_attestations_are_decoded_and_the_refused_ones_reported_by_index([Values] bool refused)
+    private static IEnumerable<TestCaseData> Submissions()
     {
-        IReadOnlyList<SingleAttestation> submitted = [];
-        _api.SubmitAttestations(Arg.Do<IReadOnlyList<SingleAttestation>>(attestations => submitted = attestations), Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<IReadOnlyList<SubmissionFailure>>(refused ? [new SubmissionFailure(1, "The signature is invalid.")] : []));
-        string attestation = $$$"""{"committee_index":"3","attester_index":"9","data":{"slot":"7","index":"0","beacon_block_root":"{{{Root}}}","source":{"epoch":"1","root":"{{{Root}}}"},"target":{"epoch":"2","root":"{{{OtherRoot}}}"}},"signature":"{{{Signature}}}"}""";
+        const string data = """{"slot":"7","index":"0","beacon_block_root":"0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd","source":{"epoch":"1","root":"0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"},"target":{"epoch":"2","root":"0xcececececececececececececececececececececececececececececececece"}}""";
+        foreach (bool refused in new[] { false, true })
+        {
+            yield return new TestCaseData("/eth/v2/beacon/pool/attestations", $$"""{"committee_index":"3","attester_index":"9","data":{{data}},"signature":"{{Signature}}"}""",
+                (Func<IBeaconNodeValidatorApi, IReadOnlyList<SubmissionFailure>, Func<byte[][]>>)((api, failures) =>
+                {
+                    byte[][] submitted = [];
+                    api.SubmitAttestations(Arg.Do<IReadOnlyList<SingleAttestation>>(attestations => submitted = [.. attestations.Select(SingleAttestation.Encode)]), Arg.Any<CancellationToken>())
+                        .Returns(new ValueTask<IReadOnlyList<SubmissionFailure>>(failures));
+                    return () => submitted;
+                }),
+                SingleAttestation.Encode(new SingleAttestation { CommitteeIndex = 3, AttesterIndex = 9, Data = Data(), Signature = Signature }), "Some attestations were not published.", refused)
+                .SetName($"Pool attestations, {(refused ? "one refused" : "all published")}");
+            yield return new TestCaseData("/eth/v2/validator/aggregate_and_proofs",
+                $$"""{"message":{"aggregator_index":"9","aggregate":{"aggregation_bits":"0x0d","data":{{data}},"signature":"{{Signature}}","committee_bits":"0x0400000000000000"},"selection_proof":"{{OtherSignature}}"},"signature":"{{Signature}}"}""",
+                (Func<IBeaconNodeValidatorApi, IReadOnlyList<SubmissionFailure>, Func<byte[][]>>)((api, failures) =>
+                {
+                    byte[][] submitted = [];
+                    api.SubmitAggregateAndProofs(Arg.Do<IReadOnlyList<SignedAggregateAndProof>>(aggregates => submitted = [.. aggregates.Select(SignedAggregateAndProof.Encode)]), Arg.Any<CancellationToken>())
+                        .Returns(new ValueTask<IReadOnlyList<SubmissionFailure>>(failures));
+                    return () => submitted;
+                }),
+                SignedAggregateAndProof.Encode(new SignedAggregateAndProof
+                {
+                    Message = new AggregateAndProof { AggregatorIndex = 9, Aggregate = Aggregate(), SelectionProof = OtherSignature },
+                    Signature = Signature,
+                }), "Some aggregates were not published.", refused)
+                .SetName($"Aggregate and proofs, {(refused ? "one refused" : "all published")}");
+        }
+    }
 
-        using HttpResponseMessage response = await Send(HttpMethod.Post, "/eth/v2/beacon/pool/attestations", $"[{attestation},{attestation}]", consensusVersion: "fulu");
+    [TestCaseSource(nameof(Submissions))]
+    public async Task Submissions_are_decoded_and_the_refused_ones_reported_by_index(string path, string item, Func<IBeaconNodeValidatorApi, IReadOnlyList<SubmissionFailure>, Func<byte[][]>> arrange,
+        byte[] expected, string message, bool refused)
+    {
+        Func<byte[][]> submitted = arrange(_api, refused ? [new SubmissionFailure(1, "The signature is invalid.")] : []);
 
-        byte[] expected = SingleAttestation.Encode(new SingleAttestation { CommitteeIndex = 3, AttesterIndex = 9, Data = Data(), Signature = Signature });
+        using HttpResponseMessage response = await Send(HttpMethod.Post, path, $"[{item},{item}]", consensusVersion: "fulu");
+
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That((response.StatusCode, await response.Content.ReadAsStringAsync()), Is.EqualTo(refused
-            ? (HttpStatusCode.BadRequest, """{"code":400,"message":"Some attestations were not published.","failures":[{"index":1,"message":"The signature is invalid."}]}""")
+            ? (HttpStatusCode.BadRequest, $$"""{"code":400,"message":"{{message}}","failures":[{"index":1,"message":"The signature is invalid."}]}""")
             : (HttpStatusCode.OK, "")));
-        Assert.That(submitted.Select(SingleAttestation.Encode), Is.EqualTo(new[] { expected, expected }));
+        Assert.That(submitted(), Is.EqualTo(new[] { expected, expected }));
+    }
+
+    [Test]
+    public async Task Committee_subscriptions_are_decoded_and_passed_on()
+    {
+        IReadOnlyList<BeaconCommitteeSubscription> subscribed = [];
+        _api.SubscribeToBeaconCommittees(Arg.Do<IReadOnlyList<BeaconCommitteeSubscription>>(subscriptions => subscribed = subscriptions), Arg.Any<CancellationToken>()).Returns(ValueTask.CompletedTask);
+
+        using HttpResponseMessage response = await Send(HttpMethod.Post, "/eth/v1/validator/beacon_committee_subscriptions",
+            """[{"validator_index":"1","committee_index":"2","committees_at_slot":"3","slot":"4","is_aggregator":true},{"validator_index":"5","committee_index":"0","committees_at_slot":"1","slot":"6","is_aggregator":false}]""",
+            consensusVersion: null);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(subscribed, Is.EqualTo(new[] { new BeaconCommitteeSubscription(1, 2, 3, 4, IsAggregator: true), new BeaconCommitteeSubscription(5, 0, 1, 6, IsAggregator: false) }));
     }
 
     [TestCase("POST", "/eth/v1/validator/duties/attester/x", """["1"]""", null, TestName = "An epoch that is not a uint64")]
@@ -89,6 +139,11 @@ public class ValidatorEndpointsTests : BeaconApiFixture
     [TestCase("POST", "/eth/v2/beacon/pool/attestations", "[]", null, TestName = "Attestations without a consensus version")]
     [TestCase("POST", "/eth/v2/beacon/pool/attestations", "[]", "deneb", TestName = "Attestations of a fork before SingleAttestation")]
     [TestCase("POST", "/eth/v2/beacon/pool/attestations", """[{"committee_index":"1"}]""", "fulu", TestName = "An attestation missing its fields")]
+    [TestCase("POST", "/eth/v1/validator/beacon_committee_subscriptions", """[{"validator_index":"1","slot":"4"}]""", null, TestName = "A committee subscription missing its fields")]
+    [TestCase("GET", "/eth/v2/validator/aggregate_attestation?slot=1&committee_index=0", null, null, TestName = "An aggregate attestation without a data root")]
+    [TestCase("GET", "/eth/v2/validator/aggregate_attestation?attestation_data_root=0xcd&slot=1&committee_index=0", null, null, TestName = "An aggregate attestation with a short data root")]
+    [TestCase("POST", "/eth/v2/validator/aggregate_and_proofs", "[]", null, TestName = "Aggregates without a consensus version")]
+    [TestCase("POST", "/eth/v2/validator/aggregate_and_proofs", """[{"message":{"aggregator_index":"1"},"signature":"0x00"}]""", "fulu", TestName = "An aggregate missing its fields")]
     public async Task Malformed_requests_are_refused_before_the_api_is_called(string method, string path, string? body, string? consensusVersion)
     {
         using HttpResponseMessage response = await Send(new HttpMethod(method), path, body, consensusVersion);
@@ -109,6 +164,18 @@ public class ValidatorEndpointsTests : BeaconApiFixture
 
         Assert.That((response.StatusCode, await response.Content.ReadAsStringAsync()), Is.EqualTo((expected, $$"""{"code":{{(int)expected}},"message":"refused for the test"}""")));
     }
+
+    private static readonly ulong FuluSlot = BeaconChainSpec.Mainnet.FuluForkEpoch * BeaconChainSpec.Mainnet.SlotsPerEpoch;
+    private static readonly BlsSignature OtherSignature = FilledSignature(0xf0);
+
+    /// <summary>An aggregate of committee 2, whose members 0 and 2 of 3 attested.</summary>
+    private static Attestation Aggregate() => new()
+    {
+        AggregationBits = new BitArray(3) { [0] = true, [2] = true },
+        Data = Data(),
+        Signature = Signature,
+        CommitteeBits = new BitArray(64) { [2] = true },
+    };
 
     private static AttestationData Data() => new()
     {

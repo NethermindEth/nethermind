@@ -3,24 +3,32 @@
 
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Config;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.ValidatorClient;
 
-/// <summary>Performs the attester duties of the configured validators, talking to the node only through <see cref="IBeaconNodeValidatorApi"/>.</summary>
+/// <summary>Performs the attester and aggregation duties of the configured validators, talking to the node only through <see cref="IBeaconNodeValidatorApi"/>.</summary>
 /// <remarks>
 /// <para>
 /// Each slot it first looks up keys not yet in the registry (once an epoch) and polls the duties of the slot's epoch and the
 /// next, replacing them whenever the node answers, which is how a re-org that changes their dependent root is picked up.
 /// At the attestation deadline, a third into the slot, it checks the node is synced, asks for the slot's attestation data
 /// once, has every validator with a duty in the slot sign it concurrently and submits the signed attestations in one call.
+/// </para>
+/// <para>
+/// Aggregation rides on the same duties, so they are fetched in one place. Once a duty is known, its selection proof is signed
+/// and the node told of the committee, as aggregator or not (phase0/validator.md "Lookahead"), usually an epoch ahead, so the node
+/// joins an aggregator's subnet in time. At the aggregation deadline, two thirds into the slot, each aggregator of the slot signs
+/// the node's best aggregate of its committee for the data attested to, and the aggregates are submitted in one call.
 /// </para>
 /// <para>
 /// A validator is never asked to sign for a target epoch at or before one it was already asked to sign for. That guard lives
@@ -38,9 +46,13 @@ public sealed class AttesterDutyRunner(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<AttesterDutyRunner>();
     private readonly long _attestationDueMilliseconds = (long)(spec.SecondsPerSlot * 1000 * GloasTiming.AttestationDueBps / Presets.BasisPoints);
+    private readonly long _aggregateDueMilliseconds = (long)(spec.SecondsPerSlot * 1000 * GloasTiming.AggregateDueBps / Presets.BasisPoints);
     private readonly CancellationTokenSource _stopping = new();
     private readonly Dictionary<ulong, DutiesResult<AttesterDuty>> _dutiesByEpoch = [];
     private readonly Dictionary<ulong, ulong> _lastSignedTargetEpochs = [];
+
+    // The duties the node was told of, with the selection proof of each one that aggregates.
+    private readonly Dictionary<AttesterDuty, BlsSignature?> _subscribedDuties = [];
     private BlsPublicKey[] _unresolvedKeys = ParsePublicKeys(config.PublicKeys);
     private ulong[] _validatorIndices = [];
     private ulong? _keysLookedUpInEpoch;
@@ -50,7 +62,7 @@ public sealed class AttesterDutyRunner(
     /// <summary>Waits out a delay; tests replace it to advance a manual clock instead of sleeping.</summary>
     internal Func<TimeSpan, CancellationToken, Task> Delay { get; init; } = static (delay, cancellationToken) => Task.Delay(delay, cancellationToken);
 
-    string IStoppableService.Description => "attester duties";
+    string IStoppableService.Description => "attester and aggregation duties";
 
     /// <summary>Performs the duties in the background until <see cref="StopAsync"/> is called or <paramref name="driverStopping"/> is cancelled.</summary>
     /// <returns>The background run, which ends without faulting once stopped.</returns>
@@ -84,12 +96,18 @@ public sealed class AttesterDutyRunner(
             for (ulong slot = slotClock.CurrentSlot; ; slot = Math.Max(slot + 1, slotClock.CurrentSlot))
             {
                 await PrepareAsync(slot, cancellationToken);
-                long attestationDue = slotClock.SlotStartMilliseconds(slot) + _attestationDueMilliseconds;
-                // Timers can fire marginally early, and attesting before the deadline is not allowed.
-                for (long remaining = attestationDue - slotClock.UnixMilliseconds; remaining > 0; remaining = attestationDue - slotClock.UnixMilliseconds)
-                    await Delay(TimeSpan.FromMilliseconds(remaining), cancellationToken);
+                await WaitUntil(slotClock.SlotStartMilliseconds(slot) + _attestationDueMilliseconds, cancellationToken);
+                AttestationData? data = await AttestAsync(slot, cancellationToken);
 
-                await AttestAsync(slot, cancellationToken);
+                List<(AttesterDuty Duty, BlsSignature SelectionProof)> aggregations = [];
+                foreach (AttesterDuty duty in DutiesAt(slot))
+                {
+                    if (_subscribedDuties.GetValueOrDefault(duty) is { } selectionProof) aggregations.Add((duty, selectionProof));
+                }
+
+                if (aggregations.Count == 0) continue;
+                await WaitUntil(slotClock.SlotStartMilliseconds(slot) + _aggregateDueMilliseconds, cancellationToken);
+                await AggregateAsync(slot, data, aggregations, cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -99,12 +117,24 @@ public sealed class AttesterDutyRunner(
         if (_logger.IsInfo) _logger.Info("Attester duties stopped");
     }
 
+    private async Task WaitUntil(long unixMilliseconds, CancellationToken cancellationToken)
+    {
+        // Timers can fire marginally early, and a duty must not be performed before its deadline.
+        for (long remaining = unixMilliseconds - slotClock.UnixMilliseconds; remaining > 0; remaining = unixMilliseconds - slotClock.UnixMilliseconds)
+            await Delay(TimeSpan.FromMilliseconds(remaining), cancellationToken);
+    }
+
     private async Task PrepareAsync(ulong slot, CancellationToken cancellationToken)
     {
         ulong epoch = spec.GetEpoch(slot);
         foreach (ulong knownEpoch in _dutiesByEpoch.Keys)
         {
             if (knownEpoch < epoch) _dutiesByEpoch.Remove(knownEpoch);
+        }
+
+        foreach (AttesterDuty subscribed in _subscribedDuties.Keys)
+        {
+            if (subscribed.Slot < slot) _subscribedDuties.Remove(subscribed);
         }
 
         if (_unresolvedKeys.Length > 0 && _keysLookedUpInEpoch != epoch)
@@ -139,6 +169,8 @@ public sealed class AttesterDutyRunner(
                 LogFailure($"Fetching the attester duties of epoch {dutyEpoch}", e);
             }
         }
+
+        await SubscribeAsync(slot, cancellationToken);
     }
 
     private async Task LookUpKeysAsync(CancellationToken cancellationToken)
@@ -155,7 +187,55 @@ public sealed class AttesterDutyRunner(
         if (_unresolvedKeys.Length > 0 && _logger.IsInfo) _logger.Info($"{_unresolvedKeys.Length} validator keys are not in the registry yet; looking them up again next epoch");
     }
 
-    private async Task AttestAsync(ulong slot, CancellationToken cancellationToken)
+    /// <summary>Signs the selection proof of each duty from <paramref name="slot"/> on that the node was not told of yet, and subscribes the node to their committees.</summary>
+    /// <remarks>A duty whose selection proof or subscription failed is tried again next slot.</remarks>
+    private async Task SubscribeAsync(ulong slot, CancellationToken cancellationToken)
+    {
+        List<AttesterDuty> duties = [];
+        foreach (DutiesResult<AttesterDuty> epochDuties in _dutiesByEpoch.Values)
+        {
+            foreach (AttesterDuty duty in epochDuties.Duties)
+            {
+                if (duty.Slot >= slot && !_subscribedDuties.ContainsKey(duty)) duties.Add(duty);
+            }
+        }
+
+        if (duties.Count == 0) return;
+        Task<BlsSignature?>[] signing = new Task<BlsSignature?>[duties.Count];
+        for (int i = 0; i < signing.Length; i++)
+        {
+            AttesterDuty duty = duties[i];
+            signing[i] = SignAsync(() => signer.SignAggregationSlot(duty.PublicKey, duty.Slot, cancellationToken), (_, _, detail) =>
+            {
+                if (_logger.IsWarn) _logger.Warn($"No selection proof for the duty of validator {duty.ValidatorIndex} at slot {duty.Slot}; asking again next slot: {detail}");
+            });
+        }
+
+        BlsSignature?[] selectionProofs = await Task.WhenAll(signing);
+        List<BeaconCommitteeSubscription> subscriptions = [];
+        Dictionary<AttesterDuty, BlsSignature?> subscribing = [];
+        for (int i = 0; i < duties.Count; i++)
+        {
+            if (selectionProofs[i] is not { } selectionProof) continue;
+            AttesterDuty duty = duties[i];
+            bool aggregator = BeaconStateAccessors.IsAggregator((int)duty.CommitteeLength, selectionProof);
+            subscriptions.Add(new BeaconCommitteeSubscription(duty.ValidatorIndex, duty.CommitteeIndex, duty.CommitteesAtSlot, duty.Slot, aggregator));
+            subscribing[duty] = aggregator ? selectionProof : null;
+        }
+
+        if (subscriptions.Count == 0) return;
+        try
+        {
+            await node.SubscribeToBeaconCommittees(subscriptions, cancellationToken);
+            foreach ((AttesterDuty duty, BlsSignature? selectionProof) in subscribing) _subscribedDuties[duty] = selectionProof;
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogFailure("Subscribing to the committees of the attester duties", e);
+        }
+    }
+
+    private List<AttesterDuty> DutiesAt(ulong slot)
     {
         List<AttesterDuty> duties = [];
         if (_dutiesByEpoch.TryGetValue(spec.GetEpoch(slot), out DutiesResult<AttesterDuty>? epochDuties))
@@ -166,20 +246,20 @@ public sealed class AttesterDutyRunner(
             }
         }
 
-        if (duties.Count == 0) return;
+        return duties;
+    }
+
+    /// <returns>The attestation data of the slot, or <c>null</c> when none was produced.</returns>
+    private async Task<AttestationData?> AttestAsync(ulong slot, CancellationToken cancellationToken)
+    {
+        List<AttesterDuty> duties = DutiesAt(slot);
+        if (duties.Count == 0) return null;
         try
         {
-            if (slotClock.CurrentSlot > slot)
+            if (await RefusalToPerform(slot, cancellationToken) is { } refusal)
             {
-                Skip("Late", duties.Count, $"slot {slot} passed while preparing its duties");
-                return;
-            }
-
-            SyncingStatus status = await node.GetSyncingStatus(cancellationToken);
-            if (status.IsSyncing || status.IsOptimistic)
-            {
-                Skip(status.IsSyncing ? "Syncing" : "Optimistic", duties.Count, status.IsSyncing ? $"the node is {status.SyncDistance} slots behind" : "the head is optimistic");
-                return;
+                Skip(refusal.Reason, duties.Count, refusal.Detail);
+                return null;
             }
 
             AttestationData data = await node.ProduceAttestationData(slot, 0, cancellationToken);
@@ -199,7 +279,12 @@ public sealed class AttesterDutyRunner(
             }
 
             Task<BlsSignature?>[] signingTasks = new Task<BlsSignature?>[signing.Count];
-            for (int i = 0; i < signingTasks.Length; i++) signingTasks[i] = SignAsync(signing[i], data, cancellationToken);
+            for (int i = 0; i < signingTasks.Length; i++)
+            {
+                AttesterDuty duty = signing[i];
+                signingTasks[i] = SignAsync(() => signer.SignAttestation(duty.PublicKey, data, cancellationToken), Skip);
+            }
+
             BlsSignature?[] signatures = await Task.WhenAll(signingTasks);
 
             List<SingleAttestation> attestations = [];
@@ -209,31 +294,119 @@ public sealed class AttesterDutyRunner(
                     attestations.Add(new SingleAttestation { CommitteeIndex = signing[i].CommitteeIndex, AttesterIndex = signing[i].ValidatorIndex, Data = data, Signature = signature });
             }
 
-            if (attestations.Count == 0) return;
-            IReadOnlyList<SubmissionFailure> failures = await node.SubmitAttestations(attestations, cancellationToken);
-            foreach (SubmissionFailure failure in failures)
-                Skip("RefusedOnSubmit", 1, $"the node refused the attestation of validator {attestations[failure.Index].AttesterIndex}: {failure.Message}");
+            if (attestations.Count > 0)
+            {
+                IReadOnlyList<SubmissionFailure> failures = await node.SubmitAttestations(attestations, cancellationToken);
+                foreach (SubmissionFailure failure in failures)
+                    Skip("RefusedOnSubmit", 1, $"the node refused the attestation of validator {attestations[failure.Index].AttesterIndex}: {failure.Message}");
 
-            Interlocked.Add(ref Metrics.ValidatorAttestationsSubmittedCount, (ulong)(attestations.Count - failures.Count));
-            if (_logger.IsInfo) _logger.Info($"Submitted {attestations.Count - failures.Count} attestations for slot {slot}");
+                Interlocked.Add(ref Metrics.ValidatorAttestationsSubmittedCount, (ulong)(attestations.Count - failures.Count));
+                if (_logger.IsInfo) _logger.Info($"Submitted {attestations.Count - failures.Count} attestations for slot {slot}");
+            }
+
+            return data;
         }
         catch (Exception e) when (e is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             Skip(e is BeaconNodeApiException nodeRefusal ? nodeRefusal.Error.ToString() : "Failed", duties.Count, e.Message);
             if (e is not BeaconNodeApiException && _logger.IsError) _logger.Error($"Attester duties of slot {slot} failed unexpectedly.", e);
+            return null;
         }
     }
 
-    private async Task<BlsSignature?> SignAsync(AttesterDuty duty, AttestationData data, CancellationToken cancellationToken)
+    /// <summary>Has each aggregator sign the node's best aggregate of its committee for <paramref name="data"/> and submits them in one call (phase0/validator.md "Broadcast aggregate").</summary>
+    /// <param name="data">What the slot's attesters signed, or <c>null</c> when it was not produced, which leaves nothing to aggregate.</param>
+    private async Task AggregateAsync(ulong slot, AttestationData? data, List<(AttesterDuty Duty, BlsSignature SelectionProof)> aggregations, CancellationToken cancellationToken)
+    {
+        if (data is null)
+        {
+            SkipAggregation("NoAttestationData", aggregations.Count, $"slot {slot} has no attestation data to aggregate");
+            return;
+        }
+
+        try
+        {
+            if (await RefusalToPerform(slot, cancellationToken) is { } refusal)
+            {
+                SkipAggregation(refusal.Reason, aggregations.Count, refusal.Detail);
+                return;
+            }
+
+            Hash256 dataRoot = SszRoots.HashTreeRoot(data);
+            Dictionary<ulong, Attestation?> aggregates = [];
+            List<(AttesterDuty Duty, AggregateAndProof AggregateAndProof)> signing = [];
+            foreach ((AttesterDuty duty, BlsSignature selectionProof) in aggregations)
+            {
+                if (!aggregates.TryGetValue(duty.CommitteeIndex, out Attestation? aggregate))
+                    aggregates[duty.CommitteeIndex] = aggregate = await GetAggregateAsync(slot, dataRoot, duty.CommitteeIndex, cancellationToken);
+                if (aggregate is null)
+                    SkipAggregation("NotFound", 1, $"the node holds no attestation of committee {duty.CommitteeIndex} at slot {slot} for validator {duty.ValidatorIndex} to aggregate");
+                else
+                    signing.Add((duty, new AggregateAndProof { AggregatorIndex = duty.ValidatorIndex, Aggregate = aggregate, SelectionProof = selectionProof }));
+            }
+
+            Task<BlsSignature?>[] signingTasks = new Task<BlsSignature?>[signing.Count];
+            for (int i = 0; i < signingTasks.Length; i++)
+            {
+                (AttesterDuty duty, AggregateAndProof aggregateAndProof) = signing[i];
+                signingTasks[i] = SignAsync(() => signer.SignAggregateAndProof(duty.PublicKey, aggregateAndProof, cancellationToken), SkipAggregation);
+            }
+
+            BlsSignature?[] signatures = await Task.WhenAll(signingTasks);
+            List<SignedAggregateAndProof> signed = [];
+            for (int i = 0; i < signatures.Length; i++)
+            {
+                if (signatures[i] is { } signature) signed.Add(new SignedAggregateAndProof { Message = signing[i].AggregateAndProof, Signature = signature });
+            }
+
+            if (signed.Count == 0) return;
+            IReadOnlyList<SubmissionFailure> failures = await node.SubmitAggregateAndProofs(signed, cancellationToken);
+            foreach (SubmissionFailure failure in failures)
+                SkipAggregation("RefusedOnSubmit", 1, $"the node refused the aggregate of validator {signed[failure.Index].Message!.AggregatorIndex}: {failure.Message}");
+
+            Interlocked.Add(ref Metrics.ValidatorAggregatesSubmittedCount, (ulong)(signed.Count - failures.Count));
+            if (_logger.IsInfo) _logger.Info($"Submitted {signed.Count - failures.Count} aggregates for slot {slot}");
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            SkipAggregation(e is BeaconNodeApiException nodeRefusal ? nodeRefusal.Error.ToString() : "Failed", aggregations.Count, e.Message);
+            if (e is not BeaconNodeApiException && _logger.IsError) _logger.Error($"Aggregation duties of slot {slot} failed unexpectedly.", e);
+        }
+    }
+
+    private async Task<Attestation?> GetAggregateAsync(ulong slot, Hash256 dataRoot, ulong committeeIndex, CancellationToken cancellationToken)
     {
         try
         {
-            return await signer.SignAttestation(duty.PublicKey, data, cancellationToken);
+            return await node.GetAggregateAttestation(slot, dataRoot, committeeIndex, cancellationToken);
+        }
+        catch (BeaconNodeApiException e) when (e.Error == BeaconNodeApiError.NotFound)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Why the duties of <paramref name="slot"/> must not be performed now, or <c>null</c> when they may be.</summary>
+    private async Task<(string Reason, string Detail)?> RefusalToPerform(ulong slot, CancellationToken cancellationToken)
+    {
+        if (slotClock.CurrentSlot > slot) return ("Late", $"slot {slot} passed while preparing its duties");
+        SyncingStatus status = await node.GetSyncingStatus(cancellationToken);
+        return status.IsSyncing ? ("Syncing", $"the node is {status.SyncDistance} slots behind")
+            : status.IsOptimistic ? ("Optimistic", "the head is optimistic")
+            : null;
+    }
+
+    /// <returns>The signature, or <c>null</c> when the signer did not sign, which is counted and passed to <paramref name="skip"/> with its reason.</returns>
+    private static async Task<BlsSignature?> SignAsync(Func<ValueTask<BlsSignature>> sign, Action<string, int, string> skip)
+    {
+        try
+        {
+            return await sign();
         }
         catch (ValidatorSignerException e)
         {
             Interlocked.Increment(ref Metrics.ValidatorSignerFailuresCount);
-            Skip(e.Refused ? "SignerRefused" : "SignerUnreachable", 1, e.Message);
+            skip(e.Refused ? "SignerRefused" : "SignerUnreachable", 1, e.Message);
             return null;
         }
     }
@@ -242,6 +415,12 @@ public sealed class AttesterDutyRunner(
     {
         Metrics.BeaconChainValidatorAttestationsSkipped.AddOrUpdate(new StringLabel(reason), dutyCount, (_, skipped) => skipped + dutyCount);
         if (_logger.IsWarn) _logger.Warn($"Skipped {dutyCount} attester duties: {detail}");
+    }
+
+    private void SkipAggregation(string reason, int dutyCount, string detail)
+    {
+        Metrics.BeaconChainValidatorAggregationsSkipped.AddOrUpdate(new StringLabel(reason), dutyCount, (_, skipped) => skipped + dutyCount);
+        if (_logger.IsWarn) _logger.Warn($"Skipped {dutyCount} aggregation duties: {detail}");
     }
 
     private void LogFailure(string action, Exception e)

@@ -29,6 +29,7 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
     private volatile NodeRecord _current;
     private EnrForkId _forkId;
     private byte[] _nextForkDigest;
+    private byte[]? _attnets;
 
     /// <param name="externalIp">The advertised address, under <c>ip</c>/<c>tcp</c>/<c>udp</c> when IPv4 and <c>ip6</c>/<c>tcp6</c>/<c>udp6</c> when IPv6; <c>null</c> advertises no endpoint.</param>
     /// <param name="sequence">The sequence of the first record, above any this identity published before.</param>
@@ -75,6 +76,24 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
             {
                 return _nextForkDigest;
             }
+        }
+    }
+
+    /// <summary>Publishes <paramref name="attnets"/> under the <c>attnets</c> entry, or drops the entry for <c>null</c>, and bumps the ENR sequence when it changed.</summary>
+    /// <param name="attnets">The SSZ attestation subnet bitvector, <c>null</c> when no bit is set (phase0/p2p-interface.md: the entry MAY then be left out).</param>
+    /// <returns><see langword="true"/> when a new record was published; <see langword="false"/> when unchanged.</returns>
+    public bool UpdateAttnets(byte[]? attnets)
+    {
+        lock (_updateLock)
+        {
+            if (attnets is null ? _attnets is null : _attnets is not null && Bytes.AreEqual(attnets, _attnets))
+            {
+                return false;
+            }
+
+            _attnets = attnets;
+            _current = Build(_forkId, _nextForkDigest, _current.EnrSequence + 1);
+            return true;
         }
     }
 
@@ -127,6 +146,7 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
         record.SetEntry(new Eth2Entry(forkId.Encode()));
         record.SetEntry(new CustodyGroupCountEntry(_custodyGroupCount));
         record.SetEntry(new NfdEntry(nextForkDigest));
+        if (_attnets is not null) record.SetEntry(new AttnetsEntry(_attnets));
         record.EnrSequence = sequence;
         _signer.Sign(record);
         return record;

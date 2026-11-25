@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.BeaconChain.ValidatorApi;
@@ -27,6 +29,10 @@ public class AttesterDutyRunnerTests
     private static readonly ulong LastSlot = (Epoch + 1) * Spec.SlotsPerEpoch - 1;
     private static readonly ulong FailingSlot = LastSlot - 5;
     private static readonly long AttestationDueMs = (long)(Spec.SecondsPerSlot * 1000 * GloasTiming.AttestationDueBps / Presets.BasisPoints);
+    private static readonly long AggregateDueMs = (long)(Spec.SecondsPerSlot * 1000 * GloasTiming.AggregateDueBps / Presets.BasisPoints);
+
+    /// <summary>The length of every committee the harness serves, of which <c>is_aggregator</c> selects one member in eight.</summary>
+    private const int CommitteeLength = 128;
     private static readonly TimeSpan RunBound = TimeSpan.FromSeconds(30);
 
     [Test]
@@ -78,7 +84,7 @@ public class AttesterDutyRunnerTests
 
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(harness.Submitted, Is.EqualTo(new[] { new[] { Attestation(FailingSlot, 1) }, [Attestation(FailingSlot + 1, 2)] }));
-        Assert.That(harness.Signer.ReceivedCalls().Count(), Is.EqualTo(2));
+        Assert.That(harness.Signer.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IValidatorSigner.SignAttestation)), Is.EqualTo(2));
         Assert.That(Skipped("AlreadySigned") - alreadySignedBefore, Is.EqualTo(1));
     }
 
@@ -111,6 +117,58 @@ public class AttesterDutyRunnerTests
         Assert.That(Skipped(reason) - skippedBefore, Is.EqualTo(1));
         Assert.That(Metrics.BeaconChainValidatorSignerFailures - signerFailuresBefore, Is.EqualTo(reason.StartsWith("Signer", StringComparison.Ordinal) ? 1UL : 0UL));
         Assert.That(Metrics.BeaconChainValidatorAttestationsSubmitted - submittedBefore, Is.EqualTo(1UL));
+    }
+
+    [Test]
+    public async Task Aggregates_two_thirds_into_the_slot_for_the_validators_their_selection_proof_selects_after_telling_the_node_ahead()
+    {
+        // Validators 1 and 2 attest in the epoch's last slot in committees 1 and 2; only validator 1's selection proof selects it.
+        Harness harness = new(Spec, [(1, LastSlot), (2, LastSlot)]);
+        harness.Signer.Configure().SignAggregationSlot(Key(1), LastSlot, Arg.Any<CancellationToken>()).Returns(new ValueTask<BlsSignature>(SelectionProof(aggregates: true)));
+        ulong submittedBefore = Metrics.BeaconChainValidatorAggregatesSubmitted;
+
+        await harness.RunFrom(LastSlot - 1, until: LastSlot + 1);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(harness.Subscriptions, Is.EqualTo(new[]
+        {
+            new[] { new BeaconCommitteeSubscription(1, 1, 64, LastSlot, IsAggregator: true), new BeaconCommitteeSubscription(2, 2, 64, LastSlot, IsAggregator: false) },
+        }), "every duty is subscribed once, a slot ahead, with whether it aggregates");
+        Assert.That(harness.AggregatesAsked, Is.EqualTo(new[] { (LastSlot, SszRoots.HashTreeRoot(Harness.DataOf(Spec, LastSlot)), 1UL, SlotStartMs(LastSlot) + AggregateDueMs) }));
+        Assert.That(harness.SubmittedAggregates, Is.EqualTo(new[] { new[] { Aggregate(LastSlot, 1) } }));
+        Assert.That(Metrics.BeaconChainValidatorAggregatesSubmitted - submittedBefore, Is.EqualTo(1UL));
+    }
+
+    private static IEnumerable<TestCaseData> FailedAggregations()
+    {
+        yield return Failure("NotFound", static harness => harness.Node.Configure().GetAggregateAttestation(FailingSlot, Arg.Any<Hash256>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Throws(new BeaconNodeApiException(BeaconNodeApiError.NotFound, "no attestation held")));
+        yield return Failure("Failed", static harness => harness.Node.Configure().GetAggregateAttestation(FailingSlot, Arg.Any<Hash256>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException("a bug")));
+        yield return Failure("NoAttestationData", static harness => harness.Node.Configure().ProduceAttestationData(FailingSlot, Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Throws(new BeaconNodeApiException(BeaconNodeApiError.NotReady, "syncing")));
+        yield return Failure("SignerUnreachable", static harness => harness.Signer.Configure().SignAggregateAndProof(Key(1), Arg.Any<AggregateAndProof>(), Arg.Any<CancellationToken>())
+            .Throws(new ValidatorSignerException("timed out", refused: false, innerException: null)));
+        yield return Failure("RefusedOnSubmit", static harness => harness.Node.Configure().SubmitAggregateAndProofs(Arg.Is<IReadOnlyList<SignedAggregateAndProof>>(batch => batch[0].Message!.AggregatorIndex == 1), Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IReadOnlyList<SubmissionFailure>>([new SubmissionFailure(0, "The aggregate fails a beacon_aggregate_and_proof gossip rule.")])));
+
+        static TestCaseData Failure(string reason, Action<Harness> arrange) => new TestCaseData(reason, arrange).SetName($"Aggregation skipped as {reason}");
+    }
+
+    [TestCaseSource(nameof(FailedAggregations))]
+    public async Task A_failed_aggregation_is_skipped_with_its_reason_and_the_next_slot_still_aggregates(string reason, Action<Harness> arrange)
+    {
+        Harness harness = new(Spec, [(1, FailingSlot), (2, FailingSlot + 1)]);
+        harness.Signer.Configure().SignAggregationSlot(default, default, default).ReturnsForAnyArgs(new ValueTask<BlsSignature>(SelectionProof(aggregates: true)));
+        arrange(harness);
+        (long skippedBefore, ulong submittedBefore) = (SkippedAggregations(reason), Metrics.BeaconChainValidatorAggregatesSubmitted);
+
+        await harness.RunFrom(FailingSlot, until: FailingSlot + 2);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(harness.SubmittedAggregates[^1], Is.EqualTo(new[] { Aggregate(FailingSlot + 1, 2) }));
+        Assert.That(SkippedAggregations(reason) - skippedBefore, Is.EqualTo(1));
+        Assert.That(Metrics.BeaconChainValidatorAggregatesSubmitted - submittedBefore, Is.EqualTo(1UL));
     }
 
     [Test]
@@ -153,6 +211,18 @@ public class AttesterDutyRunnerTests
 
     private static long Skipped(string reason) => Metrics.BeaconChainValidatorAttestationsSkipped.GetValueOrDefault(new StringLabel(reason));
 
+    private static long SkippedAggregations(string reason) => Metrics.BeaconChainValidatorAggregationsSkipped.GetValueOrDefault(new StringLabel(reason));
+
+    /// <summary>A selection proof that <c>is_aggregator</c> does or does not select in a committee of <see cref="CommitteeLength"/>.</summary>
+    private static BlsSignature SelectionProof(bool aggregates) =>
+        Enumerable.Range(0, 256).Select(static fill => FilledSignature((byte)fill)).First(proof => BeaconStateAccessors.IsAggregator(CommitteeLength, proof) == aggregates);
+
+    private static BlsSignature AggregateSignatureOf(ulong index) => FilledSignature((byte)(0xc0 + index));
+
+    /// <summary>What aggregator <paramref name="index"/> submits for <paramref name="slot"/>: the node's aggregate of its committee, signed.</summary>
+    private static (ulong Aggregator, ulong Slot, ulong Committee, BlsSignature SelectionProof, BlsSignature Signature) Aggregate(ulong slot, ulong index) =>
+        (index, slot, index, SelectionProof(aggregates: true), AggregateSignatureOf(index));
+
     private static ValueTask<SyncingStatus> Status(bool syncing, bool optimistic) => new(new SyncingStatus(0, syncing ? 64UL : 0UL, syncing, optimistic, ExecutionLayerOffline: false));
 
     /// <returns>The entries of <paramref name="keys"/> among validators 1 to <paramref name="registeredCount"/>.</returns>
@@ -189,13 +259,7 @@ public class AttesterDutyRunnerTests
             {
                 ulong slot = call.ArgAt<ulong>(0);
                 Produced.Add((slot, call.ArgAt<ulong>(1), Time.UtcNowOffset.ToUnixTimeMilliseconds()));
-                return new ValueTask<AttestationData>(new AttestationData
-                {
-                    Slot = slot,
-                    BeaconBlockRoot = FilledHash(0x10),
-                    Source = new Checkpoint { Epoch = spec.GetEpoch(slot) - 1, Root = FilledHash(0x11) },
-                    Target = new Checkpoint { Epoch = spec.GetEpoch(slot), Root = FilledHash(0x12) },
-                });
+                return new ValueTask<AttestationData>(DataOf(spec, slot));
             });
             Node.SubmitAttestations(default!, default).ReturnsForAnyArgs(call =>
             {
@@ -204,6 +268,25 @@ public class AttesterDutyRunnerTests
                 return new ValueTask<IReadOnlyList<SubmissionFailure>>([]);
             });
             Signer.SignAttestation(default, default!, default).ReturnsForAnyArgs(call => new ValueTask<BlsSignature>(SignatureOf(call.ArgAt<BlsPublicKey>(0).Bytes[0] - 0xa0UL)));
+            Signer.SignAggregationSlot(default, default, default).ReturnsForAnyArgs(new ValueTask<BlsSignature>(SelectionProof(aggregates: false)));
+            Signer.SignAggregateAndProof(default, default!, default).ReturnsForAnyArgs(call => new ValueTask<BlsSignature>(AggregateSignatureOf(call.ArgAt<AggregateAndProof>(1).AggregatorIndex)));
+            Node.SubscribeToBeaconCommittees(default!, default).ReturnsForAnyArgs(call =>
+            {
+                Subscriptions.Add([.. call.ArgAt<IReadOnlyList<BeaconCommitteeSubscription>>(0)]);
+                return ValueTask.CompletedTask;
+            });
+            Node.GetAggregateAttestation(default, default!, default, default).ReturnsForAnyArgs(call =>
+            {
+                (ulong slot, Hash256 dataRoot, ulong committeeIndex) = (call.ArgAt<ulong>(0), call.ArgAt<Hash256>(1), call.ArgAt<ulong>(2));
+                AggregatesAsked.Add((slot, dataRoot, committeeIndex, Time.UtcNowOffset.ToUnixTimeMilliseconds()));
+                return new ValueTask<Attestation>(new Attestation { Data = DataOf(spec, slot), CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [(int)committeeIndex] = true } });
+            });
+            Node.SubmitAggregateAndProofs(default!, default).ReturnsForAnyArgs(call =>
+            {
+                SubmittedAggregates.Add([.. call.ArgAt<IReadOnlyList<SignedAggregateAndProof>>(0).Select(static signed => (signed.Message!.AggregatorIndex, signed.Message.Aggregate!.Data!.Slot,
+                    (ulong)signed.Message.Aggregate.CommitteeBits!.Cast<bool>().ToList().IndexOf(true), signed.Message.SelectionProof, signed.Signature))]);
+                return new ValueTask<IReadOnlyList<SubmissionFailure>>([]);
+            });
         }
 
         public ManualTimestamper Time { get; } = new();
@@ -216,6 +299,18 @@ public class AttesterDutyRunnerTests
         public bool AskedBeyondNextEpoch { get; private set; }
         public List<(ulong Slot, ulong CommitteeIndex, long AtMs)> Produced { get; } = [];
         public List<(ulong Slot, ulong Validator, ulong Committee, BlsSignature Signature)[]> Submitted { get; } = [];
+        public List<BeaconCommitteeSubscription[]> Subscriptions { get; } = [];
+        public List<(ulong Slot, Hash256 DataRoot, ulong CommitteeIndex, long AtMs)> AggregatesAsked { get; } = [];
+        public List<(ulong Aggregator, ulong Slot, ulong Committee, BlsSignature SelectionProof, BlsSignature Signature)[]> SubmittedAggregates { get; } = [];
+
+        /// <summary>The attestation data the node produces for <paramref name="slot"/>.</summary>
+        public static AttestationData DataOf(BeaconChainSpec spec, ulong slot) => new()
+        {
+            Slot = slot,
+            BeaconBlockRoot = FilledHash(0x10),
+            Source = new Checkpoint { Epoch = spec.GetEpoch(slot) - 1, Root = FilledHash(0x11) },
+            Target = new Checkpoint { Epoch = spec.GetEpoch(slot), Root = FilledHash(0x12) },
+        };
 
         public AttesterDutyRunner Runner(Func<TimeSpan, CancellationToken, Task> delay) =>
             new(new ValidatorClientConfig { Enabled = true, PublicKeys = [Key(1).ToString(), Key(2).ToString(), Key(3).ToString()] }, Node, Signer, _spec, Clock, LimboLogs.Instance)
@@ -244,7 +339,7 @@ public class AttesterDutyRunnerTests
             foreach ((ulong validator, ulong slot) in Duties)
             {
                 if (_spec.GetEpoch(slot) == epoch && validatorIndices.Contains(validator))
-                    duties.Add(new AttesterDuty(Key(validator), validator, validator, 128, 64, 0, slot));
+                    duties.Add(new AttesterDuty(Key(validator), validator, validator, CommitteeLength, 64, 0, slot));
             }
 
             return new DutiesResult<AttesterDuty>(DependentRoot, ExecutionOptimistic: false, duties);

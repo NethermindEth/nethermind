@@ -1,18 +1,26 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
+using System.Net;
 using Autofac;
 using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.P2P;
+using Nethermind.BeaconChain.Test.P2P.Gossip;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Libp2p.Protocols.Pubsub;
 using Snappier;
 
 namespace Nethermind.BeaconChain.Test.ValidatorApi;
@@ -296,9 +304,6 @@ public class BeaconNodeValidatorApiTests
         IBeaconNodeValidatorApi api = node.Api;
         Func<Task>[] calls =
         [
-            () => api.SubscribeToBeaconCommittees([], CancellationToken.None).AsTask(),
-            () => api.GetAggregateAttestation(HeadSlot, HeadRoot, 0, CancellationToken.None).AsTask(),
-            () => api.SubmitAggregateAndProofs([], CancellationToken.None).AsTask(),
             () => api.PrepareBeaconProposers([], CancellationToken.None).AsTask(),
             () => api.ProduceBlock(HeadSlot, default, HeadRoot, CancellationToken.None).AsTask(),
             () => api.PublishBlock(new SignedBlockContents(new SignedBeaconBlock(), [], []), CancellationToken.None).AsTask(),
@@ -312,6 +317,239 @@ public class BeaconNodeValidatorApiTests
         for (int i = 0; i < calls.Length; i++) refusals[i] = await Refusal(calls[i]);
 
         Assert.That(refusals, Is.All.EqualTo(BeaconNodeApiError.NotSupported));
+    }
+
+    public enum GossipFlaw { None, AlreadySeen, NonZeroIndex, UnknownBlock, FailedBlock, CommitteeIndex, WrongSubnet, FutureSlot, StaleEpoch, TargetEpoch, NotInCommittee, Signature, TargetNotAncestor, NotFinalizedDescendant, UnjoinedSubnet }
+
+    // electra/p2p-interface.md beacon_attestation_{subnet_id}: each case breaks one rule, and gets that rule's verdict.
+    [TestCase(GossipFlaw.None, MessageValidity.Accepted)]
+    [TestCase(GossipFlaw.AlreadySeen, MessageValidity.Ignored)]
+    [TestCase(GossipFlaw.NonZeroIndex, MessageValidity.Rejected)]
+    [TestCase(GossipFlaw.UnknownBlock, MessageValidity.Ignored)]
+    [TestCase(GossipFlaw.FailedBlock, MessageValidity.Rejected)]
+    [TestCase(GossipFlaw.CommitteeIndex, MessageValidity.Rejected)]
+    [TestCase(GossipFlaw.WrongSubnet, MessageValidity.Rejected)]
+    [TestCase(GossipFlaw.FutureSlot, MessageValidity.Ignored)]
+    [TestCase(GossipFlaw.StaleEpoch, MessageValidity.Ignored)]
+    [TestCase(GossipFlaw.TargetEpoch, MessageValidity.Rejected)]
+    [TestCase(GossipFlaw.NotInCommittee, MessageValidity.Rejected)]
+    [TestCase(GossipFlaw.Signature, MessageValidity.Rejected)]
+    [TestCase(GossipFlaw.TargetNotAncestor, MessageValidity.Rejected)]
+    [TestCase(GossipFlaw.NotFinalizedDescendant, MessageValidity.Ignored)]
+    [TestCase(GossipFlaw.UnjoinedSubnet, MessageValidity.Ignored)]
+    public async Task Gossip_attestation_on_a_joined_subnet_gets_the_verdict_of_the_rule_it_breaks_and_only_an_accepted_one_is_voted_and_pooled(GossipFlaw flaw, MessageValidity expected)
+    {
+        using ValidatorNode node = new(Presets.FarFutureEpoch, HeadSlot, AttestationTimeMs);
+        BeaconStateFulu state = HeadState(HeadSlot);
+        node.Heads.Current = Head(state, HeadRoot, executionInSync: true);
+        int[] committee = CommitteeCache.Build(state, HeadEpoch).GetBeaconCommittee(HeadSlot, 0).ToArray();
+        ulong subnet = HeadSlot % Presets.SlotsPerEpoch;
+        // The slot's subnet, the next one, and the subnet of the slot after that, for the future-slot case.
+        node.Gossip.SetAttestationSubnets(0b111UL << (int)subnet);
+        node.Orchestrator.RouteGossipEvents();
+        AttestationData data = await node.Api.ProduceAttestationData(HeadSlot, 0, CancellationToken.None);
+        SingleAttestation attestation = new() { CommitteeIndex = 0, AttesterIndex = (ulong)committee[1], Data = data };
+        switch (flaw)
+        {
+            case GossipFlaw.AlreadySeen:
+                AttestationData boundaryVote = await node.Api.ProduceAttestationData(HeadSlot, 0, CancellationToken.None);
+                boundaryVote.BeaconBlockRoot = BoundaryRoot;
+                await Deliver(node, subnet, new SingleAttestation { CommitteeIndex = 0, AttesterIndex = attestation.AttesterIndex, Data = boundaryVote, Signature = Sign(state, committee[1], boundaryVote) });
+                break;
+            case GossipFlaw.NonZeroIndex: data.Index = 1; break;
+            case GossipFlaw.UnknownBlock: data.BeaconBlockRoot = Keccak.Compute("unknown block"); break;
+            case GossipFlaw.FailedBlock: data.BeaconBlockRoot = Keccak.Compute("failed block"); node.FailedBlocks.Add(data.BeaconBlockRoot, HeadSlot); break;
+            case GossipFlaw.CommitteeIndex: attestation.CommitteeIndex = 1; break;
+            case GossipFlaw.FutureSlot: data.Slot += 2; break;
+            case GossipFlaw.StaleEpoch: node.Clock.Add(TimeSpan.FromSeconds(2 * Presets.SlotsPerEpoch * node.Spec.SecondsPerSlot)); break;
+            case GossipFlaw.TargetEpoch: data.Target!.Epoch -= 1; break;
+            case GossipFlaw.NotInCommittee: attestation.AttesterIndex = (ulong)Enumerable.Range(0, ValidatorCount).First(index => !committee.Contains(index)); break;
+            case GossipFlaw.TargetNotAncestor: data.BeaconBlockRoot = SiblingRoot; break;
+            case GossipFlaw.NotFinalizedDescendant: data.BeaconBlockRoot = data.Target!.Root = OrphanRoot; break;
+        }
+        attestation.Signature = Sign(state, flaw == GossipFlaw.Signature ? committee[0] : (int)attestation.AttesterIndex, data);
+        int queuedBefore = node.Orchestrator.QueuedVoteCount;
+
+        MessageValidity validity = await Deliver(node, flaw switch { GossipFlaw.WrongSubnet => subnet + 1, GossipFlaw.UnjoinedSubnet => subnet + 3, _ => data.Slot % Presets.SlotsPerEpoch }, attestation);
+
+        bool accepted = expected == MessageValidity.Accepted;
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(expected));
+        Assert.That(node.Orchestrator.QueuedVoteCount - queuedBefore, Is.EqualTo(accepted ? 1 : 0), "an accepted vote waits for fork choice on the worker");
+        Assert.That(node.Pool.GetAggregate(data.Slot, SszRoots.HashTreeRoot(data), attestation.CommitteeIndex)?.AggregationBits, accepted ? Is.EqualTo(new BitArray(committee.Length) { [1] = true }) : Is.Null);
+    }
+
+    [Test]
+    public async Task A_vote_seen_on_gossip_is_ignored_when_relayed_again_yet_accepted_and_published_when_the_validator_submits_it()
+    {
+        using ValidatorNode node = new(Presets.FarFutureEpoch, HeadSlot, AttestationTimeMs);
+        BeaconStateFulu state = HeadState(HeadSlot);
+        node.Heads.Current = Head(state, HeadRoot, executionInSync: true);
+        int validator = CommitteeCache.Build(state, HeadEpoch).GetBeaconCommittee(HeadSlot, 0)[0];
+        ulong subnet = HeadSlot % Presets.SlotsPerEpoch;
+        node.Gossip.SetAttestationSubnets(1UL << (int)subnet);
+        AttestationData data = await node.Api.ProduceAttestationData(HeadSlot, 0, CancellationToken.None);
+        AttestationData otherHead = await node.Api.ProduceAttestationData(HeadSlot, 0, CancellationToken.None);
+        otherHead.BeaconBlockRoot = BoundaryRoot;
+        SingleAttestation vote = new() { CommitteeIndex = 0, AttesterIndex = (ulong)validator, Data = data, Signature = Sign(state, validator, data) };
+
+        MessageValidity first = await Deliver(node, subnet, vote);
+        MessageValidity other = await Deliver(node, subnet, new SingleAttestation { CommitteeIndex = 0, AttesterIndex = (ulong)validator, Data = otherHead, Signature = Sign(state, validator, otherHead) });
+        IReadOnlyList<SubmissionFailure> failures = await node.Api.SubmitAttestations([vote], CancellationToken.None);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That((first, other), Is.EqualTo((MessageValidity.Accepted, MessageValidity.Ignored)), "a second vote of the validator for the target epoch is ignored on gossip");
+        Assert.That(failures, Is.Empty);
+        Assert.That(node.Published.Select(static published => published.Message), Is.EqualTo(new[] { Snappy.CompressToArray(SingleAttestation.Encode(vote)) }));
+    }
+
+    [Test]
+    public async Task Attestations_of_one_vote_are_served_as_one_aggregate_of_every_distinct_attester_until_their_slot_is_two_slots_old()
+    {
+        using ValidatorNode node = new(Presets.FarFutureEpoch, HeadSlot, AttestationTimeMs);
+        BeaconStateFulu state = HeadState(HeadSlot);
+        node.Heads.Current = Head(state, HeadRoot, executionInSync: true);
+        int[] committee = CommitteeCache.Build(state, HeadEpoch).GetBeaconCommittee(HeadSlot, 0).ToArray();
+        AttestationData data = await node.Api.ProduceAttestationData(HeadSlot, 0, CancellationToken.None);
+        AttestationData otherHead = await node.Api.ProduceAttestationData(HeadSlot, 0, CancellationToken.None);
+        otherHead.BeaconBlockRoot = BoundaryRoot;
+        SingleAttestation[] votes = [Vote(committee[1], data), Vote(committee[0], data), Vote(committee[1], data), Vote(committee[0], otherHead)];
+        Hash256 dataRoot = SszRoots.HashTreeRoot(data);
+
+        IReadOnlyList<SubmissionFailure> failures = await node.Api.SubmitAttestations(votes, CancellationToken.None);
+        Attestation aggregate = await node.Api.GetAggregateAttestation(HeadSlot, dataRoot, 0, CancellationToken.None);
+        Attestation otherAggregate = await node.Api.GetAggregateAttestation(HeadSlot, SszRoots.HashTreeRoot(otherHead), 0, CancellationToken.None);
+        BeaconNodeApiError? otherCommittee = await Refusal(() => node.Api.GetAggregateAttestation(HeadSlot, dataRoot, 1, CancellationToken.None).AsTask());
+        node.Clock.Add(TimeSpan.FromSeconds(2 * node.Spec.SecondsPerSlot));
+        BeaconNodeApiError? pruned = await Refusal(() => node.Api.GetAggregateAttestation(HeadSlot, dataRoot, 0, CancellationToken.None).AsTask());
+
+        Hash256 signingRoot = Domains.ComputeSigningRoot(dataRoot, state.GetDomain(DomainType.BeaconAttester, HeadEpoch));
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(failures, Is.Empty, "a repeated vote is the validator's own, so it is accepted and counted once");
+        Assert.That(aggregate.AggregationBits, Is.EqualTo(new BitArray(committee.Length) { [0] = true, [1] = true }));
+        Assert.That(aggregate.CommitteeBits, Is.EqualTo(new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true }));
+        Assert.That(aggregate.Data, Is.SameAs(data));
+        Assert.That(aggregate.Signature, Is.EqualTo(GloasTestFixtures.AggregateSignature(signingRoot, [committee[1], committee[0]])));
+        Assert.That(otherAggregate.AggregationBits, Is.EqualTo(new BitArray(committee.Length) { [0] = true }), "another head vote is another aggregate");
+        Assert.That((otherCommittee, pruned), Is.EqualTo(((BeaconNodeApiError?)BeaconNodeApiError.NotFound, (BeaconNodeApiError?)BeaconNodeApiError.NotFound)));
+
+        SingleAttestation Vote(int validator, AttestationData voted) => new() { CommitteeIndex = 0, AttesterIndex = (ulong)validator, Data = voted, Signature = Sign(state, validator, voted) };
+    }
+
+    [Test]
+    public async Task Committee_subscriptions_join_an_aggregators_subnet_shortly_before_its_slot_until_it_passed_and_advertise_it()
+    {
+        using ValidatorNode node = new(Presets.FarFutureEpoch, HeadSlot, AttestationTimeMs);
+        node.Store.EnsureSchemaVersion();
+        Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics = [];
+        byte[] digest = ForkDigest.Compute(node.Spec, HeadEpoch);
+        node.Gossip.Start(topicId => topics.TryGetValue(topicId, out GossipDigestWindowTests.RecordingTopic? topic) ? topic : topics[topicId] = new GossipDigestWindowTests.RecordingTopic(), digest);
+        node.Discovery.CreateDiscv5Services(IPAddress.Loopback);
+        ulong sequence = node.Metadata.Current.SeqNumber;
+        // One committee a slot, so each slot's subnet is its position in the epoch.
+        BeaconCommitteeSubscription soon = new(1, 0, 1, HeadSlot + 1, IsAggregator: true);
+        BeaconCommitteeSubscription later = new(2, 0, 1, HeadSlot + 4, IsAggregator: true);
+        BeaconCommitteeSubscription attestOnly = new(3, 0, 1, HeadSlot + 2, IsAggregator: false);
+
+        BeaconNodeApiError? beyondNextEpoch = await Refusal(() => node.Api.SubscribeToBeaconCommittees(
+            [later, new BeaconCommitteeSubscription(4, 0, 1, BeaconStateAccessors.ComputeStartSlotAtEpoch(HeadEpoch + 2), IsAggregator: true)], CancellationToken.None).AsTask());
+        BeaconNodeApiError? committeeOutOfRange = await Refusal(() => node.Api.SubscribeToBeaconCommittees([new BeaconCommitteeSubscription(4, 1, 1, HeadSlot + 1, IsAggregator: true)], CancellationToken.None).AsTask());
+        (ulong[] Topics, ulong[] Metadata, ulong[] Enr, ulong Sequence) refused = Advertised(node, topics, digest);
+        await node.Api.SubscribeToBeaconCommittees([soon, later, attestOnly], CancellationToken.None);
+        (ulong[], ulong[], ulong[], ulong) subscribed = Advertised(node, topics, digest);
+        // A digest subscribed later, here the next BPO one, joins the same subnets.
+        byte[] laterDigest = GossipTopics.NextRotation(node.Spec, HeadEpoch)!.Value.Digest;
+        node.Gossip.SubscribeDigest(laterDigest);
+        ulong[] onLaterDigest = Advertised(node, topics, laterDigest).Topics;
+        node.Subnets.Update(HeadSlot + 2);
+        (ulong[], ulong[], ulong[], ulong) afterFirstSlot = Advertised(node, topics, digest);
+        node.Subnets.Update(HeadSlot + 5);
+        (ulong[], ulong[], ulong[], ulong) afterLastSlot = Advertised(node, topics, digest);
+        ulong[] onLaterDigestAfterLastSlot = Advertised(node, topics, laterDigest).Topics;
+
+        ulong[] soonSubnet = [(HeadSlot + 1) % Presets.SlotsPerEpoch];
+        ulong[] laterSubnet = [(HeadSlot + 4) % Presets.SlotsPerEpoch];
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That((beyondNextEpoch, committeeOutOfRange), Is.EqualTo(((BeaconNodeApiError?)BeaconNodeApiError.InvalidRequest, (BeaconNodeApiError?)BeaconNodeApiError.InvalidRequest)));
+        Assert.That(refused, Is.EqualTo((Array.Empty<ulong>(), Array.Empty<ulong>(), Array.Empty<ulong>(), sequence)), "a refused batch subscribes nothing");
+        Assert.That(subscribed, Is.EqualTo((soonSubnet, soonSubnet, soonSubnet, sequence + 1)), "only the aggregation within the lead is joined; an attester publishes by fanout");
+        Assert.That((onLaterDigest, onLaterDigestAfterLastSlot), Is.EqualTo((soonSubnet, Array.Empty<ulong>())));
+        Assert.That(afterFirstSlot, Is.EqualTo((laterSubnet, laterSubnet, laterSubnet, sequence + 2)));
+        Assert.That(afterLastSlot, Is.EqualTo((Array.Empty<ulong>(), Array.Empty<ulong>(), Array.Empty<ulong>(), sequence + 3)), "an empty bitfield leaves the ENR entry out");
+        Assert.That(node.Heads.CaptureState, Is.True, "checking a joined subnet's attestations needs the head state");
+    }
+
+    private static IEnumerable<TestCaseData> AggregateVerdicts()
+    {
+        yield return new TestCaseData(MessageValidity.Accepted, null).SetName("Aggregate the worker accepts is published");
+        yield return new TestCaseData(MessageValidity.Rejected, "fails a beacon_aggregate_and_proof gossip rule").SetName("Aggregate the worker rejects is refused");
+        yield return new TestCaseData(MessageValidity.Ignored, "cannot be checked now").SetName("Aggregate the worker ignores is refused");
+        yield return new TestCaseData(MessageValidity.Throttled, "too busy").SetName("Aggregate the full vote queue throttles is refused");
+    }
+
+    [TestCaseSource(nameof(AggregateVerdicts))]
+    public async Task Submitted_aggregates_get_the_gossip_verdict_and_only_an_accepted_one_is_published(MessageValidity workerVerdict, string? refusal)
+    {
+        using ValidatorNode node = new(Presets.FarFutureEpoch, HeadSlot, AttestationTimeMs);
+        node.Heads.Current = Head(HeadState(HeadSlot), HeadRoot, executionInSync: true);
+        node.Store.PutBlock(HeadRoot, TestChain.CreateBlock(HeadSlot, BoundaryRoot));
+        AttestationData data = await node.Api.ProduceAttestationData(HeadSlot, 0, CancellationToken.None);
+        // The seen aggregate covers another member, so it does not cover the one checked on the worker.
+        SignedAggregateAndProof checkedOnWorker = Aggregate(aggregator: 1, member: 0, data), twoCommittees = Aggregate(aggregator: 2, member: 0, data), alreadySeen = Aggregate(aggregator: 3, member: 1, data);
+        twoCommittees.Message!.Aggregate!.CommitteeBits![1] = true;
+        node.Gossip.MarkAggregateSeen(data, alreadySeen.Message!.Aggregate!.CommitteeBits!, alreadySeen.Message.Aggregate.AggregationBits!, 3);
+        List<ulong> checkedAggregators = [];
+        node.Gossip.AggregateAndProofReceived += (aggregate, verdict) =>
+        {
+            checkedAggregators.Add(aggregate.Message!.AggregatorIndex);
+            verdict.Complete(workerVerdict);
+        };
+
+        BeaconNodeApiError? beforeGossip = await Refusal(() => node.Api.SubmitAggregateAndProofs([checkedOnWorker], CancellationToken.None).AsTask());
+        node.Orchestrator.GossipStarted = true;
+        IReadOnlyList<SubmissionFailure> failures = await node.Api.SubmitAggregateAndProofs([checkedOnWorker, twoCommittees, alreadySeen], CancellationToken.None);
+
+        string topic = GossipTopics.Topic(ForkDigest.Compute(node.Spec, HeadEpoch), GossipTopics.BeaconAggregateAndProof);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(beforeGossip, Is.EqualTo(BeaconNodeApiError.NotReady));
+        Assert.That(checkedAggregators, Is.EqualTo(new[] { 1UL }), "the stateless rules refuse two committees before the worker, and a seen aggregate is not checked");
+        Assert.That(failures.Select(static failure => failure.Index), Is.EqualTo(refusal is null ? new[] { 1 } : [0, 1]), "a seen aggregate is no failure");
+        Assert.That(failures.Count > 1 ? failures[0].Message : null, refusal is null ? Is.Null : Does.Contain(refusal));
+        Assert.That(node.Published, Is.EqualTo(refusal is null ? new[] { (topic, Snappy.CompressToArray(SignedAggregateAndProof.Encode(checkedOnWorker))) } : []));
+
+        static SignedAggregateAndProof Aggregate(ulong aggregator, int member, AttestationData data) => new()
+        {
+            Message = new AggregateAndProof
+            {
+                AggregatorIndex = aggregator,
+                Aggregate = new Attestation
+                {
+                    AggregationBits = new BitArray(2) { [member] = true },
+                    Data = data,
+                    CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
+                },
+            },
+        };
+    }
+
+    private static async Task<MessageValidity> Deliver(ValidatorNode node, ulong subnet, SingleAttestation attestation)
+    {
+        TaskCompletionSource<MessageValidity> given = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        GossipVerdict verdict = new(given.TrySetResult, null);
+        MessageValidity checkedNow = node.Gossip.Handle(GossipTopics.BeaconAttestationTopicNames[subnet], gloasTopic: false, Snappy.CompressToArray(SingleAttestation.Encode(attestation)), verdict);
+        if (!verdict.IsHandedOff) verdict.Complete(checkedNow);
+        return await given.Task;
+    }
+
+    /// <summary>The subnets joined on <paramref name="digest"/>, set in <c>MetaData.attnets</c> and in the ENR <c>attnets</c> entry, and the metadata sequence number.</summary>
+    private static (ulong[] Topics, ulong[] Metadata, ulong[] Enr, ulong Sequence) Advertised(ValidatorNode node, Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics, byte[] digest)
+    {
+        IEnumerable<ulong> subnets = Enumerable.Range(0, (int)GossipTopics.AttestationSubnetCount).Select(static subnet => (ulong)subnet);
+        BitArray? enr = node.Discovery.LocalNodeRecord.GetObj<byte[]>("attnets") is { } bytes ? new BitArray(bytes) : null;
+        return ([.. subnets.Where(subnet => topics.TryGetValue(GossipTopics.Topic(digest, GossipTopics.BeaconAttestationTopicNames[subnet]), out GossipDigestWindowTests.RecordingTopic? topic) && topic.IsSubscribed)],
+            [.. subnets.Where(subnet => node.Metadata.Current.Attnets![(int)subnet])],
+            [.. subnets.Where(subnet => enr?[(int)subnet] == true)],
+            node.Metadata.Current.SeqNumber);
     }
 
     /// <summary>The post-state of a head block at <paramref name="slot"/>, on a chain with <see cref="ParentRoot"/> just before the head epoch and <see cref="BoundaryRoot"/> at its first slot.</summary>
@@ -375,10 +613,10 @@ public class BeaconNodeValidatorApiTests
         public ValidatorNode(ulong gloasForkEpoch, ulong wallSlot, long millisecondsIntoSlot)
         {
             BeaconChainSpec spec = BeaconChainSpec.Mainnet with { GloasForkEpoch = gloasForkEpoch };
-            ManualTimestamper clock = new(DateTimeOffset.FromUnixTimeMilliseconds((long)(spec.GenesisTime + wallSlot * spec.SecondsPerSlot) * 1000 + millisecondsIntoSlot).UtcDateTime);
+            Clock = new(DateTimeOffset.FromUnixTimeMilliseconds((long)(spec.GenesisTime + wallSlot * spec.SecondsPerSlot) * 1000 + millisecondsIntoSlot).UtcDateTime);
             _container = BeaconChainTestContainer.Builder()
                 .AddSingleton(spec)
-                .AddSingleton<ITimestamper>(clock)
+                .AddSingleton<ITimestamper>(Clock)
                 .Build();
             Api = (BeaconNodeValidatorApi)_container.Resolve<IBeaconNodeValidatorApi>();
             Api.PublishGossip = (topic, message) => Published.Add((topic, message));
@@ -389,6 +627,14 @@ public class BeaconNodeValidatorApiTests
         public BeaconChainSpec Spec => _container.Resolve<BeaconChainSpec>();
         public HeadSnapshotHolder Heads => _container.Resolve<HeadSnapshotHolder>();
         public BeaconSyncOrchestrator Orchestrator => _container.Resolve<BeaconSyncOrchestrator>();
+        public ManualTimestamper Clock { get; }
+        public GossipRouter Gossip => _container.Resolve<GossipRouter>();
+        public AttestationPool Pool => _container.Resolve<AttestationPool>();
+        public AttestationSubnets Subnets => _container.Resolve<AttestationSubnets>();
+        public LocalMetadataSource Metadata => _container.Resolve<LocalMetadataSource>();
+        public BeaconDiscovery Discovery => _container.Resolve<BeaconDiscovery>();
+        public BeaconChainStore Store => _container.Resolve<BeaconChainStore>();
+        public FailedBlockRoots FailedBlocks => _container.Resolve<FailedBlockRoots>();
 
         public void Dispose() => _container.Dispose();
     }
