@@ -57,7 +57,17 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        CountCall(input, callType, isPrecompileCall);
+    }
 
+    /// <inheritdoc/>
+    /// <remarks>Like Geth, a call rejected for call depth or insufficient balance is still counted.</remarks>
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to,
+        ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false) =>
+        CountCall(input, callType, isPrecompileCall);
+
+    private void CountCall(ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall)
+    {
         if (input.Length >= 4
             && (callType.IsAnyCall() || callType == ExecutionType.TRANSACTION)
             && !isPrecompileCall)

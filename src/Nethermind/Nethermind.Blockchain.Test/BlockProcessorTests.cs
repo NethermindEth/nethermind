@@ -3105,7 +3105,6 @@ public partial class BlockProcessorTests
             Clears++;
             ClearedBeforeDrain |= StartSession && SessionDisposals == 0;
         }
-        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;
         public void Dispose() { }
     }

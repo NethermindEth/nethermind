@@ -28,7 +28,6 @@ namespace Nethermind.BeaconChain.Api;
 /// side; the container always supplies them.
 /// </summary>
 internal sealed record BeaconApiContext(
-    IBeaconChainConfig ChainConfig,
     BeaconChainSpec Spec,
     IBeaconChainStatusSource StatusSource,
     SlotClock SlotClock,
@@ -56,7 +55,6 @@ internal sealed record BeaconApiContext(
     internal ValidatorIndexCache ValidatorIndices { get; } = new();
     internal StateCommitteeCache Committees { get; } = new();
     /// <summary>Bounds the blob rebuilds of this host's getBlobs requests that run at once; a request past it is refused, never queued.</summary>
-    public EventsEndpoint.EventCache Events { get; } = new();
     public ConcurrencyLimiter BlobRebuilds { get; } = new(new ConcurrencyLimiterOptions { PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds, QueueLimit = 0 });
 
     /// <summary>Freezes the published get_head view, or the startup status before publication (fork-choice.md).</summary>

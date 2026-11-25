@@ -48,6 +48,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
             .AddSingleton<FlatWorldStateManager>()
+            .AddSingleton<SnapFlatStateServer>()
             .AddSingleton<FlatTrieVerifier, IFlatDbManager, IPersistence, ILogManager, IInitConfig>((flatDbManager, persistence, logManager, initConfig) =>
                 new FlatTrieVerifier(flatDbManager, persistence, logManager, VerifyTrieDirectory.GetApplicationResourcePath(initConfig.BaseDbPath)))
             .AddSingleton<FlatStateBoundary>()

@@ -113,17 +113,29 @@ public class GethStyleTracer(
         IWorldState state = scope.Component.WorldState;
         bool tracePreceding = WantsLogIndex(options);
         IBlockTracer<GethLikeTxTrace> tracer = CreateIndexedCallTracer(callHeader, call, options, state, callSpec,
-            cancellationToken, writer, pipeWriter, tracePreceding);
+            cancellationToken, writer, pipeWriter, tracePreceding, (int)index);
         TransactionProcessorAdapterFactory previous = transactionProcessorAdapter.CurrentAdapterFactory;
         try
         {
             // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
-            CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, (int)index,
+            CallAtIndexBlockTracer callTracer = new(GethLikeBlockDeadlineTracer.WithCancellation(tracer, cancellationToken), callHeader, (int)index,
                 tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec));
             IBlockTracer boundary = TransactionTraceBoundary.WrapAt(callTracer, call.Hash, (int)index);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
             if (!callTracer.IsPrepared) throw new InvalidOperationException($"The synthetic call at index {index} in block {block.Hash} was not prepared for tracing.");
-            return (tracePreceding ? KeepTrace(tracer.BuildResult(), call.Hash) : tracer.BuildResult()).SingleOrDefault();
+            // The replay ends at the selected call; an earlier transaction may have the same hash.
+            GethLikeTxTrace? result = null;
+            foreach (GethLikeTxTrace trace in tracer.BuildResult())
+            {
+                result?.Dispose();
+                result = trace;
+            }
+            return result;
+        }
+        catch (Exception exception) when (tracer is GethLikeBlockDeadlineTracer deadline)
+        {
+            deadline.HandleFailure(exception);
+            throw;
         }
         finally
         {
@@ -145,12 +157,15 @@ public class GethStyleTracer(
 
     private IBlockTracer<GethLikeTxTrace> CreateIndexedCallTracer(BlockHeader header, Transaction call,
         GethTraceOptions options, IWorldState state, IReleaseSpec spec, CancellationToken cancellationToken,
-        Utf8JsonWriter? writer, PipeWriter? pipeWriter, bool tracePreceding)
+        Utf8JsonWriter? writer, PipeWriter? pipeWriter, bool tracePreceding, int callIndex)
     {
         GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : call.Hash, ExecutionCancellationToken = cancellationToken };
         BlockLogIndex logIndex = new();
         return writer is null
-            ? CreateOptionsTracer(header, filtered, state, specProvider, tracePreceding ? (_, _) => logIndex : null)
+            ? GethLikeBlockDeadlineTracer.Wrap(
+                effective => CreateOptionsTracer(header, filtered with { DeadlineScope = effective.DeadlineScope }, state, specProvider,
+                    tracePreceding ? (_, _) => logIndex : null),
+                options with { TxHash = call.Hash }, cancellationToken, callIndex)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, (long)spec.GasCosts.DestroyRefund);
     }
 

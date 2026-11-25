@@ -69,8 +69,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private CancellationTokenSource? _cancellation = new();
 
-        public event EventHandler<SyncModeChangedEventArgs>? Preparing;
-        public event EventHandler<SyncModeChangedEventArgs>? Changing;
         public event EventHandler<SyncModeChangedEventArgs>? Changed
         {
             add { lock (_modeLock) _changed += value; }
@@ -221,12 +219,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
             SyncModeChangedEventArgs args = new(previous, newModes);
 
-            // Changing is invoked here so we can block until all the subsystems are ready to switch
-            // for example when switching to Full sync we need to ensure that we safely transition
-            // DBS and processors if needed
-
-            Preparing?.Invoke(this, args);
-            Changing?.Invoke(this, args);
             EventHandler<SyncModeChangedEventArgs>? changed;
             lock (_modeLock)
             {

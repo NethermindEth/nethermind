@@ -96,8 +96,14 @@ public class CodeInfoRepository : ICodeInfoRepository
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         vmSpec.IsPrecompile(codeSource) ? PrecompileCodeInfo(codeSource).Precompile : null;
 
-    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
-        vmSpec.IsPrecompile(target) ? _emptyCodeInfo : InternalGetCodeInfo(target);
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec)
+    {
+        if (!vmSpec.IsPrecompile(target))
+            return InternalGetCodeInfo(target);
+
+        _worldState.RecordAccountAccess(target);
+        return _emptyCodeInfo;
+    }
 
     /// <summary>Resolves a precompile's <see cref="CodeInfo"/> from its number, then from the map.</summary>
     /// <remarks>The map still has to answer for a number above <see cref="MaxIndexedNumber"/>, which the
