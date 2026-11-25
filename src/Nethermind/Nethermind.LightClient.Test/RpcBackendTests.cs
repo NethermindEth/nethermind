@@ -787,16 +787,18 @@ public class RpcBackendTests
     }
 
     [Test]
-    public async Task Pending_evm_methods_use_the_authenticated_optimistic_head([ValueSource(nameof(EvmMethods))] string method)
+    public async Task Pending_trace_is_rejected_before_execution_with_a_fresh_optimistic_head()
     {
         using Provider provider = OptimisticProvider();
-        using EvmExecutor calls = new(provider, new SingleReleaseSpecProvider(Shanghai.Instance, 1, 1), NullLogManager.Instance);
+        using EvmExecutor calls = new(provider, MainnetSpecProvider.Instance, NullLogManager.Instance);
         using RpcBackend rpc = provider.CreateRpc(calls);
         object call = new { to = AccountAddress.ToString(), gas = "0x186a0" };
 
-        await rpc.InvokeAsync(method, PendingEvmParameters(method, call), CancellationToken.None);
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
+            await rpc.InvokeAsync("debug_traceCall", EvmParameters("debug_traceCall", call, "pending"), CancellationToken.None));
 
-        Assert.That(provider.LastQueriedHead, Is.EqualTo(provider.LatestHead));
+        Assert.That(error!.Code, Is.EqualTo(-32001));
+        AssertNoExecutionRequests(provider);
     }
 
     [Test]
@@ -898,7 +900,7 @@ public class RpcBackendTests
             headNumber: key is null ? 10UL : 20_000_000UL, accountAddress: key?.Address)
         { CurrentSlot = 111 };
         using EvmExecutor? calls = EvmMethods.Contains(method)
-            ? new(provider, new SingleReleaseSpecProvider(Shanghai.Instance, 1, 1), NullLogManager.Instance) : null;
+            ? new(provider, MainnetSpecProvider.Instance, NullLogManager.Instance) : null;
         using RpcBackend rpc = provider.CreateRpc(calls);
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
@@ -966,8 +968,10 @@ public class RpcBackendTests
         using Provider provider = new(new Account(7, 1_000_000_000),
             headNumber: key is null ? 10UL : 20_000_000UL, accountAddress: key?.Address)
         { CurrentSlot = 111 };
+        ISpecProvider specs = method == "eth_createAccessList"
+            ? new SingleReleaseSpecProvider(Berlin.Instance, 1, 1) : MainnetSpecProvider.Instance;
         using EvmExecutor? calls = EvmMethods.Contains(method)
-            ? new(provider, new SingleReleaseSpecProvider(Shanghai.Instance, 1, 1), NullLogManager.Instance) : null;
+            ? new(provider, specs, NullLogManager.Instance) : null;
         TaskCompletionSource<VerifiedHead> recovery = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int waiting = 0;
         using RpcBackend rpc = provider.CreateRpc(calls, waitForLatestHead: cancellation =>
@@ -1061,7 +1065,7 @@ public class RpcBackendTests
             yield return new(method, Parameters(call, "latest"));
         }
         foreach (string method in EvmMethods)
-            yield return new(method, PendingEvmParameters(method, call));
+            yield return new(method, EvmParameters(method, call, method == "debug_traceCall" ? "latest" : "pending"));
         yield return new("eth_getBlockByNumber", Parameters("latest", false));
         yield return new("eth_getBlockTransactionCountByNumber", Parameters("latest"));
         yield return new("eth_getTransactionByBlockNumberAndIndex", Parameters("latest", "0x0"));
@@ -1080,11 +1084,11 @@ public class RpcBackendTests
         yield return new("eth_sendRawTransaction", Parameters("0x" + Convert.ToHexString(encoded).ToLowerInvariant()));
     }
 
-    private static JsonElement PendingEvmParameters(string method, object call) => method switch
+    private static JsonElement EvmParameters(string method, object call, string block) => method switch
     {
-        "debug_traceCall" => Parameters(call, "pending", new { tracer = "callTracer" }),
-        "eth_simulateV1" => Parameters(new { blockStateCalls = new[] { new { calls = new[] { call } } } }, "pending"),
-        _ => Parameters(call, "pending"),
+        "debug_traceCall" => Parameters(call, block, new { tracer = "callTracer" }),
+        "eth_simulateV1" => Parameters(new { blockStateCalls = new[] { new { calls = new[] { call } } } }, block),
+        _ => Parameters(call, block),
     };
 
     private static IEnumerable<TestCaseData> PinnedDataRequests()

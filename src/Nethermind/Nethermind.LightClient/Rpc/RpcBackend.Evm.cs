@@ -15,12 +15,13 @@ internal sealed partial class RpcBackend
 {
     internal Task<string> CallAsync(TransactionForRpc transaction, JsonElement block, bool estimateGas, CancellationToken cancellationToken,
         Dictionary<Address, AccountOverride>? stateOverrides = null, BlockOverride? blockOverrides = null) =>
-        WithCallHeadAsync(block, (executor, head) => executor.ExecuteAsync(head, transaction, estimateGas, cancellationToken, stateOverrides, blockOverrides),
-            cancellationToken);
+        WithCallHeadAsync(UseLatestForPending(block),
+            (executor, head) => executor.ExecuteAsync(head, transaction, estimateGas, cancellationToken, stateOverrides, blockOverrides), cancellationToken);
 
     internal Task<AccessListResultForRpc> CreateAccessListAsync(TransactionForRpc transaction, JsonElement block,
         Dictionary<Address, AccountOverride>? stateOverrides, bool optimize, CancellationToken token) =>
-        WithCallHeadAsync(block, (executor, head) => executor.CreateAccessListAsync(head, transaction, stateOverrides, optimize, token), token);
+        WithCallHeadAsync(UseLatestForPending(block),
+            (executor, head) => executor.CreateAccessListAsync(head, transaction, stateOverrides, optimize, token), token);
 
     internal Task<GethLikeTxTrace> TraceCallAsync(TransactionForRpc transaction, JsonElement block, GethTraceOptions? options, CancellationToken token) =>
         WithCallHeadAsync(block, (executor, head) => executor.TraceCallAsync(head, transaction, options, token), token);
@@ -35,10 +36,12 @@ internal sealed partial class RpcBackend
             cancel => FindRecentTransactionAsync(hash, (data, header, lookup) => data.FindTransactionInBlockAsync(header, hash, lookup), cancel), token);
     }
 
+    private static JsonElement UseLatestForPending(JsonElement block) => IsPendingTag(block) ? default : block;
+
     private async Task<T> WithCallHeadAsync<T>(JsonElement block, Func<EvmExecutor, VerifiedHead, Task<T>> execute, CancellationToken token)
     {
         if (calls is null) throw new RpcException(-32601, "Method is not supported by the verified RPC.");
-        (VerifiedHead head, bool historical) = block.ValueKind == JsonValueKind.Undefined || IsPendingTag(block)
+        (VerifiedHead head, bool historical) = block.ValueKind == JsonValueKind.Undefined
             ? (await LatestHeadAsync(token), false) : await ResolveStateHeadAsync(block, token);
         try { return await execute(calls, head); }
         finally { if (historical) _historicalStateRequests.Release(); }

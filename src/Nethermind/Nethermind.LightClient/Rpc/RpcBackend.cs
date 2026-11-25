@@ -89,7 +89,8 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
 
     internal Task<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> SimulateAsync(JsonElement payload, JsonElement block,
         CancellationToken cancellationToken) =>
-        WithCallHeadAsync(block, (executor, head) => executor.SimulateAsync(head, payload, cancellationToken), cancellationToken);
+        WithCallHeadAsync(UseLatestForPending(block),
+            (executor, head) => executor.SimulateAsync(head, payload, cancellationToken), cancellationToken);
 
     internal async Task<UInt256> GetBalanceAsync(Address address, JsonElement block, CancellationToken cancellationToken) =>
         (await GetAccountAsync(address, block, cancellationToken)).Balance;
