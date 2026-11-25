@@ -178,7 +178,7 @@ public class ConfigProvider : IConfigProvider
 
                 _implementations[@interface] = directImplementation;
 
-                object config = Activator.CreateInstance(_implementations[@interface])!;
+                object config = Activator.CreateInstance(directImplementation)!;
                 _instances[@interface] = (IConfig)config;
 
                 foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))

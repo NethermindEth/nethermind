@@ -134,14 +134,11 @@ public class JsonConfigSource : IConfigSource
 
     private readonly Dictionary<string, Dictionary<string, string>> _values = [with(StringComparer.InvariantCultureIgnoreCase)];
 
-    private readonly Dictionary<string, Dictionary<string, object>> _parsedValues = [with(StringComparer.InvariantCultureIgnoreCase)];
-
     private void ApplyConfigValues(string configModule, Dictionary<string, string> items)
     {
         configModule = NormalizeModuleName(configModule);
 
         _values[configModule] = items;
-        _parsedValues[configModule] = [with(StringComparer.InvariantCultureIgnoreCase)];
     }
 
     private static string NormalizeModuleName(string configModule) =>
@@ -150,15 +147,9 @@ public class JsonConfigSource : IConfigSource
     public (bool IsSet, object? Value) GetValue(Type type, string category, string name)
     {
         (bool isSet, string? raw) = GetRawValue(category, name);
-        if (!isSet) return (false, ConfigSourceHelper.GetDefault(type));
-
-        Dictionary<string, object> parsed = _parsedValues[category];
-        if (!parsed.TryGetValue(name, out object? value))
-        {
-            value = parsed[name] = ConfigSourceHelper.ParseValue(type, raw!, category, name)!;
-        }
-
-        return (true, value);
+        return isSet
+            ? (true, ConfigSourceHelper.ParseValue(type, raw!, category, name))
+            : (false, ConfigSourceHelper.GetDefault(type));
     }
 
     public (bool IsSet, string? Value) GetRawValue(string category, string name)
