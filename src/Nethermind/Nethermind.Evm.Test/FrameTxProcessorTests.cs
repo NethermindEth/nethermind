@@ -488,7 +488,7 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    public enum WarmupTracer { Null, Cancellable, CancellableReceipt, CancellableState, Composite, CollectingLogs }
+    public enum WarmupTracer { Null, Cancellable, CancellableReceipt, CancellableState, CancellableStorage, CancellableActions, Composite, CollectingLogs }
 
     private sealed class LogCollectingTracer : TxTracer
     {
@@ -500,6 +500,8 @@ public partial class FrameTxProcessorTests
     [TestCase(WarmupTracer.Cancellable, true, TestName = "Warmup_CancellableNullTracer_SuppressesLogs")]
     [TestCase(WarmupTracer.CancellableReceipt, false, TestName = "Warmup_CancellableReceiptTracer_KeepsLogs")]
     [TestCase(WarmupTracer.CancellableState, false, TestName = "Warmup_CancellableStateTracer_KeepsLogs")]
+    [TestCase(WarmupTracer.CancellableStorage, false, TestName = "Warmup_CancellableStorageTracer_KeepsLogs")]
+    [TestCase(WarmupTracer.CancellableActions, false, TestName = "Warmup_CancellableActionTracer_KeepsLogs")]
     [TestCase(WarmupTracer.Composite, true, TestName = "Warmup_CompositeNullTracer_SuppressesLogs")]
     [TestCase(WarmupTracer.CollectingLogs, false, TestName = "Warmup_LogCollectingTracer_KeepsLogs")]
     public void Warmup_SuppressesLogsOnlyWithoutAnObservingTracer(WarmupTracer kind, bool suppressed)
@@ -516,6 +518,8 @@ public partial class FrameTxProcessorTests
             WarmupTracer.Cancellable => new CancellationTxTracer(NullTxTracer.Instance),
             WarmupTracer.CancellableReceipt => new CancellationTxTracer(NullTxTracer.Instance) { IsTracingReceipt = true },
             WarmupTracer.CancellableState => new CancellationTxTracer(NullTxTracer.Instance) { IsTracingState = true },
+            WarmupTracer.CancellableStorage => new CancellationTxTracer(NullTxTracer.Instance) { IsTracingStorage = true },
+            WarmupTracer.CancellableActions => new CancellationTxTracer(NullTxTracer.Instance) { IsTracingActions = true },
             WarmupTracer.Composite => new CompositeTxTracer(NullTxTracer.Instance),
             WarmupTracer.CollectingLogs => new LogCollectingTracer(),
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
