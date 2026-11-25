@@ -467,19 +467,25 @@ public partial class EthRpcModule(
         return null;
     }
 
-    public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
+    public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction) =>
+        DecodeRawTransaction(transaction) is { } tx ? await SendTx(tx) : InvalidRawTransaction();
+
+    /// <summary>Decodes the payload of <c>eth_sendRawTransaction</c>, or returns <c>null</c> when it is not valid transaction RLP.</summary>
+    protected static Transaction? DecodeRawTransaction(byte[] transaction)
     {
         try
         {
-            Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(transaction,
+            return TxRlpDecoder.DecodeCompleteNotNull(transaction,
                 RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
-            return await SendTx(tx);
         }
         catch (RlpReaderException)
         {
-            return ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
+            return null;
         }
     }
+
+    protected static ResultWrapper<Hash256> InvalidRawTransaction() =>
+        ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
 
     public virtual ResultWrapper<SignTransactionResult> eth_signTransaction(SignableTransactionForRpc rpcTx)
     {
