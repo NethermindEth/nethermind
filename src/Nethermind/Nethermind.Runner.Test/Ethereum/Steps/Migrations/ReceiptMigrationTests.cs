@@ -282,11 +282,40 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             ReceiptMigration migration = CreateExplicitMigration(chainLevelInfoRepository, syncModeSelector, new OneLoggerLogManager(new ILogger(logger)));
 
             await migration.Run(0, 1);
-            await migration._migrationTask!;
+            await Task.WhenAny(migration._migrationTask!);
             await migration.Run(0, 1);
             await migration._migrationTask!;
 
             Assert.That(logger.Errors, Has.Count.EqualTo(2));
+        }
+
+        [Test]
+        public async Task Replacing_a_waiting_explicit_migration_joins_it_without_logging_an_error([Values] bool waitHonoursCancellation)
+        {
+            TaskCompletionSource<CancellationToken> firstToken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource finishFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+            selector.WaitUntilMode(Arg.Any<Func<SyncMode, bool>>(), Arg.Any<CancellationToken>()).Returns(call =>
+                !firstToken.TrySetResult(call.Arg<CancellationToken>()) ? Task.CompletedTask
+                : waitHonoursCancellation ? Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>())
+                : finishFirst.Task);
+            IChainLevelInfoRepository levels = Substitute.For<IChainLevelInfoRepository>();
+            CollectingLogger logger = new();
+            ReceiptMigration migration = CreateExplicitMigration(levels, selector, new OneLoggerLogManager(new ILogger(logger)));
+
+            await migration.Run(1, 1);
+            await firstToken.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Task<bool> second = migration.Run(2, 2);
+            if (!waitHonoursCancellation)
+            {
+                Assert.That(second.IsCompleted, Is.False);
+                finishFirst.SetResult();
+            }
+
+            await second.WaitAsync(TimeSpan.FromSeconds(10));
+            await migration._migrationTask!.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(logger.Errors, Is.Empty);
+            levels.Received(1).LoadLevel(2);
         }
 
         [Test]
