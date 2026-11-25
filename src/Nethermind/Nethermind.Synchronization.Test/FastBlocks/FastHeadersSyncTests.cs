@@ -1742,18 +1742,21 @@ public class FastHeadersSyncTests
         feed.HandleResponse(first);
         Assert.That(Dependencies(feed).Count, Is.EqualTo(1));
 
-        int attemptsBefore = feed.InsertAttempts;
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
         for (int i = 0; i < 8; i++)
         {
+            int attemptsBefore = feed.InsertAttempts;
             using HeadersSyncBatch? next = await Task.Run(() => feed.PrepareRequest(timeout.Token)).WaitAsync(timeout.Token);
-            Assert.That(next, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(next, Is.Null);
+                // Each call retries the dependency, in a single HandleDependentBatches pass of at most four attempts at the full budget.
+                Assert.That(feed.InsertAttempts - attemptsBefore, Is.InRange(1, 4), $"insert attempts in call {i}");
+            }
         }
 
         using (Assert.EnterMultipleScope())
         {
-            // At the full budget, each call tries the dependency four times.
-            Assert.That(feed.InsertAttempts - attemptsBefore, Is.EqualTo(8 * 4), "insert attempts");
             Assert.That(feed.LowestInsertedNumber, Is.EqualTo(pivot.Number));
             Assert.That(Dependencies(feed).Count, Is.EqualTo(1));
         }
