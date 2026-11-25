@@ -72,9 +72,8 @@ public class Eth76ProtocolHandler(
             case Eth76MessageCode.GetProofWrapperManifests:
                 WrapperBroadcaster.OnGetProofWrapperManifests(peer, Deserialize<GetProofWrapperManifestsMessage>(message.Content));
                 break;
-            // This node requests no manifests, so the message is a violation whatever it holds and is not decoded.
             case Eth76MessageCode.ProofWrapperManifests:
-                WrapperBroadcaster.OnProofWrapperManifests(peer);
+                WrapperBroadcaster.OnProofWrapperManifests(peer, Deserialize<ProofWrapperManifestsMessage>(message.Content));
                 break;
             default:
                 base.HandleWrapperMessage(peer, message);
@@ -91,6 +90,7 @@ public class Eth76ProtocolHandler(
             case NewProofWrapperHashesMessage announce: Send(new NewProofWrapperHashesMessage76(announce.Announcements)); break;
             case GetProofWrappersMessage76 request: Send(request); break;
             case GetProofWrappersMessage request: Send(new GetProofWrappersMessage76(request.RequestId, request.Compact, request.Hashes)); break;
+            case GetProofWrapperManifestsMessage request: Send(request); break;
             case ProofWrapperManifestsMessage manifests: Send(manifests); break;
             default: base.SendWrapperMessage(message); break;
         }

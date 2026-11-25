@@ -69,7 +69,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             : null;
     }
 
-    /// <summary>Whether the head activates EIP-8288; the broadcaster is inert otherwise.</summary>
+    /// <summary>Whether the mempool fork enables EIP-8288; the broadcaster is inert otherwise.</summary>
     public bool IsEnabled => _wrappers.IsEnabled;
 
     internal int PeerCount { get { lock (_gate) return _peers.Count; } }
@@ -181,11 +181,16 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
         _departedScores[nodeId] = (peer.FailureScore, _clock.GetTimestamp());
     }
 
-    /// <summary>Releases an outstanding request's reservation; its wanted wrappers go back to the queue.</summary>
+    /// <summary>Releases an outstanding request's reservation; its wanted wrappers go back to the queue, those that waited for
+    /// a manifest to be fetched without one.</summary>
     private void Abandon(WrapperPeer peer, WrappersRequest request)
     {
         Release(peer, request.Reserved);
-        foreach (WrapperFetch fetch in request.Fetches) fetch.Requested = false;
+        foreach (WrapperFetch fetch in request.Fetches)
+        {
+            fetch.Requested = false;
+            if (request.Manifests) fetch.WantsManifest = false;
+        }
     }
 
     private bool TryCharge(WrapperPeer peer, long bytes)
@@ -223,7 +228,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
 
     private void Tick()
     {
-        // Applies the local verifier-change rule, through VerifierChanged, once the head reaches a fork with another verifier.
+        // Applies the local verifier-change rule, through VerifierChanged, once the local clock reaches a fork with another verifier.
         // Before activation it runs only for peers, which register once the fork is scheduled.
         if (!IsEnabled && PeerCount == 0) return;
         Eip8288Verifier? refreshed;
@@ -617,15 +622,6 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             if (served.Count > 0 && !TryChargeServing(peer, content)) served.Clear();
             outbox.Send(peer, new ProofWrapperManifestsMessage(request.RequestId, [.. served]));
         }
-        outbox.Flush();
-    }
-
-    /// <summary>This node requests no manifests, so any ProofWrapperManifests answers no request and is a violation.</summary>
-    internal void OnProofWrapperManifests(WrapperPeer peer)
-    {
-        Outbox outbox = new();
-        lock (_gate)
-            if (!peer.Closed) Violation(peer, "manifests for an unissued request", outbox);
         outbox.Flush();
     }
 

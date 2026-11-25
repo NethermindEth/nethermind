@@ -380,7 +380,8 @@ public class Eth75ProtocolHandlerTests
     }
 
     // Message shapes follow the negotiated version: an eth/76 connection is announced a mode-1 wrapper in the six-field form an
-    // eth/75 connection never sees, and is served its manifest.
+    // eth/75 connection never sees, is served its manifest, and is asked for the manifest of a wrapper it announces without
+    // metadata.
     [Test]
     public void Eth76_connection_exchanges_aggregates_and_manifests_in_its_own_forms()
     {
@@ -402,7 +403,12 @@ public class Eth75ProtocolHandlerTests
             Assert.That((manifests.RequestId, manifests.Manifests.Single()), Is.EqualTo((3L, new ProofWrapperManifest(hash, WrapperMetadata.Of(wrapper)))));
         }
 
-        // This node requests no manifests, so receiving them is a breach of protocol.
+        byte[] announced = Wrapper(64, 7, transaction, FrameTransaction(2));
+        using NewProofWrapperHashesMessage76 announcement = new([Describe(announced)]);
+        Handle(eth76, announcement, Eth75MessageCode.NewProofWrapperHashes);
+        Assert.That(Delivered<GetProofWrapperManifestsMessage>().Single().Hashes, Is.EqualTo(new[] { Describe(announced).Hash }));
+
+        // Manifests answering no request this node issued are a breach of protocol.
         _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         Handle(eth76, Delivered<ProofWrapperManifestsMessage>().Single(), Eth76MessageCode.ProofWrapperManifests);
         _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());

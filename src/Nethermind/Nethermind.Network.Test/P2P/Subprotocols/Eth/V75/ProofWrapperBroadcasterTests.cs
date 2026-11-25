@@ -263,7 +263,8 @@ public class ProofWrapperBroadcasterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(otherTransactions.Coverage!.Value.DepsHash, Is.EqualTo(reproof.Coverage!.Value.DepsHash));
-            Assert.That(link.Sent<GetProofWrappersMessage>().SelectMany(static r => r.Hashes), Is.EqualTo(new[] { otherTransactions.Hash }));
+            Assert.That(link.Sent<GetProofWrapperManifestsMessage>().SelectMany(static r => r.Hashes), Is.EqualTo(new[] { otherTransactions.Hash }),
+                "fetched, after its manifest");
             Assert.That(node.Broadcaster.FetchCount, Is.EqualTo(1));
         }
     }
@@ -379,7 +380,7 @@ public class ProofWrapperBroadcasterTests
         {
             for (int request = 0; request < WrapperTransportLimits.MaxRequestsPerPeer; request++)
             {
-                byte[][] wrappers = [.. Enumerable.Range(0, Eth75Protocol.MaxWrappersPerRequest).Select(_ => Wrapper(64, FrameTransaction(seed++)))];
+                byte[][] wrappers = [.. Enumerable.Range(0, Eth75Protocol.MaxWrappersPerRequest).Select(_ => DirectWrapper(FrameTransaction(seed++)))];
                 node.Broadcaster.OnAnnounce(peer, new([.. wrappers.Select(Describe)]));
                 GetProofWrappersMessage sent = link.Sent<GetProofWrappersMessage>()[^1];
                 Assert.That(sent.Hashes, Has.Length.EqualTo(wrappers.Length));
@@ -1159,6 +1160,58 @@ public class ProofWrapperBroadcasterTests
         }
     }
 
+    // EIP-8437: claims found false against a held wrapper of the announced hash, or metadata found false against a transaction
+    // held in a validated wrapper, are discarded with their sender before any fetch; true metadata for a held transaction is not.
+    [TestCase("held wrapper, false metadata", true)]
+    [TestCase("held wrapper, false length", true)]
+    [TestCase("held transaction, false gas", true)]
+    [TestCase("held transaction, true metadata", false)]
+    public void Announced_claims_are_checked_against_held_wrappers_and_transactions(string scenario, bool penalized)
+    {
+        using WrapperTestNode node = new();
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2), c = FrameTransaction(3);
+        byte[] held = DirectWrapper(a), other = DirectWrapper(a, c);
+        node.AddPending(a);
+        Assert.That(node.Broadcaster.PublishWrapper(held), Is.True);
+        FakeWrapperLink link = new() { ProtocolVersion = EthVersions.Eth75 };
+        WrapperPeer peer = node.Connect(link);
+        WrapperAnnouncement truth = Describe(held), otherTruth = Describe(other);
+        WrapperAnnouncement announcement = scenario switch
+        {
+            "held wrapper, false metadata" => Announcement(0, truth.Length, truth.Hash, null, WrapperMetadata.InlineFor(DirectWrapper(b))),
+            "held wrapper, false length" => Announcement(0, truth.Length + 1, truth.Hash, null, truth.Metadata),
+            "held transaction, false gas" => Announcement(0, otherTruth.Length, otherTruth.Hash, null,
+                WrapperMetadata.Of(other, static (ref Eth75RlpReader _) => 1)),
+            _ => Announcement(0, otherTruth.Length, otherTruth.Hash, null, otherTruth.Metadata)
+        };
+
+        node.Broadcaster.OnAnnounce(peer, new([announcement]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Has.Length.EqualTo(penalized ? 1 : 0));
+            Assert.That(link.Sent<GetProofWrappersMessage>(), penalized ? Is.Empty : Has.Length.EqualTo(1));
+        }
+    }
+
+    // EIP-8437 lets metadata choose fetches: a mode-0 wrapper listing only pending transactions adds no coverage and is not
+    // fetched, unless an eth/75 peer, which is served only direct witnesses, is connected and no held mode-0 wrapper carries them.
+    [Test]
+    public void Direct_wrapper_of_pending_transactions_is_fetched_only_for_eth75_peers_lacking_them([Values] bool eth75Peer, [Values] bool heldDirect)
+    {
+        using WrapperTestNode node = new();
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
+        node.AddPending(a, b);
+        if (heldDirect) Assert.That(node.Broadcaster.PublishWrapper(DirectWrapper(a, b)), Is.True);
+        if (eth75Peer) node.Connect(new FakeWrapperLink("eth75") { ProtocolVersion = EthVersions.Eth75 });
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+
+        node.Broadcaster.OnAnnounce(peer, new([Describe(DirectWrapper(a))]));
+
+        Assert.That(link.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(eth75Peer && !heldDirect ? 1 : 0));
+    }
+
     // EIP-8437: metadata that differs from what the returned wrapper's transactions give is a mismatch of its server, checked
     // before proof verification.
     [TestCase(true)]
@@ -1181,8 +1234,8 @@ public class ProofWrapperBroadcasterTests
         }
     }
 
-    // eth/76: manifests of wrappers announced on the connection are served in request order and the rest omitted; this node
-    // requests none, so manifests sent to it are a violation.
+    // eth/76: manifests of wrappers announced on the connection are served in request order and the rest omitted; manifests
+    // answering no request this node issued are a violation.
     [Test]
     public void Manifests_of_announced_wrappers_are_served_and_unsolicited_ones_are_violations()
     {
@@ -1198,7 +1251,141 @@ public class ProofWrapperBroadcasterTests
         ProofWrapperManifestsMessage response = link.Sent<ProofWrapperManifestsMessage>().Single();
         Assert.That((response.RequestId, response.Manifests), Is.EqualTo((5L, new[] { new ProofWrapperManifest(hash, WrapperMetadata.Of(wrapper)) })));
 
-        node.Broadcaster.OnProofWrapperManifests(peer);
-        Assert.That(link.Penalties, Has.One.Contains("manifests"));
+        node.Broadcaster.OnProofWrapperManifests(peer, new(9, []));
+        Assert.That(link.Penalties, Has.One.Contains("unissued request"));
+    }
+
+    /// <summary>Answers the last GetProofWrapperManifests sent to <paramref name="link"/> with <paramref name="manifests"/>,
+    /// each under the hash of the wrapper it describes.</summary>
+    private static void AnswerManifests(WrapperTestNode node, WrapperPeer peer, FakeWrapperLink link, params (byte[] Wrapper, WrapperMetadata Manifest)[] manifests) =>
+        node.Broadcaster.OnProofWrapperManifests(peer, new(link.Sent<GetProofWrapperManifestsMessage>()[^1].RequestId,
+            [.. manifests.Select(static m => new ProofWrapperManifest(Describe(m.Wrapper).Hash, m.Manifest))]));
+
+    /// <summary>A node holding a mode-1 wrapper over pending transactions A and B, so an aggregate announced on an eth/76
+    /// connection is fetched only once its manifest shows it adds coverage.</summary>
+    private static WrapperTestNode AggregatingNode(out Transaction a, out Transaction b)
+    {
+        WrapperTestNode node = new();
+        a = FrameTransaction(1);
+        b = FrameTransaction(2);
+        node.AddPending(a, b);
+        Assert.That(node.Broadcaster.PublishWrapper(Wrapper(64, a, b)), Is.True);
+        return node;
+    }
+
+    // eth/76: an aggregate announced while one is held has its manifest requested first, and is not fetched when a held
+    // aggregate already carries all its transactions.
+    [Test]
+    public void Manifest_decides_whether_an_aggregate_is_fetched([Values] bool covered)
+    {
+        using WrapperTestNode node = AggregatingNode(out Transaction a, out Transaction _);
+        byte[] wrapper = covered ? Wrapper(64, 7, a) : Wrapper(64, 7, a, FrameTransaction(3));
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+
+        node.Broadcaster.OnAnnounce(peer, new([Describe(wrapper)]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Sent<GetProofWrapperManifestsMessage>().Single().Hashes, Is.EqualTo(new[] { Describe(wrapper).Hash }));
+            Assert.That(link.Sent<GetProofWrappersMessage>(), Is.Empty, "the manifest is awaited first");
+        }
+        AnswerManifests(node, peer, link, (wrapper, WrapperMetadata.Of(wrapper)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Sent<GetProofWrappersMessage>().SelectMany(static m => m.Hashes), covered ? Is.Empty : Is.EqualTo(new[] { Describe(wrapper).Hash }));
+            Assert.That(node.Broadcaster.FetchCount, Is.EqualTo(covered ? 0 : 1));
+            Assert.That(link.Penalties, Is.Empty);
+        }
+    }
+
+    // eth/76: a manifest is its sender's claim alone. A peer announcing a real aggregate with a false txs-hash and a matching
+    // manifest of held transactions only retires itself as a source: an honest announcer is asked for its manifest, the wrapper
+    // is fetched from it, and the false manifest is then attributed to its sender.
+    [Test]
+    public async Task False_covering_manifest_does_not_keep_an_aggregate_from_honest_announcers()
+    {
+        using WrapperTestNode node = AggregatingNode(out Transaction a, out Transaction _);
+        byte[] wrapper = Wrapper(64, 7, a, FrameTransaction(3)), decoy = Wrapper(64, 9, a);
+        WrapperAnnouncement truth = Describe(wrapper);
+        FakeWrapperLink liar = new("liar"), honest = new("honest");
+        WrapperPeer liarPeer = node.Connect(liar), honestPeer = node.Connect(honest);
+        node.Broadcaster.OnAnnounce(liarPeer, new([Announcement(1, truth.Length, truth.Hash, Describe(decoy).Coverage)]));
+        node.Broadcaster.OnAnnounce(honestPeer, new([truth]));
+
+        AnswerManifests(node, liarPeer, liar, (wrapper, WrapperMetadata.Of(decoy)));
+        Assert.That(honest.Sent<GetProofWrapperManifestsMessage>().SelectMany(static m => m.Hashes), Is.EqualTo(new[] { truth.Hash }));
+        AnswerManifests(node, honestPeer, honest, (wrapper, WrapperMetadata.Of(wrapper)));
+        Answer(node, honestPeer, honest, wrapper);
+        await WrapperTestNode.Until(() => node.Broadcaster.IsStored(truth.Hash));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(liar.Sent<GetProofWrappersMessage>(), Is.Empty);
+            Assert.That(honest.Penalties, Is.Empty);
+            Assert.That(liar.Penalties, Has.Length.EqualTo(1), "its manifest is false against the verified wrapper");
+        }
+    }
+
+    // eth/76: a manifest is checked on arrival against its announcement and held transactions, and against the wrapper fetched
+    // from the same peer, before proof verification.
+    [TestCase("txs-hash")]
+    [TestCase("length")]
+    [TestCase("unrequested")]
+    [TestCase("held transaction")]
+    [TestCase("fetched wrapper")]
+    [TestCase("wrappers in reply")]
+    public void False_or_malformed_manifest_is_a_violation(string scenario)
+    {
+        using WrapperTestNode node = AggregatingNode(out Transaction a, out Transaction _);
+        Transaction c = FrameTransaction(3), d = FrameTransaction(4);
+        byte[] wrapper = scenario == "held transaction" ? Wrapper(64, 7, a, c) : Wrapper(64, 7, c, d), other = Wrapper(64, 8, d);
+        WrapperAnnouncement truth = Describe(wrapper);
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Broadcaster.OnAnnounce(peer, new([scenario == "length" ? Announcement(1, 64, truth.Hash, truth.Coverage) : truth]));
+        WrapperMetadata falseGas = WrapperMetadata.Of(wrapper, static (ref Eth75RlpReader _) => 1);
+        (byte[], WrapperMetadata) answer = scenario switch
+        {
+            "txs-hash" => (wrapper, WrapperMetadata.Of(other)),
+            "unrequested" => (other, WrapperMetadata.Of(other)),
+            "held transaction" or "fetched wrapper" => (wrapper, falseGas),
+            _ => (wrapper, WrapperMetadata.Of(wrapper))
+        };
+        if (scenario == "wrappers in reply")
+            node.Broadcaster.OnProofWrappers(peer, new(link.Sent<GetProofWrapperManifestsMessage>()[^1].RequestId, [Entry(wrapper)]));
+        else AnswerManifests(node, peer, link, answer);
+        if (scenario == "fetched wrapper")
+        {
+            Assert.That(link.Penalties, Is.Empty, "a manifest describing no held transaction is a claim until the wrapper arrives");
+            Answer(node, peer, link, wrapper);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Has.Length.EqualTo(1));
+            Assert.That(node.Pending.Select(static t => t.Hash), Does.Not.Contain(c.Hash), "nothing is admitted");
+        }
+    }
+
+    // eth/76: a wrapper whose manifest was withheld, by an empty response or a timeout, is fetched without it, without penalty.
+    [TestCase("empty")]
+    [TestCase("timeout")]
+    public void Wrapper_is_fetched_without_a_withheld_manifest(string scenario)
+    {
+        using WrapperTestNode node = AggregatingNode(out Transaction a, out Transaction _);
+        byte[] wrapper = Wrapper(64, 7, a, FrameTransaction(3));
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Broadcaster.OnAnnounce(peer, new([Describe(wrapper)]));
+
+        if (scenario == "empty") AnswerManifests(node, peer, link);
+        else node.Tick(WrapperTransportLimits.RequestTimeout);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Sent<GetProofWrappersMessage>().SelectMany(static m => m.Hashes), Is.EqualTo(new[] { Describe(wrapper).Hash }));
+            Assert.That(link.Penalties, Is.Empty);
+        }
     }
 }
