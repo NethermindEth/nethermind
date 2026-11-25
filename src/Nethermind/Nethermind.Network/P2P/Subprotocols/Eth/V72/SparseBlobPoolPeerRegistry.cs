@@ -393,12 +393,12 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                         && TryReplaceCellsAccounting(trackedHash, currentCells, retained))
                     {
                         state.Cells = retained;
+                        ForgetEndedSource(state, peerId);
                     }
                     else
                     {
                         retryMask |= currentCells.CellMask;
-                        ReleaseCells(state);
-                        state.Cells = null;
+                        DiscardCells(state);
                     }
                 }
                 else if ((state.Submitting || state.ApplyingRecordedCells)
@@ -407,7 +407,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 {
                     // The cells are in use and cannot be stripped now. Remembered so that a failed check never keeps
                     // them for attribution under this key, which a later session may hold by then.
-                    (state.EndedCellSources ??= []).Add(peerId);
+                    List<PublicKey> endedSources = state.EndedCellSources ??= [];
+                    if (!endedSources.Contains(peerId))
+                    {
+                        endedSources.Add(peerId);
+                    }
                 }
 
                 // Not gated by Submitting: the kept cells are read only under this lock, when a submission has
@@ -1063,7 +1067,10 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     && !state.ApplyingRecordedCells)
                 {
                     PendingCellsBuffer addedCells = new(attachedCellMask, attachedCells, peer.Id);
-                    PendingCellsBuffer replacement = state.Cells is { } existingCells
+                    PendingCellsBuffer? currentCells = state.EndedCellSources is null
+                        ? state.Cells
+                        : GetCellsToMergeInto(state, peer.Id);
+                    PendingCellsBuffer replacement = currentCells is { } existingCells
                         && existingCells.TryMerge(addedCells, out PendingCellsBuffer merged)
                             ? merged
                             : addedCells;
@@ -1071,6 +1078,10 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     {
                         state.Cells = replacement;
                         state.CellsExpiresAt = _timestamper.UtcNowOffset + EarlyCellsTtl;
+                        if (state.EndedCellSources is not null)
+                        {
+                            KeepEndedSourcesOf(state, replacement, peer.Id);
+                        }
                     }
                 }
 
@@ -1126,14 +1137,17 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 && !state.ApplyingRecordedCells
                 && !state.AmbiguousFailureSources.Contains(peer.Id))
             {
-                if (state.Cells is { } existingCells
+                PendingCellsBuffer? currentCells = state.EndedCellSources is null
+                    ? state.Cells
+                    : GetCellsToMergeInto(state, peer.Id);
+                if (currentCells is { } existingCells
                     && (existingCells.CellMask & cellMask) == cellMask)
                 {
                     accepted = true;
                 }
                 else
                 {
-                    PendingCellsBuffer replacement = state.Cells is { } current
+                    PendingCellsBuffer replacement = currentCells is { } current
                         && current.TryMerge(addedCells, out PendingCellsBuffer merged)
                             ? merged
                             : addedCells;
@@ -1143,6 +1157,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                         DateTimeOffset now = _timestamper.UtcNowOffset;
                         state.CellsExpiresAt = now + EarlyCellsTtl;
                         Touch(state, now);
+                        if (state.EndedCellSources is not null)
+                        {
+                            KeepEndedSourcesOf(state, replacement, peer.Id);
+                        }
+
                         accepted = true;
                     }
                 }
@@ -1215,8 +1234,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 if (invalidProofTuple)
                 {
                     quarantineCellValidation = RecordAmbiguousFailure(state, invalidCellSource);
-                    ReleaseCells(state);
-                    state.Cells = null;
+                    DiscardCells(state);
                     retry = false;
                 }
                 else if (mergeResult != BlobCellMergeResult.Accepted)
@@ -1229,8 +1247,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     retry = state.Cells is { } latest && !ReferenceEquals(latest.Cells, pending.Cells);
                     if (!retry)
                     {
-                        ReleaseCells(state);
-                        state.Cells = null;
+                        DiscardCells(state);
                     }
                 }
             }
@@ -1744,8 +1761,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     ReleaseTransaction(state);
                     state.Transaction = null;
                     state.TransactionPeer = null;
-                    ReleaseCells(state);
-                    state.Cells = null;
+                    DiscardCells(state);
                     state.AmbiguousValidationFailures = 0;
                     state.ExpiresAt = DateTimeOffset.MaxValue;
                     if (state.UnattributedCells is { } keptCells)
@@ -1945,8 +1961,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 _peers.TryGetValue(cells.LastSourcePeerId, out peerToDisconnect);
                 peerToRemove = cells.LastSourcePeerId;
                 disconnectDetails = error ?? "invalid sparse blob cells";
-                ReleaseCells(state);
-                state.Cells = null;
+                DiscardCells(state);
             }
 
             state.Submitting = false;
@@ -2024,6 +2039,69 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
 
         return cells;
+    }
+
+    /// <summary>
+    /// Returns the cells that cells from <paramref name="peerId"/> are merged into: the current cells without the cells
+    /// that an ended session under that key sent while they were in use, so that the cells of two sessions are never
+    /// combined into one source. Must be called under <c>state.Lock</c>.
+    /// </summary>
+    private static PendingCellsBuffer? GetCellsToMergeInto(TrackedSparseBlobTx state, PublicKey peerId)
+        => state.Cells is { } cells
+            && state.EndedCellSources?.Contains(peerId) == true
+            && cells.TryRemoveSource(peerId, out PendingCellsBuffer? remaining)
+                ? remaining
+                : state.Cells;
+
+    /// <summary>
+    /// Keeps <see cref="TrackedSparseBlobTx.EndedCellSources"/> only for the sources whose cells
+    /// <paramref name="cells"/> still holds, after <paramref name="peerId"/> added cells that are its own.
+    /// Must be called under <c>state.Lock</c>.
+    /// </summary>
+    private static void KeepEndedSourcesOf(TrackedSparseBlobTx state, in PendingCellsBuffer cells, PublicKey peerId)
+    {
+        if (state.EndedCellSources is not { } endedSources)
+        {
+            return;
+        }
+
+        for (int i = endedSources.Count - 1; i >= 0; i--)
+        {
+            if (endedSources[i] == peerId || !HasSource(cells, endedSources[i]))
+            {
+                endedSources.RemoveAt(i);
+            }
+        }
+
+        if (endedSources.Count == 0)
+        {
+            state.EndedCellSources = null;
+        }
+    }
+
+    /// <summary>
+    /// Forgets that <paramref name="peerId"/>'s session ended once its cells left <see cref="TrackedSparseBlobTx.Cells"/>.
+    /// Must be called under <c>state.Lock</c>.
+    /// </summary>
+    private static void ForgetEndedSource(TrackedSparseBlobTx state, PublicKey peerId)
+    {
+        if (state.EndedCellSources is { } endedSources
+            && endedSources.Remove(peerId)
+            && endedSources.Count == 0)
+        {
+            state.EndedCellSources = null;
+        }
+    }
+
+    /// <summary>
+    /// Releases <see cref="TrackedSparseBlobTx.Cells"/> together with the record of which of their sources ended.
+    /// Must be called under <c>state.Lock</c>.
+    /// </summary>
+    private void DiscardCells(TrackedSparseBlobTx state)
+    {
+        ReleaseCells(state);
+        state.Cells = null;
+        state.EndedCellSources = null;
     }
 
     private static bool HasSource(in PendingCellsBuffer cells, PublicKey peerId)
@@ -2365,8 +2443,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     && state.Cells is not null
                     && now >= state.CellsExpiresAt)
                 {
-                    ReleaseCells(state);
-                    state.Cells = null;
+                    DiscardCells(state);
                 }
 
                 // A fixed lifetime, kept whether or not a body is present.
@@ -2476,6 +2553,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             state.Transaction = null;
             state.TransactionPeer = null;
             state.Cells = null;
+            state.EndedCellSources = null;
         }
 
         return true;
@@ -3078,6 +3156,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         public PendingCellsBuffer? UnattributedCells { get; set; }
         public DateTimeOffset UnattributedCellsExpiresAt { get; set; }
         /// <summary>Sources of <see cref="Cells"/> whose session ended while the cells were in use and could not be stripped.</summary>
+        /// <remarks>
+        /// Describes only cells that <see cref="Cells"/> still holds: it is cleared when the cells are discarded, and a
+        /// source leaves it when its cells are stripped or when a later session under its key adds cells, which first
+        /// drops the ended session's cells.
+        /// </remarks>
         public List<PublicKey>? EndedCellSources { get; set; }
         public DateTimeOffset? AdmissionDueAt { get; set; }
         public int AmbiguousValidationFailures { get; set; }
