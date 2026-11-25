@@ -78,6 +78,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private const int ConsensusHeaderTimeoutSeconds = 3;
     private const int SlowResponseMilliseconds = 7500;
     private const int PeerFeedbackCapacity = 256;
+    private static readonly TimeSpan BulkHedgeDelay = TimeSpan.FromMilliseconds(250);
     private readonly IContainer _services;
     private readonly ILogManager _logManager;
     private readonly Nethermind.Logging.ILogger _logger;
@@ -1514,6 +1515,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                     throw new NotSupportedException("No execution peer supports the requested data protocol.");
                 using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
                 List<(PeerInfo Peer, Task<(T Result, Exception? Error)> Request)> pending = [with(maxParallelSuppliers)];
+                Task? hedgeDelay = null;
                 ExecutionDataUnavailableException? unavailable = null;
                 bool selected = false;
                 int next = 0;
@@ -1524,6 +1526,14 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                         do
                         {
                             if (next == eligible.Count || pending.Count == maxParallelSuppliers) break;
+                            if (bulk && pending.Count == 1 && hedgeDelay is not { IsCompletedSuccessfully: true })
+                            {
+                                // Large responses can arrive from both suppliers before the losing request is canceled.
+                                Task primary = pending[0].Request;
+                                hedgeDelay ??= Task.Delay(BulkHedgeDelay, _clock, round.Token);
+                                await Task.WhenAny(primary, hedgeDelay);
+                                if (primary.IsCompleted || round.IsCancellationRequested) break;
+                            }
                             (PeerInfo peer, TPeer protocol) = eligible[next++];
                             if (!CanPrefer(peer)) continue;
                             _lastPeers[context] = peer;

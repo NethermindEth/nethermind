@@ -239,9 +239,11 @@ The console prints live beacon, execution and SNAP peer counts every 12 seconds 
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
 serve the selected state, state queries return an error after 30 seconds.
 Wallet execution requests race at most two suppliers, use only a verified response,
-and cancel and join the other attempt. Bulk hosted storage pages and trie-node
-updates use one supplier at a time, with retries on other peers, avoiding duplicate
-large downloads. Account, storage and bytecode reads have
+and cancel and join the other attempt. Bulk block data and speculative history
+requests give the first supplier 250 ms before starting a backup. A failed
+supplier can be replaced immediately. Bulk hosted storage pages and trie-node
+updates use one supplier at a time, with retries on other peers.
+Account, storage and bytecode reads have
 separate 32 MiB verified caches shared by RPC, EVM and hosted-account refreshes.
 Authenticated headers have another 32 MiB cache; each read rechecks the requested
 number and state root and returns an independent mutable copy.
