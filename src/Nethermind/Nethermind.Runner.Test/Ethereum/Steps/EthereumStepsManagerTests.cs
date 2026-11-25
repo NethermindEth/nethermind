@@ -6,6 +6,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.Loader;
@@ -365,6 +366,47 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
+        [CancelAfter(5000)]
+        public async Task Dependency_tree_names_steps_sharing_a_name_in_full(CancellationToken cancellationToken)
+        {
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsDebug.Returns(true);
+            ConcurrentQueue<string> debugMessages = new();
+            logger.When(static l => l.Debug(Arg.Any<string>())).Do(call => debugMessages.Enqueue(call.ArgAt<string>(0)));
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(PluginOne.SharedNameStep), typeof(PluginTwo.SharedNameStep), typeof(StepA));
+            using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+                .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+                .AddSingleton<EthereumStepsManager>());
+
+            await scope.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken);
+
+            string first = typeof(PluginOne.SharedNameStep).FullName!;
+            string second = typeof(PluginTwo.SharedNameStep).FullName!;
+            string nl = Environment.NewLine;
+            Assert.That(debugMessages, Has.One.EqualTo(
+                $"Ethereum steps dependency tree:\n● {nameof(StepA)}{nl}○ {first}{nl}  ● {second} (depends on {first}){nl}"));
+        }
+
+        /// <summary>Holds a step named like the one in <see cref="PluginTwo"/>, as two plugins' steps may be.</summary>
+        private static class PluginOne
+        {
+            internal class SharedNameStep : IStep
+            {
+                public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+            }
+        }
+
+        private static class PluginTwo
+        {
+            [RunnerStepDependencies(typeof(PluginOne.SharedNameStep))]
+            internal class SharedNameStep : IStep
+            {
+                public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+            }
+        }
+
+        [Test]
         public async Task With_constructor_without_nethermind_api()
         {
             await using IContainer container = CreateNethermindEnvironment(
@@ -491,6 +533,72 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
                 selected ? Throws.TypeOf<TestException>() : Throws.Nothing);
+        }
+
+        // Masking is a process-wide flag, so these cases must not run alongside other tests.
+        [TestCase(typeof(FailingStepWithDetails), false, false)]
+        [TestCase(typeof(FailingStepWithDetails), false, true)]
+        [TestCase(typeof(FailingOptionalStepWithDetails), false, false)]
+        [TestCase(typeof(FailingOptionalStepWithDetails), false, true)]
+        [TestCase(typeof(FailingOptionalStepWithDetails), true, false)]
+        [TestCase(typeof(FailingOptionalStepWithDetails), true, true)]
+        // A step cancelled without a shutdown request is logged by the same two lines.
+        [TestCase(typeof(FailingStepWithDetails), false, true, true)]
+        [TestCase(typeof(FailingOptionalStepWithDetails), false, true, true)]
+        [NonParallelizable]
+        public async Task Failed_step_is_logged_without_exception_details_when_masking(Type stepType, bool selected, bool masked, bool cancelled = false)
+        {
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsError.Returns(true);
+            logger.IsWarn.Returns(true);
+            ConcurrentQueue<(string Text, Exception? Exception)> errors = new();
+            ConcurrentQueue<string> warnings = new();
+            logger.When(static l => l.Error(Arg.Any<string>(), Arg.Any<Exception?>()))
+                .Do(call => errors.Enqueue((call.ArgAt<string>(0), call.ArgAt<Exception?>(1))));
+            logger.When(static l => l.Warn(Arg.Any<string>())).Do(call => warnings.Enqueue(call.ArgAt<string>(0)));
+            await using IContainer container = CreateNethermindEnvironment(selected ? stepType : null, command: null, [stepType]);
+            using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+                .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+                .AddSingleton<EthereumStepsManager>());
+            FailingStepWithDetails step = (FailingStepWithDetails)container.Resolve(stepType);
+            if (cancelled)
+                step.Thrown = new OperationCanceledException(FailingStepWithDetails.OuterDetail, new InvalidOperationException(FailingStepWithDetails.InnerDetail));
+            Exception thrown = step.Thrown;
+            bool fatal = selected || stepType == typeof(FailingStepWithDetails);
+
+            bool previous = SensitiveLogMasking.Enabled;
+            SensitiveLogMasking.Enabled = masked;
+            try
+            {
+                using CancellationTokenSource source = new(TimeSpan.FromSeconds(5));
+                // A cancellation that nobody requested fails the run wrapped, so it does not read as a shutdown.
+                Assert.That(async () => await scope.Resolve<EthereumStepsManager>().InitializeAll(source.Token),
+                    !fatal ? Throws.Nothing
+                    : cancelled ? Throws.TypeOf<StepDependencyException>().With.InnerException.SameAs(thrown)
+                    : Throws.Exception.SameAs(thrown));
+            }
+            finally
+            {
+                SensitiveLogMasking.Enabled = previous;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(errors, Has.Count.EqualTo(fatal ? 1 : 0));
+                Assert.That(warnings, Has.Count.EqualTo(fatal ? 0 : 1));
+                foreach ((string text, Exception? exception) in errors)
+                {
+                    Assert.That(text, Does.Contain("failed after").And.Not.Contain(FailingStepWithDetails.OuterDetail).And.Not.Contain(FailingStepWithDetails.InnerDetail));
+                    Assert.That(exception, masked ? Is.Null : Is.SameAs(thrown));
+                }
+
+                foreach (string text in warnings)
+                {
+                    Assert.That(text, masked
+                        ? Does.EndWith($"ms {thrown.GetType().Name}").And.Not.Contain(FailingStepWithDetails.OuterDetail).And.Not.Contain(FailingStepWithDetails.InnerDetail)
+                        : Does.EndWith($"ms {thrown}").And.Contain(FailingStepWithDetails.InnerDetail));
+                }
+            }
         }
 
         [Test]
@@ -680,6 +788,25 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         public bool MustInitialize => false;
 
         public Task Execute(CancellationToken cancellationToken) => throw new TestException();
+    }
+
+    /// <summary>Fails with a message and an inner exception that masked logs must not show.</summary>
+    /// <remarks>Internal, so <c>EthereumStepsLoaderTests.LoadStepsFromHere</c> does not list it.</remarks>
+    internal class FailingStepWithDetails : IStep
+    {
+        public const string OuterDetail = "outer-detail-7d1f";
+        public const string InnerDetail = "inner-detail-3b9e";
+
+        public Exception Thrown { get; set; } = new InvalidOperationException(OuterDetail, new InvalidOperationException(InnerDetail));
+
+        public virtual bool MustInitialize => true;
+
+        public Task Execute(CancellationToken cancellationToken) => throw Thrown;
+    }
+
+    internal class FailingOptionalStepWithDetails : FailingStepWithDetails
+    {
+        public override bool MustInitialize => false;
     }
 
     /// <summary>An optional step that ends Canceled without anyone requesting cancellation, e.g. its own timeout.</summary>

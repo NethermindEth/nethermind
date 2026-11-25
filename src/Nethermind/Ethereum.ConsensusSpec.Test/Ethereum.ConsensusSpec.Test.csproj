@@ -9,6 +9,9 @@
   <ItemGroup>
     <PackageReference Include="Snappier" />
     <PackageReference Include="YamlDotNet" />
+    <Using Include="System.IO.IOException" Alias="IOException" />
+    <Using Include="System.IO.InvalidDataException" Alias="InvalidDataException" />
+    <Compile Include="../Nethermind.LightClient/Consensus/LightClientStore.cs" Link="LightClientStore.cs" />
   </ItemGroup>
 
   <ItemGroup>

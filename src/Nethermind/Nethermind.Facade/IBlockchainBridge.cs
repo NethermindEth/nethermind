@@ -16,7 +16,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Find;
-using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -24,7 +23,7 @@ using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
 {
-    public interface IBlockchainBridge : ILogFinder
+    public interface IBlockchainBridge : ILogFinder, ISimulateBridge
     {
         Block HeadBlock { get; }
         bool IsMining { get; }
@@ -49,7 +48,6 @@ namespace Nethermind.Facade
         }
 
         CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
-        SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken);
         CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, ulong gasCap = 0, bool noBaseFee = false, CancellationToken cancellationToken = default);
 
         /// <summary>Fills the omitted execution and state limits of a frame transaction's frames by replaying it.</summary>
@@ -78,7 +76,6 @@ namespace Nethermind.Facade
             Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted);
 
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
-        ulong GetChainId();
 
         int NewBlockFilter();
         int NewPendingTransactionFilter();
@@ -103,8 +100,6 @@ namespace Nethermind.Facade
         LogFilter? GetLogFilter(int filterId);
         /// <inheritdoc cref="Nethermind.State.IStateReader.RunTreeVisitor{TCtx}"/>
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
-
-        bool HasStateForBlock(BlockHeader? baseBlock);
 
         Witness GenerateExecutionWitness(BlockHeader parent, Block block);
         Witness GenerateExecutionWitness(BlockHeader parent, Block block, IBlockTracer tracer);

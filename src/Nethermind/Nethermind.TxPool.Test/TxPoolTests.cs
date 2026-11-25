@@ -1606,6 +1606,25 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Disposed_pool_rejects_submissions()
+        {
+            _txPool = CreatePool();
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(TxGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            await _txPool.DisposeAsync();
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Syncing));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+            }
+        }
+
+        [Test]
         public void should_add_valid_transactions_recovering_its_address()
         {
             _txPool = CreatePool();
@@ -3120,6 +3139,17 @@ namespace Nethermind.TxPool.Test
             Assert.That(txPoolPeer.BatchCount(sendFullTx: false), Is.Zero);
         }
 
+        [Test]
+        public void should_keep_notifying_peer_after_another_connection_with_its_id_is_removed()
+        {
+            _txPool = CreatePool();
+            RecordingTxPoolPeer registered = new(TestItem.PublicKeyA);
+            _txPool.AddPeer(registered);
+            _txPool.RemovePeer(new RecordingTxPoolPeer(TestItem.PublicKeyA));
+            _ = AddTransactionToPool();
+            Assert.That(() => registered.BatchCount(sendFullTx: true), Is.Not.Zero.After(500, 10));
+        }
+
         [TestCase(true, TestName = "should_send_to_peers_full_newly_added_local_tx")]
         [TestCase(false, TestName = "should_not_send_to_peers_full_newly_added_external_tx")]
         public void should_handle_sending_newly_added_tx_to_peers(bool isLocal)
@@ -3883,6 +3913,30 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType), "frame transactions must be rejected at pool ingress");
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "no frame transaction may enter the pool");
+            }
+        }
+
+        [Test]
+        public void SubmitTx_DepositTransaction_RejectedAsNotSupported()
+        {
+            TxValidator txValidator = new(_specProvider.ChainId);
+            txValidator.RegisterValidator(TxType.DepositTx, Always.Valid);
+            _txPool = CreatePool(txValidator: txValidator);
+            Transaction depositTx = Build.A.Transaction
+                .WithType(TxType.DepositTx)
+                .WithNonce(0)
+                .WithGasLimit(100_000)
+                .WithTo(TestItem.AddressB)
+                .WithSenderAddress(TestItem.AddressA)
+                .TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(depositTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
             }
         }
 
@@ -8620,7 +8674,8 @@ namespace Nethermind.TxPool.Test
             IEthereumEcdsa ethereumEcdsa = null,
             ITxValidator specChangeTxValidator = null,
             IFrameTxPrefixSimulator frameTxPrefixSimulator = null,
-            IStateHeaderProvider stateHeaderProvider = null)
+            IStateHeaderProvider stateHeaderProvider = null,
+            ITxValidator txValidator = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -8640,7 +8695,7 @@ namespace Nethermind.TxPool.Test
                 txStorage,
                 _headInfo,
                 config,
-                new TxValidator(_specProvider.ChainId),
+                txValidator ?? new TxValidator(_specProvider.ChainId),
                 specChangeTxValidator ?? new SpecChangeTxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),

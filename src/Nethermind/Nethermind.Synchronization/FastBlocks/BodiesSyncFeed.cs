@@ -164,7 +164,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     token.ThrowIfCancellationRequested();
 
                     // Otherwise, the progress does not update correctly
-                    _syncPointers.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
+                    Flush();
                     UpdateSyncReport();
                 }
 
@@ -190,7 +190,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private void Flush()
         {
             ulong lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
-            _blocksDb.Flush();
+            _blocksDb.FlushOrThrow();
             _syncPointers.LowestInsertedBodyNumber = lowestInsertedAtPoint;
             PersistCompletionMarker();
         }

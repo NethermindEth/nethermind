@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -25,6 +26,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -91,6 +93,8 @@ public class BeaconHeadersSyncTests
             set => _invalidChainTracker = value;
         }
 
+        public ILogManager LogManager { get; set; } = LimboLogs.Instance;
+
         private BeaconHeadersSyncFeed? _feed;
         public BeaconHeadersSyncFeed Feed => _feed ??= new BeaconHeadersSyncFeed(
             PoSSwitcher,
@@ -100,7 +104,7 @@ public class BeaconHeadersSyncTests
             Report,
             BeaconPivot,
             InvalidChainTracker,
-            LimboLogs.Instance,
+            LogManager,
             ChainLevelInfoRepository,
             HeaderStore
         );
@@ -397,6 +401,87 @@ public class BeaconHeadersSyncTests
         Assert.That(second, Is.Null);
     }
 
+    private const ulong JoinNumber = 6;
+    private const string NoNewHeaderLine = "No new header to add in beacon headers sync, the highest header of the batch is already known";
+
+    /// <summary>
+    /// The first batch below the pivot ends on the known header the beacon chain joins, so nothing of it is inserted.
+    /// Its headers are already stored, so the feed handles it while preparing a request.
+    /// </summary>
+    [Test]
+    public async Task Feed_merges_when_a_stored_batch_ends_on_a_known_header([Values] bool trace)
+    {
+        BlockTree remote = Build.A.BlockTree().OfChainLength((int)JoinNumber + 2).TestObject;
+        TestLogger logger = new() { IsTrace = trace };
+        Context ctx = PrepareJoin(remote, JoinNumber + 1, logger, localChainKnown: true);
+
+        using HeadersSyncBatch? request = await ctx.Feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request, Is.Null, "the stored batch needs no download");
+            Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant), "merged, so the feed went to sleep");
+            Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(JoinNumber + 1), "nothing inserted below the pivot");
+            Assert.That(logger.LogList, trace ? Has.One.EqualTo(NoNewHeaderLine) : Has.None.EqualTo(NoNewHeaderLine));
+            Assert.That(logger.LogList, Has.None.StartsWith("New header starting from"));
+        }
+    }
+
+    /// <summary>The same join through a downloaded batch: the joining header became known after the request was sent.</summary>
+    [Test]
+    public async Task Feed_merges_when_a_downloaded_batch_ends_on_a_known_header([Values] bool trace)
+    {
+        BlockTree remote = Build.A.BlockTree().OfChainLength((int)JoinNumber + 2).TestObject;
+        TestLogger logger = new() { IsTrace = trace };
+        Context ctx = PrepareJoin(remote, JoinNumber + 1, logger, localChainKnown: false);
+
+        using HeadersSyncBatch? request = await ctx.Feed.PrepareRequest();
+        ulong? requestEnd = request?.EndNumber;
+        SuggestLocalChain(ctx.BlockTree, remote);
+        BuildHeadersSyncBatchResponse(request, remote);
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(request);
+        using HeadersSyncBatch? next = await ctx.Feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requestEnd, Is.EqualTo(JoinNumber));
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(next, Is.Null, "the range must not be requested again");
+            Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant), "merged, so the feed went to sleep");
+            Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(JoinNumber + 1), "nothing inserted below the pivot");
+        }
+    }
+
+    /// <summary>
+    /// The same join through a parked batch: the stored batch below the first download waits as a dependency until
+    /// the download lands, then is drained.
+    /// </summary>
+    [Test]
+    public async Task Feed_merges_when_a_parked_batch_ends_on_a_known_header([Values] bool trace)
+    {
+        const ulong pivotNumber = JoinNumber + 1 + GethSyncLimits.MaxHeaderFetch;
+        BlockTree remote = Build.A.BlockTree().OfChainLength((int)pivotNumber + 1).TestObject;
+        TestLogger logger = new() { IsTrace = trace };
+        Context ctx = PrepareJoin(remote, pivotNumber, logger, localChainKnown: true);
+
+        using HeadersSyncBatch? upper = await ctx.Feed.PrepareRequest();
+        using HeadersSyncBatch? parked = await ctx.Feed.PrepareRequest();
+        ulong? upperStart = upper?.StartNumber;
+        BuildHeadersSyncBatchResponse(upper, remote);
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(upper);
+        using HeadersSyncBatch? next = await ctx.Feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(upperStart, Is.EqualTo(JoinNumber + 1));
+            Assert.That(parked, Is.Null, "the stored range waits for the download above it");
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(next, Is.Null, "the parked range must not be requested again");
+            Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant), "merged, so the feed went to sleep");
+            Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(JoinNumber + 1));
+        }
+    }
+
     [Test]
     public async Task When_pivot_changed_during_header_sync_after_chain_merged__do_not_return_null_request()
     {
@@ -623,6 +708,29 @@ public class BeaconHeadersSyncTests
         IBeaconPivot pivot = new BeaconPivot(syncConfig, new MemDb(), blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
         pivot.EnsurePivot(pivotHeader ?? Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
         return pivot;
+    }
+
+    /// <summary>
+    /// A context whose beacon pivot is at <paramref name="pivotNumber"/> of <paramref name="remote"/>, with the feed
+    /// initialized and active, so that a later <see cref="SyncFeedState.Dormant"/> state shows the feed finished.
+    /// </summary>
+    private static Context PrepareJoin(BlockTree remote, ulong pivotNumber, TestLogger logger, bool localChainKnown)
+    {
+        Context ctx = new() { LogManager = new OneLoggerLogManager(new ILogger(logger)) };
+        if (localChainKnown) SuggestLocalChain(ctx.BlockTree, remote);
+        ctx.BeaconPivot = PreparePivot(pivotNumber, ctx.SyncConfig, ctx.BlockTree, remote.FindHeader(pivotNumber, BlockTreeLookupOptions.None));
+        ctx.Feed.InitializeFeed();
+        ctx.Feed.Activate();
+        return ctx;
+    }
+
+    /// <summary>Adds blocks 1 to <see cref="JoinNumber"/> of <paramref name="remote"/> to the local tree.</summary>
+    private static void SuggestLocalChain(IBlockTree blockTree, IBlockTree remote)
+    {
+        for (ulong number = 1; number <= JoinNumber; number++)
+        {
+            Assert.That(blockTree.SuggestBlock(remote.FindBlock(number, BlockTreeLookupOptions.None)!), Is.EqualTo(AddBlockResult.Added));
+        }
     }
 
 }
