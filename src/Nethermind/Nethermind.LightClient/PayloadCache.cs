@@ -16,6 +16,7 @@ internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stop
     private readonly CancellationTokenSource _stop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
     private readonly Lock _gate = new();
     private readonly Dictionary<Hash256, TaskCompletionSource<T>> _downloads = [];
+    private Dictionary<Hash256, TaskCompletionSource<T>>? _independentDownloads;
     private TaskCompletionSource _changed = NewSignal();
     private bool _stopping;
     private Task? _dispose;
@@ -24,8 +25,11 @@ internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stop
     {
         lock (_gate)
         {
-            ObjectDisposedException.ThrowIf(_stopping, this);
-            _stop.Token.ThrowIfCancellationRequested();
+            if (_stopping || _stop.IsCancellationRequested)
+            {
+                value = default;
+                return false;
+            }
             return _cache.TryGetValue(hash, out value) && value is not null;
         }
     }
@@ -39,7 +43,8 @@ internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stop
         }
     }
 
-    internal async Task<T> GetAsync(Hash256 hash, Func<CancellationToken, Task<T>> fetch, CancellationToken cancellationToken)
+    internal async Task<T> GetAsync(Hash256 hash, Func<CancellationToken, Task<T>> fetch, CancellationToken cancellationToken,
+        bool independentDownload = false)
     {
         CancellationToken stopping = default;
         while (true)
@@ -47,6 +52,7 @@ internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stop
             cancellationToken.ThrowIfCancellationRequested();
             TaskCompletionSource<T>? owner = null;
             Task<T>? result = null;
+            Dictionary<Hash256, TaskCompletionSource<T>> downloads;
             Task changed;
             lock (_gate)
             {
@@ -55,16 +61,17 @@ internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stop
                 _stop.Token.ThrowIfCancellationRequested();
                 stopping = _stop.Token;
                 if (_cache.TryGetValue(hash, out T? cached)) return cached!;
-                if (_downloads.TryGetValue(hash, out TaskCompletionSource<T>? download)) result = download.Task;
-                else if (_downloads.Count < MaxDownloads)
+                downloads = independentDownload ? _independentDownloads ??= [] : _downloads;
+                if (downloads.TryGetValue(hash, out TaskCompletionSource<T>? download)) result = download.Task;
+                else if (downloads.Count < MaxDownloads)
                 {
                     owner = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                    _downloads.Add(hash, owner);
+                    downloads.Add(hash, owner);
                     result = owner.Task;
                 }
                 changed = _changed.Task;
             }
-            if (owner is not null) _ = FetchAsync(hash, owner, fetch);
+            if (owner is not null) _ = FetchAsync(downloads, hash, owner, fetch);
             using CancellationTokenSource waiting = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stopping);
             if (result is not null) return await result.WaitAsync(waiting.Token);
             await changed.WaitAsync(waiting.Token);
@@ -112,7 +119,7 @@ internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stop
             for (int i = 0; i < owners.Count; i++)
             {
                 int index = i;
-                _ = FetchAsync(owners[i].Hash, owners[i].Completion, _ => batch[index]);
+                _ = FetchAsync(_downloads, owners[i].Hash, owners[i].Completion, _ => batch[index]);
             }
         }
         for (int i = 0; i < result.Length; i++)
@@ -131,7 +138,8 @@ internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stop
         }
     }
 
-    private async Task FetchAsync(Hash256 hash, TaskCompletionSource<T> completion, Func<CancellationToken, Task<T>> fetch)
+    private async Task FetchAsync(Dictionary<Hash256, TaskCompletionSource<T>> downloads, Hash256 hash,
+        TaskCompletionSource<T> completion, Func<CancellationToken, Task<T>> fetch)
     {
         T? result = default;
         Exception? failure = null;
@@ -149,7 +157,7 @@ internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stop
         {
             lock (_gate)
             {
-                _downloads.Remove(hash);
+                downloads.Remove(hash);
                 _changed.TrySetResult();
                 _changed = NewSignal();
                 if (failure is OperationCanceledException && _stop.IsCancellationRequested) completion.TrySetCanceled(_stop.Token);
@@ -173,9 +181,11 @@ internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stop
     {
         _stopping = true;
         _changed.TrySetResult();
-        Task[] owners = new Task[_downloads.Count];
+        Task[] owners = new Task[_downloads.Count + (_independentDownloads?.Count ?? 0)];
         int index = 0;
         foreach (TaskCompletionSource<T> download in _downloads.Values) owners[index++] = download.Task;
+        if (_independentDownloads is { } independent)
+            foreach (TaskCompletionSource<T> download in independent.Values) owners[index++] = download.Task;
         await _stop.CancelAsync();
         await Task.WhenAll(owners).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         _cache.Dispose();

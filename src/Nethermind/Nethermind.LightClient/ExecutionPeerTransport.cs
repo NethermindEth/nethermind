@@ -70,13 +70,16 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 {
     private const int ExecutionRequestLimit = 4;
     private const int ExecutionBulkLimit = ExecutionRequestLimit - 1;
+    private const int ConsensusHeaderRequestLimit = 2;
     private const int SnapRequestLimit = 8;
     // Two concurrent proof RPCs leave SNAP capacity for other state reads.
     private const int ProofStorageConcurrency = 3;
     private const string BlockDataUnavailable = "No execution peer supplied authenticated block data.";
     private const string AncestorChainUnavailable = "No execution peer supplied an authenticated header chain.";
+    private const int ConsensusHeaderTimeoutSeconds = 3;
     private const int SlowResponseMilliseconds = 7500;
     private const int PeerFeedbackCapacity = 256;
+    private static readonly TimeSpan BulkHedgeDelay = TimeSpan.FromMilliseconds(250);
     private readonly IContainer _services;
     private readonly ILogManager _logManager;
     private readonly Nethermind.Logging.ILogger _logger;
@@ -90,6 +93,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private readonly PayloadCache<ReadOnlyBlockAccessList> _blockAccessLists;
     private readonly SemaphoreSlim _executionDataRequests = new(ExecutionRequestLimit, ExecutionRequestLimit);
     private readonly SemaphoreSlim _executionBulkRequests = new(ExecutionBulkLimit, ExecutionBulkLimit);
+    private readonly SemaphoreSlim _consensusHeaderRequests = new(ConsensusHeaderRequestLimit, ConsensusHeaderRequestLimit);
     private readonly MemoryCache _peerCooldowns = new(new MemoryCacheOptions { SizeLimit = PeerFeedbackCapacity });
     private readonly Lock _cooldownLock = new();
     private readonly ConditionalWeakTable<PeerInfo, PeerPerformance> _peerPerformance = [];
@@ -315,7 +319,10 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     internal void UpdateHead(VerifiedHead head, ulong timestamp)
     {
-        _syncServer.UpdateHead(head, timestamp);
+        if (_stop.IsCancellationRequested) return;
+        byte[]? encodedHeader = _headers.TryGetValue(head.BlockHash, out BlockHeader? retained)
+            ? _services.Resolve<IHeaderDecoder>().Encode(retained) : null;
+        _syncServer.UpdateHead(head, timestamp, encodedHeader);
         BlockHeader current = _syncServer.Head;
         foreach (PeerInfo peer in _services.Resolve<ISyncPeerPool>().InitializedPeers)
         {
@@ -807,16 +814,39 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     public async Task<BlockHeader> GetHeaderByHashAsync(Hash256 hash, CancellationToken cancellationToken)
     {
         Hash256 key = new(hash.ValueHash256);
-        BlockHeader retained = await _headers.GetAsync(key, stopping => RequestExecutionAsync(AllocationContexts.Headers, async (peer, token) =>
+        BlockHeader retained = await _headers.GetAsync(key,
+            stopping => RequestHeaderAsync(key, _executionDataRequests, stopping), cancellationToken);
+        return CopyHeader(retained);
+    }
+
+    internal async Task<BlockHeader> GetConsensusHeaderAsync(Hash256 hash, CancellationToken cancellationToken)
+    {
+        Hash256 key = new(hash.ValueHash256);
+        // RPC work can occupy every shared execution slot while the publisher needs to advance.
+        BlockHeader retained = await _headers.GetAsync(key, FetchAsync, cancellationToken, independentDownload: true);
+        return CopyHeader(retained);
+
+        async Task<BlockHeader> FetchAsync(CancellationToken stopping)
+        {
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(ConsensusHeaderTimeoutSeconds), _clock);
+            using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, stopping);
+            try { return await RequestHeaderAsync(key, _consensusHeaderRequests, attempt.Token); }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested && !stopping.IsCancellationRequested)
+            {
+                throw new ExecutionDataUnavailableException("Timed out waiting for the execution header authenticated by consensus.");
+            }
+        }
+    }
+
+    private Task<BlockHeader> RequestHeaderAsync(Hash256 key, SemaphoreSlim requests, CancellationToken cancellationToken) =>
+        RequestFromPeersAsync(AllocationContexts.Headers, requests, static peer => peer, async (peer, token) =>
         {
             BlockHeader header = await peer.GetHeadBlockHeader(new Hash256(key.ValueHash256), token)
                 ?? throw new ExecutionDataUnavailableException("Execution peer does not have the requested header.");
             BlockHeader snapshot = CopyHeader(header);
             if (snapshot.Hash != key) throw new InvalidDataException("Execution peer returned a header inconsistent with the requested hash.");
             return snapshot;
-        }, stopping, failureMessage: "No execution peer supplied the requested execution header."), cancellationToken);
-        return CopyHeader(retained);
-    }
+        }, cancellationToken, canServe: null, failureMessage: "No execution peer supplied the requested execution header.");
 
     public async Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken)
     {
@@ -1383,16 +1413,17 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         CancellationToken cancellationToken, Func<ISyncPeer, bool>? canServe = null,
         string failureMessage = BlockDataUnavailable, HeaderPrefetch? prefetch = null,
         bool hedge = true) =>
-        RequestFromPeersAsync(context, static peer => peer, request, cancellationToken, canServe, failureMessage,
+        RequestFromPeersAsync(context, context == AllocationContexts.Snap ? _snapRequests : _executionDataRequests,
+            static peer => peer, request, cancellationToken, canServe, failureMessage,
             prefetch: prefetch, hedge: hedge);
 
     private Task<T> RequestAsync<T>(Func<ISnapSyncPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
         string operation = "proof") =>
-        RequestFromPeersAsync(AllocationContexts.Snap,
+        RequestFromPeersAsync(AllocationContexts.Snap, _snapRequests,
             static peer => peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap) ? snap : null,
             request, cancellationToken, null, "No execution peer supplied a valid SNAP proof for the selected verified state.", operation);
 
-    private async Task<T> RequestFromPeersAsync<TPeer, T>(AllocationContexts context, Func<ISyncPeer, TPeer?> selectPeer,
+    private async Task<T> RequestFromPeersAsync<TPeer, T>(AllocationContexts context, SemaphoreSlim requests, Func<ISyncPeer, TPeer?> selectPeer,
         Func<TPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
         Func<ISyncPeer, bool>? canServe, string failureMessage, string? operation = null,
         HeaderPrefetch? prefetch = null, bool hedge = true) where TPeer : class
@@ -1403,7 +1434,6 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             ? new Activity("LightClientPeerRequest").SetIdFormat(ActivityIdFormat.W3C).Start() : null;
         if (trace)
             _logger.Debug($"LC peer id={diagnostic?.Id} parent={diagnostic?.ParentId} context={context} operation={operation ?? context.ToString()}");
-        SemaphoreSlim requests = context == AllocationContexts.Snap ? _snapRequests : _executionDataRequests;
         // Speculation must leave the header lane available until its trusted cursor arrives.
         bool bulk = context is not (AllocationContexts.Headers or AllocationContexts.Snap) || prefetch is not null;
         bool bulkAcquired = false;
@@ -1488,6 +1518,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                     throw new NotSupportedException("No execution peer supports the requested data protocol.");
                 using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
                 List<(PeerInfo Peer, Task<(T Result, Exception? Error)> Request)> pending = [with(maxParallelSuppliers)];
+                Task? hedgeDelay = null;
                 ExecutionDataUnavailableException? unavailable = null;
                 bool selected = false;
                 int next = 0;
@@ -1498,6 +1529,14 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                         do
                         {
                             if (next == eligible.Count || pending.Count == maxParallelSuppliers) break;
+                            if (bulk && pending.Count == 1 && hedgeDelay is not { IsCompletedSuccessfully: true })
+                            {
+                                // Large responses can arrive from both suppliers before the losing request is canceled.
+                                Task primary = pending[0].Request;
+                                hedgeDelay ??= Task.Delay(BulkHedgeDelay, _clock, round.Token);
+                                await Task.WhenAny(primary, hedgeDelay);
+                                if (primary.IsCompleted || round.IsCancellationRequested) break;
+                            }
                             (PeerInfo peer, TPeer protocol) = eligible[next++];
                             if (!CanPrefer(peer)) continue;
                             _lastPeers[context] = peer;
@@ -1778,6 +1817,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         await _bodies.DisposeAsync();
         await _receipts.DisposeAsync();
         await _headers.DisposeAsync();
+        _consensusHeaderRequests.Dispose();
         await _accounts.DisposeAsync();
         await _storage.DisposeAsync();
         await _code.DisposeAsync();
@@ -1907,22 +1947,30 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     internal sealed class LightSyncServer : ISyncServer
     {
+        private sealed record AdvertisedHeader(BlockHeader Header, byte[]? Rlp);
+        private sealed record AdvertisedHeads(AdvertisedHeader Current, AdvertisedHeader? Previous);
+
         private readonly ChainSpec _chainSpec;
         private readonly Lock _receiptHeadersLock = new();
         private readonly Dictionary<Hash256, BlockHeader> _receiptHeaders = [with(ExecutionBulkLimit)];
-        private BlockHeader _head;
+        private AdvertisedHeads _heads;
 
         internal LightSyncServer(ChainSpec chainSpec, VerifiedHead? head, ulong timestamp)
         {
             _chainSpec = chainSpec;
-            _head = chainSpec.Genesis!.Header;
+            _heads = new(new(chainSpec.Genesis!.Header, null), null);
             if (head is not null) UpdateHead(head, timestamp);
         }
 
-        internal void UpdateHead(VerifiedHead head, ulong timestamp)
+        internal void UpdateHead(VerifiedHead head, ulong timestamp, byte[]? encodedHeader = null)
         {
             if (head.Number == 0 && head.BlockHash != _chainSpec.Genesis!.Hash) return;
-            Volatile.Write(ref _head, CreateHead(head, timestamp));
+            AdvertisedHeads before = Volatile.Read(ref _heads);
+            bool sameHash = before.Current.Header.Hash == head.BlockHash;
+            // Re-encoding a wire header can lose optional field presence. Only serve bytes that still match the authenticated hash.
+            byte[]? rlp = encodedHeader is not null && Keccak.Compute(encodedHeader) == head.BlockHash ? encodedHeader
+                : sameHash ? before.Current.Rlp : null;
+            Volatile.Write(ref _heads, new(new(CreateHead(head, timestamp), rlp), sameHash ? before.Previous : before.Current));
         }
 
         internal void AddReceiptHeader(BlockHeader header)
@@ -1941,15 +1989,15 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, UInt256.Zero,
             head.Number, 0, timestamp, [])
         {
-            Hash = head.BlockHash,
-            StateRoot = head.StateRoot,
+            Hash = CopyHash(head.BlockHash),
+            StateRoot = CopyHash(head.StateRoot),
             TotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty ?? UInt256.Zero,
         };
 
         public ulong NetworkId => _chainSpec.NetworkId;
         public BlockHeader Genesis => _chainSpec.Genesis!.Header;
-        public BlockHeader Head => Volatile.Read(ref _head);
-        public ulong LowestBlock => Volatile.Read(ref _head).Number;
+        public BlockHeader Head => Volatile.Read(ref _heads).Current.Header;
+        public ulong LowestBlock => Head.Number;
         public void HintBlock(Hash256 hash, ulong number, ISyncPeer receivedFrom) { }
         public void AddNewBlock(Block block, ISyncPeer node) { }
         public void StopNotifyingPeersAboutNewBlocks() { }
@@ -1960,17 +2008,41 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         {
             if (hash != Genesis.Hash) return null;
             byte[] encoded = Rlp.Encode(_chainSpec.Genesis!);
-            RlpReader block = new(encoded);
-            RlpReader fields = block.EnterSequence(out _);
-            return Keccak.Compute(fields.ReadEncodedItem()) == hash ? new ArrayMemoryManager(encoded) : null;
+            return Keccak.Compute(ReadBlockHeader(encoded)) == hash ? new ArrayMemoryManager(encoded) : null;
         }
         public BlockHeader? FindHeader(Hash256 hash)
         {
             if (hash == Genesis.Hash) return Genesis;
             lock (_receiptHeadersLock) return _receiptHeaders.GetValueOrDefault(hash);
         }
-        public Hash256? FindHash(ulong number) => number == 0 ? Genesis.Hash : null;
-        public IOwnedReadOnlyList<byte> FindHeadersRlp(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => IOwnedReadOnlyList<byte>.Empty;
+        public Hash256? FindHash(ulong number)
+        {
+            if (number == 0) return Genesis.Hash;
+            AdvertisedHeads heads = Volatile.Read(ref _heads);
+            if (heads.Current is { Rlp: not null } current && current.Header.Number == number) return current.Header.Hash;
+            return heads.Previous is { Rlp: not null } previous && previous.Header.Number == number ? previous.Header.Hash : null;
+        }
+
+        public IOwnedReadOnlyList<byte> FindHeadersRlp(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+        {
+            if (numberOfBlocks <= 0) return IOwnedReadOnlyList<byte>.Empty;
+            if (hash == Genesis.Hash)
+            {
+                ReadOnlySpan<byte> genesis = ReadBlockHeader(Rlp.Encode(_chainSpec.Genesis!));
+                return Keccak.Compute(genesis) == hash ? new ArrayPoolList<byte>(genesis) : IOwnedReadOnlyList<byte>.Empty;
+            }
+            AdvertisedHeads heads = Volatile.Read(ref _heads);
+            byte[]? encoded = heads.Current.Header.Hash == hash ? heads.Current.Rlp
+                : heads.Previous is { } previous && previous.Header.Hash == hash ? previous.Rlp : null;
+            return encoded is not null ? new ArrayPoolList<byte>(encoded.AsSpan()) : IOwnedReadOnlyList<byte>.Empty;
+        }
+
+        private static ReadOnlySpan<byte> ReadBlockHeader(ReadOnlySpan<byte> encodedBlock)
+        {
+            RlpReader block = new(encodedBlock);
+            RlpReader fields = block.EnterSequence(out _);
+            return fields.ReadEncodedItem();
+        }
         public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken,
             NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State) => EmptyByteArrayList.Instance;
         public int GetPeerCount() => 0;

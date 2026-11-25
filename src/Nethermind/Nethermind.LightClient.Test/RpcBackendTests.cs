@@ -906,7 +906,11 @@ public class RpcBackendTests
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
             await rpc.InvokeAsync(method, parameters, CancellationToken.None));
 
-        Assert.That(error!.Code, Is.EqualTo(-32001));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error!.Code, Is.EqualTo(-32001));
+            Assert.That(error.Message, Does.StartWith("Authenticated optimistic execution head is stale"));
+        }
         AssertNoExecutionRequests(provider);
     }
 
