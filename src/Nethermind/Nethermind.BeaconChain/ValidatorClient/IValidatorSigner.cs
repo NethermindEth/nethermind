@@ -43,6 +43,15 @@ public interface IValidatorSigner
     /// <summary>Signs a contribution and its selection proof under <c>DOMAIN_CONTRIBUTION_AND_PROOF</c> of the contribution's epoch (altair/validator.md "Broadcast sync committee contribution").</summary>
     /// <exception cref="ValidatorSignerException">The signer refused, such as for an unknown key, or could not be reached.</exception>
     ValueTask<BlsSignature> SignContributionAndProof(BlsPublicKey publicKey, ContributionAndProof contributionAndProof, CancellationToken cancellationToken);
+
+    /// <summary>Signs <paramref name="epoch"/> under <c>DOMAIN_RANDAO</c> of that epoch: the randao reveal of a block proposed in it (phase0/validator.md "Randao reveal").</summary>
+    /// <exception cref="ValidatorSignerException">The signer refused, such as for an unknown key, or could not be reached.</exception>
+    ValueTask<BlsSignature> SignRandaoReveal(BlsPublicKey publicKey, ulong epoch, CancellationToken cancellationToken);
+
+    /// <summary>Signs a block, given as its header, under <c>DOMAIN_BEACON_PROPOSER</c> of its slot's epoch (phase0/validator.md "Signature").</summary>
+    /// <remarks>A header has the root of its block, and is all a signer's slashing protection needs to see of it.</remarks>
+    /// <exception cref="ValidatorSignerException">The signer refused, such as for a slashable proposal or an unknown key, or could not be reached.</exception>
+    ValueTask<BlsSignature> SignBlock(BlsPublicKey publicKey, BeaconBlockHeader blockHeader, CancellationToken cancellationToken);
 }
 
 /// <summary>A signature that was not produced; the duty it was for is skipped.</summary>

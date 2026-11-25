@@ -143,6 +143,14 @@ public static partial class BlockProcessing
             : (state.NextWithdrawalValidatorIndex + (ulong)Presets.MaxValidatorsPerWithdrawalsSweep) % validatorCount;
     }
 
+    /// <summary>Spec <c>get_expected_withdrawals</c> (Electra): the withdrawals the payload of a block on <paramref name="state"/>, processed to the block's slot, must carry.</summary>
+    internal static Withdrawal[] GetExpectedWithdrawals(BeaconStateFulu state)
+    {
+        RefList16<Withdrawal> expected = new();
+        GetExpectedWithdrawals(state, ref expected);
+        return expected.AsSpan().ToArray();
+    }
+
     /// <summary>Spec <c>get_expected_withdrawals</c> (Electra), returning the number of consumed pending partial withdrawals.</summary>
     private static int GetExpectedWithdrawals(BeaconStateFulu state, ref RefList16<Withdrawal> withdrawals)
     {

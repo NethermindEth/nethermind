@@ -83,6 +83,24 @@ public sealed class BlockImporter : IBlockImporter
         _preparedSlot = new(headRoot, parent, copy, cache);
     }
 
+    /// <summary>A private copy of the post-state of <paramref name="headRoot"/> processed to <paramref name="slot"/>, to build a block of that slot on, with the epoch cache its transition must use.</summary>
+    /// <returns><c>null</c> when the post-state of <paramref name="headRoot"/> is not held.</returns>
+    /// <remarks>
+    /// Copies the slot <see cref="PrepareNextSlot"/> prepared, which stays for the import of the block built on it. The cache shares the
+    /// lineage hasher, which stays correct for any state it hashes and only costs the next import a full diff.
+    /// </remarks>
+    internal (BeaconStateFulu State, EpochCache Cache)? AdvanceForProposal(Hash256 headRoot, ulong slot)
+    {
+        PrepareNextSlot(headRoot, slot);
+        if (_preparedSlot is { } prepared && prepared.Parent == headRoot && prepared.State.Slot == slot)
+            return (prepared.State.Clone(), prepared.Cache.ForSpeculativeImport());
+        if (_states.GetHeldBlockState(headRoot) is not { } parent) return null;
+        BeaconStateFulu copy = parent.Clone();
+        EpochCache cache = new() { Hasher = _lineageCache.Hasher, SigningSpec = _spec };
+        SlotProcessing.ProcessSlots(copy, slot, cache);
+        return (copy, cache);
+    }
+
     private PreparedSlot? TakePreparedSlot(Hash256 parentRoot, ulong slot, BeaconStateFulu original)
     {
         PreparedSlot? prepared = _preparedSlot;

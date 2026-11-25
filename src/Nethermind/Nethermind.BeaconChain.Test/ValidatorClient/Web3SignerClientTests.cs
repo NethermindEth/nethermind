@@ -15,7 +15,7 @@ namespace Nethermind.BeaconChain.Test.ValidatorClient;
 
 /// <remarks>
 /// The requests and response are the <c>ATTESTATION</c>, <c>AGGREGATION_SLOT</c>, <c>AGGREGATE_AND_PROOF_V2 (FULU)</c>, <c>SYNC_COMMITTEE_MESSAGE</c>,
-/// <c>SYNC_COMMITTEE_SELECTION_PROOF</c> and <c>SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF</c> examples of the Web3Signer eth2 signing OpenAPI
+/// <c>SYNC_COMMITTEE_SELECTION_PROOF</c>, <c>SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF</c>, <c>RANDAO_REVEAL</c> and <c>BLOCK_V2 (FULU)</c> examples of the Web3Signer eth2 signing OpenAPI
 /// (Consensys/web3signer <c>openapi-specs/eth2/signing/paths/sign.yaml</c>), so the signing roots of all but the aggregate are checked against
 /// the ones Web3Signer published for the same object, fork version and genesis validators root. The root published with the aggregate example
 /// does not follow from its object under the Electra containers; that case expects the root of a separate SSZ computation. The contribution
@@ -69,6 +69,12 @@ public class Web3SignerClientTests
         yield return new TestCaseData((Func<Web3SignerClient, BlsPublicKey, ValueTask<BlsSignature>>)((signer, key) => signer.SignContributionAndProof(key, ContributionAndProof(), CancellationToken.None)),
             $$$$"""{"type":"SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF","fork_info":{{{{ForkInfo}}}},"signingRoot":"0xae94702468b584a3b1c422bc1b39cc523d9175ba3b9ac1cccb699c00507cc1a5","contribution_and_proof":{"aggregator_index":"11","selection_proof":"0x8f5c34de9e22ceaa7e8d165fc0553b32f02188539e89e2cc91e2eb9077645986550d872ee3403204ae5d554eae3cac12124e18d2324bccc814775316aaef352abc0450812b3ca9fde96ecafa911b3b8bfddca8db4027f08e29c22a9c370ad933","contribution":{"slot":"0","beacon_block_root":"0x235bc3400c2839fd856a524871200bd5e362db615fc4565e1870ed9a2a936464","subcommittee_index":"1","aggregation_bits":"0x24000000000000000000000000000000","signature":"0x9005ed0936f527d416609285b355fe6b9610d730c18b9d2f4942ba7d0eb95ba304ff46b6a2fb86f0c756bf09274db8e11399b7642f9fc5ae50b5bd9c1d87654277a19bfc3df78d36da16f44a48630d9550774a4ca9f3a5b55bbf33345ad2ec71"}}}""")
             .SetName("SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF");
+        yield return new TestCaseData((Func<Web3SignerClient, BlsPublicKey, ValueTask<BlsSignature>>)((signer, key) => signer.SignRandaoReveal(key, 3, CancellationToken.None)),
+            $$$$"""{"type":"RANDAO_REVEAL","fork_info":{{{{ForkInfo}}}},"signingRoot":"0x3d047c51a8b03630781dc4c5519c17f7de87174246ff2deed0f195c6c775f91e","randao_reveal":{"epoch":"3"}}""")
+            .SetName("RANDAO_REVEAL");
+        yield return new TestCaseData((Func<Web3SignerClient, BlsPublicKey, ValueTask<BlsSignature>>)((signer, key) => signer.SignBlock(key, BlockHeader(), CancellationToken.None)),
+            $$$$"""{"type":"BLOCK_V2","fork_info":{{{{ForkInfo}}}},"signingRoot":"0xaa2e0c465c1a45d7b6637fcce4ad6ceb71fc12064b548078d619a411f0de8adc","beacon_block":{"version":"FULU","block_header":{"slot":"0","proposer_index":"4666673844721362956","parent_root":"0x367cbd40ac7318427aadb97345a91fa2e965daf3158d7f1846f1306305f41bef","state_root":"0xfd18cf40cc907a739be483f1ca0ee23ad65cdd3df23205eabc6d660a75d1f54e","body_root":"0xa759d8029a69d4fdd8b3996086e9722983977e4efc1f12f4098ea3d93e868a6b"}}}""")
+            .SetName("BLOCK_V2");
     }
 
     [TestCaseSource(nameof(SigningRequests))]
@@ -146,6 +152,16 @@ public class Web3SignerClientTests
             SelectionProof = new BlsSignature(Bytes.FromHexString("0xa63f73a03f1f42b1fd0a988b614d511eb346d0a91c809694ef76df5ae021f0f144d64e612d735bc8820950cf6f7f84cd0ae194bfe3d4242fe79688f83462e3f69d9d33de71aab0721b7dab9d6960875e5fdfd26b171a75fb51af822043820c47")),
         };
     }
+
+    /// <summary>The <c>BLOCK_V2 (FULU)</c> example's block header.</summary>
+    private static BeaconBlockHeader BlockHeader() => new()
+    {
+        Slot = 0,
+        ProposerIndex = 4666673844721362956,
+        ParentRoot = new Hash256("0x367cbd40ac7318427aadb97345a91fa2e965daf3158d7f1846f1306305f41bef"),
+        StateRoot = new Hash256("0xfd18cf40cc907a739be483f1ca0ee23ad65cdd3df23205eabc6d660a75d1f54e"),
+        BodyRoot = new Hash256("0xa759d8029a69d4fdd8b3996086e9722983977e4efc1f12f4098ea3d93e868a6b"),
+    };
 
     /// <summary>The <c>SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF</c> example's contribution: members 2 and 5 of subcommittee 1 signed.</summary>
     private static ContributionAndProof ContributionAndProof() => new()

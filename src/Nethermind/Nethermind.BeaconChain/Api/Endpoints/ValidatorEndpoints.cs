@@ -4,6 +4,8 @@
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.IO;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -11,6 +13,7 @@ using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.BeaconChain.ValidatorApi;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
@@ -140,6 +143,52 @@ internal sealed class ValidatorEndpoints(BeaconApiContext ctx)
         return Failures(await ctx.ValidatorApi.SubmitContributionAndProofs(contributions, cancellationToken), "Some contributions were not published.");
     }
 
+    [HttpPost("/eth/v1/validator/prepare_beacon_proposer"), Negotiated]
+    public async Task<IResult> PrepareBeaconProposers([FromBody] ProposerPreparationDto[] items, CancellationToken cancellationToken)
+    {
+        if (ConvertItems<ProposerPreparationDto, ProposerPreparation>(items, "Preparation", FromDto, out ProposerPreparation[] preparations) is { } malformed) return malformed;
+        await ctx.ValidatorApi.PrepareBeaconProposers(preparations, cancellationToken);
+        return Results.Ok();
+    }
+
+    /// <summary>beacon-APIs <c>produceBlockV3</c>: always a full block with the local execution layer's payload, in JSON or SSZ.</summary>
+    /// <remarks>
+    /// <c>builder_boost_factor</c> is checked and ignored, as the node has no builder. <c>skip_randao_verification</c> is not honoured, so the
+    /// reveal is always checked.
+    /// </remarks>
+    [HttpGet("/eth/v3/validator/blocks/{slot}"), Negotiated(Ssz = true)]
+    public async Task<IResult> ProduceBlock(string slot, [FromQuery(Name = "randao_reveal")] string? randaoReveal, [FromQuery(Name = "graffiti")] string? graffiti,
+        [FromQuery(Name = "builder_boost_factor")] string? builderBoostFactor, CancellationToken cancellationToken)
+    {
+        Hash256? parsedGraffiti = Hash256.Zero;
+        if (!TryParseUInt(slot, out ulong parsedSlot) || randaoReveal is null || !HexConvert.TryParseSignature(randaoReveal, out BlsSignature parsedReveal)
+            || (graffiti is not null && !HexConvert.TryParseHash(graffiti, out parsedGraffiti)) || (builderBoostFactor is not null && !TryParseUInt(builderBoostFactor, out _)))
+        {
+            return Invalid($"Invalid slot '{slot}', randao reveal '{randaoReveal}', graffiti '{graffiti}' or builder boost factor '{builderBoostFactor}'.");
+        }
+
+        ProducedBlock produced = await ctx.ValidatorApi.ProduceBlock(parsedSlot, parsedReveal, parsedGraffiti!, cancellationToken);
+        BeaconFork fork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(parsedSlot));
+        return WithBlockValues(ApiResults.SszOrJson(
+            ssz: () => ApiResults.Ssz(EncodeBlockContents(produced)),
+            json: () => ApiResults.Write(c => WriteProducedBlock(c, ResponseEnvelope.ForkName(fork), produced))), produced).WithConsensusVersion(fork);
+    }
+
+    /// <summary>beacon-APIs <c>publishBlockV2</c> of a Fulu <c>SignedBlockContents</c>, in JSON or SSZ, with <c>broadcast_validation</c> <c>gossip</c>, its default, only.</summary>
+    /// <remarks>The body is read here rather than bound, because the JSON body binding refuses the SSZ form.</remarks>
+    [HttpPost("/eth/v2/beacon/blocks")]
+    public async Task<IResult> PublishBlock(HttpContext c, [FromHeader(Name = ResponseEnvelope.ConsensusVersionHeader)] string? consensusVersion,
+        [FromQuery(Name = "broadcast_validation")] string? broadcastValidation)
+    {
+        if (consensusVersion == "gloas") throw new BeaconNodeApiException(BeaconNodeApiError.NotSupported, "Gloas blocks are not served by this node yet.");
+        if (consensusVersion != "fulu") return Invalid($"The {ResponseEnvelope.ConsensusVersionHeader} header must name fulu.");
+        if (broadcastValidation is not null && broadcastValidation != "gossip") return Invalid($"Broadcast validation '{broadcastValidation}' is not served; only gossip is.");
+        (SignedBlockContents? contents, IResult? unreadable) = await ReadSignedBlockContents(c);
+        if (unreadable is not null) return unreadable;
+        await ctx.ValidatorApi.PublishBlock(contents!, c.RequestAborted);
+        return Results.Ok();
+    }
+
     [HttpGet("/eth/v1/validator/{**path}")]
     [HttpPost("/eth/v1/validator/{**path}")]
     public static Task NotServed(HttpContext c) => Task.FromException(
@@ -177,6 +226,96 @@ internal sealed class ValidatorEndpoints(BeaconApiContext ctx)
             c.Response.StatusCode = StatusCodes.Status400BadRequest;
             return body.ExecuteAsync(c);
         });
+    }
+
+    /// <summary>Reads a Fulu <c>SignedBlockContents</c> from a JSON or SSZ body.</summary>
+    /// <returns>The contents, or the error response when they cannot be read.</returns>
+    private static async Task<(SignedBlockContents? Contents, IResult? Error)> ReadSignedBlockContents(HttpContext c)
+    {
+        bool ssz = ContentNegotiation.IsContentType(c, ContentNegotiation.OctetStream);
+        if (!ssz && !ContentNegotiation.IsJsonContentType(c))
+        {
+            return (null, ApiResults.Error(StatusCodes.Status415UnsupportedMediaType, $"Request Content-Type must be '{ContentNegotiation.Json}' or '{ContentNegotiation.OctetStream}'"));
+        }
+
+        try
+        {
+            if (ssz)
+            {
+                using MemoryStream body = new();
+                await c.Request.Body.CopyToAsync(body, c.RequestAborted);
+                SignedBlockContentsWire.Decode(body.ToArray(), out SignedBlockContentsWire wire);
+                byte[][] blobBytes = new byte[wire.Blobs!.Length][];
+                for (int i = 0; i < blobBytes.Length; i++) blobBytes[i] = wire.Blobs[i].Bytes!;
+                byte[][] proofBytes = new byte[wire.KzgProofs!.Length][];
+                for (int i = 0; i < proofBytes.Length; i++) proofBytes[i] = wire.KzgProofs[i].AsSpan().ToArray();
+                return (new SignedBlockContents(wire.SignedBlock!, blobBytes, proofBytes), null);
+            }
+
+            using JsonDocument document = await JsonDocument.ParseAsync(c.Request.Body, cancellationToken: c.RequestAborted);
+            (SignedBeaconBlock block, byte[][] kzgProofs, byte[][] blobs) = BeaconJsonReader.ReadSignedBlockContents(document.RootElement);
+            // The SSZ codec checks the list limits the JSON form leaves open.
+            SignedBeaconBlock.Decode(SignedBeaconBlock.Encode(block), out SignedBeaconBlock checkedBlock);
+            return (new SignedBlockContents(checkedBlock, blobs, kzgProofs), null);
+        }
+        catch (Exception e) when (e is JsonException or FormatException or KeyNotFoundException or InvalidOperationException or InvalidDataException or ArgumentException)
+        {
+            return (null, Invalid($"Malformed block contents: {e.Message}"));
+        }
+        catch (BadHttpRequestException e)
+        {
+            return (null, ApiResults.Error(e.StatusCode, e.Message));
+        }
+    }
+
+    private static byte[] EncodeBlockContents(ProducedBlock produced)
+    {
+        BlockContentsWire contents = new() { Block = produced.Block, KzgProofs = new SszKzgCommitment[produced.KzgProofs.Count], Blobs = new SszBlob[produced.Blobs.Count] };
+        for (int i = 0; i < contents.KzgProofs.Length; i++) contents.KzgProofs[i] = SszKzgCommitment.FromSpan(produced.KzgProofs[i]);
+        for (int i = 0; i < contents.Blobs.Length; i++) contents.Blobs[i] = new SszBlob { Bytes = produced.Blobs[i] };
+        return BlockContentsWire.Encode(contents);
+    }
+
+    private static async Task WriteProducedBlock(HttpContext c, string version, ProducedBlock produced)
+    {
+        c.Response.ContentType = ContentNegotiation.Json;
+        await using BeaconJsonStream stream = new(c.Response.BodyWriter, c.RequestAborted);
+        Utf8JsonWriter w = stream.Writer;
+        w.WriteStartObject();
+        w.WriteString("version", version);
+        w.WriteBoolean("execution_payload_blinded", false);
+        w.WriteString("execution_payload_value", produced.ExecutionPayloadValue.ToString());
+        w.WriteString("consensus_block_value", produced.ConsensusBlockValue.ToString());
+        w.WritePropertyName("data");
+        w.WriteStartObject();
+        w.WritePropertyName("block");
+        BeaconJsonWriter.WriteBeaconBlock(w, produced.Block);
+        await WriteHexArray(stream, "kzg_proofs", produced.KzgProofs);
+        await WriteHexArray(stream, "blobs", produced.Blobs);
+        w.WriteEndObject();
+        w.WriteEndObject();
+        await stream.FlushAsync();
+    }
+
+    /// <summary>Adds the <c>produceBlockV3</c> headers that describe <paramref name="produced"/> to <paramref name="result"/>.</summary>
+    private static IResult WithBlockValues(IResult result, ProducedBlock produced) => ApiResults.Write(c =>
+    {
+        c.Response.Headers[ExecutionPayloadBlindedHeader] = "false";
+        c.Response.Headers[ExecutionPayloadValueHeader] = produced.ExecutionPayloadValue.ToString();
+        c.Response.Headers[ConsensusBlockValueHeader] = produced.ConsensusBlockValue.ToString();
+        return result.ExecuteAsync(c);
+    });
+
+    private static async Task WriteHexArray(BeaconJsonStream stream, string name, IReadOnlyList<byte[]> items)
+    {
+        stream.Writer.WriteStartArray(name);
+        foreach (byte[] item in items)
+        {
+            BeaconJsonWriter.WriteHexValue(stream.Writer, item);
+            await stream.CheckpointAsync();
+        }
+
+        stream.Writer.WriteEndArray();
     }
 
     private static bool TryParseValidatorIndices(string[] ids, [NotNullWhen(true)] out ulong[]? indices, out string? invalidId)
@@ -289,6 +428,11 @@ internal sealed class ValidatorEndpoints(BeaconApiContext ctx)
             }
             : null;
 
+    private static ProposerPreparation? FromDto(ProposerPreparationDto? dto) =>
+        dto is not null && TryParseUInt(dto.ValidatorIndex, out ulong validatorIndex) && HexConvert.TryParseAddress(dto.FeeRecipient, out Address? feeRecipient)
+            ? new ProposerPreparation(validatorIndex, feeRecipient)
+            : null;
+
     private static SyncCommitteeContribution? FromDto(SyncCommitteeContributionDto? dto) =>
         dto is not null && TryParseUInt(dto.Slot, out ulong slot) && HexConvert.TryParseHash(dto.BeaconBlockRoot, out Hash256? root)
             && TryParseUInt(dto.SubcommitteeIndex, out ulong subcommitteeIndex)
@@ -300,6 +444,14 @@ internal sealed class ValidatorEndpoints(BeaconApiContext ctx)
     private static SyncCommitteeContributionDto ToDto(SyncCommitteeContribution contribution) =>
         new(contribution.Slot.ToString(), contribution.BeaconBlockRoot!.ToString(), contribution.SubcommitteeIndex.ToString(),
             HexConvert.BitVectorToHex(contribution.AggregationBits!), contribution.Signature.ToString());
+
+    private const string ExecutionPayloadBlindedHeader = "Eth-Execution-Payload-Blinded";
+    private const string ExecutionPayloadValueHeader = "Eth-Execution-Payload-Value";
+    private const string ConsensusBlockValueHeader = "Eth-Consensus-Block-Value";
+
+    internal sealed record ProposerPreparationDto(
+        [property: JsonPropertyName("validator_index")] string ValidatorIndex,
+        [property: JsonPropertyName("fee_recipient")] string FeeRecipient);
 
     private sealed record DutiesDto<TDuty>(
         [property: JsonPropertyName("dependent_root"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DependentRoot,

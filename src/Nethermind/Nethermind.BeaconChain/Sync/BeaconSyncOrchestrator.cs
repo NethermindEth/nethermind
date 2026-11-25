@@ -17,6 +17,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
+using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub;
@@ -54,7 +55,9 @@ public sealed class BeaconSyncOrchestrator(
     ColumnBackfill? columnBackfill = null,
     ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
     AttestationSubnets? attestationSubnets = null,
-    SyncCommitteeSubnets? syncCommitteeSubnets = null)
+    SyncCommitteeSubnets? syncCommitteeSubnets = null,
+    BlockProducer? blockProducer = null,
+    BlockAttestationPool? blockAttestations = null)
 {
     private const int MaxBackfillDepth = 32;
 
@@ -297,6 +300,12 @@ public sealed class BeaconSyncOrchestrator(
     internal sealed record GossipAttestationItem(Attestation Attestation) : WorkItem;
     internal sealed record SlotTickItem(ulong Slot) : WorkItem;
     internal sealed record PrepareSlotItem(ulong Slot) : WorkItem;
+
+    /// <summary>Asks for the unsigned block of <paramref name="Slot"/> on the head (<see cref="BlockProducer"/>), answered through <paramref name="Produced"/>.</summary>
+    internal sealed record ProduceBlockItem(ulong Slot, BlsSignature RandaoReveal, Hash256 Graffiti, TaskCompletionSource<ProducedBlock> Produced) : WorkItem;
+
+    /// <summary>A block this node published for a validator, with its data column sidecars: all of them in column order, or none for a block without blobs.</summary>
+    internal sealed record LocalBlockItem(SignedBeaconBlock Block, Hash256 Root, DataColumnSidecar[] Columns) : WorkItem;
 
     /// <summary>The sidecar pool holds every sampled column awaited for <paramref name="BlockRoot"/>; queued at most once per watch.</summary>
     internal sealed record ColumnsHeldItem(Hash256 BlockRoot) : WorkItem;
@@ -829,6 +838,7 @@ public sealed class BeaconSyncOrchestrator(
                 if (aggregateAccepted == true)
                 {
                     gossipRouter.MarkAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex);
+                    blockAttestations?.Add(vote);
                 }
 
                 Settle(aggregateItem.Verdict, aggregateAccepted);
@@ -899,7 +909,17 @@ public sealed class BeaconSyncOrchestrator(
                 break;
             case PrepareSlotItem prepare when prepare.Slot == slotClock.CurrentSlot + 1:
                 if (_importer is BlockImporter importer && _lastHead is { } currentHead)
+                {
                     importer.PrepareNextSlot(currentHead.HeadRoot, prepare.Slot);
+                    if (blockProducer is not null && ValidForkchoice(currentHead) is { } sent)
+                        await blockProducer.PreparePayloadAsync(importer, currentHead.HeadRoot, sent.Head, sent.Safe, sent.Finalized, prepare.Slot);
+                }
+                break;
+            case ProduceBlockItem produce:
+                await ProduceBlockAsync(produce, token);
+                break;
+            case LocalBlockItem local:
+                await ImportLocalBlockAsync(local, token);
                 break;
             case ColumnsHeldItem held:
                 // The pool dropped the fired watch; one a re-arm set since is dropped too, so none is orphaned.
@@ -2947,6 +2967,44 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     private readonly record struct ForkchoiceHashes(Hash256 Head, Hash256 Safe, Hash256 Finalized);
+
+    /// <summary>The forkchoice state last sent when the execution layer answered it VALID for the payload of <paramref name="head"/>: the only state a block is built on.</summary>
+    private ForkchoiceHashes? ValidForkchoice(HeadView head) =>
+        _lastForkchoice is { Status.Status: PayloadStatus.Valid } last && last.Hashes.Head == head.HeadExecutionHash ? last.Hashes : null;
+
+    /// <summary>Builds the asked block on the head, after a head step when imports or a tick moved it, and answers the item with the block or the refusal.</summary>
+    private async Task ProduceBlockAsync(ProduceBlockItem item, CancellationToken token)
+    {
+        try
+        {
+            if (_importedSinceHeadStep || _importer!.IsHeadStale) await RunHeadStepAsync(token);
+            if (blockProducer is null || _importer is not BlockImporter importer || _lastHead is not { } head)
+                throw new BeaconNodeApiException(BeaconNodeApiError.NotReady, "The node has no head to build a block on.");
+            if (head.HeadSlot >= item.Slot)
+                throw new BeaconNodeApiException(BeaconNodeApiError.InvalidRequest, $"Slot {item.Slot} is not after the head at slot {head.HeadSlot}.");
+            if (ValidForkchoice(head) is not { } sent)
+                throw new BeaconNodeApiException(BeaconNodeApiError.NotReady, $"The execution layer has not confirmed the head {head.HeadRoot} VALID.");
+            item.Produced.TrySetResult(await blockProducer.ProduceAsync(importer, head.HeadRoot, sent.Head, sent.Safe, sent.Finalized, item.Slot, item.RandaoReveal, item.Graffiti));
+        }
+        catch (Exception e)
+        {
+            item.Produced.TrySetException(e);
+            if (e is OperationCanceledException && token.IsCancellationRequested) throw;
+        }
+    }
+
+    /// <summary>Gives the pool the sampled columns of a block this node published and imports the block as one from gossip.</summary>
+    private async Task ImportLocalBlockAsync(LocalBlockItem item, CancellationToken token)
+    {
+        ulong slot = item.Block.Message!.Slot;
+        if (item.Columns.Length > 0 && _custody.Current is { } custody)
+        {
+            foreach (ulong column in custody.SampledColumns) columnPool?.Add(item.Root, slot, item.Columns[column]);
+        }
+
+        BlockImportResult result = await ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(item.Block), token, knownRoot: item.Root);
+        if (result is not (BlockImportResult.Imported or BlockImportResult.FutureSlot) && _logger.IsWarn) _logger.Warn($"The block {item.Root} this node published for slot {slot} was not imported: {result}");
+    }
 
     private void TrackExecutionSyncTransition(PayloadStatusV1 status)
     {

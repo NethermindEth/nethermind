@@ -4,11 +4,17 @@
 using System.Collections;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
+using CkzgLib;
+using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.BeaconChain.ValidatorApi;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using NSubstitute;
 using NSubstitute.ClearExtensions;
 using NSubstitute.ExceptionExtensions;
@@ -166,6 +172,82 @@ public class ValidatorEndpointsTests : BeaconApiFixture
             Is.EqualTo(new[] { (1UL, (IReadOnlyList<ulong>)[0UL, 130UL], 256UL) }));
     }
 
+    [Test]
+    public async Task Proposer_preparations_are_decoded_and_passed_on()
+    {
+        IReadOnlyList<ProposerPreparation> prepared = [];
+        _api.PrepareBeaconProposers(Arg.Do<IReadOnlyList<ProposerPreparation>>(preparations => prepared = preparations), Arg.Any<CancellationToken>()).Returns(ValueTask.CompletedTask);
+
+        using HttpResponseMessage response = await Send(HttpMethod.Post, "/eth/v1/validator/prepare_beacon_proposer",
+            """[{"validator_index":"1","fee_recipient":"0x00000000000000000000000000000000000000fe"},{"validator_index":"7","fee_recipient":"0xabababababababababababababababababababab"}]""", consensusVersion: null);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(prepared, Is.EqualTo(new[]
+        {
+            new ProposerPreparation(1, new Address(Bytes.FromHexString("0x00000000000000000000000000000000000000fe"))),
+            new ProposerPreparation(7, new Address(Bytes.FromHexString("0xabababababababababababababababababababab"))),
+        }));
+    }
+
+    /// <remarks>The produced block is published back as the validator client would sign it, so the JSON writer and reader and both SSZ containers must agree.</remarks>
+    [Test]
+    public async Task A_produced_block_round_trips_through_publication_in_either_encoding([Values] bool ssz)
+    {
+        BeaconBlock block = RichBlock(FuluSlot, Root).Message!;
+        byte[][] blobs = [Enumerable.Repeat((byte)0x0b, Ckzg.BytesPerBlob).ToArray()];
+        byte[][] proofs = [.. Enumerable.Range(0, Ckzg.CellsPerExtBlob).Select(static cell => Enumerable.Repeat((byte)cell, Ckzg.BytesPerProof).ToArray())];
+        _api.ProduceBlock(FuluSlot, Signature, OtherRoot, Arg.Any<CancellationToken>()).Returns(new ValueTask<ProducedBlock>(new ProducedBlock(block, blobs, proofs, 7, 8)));
+        SignedBlockContents? published = null;
+        _api.PublishBlock(Arg.Do<SignedBlockContents>(contents => published = contents), Arg.Any<CancellationToken>()).Returns(ValueTask.CompletedTask);
+
+        using HttpRequestMessage produce = new(HttpMethod.Get, $"/eth/v3/validator/blocks/{FuluSlot}?randao_reveal={Signature}&graffiti={OtherRoot}&builder_boost_factor=100");
+        produce.Headers.Accept.ParseAdd(ssz ? "application/octet-stream" : "application/json");
+        using HttpResponseMessage produced = await _host.Client.SendAsync(produce);
+        byte[] producedBody = await produced.Content.ReadAsByteArrayAsync();
+        (string, string, string, string) envelope = ssz ? ("fulu", "false", "7", "8") : JsonEnvelope(producedBody);
+        using HttpRequestMessage publish = new(HttpMethod.Post, "/eth/v2/beacon/blocks") { Content = ssz ? SignedSsz(producedBody) : SignedJson(producedBody) };
+        publish.Headers.Add("Eth-Consensus-Version", "fulu");
+        using HttpResponseMessage publication = await _host.Client.SendAsync(publish);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That((produced.StatusCode, publication.StatusCode), Is.EqualTo((HttpStatusCode.OK, HttpStatusCode.OK)));
+        Assert.That(new[] { "Eth-Consensus-Version", "Eth-Execution-Payload-Blinded", "Eth-Execution-Payload-Value", "Eth-Consensus-Block-Value" }.Select(name => produced.Headers.GetValues(name).Single()),
+            Is.EqualTo(new[] { "fulu", "false", "7", "8" }));
+        Assert.That(envelope, Is.EqualTo(("fulu", "false", "7", "8")));
+        Assert.That(SignedBeaconBlock.Encode(published!.SignedBlock), Is.EqualTo(SignedBeaconBlock.Encode(new SignedBeaconBlock { Message = block, Signature = OtherSignature })));
+        Assert.That((published.Blobs, published.KzgProofs), Is.EqualTo((blobs, proofs)));
+
+        static (string, string, string, string) JsonEnvelope(byte[] body)
+        {
+            using JsonDocument document = JsonDocument.Parse(body);
+            JsonElement root = document.RootElement;
+            return (root.GetProperty("version").GetString()!, root.GetProperty("execution_payload_blinded").GetBoolean() ? "true" : "false",
+                root.GetProperty("execution_payload_value").GetString()!, root.GetProperty("consensus_block_value").GetString()!);
+        }
+
+        static HttpContent SignedJson(byte[] body)
+        {
+            using JsonDocument document = JsonDocument.Parse(body);
+            JsonElement data = document.RootElement.GetProperty("data");
+            return new StringContent($$"""{"signed_block":{"message":{{data.GetProperty("block").GetRawText()}},"signature":"{{OtherSignature}}"},"kzg_proofs":{{data.GetProperty("kzg_proofs").GetRawText()}},"blobs":{{data.GetProperty("blobs").GetRawText()}}}""",
+                Encoding.UTF8, "application/json");
+        }
+
+        static HttpContent SignedSsz(byte[] body)
+        {
+            BlockContentsWire.Decode(body, out BlockContentsWire contents);
+            ByteArrayContent content = new(SignedBlockContentsWire.Encode(new SignedBlockContentsWire
+            {
+                SignedBlock = new SignedBeaconBlock { Message = contents.Block, Signature = OtherSignature },
+                KzgProofs = contents.KzgProofs,
+                Blobs = contents.Blobs,
+            }));
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            return content;
+        }
+    }
+
     [TestCase("POST", "/eth/v1/validator/duties/attester/x", """["1"]""", null, TestName = "An epoch that is not a uint64")]
     [TestCase("POST", "/eth/v1/validator/duties/attester/5", """["-1"]""", null, TestName = "A validator index that is not a uint64")]
     [TestCase("POST", "/eth/v1/validator/duties/sync/5", "[1]", null, TestName = "Validator indices that are not strings")]
@@ -183,6 +265,13 @@ public class ValidatorEndpointsTests : BeaconApiFixture
     [TestCase("POST", "/eth/v1/beacon/pool/sync_committees", """[{"slot":"1"}]""", null, TestName = "A sync committee message missing its fields")]
     [TestCase("GET", "/eth/v1/validator/sync_committee_contribution?slot=1&subcommittee_index=0", null, null, TestName = "A sync committee contribution without a block root")]
     [TestCase("POST", "/eth/v1/validator/contribution_and_proofs", """[{"message":{"aggregator_index":"1","selection_proof":"0x00","contribution":{"slot":"1"}},"signature":"0x00"}]""", null, TestName = "A contribution missing its fields")]
+    [TestCase("POST", "/eth/v1/validator/prepare_beacon_proposer", """[{"validator_index":"1","fee_recipient":"0x00fe"}]""", null, TestName = "A preparation with a short fee recipient")]
+    [TestCase("GET", "/eth/v3/validator/blocks/1", null, null, TestName = "A block without a randao reveal")]
+    [TestCase("GET", "/eth/v3/validator/blocks/x?randao_reveal=0x00", null, null, TestName = "A block of a slot that is not a uint64")]
+    [TestCase("POST", "/eth/v2/beacon/blocks", "{}", null, TestName = "A published block without a consensus version")]
+    [TestCase("POST", "/eth/v2/beacon/blocks", "{}", "electra", TestName = "A published block of a fork before Fulu")]
+    [TestCase("POST", "/eth/v2/beacon/blocks?broadcast_validation=consensus", "{}", "fulu", TestName = "A published block asking for consensus broadcast validation")]
+    [TestCase("POST", "/eth/v2/beacon/blocks", """{"signed_block":{"message":{"slot":"1"}},"kzg_proofs":[],"blobs":[]}""", "fulu", TestName = "A published block missing its fields")]
     public async Task Malformed_requests_are_refused_before_the_api_is_called(string method, string path, string? body, string? consensusVersion)
     {
         using HttpResponseMessage response = await Send(new HttpMethod(method), path, body, consensusVersion);

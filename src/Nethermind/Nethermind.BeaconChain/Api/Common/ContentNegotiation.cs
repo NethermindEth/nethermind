@@ -93,11 +93,14 @@ internal static class ContentNegotiation
             "No representation acceptable to the request's Accept header is available", ctx.RequestAborted);
 
     /// <summary>Whether a request's <c>Content-Type</c> is <see cref="Json"/>, whatever its parameters.</summary>
-    public static bool IsJsonContentType(HttpContext ctx)
+    public static bool IsJsonContentType(HttpContext ctx) => IsContentType(ctx, Json);
+
+    /// <summary>Whether a request's <c>Content-Type</c> is <paramref name="mediaType"/>, whatever its parameters.</summary>
+    public static bool IsContentType(HttpContext ctx, string mediaType)
     {
         ReadOnlySpan<char> contentType = ctx.Request.ContentType;
         int semicolon = contentType.IndexOf(';');
-        return (semicolon < 0 ? contentType : contentType[..semicolon]).Trim().Equals(Json, StringComparison.OrdinalIgnoreCase);
+        return (semicolon < 0 ? contentType : contentType[..semicolon]).Trim().Equals(mediaType, StringComparison.OrdinalIgnoreCase);
     }
 
     public static Task WriteUnsupportedMediaType(HttpContext ctx) =>
