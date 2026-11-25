@@ -42,9 +42,7 @@ namespace Nethermind.Blockchain.Receipts
         /// <exception cref="System.IO.InvalidDataException">The receipts and the transactions differ in number.</exception>
         bool TryInsertNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom, bool ensureCanonical) => false;
 
-        ulong MigratedBlockNumber { get; set; }
         bool HasBlock(ulong blockNumber, Hash256 hash);
-        void EnsureCanonical(Block block);
         void RemoveReceipts(Block block);
 
         /// <summary>
