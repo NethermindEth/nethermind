@@ -181,11 +181,16 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
         _departedScores[nodeId] = (peer.FailureScore, _clock.GetTimestamp());
     }
 
-    /// <summary>Releases an outstanding request's reservation; its wanted wrappers go back to the queue.</summary>
+    /// <summary>Releases an outstanding request's reservation; its wanted wrappers go back to the queue, those that waited for
+    /// a manifest to be fetched without one.</summary>
     private void Abandon(WrapperPeer peer, WrappersRequest request)
     {
         Release(peer, request.Reserved);
-        foreach (WrapperFetch fetch in request.Fetches) fetch.Requested = false;
+        foreach (WrapperFetch fetch in request.Fetches)
+        {
+            fetch.Requested = false;
+            if (request.Manifests) fetch.WantsManifest = false;
+        }
     }
 
     private bool TryCharge(WrapperPeer peer, long bytes)
@@ -617,15 +622,6 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             if (served.Count > 0 && !TryChargeServing(peer, content)) served.Clear();
             outbox.Send(peer, new ProofWrapperManifestsMessage(request.RequestId, [.. served]));
         }
-        outbox.Flush();
-    }
-
-    /// <summary>This node requests no manifests, so any ProofWrapperManifests answers no request and is a violation.</summary>
-    internal void OnProofWrapperManifests(WrapperPeer peer)
-    {
-        Outbox outbox = new();
-        lock (_gate)
-            if (!peer.Closed) Violation(peer, "manifests for an unissued request", outbox);
         outbox.Flush();
     }
 

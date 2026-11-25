@@ -22,10 +22,11 @@ public sealed class WrapperMetadata
     private const int SourceLength = 20;
     private const int MaxFeeBytes = 32;
 
-    private WrapperMetadata(byte[] encoded, ValueHash256[] hashes)
+    private WrapperMetadata(byte[] encoded, ValueHash256[] hashes, long transactionBytes)
     {
         Encoded = encoded;
         Hashes = hashes;
+        TransactionBytes = transactionBytes;
     }
 
     /// <summary>The canonical RLP encoding.</summary>
@@ -35,6 +36,9 @@ public sealed class WrapperMetadata
     public ValueHash256[] Hashes { get; }
 
     public int Count => Hashes.Length;
+
+    /// <summary>The sum of the described pooled transaction sizes, which must be less than the wrapper's length.</summary>
+    internal long TransactionBytes { get; }
 
     /// <summary>Keccak-256 of the concatenated transaction hashes, which an <c>eth/76</c> announcement carries as
     /// <c>txs-hash</c>.</summary>
@@ -113,7 +117,7 @@ public sealed class WrapperMetadata
         Eth75RlpReader gas = ReadField(ref fields, count);
         while (gas.HasMore) gas.ReadUInt64();
         fields.End();
-        return new(encoded.ToArray(), hashes);
+        return new(encoded.ToArray(), hashes, total);
     }
 
     private static Eth75RlpReader ReadField(ref Eth75RlpReader fields, int count)
@@ -148,9 +152,11 @@ public sealed class WrapperMetadata
         List<byte> types = [];
         List<byte[]> sizes = [], hashItems = [], sources = [], nonces = [], fees = [], gas = [];
         List<ValueHash256> hashes = [];
+        long transactionBytes = 0;
         while (transactions.HasMore)
         {
             ReadOnlySpan<byte> encoding = transactions.ReadBytes();
+            transactionBytes += encoding.Length;
             ValueHash256 hash = WrapperBodies.TransactionHash(encoding);
             types.Add(encoding[0]);
             sizes.Add(Eth75Rlp.EncodeUInt((ulong)encoding.Length));
@@ -178,7 +184,7 @@ public sealed class WrapperMetadata
         }
         byte[] encoded = Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes([.. types]), Eth75Rlp.EncodeList([.. sizes]), Eth75Rlp.EncodeList([.. hashItems]),
             Eth75Rlp.EncodeList([.. sources]), Eth75Rlp.EncodeList([.. nonces]), Eth75Rlp.EncodeList([.. fees]), Eth75Rlp.EncodeList([.. gas]));
-        return new(encoded, [.. hashes]);
+        return new(encoded, [.. hashes], transactionBytes);
     }
 
     internal delegate ulong FrameGasReader(ref Eth75RlpReader frames);
