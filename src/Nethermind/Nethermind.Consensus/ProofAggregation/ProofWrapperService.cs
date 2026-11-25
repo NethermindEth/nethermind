@@ -15,6 +15,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
@@ -33,9 +34,11 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// <param name="txPoolConfig">Supplies <see cref="ITxPoolConfig.AggregationProbability"/>; without it background aggregation
 /// proves every bucket.</param>
 /// <param name="random">The local randomness bucket selection draws from; <see cref="Random.Shared"/> when not given.</param>
+/// <param name="logManager">Reports an <see cref="ITxPoolConfig.AggregationProbability"/> outside <c>[0, 1]</c>.</param>
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
     IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier,
-    IWrappedBlobTransactionAdmission? blobAdmission = null, ITxPoolConfig? txPoolConfig = null, Random? random = null)
+    IWrappedBlobTransactionAdmission? blobAdmission = null, ITxPoolConfig? txPoolConfig = null, Random? random = null,
+    ILogManager? logManager = null)
 {
     /// <summary>Transaction-hash buckets mempool aggregation partitions candidates into: the recursive fan-in of one aggregation
     /// step, so a builder's final step can take one aggregate of each.</summary>
@@ -46,6 +49,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private const uint AllBuckets = uint.MaxValue >> (32 - BucketCount);
 
     private readonly Random _random = random ?? Random.Shared;
+    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<ProofWrapperService>();
+    private bool _reportedProbability;
     private Hash256? _selectionHead;
     private uint _selectedBuckets;
 
@@ -1004,20 +1009,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             foreach (Candidate candidate in ranked) dependencies.UnionWith(candidate.Deps);
             List<RecursiveProofInput> parents = leanProofStore.ProvenOverlaps(dependencies, MaxHeldExtensions);
             if (previousProof is { } own) parents.Add(own);
+            ranked.RemoveAll(candidate => !leanProofStore.TryGetInput(candidate.Deps, out _));
+            // The longest fitting prefix by binary search. Extending a held aggregate trades discards as the prefix grows, so cost
+            // is not strictly monotone and the search may stop short of a prefix that fits; the rest only waits a cycle.
             Bucket? best = null;
-            // Each pass drops a transaction whose inputs are unavailable, so the list shrinks until the prefix stops at the budget.
-            while (ranked.Count != 0)
+            for (int low = 1, high = ranked.Count; low <= high;)
             {
-                // The longest fitting prefix, found by binary search, taking cost and size to grow with the prefix.
-                int taken = 0;
-                for (int low = 1, high = ranked.Count; low <= high;)
-                {
-                    int middle = low + (high - low) / 2;
-                    if (TryBucket(ranked, 0, middle, parents) is { } fitting) (best, taken, low) = (fitting, middle, middle + 1);
-                    else high = middle - 1;
-                }
-                if (taken == ranked.Count || TryBucket(ranked, taken, 1, parents) is not null) break;
-                ranked.RemoveAt(taken);
+                int middle = low + (high - low) / 2;
+                if (TryBucket(ranked, 0, middle, parents) is { } fitting) (best, low) = (fitting, middle + 1);
+                else high = middle - 1;
             }
             return best;
         }
@@ -1066,11 +1066,26 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         Hash256? head = blockFinder.Head?.Hash;
         if (head is null || head != _selectionHead)
         {
-            _selectedBuckets = DrawBuckets(_random, txPoolConfig?.AggregationProbability ?? 1);
+            _selectedBuckets = DrawBuckets(_random, AggregationProbability());
             _selectionHead = head;
         }
         return _selectedBuckets;
     }
+
+    /// <summary>The configured probability, clamped to <c>[0, 1]</c> with NaN as <c>0</c>, reported once when out of range.</summary>
+    private double AggregationProbability()
+    {
+        double configured = txPoolConfig?.AggregationProbability ?? 1;
+        double probability = ClampProbability(configured);
+        if (probability != configured && !_reportedProbability)
+        {
+            _reportedProbability = true;
+            if (_logger.IsWarn) _logger.Warn($"TxPool.AggregationProbability {configured} is outside [0, 1]; using {probability}.");
+        }
+        return probability;
+    }
+
+    internal static double ClampProbability(double probability) => double.IsNaN(probability) ? 0 : Math.Clamp(probability, 0, 1);
 
     /// <summary>A set of buckets taking each independently with probability <paramref name="probability"/>.</summary>
     internal static uint DrawBuckets(Random random, double probability)

@@ -173,6 +173,24 @@ public class Eip8288TransactionPickerTests
         }
     }
 
+    // A candidate already covered by one recursive proof of exactly its dependencies keeps it: a wider aggregate would only add
+    // discards unless the rest of its bucket joins.
+    [Test]
+    public void Exact_recursive_proof_is_kept_over_a_wider_aggregate()
+    {
+        FrameDependency first = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakA.ValueHash256, default);
+        FrameDependency second = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakB.ValueHash256, default);
+        Transaction firstTx = DependencyBearingTransaction(first, TestItem.KeccakC);
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        proofs.AddVerified([first], null, [7]);
+        proofs.AddCachedRecursive(Eip8288Dependencies.Canonicalize([first, second]), [8]);
+
+        (_, BlockToProduce processed) = Produce(proofs, null, firstTx);
+
+        Assert.That(processed.LeanProduction.ProofInputs.SelectMany(static input => input.RecursiveProofs).Select(static proof => proof.Proof.ToArray()),
+            Is.EqualTo((byte[][])[[7]]));
+    }
+
     /// <summary>Runs the production executor with the decorated picker over a copy of a block of <paramref name="transactions"/>,
     /// as block processing does, failing the execution of <paramref name="failing"/>.</summary>
     private static (BlockToProduce Suggested, BlockToProduce Processed) Produce(LeanProofStore proofs, Transaction? failing,

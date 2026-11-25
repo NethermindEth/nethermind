@@ -103,12 +103,15 @@ internal sealed class Eip8288TransactionPicker : BlockProcessor.IBlockProduction
     /// the block's coverage when the candidate costs a recursive input anyway.</summary>
     /// <remarks>Mempool aggregation proves one aggregate per transaction-hash bucket, so taking the widest lets later transactions of
     /// its bucket join without another recursive input. It is taken only while the block holds fewer recursive proofs than one
-    /// step's fan-in, and only when it adds more than <paramref name="missing"/>. Signature-only witnesses fold into a direct leaf
-    /// for far less than a recursive merge, so they are kept.</remarks>
+    /// step's fan-in, and only when it adds more than <paramref name="missing"/>; what the block leaves out of it is discarded.
+    /// Signature-only witnesses fold into a direct leaf for far less than a recursive merge, and one recursive proof of exactly
+    /// <paramref name="missing"/> needs no discards, so both are kept.</remarks>
     private bool TryGetInput(LeanProofBudget budget, List<FrameDependency> missing, out AggregationInput input)
     {
         bool found = _leanProofStore.TryGetInput(missing, out input);
-        if (found && input.RecursiveProofs.Count == 0 && Eip8288Dependencies.CountLeanStark(input.Deps) == 0) return true;
+        if (found && (input.RecursiveProofs.Count == 0 && Eip8288Dependencies.CountLeanStark(input.Deps) == 0
+            || input.Deps.Count == 0 && input.RecursiveProofs is [{ } exact] && exact.InnerDeps.Count == missing.Count))
+            return true;
         if (budget.RecursiveInputs >= Eip8288Constants.MaxRecursiveInputsPerStep
             || _leanProofStore.WidestProving(missing, budget.Coverage) is not { } held)
             return found;

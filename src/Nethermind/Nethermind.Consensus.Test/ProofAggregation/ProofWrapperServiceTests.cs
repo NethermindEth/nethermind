@@ -721,6 +721,18 @@ public class ProofWrapperServiceTests
         return ProofWrapperService.BucketOf(new Hash256(hash));
     }
 
+    // The bucket mask is a uint and BucketOf splits the hash's first byte, so the fan-in it is taken from must stay a power of two
+    // of at most 32.
+    [Test]
+    public void Bucket_count_is_a_power_of_two_of_at_most_32() =>
+        Assert.That(System.Numerics.BitOperations.IsPow2(ProofWrapperService.BucketCount) && ProofWrapperService.BucketCount <= 32, Is.True);
+
+    [TestCase(-1.0, ExpectedResult = 0.0)]
+    [TestCase(double.NaN, ExpectedResult = 0.0)]
+    [TestCase(0.02, ExpectedResult = 0.02)]
+    [TestCase(2.0, ExpectedResult = 1.0)]
+    public double Aggregation_probability_is_clamped_to_a_probability(double configured) => ProofWrapperService.ClampProbability(configured);
+
     // Each bucket is drawn independently with the configured probability, so about that share of draws selects it.
     [TestCase(0.0)]
     [TestCase(0.02)]
