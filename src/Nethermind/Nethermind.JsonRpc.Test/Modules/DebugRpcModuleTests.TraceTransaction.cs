@@ -341,13 +341,13 @@ public partial class DebugRpcModuleTests
         int expectedCode = scenario switch
         {
             "unknown" => ErrorCodes.ResourceNotFound,
-            "native" or "config" or "config-valid-timeout" => ErrorCodes.InvalidInput,
+            "native" or "extension" or "config" or "config-valid-timeout" => ErrorCodes.InvalidInput,
             _ => ErrorCodes.InvalidParams
         };
         string? diagnostic = scenario switch
         {
             "unknown" => "transaction not found",
-            "native" => "time: invalid duration \"bad\"",
+            "native" or "extension" => "time: invalid duration \"bad\"",
             "config" or "config-valid-timeout" => "Cannot convert",
             _ => null
         };

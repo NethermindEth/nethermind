@@ -2435,11 +2435,13 @@ public class RpcBackendTests
     }
 
     [Test]
-    public async Task Historical_state_selectors_stop_at_32_finalized_ancestors(
-        [Values(0, 1, 2, 3)] int selectorKind, [Values(32, 33)] int depth)
+    public async Task Historical_state_selectors_use_tip_depth_and_finalized_ancestry(
+        [Values(0, 1, 2, 3)] int selectorKind, [Values(128, 129)] int depth, [Values(0, 64)] int finalityLag)
     {
         using Provider provider = new(new Account(7, 123), headNumber: 300);
-        ulong number = provider.Head.Number - (ulong)depth;
+        ulong tip = provider.Head.Number + (ulong)finalityLag;
+        provider.LatestHead = finalityLag == 0 ? null : new(101, tip, Keccak.Compute("optimistic block"), provider.Head.StateRoot);
+        ulong number = tip - (ulong)depth;
         provider.HistoricalHeader = Provider.CreateHeader(number, Keccak.Compute("historical block"), provider.Head.StateRoot);
         object selector = selectorKind switch
         {
@@ -2449,15 +2451,16 @@ public class RpcBackendTests
             _ => new { blockHash = provider.HistoricalHeader.Hash!.ToString(), requireCanonical = true }
         };
 
-        if (depth == 32)
+        if (depth == 128)
             Assert.That(await provider.Rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), selector), CancellationToken.None), Is.EqualTo("0x7b"));
         else
             await AssertRpcErrorAsync(provider, "eth_getBalance", Parameters(AccountAddress.ToString(), selector), -32001);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.Requests, Has.Count.EqualTo(depth == 32 ? 1 : 0));
-            Assert.That(provider.CanonicalHeaderFetches, Is.EqualTo(depth == 32 ? 1 : 0));
+            Assert.That(provider.Requests, Has.Count.EqualTo(depth == 128 ? 1 : 0));
+            Assert.That(provider.CanonicalHeaderFetches, Is.EqualTo(depth == 128 ? 1 : 0));
+            Assert.That(provider.LastCanonicalAnchor, Is.EqualTo(depth == 128 ? provider.Head : null));
         }
     }
 
@@ -2515,26 +2518,43 @@ public class RpcBackendTests
     }
 
     [Test]
-    public async Task Optimistic_state_history_retains_the_32_ancestor_bound([Values(32, 33)] int depth)
+    public async Task Optimistic_state_history_serves_the_pinned_block_within_128_ancestors(
+        [Values("eth_getBalance", "eth_call")] string method, [Values(53, 128, 129)] int depth)
     {
-        using Provider provider = OptimisticProvider();
+        using Provider provider = OptimisticProvider(400);
         provider.HistoricalHeader = Provider.CreateHeader(provider.LatestHead!.Number - (ulong)depth, Keccak.Compute("bounded optimistic history"), provider.Head.StateRoot);
-        if (depth == 32)
-            Assert.That(await provider.Rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), $"0x{provider.HistoricalHeader.Number:x}"), CancellationToken.None), Is.EqualTo("0x7b"));
-        else await AssertRpcErrorAsync(provider, "eth_getBalance", Parameters(AccountAddress.ToString(), $"0x{provider.HistoricalHeader.Number:x}"), -32001);
-        Assert.That(provider.CanonicalHeaderFetches, Is.EqualTo(depth == 32 ? 1 : 0));
+        using EvmExecutor? calls = method == "eth_call" ? new(provider, MainnetSpecProvider.Instance, NullLogManager.Instance) : null;
+        using RpcBackend rpc = provider.CreateRpc(calls);
+        string selector = $"0x{provider.HistoricalHeader.Number:x}";
+        JsonElement parameters = method == "eth_call"
+            ? Parameters(new { to = AccountAddress.ToString(), gas = "0x186a0" }, selector)
+            : Parameters(AccountAddress.ToString(), selector);
+        if (depth <= 128)
+        {
+            object result = await rpc.InvokeAsync(method, parameters, CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(method == "eth_call" ? "0x" : "0x7b"));
+                Assert.That(provider.LastCanonicalAnchor, Is.EqualTo(provider.LatestHead));
+                Assert.That(provider.LastQueriedHead, Has.Property(nameof(VerifiedHead.BlockHash)).EqualTo(provider.HistoricalHeader.Hash));
+            }
+        }
+        else
+            Assert.That(async () => await rpc.InvokeAsync(method, parameters, CancellationToken.None),
+                Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32001));
+        Assert.That(provider.CanonicalHeaderFetches, Is.EqualTo(depth <= 128 ? 1 : 0));
     }
 
-    private static Provider OptimisticProvider()
+    private static Provider OptimisticProvider(ulong number = 301)
     {
         byte[] code = [0x60, 0x2a, 0x00];
         Provider provider = new(new Account(7, 123, Keccak.EmptyTreeHash, Keccak.Compute(code)), code: code, headNumber: 236);
-        provider.HistoricalHeader = Provider.CreateHeader(300, Keccak.Zero, provider.Head.StateRoot);
+        provider.HistoricalHeader = Provider.CreateHeader(number - 1, Keccak.Zero, provider.Head.StateRoot);
         provider.HistoricalHeader.Hash = Keccak.Compute(Rlp.Encode(provider.HistoricalHeader));
-        provider.OptimisticHeader = Provider.CreateHeader(301, Keccak.Zero, provider.Head.StateRoot);
+        provider.OptimisticHeader = Provider.CreateHeader(number, Keccak.Zero, provider.Head.StateRoot);
         provider.OptimisticHeader.ParentHash = provider.HistoricalHeader.Hash;
         provider.OptimisticHeader.Hash = Keccak.Compute(Rlp.Encode(provider.OptimisticHeader));
-        provider.LatestHead = new(101, 301, provider.OptimisticHeader.Hash, provider.Head.StateRoot);
+        provider.LatestHead = new(101, number, provider.OptimisticHeader.Hash, provider.Head.StateRoot);
         return provider;
     }
 

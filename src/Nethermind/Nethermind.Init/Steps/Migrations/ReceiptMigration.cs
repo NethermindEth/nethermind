@@ -420,7 +420,7 @@ namespace Nethermind.Init.Steps.Migrations
             return _receiptConfig.CompactReceiptStore != isCompactEncoding;
         }
 
-        internal sealed class MigrationPointerTracker(IReceiptStorage receiptStorage, ulong to, int expectedBacklog = 16)
+        internal sealed class MigrationPointerTracker(IReceiptMigrationStore receiptStorage, ulong to, int expectedBacklog = 16)
         {
             private readonly Lock _lock = new();
             private readonly HashSet<ulong> _completedAwaitingContiguity = [with(expectedBacklog)];

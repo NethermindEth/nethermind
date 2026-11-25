@@ -12,7 +12,6 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Find;
@@ -26,7 +25,6 @@ namespace Nethermind.Facade
     public interface IBlockchainBridge : ILogFinder, ISimulateBridge
     {
         Block HeadBlock { get; }
-        bool IsMining { get; }
         void RecoverTxSenders(Block block);
         Address? RecoverTxSender(Transaction tx);
 
@@ -40,12 +38,7 @@ namespace Nethermind.Facade
 
         /// <summary>Gets the transaction at <paramref name="index"/> of a stored block, decoding no other transaction.</summary>
         /// <returns>False when the block body is not stored; true otherwise, with a null transaction for an index past the end.</returns>
-        bool TryGetStoredTransaction(BlockHeader header, int index, out Transaction? transaction, out int transactionCount)
-        {
-            transaction = null;
-            transactionCount = 0;
-            return false;
-        }
+        bool TryGetStoredTransaction(BlockHeader header, int index, out Transaction? transaction, out int transactionCount);
 
         CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
         CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, ulong gasCap = 0, bool noBaseFee = false, CancellationToken cancellationToken = default);
@@ -77,27 +70,10 @@ namespace Nethermind.Facade
 
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
 
-        int NewBlockFilter();
-        int NewPendingTransactionFilter();
-        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null);
-        /// <returns><c>true</c> if the filter existed and was removed; otherwise, <c>false</c>.</returns>
-        bool UninstallFilter(int filterId);
-        bool FilterExists(int filterId);
-        /// <returns>A pooled list that the caller disposes.</returns>
-        ArrayPoolList<Hash256> GetBlockFilterChanges(int filterId);
-
-        /// <returns>A pooled list that the caller disposes.</returns>
-        ArrayPoolList<Hash256> GetPendingTransactionFilterChanges(int filterId);
-
-        /// <returns>A pooled list that the caller disposes.</returns>
-        ArrayPoolList<FilterLog> GetLogFilterChanges(int filterId);
-        FilterType GetFilterType(int filterId);
         LogFilter GetFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null);
         IEnumerable<FilterLog> GetLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null, CancellationToken cancellationToken = default);
 
-        /// <returns>The installed log filter, or <c>null</c> if <paramref name="filterId"/> does not identify one.</returns>
-        LogFilter? GetLogFilter(int filterId);
         /// <inheritdoc cref="Nethermind.State.IStateReader.RunTreeVisitor{TCtx}"/>
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
 
@@ -107,6 +83,5 @@ namespace Nethermind.Facade
 
         ReadOnlyBlockAccessList? GetBlockAccessList(ulong blockNumber, Hash256 blockHash);
         MemoryManager<byte>? GetBlockAccessListRlp(ulong blockNumber, Hash256 blockHash);
-        void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash);
     }
 }

@@ -1170,10 +1170,6 @@ public partial class DebugRpcModuleTests
         string method, string configuration, bool empty, bool invalidRlp) =>
         await AssertNativeConfigError(method, "prestateTracer", configuration, empty, invalidRlp: invalidRlp);
 
-    [Test]
-    public async Task Debug_traceTransactionInBlockByHash_native_config_errors_remain_invalid_params() =>
-        await AssertNativeConfigError("debug_traceTransactionInBlockByHash", "prestateTracer", "{\"diffMode\":[]}", empty: false, expectedError: ErrorCodes.InvalidParams);
-
     [TestCase("callTracer", "{\"onlyTopCall\":17}", false, false)]
     [TestCase("prestateTracer", "{\"diffMode\":[]}", false, false)]
     [TestCase("prestateTracer", "17", false, false)]
@@ -1203,10 +1199,7 @@ public partial class DebugRpcModuleTests
             "debug_traceTransaction" => block.Transactions[0].Hash!,
             _ => invalidRlp ? "0xc0" : Rlp.Encode(block).ToHexString(true)
         };
-        object[] parameters = method == "debug_traceTransactionInBlockByHash"
-            ? [target, block.Transactions[0].Hash!, options]
-            : [target, options];
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, target, options);
         JToken json = JToken.Parse(response);
 
         if (unknown)
@@ -1264,7 +1257,9 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_native_config_errors_preserve_route_classification(
-        [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall", "debug_traceBadBlock")] string method,
+        [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall", "debug_traceBadBlock",
+            "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex", "debug_traceTransactionByBlockhashAndIndex",
+            "debug_traceTransactionByBlockAndIndex")] string method,
         [Values("callTracer", "prestateTracer")] string tracer,
         [Values(null, "bad", "5s")] string? timeout,
         [Values("17", "[]")] string invalidValue, [Values] bool mux) =>
@@ -1272,16 +1267,6 @@ public partial class DebugRpcModuleTests
 
     private static async Task AssertNativeConfigRouteClassification(string method, string tracer, string? timeout, string invalidValue, bool mux)
     {
-        using Context context = await Context.Create();
-        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
-        if (method == "debug_traceBadBlock") context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
-        object selector = method switch
-        {
-            "debug_traceBlockByHash" or "debug_traceBadBlock" => block.Hash!,
-            "debug_traceBlock" => new BlockDecoder().Encode(block),
-            "debug_traceTransaction" => block.Transactions[0].Hash!,
-            _ => new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }
-        };
         JsonElement tracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"onlyTopCall":{{invalidValue}},"diffMode":{{invalidValue}}}""");
         if (mux)
         {
@@ -1289,8 +1274,7 @@ public partial class DebugRpcModuleTests
             tracer = "muxTracer";
         }
         object options = timeout is null ? new { tracer, tracerConfig } : (object)new { tracer, timeout, tracerConfig };
-        object[] parameters = method == "debug_traceCall" ? [selector, "latest", options] : [selector, options];
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        string response = await SendRouteTraceRequest(method, options);
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
@@ -1298,6 +1282,45 @@ public partial class DebugRpcModuleTests
             Assert.That(json["result"], Is.Null, response);
             Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot convert").And.Not.Contain("time: invalid duration"), response);
         }
+    }
+
+    [Test]
+    public async Task Debug_malformed_timeout_is_execution_input_error_on_transaction_routes(
+        [Values("debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex", "debug_traceTransactionByBlockhashAndIndex",
+            "debug_traceTransactionByBlockAndIndex")] string method,
+        [Values(null, "noopTracer", "callTracer", "muxTracer")] string? tracer,
+        [Values(null, false, true)] bool? streamMode)
+    {
+        // A JavaScript mux child reports the duration error through the JavaScript failure path
+        Dictionary<string, object>? tracerConfig = tracer == "muxTracer"
+            ? new() { ["{step:function(){},fault:function(){},result:function(){return {};}}"] = new { } }
+            : null;
+        string response = await SendRouteTraceRequest(method, new { tracer, tracerConfig, timeout = "bad", streamMode });
+        const string expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"time: invalid duration \"bad\""},"id":67}""";
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer), response);
+    }
+
+    private static async Task<string> SendRouteTraceRequest(string method, object options)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        if (method == "debug_traceBadBlock") context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
+        object selector = method switch
+        {
+            "debug_traceBlockByHash" or "debug_traceBadBlock" or "debug_traceTransactionByBlockhashAndIndex" => block.Hash!,
+            "debug_traceTransactionByBlockAndIndex" => block.Number,
+            "debug_traceBlock" or "debug_traceTransactionInBlockByHash" or "debug_traceTransactionInBlockByIndex" => new BlockDecoder().Encode(block),
+            "debug_traceTransaction" => block.Transactions[0].Hash!,
+            _ => new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }
+        };
+        object[] parameters = method switch
+        {
+            "debug_traceCall" => [selector, "latest", options],
+            "debug_traceTransactionInBlockByHash" => [selector, block.Transactions[0].Hash!, options],
+            "debug_traceTransactionInBlockByIndex" or "debug_traceTransactionByBlockhashAndIndex" or "debug_traceTransactionByBlockAndIndex" => [selector, 0, options],
+            _ => [selector, options]
+        };
+        return await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
     }
 
     [Test]
@@ -1563,7 +1586,7 @@ public partial class DebugRpcModuleTests
             ("nonempty", "5s", null, "callTracer", nullConfig, raw, null, null),
             ("nonempty", 7, null, noop, null, raw, ErrorCodes.InvalidParams, null),
             ("nonempty", new string('x', 65), null, noop, null, raw, ErrorCodes.InvalidParams, null),
-            ("nonempty", "bad", null, noop, null, "debug_traceTransactionInBlockByHash", ErrorCodes.InvalidParams, null),
+            ("nonempty", "bad", null, noop, null, "debug_traceTransactionInBlockByHash", ErrorCodes.InvalidInput, "time: invalid duration"),
             ("nonempty", "bad", false, null, null, raw, ErrorCodes.InvalidInput, "time: invalid duration"),
             ("nonempty", "bad", true, null, null, raw, ErrorCodes.InvalidInput, "time: invalid duration"),
             ("nonempty", "5s", false, null, null, raw, null, null),
@@ -2358,7 +2381,7 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors(
         [Values] bool nested,
-        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock", "debug_traceBadBlock")] string method,
         [Values("result", "step", "cyclic")] string callback)
     {
         using Context ctx = await Context.Create();
@@ -2373,11 +2396,12 @@ public partial class DebugRpcModuleTests
         string expected = callback == "cyclic" ? JavaScriptResultDepthError : $"mux {callback} failure";
         Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
         object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
+        if (method == "debug_traceBadBlock") ctx.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
 
         object selector = method switch
         {
             "debug_traceBlockByNumber" => block.Number,
-            "debug_traceBlockByHash" => block.Hash!,
+            "debug_traceBlockByHash" or "debug_traceBadBlock" => block.Hash!,
             _ => Rlp.Encode(block).ToHexString(true)
         };
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, method, selector,

@@ -32,8 +32,6 @@ public interface IBlockCachePreWarmer : IDisposable
     /// </remarks>
     void ClearCaches();
 
-    bool IsBalReadWarmingEnabled(IReleaseSpec spec);
-
     /// <summary>
     /// Speculatively warms against <paramref name="head"/> from <paramref name="nextDelta"/> until cancelled or the next
     /// block enters processing; <paramref name="generation"/> drops the session if a newer head has already started one.

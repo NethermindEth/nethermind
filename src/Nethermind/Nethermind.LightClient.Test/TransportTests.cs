@@ -3861,7 +3861,7 @@ public class TransportTests
             Assert.That(peers.Counts(AllocationContexts.BlockAccessLists), Is.EqualTo(new[] { 0 }));
             return;
         }
-        peers.Ordered[0].BeforeResponse = static (_, _) => Task.FromException(new IOException("BAL unavailable."));
+        peers.Ordered[0].BeforeResponse = static (_, _) => Task.FromException(new InvalidDataException("Invalid BAL."));
         Task cooling = peers.Request(AllocationContexts.BlockAccessLists, token);
         await peers.Started.Reader.ReadAsync(token);
         peers.Clock.Advance(TimeSpan.FromSeconds(30));

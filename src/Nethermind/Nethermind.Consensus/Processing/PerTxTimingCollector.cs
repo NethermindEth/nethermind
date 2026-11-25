@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
+using Nethermind.Evm;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -32,10 +35,29 @@ public static class PerTxTimingCollector
     /// <summary>Called by the tx executor before processing transactions.</summary>
     public static ArrayPoolList<long>? Prepare(int txCount)
     {
-        if (!IsEnabled) return null;
+        // Compile-time switch: when ExecutionMetricsFlag.IsActive folds to false the JIT
+        // elides the entire setup path (and the Start/Stop bodies below).
+        if (!ExecutionMetricsFlag.IsActive || !IsEnabled) return null;
 
         DiscardPending();
         return _ticksPerTx = new ArrayPoolList<long>(capacity: Math.Max(txCount, 256), count: txCount);
+    }
+
+    /// <summary>Starts timing a transaction that records into <paramref name="timings"/>.</summary>
+    /// <returns>The start timestamp, or 0 when <paramref name="timings"/> is null.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long Start(ArrayPoolList<long>? timings)
+    {
+        if (!ExecutionMetricsFlag.IsActive) return 0;
+        return timings is not null ? Stopwatch.GetTimestamp() : 0;
+    }
+
+    /// <summary>Records the time since <paramref name="start"/> for the transaction at <paramref name="index"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Stop(ArrayPoolList<long>? timings, int index, long start)
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        if (timings is not null) Record(timings, index, Stopwatch.GetElapsedTime(start).Ticks);
     }
 
     /// <summary>Called by the tx executor after each transaction.</summary>

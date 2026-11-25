@@ -21,12 +21,12 @@ namespace Nethermind.Network.P2P
         /// <summary>
         /// Gets whether the transport channel has closed before delayed disconnect bookkeeping completes.
         /// </summary>
-        bool IsChannelClosed => false;
+        bool IsChannelClosed { get; }
 
         /// <summary>
         /// Gets whether the transport channel cannot take new messages: its outgoing buffer is above the high watermark, or the channel is closed.
         /// </summary>
-        bool IsOutboundBufferFull => false;
+        bool IsOutboundBufferFull { get; }
 
         PublicKey RemoteNodeId { get; }
         PublicKey ObsoleteRemoteNodeId { get; }
@@ -65,8 +65,6 @@ namespace Nethermind.Network.P2P
         void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details);
 
         void Handshake(PublicKey handshakeRemoteNodeId);
-
-        void StartTrackingSession();
 
         event EventHandler<DisconnectEventArgs> Disconnecting;
         event EventHandler<DisconnectEventArgs> Disconnected;

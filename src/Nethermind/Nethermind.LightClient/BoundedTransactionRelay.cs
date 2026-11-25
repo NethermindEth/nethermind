@@ -265,7 +265,6 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
     long IPendingTxsBySender.GetRemovalGeneration(Address sender) => 0;
 
     event EventHandler<Block>? ITxPool.TxPoolHeadChanged { add { } remove { } }
-    event EventHandler<TxEventArgs> ITxPool.NewDiscovered { add { } remove { } }
     event EventHandler<TxEventArgs> ITxPool.NewPending { add { } remove { } }
     event EventHandler<TxEventArgs> ITxPool.RemovedPending { add { } remove { } }
     event EventHandler<TxEventArgs> ITxPool.EvictedPending { add { } remove { } }

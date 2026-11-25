@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Optimism.CL;
@@ -101,9 +102,6 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .AddSingleton<IGossipPolicy>(ShouldNotGossip.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
-            // Step override
-            .AddStep(typeof(InitializeBlockchainOptimism))
-
             // Validators
             .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey,
                 static ctx => new OptimismSpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId))
@@ -116,6 +114,7 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
             .AddScoped<IBlockProcessor, OptimismBlockProcessor>()
+            .AddKeyedScoped<BlockProcessor, OptimismTransactionTraceBlockProcessor>(TransactionTraceModule.BlockProcessorKey)
             .AddScoped<IWithdrawalProcessor, OptimismWithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, OptimismWithdrawalProcessorFactory>()
             .AddScoped<Create2DeployerContractRewriter>()
