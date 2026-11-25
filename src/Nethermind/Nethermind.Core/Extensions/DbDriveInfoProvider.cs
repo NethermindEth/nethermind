@@ -41,22 +41,25 @@ namespace Nethermind.Core.Extensions
             HashSet<IDriveInfo> seen = [];
             // Ordered, so the top-level drive comes first for callers that take a single drive
             List<IDriveInfo> driveInfos = [];
-            AddDriveOf(topDir);
+            string topPath = ResolvePath(fileSystem, topDir);
+            AddDriveOf(topPath);
+            if (!string.Equals(topPath, topDir.FullName, PathComparison))
+                topDir = fileSystem.DirectoryInfo.New(topPath);
 
             foreach (IDirectoryInfo di in topDir.EnumerateDirectories())
             {
                 //only want to handle symlinks - otherwise will be on same drive as parent
                 if (di.LinkTarget is not null)
                 {
-                    AddDriveOf(di);
+                    AddDriveOf(ResolveLink(di));
                 }
             }
 
             return driveInfos.ToArray();
 
-            void AddDriveOf(IDirectoryInfo dir)
+            void AddDriveOf(string path)
             {
-                IDriveInfo? drive = FindDrive(allDrives, ResolvePath(dir));
+                IDriveInfo? drive = FindDrive(allDrives, path);
                 if (drive is not null && seen.Add(drive))
                 {
                     driveInfos.Add(drive);
@@ -93,6 +96,18 @@ namespace Nethermind.Core.Extensions
                 || path[root.Length] == Path.DirectorySeparatorChar
                 || path[root.Length] == Path.AltDirectorySeparatorChar);
 
+        private static string ResolvePath(IFileSystem fileSystem, IDirectoryInfo dir)
+        {
+            if (dir.Parent is { } parent)
+            {
+                string parentPath = ResolvePath(fileSystem, parent);
+                if (!string.Equals(parentPath, parent.FullName, PathComparison))
+                    dir = fileSystem.DirectoryInfo.New(Path.Join(parentPath, dir.Name));
+            }
+
+            return ResolveLink(dir);
+        }
+
         /// <summary>
         /// The final target of a linked directory, or the directory's own path when it is not a link.
         /// </summary>
@@ -101,7 +116,7 @@ namespace Nethermind.Core.Extensions
         /// its own path, the drive that holds the link, so it never stops the node from starting. Dangling and looping
         /// links are not listed as directories on Linux, so they are skipped before this.
         /// </remarks>
-        private static string ResolvePath(IDirectoryInfo dir)
+        private static string ResolveLink(IDirectoryInfo dir)
         {
             try
             {

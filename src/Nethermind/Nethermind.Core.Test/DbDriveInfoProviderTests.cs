@@ -74,6 +74,7 @@ public class DbDriveInfoProviderTests
     [TestCase("chain")]
     [TestCase("linked db directory")]
     [TestCase("linked db directory, trailing separator")]
+    [TestCase("linked parent directory")]
     [TestCase("dangling and looping")]
     [Platform(Include = "Linux")] // creating links needs a privilege on Windows, and macOS lists no drives
     public void Resolves_real_links_to_their_final_target(string link)
@@ -82,8 +83,12 @@ public class DbDriveInfoProviderTests
         string main = Path.Combine(temp.Path, "main"), other = Path.Combine(temp.Path, "other");
         string db = Path.Combine(main, "db"), state = Path.Combine(db, "state"), target = Path.Combine(other, "state");
         bool linkedDb = link.StartsWith("linked db directory", StringComparison.Ordinal);
+        bool linkedParent = link == "linked parent directory";
         Directory.CreateDirectory(target);
-        Directory.CreateDirectory(linkedDb ? main : db);
+        if (!linkedParent)
+        {
+            Directory.CreateDirectory(linkedDb ? main : db);
+        }
         switch (link)
         {
             case "absolute":
@@ -99,6 +104,10 @@ public class DbDriveInfoProviderTests
             case "linked db directory" or "linked db directory, trailing separator":
                 Directory.CreateSymbolicLink(db, Path.Combine("..", "other", "state"));
                 break;
+            case "linked parent directory":
+                Directory.CreateDirectory(Path.Combine(other, "db"));
+                Directory.CreateSymbolicLink(main, "other");
+                break;
             default:
                 Directory.CreateSymbolicLink(Path.Combine(db, "dangling"), Path.Combine(temp.Path, "missing"));
                 Directory.CreateSymbolicLink(Path.Combine(db, "loop"), Path.Combine(db, "loop"));
@@ -113,7 +122,7 @@ public class DbDriveInfoProviderTests
         string dbPath = link.EndsWith("trailing separator", StringComparison.Ordinal) ? db + Path.DirectorySeparatorChar : db;
         Assert.That(fileSystem.GetDriveInfos(dbPath), Is.EqualTo(link switch
         {
-            _ when linkedDb => new[] { otherDrive },
+            _ when linkedDb || linkedParent => new[] { otherDrive },
             "dangling and looping" => new[] { mainDrive },
             _ => new[] { mainDrive, otherDrive },
         }));
@@ -134,6 +143,7 @@ public class DbDriveInfoProviderTests
         IFileSystemInfo? resolved = Info(target);
         IDirectoryInfo directory = Substitute.For<IDirectoryInfo>();
         directory.FullName.Returns(fullName);
+        directory.Parent.Returns((IDirectoryInfo?)null);
         directory.LinkTarget.Returns(linkTarget);
         directory.ResolveLinkTarget(Arg.Any<bool>()).Returns(resolved);
         return directory;
