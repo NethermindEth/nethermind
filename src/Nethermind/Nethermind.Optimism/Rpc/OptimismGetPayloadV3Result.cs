@@ -12,7 +12,7 @@ public class OptimismGetPayloadV3Result
     public OptimismGetPayloadV3Result(GetPayloadV3Result<ExecutionPayloadV3> result)
     {
         BlockValue = result.BlockValue;
-        ExecutionPayload = result.CreateExecutionPayload<OptimismExecutionPayloadV3>();
+        ExecutionPayload = OptimismExecutionPayloadV3.Create(result.Block);
         BlobsBundle = result.BlobsBundle;
         ParentBeaconBlockRoot = ExecutionPayload.ParentBeaconBlockRoot!;
         ShouldOverrideBuilder = result.ShouldOverrideBuilder;

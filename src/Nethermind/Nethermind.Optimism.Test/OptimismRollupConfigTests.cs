@@ -85,6 +85,20 @@ public class OptimismRollupConfigTests
         }
     }
 
+    [TestCase("op-sepolia", 1742486400UL)]
+    [TestCase("unichain-sepolia", 1742486400UL)]
+    [TestCase("boba-sepolia", 1743534000UL)]
+    [TestCase("op-mainnet", null)]
+    public void Chain_specs_carry_the_pectra_blob_schedule_timestamp(string chain, ulong? expected)
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile($"chainspec/{chain}.json.zst");
+        CLChainSpecEngineParameters clParameters = chainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<CLChainSpecEngineParameters>();
+
+        Assert.That(clParameters.PectraBlobScheduleTimestamp, Is.EqualTo(expected));
+    }
+
     private sealed class RollupConfigInputLoader(IJsonSerializer serializer) : IChainSpecLoader
     {
         private CLChainSpecEngineParameters? _clParameters;

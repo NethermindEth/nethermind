@@ -14,9 +14,6 @@ namespace Nethermind.Api
 {
     public interface IApiWithBlockchain : IApiWithStores
     {
-        (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
-        (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
-
         IBlockProducer? BlockProducer { get; set; }
         IBlockProducerRunner BlockProducerRunner { get; set; }
 

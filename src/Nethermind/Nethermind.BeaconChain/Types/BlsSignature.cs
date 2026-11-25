@@ -53,6 +53,8 @@ public static class BlsSignatureSszVectorTypeConverter
 
     public static BlsSignature FromSpan(ReadOnlySpan<byte> span) => new(span);
 
+    public static ref readonly BlsSignature ValueFromSpan(ReadOnlySpan<byte> span) => ref MemoryMarshal.AsRef<BlsSignature>(span);
+
     public static void FromSpan(ReadOnlySpan<byte> span, Span<BlsSignature> values) =>
         span.Slice(0, values.Length * Length).CopyTo(MemoryMarshal.AsBytes(values));
 

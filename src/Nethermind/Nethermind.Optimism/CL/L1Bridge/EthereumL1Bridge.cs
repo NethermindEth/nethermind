@@ -3,12 +3,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
@@ -159,12 +162,47 @@ public class EthereumL1Bridge : IL1Bridge
             throw new ArgumentNullException(nameof(blobSidecars));
         }
 
+        if (!AreSidecarsValid(blobSidecars, transaction.BlobVersionedHashes))
+        {
+            throw new InvalidDataException($"Blob sidecars for slot {slotNumber} do not match the versioned hashes of transaction {transaction.Hash}.");
+        }
+
         DaDataSource[] result = new DaDataSource[transaction.BlobVersionedHashes.Length];
         for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
         {
             result[i] = new DaDataSource { DataOrigin = blockNumber, Data = blobSidecars[i].Blob, DataType = DaDataType.Blob };
         }
         return result;
+    }
+
+    private static bool AreSidecarsValid(BlobSidecar[] blobSidecars, byte[][] blobVersionedHashes)
+    {
+        if (blobSidecars.Length != blobVersionedHashes.Length) return false;
+
+        Span<byte> commitment = stackalloc byte[Ckzg.BytesPerCommitment];
+        Span<byte> versionedHash = stackalloc byte[Eip4844Constants.BytesPerBlobVersionedHash];
+        for (int i = 0; i < blobSidecars.Length; i++)
+        {
+            byte[]? blob = blobSidecars[i].Blob;
+            if (blob?.Length != Ckzg.BytesPerBlob) return false;
+
+            try
+            {
+                KzgPolynomialCommitments.ComputeCommitment(blob, commitment);
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+
+            if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, versionedHash)
+                || !versionedHash.SequenceEqual(blobVersionedHashes[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private DaDataSource ProcessCalldataBatcherTransaction(L1Transaction transaction, ulong blockNumber, CancellationToken token)

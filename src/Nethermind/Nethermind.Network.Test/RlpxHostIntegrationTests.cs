@@ -20,6 +20,8 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
@@ -65,20 +67,18 @@ public class RlpxHostIntegrationTests
         try
         {
             IPAddress receivedIp = IPAddress.Parse("203.0.113.1");
-            ISession receivedSession = Substitute.For<ISession>();
-            receivedSession.Node.Returns(new Node(TestItem.PublicKeyA, receivedIp.ToString(), 30303));
+            Session receivedSession = CreateInitializedSession(receivedIp);
 
             host.TrackSessionActivity(receivedSession);
-            receivedSession.MsgReceived += Raise.EventWith(receivedSession, new PeerEventArgs(receivedSession.Node, "eth", 1, 32));
+            receivedSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Ping, []));
 
             Assert.That(host.ShouldContact(receivedIp), Is.False, "received traffic should keep the active session filtered");
 
             IPAddress deliveredIp = IPAddress.Parse("198.51.100.1");
-            ISession deliveredSession = Substitute.For<ISession>();
-            deliveredSession.Node.Returns(new Node(TestItem.PublicKeyA, deliveredIp.ToString(), 30303));
+            Session deliveredSession = CreateInitializedSession(deliveredIp);
 
             host.TrackSessionActivity(deliveredSession);
-            deliveredSession.MsgDelivered += Raise.EventWith(deliveredSession, new PeerEventArgs(deliveredSession.Node, "eth", 2, 64));
+            deliveredSession.DeliverMessage(PingMessage.Instance);
 
             Assert.That(host.ShouldContact(deliveredIp), Is.False, "sent traffic should keep the active session filtered");
         }
@@ -86,6 +86,51 @@ public class RlpxHostIntegrationTests
         {
             await host.Shutdown();
         }
+    }
+
+    [Test]
+    public async Task Shutdown_preserves_cleanup_of_a_disconnect_already_in_progress()
+    {
+        await using IContainer container = CreateFilterContainer(filterEnabled: true, subnetBucketing: false);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        Session session = CreateInitializedSession(IPAddress.Loopback);
+        host.TrackSessionActivity(session);
+        int notifications = 0;
+        host.SessionDisconnected += (_, _, _) => Interlocked.Increment(ref notifications);
+
+        TaskCompletionSource disconnecting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim finish = new();
+        session.Disconnecting += (_, _) =>
+        {
+            disconnecting.SetResult();
+            finish.Wait();
+        };
+        Task disconnect = Task.Run(() => session.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "remote closed"));
+        try
+        {
+            await disconnecting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await host.Shutdown();
+        }
+        finally
+        {
+            finish.Set();
+            await disconnect;
+        }
+
+        Assert.That(notifications, Is.EqualTo(1));
+    }
+
+    private static Session CreateInitializedSession(IPAddress remoteIp)
+    {
+        Session session = new(30303, new Node(TestItem.PublicKeyA, remoteIp.ToString(), 30303), Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, Substitute.For<IPacketSender>());
+        IProtocolHandler p2p = Substitute.For<IProtocolHandler>();
+        p2p.Name.Returns("p2p");
+        p2p.ProtocolCode.Returns("p2p");
+        p2p.MessageIdSpaceSize.Returns(16);
+        session.AddProtocolHandler(p2p);
+        return session;
     }
 
     [Test]
@@ -218,16 +263,16 @@ public class RlpxHostIntegrationTests
         await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(host.ActiveChannelCount, Is.EqualTo(1));
 
-        Task<int> received = client.ReceiveAsync(new byte[1], SocketFlags.None);
+        using CancellationTokenSource closeTimeout = new(TimeSpan.FromSeconds(1));
+        Task closed = ReceiveUntilClosedAsync(client, closeTimeout.Token);
         Task shutdown = host.Shutdown();
-        int got = await received.WaitAsync(TimeSpan.FromSeconds(1));
-        bool shutdownDoneAtEof = shutdown.IsCompleted;
+        await closed;
+        bool shutdownDoneAtClose = shutdown.IsCompleted;
         await shutdown.WaitAsync(TimeSpan.FromSeconds(30));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(got, Is.Zero);
-            Assert.That(shutdownDoneAtEof, Is.False);
+            Assert.That(shutdownDoneAtClose, Is.False);
             Assert.That(host.EventLoopsTerminated, Is.True);
             Assert.That(host.ActiveChannelCount, Is.Zero);
         }
@@ -1137,8 +1182,15 @@ public class RlpxHostIntegrationTests
     private static async Task ReceiveUntilClosedAsync(Socket socket, CancellationToken cancellationToken)
     {
         byte[] buffer = new byte[256];
-        while (await socket.ReceiveAsync(buffer.AsMemory(), SocketFlags.None, cancellationToken) > 0)
+        try
         {
+            while (await socket.ReceiveAsync(buffer.AsMemory(), SocketFlags.None, cancellationToken) > 0)
+            {
+            }
+        }
+        catch (SocketException e) when (e.SocketErrorCode == SocketError.ConnectionReset)
+        {
+            // A reset also means the remote channel closed before the event loops terminated.
         }
     }
 

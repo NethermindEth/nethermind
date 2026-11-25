@@ -14,7 +14,6 @@ namespace Nethermind.Synchronization.FastSync
         private long _lastDataSize;
         // private long _lastHandledNodesCount;
         internal long LastDbReads;
-        internal decimal AverageTimeInHandler;
         // ReSharper disable once NotAccessedField.Local
         internal long LastRequestedNodesCount;
         // ReSharper disable once NotAccessedField.Local

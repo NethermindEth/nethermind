@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Primitives;
+using Microsoft.AspNetCore.Mvc;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Types;
 using Nethermind.BeaconChain.ValidatorApi;
@@ -19,133 +18,104 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// and encodes the result. <see cref="BeaconApiEndpoints"/> turns a <see cref="BeaconNodeApiException"/> into its status, and every
 /// other <c>/eth/v1/validator/*</c> route answers through it as not supported.
 /// </summary>
-internal static class ValidatorEndpoints
+internal sealed class ValidatorEndpoints(BeaconApiContext ctx)
 {
-    public static void Map(WebApplication app, BeaconApiContext ctx)
+    [HttpPost("/eth/v1/validator/duties/attester/{epoch}"), Negotiated]
+    public async Task<IResult> AttesterDuties(string epoch, [FromBody] string[] ids, CancellationToken cancellationToken)
     {
-        app.MapPost("/eth/v1/validator/duties/attester/{epoch}", (HttpContext c, string epoch) => ContentNegotiation.JsonOnly(c, ctx, epoch, AttesterDuties));
-        app.MapGet("/eth/v2/validator/duties/proposer/{epoch}", (HttpContext c, string epoch) => ContentNegotiation.JsonOnly(c, ctx, epoch, ProposerDuties));
-        app.MapPost("/eth/v1/validator/duties/sync/{epoch}", (HttpContext c, string epoch) => ContentNegotiation.JsonOnly(c, ctx, epoch, SyncDuties));
-        app.MapGet("/eth/v1/validator/attestation_data", c => ContentNegotiation.JsonOnly(c, ctx, AttestationData));
-        app.MapPost("/eth/v2/beacon/pool/attestations", c => SubmitAttestations(c, ctx));
-        app.MapMethods("/eth/v1/validator/{**path}", ["GET", "POST"], c => Task.FromException(
-            new BeaconNodeApiException(BeaconNodeApiError.NotSupported, $"{c.Request.Method} {c.Request.Path} is not served by this node yet.")));
-    }
-
-    private static async Task AttesterDuties(HttpContext c, string epoch, BeaconApiContext ctx)
-    {
-        if (!TryParseUInt(epoch, out ulong parsedEpoch))
-        {
-            await WriteInvalid(c, $"Invalid epoch '{epoch}'.");
-            return;
-        }
-
-        if (await ReadValidatorIndices(c) is not { } indices) return;
-        DutiesResult<AttesterDuty> duties = await ctx.ValidatorApi.GetAttesterDuties(parsedEpoch, indices, c.RequestAborted);
-        await WriteDuties(c, duties, static duty => new AttesterDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.CommitteeIndex.ToString(),
+        if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
+        if (!TryParseValidatorIndices(ids, out ulong[]? indices, out string? invalidId)) return Invalid($"Invalid validator index '{invalidId}'.");
+        DutiesResult<AttesterDuty> duties = await ctx.ValidatorApi.GetAttesterDuties(parsedEpoch, indices, cancellationToken);
+        return Duties(duties, static duty => new AttesterDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.CommitteeIndex.ToString(),
             duty.CommitteeLength.ToString(), duty.CommitteesAtSlot.ToString(), duty.ValidatorCommitteeIndex.ToString(), duty.Slot.ToString()));
     }
 
-    private static async Task ProposerDuties(HttpContext c, string epoch, BeaconApiContext ctx)
+    [HttpGet("/eth/v2/validator/duties/proposer/{epoch}"), Negotiated]
+    public async Task<IResult> ProposerDuties(string epoch, CancellationToken cancellationToken)
     {
-        if (!TryParseUInt(epoch, out ulong parsedEpoch))
-        {
-            await WriteInvalid(c, $"Invalid epoch '{epoch}'.");
-            return;
-        }
-
-        DutiesResult<ProposerDuty> duties = await ctx.ValidatorApi.GetProposerDuties(parsedEpoch, c.RequestAborted);
-        await WriteDuties(c, duties, static duty => new ProposerDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.Slot.ToString()));
+        if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
+        DutiesResult<ProposerDuty> duties = await ctx.ValidatorApi.GetProposerDuties(parsedEpoch, cancellationToken);
+        return Duties(duties, static duty => new ProposerDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.Slot.ToString()));
     }
 
-    private static async Task SyncDuties(HttpContext c, string epoch, BeaconApiContext ctx)
+    [HttpPost("/eth/v1/validator/duties/sync/{epoch}"), Negotiated]
+    public async Task<IResult> SyncDuties(string epoch, [FromBody] string[] ids, CancellationToken cancellationToken)
     {
-        if (!TryParseUInt(epoch, out ulong parsedEpoch))
-        {
-            await WriteInvalid(c, $"Invalid epoch '{epoch}'.");
-            return;
-        }
-
-        if (await ReadValidatorIndices(c) is not { } indices) return;
-        DutiesResult<SyncDuty> duties = await ctx.ValidatorApi.GetSyncDuties(parsedEpoch, indices, c.RequestAborted);
-        await WriteDuties(c, duties, static duty => new SyncDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), ToStrings(duty.ValidatorSyncCommitteeIndices)));
+        if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
+        if (!TryParseValidatorIndices(ids, out ulong[]? indices, out string? invalidId)) return Invalid($"Invalid validator index '{invalidId}'.");
+        DutiesResult<SyncDuty> duties = await ctx.ValidatorApi.GetSyncDuties(parsedEpoch, indices, cancellationToken);
+        return Duties(duties, static duty => new SyncDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), ToStrings(duty.ValidatorSyncCommitteeIndices)));
     }
 
-    private static async Task AttestationData(HttpContext c, BeaconApiContext ctx)
+    [HttpGet("/eth/v1/validator/attestation_data"), Negotiated]
+    public async Task<IResult> AttestationData([FromQuery(Name = "slot")] string? slot, [FromQuery(Name = "committee_index")] string? committeeIndex, CancellationToken cancellationToken)
     {
-        StringValues slot = c.Request.Query["slot"];
-        StringValues committeeIndex = c.Request.Query["committee_index"];
         ulong parsedCommitteeIndex = 0;
-        if (!TryParseUInt(slot, out ulong parsedSlot) || (committeeIndex.Count > 0 && !TryParseUInt(committeeIndex, out parsedCommitteeIndex)))
+        if (!TryParseUInt(slot, out ulong parsedSlot) || (committeeIndex is not null && !TryParseUInt(committeeIndex, out parsedCommitteeIndex)))
         {
-            await WriteInvalid(c, $"Invalid slot '{slot}' or committee index '{committeeIndex}'.");
-            return;
+            return Invalid($"Invalid slot '{slot}' or committee index '{committeeIndex}'.");
         }
 
-        AttestationData data = await ctx.ValidatorApi.ProduceAttestationData(parsedSlot, parsedCommitteeIndex, c.RequestAborted);
-        await BeaconApiJson.WriteDataAsync(c, ToDto(data), c.RequestAborted);
+        AttestationData data = await ctx.ValidatorApi.ProduceAttestationData(parsedSlot, parsedCommitteeIndex, cancellationToken);
+        return ApiResults.Data(ToDto(data));
     }
 
     /// <summary>beacon-APIs <c>submitPoolAttestationsV2</c>: from Electra the body is a list of <c>SingleAttestation</c>.</summary>
-    private static async Task SubmitAttestations(HttpContext c, BeaconApiContext ctx)
+    [HttpPost("/eth/v2/beacon/pool/attestations"), Negotiated]
+    public async Task<IResult> SubmitAttestations([FromHeader(Name = ResponseEnvelope.ConsensusVersionHeader)] string? consensusVersion,
+        [FromBody] SingleAttestationDto[] items, CancellationToken cancellationToken)
     {
-        if (c.Request.Headers[ResponseEnvelope.ConsensusVersionHeader].ToString() is not ("electra" or "fulu" or "gloas"))
+        if (consensusVersion is not ("electra" or "fulu" or "gloas"))
         {
-            await WriteInvalid(c, $"The {ResponseEnvelope.ConsensusVersionHeader} header must name electra or a later fork.");
-            return;
+            return Invalid($"The {ResponseEnvelope.ConsensusVersionHeader} header must name electra or a later fork.");
         }
 
-        (bool read, SingleAttestationDto[]? items) = await BeaconStatesEndpoints.TryReadJsonBody<SingleAttestationDto[]>(c, bodyRequired: true);
-        if (!read) return;
-        SingleAttestation[] attestations = new SingleAttestation[items!.Length];
+        SingleAttestation[] attestations = new SingleAttestation[items.Length];
         for (int i = 0; i < attestations.Length; i++)
         {
-            if (FromDto(items[i]) is not { } attestation)
-            {
-                await WriteInvalid(c, $"Attestation {i} is malformed.");
-                return;
-            }
-
+            if (FromDto(items[i]) is not { } attestation) return Invalid($"Attestation {i} is malformed.");
             attestations[i] = attestation;
         }
 
-        IReadOnlyList<SubmissionFailure> failures = await ctx.ValidatorApi.SubmitAttestations(attestations, c.RequestAborted);
-        if (failures.Count > 0)
+        IReadOnlyList<SubmissionFailure> failures = await ctx.ValidatorApi.SubmitAttestations(attestations, cancellationToken);
+        if (failures.Count == 0) return Results.Ok();
+        FailureDto[] refused = new FailureDto[failures.Count];
+        for (int i = 0; i < refused.Length; i++) refused[i] = new FailureDto(failures[i].Index, failures[i].Message);
+        IResult body = ApiResults.Json(new IndexedErrorDto(StatusCodes.Status400BadRequest, "Some attestations were not published.", refused));
+        return ApiResults.Write(c =>
         {
-            FailureDto[] refused = new FailureDto[failures.Count];
-            for (int i = 0; i < refused.Length; i++) refused[i] = new FailureDto(failures[i].Index, failures[i].Message);
             c.Response.StatusCode = StatusCodes.Status400BadRequest;
-            c.Response.ContentType = ContentNegotiation.Json;
-            await JsonSerializer.SerializeAsync(c.Response.Body, new IndexedErrorDto(StatusCodes.Status400BadRequest, "Some attestations were not published.", refused),
-                BeaconApiJson.Options, c.RequestAborted);
-        }
+            return body.ExecuteAsync(c);
+        });
     }
 
-    /// <summary>Reads a JSON array of validator indices, writing the error response itself when it cannot.</summary>
-    private static async Task<ulong[]?> ReadValidatorIndices(HttpContext c)
+    [HttpGet("/eth/v1/validator/{**path}")]
+    [HttpPost("/eth/v1/validator/{**path}")]
+    public static Task NotServed(HttpContext c) => Task.FromException(
+        new BeaconNodeApiException(BeaconNodeApiError.NotSupported, $"{c.Request.Method} {c.Request.Path} is not served by this node yet."));
+
+    private static bool TryParseValidatorIndices(string[] ids, [NotNullWhen(true)] out ulong[]? indices, out string? invalidId)
     {
-        (bool read, string[]? ids) = await BeaconStatesEndpoints.TryReadJsonBody<string[]>(c, bodyRequired: true);
-        if (!read) return null;
-        ulong[] indices = new ulong[ids!.Length];
+        indices = new ulong[ids.Length];
         for (int i = 0; i < indices.Length; i++)
         {
             if (!TryParseUInt(ids[i], out indices[i]))
             {
-                await WriteInvalid(c, $"Invalid validator index '{ids[i]}'.");
-                return null;
+                invalidId = ids[i];
+                indices = null;
+                return false;
             }
         }
 
-        return indices;
+        invalidId = null;
+        return true;
     }
 
-    private static Task WriteDuties<TDuty, TDto>(HttpContext c, DutiesResult<TDuty> duties, Func<TDuty, TDto> toDto)
+    private static IResult Duties<TDuty, TDto>(DutiesResult<TDuty> duties, Func<TDuty, TDto> toDto)
     {
         TDto[] data = new TDto[duties.Duties.Count];
         for (int i = 0; i < data.Length; i++) data[i] = toDto(duties.Duties[i]);
-        c.Response.ContentType = ContentNegotiation.Json;
-        return JsonSerializer.SerializeAsync(c.Response.Body, new DutiesDto<TDto>(duties.DependentRoot?.ToString(), duties.ExecutionOptimistic, data),
-            BeaconApiJson.Options, c.RequestAborted);
+        return ApiResults.Json(new DutiesDto<TDto>(duties.DependentRoot?.ToString(), duties.ExecutionOptimistic, data));
     }
 
     private static string[] ToStrings(IReadOnlyList<ulong> values)
@@ -155,7 +125,7 @@ internal static class ValidatorEndpoints
         return strings;
     }
 
-    private static Task WriteInvalid(HttpContext c, string message) => ApiErrors.Write(c, StatusCodes.Status400BadRequest, message, c.RequestAborted);
+    private static IResult Invalid(string message) => ApiResults.Error(StatusCodes.Status400BadRequest, message);
 
     private static bool TryParseUInt(string? value, out ulong result) => ulong.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out result);
 
@@ -205,18 +175,14 @@ internal static class ValidatorEndpoints
         [property: JsonPropertyName("validator_index")] string ValidatorIndex,
         [property: JsonPropertyName("validator_sync_committee_indices")] string[] ValidatorSyncCommitteeIndices);
 
-    private sealed record CheckpointDto(
-        [property: JsonPropertyName("epoch")] string Epoch,
-        [property: JsonPropertyName("root")] string Root);
-
-    private sealed record AttestationDataDto(
+    internal sealed record AttestationDataDto(
         [property: JsonPropertyName("slot")] string Slot,
         [property: JsonPropertyName("index")] string Index,
         [property: JsonPropertyName("beacon_block_root")] string BeaconBlockRoot,
         [property: JsonPropertyName("source")] CheckpointDto Source,
         [property: JsonPropertyName("target")] CheckpointDto Target);
 
-    private sealed record SingleAttestationDto(
+    internal sealed record SingleAttestationDto(
         [property: JsonPropertyName("committee_index")] string CommitteeIndex,
         [property: JsonPropertyName("attester_index")] string AttesterIndex,
         [property: JsonPropertyName("data")] AttestationDataDto Data,

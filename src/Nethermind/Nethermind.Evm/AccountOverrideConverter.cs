@@ -70,6 +70,9 @@ public sealed class AccountOverrideConverter : JsonConverter<AccountOverride>
             }
         }
 
+        if (result.State?.ContainsValue(null!) == true || result.StateDiff?.ContainsValue(null!) == true)
+            throw new JsonException("Storage override values must not be null.");
+
         return result;
     }
 

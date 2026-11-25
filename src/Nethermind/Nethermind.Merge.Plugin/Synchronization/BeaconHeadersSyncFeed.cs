@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
@@ -40,8 +39,10 @@ public sealed class BeaconHeadersSyncFeed(
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly IInvalidChainTracker _invalidChainTracker = invalidChainTracker;
     private readonly IPivot _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
+    private readonly Lock _pivotLock = (pivot as IBeaconPivot)?.HeaderSyncLock ?? new();
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconHeadersSyncFeed>();
     private bool _chainMerged;
+    private Hash256? _pivotStartHash;
 
     protected override ulong HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
@@ -81,7 +82,8 @@ public sealed class BeaconHeadersSyncFeed(
 
         // First, we assume pivot
         _pivotNumber = ExpectedPivotNumber;
-        _expectedNextHeader = new NextHeader(ExpectedPivotHash, _poSSwitcher.FinalTotalDifficulty);
+        _pivotStartHash = ExpectedPivotHash;
+        _expectedNextHeader = new NextHeader(_pivotStartHash, _poSSwitcher.FinalTotalDifficulty);
 
         ulong startNumber = _pivotNumber;
 
@@ -107,15 +109,38 @@ public sealed class BeaconHeadersSyncFeed(
         FallAsleep();
         PostFinishCleanUp();
     }
-    public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
+    protected override HeadersSyncBatch? PrepareRequest(int? requestSize, CancellationToken cancellationToken, out bool needsRequestSize)
     {
-        if (_pivotNumber != ExpectedPivotNumber)
+        lock (_pivotLock)
         {
-            // Pivot changed during the sync. Need to reset the states
-            InitializeFeed();
+            ResetForChangedPivot();
+            return base.PrepareRequest(requestSize, cancellationToken, out needsRequestSize);
         }
+    }
 
-        return base.PrepareRequest(cancellationToken);
+    public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch, PeerInfo? peer = null)
+    {
+        lock (_pivotLock)
+        {
+            ResetForChangedPivot();
+            return base.HandleResponse(batch, peer!);
+        }
+    }
+
+    public override void InitializeFeed()
+    {
+        lock (_pivotLock)
+        {
+            base.InitializeFeed();
+        }
+    }
+
+    private void ResetForChangedPivot()
+    {
+        if (_pivotNumber != ExpectedPivotNumber || _pivotStartHash != ExpectedPivotHash)
+        {
+            base.InitializeFeed();
+        }
     }
 
     protected override int InsertHeaders(HeadersSyncBatch batch)
@@ -184,9 +209,11 @@ public sealed class BeaconHeadersSyncFeed(
 
         headersToAdd = headersToAdd.Slice(lowestIndex);
 
+        // Empty when the highest header of the batch is already known: nothing to insert, only the merge to record.
         if (_logger.IsTrace)
-            _logger.Trace(
-                $"Adding {headersToAdd.Count} new header in beacon headers sync starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)}");
+            _logger.Trace(headersToAdd.Count == 0
+                ? "No new header to add in beacon headers sync, the highest header of the batch is already known"
+                : $"Adding {headersToAdd.Count} new header in beacon headers sync starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         AddBlockResult insertOutcome = AddBlockResult.Added;
         try
@@ -203,7 +230,7 @@ public sealed class BeaconHeadersSyncFeed(
             }
         }
 
-        if (_logger.IsTrace)
+        if (_logger.IsTrace && headersToAdd.Count > 0)
             _logger.Trace(
                 $"New header starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
 

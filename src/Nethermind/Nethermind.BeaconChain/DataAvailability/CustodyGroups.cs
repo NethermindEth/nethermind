@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Security.Cryptography;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.BeaconChain.DataAvailability;
 
@@ -54,7 +54,7 @@ public static class CustodyGroups
 
         while (found < (int)custodyGroupCount)
         {
-            SHA256.HashData(currentId, hash);
+            ThreadSha256.HashData(currentId, hash);
             ulong candidate = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(hash[..8]) % Eip7594DasConstants.NumberOfCustodyGroups;
 
             if (!present[(int)candidate])

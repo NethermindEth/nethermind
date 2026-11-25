@@ -7,6 +7,8 @@ namespace Nethermind.Db
 {
     public class DbSettings(string name, string path)
     {
+        public const string DeletingMarkerFileName = "deleting.marker";
+
         public string DbName { get; private set; } = name;
         public string DbPath { get; private set; } = path;
 

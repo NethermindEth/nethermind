@@ -477,8 +477,6 @@ namespace Nethermind.Network.P2P
                 State = SessionState.Disconnecting;
             }
 
-            if (_isTracked) WarnTrackedDisconnect(disconnectReason, disconnectType, details);
-
             _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
 
             if (NetworkDiagTracer.IsEnabled && RemoteHost is not null)
@@ -524,10 +522,6 @@ namespace Nethermind.Network.P2P
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceAlreadyDisconnected(DisconnectReason reason, DisconnectType type)
                 => _logger.Trace($"{this:hide} already disconnected {reason} {type}");
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void WarnTrackedDisconnect(DisconnectReason reason, DisconnectType type, string det)
-                => _logger.Warn($"Tracked {this:hide} -> disconnected {type} {reason} {det:hide}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void ErrorDisconnectingEvent(DisconnectReason reason, DisconnectType type, string det)
@@ -741,10 +735,6 @@ namespace Nethermind.Network.P2P
                         $"Registered: {string.Join(";", _alphabetically)}.");
             }
         }
-
-        private bool _isTracked = false;
-
-        public void StartTrackingSession() => _isTracked = true;
 
         private static MessageRoute? GetIncomingRoute(MessageRoutes routes, int dynamicMessageCode)
         {
