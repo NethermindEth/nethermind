@@ -1,0 +1,37 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Blockchain.Receipts;
+
+/// <summary>Drops the receipts and the transaction index of blocks that history pruning reclaims.</summary>
+public interface IReceiptPruner
+{
+    /// <summary>Drops one block's receipts named by hash, so the caller does not have to load its body. Leaves the
+    /// transaction index to <see cref="SweepTransactionIndex"/>, exactly as <see cref="RemoveReceiptsRange"/> does.</summary>
+    void RemoveReceipts(ulong blockNumber, Hash256 blockHash);
+
+    /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> without reading any of
+    /// them. Leaves the transaction index to <see cref="SweepTransactionIndex"/>.</summary>
+    void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive);
+
+    /// <summary>Drops many ranges in one call, so a store keeping a hash-keyed cache can invalidate it once
+    /// instead of once per range. The default loops <see cref="RemoveReceiptsRange"/>.</summary>
+    void RemoveReceiptsRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+    {
+        foreach ((ulong fromInclusive, ulong toExclusive) in ranges) RemoveReceiptsRange(fromInclusive, toExclusive);
+    }
+
+    /// <summary>Drops up to <paramref name="maxEntries"/> transaction-index entries naming blocks below
+    /// <paramref name="retainedFromBlock"/>, from <paramref name="resumeFrom"/> on, except those of blocks
+    /// <paramref name="isHeightRetained"/> answers true for - their bodies and receipts outlive the boundary, so their
+    /// transactions must stay findable by hash. Keyed by transaction hash, so the column has to be walked.
+    /// <paramref name="maxEntries"/> must exceed one, because the resume key is re-examined and counted; a budget of
+    /// one makes no progress and is treated as nothing to do.</summary>
+    /// <returns>Where to resume, on cancellation as well as on budget exhaustion, or <c>null</c> at the end.</returns>
+    byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, Func<ulong, bool>? isHeightRetained, CancellationToken cancellationToken, out int removed);
+}

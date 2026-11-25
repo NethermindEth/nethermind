@@ -105,10 +105,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     /// earlier transaction already removed is reported as still existing. Distinguishing that from the
     /// first touch of the same account is not possible from the BAL, which declares both identically, and
     /// this arm favours the first touch. The result is only read by the EIP-161 RIPEMD-160 exception in
-    /// <c>VirtualMachine.RunPrecompile</c>, so a divergence needs an account at the RIPEMD-160 address that
-    /// is empty yet physically present in the pre-block state and touched twice in one block. No block can
-    /// produce that pre-state — a touched empty account is deleted at the end of its transaction and CREATE
-    /// sets nonce 1 — so it would have to come from a genesis allocation.
+    /// <c>VirtualMachine.RunPrecompile</c>, which credits a value-less call only to an account that is
+    /// present and empty. Here <see cref="AccountExists"/> means non-empty, so that exception never
+    /// reaches this method and the divergence has no effect.
     /// </remarks>
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {

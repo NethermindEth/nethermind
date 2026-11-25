@@ -96,7 +96,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     public AssembledSnapshotResult AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
     {
-        if (baseBlock == targetState) return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
+        if (Height(baseBlock) <= Height(targetState)) return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
 
         AssemblePolicy policy = new(targetState);
         return WalkAndAssemble(baseBlock, estimatedSize, ref policy);
@@ -1080,7 +1080,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier)
         {
             if (Height(from) < Height(target))
-                return tier.IsPersisted() && Height(to) > Height(target) ? AssembleStep.WinAndStop : AssembleStep.Skip;
+                return tier.IsPersisted() ? AssembleStep.WinAndStop : AssembleStep.Skip;
             if (from == target) return AssembleStep.WinAndStop;
             // A different state at the target's block is a sibling fork — don't win there.
             return from.BlockNumber == target.BlockNumber ? AssembleStep.Skip : AssembleStep.Traverse;

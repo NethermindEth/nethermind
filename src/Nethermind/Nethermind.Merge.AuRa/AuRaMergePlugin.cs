@@ -36,7 +36,6 @@ namespace Nethermind.Merge.AuRa
         public string Description => "AuRa Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
         public bool Enabled => mergeConfig.Enabled && chainSpec.SealEngineType == SealEngineType.AuRa;
-        public bool MustInitialize => true;
         public IModule Module => new AuRaMergeModule();
     }
 

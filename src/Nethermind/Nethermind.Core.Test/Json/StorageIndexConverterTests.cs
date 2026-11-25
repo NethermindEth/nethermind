@@ -36,6 +36,13 @@ public class StorageIndexConverterTests
                 .With.Message.EqualTo("storage key too long (want at most 32 bytes): \"0x" + new string('f', 65) + "\""));
 
     [Test]
+    public void Rejects_oversized_key_without_repeating_all_of_it() =>
+        Assert.That(
+            () => JsonSerializer.Deserialize<StorageIndex>("\"0x" + new string('f', 10_000) + "\""),
+            Throws.TypeOf<SafePublicMessageFormatException>()
+                .With.Message.EqualTo("storage key too long (want at most 32 bytes): \"0x" + new string('f', 130) + "...\""));
+
+    [Test]
     public void Rejects_non_hex_key_keeping_the_cause() =>
         Assert.That(
             () => JsonSerializer.Deserialize<StorageIndex>("\"0x1zz\""),

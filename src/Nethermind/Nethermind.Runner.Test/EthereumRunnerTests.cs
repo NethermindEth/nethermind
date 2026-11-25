@@ -464,6 +464,23 @@ public class EthereumRunnerTests
     }
 
     [Test]
+    public async Task Startup_pipeline_warmup_builds_on_genesis_with_future_timestamp()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        ulong genesisTimestamp = (ulong)DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds();
+
+        // A fresh devnet starts its node before the genesis time is reached.
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec("amsterdam", genesisTimestamp), WarmupConfig(directory.Path), false, cancellation.Token);
+    }
+
+    [TestCase(100UL, 1_000UL, ExpectedResult = 1_000UL)]
+    [TestCase(1_000UL, 100UL, ExpectedResult = 1_002UL)]
+    [TestCase(ulong.MaxValue - 1, 100UL, ExpectedResult = ulong.MaxValue)]
+    public ulong Startup_pipeline_warmup_timestamp_follows_genesis(ulong genesisTimestamp, ulong now) =>
+        StartupPipelineWarmer.WarmupTimestamp(genesisTimestamp, now);
+
+    [Test]
     public async Task Startup_pipeline_warmup_authenticates_after_slow_start()
     {
         using TempPath directory = TempPath.GetTempDirectory();
@@ -778,7 +795,7 @@ public class EthereumRunnerTests
         return builder => builder.AddSingleton(configurer);
     }
 
-    private static ChainSpec LoadWarmupChainSpec(string chain = "foundation")
+    private static ChainSpec LoadWarmupChainSpec(string chain = "foundation", ulong? genesisTimestamp = null)
     {
         if (chain is "amsterdam" or "bogota")
         {
@@ -790,6 +807,7 @@ public class EthereumRunnerTests
                 config[fork] = 0;
             config["amsterdamTime"] = 0;
             if (chain == "bogota") config["bogotaTime"] = 0;
+            if (genesisTimestamp is not null) genesis["timestamp"] = $"0x{genesisTimestamp:x}";
             using MemoryStream modified = new(System.Text.Encoding.UTF8.GetBytes(genesis.ToJsonString()));
             return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), NullLogManager.Instance).Load(modified);
         }

@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxPoolConfig txPoolConfig = new();
             _txPool = new TxPool.TxPool(_ethereumEcdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider) { HasSynced = true },
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider, new()) { HasSynced = true },
                 txPoolConfig,
                 new TxValidator(specProvider.ChainId),
                 new SpecChangeTxValidator(specProvider.ChainId),

@@ -130,7 +130,8 @@ public class ReorgTests
             LimboLogs.Instance,
             BlockchainProcessor.Options.Default,
             Substitute.For<IProcessingStats>(),
-            new BlockTreeMutationLock());
+            new BlockTreeMutationLock(),
+            new BlockProcessingTracker());
     }
 
     [OneTimeTearDown]

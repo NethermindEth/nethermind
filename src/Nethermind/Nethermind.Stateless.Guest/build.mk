@@ -43,6 +43,9 @@ BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:eadcaf8cd2fdcf4008c902fb47cfc4fe2c
 # --error-on-float-binary checks that no F/D instruction is in the image.
 ISA_GATES ?= --error-on-float-binary --error-on-compressed --error-on-atomic
 
+# Extra bflat options, such as --codegenopt Name=Value.
+BFLAT_EXTRA_FLAGS ?=
+
 # The guest has no instruction cache, so favouring speed over size is near free.
 # Requires the TrieNode seqlock collapse: -Ot over the seqlock built a guest whose
 # success flag was 0, unconfirmed but suspected to be the Interlocked/Volatile it
@@ -170,6 +173,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
+		$(BFLAT_EXTRA_FLAGS) \
 		$(GUEST_OUT) \
 		$(GUEST_SOURCES)
 	@len=$$(sed -n 's/.*Name="__embedded_resourcedata" Length="\([0-9]*\)".*/\1/p' $(GUEST_DIR)/Program.map.xml); \

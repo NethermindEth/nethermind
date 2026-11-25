@@ -12,9 +12,6 @@ namespace Nethermind.Api
 {
     public interface IApiWithBlockchain : IApiWithStores
     {
-        (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
-        (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
-
         IMainProcessingContext MainProcessingContext { get; }
         ITxSender? TxSender { get; }
         INonceManager? NonceManager { get; }

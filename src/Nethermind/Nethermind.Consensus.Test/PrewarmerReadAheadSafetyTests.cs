@@ -22,7 +22,6 @@ using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -357,7 +356,6 @@ public abstract class PrewarmerReadAheadTestBase(IReleaseSpec spec) : PrewarmerH
     {
         public IWorldStateScopeProvider GlobalWorldState => inner.GlobalWorldState;
         public IStateReader GlobalStateReader => inner.GlobalStateReader;
-        public ISnapStateServer SnapStateServer => inner.SnapStateServer;
         public IReadOnlyKeyValueStore? HashServer => inner.HashServer;
         public IWorldStateScopeProvider CreateResettableWorldState() => wrap(inner.CreateResettableWorldState());
         public IWorldStateScopeProvider CreateReadOnlyQueryWorldState() => inner.CreateReadOnlyQueryWorldState();

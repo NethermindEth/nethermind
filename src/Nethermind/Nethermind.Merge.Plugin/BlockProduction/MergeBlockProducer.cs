@@ -24,4 +24,9 @@ public class MergeBlockProducer(IBlockProducer? preMergeBlockProducer, IBlockPro
         PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken token = default) => _poSSwitcher.HasEverReachedTerminalBlock() || !HasPreMergeProducer
             ? PostMergeBlockProducer.BuildBlock(parentHeader, blockTracer, payloadAttributes, flags, token)
             : PreMergeBlockProducer!.BuildBlock(parentHeader, blockTracer, payloadAttributes, flags, token);
+
+    public Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer,
+        PayloadAttributes? payloadAttributes, IBlockProducer.Flags flags, CancellationToken token, CancellationToken abandonToken) => _poSSwitcher.HasEverReachedTerminalBlock() || !HasPreMergeProducer
+            ? PostMergeBlockProducer.BuildBlock(parentHeader, blockTracer, payloadAttributes, flags, token, abandonToken)
+            : PreMergeBlockProducer!.BuildBlock(parentHeader, blockTracer, payloadAttributes, flags, token, abandonToken);
 }
