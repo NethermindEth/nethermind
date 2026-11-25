@@ -117,17 +117,7 @@ namespace Nethermind.Network.Test.P2P
                 NodeId = TestItem.PublicKeyB,
             };
 
-            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
-            // to account for adaptive packet type
-            data.ReadByte();
-
-            Packet packet = new(data.ReadAllBytesAsArray())
-            {
-                Protocol = message.Protocol,
-                PacketType = (byte)message.PacketType,
-            };
-
-            p2PProtocolHandler.HandleMessage(packet);
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
             Assert.That(_nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation, Is.Not.Null);
             _session.Received(1).InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>());
@@ -162,14 +152,7 @@ namespace Nethermind.Network.Test.P2P
                 P2PVersion = p2pVersion,
             };
 
-            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
-            data.ReadByte(); // adaptive packet type
-
-            p2PProtocolHandler.HandleMessage(new Packet(data.ReadAllBytesAsArray())
-            {
-                Protocol = message.Protocol,
-                PacketType = (byte)message.PacketType,
-            });
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
             Assert.That(disconnects, Is.EqualTo(new[] { (reason, snappy) }));
         }
