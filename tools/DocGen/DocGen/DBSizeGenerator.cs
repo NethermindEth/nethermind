@@ -36,7 +36,7 @@ internal static class DBSizeGenerator
         dbSizeSourcePath ??= AppDomain.CurrentDomain.BaseDirectory;
 
         List<string?> chains = Directory
-            .GetFiles(dbSizeSourcePath)
+            .EnumerateFiles(dbSizeSourcePath, "*.json")
             .Select(Path.GetFileNameWithoutExtension)
             .OrderBy(c =>
             {
