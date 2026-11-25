@@ -6,8 +6,11 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using NSubstitute;
@@ -105,18 +108,24 @@ public class Eip8437ClientCaseTests
         }
     }
 
-    // A peer connected before activation exchanges wrappers once EIP-8288 activates.
-    [Test]
-    public void Peer_connected_before_activation_is_announced_to_after_it()
+    // EIP-8437 mempool fork: a peer connected before EIP-8288's configured timestamp is sent nothing until the local clock
+    // reaches it, independently of the head, which here stays on one side of the fork while the clock crosses it.
+    [TestCase(900UL, TestName = "Head before the fork")]
+    [TestCase(1_100UL, TestName = "Head after the fork")]
+    public void Peer_connected_before_activation_is_announced_to_once_the_clock_reaches_it(ulong headTimestamp)
     {
-        using WrapperTestNode node = new();
-        node.Tree.Head.Returns((Block?)null);
+        using WrapperTestNode node = new(new CustomSpecProvider(((ForkActivation)0, Eip8141Prototype.Instance),
+            (new ForkActivation(0, 1_000), Eip8288Prototype.Instance)));
+        node.Tree.Head.Returns(Build.A.Block.WithNumber(10).WithTimestamp(headTimestamp).TestObject);
+        node.Clock.Set(DateTime.UnixEpoch.AddSeconds(999));
         FakeWrapperLink link = new();
         node.Broadcaster.Accept(link);
         node.Tick(WrapperTransportLimits.Tick);
-        node.Tree.Head.Returns(Build.A.Block.WithNumber(10).TestObject);
-        node.Tick(WrapperTransportLimits.Tick);
         byte[] wrapper = Wrapper(64, FrameTransaction(1));
+        Assert.That(node.Broadcaster.PublishWrapper(wrapper), Is.False, "EIP-8288 is not enabled before the clock reaches the fork");
+
+        node.Clock.Set(DateTime.UnixEpoch.AddSeconds(1_000));
+        node.Tick(WrapperTransportLimits.Tick);
         Assert.That(node.Broadcaster.PublishWrapper(wrapper), Is.True);
         node.Tick(WrapperTransportLimits.Tick);
         Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(wrapper).Hash }));

@@ -1671,11 +1671,13 @@ public class ProofWrapperServiceTests
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         Block head = HeadWithParent(finder, 9, 980);
         finder.Head.Returns(_ => head);
-        ProofWrapperService service = new(pool, specs, finder, store, verifier);
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(990));
+        ProofWrapperService service = new(pool, specs, finder, store, verifier, timestamper: clock);
         List<Eip8288Verifier> changes = [];
         service.VerifierChanged += changes.Add;
         service.RefreshVerifier();
         head = HeadWithParent(finder, 10, 990);
+        clock.Set(DateTime.UnixEpoch.AddSeconds(1_000));
 
         Assert.That(() => service.RefreshVerifier(), Throws.InvalidOperationException);
         Assert.That(service.CurrentVerifier, Is.EqualTo(Eip8288Verifier.Pinned), "a half-applied upgrade is not committed");
@@ -1724,12 +1726,14 @@ public class ProofWrapperServiceTests
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         Block head = HeadWithParent(finder, 9, 980);
         finder.Head.Returns(_ => head);
-        ProofWrapperService service = new(pool, specs, finder, store, verifier);
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(990));
+        ProofWrapperService service = new(pool, specs, finder, store, verifier, timestamper: clock);
         List<Eip8288Verifier> changes = [];
         service.VerifierChanged += changes.Add;
 
         Eip8288Verifier? before = service.RefreshVerifier();
         head = HeadWithParent(finder, 10, 990);
+        clock.Set(DateTime.UnixEpoch.AddSeconds(1_000));
         Eip8288Verifier? after = service.RefreshVerifier();
 
         using (Assert.EnterMultipleScope())
@@ -1749,7 +1753,7 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // EIP-8288 target fork: the fork active at head.timestamp + L, with L = (head.timestamp - parent.timestamp) /
+    // Inclusion-list target fork: the fork active at head.timestamp + L, with L = (head.timestamp - parent.timestamp) /
     // (head.slot_number - parent.slot_number) from the EIP-7843 slot numbers, so a missed slot or another slot length changes the
     // estimate and no configured slot length is used. When slot numbers do not increase the target fork is the head's fork, as
     // it is, defensively, without a parent slot number; L is floor division.
@@ -1770,17 +1774,28 @@ public class ProofWrapperServiceTests
             (new ForkActivation(0, 1_000), new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = upgradedVk }));
         BlockHeader parent = Build.A.BlockHeader.WithNumber(9).WithTimestamp(parentTimestamp).WithSlotNumber(parentSlot).TestObject;
         BlockHeader head = Build.A.BlockHeader.WithParent(parent).WithNumber(10).WithTimestamp(headTimestamp).WithSlotNumber(10).TestObject;
-        IBlockFinder finder = Substitute.For<IBlockFinder>();
-        finder.FindHeader(parent.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
-        finder.Head.Returns(new Block(head));
-        ProofWrapperService service = new(Substitute.For<ITxPool>(), specs, finder, new LeanProofStore(FrameTxSigHash.ComputeValue),
-            new FakeLeanProofVerifier(true));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(WrapperTargetFork.SlotLength(head, parent), Is.EqualTo(slotLength));
-            Assert.That(service.TargetSpec?.Eip8288AggregatedVk, Is.EqualTo(upgraded ? upgradedVk : Eip8288Verifier.PinnedAggregatedVk));
+            Assert.That(WrapperTargetFork.Predict(specs, head, parent).Eip8288AggregatedVk, Is.EqualTo(upgraded ? upgradedVk : Eip8288Verifier.PinnedAggregatedVk));
         }
+    }
+
+    // EIP-8437 mempool fork: the fork active at the local clock's Unix time, independently of the head.
+    [TestCase(999UL, 1_100UL, false, TestName = "A head past the fork does not activate it before the clock")]
+    [TestCase(1_000UL, 900UL, true, TestName = "The clock activates the fork before the head reaches it")]
+    public void Target_fork_follows_the_wall_clock(ulong now, ulong headTimestamp, bool upgraded)
+    {
+        ValueHash256 upgradedVk = ValueKeccak.Compute("next AGGREGATED_VK");
+        CustomSpecProvider specs = new(((ForkActivation)0, Eip8288Prototype.Instance),
+            (new ForkActivation(0, 1_000), new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = upgradedVk }));
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        finder.Head.Returns(Build.A.Block.WithNumber(10).WithTimestamp(headTimestamp).TestObject);
+        ProofWrapperService service = new(Substitute.For<ITxPool>(), specs, finder, new LeanProofStore(FrameTxSigHash.ComputeValue),
+            new FakeLeanProofVerifier(true), timestamper: new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(now)));
+
+        Assert.That(service.TargetSpec?.Eip8288AggregatedVk, Is.EqualTo(upgraded ? upgradedVk : Eip8288Verifier.PinnedAggregatedVk));
     }
 
     /// <summary>A head at <paramref name="number"/> and <paramref name="timestamp"/> whose parent, found through
