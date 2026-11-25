@@ -292,9 +292,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         ArgumentNullException.ThrowIfNull(peer);
 
         // The cleanup of an earlier session under this key is collected under the lifecycle lock before this session is
-        // registered, so a collection failure leaves this session unregistered. The collected requests and
-        // resubmissions are dispatched after the lock either way: after a failure, the work collected up to it; after
-        // success, with this session already registered.
+        // registered, so a collection failure leaves this session unregistered. Either way the collected requests and
+        // resubmissions are handed to the dispatcher after the lock: after a failure, the work collected up to it;
+        // after success, with this session already registered. An action that throws stops the ones after it.
         List<PeerCleanupAction>? cleanupActions = null;
         try
         {
@@ -2244,8 +2244,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     /// Every source of the kept cells was sent by the session registered now, if any: cells of a session that ended
     /// while they were in use by a submission are dropped when they are kept (<see cref="RemoveEndedSources"/>), and
     /// after that peer cleanup strips a session's cells from the kept buffer before another session under the same key
-    /// is registered. A session is registered only after the cleanup of every earlier session under its key has
-    /// completed, including one that an exception interrupted.
+    /// is registered. A session is registered only after the cleanup still owed under its key has been collected; if
+    /// that collection fails, the session is not registered.
     /// </remarks>
     private ISparseBlobPoolPeer?[] GetRegisteredSources(in PendingCellsBuffer cells)
     {
@@ -2263,9 +2263,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     /// which have since verified. Must be called outside <c>state.Lock</c>.
     /// </summary>
     /// <remarks>
-    /// Runs after a completed admission, on the thread that handled the response which completed it. An exception
-    /// escaping here would fail that response and disconnect its sender, so local errors are logged instead, and
-    /// each disconnect is isolated from the others.
+    /// Runs after a completed admission, synchronously on the caller that completed it: a response handler, peer
+    /// cleanup or maintenance. An exception escaping here would fail that caller, for a response handler its response
+    /// and its sender, so local errors are logged instead, and each disconnect is isolated from the others.
     /// </remarks>
     private void AttributeUnattributedCells(
         Hash256 hash,
