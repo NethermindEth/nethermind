@@ -614,7 +614,7 @@ public class DebugBridgeTests
         tree.SuggestBlock(next);
         IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         if (processingState != ProcessingState.Running) container.Resolve<IBlockProcessingPauseControl>().Pause();
-        tree.IsProcessingBlock = processingState == ProcessingState.PausedExecuting;
+        container.Resolve<BlockProcessingTracker>().IsProcessingBlock = processingState == ProcessingState.PausedExecuting;
         if (processingState == ProcessingState.PausedQueued)
             await container.Resolve<IBlockProcessingQueue>().Enqueue(head, ProcessingOptions.None);
         const string refusalWarning = "Cannot mutate the chain: pause block processing and wait for it to drain.";
@@ -648,7 +648,7 @@ public class DebugBridgeTests
         finally
         {
             releaseRefusal.Set();
-            tree.IsProcessingBlock = false;
+            container.Resolve<BlockProcessingTracker>().IsProcessingBlock = false;
         }
         await DrainWorkers(request, assertionFailure);
         int result = await request;
@@ -674,7 +674,7 @@ public class DebugBridgeTests
         AddToMainChain(tree, head);
         IBlockProcessingPauseControl pause = container.Resolve<IBlockProcessingPauseControl>();
         if (processingState != ProcessingState.Running) pause.Pause();
-        tree.IsProcessingBlock = processingState == ProcessingState.PausedExecuting;
+        container.Resolve<BlockProcessingTracker>().IsProcessingBlock = processingState == ProcessingState.PausedExecuting;
         if (processingState == ProcessingState.PausedQueued)
             await container.Resolve<IBlockProcessingQueue>().Enqueue(head, ProcessingOptions.None);
         IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
@@ -691,7 +691,7 @@ public class DebugBridgeTests
         }
         if (!accepted && processingState != ProcessingState.PausedQueued)
         {
-            tree.IsProcessingBlock = false;
+            container.Resolve<BlockProcessingTracker>().IsProcessingBlock = false;
             pause.Pause();
             Assert.That(MutateChain(debug, genesis, mutation), Is.EqualTo(1), "retry must succeed after processing becomes paused and idle");
         }
@@ -1207,7 +1207,7 @@ public class DebugBridgeTests
             Substitute.For<IBadBlockStore>(),
             Substitute.For<IBlockStore>(),
             worldStateManager,
-            logManager, new BlockTreeMutationLock(), pauseControl, processingQueue,
+            logManager, new BlockTreeMutationLock(), pauseControl, processingQueue, new BlockProcessingTracker(),
             Substitute.For<ISyncProgressResolver>(), Substitute.For<ISyncPointers>(), Substitute.For<ITxPool>());
 
         List<(Hash256 CleanupTarget, Hash256? LiveHead, byte[]? PersistedHead)> cleanupHeads = [];

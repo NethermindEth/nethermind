@@ -695,7 +695,7 @@ namespace Nethermind.TxPool.Test
                 return true;
             });
             state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? Array.Empty<byte>() : throw MissingHeadState());
-            ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(GetBogotaSpecProvider(), _blockTree), _blockTree, state);
+            ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(GetBogotaSpecProvider(), _blockTree), _blockTree, state, _blockProcessing);
 
             Assert.DoesNotThrow(() => _txPool = CreatePool(
                 new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 10 },
@@ -751,7 +751,7 @@ namespace Nethermind.TxPool.Test
         {
             IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
             state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(tryGetAccount);
-            return new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state);
+            return new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state, _blockProcessing);
         }
 
         private TxPool CreatePoolWithPersistentBlobs(ChainHeadInfoProvider headInfo, IBlobTxStorage storage) => CreatePool(
@@ -1355,7 +1355,7 @@ namespace Nethermind.TxPool.Test
         public void should_not_allow_to_add_blob_tx_with_MaxFeePerBlobGas_lower_than_CurrentFeePerBlobGas([Values(true, false)] bool isMaxFeePerBlobGasHighEnough, [Values(true, false)] bool isRequirementEnabled)
         {
             ISpecProvider specProvider = GetCancunSpecProvider();
-            ChainHeadInfoProvider chainHeadInfoProvider = new(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, _stateProvider);
+            ChainHeadInfoProvider chainHeadInfoProvider = new(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, _stateProvider, _blockProcessing);
 
             TxPoolConfig txPoolConfig = new()
             {
@@ -1648,7 +1648,7 @@ namespace Nethermind.TxPool.Test
             IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
             specProvider.GetCurrentHeadSpec().Returns(releaseSpec);
 
-            ChainHeadInfoProvider chainHeadInfoProvider = new(specProvider, _blockTree, _stateProvider);
+            ChainHeadInfoProvider chainHeadInfoProvider = new(specProvider, _blockTree, _stateProvider, _blockProcessing);
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 },
                 specProvider: specProvider, chainHeadInfoProvider: chainHeadInfoProvider);
 
@@ -6415,7 +6415,7 @@ namespace Nethermind.TxPool.Test
         public void Blob_carrying_frame_tx_below_current_blob_base_fee_is_rejected()
         {
             ISpecProvider specProvider = GetBogotaSpecProvider();
-            ChainHeadInfoProvider chainHeadInfoProvider = new(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, _stateProvider)
+            ChainHeadInfoProvider chainHeadInfoProvider = new(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, _stateProvider, _blockProcessing)
             {
                 CurrentFeePerBlobGas = 100
             };
