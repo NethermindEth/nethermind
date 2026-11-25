@@ -6102,6 +6102,104 @@ public class Eth72ProtocolHandlerTests
         Assert.That(IsTracked(registry, tx.Hash!), Is.False);
     }
 
+    [TestCase(LaterCellsArrival.CellsMessage)]
+    [TestCase(LaterCellsArrival.AttachedToBody)]
+    public void registry_should_keep_the_ended_session_record_with_its_cells_when_a_record_is_interrupted(LaterCellsArrival arrival)
+    {
+        const int blobCount = 1;
+        Transaction tx = BuildSparseBlobTransaction(blobCount, out byte[][] fullCells);
+        BlobCellMask endedMask = BlobCellMask.FromIndices([4]);
+        BlobCellMask laterMask = BlobCellMask.FromIndices([9, 10]);
+        BlobCellMask otherMask = BlobCellMask.FromIndices([77]);
+        byte[][] endedCells = CopyWithCorruptedCell(
+            BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, endedMask, blobCount), cellIndex: 0, byteIndex: 0);
+        byte[][] laterCells = BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, laterMask, blobCount);
+        byte[][] otherCells = BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, otherMask, blobCount);
+        int sourceBytes = blobCount * CkzgLib.Ckzg.BytesPerCell;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        bool failClock = false;
+        ITimestamper timestamper = Substitute.For<ITimestamper>();
+        timestamper.UtcNowOffset.Returns(_ =>
+        {
+            if (failClock)
+            {
+                failClock = false;
+                throw new InvalidOperationException("Clock failed.");
+            }
+
+            return now;
+        });
+        using SparseBlobPoolPeerRegistry registry = CreateAttributionRegistry(timestamper: timestamper);
+        TestSparseBlobPeer otherCellPeer = new(TestItem.PublicKeyD);
+        TestSparseBlobPeer oldSession = new(TestItem.PublicKeyA);
+        TestSparseBlobPeer newSession = new(TestItem.PublicKeyA);
+        SubmitWithCellProofCheck();
+        int merges = 0;
+        _transactionPool.MergeBlobCells(tx.Hash!, Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>()).Returns(_ =>
+        {
+            if (++merges == 1)
+            {
+                // The cell source's session ends while its cells are merged, and the same node reconnects.
+                registry.AddPeer(newSession);
+            }
+
+            return BlobCellMergeResult.TransactionUnavailable;
+        });
+        registry.AddPeer(otherCellPeer);
+        registry.AddPeer(oldSession);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.RecordCells(oldSession, tx.Hash!, endedMask, endedCells), Is.True);
+            Assert.That(registry.RecordCells(otherCellPeer, tx.Hash!, otherMask, otherCells), Is.True);
+            Assert.That(registry.TryApplyRecordedCells(tx.Hash!), Is.False);
+            Assert.That(GetEndedCellSourceCount(registry, tx.Hash!), Is.EqualTo(1));
+        }
+
+        Transaction bodyWithCells = BuildElidedBlobTransaction(tx);
+        bodyWithCells.NetworkWrapper = ((ShardBlobNetworkWrapper)bodyWithCells.NetworkWrapper!) with
+        {
+            CellMask = laterMask,
+            Cells = laterCells
+        };
+        bodyWithCells.ClearLengthCache();
+        Action addLaterCells = arrival == LaterCellsArrival.CellsMessage
+            ? () => registry.RecordCells(newSession, tx.Hash!, laterMask, laterCells)
+            : () => registry.RecordTransaction(newSession, bodyWithCells);
+
+        // A local error interrupts the new session's record: the ended session's cells and their record stay
+        // together.
+        failClock = true;
+        Assert.That(() => addLaterCells(), Throws.InvalidOperationException);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failClock, Is.False);
+            Assert.That(GetEndedCellSourceCount(registry, tx.Hash!), Is.EqualTo(1));
+            Assert.That(GetPeerEarlyCellBytes(registry, newSession.Id), Is.EqualTo(sourceBytes));
+            Assert.That(GetEarlyCellsBytes(registry), Is.EqualTo(2 * sourceBytes));
+        }
+
+        // The same record succeeds afterwards and replaces the ended session's cells with the new session's.
+        Assert.That(() => addLaterCells(), Throws.Nothing);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetEndedCellSourceCount(registry, tx.Hash!), Is.Zero);
+            Assert.That(newSession.Disconnects, Is.Empty);
+            Assert.That(oldSession.Disconnects, Is.Empty);
+            if (arrival == LaterCellsArrival.CellsMessage)
+            {
+                Assert.That(GetPeerEarlyCellBytes(registry, newSession.Id), Is.EqualTo(2 * sourceBytes));
+                Assert.That(GetEarlyCellsBytes(registry), Is.EqualTo(3 * sourceBytes));
+            }
+            else
+            {
+                // The body and the cells now verify, so the tuple was admitted and its cells released.
+                Assert.That(GetEarlyCellsBytes(registry), Is.Zero);
+                Assert.That(registry.HasRecordedTransaction(tx.Hash!), Is.False);
+            }
+        }
+    }
+
     public enum KeptCellSessionEnd
     {
         ReplacedWhileKept,

@@ -1076,18 +1076,22 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     PendingCellsBuffer addedCells = new(attachedCellMask, attachedCells, peer.Id);
                     PendingCellsBuffer? currentCells = state.EndedCellSources is null
                         ? state.Cells
-                        : GetCellsToMergeInto(state, peer.Id);
+                        : GetCellsToMergeInto(state, addedCells.LastSourcePeerId);
                     PendingCellsBuffer replacement = currentCells is { } existingCells
                         && existingCells.TryMerge(addedCells, out PendingCellsBuffer merged)
                             ? merged
                             : addedCells;
+
+                    // Everything the update needs is read before the accounting commits it, so that the buffer and the
+                    // record of its ended sources change together.
+                    DateTimeOffset cellsExpiresAt = _timestamper.UtcNowOffset + EarlyCellsTtl;
                     if (TryReplaceCellsAccounting(hash.ValueHash256, state.Cells, replacement, peer))
                     {
                         state.Cells = replacement;
-                        state.CellsExpiresAt = _timestamper.UtcNowOffset + EarlyCellsTtl;
+                        state.CellsExpiresAt = cellsExpiresAt;
                         if (state.EndedCellSources is not null)
                         {
-                            KeepEndedSourcesOf(state, replacement, peer.Id);
+                            KeepEndedSourcesOf(state, replacement, addedCells.LastSourcePeerId);
                         }
                     }
                 }
@@ -1146,7 +1150,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             {
                 PendingCellsBuffer? currentCells = state.EndedCellSources is null
                     ? state.Cells
-                    : GetCellsToMergeInto(state, peer.Id);
+                    : GetCellsToMergeInto(state, addedCells.LastSourcePeerId);
                 if (currentCells is { } existingCells
                     && (existingCells.CellMask & cellMask) == cellMask)
                 {
@@ -1158,15 +1162,18 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                         && current.TryMerge(addedCells, out PendingCellsBuffer merged)
                             ? merged
                             : addedCells;
+
+                    // Everything the update needs is read before the accounting commits it, so that the buffer and the
+                    // record of its ended sources change together.
+                    DateTimeOffset now = _timestamper.UtcNowOffset;
                     if (TryReplaceCellsAccounting(hash.ValueHash256, state.Cells, replacement, peer))
                     {
                         state.Cells = replacement;
-                        DateTimeOffset now = _timestamper.UtcNowOffset;
                         state.CellsExpiresAt = now + EarlyCellsTtl;
                         Touch(state, now);
                         if (state.EndedCellSources is not null)
                         {
-                            KeepEndedSourcesOf(state, replacement, peer.Id);
+                            KeepEndedSourcesOf(state, replacement, addedCells.LastSourcePeerId);
                         }
 
                         accepted = true;
