@@ -5860,6 +5860,60 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void registry_should_finish_an_interrupted_cleanup_before_registering_a_later_session_under_its_key()
+    {
+        Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells);
+        byte[][] invalidCells = CopyWithCorruptedCell(cells, cellIndex: 0, byteIndex: 0);
+        int cellBytes = cells.Length * CkzgLib.Ckzg.BytesPerCell;
+        using SparseBlobPoolPeerRegistry registry = CreateAttributionRegistry();
+        TestSparseBlobPeer transactionPeer = new(TestItem.PublicKeyC);
+        TestSparseBlobPeer oldSession = new(TestItem.PublicKeyA);
+        TestSparseBlobPeer newSession = new(TestItem.PublicKeyA);
+        SubmitWithCellProofCheck();
+        AddAnnouncingPeers(registry, tx.Hash!, cellMask, transactionPeer);
+        registry.AddPeer(oldSession);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.RecordTransaction(transactionPeer, tx), Is.Null);
+            Assert.That(registry.RecordCells(oldSession, tx.Hash!, cellMask, invalidCells), Is.True);
+            Assert.That(GetPeerEarlyCellBytes(registry, oldSession.Id), Is.EqualTo(cellBytes));
+        }
+
+        // A local error interrupts the old session's cleanup after it was unregistered and before its kept cells were
+        // stripped.
+        transactionPeer.ReadingId = static () => throw new InvalidOperationException("Cleanup interrupted.");
+        try
+        {
+            Assert.That(() => registry.RemovePeer(oldSession), Throws.InvalidOperationException);
+        }
+        finally
+        {
+            transactionPeer.ReadingId = null;
+        }
+
+        registry.AddPeer(newSession);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The cleanup was finished before the new session was registered.
+            Assert.That(GetEarlyCellsBytes(registry), Is.Zero);
+            Assert.That(GetPeerEarlyCellBytes(registry, newSession.Id), Is.Zero);
+            Assert.That(GetPeerTrackedHashCount(registry, newSession.Id), Is.Zero);
+
+            // Verified cells then blame neither session for the old session's cells.
+            Assert.That(registry.RecordCells(transactionPeer, tx.Hash!, cellMask, cells), Is.True);
+            Assert.That(newSession.Disconnects, Is.Empty);
+            Assert.That(oldSession.Disconnects, Is.Empty);
+            Assert.That(transactionPeer.Disconnects, Is.Empty);
+            Assert.That(registry.HasRecordedTransaction(tx.Hash!), Is.False);
+            Assert.That(GetEarlyCellsBytes(registry), Is.Zero);
+            Assert.That(GetTrackedTransactionBytes(registry), Is.Zero);
+        }
+        _transactionPool.Received(2).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+    }
+
+    [Test]
     public void registry_should_complete_admission_when_disconnecting_a_differing_source_throws()
     {
         const int blobCount = 2;
@@ -7638,9 +7692,18 @@ public class Eth72ProtocolHandlerTests
 
     private sealed class TestSparseBlobPeer(PublicKey id) : ISparseBlobPoolPeer
     {
+        private readonly PublicKey _id = id;
         private bool _isClosing;
 
-        public PublicKey Id { get; } = id;
+        public PublicKey Id
+        {
+            get
+            {
+                ReadingId?.Invoke();
+                return _id;
+            }
+        }
+        public Action? ReadingId { get; set; }
         public bool IsClosing
         {
             get => IsClosingHandler?.Invoke() ?? _isClosing;

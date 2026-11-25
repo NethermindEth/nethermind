@@ -305,6 +305,13 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                     .Remove(new KeyValuePair<PublicKey, ISparseBlobPoolPeer>(peer.Id, current));
                 cleanupActions = CollectPeerCleanupActions(peer.Id);
             }
+            else
+            {
+                // Usage still tracked for this key belongs to an earlier session, for example when its cleanup was
+                // interrupted after it was unregistered. It is cleaned up before this session is registered, so that
+                // cells the earlier session sent are never taken for this session's.
+                cleanupActions = CollectPeerCleanupActions(peer.Id);
+            }
 
             _peers[peer.Id] = peer;
             Volatile.Write(ref _peerCount, _peers.Count);
@@ -2124,7 +2131,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     /// Every source of the kept cells was sent by the session registered now, if any: cells of a session that ended
     /// while they were in use by a submission are dropped when they are kept (<see cref="RemoveEndedSources"/>), and
     /// after that peer cleanup strips a session's cells from the kept buffer before another session under the same key
-    /// is registered.
+    /// is registered. A session is registered only after the cleanup of every earlier session under its key has
+    /// completed, including one that an exception interrupted.
     /// </remarks>
     private ISparseBlobPoolPeer?[] GetRegisteredSources(in PendingCellsBuffer cells)
     {
