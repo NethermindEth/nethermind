@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.ZkEvm.Test;
@@ -82,6 +83,67 @@ public class GuestInitCodeTests
 
     [Test]
     public void Empty_init_code_is_empty() => Assert.That(CodeInfo.ForInitCode(ReadOnlyMemory<byte>.Empty, callDepth: 5).IsEmpty, Is.True);
+
+    [Test]
+    public void Init_code_loaded_from_memory_runs_where_it_was_loaded([Values] bool inlineMemory)
+    {
+        const int callDepth = 6;
+        byte[] code = Filled(200, JUMPDEST);
+        UInt256 location = 64;
+        using EvmFrameMemory frameMemory = new();
+        EvmPooledMemory memory = inlineMemory ? new(frameMemory) : default;
+        try
+        {
+            bool saved = memory.TrySave(in location, code);
+            bool loaded = CodeInfo.TryLoadInitCode(ref memory, in location, (UInt256)code.Length, callDepth, out ReadOnlyMemory<byte> initCode);
+            CodeInfo codeInfo = CodeInfo.ForInitCode(initCode, callDepth);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(saved && loaded, Is.True);
+                Assert.That(Unsafe.AreSame(in First(codeInfo), in MemoryMarshal.GetReference(initCode.Span)), Is.True, "no second copy");
+                Assert.That(codeInfo.ExecutionCodeSpan.ToArray(), Is.EqualTo(code));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Test]
+    public void Init_code_loaded_past_the_written_memory_reads_zeros_over_longer_init_code()
+    {
+        const int callDepth = 7;
+        CodeInfo.ForInitCode(Filled(300, JUMPDEST), callDepth);
+
+        byte[] written = Filled(32, PUSH32);
+        UInt256 length = 100;
+        EvmPooledMemory memory = default;
+        try
+        {
+            bool saved = memory.TrySave(UInt256.Zero, written);
+            // Expands the memory over the init code, as the creation's charge does.
+            memory.CalculateMemoryCost(UInt256.Zero, in length, out bool outOfGas);
+            bool loaded = CodeInfo.TryLoadInitCode(ref memory, UInt256.Zero, in length, callDepth, out ReadOnlyMemory<byte> initCode);
+            CodeInfo codeInfo = CodeInfo.ForInitCode(initCode, callDepth);
+
+            ReadOnlySpan<byte> execution = codeInfo.ExecutionCodeSpan;
+            ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(saved && !outOfGas && loaded, Is.True);
+                Assert.That(execution.Length, Is.EqualTo(100));
+                Assert.That(execution[..32].ToArray(), Is.EqualTo(written));
+                Assert.That(execution[32..].IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "the unwritten memory");
+                Assert.That(padding.IndexOfAnyExcept((byte)Instruction.STOP), Is.EqualTo(-1), "the padding");
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
 
     /// <summary>The bit test guest dispatch takes, falling back to the analysis of a destination not decided yet.</summary>
     private static bool IsJumpDestination(CodeInfo codeInfo, int destination)

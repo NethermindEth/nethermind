@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -49,9 +50,21 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     partial void InitializeCode(ReadOnlyMemory<byte> code);
 
     /// <summary>Creates the code info that a creation frame at <paramref name="callDepth"/> runs <paramref name="initCode"/> with.</summary>
-    /// <param name="initCode">The init code, owned by the caller.</param>
+    /// <param name="initCode">The init code, from <see cref="TryLoadInitCode"/> or owned by the caller.</param>
     /// <param name="callDepth">The call depth of the creation frame.</param>
     internal static partial CodeInfo ForInitCode(ReadOnlyMemory<byte> initCode, int callDepth);
+
+    /// <summary>
+    /// Loads the <paramref name="length"/> bytes of <paramref name="memory"/> at <paramref name="location"/> as the init code
+    /// of a creation frame at <paramref name="callDepth"/>, for <see cref="ForInitCode"/>.
+    /// </summary>
+    /// <param name="memory">The memory of the creating frame, whose expansion over the range has been charged.</param>
+    /// <param name="location">The start of the init code in <paramref name="memory"/>.</param>
+    /// <param name="length">The length of the init code.</param>
+    /// <param name="callDepth">The call depth of the creation frame.</param>
+    /// <param name="initCode">The init code, in natural byte order.</param>
+    /// <returns>Whether the range lies within the addressable memory.</returns>
+    internal static partial bool TryLoadInitCode(ref EvmPooledMemory memory, in UInt256 location, in UInt256 length, int callDepth, out ReadOnlyMemory<byte> initCode);
 
     /// <summary>The number of zero bytes that follow <see cref="ExecutionCodeSpan"/> in its backing array.</summary>
     /// <remarks>

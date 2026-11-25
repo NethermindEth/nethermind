@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.CodeAnalysis;
@@ -56,18 +57,57 @@ public sealed partial class CodeInfo
         int length = initCode.Length;
         if (length == 0) return new CodeInfo(initCode);
 
+        ref InitCodeBuffers buffers = ref GetInitCodeBuffers(callDepth, length);
+        byte[] code = buffers.Code!;
+        ReadOnlySpan<byte> source = initCode.Span;
+        // Init code from TryLoadInitCode lies in the buffer already.
+        if (!Unsafe.AreSame(ref MemoryMarshal.GetReference(source), ref MemoryMarshal.GetArrayDataReference(code)))
+            source.CopyTo(code);
+
+        // Longer init code that ran before at this depth may have left its bytes there.
+        code.AsSpan(length, ExecutionPadding).Clear();
+        return new CodeInfo(code, length, buffers.JumpBitmap!);
+    }
+
+    /// <remarks>
+    /// Copies the init code once, into the buffer <see cref="ForInitCode"/> runs it from, in natural byte order where the
+    /// memory is swizzled: a copy of its own would be a second one, which the guest never frees. The init code stays valid
+    /// as long as the code of a creation frame does, until the next creation at that depth loads its own.
+    /// </remarks>
+    internal static partial bool TryLoadInitCode(ref EvmPooledMemory memory, in UInt256 location, in UInt256 length, int callDepth, out ReadOnlyMemory<byte> initCode)
+    {
+        // Charging the expansion has checked the range.
+        Span<byte> laidOut = memory.LoadLaidOutSpanAfterGas(in location, in length);
+        int codeLength = laidOut.Length;
+        if (codeLength == 0)
+        {
+            initCode = default;
+            return true;
+        }
+
+        byte[] code = GetInitCodeBuffers(callDepth, codeLength).Code!;
+        if (EvmPooledMemory.IsSwizzled)
+            SwizzledMemory.Read(ref MemoryMarshal.GetReference(laidOut), code.AsSpan(0, codeLength));
+        else
+            laidOut.CopyTo(code);
+
+        initCode = code.AsMemory(0, codeLength);
+        return true;
+    }
+
+    /// <summary>The buffers of the creation frames at <paramref name="callDepth"/>, grown to hold <paramref name="length"/> bytes of code.</summary>
+    private static ref InitCodeBuffers GetInitCodeBuffers(int callDepth, int length)
+    {
         ref InitCodeBuffers buffers = ref (_initCodeBuffers ??= new InitCodeBuffers[VirtualMachineStatics.MaxCallDepth + 1])[callDepth];
         byte[]? code = buffers.Code;
         if (code is null || code.Length - ExecutionPadding < length)
         {
             int capacity = length > 1 << 30 ? length : (int)BitOperations.RoundUpToPowerOf2((uint)length);
-            buffers.Code = code = CreateExecutionBuffer(capacity);
+            buffers.Code = CreateExecutionBuffer(capacity);
             buffers.JumpBitmap = JumpDestinationAnalyzer.CreateBitmap(capacity);
         }
 
-        initCode.Span.CopyTo(code);
-        code.AsSpan(length, ExecutionPadding).Clear();
-        return new CodeInfo(code, length, buffers.JumpBitmap!);
+        return ref buffers;
     }
 
     private struct InitCodeBuffers
