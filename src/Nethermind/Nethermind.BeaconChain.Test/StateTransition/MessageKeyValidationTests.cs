@@ -115,7 +115,7 @@ public class MessageKeyValidationTests
     }
 
     [Test]
-    public void A_verifier_that_rejects_every_signature_refuses_a_valid_envelope([Values] bool rejecting, [Values] bool selfBuild)
+    public void Envelope_signature_check_uses_the_injected_verifier([Values] bool rejecting, [Values] bool selfBuild)
     {
         BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
         InstallRealValidatorKeys(state);
@@ -137,7 +137,7 @@ public class MessageKeyValidationTests
     }
 
     [Test]
-    public void A_verifier_that_rejects_every_signature_refuses_a_valid_builder_deposit([Values] bool rejecting)
+    public void Builder_deposit_signature_check_uses_the_injected_verifier([Values] bool rejecting)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         BeaconChainSpec spec = BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!);
