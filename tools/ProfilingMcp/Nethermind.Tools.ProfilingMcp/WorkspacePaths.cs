@@ -79,6 +79,10 @@ public sealed class WorkspacePaths
 
     internal static WorkspacePaths At(string root) => new(root);
 
+    /// <summary>A folder for the server's own temporary files, which is never in the target's file system.</summary>
+    /// <remarks>A sidecar's temp folder is the target's, where the target's runtime keeps its diagnostic socket, so the workspace is used there instead.</remarks>
+    internal static string TempFolder => Environment.GetEnvironmentVariable(ContainerSidecar.NameVariable) is null ? Path.GetTempPath() : FromEnvironment().Root;
+
     /// <summary>Returns a timestamped file name, e.g. <c>20261029-113045-pid1-3fa2c1.nettrace</c>.</summary>
     /// <remarks>
     /// The random suffix keeps names apart when several sessions sharing a folder profile the same process within a second.

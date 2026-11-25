@@ -133,6 +133,38 @@ public class LiveEventPipeTests
 
     [Test]
     [CancelAfter(120_000)]
+    public async Task Write_dump_reaches_the_workspace_from_a_process_of_another_user(CancellationToken cancellationToken)
+    {
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        if (!OperatingSystem.IsLinux() || Environment.UserName != "root" || path is null || !Array.Exists(path.Split(':'), static folder => File.Exists(Path.Combine(folder, "setpriv"))))
+            Assert.Ignore("Needs Linux, root and setpriv to start a process as another user.");
+
+        // Only root can write to it, as to a root-run server's default workspace.
+        string workspace = Directory.CreateTempSubdirectory("dump-").FullName;
+        using Process target = await StartIdleProcessAsync(cancellationToken, userId: 65534);
+        try
+        {
+            string result = await new MemoryTools(WorkspacePaths.At(workspace)).WriteDumpAsync(target.Id, cancellationToken);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Directory.GetFiles(Path.Combine(workspace, "heap"), "*.dmp"), Has.Length.EqualTo(1), result);
+                Assert.That(Directory.GetFiles(Path.GetTempPath(), $"*pid{target.Id}*.dmp"), Is.Empty, "the staged dump is moved");
+            }
+        }
+        finally
+        {
+            target.Kill();
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    [TestCase("Name:\tdotnet\nUid:\t1000\t1001\t1000\t1000\nGid:\t1000\t1000\t1000\t1000\n", ExpectedResult = "1001")]
+    [TestCase("Name:\tdotnet\n", ExpectedResult = null)]
+    public string? Reads_the_effective_user_of_a_process(string status) => MemoryTools.EffectiveUserId(status);
+
+    [Test]
+    [CancelAfter(120_000)]
     public async Task Alloc_sample_finds_the_allocated_type(CancellationToken cancellationToken)
     {
         using CancellationTokenSource stop = new();
@@ -153,9 +185,14 @@ public class LiveEventPipeTests
     }
 
     /// <summary>Starts the server's sidecar mode with no idle limit, a .NET process that does nothing at all, and waits for its diagnostics port.</summary>
-    private static async Task<Process> StartIdleProcessAsync(CancellationToken cancellationToken)
+    /// <param name="userId">The user to run it as, with setpriv, which replaces itself with the process; null for this process's user.</param>
+    private static async Task<Process> StartIdleProcessAsync(CancellationToken cancellationToken, int? userId = null)
     {
-        ProcessStartInfo info = new(Path.Combine(AppContext.BaseDirectory, "Nethermind.Tools.ProfilingMcp"), ContainerSidecar.IdleOption) { UseShellExecute = false };
+        string server = Path.Combine(AppContext.BaseDirectory, "Nethermind.Tools.ProfilingMcp");
+        ProcessStartInfo info = userId is { } id
+            ? new("setpriv", [$"--reuid={id}", $"--regid={id}", "--clear-groups", server, ContainerSidecar.IdleOption])
+            : new(server, ContainerSidecar.IdleOption);
+        info.UseShellExecute = false;
         info.Environment[ContainerSidecar.IdleMinutesVariable] = "0";
         Process process = Process.Start(info)!;
         try

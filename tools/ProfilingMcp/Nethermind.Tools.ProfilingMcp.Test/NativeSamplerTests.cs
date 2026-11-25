@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Microsoft.Diagnostics.NETCore.Client;
 using Nethermind.Tools.ProfilingMcp.Analysis;
 using Nethermind.Tools.ProfilingMcp.EventPipe;
@@ -149,6 +150,29 @@ public class NativeSamplerTests
         finally
         {
             File.Delete(map);
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Refuses_a_fifo_at_the_perf_map_path_without_waiting_on_it(CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsLinux())
+            Assert.Ignore("Makes the FIFO with mkfifo, on Linux.");
+
+        string fifo = Path.Combine(Path.GetTempPath(), $"perf-{Guid.NewGuid():N}.map");
+        using (Process mkfifo = Process.Start("mkfifo", [fifo])!)
+            await mkfifo.WaitForExitAsync(cancellationToken);
+        try
+        {
+            // Opening it as a plain file would wait for a writer that never comes.
+            Task load = Task.Run(() => JitMap.Load(fifo), CancellationToken.None);
+
+            Assert.That(async () => await load.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken), Throws.InstanceOf<InvalidDataException>());
+        }
+        finally
+        {
+            File.Delete(fifo);
         }
     }
 

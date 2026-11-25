@@ -39,7 +39,7 @@ internal static class AllocationSampler
         Dictionary<string, Group> bySite = [with(StringComparer.Ordinal)];
         Dictionary<string, (string[] Frames, long Events, long Bytes)> byStack = [with(StringComparer.Ordinal)];
 
-        string etlx = Path.ChangeExtension(path, $".{Guid.NewGuid():N}.etlx");
+        string etlx = NetTraceReader.NewIndexPath();
         try
         {
             TraceLog.CreateFromEventPipeDataFile(path, etlx, new TraceLogOptions { ContinueOnError = true });

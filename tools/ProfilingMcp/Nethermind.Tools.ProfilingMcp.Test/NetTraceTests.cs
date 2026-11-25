@@ -99,6 +99,38 @@ public class NetTraceTests
 
     [Test]
     [CancelAfter(120_000)]
+    public async Task Reads_a_trace_without_writing_next_to_it(CancellationToken cancellationToken)
+    {
+        // In a sidecar, a trace given by path can be in the target's file system.
+        string folder = Directory.CreateTempSubdirectory("trace-").FullName;
+        try
+        {
+            string trace = Path.Combine(folder, "a.nettrace");
+            await CpuSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(1), trace, cancellationToken);
+            List<string> created = [];
+            using FileSystemWatcher watcher = new(folder) { EnableRaisingEvents = true };
+            watcher.Created += (_, e) =>
+            {
+                lock (created)
+                    created.Add(e.Name!);
+            };
+
+            new NetTraceReader().Read(trace);
+            AllocationSampler.Read(trace, include: null);
+            // The watcher reports changes after they happen.
+            await Task.Delay(500, cancellationToken);
+
+            lock (created)
+                Assert.That(created, Is.Empty);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Test]
+    [CancelAfter(120_000)]
     public async Task Caches_a_bounded_number_of_traces(CancellationToken cancellationToken)
     {
         string directory = Directory.CreateTempSubdirectory("nettrace-cache-").FullName;

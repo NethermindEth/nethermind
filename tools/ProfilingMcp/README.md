@@ -187,7 +187,7 @@ Then delete the install folder and the data folder (`PROFILING_MCP_HOME`). If yo
 | `native_memory` | Split a Linux process's resident memory into the GC heap by generation, the runtime's own heaps and JIT code, thread stacks, glibc malloc, other anonymous mmaps (such as RocksDB's jemalloc) and mapped files, and write an HTML page with a zoomable treemap down to single mappings, files and threads. Reads `/proc` and the runtime without pausing the process |
 | `heap_retention` | Who references instances of a type, and the shortest chains from GC roots, largest retained bytes first. Chains from a dump also name fields and static fields |
 | `alloc_sample` | Allocated bytes per type, allocating method and call stack over a window, from allocation tick events; `include` keeps the allocations with a matching frame |
-| `write_dump` | A full-heap dump for offline `heap_stats`/`heap_retention`. Freezes the process while written, about 40 s for a 2 GB node |
+| `write_dump` | A full-heap dump for offline `heap_stats`/`heap_retention`. Freezes the process while written, about 40 s for a 2 GB node. The target's runtime writes it as the target's user, so for a process of another user it is written to the target's `/tmp` first and moved into the data folder |
 
 The server's instructions describe the intended workflows (CPU hotspots, leaks, GC pressure, native code and memory) to the agent.
 

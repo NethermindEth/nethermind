@@ -251,16 +251,20 @@ public sealed class MemoryTools(WorkspacePaths paths)
     public async Task<string> WriteDumpAsync([Description("Process ID.")] int pid, CancellationToken cancellationToken = default)
     {
         string path = Path.Combine(paths.Heap, WorkspacePaths.NewFileName($"pid{pid}", ".dmp"));
-        // In a sidecar, the target's runtime writes the dump as the target's user and without access to the sidecar's files, so it goes to
-        // the target's temp folder, where the runtime keeps its diagnostic socket, and is moved from there.
-        string written = paths.Sidecar is null ? path : Path.Combine(Path.GetTempPath(), Path.GetFileName(path));
+        // The target's runtime writes the dump as the target's user. In a sidecar, or for a local process of another user, that user cannot write
+        // to the workspace, so the dump goes to the target's temp folder and is moved from there. The target's root as this process sees it
+        // reaches the folder even in a private /tmp; without CAP_SYS_PTRACE it cannot be entered, and the shared /tmp is used.
+        (string Root, string Folder)? staging = paths.Sidecar is not null
+            ? (ContainerSidecar.TargetRoot, Path.GetTempPath()[ContainerSidecar.TargetRoot.Length..])
+            : OperatingSystem.IsLinux() && RunsAsAnotherUser(pid) ? (Directory.Exists($"/proc/{pid}/root/tmp") ? $"/proc/{pid}/root" : "", "/tmp") : null;
+        string requested = staging is (_, string folder) ? Path.Combine(folder, Path.GetFileName(path)) : path;
+        string written = staging is (string root, _) ? root + requested : path;
         bool kept = false;
         try
         {
             // Cancelling the request would only stop waiting: the runtime goes on and creates the file later, after it was deleted here,
             // leaving a dump as large as the process behind. So the dump is waited for, then removed when cancelled.
-            await new DiagnosticsClient(pid).WriteDumpAsync(DumpType.WithHeap, paths.Sidecar is null ? path : written[ContainerSidecar.TargetRoot.Length..],
-                logDumpGeneration: false, CancellationToken.None);
+            await new DiagnosticsClient(pid).WriteDumpAsync(DumpType.WithHeap, requested, logDumpGeneration: false, CancellationToken.None);
             cancellationToken.ThrowIfCancellationRequested();
             if (written != path)
                 File.Move(written, path);
@@ -273,6 +277,32 @@ public sealed class MemoryTools(WorkspacePaths paths)
         }
 
         return $"Dump written: {path} ({Size(new FileInfo(path).Length)})";
+    }
+
+    /// <summary>Whether <paramref name="pid"/> runs as another user than this process; false when that cannot be read.</summary>
+    private static bool RunsAsAnotherUser(int pid)
+    {
+        try
+        {
+            return EffectiveUserId(File.ReadAllText($"/proc/{pid}/status")) is { } target && target != EffectiveUserId(File.ReadAllText("/proc/self/status"));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>The effective user ID in the text of a <c>/proc/&lt;pid&gt;/status</c> file, or null when it has none.</summary>
+    internal static string? EffectiveUserId(string status)
+    {
+        foreach (string line in status.Split('\n'))
+        {
+            // Uid: real, effective, saved and file system IDs.
+            if (line.StartsWith("Uid:", StringComparison.Ordinal))
+                return line[4..].Split(['\t', ' '], StringSplitOptions.RemoveEmptyEntries) is [_, string effective, ..] ? effective : null;
+        }
+
+        return null;
     }
 
     [McpServerTool(Name = "native_memory", Title = "Where a process's memory is", Destructive = false, OpenWorld = false)]

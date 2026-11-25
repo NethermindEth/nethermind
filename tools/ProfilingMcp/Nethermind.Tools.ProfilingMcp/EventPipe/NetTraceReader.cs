@@ -73,8 +73,9 @@ public sealed partial class NetTraceReader
     /// </remarks>
     private static NetTraceProfile Load(string path)
     {
-        // The index TraceEvent needs is several times larger than the trace and quick to rebuild, so it is not kept.
-        string etlx = Path.ChangeExtension(path, $".{Guid.NewGuid():N}.etlx");
+        // The index TraceEvent needs is several times larger than the trace and quick to rebuild, so it is not kept. The trace may be in
+        // the target's file system, so the index is not written next to it.
+        string etlx = NewIndexPath();
         try
         {
             TraceLog.CreateFromEventPipeDataFile(path, etlx, new TraceLogOptions { ContinueOnError = true });
@@ -85,6 +86,9 @@ public sealed partial class NetTraceReader
             File.Delete(etlx);
         }
     }
+
+    /// <summary>A path for the index TraceEvent builds to read a trace, in <see cref="WorkspacePaths.TempFolder"/>.</summary>
+    internal static string NewIndexPath() => Path.Combine(WorkspacePaths.TempFolder, $"{Guid.NewGuid():N}.etlx");
 
     private static NetTraceProfile Parse(string etlx)
     {

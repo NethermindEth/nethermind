@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 using Nethermind.Tools.ProfilingMcp.Analysis;
 using Nethermind.Tools.ProfilingMcp.EventPipe;
 
@@ -31,15 +33,16 @@ public sealed class JitMap
     /// <summary>Reads the perf map at <paramref name="path"/>, or returns <see cref="Empty"/> when there is none.</summary>
     /// <remarks>
     /// The map is the target's file, read by the privileged sidecar, so it is bounded: only as many bytes as the file had when opened, which
-    /// leaves out a device such as <c>/dev/zero</c> planted at its path, and only <paramref name="maxBytes"/> of them.
+    /// leaves out a device such as <c>/dev/zero</c> planted at its path, and only <paramref name="maxBytes"/> of them. It is opened in a way
+    /// that cannot wait on a FIFO planted there.
     /// </remarks>
-    /// <exception cref="InvalidDataException">The map is larger than the limits.</exception>
+    /// <exception cref="InvalidDataException">The map is larger than the limits, or is not a file.</exception>
     public static JitMap Load(string path, long maxBytes = MaxFileBytes, int maxRanges = MaxRanges)
     {
         if (!File.Exists(path))
             return Empty;
 
-        using FileStream file = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using FileStream file = OpenForReading(path);
         long length = file.Length;
         if (length > maxBytes)
             throw new InvalidDataException($"The perf map {path} is {length:N0} bytes, more than the {maxBytes:N0} read.");
@@ -55,6 +58,41 @@ public sealed class JitMap
                 yield return line;
         }
     }
+
+    /// <summary>Opens <paramref name="path"/> for reading, refusing a FIFO or socket rather than waiting on it.</summary>
+    /// <remarks>
+    /// Opening a FIFO for reading waits until something opens it for writing, which a target that planted one need never do, and the open cannot
+    /// be cancelled. On Linux the file is opened with <c>O_NONBLOCK</c>, which returns at once, and is refused when it cannot seek, as a FIFO cannot.
+    /// </remarks>
+    /// <exception cref="InvalidDataException">The path is not a file that can be read from start to end.</exception>
+    internal static FileStream OpenForReading(string path)
+    {
+        if (!OperatingSystem.IsLinux())
+            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+        const int ReadOnly = 0, NonBlocking = 0x800, CloseOnExec = 0x80000;
+        SafeFileHandle handle = new(Open(path, ReadOnly | NonBlocking | CloseOnExec), ownsHandle: true);
+        if (handle.IsInvalid)
+            throw new IOException($"Cannot open {path}: error {Marshal.GetLastPInvokeError()}.");
+
+        FileStream? file = null;
+        try
+        {
+            file = new FileStream(handle, FileAccess.Read, bufferSize: 0);
+            return file.CanSeek ? file : throw new InvalidDataException($"{path} is not a file.");
+        }
+        catch
+        {
+            if (file is null)
+                handle.Dispose();
+            else
+                file.Dispose();
+            throw;
+        }
+    }
+
+    [DllImport("libc", EntryPoint = "open", SetLastError = true)]
+    private static extern int Open([MarshalAs(UnmanagedType.LPUTF8Str)] string path, int flags);
 
     /// <summary>Parses perf map lines: start and size in hex, then the method's name.</summary>
     /// <exception cref="InvalidDataException">There are more than <paramref name="maxRanges"/> ranges.</exception>
