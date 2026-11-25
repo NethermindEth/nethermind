@@ -48,6 +48,7 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
     public string[]? Nodes { get; init; }
     public ulong? L1BeaconGenesisSlotTime { get; init; }
     public ulong? L1ChainId { get; init; }
+    public ulong? PectraBlobScheduleTimestamp { get; init; }
     public ulong? L1GenesisNumber { get; init; }
     public Hash256? L1GenesisHash { get; init; }
     public OptimismSystemConfig? GenesisSystemConfig { get; init; }
