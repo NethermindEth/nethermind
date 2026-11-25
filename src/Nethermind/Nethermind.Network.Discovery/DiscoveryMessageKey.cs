@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Metric;
 
-namespace Nethermind.Network;
+namespace Nethermind.Network.Discovery;
 
 /// <summary>
 /// Identifies a discovery message metric by protocol and message type.
