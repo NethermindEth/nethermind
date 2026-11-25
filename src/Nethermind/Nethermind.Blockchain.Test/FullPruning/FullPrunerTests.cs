@@ -190,6 +190,68 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task pruning_canceled_at_shutdown_is_not_logged_as_an_error()
+    {
+        TestLogger logger = new() { IsWarn = false, IsDebug = false, IsTrace = false };
+        TestContext test = new(
+            true,
+            fullScanMemoryBudgetMb: fullPrunerMemoryBudgetMb,
+            degreeOfParallelism: degreeOfParallelism,
+            logManager: new OneLoggerLogManager(new(logger)));
+        using CancellationTokenSource processExit = new();
+        test.ProcessExitSource.Token.Returns(processExit.Token);
+
+        // Without new blocks the run parks waiting for the main chain, as it does at shutdown on an idle node.
+        test.TriggerPruningViaEvent();
+        Assert.That(() => test.FullPruningDb.Context, Is.Not.Null.After(Timeout.MaxTestTime, 1));
+        await processExit.CancelAsync();
+
+        Task disposed = test.FullPruningDb.Context.DisposeEvent.Task;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await Task.WhenAny(disposed, Task.Delay(Timeout.MaxWaitTime * 5)), Is.SameAs(disposed), "pruning did not stop");
+            Assert.That(logger.LogList, Has.Exactly(1).Contains("Full pruning canceled."), "cancellation info");
+            Assert.That(logger.LogList, Has.None.Contains("full pruning failed"), "error");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task pruning_canceled_while_running_is_logged_as_an_error()
+    {
+        TestLogger logger = new() { IsInfo = false, IsWarn = false, IsDebug = false, IsTrace = false };
+        TestContext test = new(
+            true,
+            fullScanMemoryBudgetMb: fullPrunerMemoryBudgetMb,
+            degreeOfParallelism: degreeOfParallelism,
+            logManager: new OneLoggerLogManager(new(logger)));
+        using CancellationTokenSource processExit = new();
+        test.ProcessExitSource.Token.Returns(processExit.Token);
+        // A cancellation raised inside the run while the process keeps running is a failure, not a shutdown:
+        // the first read lets the run pass the persisted-state wait, the next one fails inside the run itself.
+        int reads = 0;
+        test.StateBoundary.BestPersistedState.Returns(_ => Interlocked.Increment(ref reads) == 1 ? (ulong?)1 : throw new TaskCanceledException());
+
+        test.TriggerPruningViaEvent();
+        Assert.That(() => test.FullPruningDb.Context, Is.Not.Null.After(Timeout.MaxTestTime, 1));
+        Task disposed = test.FullPruningDb.Context.DisposeEvent.Task;
+        Task deadline = Task.Delay(Timeout.MaxWaitTime * 5);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        while (!disposed.IsCompleted && !deadline.IsCompleted)
+        {
+            test.BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([header], true));
+            await Task.WhenAny(disposed, Task.Delay(1));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disposed.IsCompleted, Is.True, "pruning did not stop");
+            Assert.That(processExit.IsCancellationRequested, Is.False);
+            Assert.That(logger.LogList, Has.Exactly(1).Contains("full pruning failed"), "error");
+            Assert.That(logger.LogList, Has.None.Contains("Full pruning canceled."), "cancellation info");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task pruning_fails_without_committing_when_a_node_is_missing()
     {
         TestContext test = new(

@@ -159,6 +159,10 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 if (_logger.IsInfo) _logger.Info("Full pruning copy canceled by an atomic state write.");
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                if (_logger.IsInfo) _logger.Info("Full pruning canceled.");
+            }
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error("full pruning failed. ", e);
