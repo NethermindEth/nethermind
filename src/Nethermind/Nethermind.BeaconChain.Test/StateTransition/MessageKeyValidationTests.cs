@@ -114,6 +114,42 @@ public class MessageKeyValidationTests
         AssertVerdict(kind, process, "Invalid BLS to execution change signature");
     }
 
+    [Test]
+    public void A_verifier_that_rejects_every_signature_refuses_a_valid_envelope([Values] bool rejecting)
+    {
+        BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
+        SignedExecutionPayloadBid bid = ValidBuilderBid(state, builderSk, builderIndex: 0, value: 3 * Gwei);
+        GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: false);
+        SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
+        PubkeyCache pubkeys = rejecting ? new PubkeyCache { SignatureVerifier = new RejectingSignatureVerifier() } : new PubkeyCache();
+
+        Action verify = () => GloasBlockProcessing.VerifyExecutionPayloadEnvelope(new BlockStates().Add(state), envelope, new AcceptingNotifier(), pubkeys);
+
+        if (rejecting)
+            Assert.That(verify, Throws.TypeOf<BeaconStateException>().With.Message.EqualTo("Invalid execution payload envelope signature"));
+        else
+            Assert.That(verify, Throws.Nothing);
+    }
+
+    [Test]
+    public void A_verifier_that_rejects_every_signature_refuses_a_valid_builder_deposit([Values] bool rejecting)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        BeaconChainSpec spec = BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!);
+        if (rejecting)
+            spec = spec with { SignatureVerifier = new RejectingSignatureVerifier() };
+        Bls.SecretKey sk = DeriveKey(311);
+        BlsPublicKey key = KeyOf(KeyKind.Valid, sk);
+        Hash256 credentials = BuilderWithdrawalCredentials(0xC2);
+        const ulong amount = 10 * Gwei;
+        BlsSignature signature = Sign(sk, BuilderDepositSigningRoot(spec, key, credentials, amount));
+        int buildersBefore = state.Builders!.Length;
+
+        GloasBlockProcessing.ProcessBuilderDepositRequest(state, new BuilderDepositRequest { Pubkey = key, WithdrawalCredentials = credentials, Amount = amount, Signature = signature }, spec);
+
+        Assert.That(state.Builders!.Length, Is.EqualTo(rejecting ? buildersBefore : buildersBefore + 1));
+    }
+
     private static BlsPublicKey SetBuilderKey(BeaconStateGloas state, KeyKind kind, Bls.SecretKey builderSk) =>
         state.Builders![0].Pubkey = KeyOf(kind, builderSk);
 
