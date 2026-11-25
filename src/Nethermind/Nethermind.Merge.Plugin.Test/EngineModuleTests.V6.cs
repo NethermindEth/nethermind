@@ -696,6 +696,23 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task GetPayloadBodiesV2_returns_null_access_list_for_blocks_before_Amsterdam([Values] bool byHash)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
+        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV4(chain.EngineRpcModule, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+
+        ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>> response = byHash
+            ? await chain.EngineRpcModule.engine_getPayloadBodiesByHashV2(payloads.Select(static p => p.BlockHash).ToArray())
+            : await chain.EngineRpcModule.engine_getPayloadBodiesByRangeV2(1, 2);
+
+        string json = await AssertStreamedJsonMatchesSerializer((PayloadBodiesV2DirectResponse)response.Data);
+        JsonArray bodies = JsonNode.Parse(json)!.AsArray();
+
+        Assert.That(bodies.Select(static b => b!.AsObject().TryGetPropertyValue("blockAccessList", out JsonNode? bal) && bal is null),
+            Is.EqualTo(new[] { true, true }));
+    }
+
+    [Test]
     public async Task GetBlobsV4_should_return_requested_cells_and_positional_nulls()
     {
         const int numberOfBlobs = 3;
