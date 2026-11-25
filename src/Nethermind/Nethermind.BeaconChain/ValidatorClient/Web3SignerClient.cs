@@ -64,7 +64,8 @@ public sealed class Web3SignerClient(IValidatorClientConfig config, BeaconChainS
             new AttestationDto(HexConvert.BitListToHex(aggregate.AggregationBits!), ToDto(aggregate.Data), aggregate.Signature.ToString(), HexConvert.BitVectorToHex(aggregate.CommitteeBits!)),
             aggregateAndProof.SelectionProof.ToString());
         return Sign(publicKey, Request("AGGREGATE_AND_PROOF_V2", DomainType.AggregateAndProof, epoch, SszRoots.HashTreeRoot(aggregateAndProof))
-            with { AggregateAndProof = new VersionedDto(ResponseEnvelope.ForkName(spec.ForkAtEpoch(epoch)).ToUpperInvariant(), data) },
+            with
+        { AggregateAndProof = new VersionedDto(ResponseEnvelope.ForkName(spec.ForkAtEpoch(epoch)).ToUpperInvariant(), data) },
             $"the aggregate of {publicKey} for slot {aggregate.Data.Slot}", cancellationToken);
     }
 
