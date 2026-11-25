@@ -203,12 +203,20 @@ namespace Nethermind.TxPool.Collections
         private protected void UpdatePoolNonLocked(IAccountStateProvider accounts, UpdateGroupDelegate updateElements)
         {
             EnsureCapacity();
-            foreach ((AddressAsKey address, EnhancedSortedSet<Transaction> bucket) in _buckets)
+            BeginBulkUpdateNonLocked();
+            try
             {
-                Debug.Assert(bucket.Count > 0);
+                foreach ((AddressAsKey address, EnhancedSortedSet<Transaction> bucket) in _buckets)
+                {
+                    Debug.Assert(bucket.Count > 0);
 
-                accounts.TryGetAccount(address, out AccountStruct account);
-                UpdateGroupNonLocked(account, bucket, updateElements);
+                    accounts.TryGetAccount(address, out AccountStruct account);
+                    UpdateGroupNonLocked(account, bucket, updateElements);
+                }
+            }
+            finally
+            {
+                EndBulkUpdateNonLocked();
             }
         }
 

@@ -325,6 +325,29 @@ public class TxDistinctSortedPoolTests
         }
     }
 
+    [Test]
+    public void Production_snapshot_shows_the_pool_before_a_running_update([Values] bool blobs)
+    {
+        TxDistinctSortedPool pool = Pool(blobs, AccountTx(0, 100, TestItem.KeccakA), OtherSenderTx("other", 100));
+        pool.GetProductionSnapshot();
+
+        List<IDictionary<AddressAsKey, Transaction[]>> duringUpdate = [];
+        pool.UpdatePool(Substitute.For<IAccountStateProvider>(),
+            (in AccountStruct _, EnhancedSortedSet<Transaction> bucket, ref Transaction? lastElement, TxDistinctSortedPool.UpdateTransactionDelegate updateTx) =>
+            {
+                // The update holds the pool lock, which is not reentrant, so only a lock-free read gets through.
+                duringUpdate.Add(pool.GetProductionSnapshot());
+                updateTx(bucket, bucket.Min!, changedGasBottleneck: null, lastElement);
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(duringUpdate, Has.Count.EqualTo(2));
+            Assert.That(duringUpdate[1], Has.Count.EqualTo(2), "the second bucket still sees the first one's removed transaction");
+            Assert.That(pool.GetProductionSnapshot(), Is.Empty);
+        }
+    }
+
     private static Transaction[] TreeOrder(TxDistinctSortedPool pool)
     {
         Transaction[] order = [];
