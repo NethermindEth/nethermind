@@ -157,6 +157,11 @@ public class BeaconChainSpecTests
         Assert.That(spec.CheckpointSyncUrl, Is.Null);
     }
 
+    [Test]
+    public void A_network_config_file_may_carry_unscheduled_blob_schedule_entries() =>
+        Assert.That(ForDevnet(DevnetConfig.Replace("GAS_LIMIT_SCHEDULE: []", "  - EPOCH: 18446744073709551615\n    MAX_BLOBS_PER_BLOCK: 32\nGAS_LIMIT_SCHEDULE: []"), writeGenesisState: true, chainspecGenesisTime: null)
+            .GetBlobParameters(1000), Is.EqualTo(new BlobScheduleEntry(0, 21)));
+
     [TestCase("PRESET_BASE: 'mainnet'", "PRESET_BASE: 'minimal'", "PRESET_BASE")]
     [TestCase("SLOT_DURATION_MS: 12000", "SLOT_DURATION_MS: 6000", "SLOT_DURATION_MS")]
     [TestCase("SHARD_COMMITTEE_PERIOD: 256", "SHARD_COMMITTEE_PERIOD: 64", "SHARD_COMMITTEE_PERIOD")]
@@ -167,6 +172,8 @@ public class BeaconChainSpecTests
     [TestCase("MAX_BLOBS_PER_BLOCK: 21", "MAX_BLOBS_PER_BLOCK: 15", "BLOB_SCHEDULE")]
     [TestCase("GENESIS_FORK_VERSION: 0x10000038", "", "GENESIS_FORK_VERSION")]
     [TestCase("ALTAIR_FORK_EPOCH: 0", "ALTAIR_FORK_EPOCH: soon", "ALTAIR_FORK_EPOCH")]
+    [TestCase("MAX_BLOBS_PER_BLOCK_ELECTRA: 9", "MAX_BLOBS_PER_BLOCK_ELECTRA: 9\nMAX_REQUEST_PAYLOADS: 64", "MAX_REQUEST_PAYLOADS")]
+    [TestCase("  - EPOCH: 0\n    MAX_BLOBS_PER_BLOCK: 21", "  - 21", "not a readable consensus config.yaml")]
     public void A_network_config_file_this_node_cannot_run_fails_startup_naming_the_key(string line, string replacement, string key) =>
         Assert.That(() => ForDevnet(DevnetConfig.Replace(line, replacement), writeGenesisState: true, chainspecGenesisTime: null),
             Throws.InstanceOf<InvalidConfigurationException>().With.Message.Contains(key));

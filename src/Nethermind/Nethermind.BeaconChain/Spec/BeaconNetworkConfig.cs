@@ -46,12 +46,14 @@ internal sealed class BeaconNetworkConfig(string path, Dictionary<string, string
                 string name = ((YamlScalarNode)key).Value!;
                 if (value is YamlScalarNode scalar) values[name] = scalar.Value ?? "";
                 else if (name == "BLOB_SCHEDULE")
+                    // An entry at FAR_FUTURE_EPOCH is a placeholder for an unscheduled fork, which the execution chainspec drops too.
                     blobSchedule = [.. ((YamlSequenceNode)value).Select(entry => new BlobScheduleEntry(
                         Number(path, "BLOB_SCHEDULE EPOCH", ((YamlScalarNode)entry["EPOCH"]).Value),
-                        Number(path, "BLOB_SCHEDULE MAX_BLOBS_PER_BLOCK", ((YamlScalarNode)entry["MAX_BLOBS_PER_BLOCK"]).Value)))];
+                        Number(path, "BLOB_SCHEDULE MAX_BLOBS_PER_BLOCK", ((YamlScalarNode)entry["MAX_BLOBS_PER_BLOCK"]).Value)))
+                        .Where(static entry => entry.Epoch != Presets.FarFutureEpoch)];
             }
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or YamlException or InvalidCastException or KeyNotFoundException or ArgumentOutOfRangeException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or YamlException or InvalidCastException or KeyNotFoundException or ArgumentException)
         {
             throw new InvalidConfigurationException($"BeaconChain.NetworkConfigFile {path} is not a readable consensus config.yaml: {e.Message}", ExitCodes.ForbiddenOptionValue);
         }
@@ -183,11 +185,14 @@ internal sealed class BeaconNetworkConfig(string path, Dictionary<string, string
         ("CONFIRMATION_BYZANTINE_THRESHOLD", FastConfirmation.ByzantineThreshold),
         ("MAX_PAYLOAD_SIZE", (ulong)ReqRespFraming.MaxPayloadSize),
         ("MAX_REQUEST_BLOCKS_DENEB", BlocksProtocolBase.MaxRequestBlocks),
+        ("MAX_REQUEST_DATA_COLUMN_SIDECARS", DataColumnSidecarsProtocolBase.MaxRequestDataColumnSidecars),
+        ("MAX_REQUEST_PAYLOADS", ExecutionPayloadEnvelopesProtocolBase.MaxRequestPayloads),
         ("MAXIMUM_GOSSIP_CLOCK_DISPARITY", (ulong)GossipRouter.MaximumGossipClockDisparityMs),
         ("NUMBER_OF_CUSTODY_GROUPS", Eip7594DasConstants.NumberOfCustodyGroups),
         ("DATA_COLUMN_SIDECAR_SUBNET_COUNT", Eip7594DasConstants.DataColumnSidecarSubnetCount),
         ("SAMPLES_PER_SLOT", Eip7594DasConstants.SamplesPerSlot),
         ("CUSTODY_REQUIREMENT", Eip7594DasConstants.CustodyRequirement),
+        ("MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS", DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests),
         ("MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS", Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests),
     ];
 

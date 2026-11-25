@@ -289,7 +289,7 @@ public partial record BeaconChainSpec
             if (timestamp <= genesisTime) return 0;
             ulong elapsed = timestamp - genesisTime;
             return elapsed % epochSeconds == 0 ? elapsed / epochSeconds
-                : throw Conflict($"The execution chainspec activates {fork} at timestamp {timestamp}, which is not on a beacon epoch boundary ({epochSeconds} s epochs from beaconChainGenesisTimestamp {genesisTime}).");
+                : throw Conflict($"The execution chainspec activates {fork} at timestamp {timestamp}, which is not on a beacon epoch boundary ({epochSeconds} s epochs from the beacon genesis time {genesisTime}).");
         }
 
         static bool SameBlobParameters(IReleaseSpec left, IReleaseSpec right) =>
