@@ -464,21 +464,38 @@ var tests = new (string Name, Func<Task> Body)[]
     ("test_strip_initialize_expression_body", Sync(() =>
         Equal("public override void Initialize(AnalysisContext ctx) { ctx.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None); ctx.EnableConcurrentExecution(); }",
             StripInitialize("public override void Initialize(AnalysisContext ctx) => ctx.Register(Go);")))),
-    ("test_precision_gate_fails_without_hits", Sync(() => True(!Precision([], 0).Ok))),
+    ("test_precision_gate_fails_without_hits", Sync(() => True(!Precision([], [], 0).Ok))),
     ("test_precision_gate", Sync(() =>
     {
         var labels = Labels(18, 2);
-        Equal((18, 20, true), Precision(labels, 40));
-        True(!Precision(Labels(16, 4), 40).Ok);
-        True(!Precision(labels.Take(19).ToList(), 40).Ok);
-        True(Precision(Labels(7, 0), 7).Ok);
-        True(!Precision(Labels(6, 1), 7).Ok);
+        Equal((18, 20, true), Precision(labels, Sample(20), 40));
+        True(!Precision(Labels(16, 4), Sample(20), 40).Ok);
+        True(!Precision(labels.Take(19).ToList(), Sample(20), 40).Ok);
+        True(Precision(Labels(7, 0), Sample(7), 7).Ok);
+        True(!Precision(Labels(6, 1), Sample(7), 7).Ok);
     })),
     ("test_precision_counts_only_labels_that_match_the_stated_why", Sync(() =>
     {
-        True(!Precision(Parse<List<Label>>(string.Concat("[", string.Join(',', Enumerable.Repeat("""{"label":"true_positive","matches_why":false}""", 7)), "]")), 7).Ok);
-        True(!Precision(Parse<List<Label>>(string.Concat("[", string.Join(',', Enumerable.Repeat("""{"label":"true_positive"}""", 7)), "]")), 7).Ok);
-        Equal((18, 20, true), Precision([.. Labels(18, 0), .. Parse<List<Label>>("""[{"label":"true_positive","matches_why":false},{"label":"true_positive","matches_why":false}]""")], 40));
+        True(!Precision([.. Labels(7, 0).Select(l => l with { MatchesWhy = false })], Sample(7), 7).Ok);
+        True(!Precision([.. Labels(7, 0).Select(l => l with { MatchesWhy = null })], Sample(7), 7).Ok);
+        Equal((18, 20, true), Precision([.. Labels(20, 0).Select((l, i) => i >= 18 ? l with { MatchesWhy = false } : l)], Sample(20), 40));
+    })),
+    ("test_precision_gate_rejects_duplicate_labels", Sync(() =>
+    {
+        var labels = Labels(20, 0);
+        True(Precision(labels, Sample(20), 40).Ok);
+        labels[19] = labels[0];
+        True(!Precision(labels, Sample(20), 40).Ok);
+    })),
+    ("test_precision_gate_rejects_labels_for_other_hits", Sync(() =>
+    {
+        var labels = Labels(20, 0);
+        labels[19] = labels[19] with { File = "other.cs" };
+        True(!Precision(labels, Sample(20), 40).Ok);
+        labels = Labels(20, 0);
+        labels[19] = labels[19] with { Line = 99 };
+        True(!Precision(labels, Sample(20), 40).Ok);
+        True(!Precision(Labels(20, 0), Sample(20).Skip(1).Append(new Hit("NETH050", "other.cs", 1, 1, "prod", "m")).ToList(), 40).Ok);
     })),
     ("test_unreadable_labels_clear_earlier_precision", async () =>
     {
@@ -500,8 +517,9 @@ var tests = new (string Name, Func<Task> Body)[]
             File.WriteAllText(In("plan.json"), """{"measure_ids":[],"rejected_ids":{},"route_b":"unused","route_b_id":"NETH050","route_b_queue":[{"cluster":"unused","why":"w"}]}""");
             File.WriteAllText(In("route_b.json"), """{"id":"NETH050","cluster":"unused","attempts":[],"analyzer":"src/Nethermind/Nethermind.Analyzers/X.cs","why":"w","summary":"s","guard_ok":true,"tests_ok":true,"red_ok":true,"precision":{"true_positive":5,"labelled":5,"needed":5,"ok":true}}""");
             File.WriteAllText(In("labels.json"), $"[{string.Join(',', Enumerable.Repeat(row, 5))}]");
+            File.WriteAllText(In("sample.json"), $"[{string.Join(',', Enumerable.Repeat(hit, 5))}]");
             var code = 0;
-            await Quiet(async () => code = await Run(["precision", "--labels", In("labels.json"), "--hits", In("hits.json"), "--id", "NETH050", "--route-b", In("route_b.json")], default));
+            await Quiet(async () => code = await Run(["precision", "--labels", In("labels.json"), "--sample", In("sample.json"), "--hits", In("hits.json"), "--id", "NETH050", "--route-b", In("route_b.json")], default));
             Equal(1, code);
             await Quiet(() => Propose(directory.Path, true, null, default));
             using var candidates = JsonDocument.Parse(File.ReadAllText(In("candidates.json")));
@@ -796,7 +814,10 @@ static class RuleBotTestSupport
         JsonSerializer.Serialize(new[] { new BotPr(number, state, head, created, closed) }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
     internal static List<Label> Labels(int truePositive, int falsePositive) =>
-        Parse<List<Label>>(JsonSerializer.Serialize(Enumerable.Repeat("true_positive", truePositive).Concat(Enumerable.Repeat("false_positive", falsePositive)).Select(label => new { label, matches_why = true })));
+        Parse<List<Label>>(JsonSerializer.Serialize(Enumerable.Repeat("true_positive", truePositive).Concat(Enumerable.Repeat("false_positive", falsePositive)).Select((label, i) => new { label, file = $"f{i}.cs", line = i + 1, matches_why = true })));
+
+    internal static List<Hit> Sample(int count) =>
+        [.. Enumerable.Range(0, count).Select(i => new Hit("NETH050", $"f{i}.cs", i + 1, 1, "prod", "m"))];
 
     internal const string RouteBResult = """{"test_class": "FooTests", "analyzer": "src/Nethermind/Nethermind.Analyzers/Foo.cs", "summary": "ok"}""";
 

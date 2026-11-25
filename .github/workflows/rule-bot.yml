@@ -347,7 +347,7 @@ jobs:
             bash "$RUNNER_TEMP/rule-bot/llm.sh" "$RUNNER_TEMP/rule-bot/prompts/label.txt" "Read,Glob,Grep,Edit(/$DATA/labels.json)" \
               "ID=$ROUTE_B_ID" "WHY=$WHY" "SAMPLE=$DATA/sample.json" "RESULT=$DATA/labels.json" > "$DATA/label-llm.log" 2>&1 || true
           fi
-          "$RUNNER_TEMP/rule-bot/rule-bot" precision --labels "$DATA/labels.json" --hits "$DATA/hits.json" --id "$ROUTE_B_ID" --route-b "$DATA/route_b.json" || true
+          "$RUNNER_TEMP/rule-bot/rule-bot" precision --labels "$DATA/labels.json" --sample "$DATA/sample.json" --hits "$DATA/hits.json" --id "$ROUTE_B_ID" --route-b "$DATA/route_b.json" || true
 
       - name: Choose a package
         id: propose

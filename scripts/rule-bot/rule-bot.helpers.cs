@@ -1018,15 +1018,18 @@ static partial class RuleBot
         Console.WriteLine($"sample: {picked.Count} of {hits.Length} prod hits of {id}, seed {seed}");
     }
 
-    internal static (int TruePositive, int Need, bool Ok) Precision(IReadOnlyList<Label> labels, int hitCount)
+    internal static (int TruePositive, int Need, bool Ok) Precision(IReadOnlyList<Label> labels, IReadOnlyList<Hit> sample, int hitCount)
     {
         var need = Math.Min(SampleSize, hitCount);
         var truePositive = labels.Count(l => l.LabelName == "true_positive" && l.MatchesWhy == true);
-        var ok = need > 0 && labels.Count == need && (need == SampleSize ? truePositive >= SampleMinTrue : truePositive == need);
+        var ok = need > 0 && sample.Count == need && SameHits(labels, sample) && (need == SampleSize ? truePositive >= SampleMinTrue : truePositive == need);
         return (truePositive, need, ok);
     }
 
-    private static int PrecisionCommand(string labelsPath, string hitsPath, string id, string routeBPath)
+    private static bool SameHits(IReadOnlyList<Label> labels, IReadOnlyList<Hit> sample) =>
+        labels.Select(l => (l.File, l.Line)).Order().SequenceEqual(sample.Select(h => ((string?)h.File, (long?)h.Line)).Order());
+
+    private static int PrecisionCommand(string labelsPath, string samplePath, string hitsPath, string id, string routeBPath)
     {
         var routeB = LoadOr<RouteBState>(routeBPath);
         if (routeB.Precision is not null)
@@ -1036,7 +1039,7 @@ static partial class RuleBot
         }
         var labels = LoadOr<List<Label>>(labelsPath);
         var count = Load<HitsFile>(hitsPath).Hits.Count(x => x.Id == id && x.Scope == "prod");
-        var (truePositive, need, ok) = Precision(labels, count);
+        var (truePositive, need, ok) = Precision(labels, LoadOr<List<Hit>>(samplePath), count);
         routeB.Precision = new(truePositive, labels.Count, need, ok);
         Save(routeBPath, routeB);
         Console.WriteLine($"precision: {truePositive}/{need} true positive -> {(ok ? "PASS" : "FAIL")} (gate {SampleMinTrue}/{SampleSize})");
@@ -1241,7 +1244,7 @@ static partial class RuleBot
         ["propose"] = new(["data"], ["github-output"], ["offline"]),
         ["guard"] = new([], ["base", "patch", "new-id", "files", "ids"], []),
         ["sample"] = new(["hits", "id", "out"], ["repo", "seed"], []),
-        ["precision"] = new(["labels", "hits", "id", "route-b"], [], []),
+        ["precision"] = new(["labels", "sample", "hits", "id", "route-b"], [], []),
         ["red"] = new(["analyzer", "test-class"], [], []),
         ["test"] = new(["test-class"], [], []),
         ["body"] = new(["data", "out"], ["head"], []),
@@ -1315,7 +1318,7 @@ static partial class RuleBot
                 case "propose": await Propose(values["data"], flags.Contains("offline"), Opt("github-output"), token); return 0;
                 case "guard": return await Guard(Opt("base") ?? "HEAD", Opt("patch"), Opt("new-id"), Opt("files"), Opt("ids"), token);
                 case "sample": SampleCommand(values["hits"], values["id"], repo, IntOption(values, "seed", args[0], 0L), values["out"]); return 0;
-                case "precision": return PrecisionCommand(values["labels"], values["hits"], values["id"], values["route-b"]);
+                case "precision": return PrecisionCommand(values["labels"], values["sample"], values["hits"], values["id"], values["route-b"]);
                 case "red": return await Red(values["analyzer"], values["test-class"], token);
                 case "test": return (await Exec(TestArgv(values["test-class"]), true, token)).Code;
                 case "body": Body(values["data"], Opt("head"), values["out"]); return 0;
