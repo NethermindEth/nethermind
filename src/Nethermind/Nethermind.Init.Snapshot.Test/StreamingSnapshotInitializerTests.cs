@@ -295,6 +295,26 @@ public class StreamingSnapshotInitializerTests
         Assert.That(File.Exists(existing), Is.True, "a marker that cannot be written must stop the start before anything is deleted");
     }
 
+    [Test]
+    public async Task InitializeAsync_DatabaseThatHoldsContent_ThrowsWithoutWritingIntoIt()
+    {
+        _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        _config.Checksum = Convert.ToHexString(SHA256.HashData(_server.Content));
+        // Content that appeared after the step looked at the database, at the path of a file in the archive.
+        string synced = Path.Combine(_dbPath, "state", "a42.sst");
+        Directory.CreateDirectory(Path.GetDirectoryName(synced)!);
+        File.WriteAllBytes(synced, [1, 2, 3]);
+
+        await Assert.ThatAsync(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
+            Throws.InstanceOf<IOException>().With.Message.Contains("holds content"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.ReadAllBytes(synced), Is.EqualTo(new byte[] { 1, 2, 3 }), "nothing may be extracted over the content");
+            Assert.That(File.Exists(MarkerPath), Is.False, "a database that holds content must not be marked");
+        }
+    }
+
     private string MarkerPath => Path.Combine(_dbPath, ".nethermind-snapshot-extracting");
 
     private StreamingSnapshotInitializer CreateInitializer(int connections = 2, IDriveInfo[]? drives = null) =>

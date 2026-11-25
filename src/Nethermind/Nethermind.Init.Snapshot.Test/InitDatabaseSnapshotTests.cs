@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.IO.Abstractions;
 using System.Net;
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using Nethermind.Api;
 using Nethermind.Core.Test;
@@ -529,6 +530,132 @@ public class InitDatabaseSnapshotTests
             Assert.That(new DirectoryInfo(_dbPath).LinkTarget, Is.EqualTo(target), "the link must stay");
             Assert.That(File.Exists(Path.Combine(target, "state.bin")), Is.True, "an empty linked database directory is initialized through the link");
             Assert.That(File.Exists(Path.Combine(target, ".nethermind-snapshot-extracting")), Is.False, "the marker must be removed after success");
+        }
+    }
+
+    [TestCase("file in it", TestName = "Execute_LostAndFoundHoldingAFile_KeepsTheDatabase")]
+    [TestCase("file", TestName = "Execute_FileNamedLostAndFound_KeepsTheDatabase")]
+    [TestCase("link", TestName = "Execute_LinkNamedLostAndFound_KeepsTheDatabase")]
+    public async Task Execute_LostAndFoundThatIsNoEmptyDirectory_KeepsTheDatabase(string lostAndFound)
+    {
+        if (lostAndFound == "link" && !OperatingSystem.IsLinux())
+            Assert.Ignore("Links are made here on Linux only.");
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        string path = Path.Combine(_dbPath, "lost+found");
+        Directory.CreateDirectory(_dbPath);
+        switch (lostAndFound)
+        {
+            case "file in it":
+                Directory.CreateDirectory(path);
+                File.WriteAllBytes(Path.Combine(path, "#1234"), [1]);
+                break;
+            case "file":
+                File.WriteAllBytes(path, [1]);
+                break;
+            default:
+                Directory.CreateSymbolicLink(path, Directory.CreateDirectory(Path.Combine(_tempDir.Path, "other")).FullName);
+                break;
+        }
+
+        Dictionary<string, byte[]> content = ContentOf(_dbPath);
+
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ContentOf(_dbPath), Is.EqualTo(content), "only an empty lost+found directory counts as no content");
+            Assert.That(File.Exists(_snapshotPath), Is.True, "the snapshot must be skipped");
+        }
+    }
+
+    [TestCase(false, TestName = "Execute_TarEntryInLostAndFound_StopsWithoutWritingIntoIt")]
+    [TestCase(true, TestName = "Execute_ZipEntryInLostAndFound_StopsWithoutWritingIntoIt")]
+    public async Task Execute_ArchiveEntryInLostAndFound_StopsWithoutWritingIntoIt(bool zip)
+    {
+        // A freshly mounted disk: its lost+found is empty, so the database directory counts as empty.
+        string lostAndFound = Path.Combine(_dbPath, "lost+found");
+        Directory.CreateDirectory(lostAndFound);
+        Dictionary<string, byte[]> files = new() { ["state/a.sst"] = [1], ["lost+found/#1234"] = [2] };
+        if (zip)
+        {
+            _snapshotConfig.SnapshotFileName = "snapshot.zip";
+            _snapshotPath = Path.Combine(_snapshotConfig.SnapshotDirectory, _snapshotConfig.SnapshotFileName);
+        }
+
+        File.WriteAllBytes(_snapshotPath, zip ? TestArchive.BuildZip(files) : TestArchive.BuildTar(files));
+        AdvanceCheckpoint(SnapshotStage.Verified);
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("lost+found"), "the error must name what the archive would write into");
+            Assert.That(Directory.EnumerateFileSystemEntries(lostAndFound), Is.Empty, "nothing may be written into lost+found");
+            Assert.That(File.Exists(MarkerPath), Is.True, "the extraction that stopped must stay marked for the operator");
+        }
+    }
+
+    [Test]
+    public async Task Execute_ArchiveWithAnEmptyLostAndFound_ExtractsAroundIt()
+    {
+        string lostAndFound = Path.Combine(_dbPath, "lost+found");
+        Directory.CreateDirectory(lostAndFound);
+        // The archive of a database at a mount root holds the directory entry of its lost+found, which writes nothing into it.
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(TestArchive.BuildFiles(), emptyDirectory: "lost+found"));
+        AdvanceCheckpoint(SnapshotStage.Verified);
+
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "the snapshot must be extracted");
+            Assert.That(Directory.EnumerateFileSystemEntries(lostAndFound), Is.Empty, "lost+found must stay empty");
+        }
+    }
+
+    [Test]
+    [Platform(Include = "Linux")] // Unix permissions
+    [SupportedOSPlatform("linux")]
+    public async Task Execute_LostAndFoundThatCannotBeListed_KeepsTheDatabase()
+    {
+        // Needs a user the permissions apply to: as root every directory stays readable, and the test is skipped.
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        string lostAndFound = Path.Combine(_dbPath, "lost+found");
+        Directory.CreateDirectory(lostAndFound);
+        UnixFileMode mode = File.GetUnixFileMode(lostAndFound);
+        File.SetUnixFileMode(lostAndFound, UnixFileMode.None);
+        try
+        {
+            if (CanList(lostAndFound))
+                Assert.Ignore("The permissions do not apply to this user (root); run as another user.");
+
+            await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.False, "a lost+found that cannot be listed may hold content");
+                Assert.That(File.Exists(_snapshotPath), Is.True, "the snapshot must be skipped");
+            }
+        }
+        finally
+        {
+            File.SetUnixFileMode(lostAndFound, mode);
+        }
+    }
+
+    private static bool CanList(string directory)
+    {
+        try
+        {
+            Directory.GetFileSystemEntries(directory);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

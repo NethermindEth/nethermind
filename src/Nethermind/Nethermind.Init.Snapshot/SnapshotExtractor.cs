@@ -72,10 +72,21 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
 
     private static void ExtractZip(string archivePath, string destinationPath, CancellationToken cancellationToken)
     {
-        // ZipFile.ExtractToDirectory has no overload accepting a CancellationToken,
+        // ExtractToDirectory has no overload accepting a CancellationToken,
         // so check before entering the uncooperative call.
         cancellationToken.ThrowIfCancellationRequested();
-        ZipFile.ExtractToDirectory(archivePath, destinationPath);
+        using ZipArchive archive = ZipFile.OpenRead(archivePath);
+        string destinationRoot = Path.GetFullPath(destinationPath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        foreach (ZipArchiveEntry entry in archive.Entries)
+        {
+            // NUL becomes an underscore, as the runtime names entries on Unix. The characters it also replaces on Windows
+            // cannot spell lost+found, and an entry they would bring inside from outside is refused here.
+            string entryPath = Path.GetFullPath(Path.Combine(destinationRoot, entry.FullName.Replace('\0', '_')));
+            if (!entryPath.StartsWith(destinationRoot, StringComparison.Ordinal) || SnapshotDatabase.IsInRecoveryDirectory(destinationRoot, entryPath))
+                throw new IOException($"Zip entry '{entry.FullName}' would extract outside the destination directory or into its lost+found.");
+        }
+
+        archive.ExtractToDirectory(destinationPath);
     }
 
     private static void ExtractTar(string archivePath, string destinationPath, string extension, int stripComponents, CancellationToken cancellationToken)
@@ -110,6 +121,9 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
 
             if (!destinationEntryPath.StartsWith(destinationRoot, StringComparison.Ordinal))
                 throw new IOException($"Tar entry '{entry.Name}' would extract outside the destination directory.");
+
+            if (SnapshotDatabase.IsInRecoveryDirectory(destinationRoot, destinationEntryPath))
+                throw new IOException($"Tar entry '{entry.Name}' would extract into lost+found, which stays the filesystem's.");
 
             if (entry.EntryType is TarEntryType.Directory)
                 Directory.CreateDirectory(destinationEntryPath);

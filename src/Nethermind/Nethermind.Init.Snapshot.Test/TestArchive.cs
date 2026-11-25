@@ -22,19 +22,38 @@ internal static class TestArchive
 
     /// <summary>
     /// An uncompressed tar of <paramref name="files"/> under <c>db/</c>. With <paramref name="endWithLink"/> a link entry
-    /// follows the files, so an extraction writes them all and then fails.
+    /// follows the files, so an extraction writes them all and then fails. <paramref name="emptyDirectory"/> adds an entry
+    /// for a directory with nothing in it.
     /// </summary>
-    public static byte[] BuildTar(IReadOnlyDictionary<string, byte[]> files, bool endWithLink = false)
+    public static byte[] BuildTar(IReadOnlyDictionary<string, byte[]> files, bool endWithLink = false, string? emptyDirectory = null)
     {
         using MemoryStream tarBuffer = new();
         using (TarWriter writer = new(tarBuffer, leaveOpen: true))
         {
             WriteFiles(writer, files);
+            if (emptyDirectory is not null)
+                writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, $"db/{emptyDirectory}/"));
             if (endWithLink)
                 writer.WriteEntry(new PaxTarEntry(TarEntryType.SymbolicLink, "db/escape") { LinkName = "/tmp" });
         }
 
         return tarBuffer.ToArray();
+    }
+
+    /// <summary>A zip of <paramref name="files"/>, named as they are, without a top-level directory.</summary>
+    public static byte[] BuildZip(IReadOnlyDictionary<string, byte[]> files)
+    {
+        using MemoryStream zipBuffer = new();
+        using (System.IO.Compression.ZipArchive zip = new(zipBuffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach ((string name, byte[] data) in files)
+            {
+                using Stream entry = zip.CreateEntry(name).Open();
+                entry.Write(data);
+            }
+        }
+
+        return zipBuffer.ToArray();
     }
 
     public static byte[] BuildTar(int payloadSize = 1000)
