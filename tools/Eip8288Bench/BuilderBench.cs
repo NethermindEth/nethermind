@@ -59,6 +59,7 @@ internal static class BuilderBench
             int wrappers = (count + Eip8288Constants.MaxLeanSigDepsPerWrapper - 1) / Eip8288Constants.MaxLeanSigDepsPerWrapper;
 
             foreach (string shape in shapes)
+            {
                 for (int repeat = 0; repeat < warmups + repeats; repeat++)
                 {
                     bool warmup = repeat < warmups;
@@ -67,8 +68,9 @@ internal static class BuilderBench
                     Console.Error.WriteLine($"{shape,-10} N={count,4} {(warmup ? "warmup" : $"rep {run.Repeat}")}: prove {run.ProveMs,9:F0} ms, cpu {run.CpuUtilisation,5:F1} cores, " +
                         $"peak {run.PeakRssKiB / 1024,6} MiB, {run.NativeCalls} native calls, proof {run.ProofBytes} B, verify {run.VerifyMs:F1} ms");
                 }
-            // Rewritten after every set, so a set the memory limit kills still leaves the smaller ones.
-            Write(outDir, profile, runs, shapes, [.. counts.Where(c => runs.Exists(r => r.Signatures == c))], slotMs, reserveMs, repeats, warmups, peakResets);
+                // Rewritten after every shape of every set, so one the memory limit kills still leaves those before it.
+                Write(outDir, profile, runs, shapes, [.. counts.Where(c => runs.Exists(r => r.Signatures == c))], slotMs, reserveMs, repeats, warmups, peakResets);
+            }
         }
         return 0;
     }

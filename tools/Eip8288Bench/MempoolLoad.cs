@@ -270,15 +270,18 @@ internal static class MempoolLoad
     private static async Task Listen(int node, Uri uri, Stopwatch clock, ConcurrentDictionary<(int, Hash256), double> seen, CancellationToken token)
     {
         using ClientWebSocket socket = new();
-        try { await socket.ConnectAsync(uri, token); }
+        try
+        {
+            await socket.ConnectAsync(uri, token);
+            await socket.SendAsync("""{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newPendingTransactions"]}"""u8.ToArray(),
+                WebSocketMessageType.Text, true, token);
+        }
         catch (Exception exception) when (exception is WebSocketException or HttpRequestException)
         {
             // A node that is down shows up as missing coverage rather than costing the run its results.
             Console.Error.WriteLine($"node {node}: cannot subscribe: {exception.Message}");
             return;
         }
-        await socket.SendAsync("""{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newPendingTransactions"]}"""u8.ToArray(),
-            WebSocketMessageType.Text, true, token);
         byte[] buffer = new byte[64 * 1024];
         using MemoryStream message = new();
         try
@@ -300,7 +303,7 @@ internal static class MempoolLoad
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception exception) when (exception is WebSocketException or IOException or JsonException)
         {
-            Console.Error.WriteLine($"node {node}: subscription lost after {seen.Count} arrivals: {exception.Message}");
+            Console.Error.WriteLine($"node {node}: subscription lost after {seen.Keys.Count(k => k.Item1 == node)} arrivals: {exception.Message}");
         }
     }
 
@@ -398,7 +401,9 @@ internal static class MempoolLoad
         foreach (string part in spec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             string[] pair = part.Split(':');
-            result.Add((int.Parse(pair[0], CultureInfo.InvariantCulture), double.Parse(pair[1], CultureInfo.InvariantCulture)));
+            int value = int.Parse(pair[0], CultureInfo.InvariantCulture);
+            if (value < 1) throw new ArgumentException($"distribution values must be at least 1: {spec}");
+            result.Add((value, double.Parse(pair[1], CultureInfo.InvariantCulture)));
         }
         return [.. result];
     }
