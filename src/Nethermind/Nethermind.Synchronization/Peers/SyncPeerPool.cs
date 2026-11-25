@@ -229,7 +229,9 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
-        public int PriorityPeerCount;
+        private readonly ConcurrentDictionary<PeerInfo, byte> _priorityPeers = new();
+        private int _priorityPeerCount;
+        internal int PriorityPeerCount => Volatile.Read(ref _priorityPeerCount);
         public int InitializedPeersCount => InitializedPeers.Count();
         public int PeerMaxCount { get; }
         private int PriorityPeerMaxCount { get; }
@@ -256,18 +258,10 @@ namespace Nethermind.Synchronization.Peers
             }
 
             PeerInfo peerInfo = new(syncPeer, _allocationAllowances);
-            if (!_peers.TryAdd(syncPeer.Node.Id, peerInfo))
-            {
-                return;
-            }
+            if (!_peers.TryAdd(syncPeer.Node.Id, peerInfo)) return;
+            if (syncPeer.IsPriority) TrackPriorityPeer(syncPeer.Node.Id, peerInfo);
 
             UpdatePeerCountMetric(peerInfo.PeerClientType, 1);
-
-            if (syncPeer.IsPriority)
-            {
-                Interlocked.Increment(ref PriorityPeerCount);
-                Metrics.PriorityPeers = PriorityPeerCount;
-            }
             if (_logger.IsTrace) TracePeerCount();
 
             BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -301,19 +295,16 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            if (!_peers.TryRemove(id, out _))
+            // Overlapping sessions can advertise the same node ID. Only the registered session owns the entry.
+            if (!_peers.TryGetValue(id, out PeerInfo peerInfo)
+                || !ReferenceEquals(peerInfo.SyncPeer, syncPeer)
+                || !_peers.TryRemove(KeyValuePair.Create(id, peerInfo)))
             {
-                // possible if sync failed - we remove peer and eventually initiate disconnect, which calls remove peer again
                 return;
             }
 
+            UntrackPriorityPeer(peerInfo);
             UpdatePeerCountMetric(syncPeer.ClientType, -1);
-
-            if (syncPeer.IsPriority)
-            {
-                Interlocked.Decrement(ref PriorityPeerCount);
-                Metrics.PriorityPeers = PriorityPeerCount;
-            }
             if (_logger.IsTrace) TracePeerCount();
 
             if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? initCancelTokenSource))
@@ -343,11 +334,23 @@ namespace Nethermind.Synchronization.Peers
 
         public void SetPeerPriority(PublicKey id)
         {
-            if (_peers.TryGetValue(id, out PeerInfo peerInfo) && !peerInfo.SyncPeer.IsPriority)
-            {
-                peerInfo.SyncPeer.IsPriority = true;
-                Interlocked.Increment(ref PriorityPeerCount);
-            }
+            if (!_peers.TryGetValue(id, out PeerInfo peerInfo)) return;
+            peerInfo.SyncPeer.IsPriority = true;
+            TrackPriorityPeer(id, peerInfo);
+        }
+
+        private void TrackPriorityPeer(PublicKey id, PeerInfo peerInfo)
+        {
+            if (!_priorityPeers.TryAdd(peerInfo, 0)) return;
+            Metrics.PriorityPeers = Interlocked.Increment(ref _priorityPeerCount);
+
+            // A concurrent RemovePeer can untrack before the add above, so re-check membership after it.
+            if (!_peers.TryGetValue(id, out PeerInfo? current) || !ReferenceEquals(current, peerInfo)) UntrackPriorityPeer(peerInfo);
+        }
+
+        private void UntrackPriorityPeer(PeerInfo peerInfo)
+        {
+            if (_priorityPeers.TryRemove(peerInfo, out _)) Metrics.PriorityPeers = Interlocked.Decrement(ref _priorityPeerCount);
         }
 
         // Cap for the allocation retry backoff. A shallow-sleep wake-up is time-based and never fires
