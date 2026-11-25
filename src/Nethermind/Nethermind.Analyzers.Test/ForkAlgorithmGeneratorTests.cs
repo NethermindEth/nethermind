@@ -108,7 +108,8 @@ public class ForkAlgorithmGeneratorTests
             references: [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
-            generators: [new ForkAlgorithmGenerator().AsSourceGenerator()], additionalTexts: [new Template("BlockProcessing.forks.cs", template)]);
+            generators: [new ForkAlgorithmGenerator().AsSourceGenerator()], additionalTexts: [new Template("BlockProcessing.forks.cs", template)],
+            optionsProvider: new BuildProperties(DefaultForks));
         driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation generated, out ImmutableArray<Diagnostic> diagnostics);
         Assert.That(diagnostics, Is.Empty);
         using MemoryStream image = new();
@@ -184,7 +185,27 @@ public class ForkAlgorithmGeneratorTests
         Assert.That(Run(new Template("BlockProcessing.forks.cs", "class { }")).Diagnostics,
             Has.Some.Matches<Diagnostic>(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
 
-    private static GeneratorDriverRunResult Run(AdditionalText template, string forks = null)
+    [TestCase(null, "is not set")]
+    [TestCase(" ", "is not set")]
+    [TestCase(",", "lists no fork")]
+    [TestCase(" , ", "lists no fork")]
+    [TestCase("Fulu,Gloas,Gloas", "lists 'Gloas' more than once")]
+    [TestCase("Fulu,Gloas,gloas", "lists 'Gloas' more than once")]
+    public void Unusable_fork_list_is_reported_and_generates_nothing(string forks, string problem)
+    {
+        GeneratorDriverRunResult result = Run(new Template("BlockProcessing.forks.cs", "public static partial class BlockProcessing { }"), forks);
+        GeneratorRunResult run = result.Results.Single();
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(run.Exception, Is.Null);
+        Assert.That(run.GeneratedSources, Is.Empty);
+        Assert.That(result.Diagnostics.Select(static diagnostic => diagnostic.Id), Is.EqualTo(new[] { "NMFORK002" }));
+        Assert.That(result.Diagnostics.Single().Severity, Is.EqualTo(DiagnosticSeverity.Error));
+        Assert.That(result.Diagnostics.Single().GetMessage(), Does.Contain(problem));
+    }
+
+    private const string DefaultForks = "Fulu,Gloas";
+
+    private static GeneratorDriverRunResult Run(AdditionalText template, string forks = DefaultForks)
     {
         CSharpCompilation compilation = CSharpCompilation.Create("ForkGeneratorTests");
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
