@@ -27,7 +27,8 @@ public sealed partial class ProofWrapperBroadcaster
 
     /// <summary>Records announced wrappers this node wants; announcements establish no validity and require no action.</summary>
     /// <remarks>A wrapper whose coverage hints, where announced, match a held wrapper validated under the current rules is not
-    /// fetched.</remarks>
+    /// fetched, nor one whose metadata lists only transactions it adds no coverage for. Claims found false against a held wrapper
+    /// or transaction are discarded with their sender (EIP-8437).</remarks>
     internal void OnAnnounce(WrapperPeer peer, NewProofWrapperHashesMessage message)
     {
         bool enabled = IsEnabled;
@@ -46,8 +47,13 @@ public sealed partial class ProofWrapperBroadcaster
                 ValueHash256 wrapperHash = announcement.Hash;
                 peer.Known.Add(wrapperHash);
                 peer.Exchanged.Add(wrapperHash);
-                if (!enabled || _store.Contains(wrapperHash)
-                    || IsTombstoned(wrapperHash, now)) continue;
+                if (!enabled) continue;
+                if (FalseAgainstHeld(announcement) is { } falseClaim)
+                {
+                    Violation(peer, falseClaim, outbox);
+                    break;
+                }
+                if (_store.Contains(wrapperHash) || IsTombstoned(wrapperHash, now)) continue;
                 if (_fetches.TryGetValue(wrapperHash, out WrapperFetch? existing))
                 {
                     existing.AddSource(peer, announcement);
@@ -56,6 +62,11 @@ public sealed partial class ProofWrapperBroadcaster
                 if (announcement.Coverage is { } coverage && _store.HoldsEquivalent(coverage, announcement.Mode, _verifier))
                 {
                     WrapperMetrics.Record(WrapperEvent.EquivalentSkipped);
+                    continue;
+                }
+                if (announcement.Mode == MempoolWrapper.ModeDirect && announcement.Metadata is { } metadata && AddsNoCoverage(metadata))
+                {
+                    WrapperMetrics.Record(WrapperEvent.HeldSkipped);
                     continue;
                 }
                 // The pending cache is bounded, and each peer holds at most an equal share of it, so peers announcing wrappers
@@ -75,6 +86,51 @@ public sealed partial class ProofWrapperBroadcaster
             Schedule(outbox);
         }
         outbox.Flush();
+    }
+
+    /// <summary>Why <paramref name="announcement"/> is false against a held wrapper of its hash or, for its metadata, against held
+    /// transactions; null when nothing held contradicts it.</summary>
+    /// <remarks>A held transaction is one carried by a held, validated wrapper, whose canonical hash binds its metadata. Its pooled
+    /// size is compared only against the wrapper of the announced hash, since a consensus hash does not bind it.</remarks>
+    private string? FalseAgainstHeld(WrapperAnnouncement announcement)
+    {
+        if (_store.TryGet(announcement.Hash, out WrapperStore.Entry held))
+        {
+            WrapperAnnouncement truth = held.Announcement;
+            return announcement.Mode != truth.Mode || announcement.Length != truth.Length || !Equals(announcement.Metadata, truth.Metadata)
+                || announcement.Coverage is { } coverage && coverage != truth.Coverage
+                ? $"announced false claims for held {truth}" : null;
+        }
+        if (announcement.Metadata is not { } metadata) return null;
+        for (int i = 0; i < metadata.Count; i++)
+        {
+            ValueHash256 transaction = metadata.Hashes[i];
+            IReadOnlyList<ValueHash256> holders = _store.Listing(transaction);
+            if (holders.Count == 0 || !_store.TryGet(holders[0], out WrapperStore.Entry entry)) continue;
+            int index = Array.BinarySearch(entry.Hashes, transaction);
+            if (index >= 0 && !metadata.DescribesAlike(i, entry.Manifest, index))
+                return $"announced false metadata for held transaction {transaction.ToShortString()}";
+        }
+        return null;
+    }
+
+    /// <summary>Whether a mode-0 wrapper whose metadata is <paramref name="metadata"/> would add no coverage: every transaction it
+    /// lists is pending and, while an <c>eth/75</c> peer is connected, carried by a held mode-0 wrapper that peer can be served.</summary>
+    /// <remarks>EIP-8437 lets requesters use metadata to choose fetches; it establishes no coverage, so this only skips a fetch.</remarks>
+    private bool AddsNoCoverage(WrapperMetadata metadata)
+    {
+        if (!_wrappers.AreAllPending(metadata.Hashes)) return false;
+        if (_peers.TrueForAll(static peer => peer.Aggregates)) return true;
+        foreach (ValueHash256 transaction in metadata.Hashes)
+            if (!HeldDirectly(transaction)) return false;
+        return true;
+    }
+
+    private bool HeldDirectly(in ValueHash256 transaction)
+    {
+        foreach (ValueHash256 wrapperHash in _store.Listing(transaction))
+            if (TryGetOffered(wrapperHash, out WrapperStore.Entry entry) && entry.Shape.Mode == MempoolWrapper.ModeDirect) return true;
+        return false;
     }
 
     /// <summary>Makes room in the full pending cache for <paramref name="announcer"/> by dropping an unrequested wrapper every open

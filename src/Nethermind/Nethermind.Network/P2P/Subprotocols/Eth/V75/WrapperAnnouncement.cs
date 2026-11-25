@@ -176,8 +176,7 @@ public static class WrapperBodies
         {
             ReadOnlySpan<byte> dependency = dependencies.ReadBytes();
             // A reserved scheme is well-formed here; validation rejects it as a dependency-rule failure, without penalty.
-            if (dependency.Length != Eip8288Constants.DependencyTripleLength || !dependency[..31].IsZero()
-                || !Eip8288Dependencies.IsKnownScheme(dependency[31])) throw new RlpException("Invalid dependency");
+            if (dependency.Length != Eip8288Constants.DependencyTripleLength || !dependency[..31].IsZero()) throw new RlpException("Invalid dependency");
             Span<byte> entry = dependencyEntries.AsSpan(i * Eip8288Constants.DependencyTripleLength, Eip8288Constants.DependencyTripleLength);
             if (i > 0 && dependency.SequenceCompareTo(dependencyEntries.AsSpan((i - 1) * Eip8288Constants.DependencyTripleLength, Eip8288Constants.DependencyTripleLength)) <= 0)
                 throw new RlpException("Wrapper dependencies are not in strictly ascending order");

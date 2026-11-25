@@ -17,8 +17,8 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// order; <c>deps</c> lists 96-byte triples; <c>proof_content</c> is one proof per dependency for mode 0 and the recursive
 /// STARK for mode 1, whose public input is derived from <c>deps</c>.
 /// </summary>
-/// <remarks>Decoding enforces the encoding rules: <c>MAX_WRAPPER_BYTES</c>, transaction ordering and well-formed 96-byte
-/// dependency triples of a defined scheme. Dependency and proof rules, including the dependency list's order, the mode-0 limits
+/// <remarks>Decoding enforces the encoding rules: <c>MAX_WRAPPER_BYTES</c>, transaction ordering and zero-padded 96-byte
+/// dependency triples. Dependency and proof rules, including reserved schemes, the dependency list's order, the mode-0 limits
 /// and witness count, are left to <see cref="MempoolWrapperValidator"/>, so EIP-8437 discards a wrapper breaking them without
 /// penalizing its sender.</remarks>
 public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
@@ -65,8 +65,8 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             // Unreachable within MAX_WRAPPER_BYTES; bounds the list before allocation.
             if (deps.Count == Eip8288Constants.MaxWrapperDependencies) throw new RlpException("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
             byte[] triple = decoderContext.DecodeByteArray(RlpLimit.For<MempoolWrapper>(Eip8288Constants.DependencyTripleLength, nameof(MempoolWrapper.Deps)));
-            if (triple.Length != Eip8288Constants.DependencyTripleLength || !triple.AsSpan(0, 31).IsZero()
-                || !Eip8288Dependencies.IsKnownScheme(triple[31]))
+            // A reserved scheme is well-formed here; validation rejects it as a dependency-rule failure, without penalty (EIP-8437).
+            if (triple.Length != Eip8288Constants.DependencyTripleLength || !triple.AsSpan(0, 31).IsZero())
                 throw new RlpException("Invalid dependency encoding.");
             deps.AddRange(Eip8288Dependencies.Parse(triple));
         }

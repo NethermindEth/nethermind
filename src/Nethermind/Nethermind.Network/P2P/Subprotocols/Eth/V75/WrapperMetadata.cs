@@ -40,6 +40,31 @@ public sealed class WrapperMetadata
     /// <c>txs-hash</c>.</summary>
     public ValueHash256 TransactionsDigest => ValueKeccak.Compute(MemoryMarshal.AsBytes(Hashes.AsSpan()));
 
+    private byte[][]? _identities;
+
+    /// <summary>Whether transaction <paramref name="index"/> is described with the type, source, nonce, fees and frame gas that
+    /// transaction <paramref name="otherIndex"/> of <paramref name="other"/> is.</summary>
+    /// <remarks>The pooled size is not compared: a consensus transaction hash does not bind it (EIP-8437).</remarks>
+    internal bool DescribesAlike(int index, WrapperMetadata other, int otherIndex) =>
+        Identities[index].AsSpan().SequenceEqual(other.Identities[otherIndex]);
+
+    /// <summary>Per transaction, its type byte followed by its canonical source, nonce, fees and gas items.</summary>
+    private byte[][] Identities => _identities ??= ReadIdentities();
+
+    private byte[][] ReadIdentities()
+    {
+        Eth75RlpReader outer = new(Encoded);
+        Eth75RlpReader fields = outer.ReadList();
+        ReadOnlySpan<byte> types = fields.ReadBytes();
+        fields.ReadList();
+        fields.ReadList();
+        Eth75RlpReader sources = fields.ReadList(), nonces = fields.ReadList(), fees = fields.ReadList(), gas = fields.ReadList();
+        byte[][] identities = new byte[Count][];
+        for (int i = 0; i < identities.Length; i++)
+            identities[i] = [types[i], .. sources.ReadItem(), .. nonces.ReadItem(), .. fees.ReadItem(), .. gas.ReadItem()];
+        return identities;
+    }
+
     /// <summary>Checks received metadata against the EIP-8437 wire rules.</summary>
     /// <param name="encoded">The metadata list.</param>
     /// <param name="announcedLength">The announced wrapper length, which the transaction sizes must sum to less than.</param>

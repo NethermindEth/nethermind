@@ -22,9 +22,9 @@ namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>Shared proof-wrapper validation, admission and aggregation for RPC and eth/75 peers.</summary>
 /// <remarks>
-/// Wrappers are validated under their target fork, which fixes the verifier: the fork active at the next slot's timestamp,
-/// predicted from the local head with the local slot-length estimate (see <see cref="WrapperTargetFork"/>).
-/// When the local head advances to a target fork whose verifier differs, the local verifier-change rule applies: every held
+/// Wrappers are validated under their target fork, which fixes the verifier: the EIP-8437 mempool fork, selected by the
+/// chain's activation timestamps at the local clock's current Unix time, independently of the head.
+/// When the clock reaches a target fork whose verifier differs, the local verifier-change rule applies: every held
 /// aggregate proof is dropped, direct witnesses are kept only if they re-validate, and pending transactions left without
 /// proof coverage leave the pool.
 /// </remarks>
@@ -32,8 +32,10 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// once EIP-8070 cell retrieval establishes availability; its dependency coverage stays pinned until then.</remarks>
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
     IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier,
-    IWrappedBlobTransactionAdmission? blobAdmission = null)
+    IWrappedBlobTransactionAdmission? blobAdmission = null, ITimestamper? timestamper = null)
 {
+    private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
+
     /// <summary>Encoded transaction and dependency bytes a produced mode-1 wrapper may carry: <c>MAX_WRAPPER_BYTES</c> less the
     /// largest aggregate proof and the list framing.</summary>
     internal const int MaxWrapperContentBytes = Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes - 64;
@@ -116,10 +118,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private CapacityRestoringScope? _staging;
     private const string VerifierChangedDuringAdmission = "The target fork's verifier changed during validation; retry.";
     private Eip8288Verifier? _verifier;
-    private TargetForks? _targetForks;
+    private TargetFork? _targetFork;
 
-    /// <summary>The target fork and the fork after it, predicted from <paramref name="Head"/>.</summary>
-    private sealed record TargetForks(Hash256? Head, IReleaseSpec Target, IReleaseSpec Following);
+    /// <summary>The target fork at Unix time <paramref name="Second"/> for the block after <paramref name="Head"/>.</summary>
+    private sealed record TargetFork(Hash256? Head, ulong Second, IReleaseSpec Spec);
 
     /// <summary>Verifies a wrapper and admits its proof-backed transactions.</summary>
     public async Task<Result<Hash256[]>> AcceptAsync(byte[] wrapper, CancellationToken cancellationToken = default)
@@ -134,18 +136,19 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>Raised with the new verifier after the verifier-change rule dropped what the previous one validated.</summary>
     public event Action<Eip8288Verifier>? VerifierChanged;
 
-    /// <summary>The fork active at the next slot's timestamp after the local head: the target fork of every wrapper this node
-    /// validates.</summary>
-    public IReleaseSpec? TargetSpec => blockFinder.Head is { } head ? TargetForksOf(head.Header).Target : null;
+    /// <summary>The EIP-8437 mempool fork, active at the local clock's current Unix time: the target fork of every wrapper this
+    /// node validates.</summary>
+    /// <remarks>The head only supplies the next block number, which block-number activations need.</remarks>
+    public IReleaseSpec? TargetSpec => blockFinder.Head is { } head ? TargetForkOf(head.Header) : null;
 
-    private TargetForks TargetForksOf(BlockHeader head)
+    private IReleaseSpec TargetForkOf(BlockHeader head)
     {
-        TargetForks? cached = Volatile.Read(ref _targetForks);
-        if (cached is not null && head.Hash is not null && cached.Head == head.Hash) return cached;
-        BlockHeader? parent = head.Number == 0 || head.ParentHash is null ? null : blockFinder.FindParentHeader(head, BlockTreeLookupOptions.None);
-        TargetForks forks = new(head.Hash, WrapperTargetFork.Predict(specProvider, head, parent), WrapperTargetFork.Predict(specProvider, head, parent, 2));
-        if (head.Hash is not null) Volatile.Write(ref _targetForks, forks);
-        return forks;
+        ulong now = _timestamper.UnixTime.Seconds;
+        TargetFork? cached = Volatile.Read(ref _targetFork);
+        if (cached is not null && head.Hash is not null && cached.Head == head.Hash && cached.Second == now) return cached.Spec;
+        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(head.Number + 1, now));
+        if (head.Hash is not null) Volatile.Write(ref _targetFork, new TargetFork(head.Hash, now, spec));
+        return spec;
     }
 
     /// <summary>The verifier the verifier-change rule last applied, read without refreshing it.</summary>
@@ -166,7 +169,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         lock (_verifierLock)
         {
             if (blockFinder.Head is not { } head) return null;
-            IReleaseSpec spec = TargetForksOf(head.Header).Target;
+            IReleaseSpec spec = TargetForkOf(head.Header);
             if (!spec.IsEip8288Enabled) return null;
             current = Eip8288Verifier.For(spec);
             if (_verifier == current) return current;
@@ -992,7 +995,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private FeeFloors ExecutableFeeFloors()
     {
         if (blockFinder.Head is not { } head) return default;
-        IReleaseSpec spec = TargetForksOf(head.Header).Target;
+        IReleaseSpec spec = TargetForkOf(head.Header);
         UInt256 fee = spec.IsEip1559Enabled ? BaseFeeCalculator.Calculate(head.Header, spec) : UInt256.Zero;
         if (!spec.BaseFeeMaxChangeDenominator.IsZero)
             for (int i = 0; i < MaxAwaitedBaseFeeDecreases; i++) fee -= fee / spec.BaseFeeMaxChangeDenominator;
@@ -1186,6 +1189,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         foreach (ValueHash256 hash in transactions)
             if (txPool.TryGetPendingTransaction(hash, out _)) return true;
         return false;
+    }
+
+    /// <summary>Whether every one of <paramref name="transactions"/> is pending.</summary>
+    internal bool AreAllPending(ReadOnlySpan<ValueHash256> transactions)
+    {
+        foreach (ValueHash256 hash in transactions)
+            if (!txPool.TryGetPendingTransaction(hash, out _)) return false;
+        return true;
     }
 
     /// <summary>Whether the target fork enables dependency-proof wrappers.</summary>
