@@ -53,19 +53,22 @@ public class SszGeneratorDiagnosticTest
     [TestCase(33, false)]
     [TestCase(32, true)]
     [TestCase(33, true)]
-    public void Generated_scratch_boundaries_preserve_roots(int fieldCount, bool progressive)
+    [TestCase(1, true, 31)]
+    [TestCase(1, true, 32)]
+    public void Generated_scratch_boundaries_preserve_roots(int fieldCount, bool progressive, int leadingGap = 0)
     {
         StringBuilder members = new();
         for (int i = 0; i < fieldCount; i++)
         {
-            if (progressive) members.AppendLine($"[SszField({i})]");
+            if (progressive) members.AppendLine($"[SszField({leadingGap + i})]");
             members.AppendLine($"public ulong Field{i} {{ get; set; }} = {i + 1};");
         }
         string source = $$"""
             using System;
             using Nethermind.Int256;
             using Nethermind.Serialization.Ssz;
-            [SszContainer]
+            // Without locals init, stale stack memory would show up in the root.
+            [SszContainer, System.Runtime.CompilerServices.SkipLocalsInit]
             public partial class BoundaryContainer
             {
                 {{members}}
@@ -80,21 +83,21 @@ public class SszGeneratorDiagnosticTest
             }
             """;
         CSharpParseOptions options = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
-        RunGenerator(source, options, $"ScratchBoundary{fieldCount}{progressive}", out Compilation compilation);
+        RunGenerator(source, options, $"ScratchBoundary{fieldCount}{progressive}{leadingGap}", out Compilation compilation);
         using MemoryStream stream = new();
         Microsoft.CodeAnalysis.Emit.EmitResult emitted = compilation.Emit(stream);
         Assert.That(emitted.Success, Is.True, string.Join(Environment.NewLine, emitted.Diagnostics));
         Assembly assembly = Assembly.Load(stream.ToArray());
         (UInt256 actual, long allocated) = ((UInt256, long))assembly.GetType("BoundaryContainer")!.GetMethod("Measure")!.Invoke(null, null)!;
 
-        UInt256[] fields = new UInt256[fieldCount];
-        for (int i = 0; i < fieldCount; i++) fields[i] = (ulong)(i + 1);
+        UInt256[] fields = new UInt256[leadingGap + fieldCount];
+        for (int i = 0; i < fieldCount; i++) fields[leadingGap + i] = (ulong)(i + 1);
         UInt256 expected;
         if (progressive)
         {
             Merkle.MerkleizeProgressive(out expected, fields);
-            byte[] activeFields = new byte[(fieldCount + 7) / 8];
-            for (int i = 0; i < fieldCount; i++) activeFields[i / 8] |= (byte)(1 << (i % 8));
+            byte[] activeFields = new byte[(fields.Length + 7) / 8];
+            for (int i = leadingGap; i < fields.Length; i++) activeFields[i / 8] |= (byte)(1 << (i % 8));
             Merkle.MixInActiveFields(ref expected, activeFields);
         }
         else
@@ -104,7 +107,7 @@ public class SszGeneratorDiagnosticTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.EqualTo(expected));
-            Assert.That(allocated, progressive && fieldCount > ProgressiveContainerStackAllocationLimit ? Is.GreaterThan(0) : Is.Zero);
+            Assert.That(allocated, progressive && fields.Length > ProgressiveContainerStackAllocationLimit ? Is.GreaterThan(0) : Is.Zero);
         }
     }
 
@@ -567,7 +570,7 @@ public class SszGeneratorDiagnosticTest
             assemblyName,
             [syntaxTree],
             BuildMetadataReferences(),
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
 
         GeneratorDriver driver = CSharpGeneratorDriver.Create(CreateSszGenerator())
             .WithUpdatedParseOptions(parseOptions);

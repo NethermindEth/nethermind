@@ -552,6 +552,29 @@ namespace Nethermind.Serialization.SszGenerator.Test
     }
 
     [SszContainer]
+    public partial struct ProgressiveLeadingGapSample
+    {
+        [SszField(1)]
+        public ulong Head { get; set; }
+
+        [SszField(2)]
+        public ulong Tail { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct ProgressiveManyGapsSample
+    {
+        [SszField(3)]
+        public ulong Head { get; set; }
+
+        [SszField(10)]
+        public ulong Middle { get; set; }
+
+        [SszField(25)]
+        public ulong Tail { get; set; }
+    }
+
+    [SszContainer]
     public partial struct ProgressiveListContainer
     {
         [SszProgressiveList]
