@@ -74,6 +74,8 @@ docker run --rm -it `
   --external-ip-v6 2001:db8::10
 ```
 
+The image is built on the chiseled ASP.NET runtime image, so it has no shell or package manager: `docker exec` into a shell and shell-form commands do not work. It runs as root, so data volumes created by earlier images keep working.
+
 ## Advertised IPs
 
 Use `--local-ip` for the UDP socket bind address and `--external-ip*` for the address advertised to peers.

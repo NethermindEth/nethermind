@@ -132,12 +132,20 @@ namespace Nethermind.Blockchain.FullPruning
         {
             IPruningContext? pruningContext = null;
 
-            using (_trieStore.PrepareStableState(cancellationToken))
+            try
             {
-                if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext fromDbPruningContext))
+                using (_trieStore.PrepareStableState(cancellationToken))
                 {
-                    pruningContext = fromDbPruningContext;
+                    if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext fromDbPruningContext))
+                    {
+                        pruningContext = fromDbPruningContext;
+                    }
                 }
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("full pruning failed to start. ", e);
+                return;
             }
 
             if (pruningContext is null) return;

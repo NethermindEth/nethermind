@@ -432,7 +432,7 @@ public static partial class EvmInstructions
 
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
         ulong traceAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, inheritor, AccountAccessKind.SelfDestructBeneficiary))
         {
             // Geth's gas function stops on a cold beneficiary it cannot pay for, and only its EIP-8038 form keeps that charge.
             if (TTracingInst.IsActive)

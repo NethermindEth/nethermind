@@ -17,12 +17,13 @@ using Nethermind.Int256;
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 internal sealed class GethLikeBlockDeadlineTracer(
-    IBlockTracer<GethLikeTxTrace> inner, GethTraceOptions options, CancellationToken external, GethTraceDeadlineScope? scope = null)
+    IBlockTracer<GethLikeTxTrace> inner, GethTraceOptions options, CancellationToken external, GethTraceDeadlineScope? scope = null, int? transactionIndex = null)
     : IBlockTracer<GethLikeTxTrace>, IDisposable
 {
     private readonly GethTraceDeadlineScope _scope = scope ?? new();
     private CancellationToken _external = external;
     private GethTraceDeadline? _deadline;
+    private Transaction? _targetTransaction;
     private bool _transferred;
     private bool _disposed;
     private bool _expired;
@@ -31,12 +32,12 @@ internal sealed class GethLikeBlockDeadlineTracer(
     public bool IsTracingRewards => inner.IsTracingRewards;
 
     internal static IBlockTracer<GethLikeTxTrace> Wrap(
-        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createTracer, GethTraceOptions options, CancellationToken external)
+        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createTracer, GethTraceOptions options, CancellationToken external, int? transactionIndex = null)
     {
         if (!options.EnforceExecutionDeadline || options.ParsedTimeout.Error is not null
             || !SupportsExecutionDeadline(options.Tracer, options.TracerConfig)) return createTracer(options);
         GethTraceDeadlineScope scope = new();
-        return new GethLikeBlockDeadlineTracer(createTracer(options with { DeadlineScope = scope }), options, external, scope);
+        return new GethLikeBlockDeadlineTracer(createTracer(options with { DeadlineScope = scope }), options, external, scope, transactionIndex);
     }
 
     private static bool SupportsExecutionDeadline(string tracer, JsonElement? config)
@@ -66,6 +67,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
     public void StartNewBlockTrace(Block block)
     {
         _external.ThrowIfCancellationRequested();
+        _targetTransaction = transactionIndex is { } index ? block.Transactions[index] : null;
         inner.StartNewBlockTrace(block);
     }
 
@@ -75,7 +77,9 @@ internal sealed class GethLikeBlockDeadlineTracer(
         _scope.HasRecoverableSetupFailure = false;
         CheckDeadline();
         _scope.External = _external;
-        if (tx is null || options.TxHash is { } target && target != tx.Hash)
+        if (tx is null || (transactionIndex is not null
+            ? !ReferenceEquals(tx, _targetTransaction)
+            : options.TxHash is { } target && target != tx.Hash))
             return inner.StartNewTxTrace(tx).WithCancellation(_external);
 
         ITxTracer? current = null;

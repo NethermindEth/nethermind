@@ -109,6 +109,7 @@ public class ProtocolsManagerTests
         IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
         ISession session = Substitute.For<ISession>();
         session.BestStateReached.Returns(SessionState.Initialized);
+        session.RemoteNodeId.Returns(TestItem.PublicKeyA);
         session.Node.Returns(new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303));
         _ = new ProtocolsManager(
             Substitute.For<ISyncPeerPool>(),
@@ -234,7 +235,7 @@ public class ProtocolsManagerTests
         private readonly IForkInfo _forkInfo;
         private readonly string[] _satelliteProtocols;
 
-        public Context(ILogManager? logManager = null, string[]? satelliteProtocols = null)
+        public Context(ILogManager? logManager = null, IRlpxHost? rlpxHost = null, IPeerManager? peerManager = null, string? clientIdMatcher = null, string[]? satelliteProtocols = null)
         {
             _satelliteProtocols = satelliteProtocols ?? [];
             _packetSender = Substitute.For<IPacketSender>();
@@ -251,8 +252,7 @@ public class ProtocolsManagerTests
                 SerializerInfo.Create(new DisconnectMessageSerializer())
                 );
 
-            _rlpxHost = Substitute.For<IRlpxHost>();
-            _rlpxHost.LocalPort.Returns(_localPort);
+            _rlpxHost = rlpxHost ?? Substitute.For<IRlpxHost>();
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _blockTree = Substitute.For<IBlockTree>();
@@ -260,8 +260,8 @@ public class ProtocolsManagerTests
             _blockTree.ChainId.Returns(TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
             _forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
-            _peerManager = Substitute.For<IPeerManager>();
-            _networkConfig = new NetworkConfig();
+            _peerManager = peerManager ?? Substitute.For<IPeerManager>();
+            _networkConfig = new NetworkConfig { ClientIdMatcher = clientIdMatcher };
             _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _forkInfo, _networkConfig, LimboLogs.Instance);
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
@@ -457,9 +457,22 @@ public class ProtocolsManagerTests
 
         public Context VerifySyncPeersRemoved()
         {
-            _txPool.Received().RemovePeer(Arg.Any<PublicKey>());
+            _txPool.Received().RemovePeer(Arg.Is<ITxPoolPeer>(peer => peer.Id == _currentSession.RemoteNodeId));
             _syncPeerPool.Received().RemovePeer(Arg.Any<ISyncPeer>());
             return this;
+        }
+
+        public void VerifyNoGossipPeerRemoved()
+        {
+            _txPool.Received().AddPeer(Arg.Is<ITxPoolPeer>(peer => peer.Id == _currentSession.RemoteNodeId));
+            _txPool.DidNotReceive().RemovePeer(Arg.Any<PublicKey>());
+            _txPool.DidNotReceive().RemovePeer(Arg.Any<ITxPoolPeer>());
+        }
+
+        public Context ReceiveHello(Session session)
+        {
+            _currentSession = session;
+            return ReceiveHello();
         }
 
         private Context ReceiveHello(HelloMessage msg)
@@ -583,6 +596,12 @@ public class ProtocolsManagerTests
             .ReceiveHello()
             .ReceiveDisconnect()
             .VerifyDisconnected();
+
+    [Test]
+    public void Disconnect_before_hello_preserves_the_registered_gossip_peer() => When
+        .CreateOutgoingSession().ActivateChannel().Handshake().Init().ReceiveHello().ReceiveStatus()
+        .CreateIncomingSession().ActivateChannel().Handshake().Init().Disconnect()
+        .VerifyNoGossipPeerRemoved();
 
     [Test]
     public void Runs_ok_when_initializing_protocol_on_a_closing_session() => When

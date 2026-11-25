@@ -191,6 +191,38 @@ namespace Nethermind.Config.Test
                 Assert.That(config.ExtraData, Is.EqualTo("previous"));
             }
         }
+
+        [TestCase(32, true)]
+        [TestCase(33, false)]
+        public void ExtraData_from_a_source_keeps_the_exit_code_of_the_setter(int length, bool accepted)
+        {
+            string extraData = new('a', length);
+            ConfigProvider provider = new();
+            provider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["Blocks.ExtraData"] = extraData }));
+
+            if (accepted)
+            {
+                Assert.That(provider.GetConfig<IBlocksConfig>().ExtraData, Is.EqualTo(extraData));
+                return;
+            }
+
+            // The setter's own exception, with its stack, rather than a wrapper that hides the exit code.
+            Assert.That(provider.Initialize, Throws.TypeOf<InvalidConfigurationException>()
+                .With.Message.Contains(extraData)
+                .And.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.TooLongExtraData)
+                .And.Property(nameof(Exception.StackTrace)).Contains($"{nameof(BlocksConfig)}.set_{nameof(BlocksConfig.ExtraData)}"));
+        }
+
+        [Test]
+        public void Setter_error_without_an_exit_code_is_wrapped_with_the_item_name()
+        {
+            ConfigProvider provider = new();
+            provider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["Pruning.DirtyNodeShardBit"] = "0" }));
+
+            Assert.That(provider.Initialize, Throws.TypeOf<InvalidOperationException>()
+                .With.Message.EqualTo($"Cannot set value of {nameof(PruningConfig)}.{nameof(PruningConfig.DirtyNodeShardBit)}")
+                .And.InnerException.TypeOf<TargetInvocationException>());
+        }
     }
 
     [TestFixture]

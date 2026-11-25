@@ -51,7 +51,11 @@ public class SszContainerTests
         .Add<ComplexTestStruct>()
         .Add<BitsStruct>()
         .Add<ProgressiveTestStruct>()
-        .Add<ProgressiveBitsStruct>();
+        .Add<ProgressiveBitsStruct>()
+        .Add<ProgressiveSingleFieldContainerTestStruct>()
+        .Add<ProgressiveSingleListContainerTestStruct>()
+        .Add<ProgressiveVarTestStruct>()
+        .Add<ProgressiveComplexTestStruct>();
 
     [TestCaseSource(nameof(ValidContainerCases))]
     public void Container_valid_roundtrip_and_root(string casePath, string containerType)
@@ -84,11 +88,11 @@ public class SszContainerTests
     }
 
     // --- Test case sources ---
-    // Structure: containers/valid/{case_name}/ and containers/invalid/{case_name}/
+    // Structure: {handler}/valid/{case_name}/ and {handler}/invalid/{case_name}/
     // Case names: "{ContainerType}_{descriptor}" e.g. "BitsStruct_lengthy_0"
 
-    private static IEnumerable<TestCaseData> ValidContainerCases() => GetCases("containers", "valid");
-    private static IEnumerable<TestCaseData> InvalidContainerCases() => GetCases("containers", "invalid");
+    private static IEnumerable<TestCaseData> ValidContainerCases() => [.. GetCases("containers", "valid"), .. GetCases("progressive_containers", "valid")];
+    private static IEnumerable<TestCaseData> InvalidContainerCases() => [.. GetCases("containers", "invalid"), .. GetCases("progressive_containers", "invalid")];
 
     private static IEnumerable<TestCaseData> GetCases(string handler, string validity)
     {
@@ -103,7 +107,7 @@ public class SszContainerTests
             string containerType = ExtractContainerType(caseName);
 
             yield return new TestCaseData(casePath, containerType)
-                .SetName($"containers/{validity}/{caseName}");
+                .SetName($"{handler}/{validity}/{caseName}");
         }
     }
 }

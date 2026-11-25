@@ -59,10 +59,11 @@ namespace Nethermind.Network
             P2PProtocolInitializedEventArgs args = (P2PProtocolInitializedEventArgs)eventArgs;
             bool valid = ValidateP2PVersion(args.P2PVersion) || Disconnect(session, DisconnectReason.IncompatibleP2PVersion, CompatibilityValidationType.P2PVersion, $"p2p.{args.P2PVersion}");
             if (!valid) return false;
+            if (_clientIdPattern is null || session.Node.IsStatic || session.Node.IsTrusted) return true;
 
             try
             {
-                if (_clientIdPattern?.IsMatch(args.ClientId) == false)
+                if (!_clientIdPattern.IsMatch(args.ClientId))
                 {
                     session.InitiateDisconnect(DisconnectReason.ClientFiltered, $"clientId: {args.ClientId}");
                     return false;

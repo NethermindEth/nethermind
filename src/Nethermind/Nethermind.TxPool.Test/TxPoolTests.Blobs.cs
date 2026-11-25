@@ -1321,7 +1321,8 @@ namespace Nethermind.TxPool.Test
         [TestCase(1, 0ul, true)]
         [TestCase(1_000_000_000, 0ul, true)]
         [TestCase(1, 10ul, false)]
-        public void should_allow_to_add_blob_tx_with_MaxPriorityFeePerGas_lower_than_1GWei(int maxPriorityFeePerGas, ulong? configuredMinPriorityFee, bool expectedResult)
+        [TestCase(1, 10ul, false, TxHandlingOptions.PersistentBroadcast)]
+        public void should_allow_to_add_blob_tx_with_MaxPriorityFeePerGas_lower_than_1GWei(int maxPriorityFeePerGas, ulong? configuredMinPriorityFee, bool expectedResult, TxHandlingOptions options = TxHandlingOptions.None)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 };
 
@@ -1339,9 +1340,15 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(expectedResult
-                ? AcceptTxResult.Accepted
-                : AcceptTxResult.FeeTooLow));
+            AcceptTxResult result = _txPool.SubmitTx(tx, options);
+            Assert.That(result, Is.EqualTo(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow));
+            if (!expectedResult)
+            {
+                string expected = options == TxHandlingOptions.None
+                    ? AcceptTxResult.FeeTooLow.ToString()
+                    : $"{AcceptTxResult.FeeTooLow}, MaxPriorityFeePerGas for blob transaction needs to be at least {configuredMinPriorityFee}, is {maxPriorityFeePerGas}.";
+                Assert.That(result.ToString(), Is.EqualTo(expected));
+            }
         }
 
         [Test]

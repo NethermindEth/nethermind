@@ -152,7 +152,23 @@ public class EraStore : IEraStore
     private EraReader GetReader(long epoch)
     {
         GuardMissingEpoch(epoch);
-        return new EraReader(new E2StoreReader(_epochs[epoch]));
+        EraReader reader = new(new E2StoreReader(_epochs[epoch]));
+        try
+        {
+            ulong firstBlock = reader.FirstBlock;
+            if (epoch == FirstEpoch) return reader;
+
+            ulong expectedFirstBlock = FirstBlock + (ulong)(epoch - FirstEpoch) * _maxEraFile;
+            if (firstBlock != expectedFirstBlock)
+                throw new EraVerificationException($"Era file of epoch {epoch} starts at block {firstBlock}, expected {expectedFirstBlock}.");
+
+            return reader;
+        }
+        catch
+        {
+            reader.Dispose();
+            throw;
+        }
     }
 
     private async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)

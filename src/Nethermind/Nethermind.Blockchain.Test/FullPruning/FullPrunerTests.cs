@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -252,6 +253,32 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void pruning_reports_an_error_when_the_copy_cannot_be_created()
+    {
+        TestLogger logger = new();
+        TestContext test = new(
+            true,
+            false,
+            FullPruningCompletionBehavior.None,
+            fullPrunerMemoryBudgetMb,
+            degreeOfParallelism,
+            availableSpaceCheckEnabled: false,
+            logManager: new OneLoggerLogManager(new(logger)),
+            failCopyCreation: true);
+        PruningTriggerEventArgs? capturedArgs = null;
+        test.PruningTrigger.Prune += (_, e) => capturedArgs = e;
+
+        test.TriggerPruningViaEvent();
+
+        Assert.That(() => logger.LogList, Has.Some.Contains("full pruning failed to start").After(Timeout.MaxTestTime, 10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedArgs!.Status, Is.EqualTo(PruningStatus.Starting));
+            Assert.That(test.FullPruningDb.CanStartPruning, Is.True);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task pruning_fails_without_committing_when_a_node_is_missing()
     {
         TestContext test = new(
@@ -371,14 +398,22 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current,
             bool availableSpaceCheckEnabled = true,
             IChainEstimations? chainEstimations = null,
-            ILogManager? logManager = null)
+            ILogManager? logManager = null,
+            bool failCopyCreation = false)
         {
             BlockTree.OnUpdateMainChain += (_, e) => _head = e.Headers[^1].Number;
             _clearPrunedDb = clearPrunedDb;
             TrieDb = new TestMemDb();
             CopyDb = new TestMemDb();
             IDbFactory dbFactory = Substitute.For<IDbFactory>();
-            dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
+            if (failCopyCreation)
+            {
+                dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(_ => TrieDb, static _ => throw new IOException("The old copy could not be deleted."));
+            }
+            else
+            {
+                dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
+            }
 
             _trieDbNodeStorage = new NodeStorageFactory(currentKeyScheme, LimboLogs.Instance).WrapKeyValueStore(TrieDb);
             PatriciaTree trie = Build.A.Trie(_trieDbNodeStorage).WithAccountsByIndex(0, 100).TestObject;

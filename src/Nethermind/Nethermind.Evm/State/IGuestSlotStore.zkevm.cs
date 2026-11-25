@@ -16,6 +16,15 @@ public interface IGuestSlotStore
     /// <returns>The slot's index, for <see cref="WriteAt"/> before any other storage access.</returns>
     int ReadForStore(in StorageCell storageCell, out UInt256 current, out UInt256 original);
 
-    /// <summary>Writes <paramref name="newValue"/> to the slot <see cref="ReadForStore"/> found, as <see cref="IWorldState.Set(in StorageCell, in UInt256)"/> does.</summary>
-    void WriteAt(int slot, in UInt256 newValue);
+    /// <summary>Writes <paramref name="newValue"/> to the slot <see cref="ReadForStore"/> found, as <see cref="IWorldState.Set(in StorageCell, in UInt256, in UInt256)"/> does.</summary>
+    /// <param name="slot">The index <see cref="ReadForStore"/> returned.</param>
+    /// <param name="storageCell">The cell <see cref="ReadForStore"/> was given.</param>
+    /// <param name="current">The value <see cref="ReadForStore"/> read.</param>
+    /// <param name="newValue">The value to write.</param>
+    void WriteAt(int slot, in StorageCell storageCell, in UInt256 current, in UInt256 newValue);
+
+    /// <summary>Reads the transient storage of <paramref name="address"/> at <paramref name="index"/>, as <see cref="IWorldState.GetTransientState"/> does.</summary>
+    /// <remarks>Builds the storage cell, which hashes it, only when the store holds any value: TLOAD of an empty store reads zero.</remarks>
+    /// <param name="value">The value read. It may be the same variable as <paramref name="index"/>: read the index before writing the value.</param>
+    void ReadTransient(Address address, in UInt256 index, out UInt256 value);
 }

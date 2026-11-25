@@ -9,6 +9,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -58,8 +59,11 @@ namespace Nethermind.Consensus.Producers
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader header = base.PrepareBlockHeader(parent, payloadAttributes);
+            IReleaseSpec spec = _specProvider.GetSpec(header);
             // EIP-4788 requires the field once Cancun is active; there is no beacon chain to supply it
-            if (_specProvider.GetSpec(header).IsBeaconBlockRootAvailable) header.ParentBeaconBlockRoot ??= Hash256.Zero;
+            if (spec.IsBeaconBlockRootAvailable) header.ParentBeaconBlockRoot ??= Hash256.Zero;
+            // EIP-4844: without the field the block has no blob base fee, so BLOBBASEFEE is invalid and blob transactions fail
+            header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             return header;
         }
 
