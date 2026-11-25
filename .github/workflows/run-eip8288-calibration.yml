@@ -1,11 +1,18 @@
 name: Run EIP-8288 Calibration
 
-# Runs the EIP-8288 proving and verification calibration suite (NethermindEth/lean-bindings, src/ffi/calibration) on
-# an ephemeral GCE VM created through .github/actions/gcp-runner. All calibration logic is in the suite's
-# ci/run-calibration.sh; this workflow only provisions the machine, calls it and collects the output.
+# Runs the EIP-8288 proving and verification calibration suite (NethermindEth/lean-bindings, src/ffi/calibration), or
+# Nethermind's EIP-8288 builder-aggregation and mempool benchmarks (scripts/eip8288-bench at nethermind_ref), on an
+# ephemeral GCE VM created through .github/actions/gcp-runner. All benchmark logic is in the suite's
+# ci/run-calibration.sh or in scripts/eip8288-bench/run.sh; this workflow only provisions the machine, calls it and collects
+# the output.
 on:
   workflow_dispatch:
     inputs:
+      suite:
+        description: lean-bindings runs the calibration suite; nethermind-bench runs scripts/eip8288-bench/run.sh from nethermind_ref
+        type: choice
+        options: [lean-bindings, nethermind-bench]
+        default: lean-bindings
       config:
         description: Suite config under src/ffi/calibration/configs, run as one scenario
         type: choice
@@ -28,7 +35,7 @@ on:
         type: string
         default: ''
       machine_type:
-        description: GCE machine type (x86-64 only). Constants only compare across runs on the same type.
+        description: GCE machine type (x86-64 only). Constants only compare across runs on the same type. nethermind-bench needs (NODES + 1) x NODE_CPUS vCPUs for mempool, 56 by default, so c3-standard-88
         type: string
         default: c3-highmem-22
       provisioning:
@@ -57,6 +64,18 @@ on:
         description: Also time Nethermind's ecrecover precompile at this commit as the native-verification gas anchor
         type: boolean
         default: false
+      nethermind_ref:
+        description: nethermind-bench only; the Nethermind branch, tag or commit whose scripts/eip8288-bench runs
+        type: string
+        default: feature/eip8288-eth76-benchmarks
+      bench_scenarios:
+        description: nethermind-bench only; comma-separated builder (scenario B) and mempool (scenario A)
+        type: string
+        default: builder,mempool
+      bench_env:
+        description: nethermind-bench only; space-separated NAME=value settings for run.sh, e.g. COUNTS=20,200 REPEATS=5 RATE=5
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -71,6 +90,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       scenarios: ${{ steps.resolve.outputs.scenarios }}
+      bench_scenarios: ${{ steps.resolve.outputs.bench_scenarios }}
       boot_disk_type: ${{ steps.resolve.outputs.boot_disk_type }}
       job_timeout: ${{ steps.resolve.outputs.job_timeout }}
       max_run_duration: ${{ steps.resolve.outputs.max_run_duration }}
@@ -85,6 +105,9 @@ jobs:
           REF: ${{ inputs.lean_bindings_ref }}
           TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
           LEANVM_REVS: ${{ inputs.leanvm_revs }}
+          NETHERMIND_REF: ${{ inputs.nethermind_ref }}
+          BENCH_SCENARIOS: ${{ inputs.bench_scenarios }}
+          BENCH_ENV: ${{ inputs.bench_env }}
         run: |
           set -euo pipefail
           fail() { echo "::error::$1"; exit 1; }
@@ -99,6 +122,10 @@ jobs:
           case $MACHINE_TYPE in *-lssd) fail "$MACHINE_TYPE bundles local SSDs; this workflow requests none" ;; esac
           [[ $REF =~ ^$name$ ]] || fail "lean_bindings_ref must be a branch, tag or commit"
           [[ $LEANVM_REVS =~ ^($name(,$name)*)?$ ]] || fail "leanvm_revs must be comma-separated revisions"
+          [[ $NETHERMIND_REF =~ ^$name$ ]] || fail "nethermind_ref must be a branch, tag or commit"
+          [[ $BENCH_SCENARIOS =~ ^(builder|mempool)(,(builder|mempool))*$ ]] || fail "bench_scenarios must be builder and/or mempool"
+          # run.sh reads these from its environment; plain values only, so they cannot reach a command line as code.
+          [[ $BENCH_ENV =~ ^([A-Z][A-Z0-9_]*=[A-Za-z0-9_.,:/-]*( +|$))*$ ]] || fail "bench_env must be space-separated NAME=value words"
           if [[ ! $TIMEOUT_MINUTES =~ ^[1-9][0-9]{0,2}$ ]] || (( TIMEOUT_MINUTES > 360 )); then fail "timeout_minutes must be 1-360"; fi
           disk=$BOOT_DISK_TYPE
           if [[ $disk == auto ]]; then
@@ -108,6 +135,7 @@ jobs:
           # adds boot time on top, as the backstop GCE enforces if teardown fails.
           {
             echo "scenarios=$scenarios"
+            echo "bench_scenarios=$BENCH_SCENARIOS"
             echo "boot_disk_type=$disk"
             echo "job_timeout=$(( TIMEOUT_MINUTES + 60 ))"
             echo "max_run_duration=$(( TIMEOUT_MINUTES + 90 ))m"
@@ -166,6 +194,7 @@ jobs:
       RUN_DIR: eip8288-calibration-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Calibrate
+        if: ${{ inputs.suite == 'lean-bindings' }}
         env:
           REF: ${{ inputs.lean_bindings_ref }}
           SCENARIOS: ${{ needs.resolve.outputs.scenarios }}
@@ -186,8 +215,28 @@ jobs:
           [[ -z $LEANVM_REVS ]] || args+=(--leanvm-revs "$LEANVM_REVS")
           "$scratch/lean-bindings/src/ffi/calibration/ci/run-calibration.sh" "${args[@]}"
 
+      - name: Run the Nethermind EIP-8288 benchmarks
+        if: ${{ inputs.suite == 'nethermind-bench' }}
+        env:
+          NETHERMIND_REF: ${{ inputs.nethermind_ref }}
+          BENCH_SCENARIOS: ${{ needs.resolve.outputs.bench_scenarios }}
+          BENCH_ENV: ${{ inputs.bench_env }}
+          BENCH_MACHINE_TYPE: ${{ inputs.machine_type }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+        run: |
+          set -euo pipefail
+          scratch=$RUNNER_TEMP/$RUN_DIR
+          rm -rf "$scratch"
+          mkdir -p "$scratch/out"
+          git clone -q --filter=blob:none https://github.com/NethermindEth/nethermind.git "$scratch/nethermind"
+          git -C "$scratch/nethermind" -c advice.detachedHead=false checkout -q "$NETHERMIND_REF"
+          echo "nethermind $NETHERMIND_REF at $(git -C "$scratch/nethermind" rev-parse HEAD)"
+          read -ra settings <<< "$BENCH_ENV"
+          timeout "${TIMEOUT_MINUTES}m" env ${settings[@]+"${settings[@]}"} \
+            "$scratch/nethermind/scripts/eip8288-bench/run.sh" "$scratch/out" "$BENCH_SCENARIOS"
+
       - name: Time the ecrecover anchor
-        if: ${{ !cancelled() && inputs.ecrecover_anchor }}
+        if: ${{ !cancelled() && inputs.suite == 'lean-bindings' && inputs.ecrecover_anchor }}
         run: |
           set -euo pipefail
           scratch=$RUNNER_TEMP/$RUN_DIR
@@ -201,6 +250,7 @@ jobs:
           shopt -s nullglob
           scratch=$RUNNER_TEMP/$RUN_DIR
           [[ ! -f $scratch/out/host.txt ]] || { echo '```'; cat "$scratch/out/host.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [[ ! -f $scratch/out/summary.md ]] || head -c 900000 "$scratch/out/summary.md" >> "$GITHUB_STEP_SUMMARY"
           # GitHub drops a step summary over 1 MiB entirely, so the reports share a budget; all are in the artifact.
           budget=900000
           for report in "$scratch"/out/*/report.md; do
@@ -217,12 +267,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: eip8288-calibration-${{ inputs.machine_type }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: eip8288-${{ inputs.suite == 'lean-bindings' && 'calibration' || 'bench' }}-${{ inputs.machine_type }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/${{ env.RUN_DIR }}/out
             !${{ runner.temp }}/${{ env.RUN_DIR }}/out/.home
             !${{ runner.temp }}/${{ env.RUN_DIR }}/out/**/bin
             !${{ runner.temp }}/${{ env.RUN_DIR }}/out/**/corpus
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/baseline-src
+            !${{ runner.temp }}/${{ env.RUN_DIR }}/out/**/signatures.bin
           if-no-files-found: warn
           retention-days: 30
 
