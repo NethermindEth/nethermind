@@ -197,6 +197,12 @@ public class OptimismEthRpcModule(
             return await base.eth_sendRawTransaction(transaction);
         }
 
+        // Like op-geth, reject bytes that are not a transaction here instead of waiting on the sequencer for the answer.
+        if (DecodeRawTransaction(transaction) is null)
+        {
+            return InvalidRawTransaction();
+        }
+
         string? response = await sequencerRpcClient.Post(nameof(eth_sendRawTransaction), transaction);
         JsonRpcResponse<Hash256>? forwarded = null;
         if (!string.IsNullOrWhiteSpace(response))
