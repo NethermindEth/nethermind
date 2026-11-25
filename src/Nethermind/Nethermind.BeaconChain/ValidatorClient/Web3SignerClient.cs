@@ -64,21 +64,24 @@ public sealed class Web3SignerClient(IValidatorClientConfig config, BeaconChainS
             new AttestationDto(HexConvert.BitListToHex(aggregate.AggregationBits!), ToDto(aggregate.Data), aggregate.Signature.ToString(), HexConvert.BitVectorToHex(aggregate.CommitteeBits!)),
             aggregateAndProof.SelectionProof.ToString());
         return Sign(publicKey, Request("AGGREGATE_AND_PROOF_V2", DomainType.AggregateAndProof, epoch, SszRoots.HashTreeRoot(aggregateAndProof))
-            with { AggregateAndProof = new VersionedDto(ResponseEnvelope.ForkName(spec.ForkAtEpoch(epoch)).ToUpperInvariant(), data) },
+            with
+        { AggregateAndProof = new VersionedDto(ResponseEnvelope.ForkName(spec.ForkAtEpoch(epoch)).ToUpperInvariant(), data) },
             $"the aggregate of {publicKey} for slot {aggregate.Data.Slot}", cancellationToken);
     }
 
     /// <inheritdoc/>
     public ValueTask<BlsSignature> SignSyncCommitteeMessage(BlsPublicKey publicKey, ulong slot, Hash256 beaconBlockRoot, CancellationToken cancellationToken) =>
         Sign(publicKey, Request("SYNC_COMMITTEE_MESSAGE", DomainType.SyncCommittee, spec.GetEpoch(slot), beaconBlockRoot)
-            with { SyncCommitteeMessage = new SyncCommitteeMessageDto(beaconBlockRoot.ToString(), slot.ToString()) },
+            with
+        { SyncCommitteeMessage = new SyncCommitteeMessageDto(beaconBlockRoot.ToString(), slot.ToString()) },
             $"the sync committee message of {publicKey} for slot {slot}", cancellationToken);
 
     /// <inheritdoc/>
     public ValueTask<BlsSignature> SignSyncCommitteeSelectionProof(BlsPublicKey publicKey, ulong slot, ulong subcommitteeIndex, CancellationToken cancellationToken) =>
         Sign(publicKey, Request("SYNC_COMMITTEE_SELECTION_PROOF", DomainType.SyncCommitteeSelectionProof, spec.GetEpoch(slot),
                 SszRoots.HashTreeRoot(new SyncAggregatorSelectionData { Slot = slot, SubcommitteeIndex = subcommitteeIndex }))
-            with { SyncAggregatorSelectionData = new SyncAggregatorSelectionDataDto(slot.ToString(), subcommitteeIndex.ToString()) },
+            with
+        { SyncAggregatorSelectionData = new SyncAggregatorSelectionDataDto(slot.ToString(), subcommitteeIndex.ToString()) },
             $"the sync committee selection proof of {publicKey} for slot {slot} and subcommittee {subcommitteeIndex}", cancellationToken);
 
     /// <inheritdoc/>
@@ -89,7 +92,8 @@ public sealed class Web3SignerClient(IValidatorClientConfig config, BeaconChainS
             new SyncCommitteeContributionDto(contribution.Slot.ToString(), contribution.BeaconBlockRoot!.ToString(), contribution.SubcommitteeIndex.ToString(),
                 HexConvert.BitVectorToHex(contribution.AggregationBits!), contribution.Signature.ToString()));
         return Sign(publicKey, Request("SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF", DomainType.ContributionAndProof, spec.GetEpoch(contribution.Slot), SszRoots.HashTreeRoot(contributionAndProof))
-            with { ContributionAndProof = data },
+            with
+        { ContributionAndProof = data },
             $"the contribution of {publicKey} for slot {contribution.Slot} and subcommittee {contribution.SubcommitteeIndex}", cancellationToken);
     }
 
