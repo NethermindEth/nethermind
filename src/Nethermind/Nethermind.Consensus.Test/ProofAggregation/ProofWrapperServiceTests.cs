@@ -895,6 +895,35 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // A proof whose wrapper was never published, as its selection changed while proving, does not stand for what is left of the
+    // bucket: that is proven and published.
+    [Test]
+    public void Unpublished_proof_does_not_stand_for_the_rest_of_its_bucket()
+    {
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("second"), default);
+        Transaction a = InBucket(0, CreateTransaction(first, TestItem.KeccakA));
+        Transaction b = InBucket(0, CreateTransaction(second, TestItem.KeccakB));
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified([first, second], [[1], [1]], null);
+        Transaction[] pending = [a, b];
+        ITxPool pool = Substitute.For<ITxPool>();
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService(pending, store, verifier, pool: pool);
+        pool.GetPendingTransactions().Returns(_ => pending);
+        verifier.OnProving = () => pending = [a];
+
+        Result<byte[]> changed = service.BuildWrapper();
+        verifier.OnProving = null;
+        Result<byte[]> rest = service.BuildWrapper();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changed.Error, Does.Contain("selection changed"));
+            Assert.That(rest.IsSuccess ? Decode(rest.Data!).Transactions.Select(static tx => tx.Hash) : null, Is.EqualTo(new[] { a.Hash }), rest.Error);
+        }
+    }
+
     // Transactions whose inputs are unavailable, however many rank above the rest, are passed over rather than leaving the bucket
     // unaggregated.
     [Test]

@@ -45,7 +45,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     private const uint AllBuckets = uint.MaxValue >> (32 - BucketCount);
 
-    private readonly double _aggregationProbability = txPoolConfig?.AggregationProbability ?? 1;
     private readonly Random _random = random ?? Random.Shared;
     private Hash256? _selectionHead;
     private uint _selectedBuckets;
@@ -1067,7 +1066,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         Hash256? head = blockFinder.Head?.Hash;
         if (head is null || head != _selectionHead)
         {
-            _selectedBuckets = DrawBuckets(_random, _aggregationProbability);
+            _selectedBuckets = DrawBuckets(_random, txPoolConfig?.AggregationProbability ?? 1);
             _selectionHead = head;
         }
         return _selectedBuckets;
@@ -1246,13 +1245,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (RefreshVerifier() != verifier) return Result<byte[]>.Fail(VerifierChangedDuringAdmission);
                 leanProofStore.AddCachedRecursive(deps, proof!);
             }
-            MarkStanding(hash);
             byte[] encoded = MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes;
             if (encoded.Length > Eip8288Constants.MaxWrapperBytes)
                 return Result<byte[]>.Fail("Aggregated wrapper exceeds the size limit.");
             if (!ArePending(hashes))
                 return Result<byte[]>.Fail("Proof wrapper selection changed while aggregating; retry with the current pool.");
             RecursiveProofInput parent = new(deps, proof!);
+            // Only a statement published as a wrapper may stand for its bucket.
+            MarkStanding(hash);
             Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), parent, verifier));
             return Result<byte[]>.Success(returnEncoded ? encoded : []);
         }
