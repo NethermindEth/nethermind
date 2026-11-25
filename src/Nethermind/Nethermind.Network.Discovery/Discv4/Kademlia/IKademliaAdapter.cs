@@ -28,6 +28,10 @@ public interface IKademliaAdapter : IKademliaMessageSender<PublicKey, Node>, IDi
     /// <summary>
     /// Reads bonded nodes whose P2P endpoint was advertised by the node itself.
     /// </summary>
+    /// <remarks>
+    /// Each yielded node holds a publish reservation; the discovery assembly releases it when it discards a
+    /// candidate. Consumers outside the assembly cannot release a reservation.
+    /// </remarks>
     /// <param name="token">Cancellation token.</param>
     /// <returns>A stream of nodes with a usable TCP endpoint.</returns>
     IAsyncEnumerable<Node> ReadPeerCandidates(CancellationToken token);

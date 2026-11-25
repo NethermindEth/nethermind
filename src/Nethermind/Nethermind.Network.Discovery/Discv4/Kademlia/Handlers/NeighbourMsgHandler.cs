@@ -7,7 +7,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 
-public sealed class NeighbourMsgHandler(int k, IPAddress localIp) : ITaskCompleter<Node[]>
+public sealed class NeighbourMsgHandler(int k, IPAddress localIp, IPEndPoint expectedEndpoint) : ITaskCompleter<Node[]>
 {
     private readonly Lock _lock = new();
     private readonly Node[] _nodes = new Node[k];
@@ -21,8 +21,9 @@ public sealed class NeighbourMsgHandler(int k, IPAddress localIp) : ITaskComplet
     public bool Handle(DiscoveryMsg msg)
     {
         if (TaskCompletionSource.Task.IsCompleted) return false;
-
-        NeighborsMsg neighborsMsg = (NeighborsMsg)msg;
+        if (msg is not NeighborsMsg neighborsMsg) return false;
+        // The response only correlates with the request if it comes back from the endpoint we queried.
+        if (msg.FarAddress is not { } farAddress || !expectedEndpoint.Equals(farAddress)) return false;
         bool isComplete;
 
         lock (_lock)

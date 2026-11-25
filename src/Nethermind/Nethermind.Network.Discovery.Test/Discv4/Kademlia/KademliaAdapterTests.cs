@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
@@ -22,6 +23,8 @@ using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Discovery.Test.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
@@ -59,6 +62,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private const int ExpiringRequestTimeoutMs = 100;
 
         private IKademliaAdapter _adapter = null!;
+        private PeerCandidateReservations _reservations = null!;
+        // Containers built by CreateGate and CreateAdmission, released in teardown so the decorator outlives the assertions.
+        private readonly List<IContainer> _containers = [];
 
         private IKademlia<PublicKey, Node> _kademliaMessageReceiver = null!;
         private IRoutingTable<Node, ValueHash256> _routingTable = null!;
@@ -151,7 +157,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
         }
 
-        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1, IEcdsa? ecdsa = null, int maxOutgoingMessagePerSecond = 500)
+        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1, IEcdsa? ecdsa = null, int maxOutgoingMessagePerSecond = 500, INodeHealthTracker<Node>? nodeHealthTracker = null, bool useCompatibilityConstructor = false)
         {
             if (listenerState is null)
             {
@@ -160,30 +166,33 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 listenerState.SetDiscoveryAddress(IPAddress.Any);
             }
 
-            return new KademliaAdapter(
-                new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
-                _routingTable,
-                new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
-                new DiscoveryConfig
-                {
-                    EnrTimeout = requestTimeoutMs,
-                    PingTimeout = requestTimeoutMs,
-                    SendNodeTimeout = requestTimeoutMs,
-                    BondWaitTime = bondWaitTime,
-                    MaxOutgoingMessagePerSecond = maxOutgoingMessagePerSecond,
-                },
-                _kademliaConfig,
-                _nodeRecordProvider,
-                _ipResolver,
-                _nodeStatsManager,
-                _timestamper,
-                Substitute.For<IProcessExitSource>(),
-                ecdsa ?? new Ecdsa(),
-                _logManager,
-                listenerState)
+            Lazy<IKademlia<PublicKey, Node>> kademlia = new(() => _kademliaMessageReceiver);
+            Lazy<INodeHealthTracker<Node>> tracker = new(() => nodeHealthTracker ?? _nodeHealthTracker);
+            DiscoveryConfig discoveryConfig = new()
             {
-                MsgSender = _msgSender,
+                EnrTimeout = requestTimeoutMs,
+                PingTimeout = requestTimeoutMs,
+                SendNodeTimeout = requestTimeoutMs,
+                BondWaitTime = bondWaitTime,
+                MaxOutgoingMessagePerSecond = maxOutgoingMessagePerSecond,
             };
+            IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+            IEcdsa signer = ecdsa ?? new Ecdsa();
+
+            _reservations = useCompatibilityConstructor
+                ? PeerCandidateReservations.For(_kademliaConfig)
+                : new PeerCandidateReservations(_kademliaConfig);
+
+            KademliaAdapter adapter = useCompatibilityConstructor
+                ? new KademliaAdapter(kademlia, _routingTable, tracker, discoveryConfig, _kademliaConfig,
+                    _nodeRecordProvider, _ipResolver, _nodeStatsManager, _timestamper, processExitSource, signer,
+                    _logManager, listenerState)
+                : new KademliaAdapter(kademlia, _routingTable, tracker, discoveryConfig, _kademliaConfig,
+                    _reservations, _nodeRecordProvider, _ipResolver, _nodeStatsManager, _timestamper,
+                    processExitSource, signer, _logManager, listenerState);
+
+            adapter.MsgSender = _msgSender;
+            return adapter;
         }
 
         private async Task UseExpiringRequestTimeouts()
@@ -235,7 +244,17 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         }
 
         [TearDown]
-        public async Task TearDown() => await _adapter.DisposeAsync();
+        public async Task TearDown()
+        {
+            await _adapter.DisposeAsync();
+
+            for (int i = _containers.Count - 1; i >= 0; i--)
+            {
+                await _containers[i].DisposeAsync();
+            }
+
+            _containers.Clear();
+        }
 
         private T AddReceiverFarAddress<T>(T msg) where T : DiscoveryMsg
         {
@@ -264,13 +283,16 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             return enumerator.Current;
         }
 
-        private async Task AssertNoPeerCandidate(CancellationToken token)
+        private Task AssertNoPeerCandidate(CancellationToken token)
+            => AssertNoCandidate(_adapter.ReadPeerCandidates, token);
+
+        private static async Task AssertNoCandidate(
+            Func<CancellationToken, IAsyncEnumerable<Node>> candidates,
+            CancellationToken token)
         {
             using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
             timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(100));
-            await using IAsyncEnumerator<Node> enumerator = _adapter
-                .ReadPeerCandidates(timeoutCts.Token)
-                .GetAsyncEnumerator(timeoutCts.Token);
+            await using IAsyncEnumerator<Node> enumerator = candidates(timeoutCts.Token).GetAsyncEnumerator(timeoutCts.Token);
 
             try
             {
@@ -279,6 +301,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !token.IsCancellationRequested)
             {
             }
+        }
+
+        private static async Task<Node> ReadGateCandidate(IKademliaAdapter gate, CancellationToken token)
+        {
+            await using IAsyncEnumerator<Node> enumerator = gate.ReadPeerCandidates(token).GetAsyncEnumerator(token);
+            Assert.That(await enumerator.MoveNextAsync(), Is.True);
+            return enumerator.Current;
         }
 
         private DiscoveryMsg CreateUnsolicitedResponse(MsgType msgType) =>
@@ -374,6 +403,22 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
             await AssertNoPeerCandidate(token);
             ecdsa.DidNotReceive().RecoverCompressedPublicKey(Arg.Any<Signature>(), Arg.Any<ValueHash256>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Compatibility_constructor_uses_the_configured_reservation_store(CancellationToken token)
+        {
+            await _adapter.DisposeAsync();
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, useCompatibilityConstructor: true);
+            _receiver.Enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyB,
+                _receiver.Address.Address, tcpPort: 30303, udpPort: 30303);
+            ConfigureBondCallback();
+#pragma warning disable NUnit2045 // The reservation is a precondition for the ping; preserve fail-fast ordering.
+            Assert.That(_reservations.TryReserve(_receiver.IdHash), Is.True);
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+#pragma warning restore NUnit2045
+            await AssertNoPeerCandidate(token);
         }
 
         [Test]
@@ -1079,6 +1124,231 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
+        public async Task OnPingMessage_FromFilteredIp_IsIgnored()
+        {
+            INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
+            (_, INodeHealthTracker<Node> filteringTracker) = CreateAdmission(admitted);
+
+            await _adapter.DisposeAsync();
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: filteringTracker);
+
+            Queue<PublicKey> pendingPongs = new([TestItem.PublicKeyC, TestItem.PublicKeyD]);
+            _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(ci =>
+            {
+                PingMsg sent = (PingMsg)ci[0]!;
+                // Serialization assigns the ping MDC that the pong handler matching keys on.
+                _receiverSerializationManager.SerializeToArray(sent);
+                PongMsg pong = new(
+                    pendingPongs.Dequeue(),
+                    _timestamper.UnixTime.SecondsLong + 1,
+                    sent.Mdc!.Value,
+                    enrSequence: null);
+                pong.FarAddress = sent.FarAddress;
+                return _adapter.OnIncomingMsg(pong);
+            });
+
+            IPEndPoint address = new(IPAddress.Parse("203.0.113.50"), 30303);
+            await _adapter.OnIncomingMsg(CreatePing(TestItem.PublicKeyC, address));
+            await _adapter.OnIncomingMsg(CreatePing(TestItem.PublicKeyD, address));
+
+            Node[] receivedNodes = admitted.ReceivedCalls()
+                .Select(call => (Node)call.GetArguments()[0]!)
+                .ToArray();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receivedNodes.Select(node => node.Id), Does.Contain(TestItem.PublicKeyC),
+                    $"received: {string.Join(", ", receivedNodes.Select(node => $"{node.Id}@{node.Address}"))}");
+                Assert.That(receivedNodes.Select(node => node.Id), Does.Not.Contain(TestItem.PublicKeyD));
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Filtered_ping_is_still_answered_but_not_admitted(CancellationToken token)
+        {
+            INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
+            (DiscoveryNodeAdmission admission, INodeHealthTracker<Node> filteringTracker) = CreateAdmission(admitted);
+
+            await _adapter.DisposeAsync();
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: filteringTracker);
+            IKademliaAdapter gate = CreateGate(admission);
+            Queue<PublicKey> pendingPongs = new([TestItem.PublicKeyE, TestItem.PublicKeyD]);
+            _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(ci =>
+            {
+                PingMsg sent = (PingMsg)ci[0]!;
+                // Serialization assigns the ping MDC that the pong handler matching keys on.
+                _receiverSerializationManager.SerializeToArray(sent);
+                PongMsg pong = new(pendingPongs.Dequeue(), _timestamper.UnixTime.SecondsLong + 1, sent.Mdc!.Value);
+                pong.FarAddress = sent.FarAddress;
+                return _adapter.OnIncomingMsg(pong);
+            });
+
+            // Record the /24 through admission alone, as if a node in it had already been handled.
+            Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyC, "203.0.113.10", 30303, 30303)), Is.True);
+
+            // Control: a sender from a free subnet bonds and is both tracked and published.
+            IPEndPoint acceptedAddress = new(IPAddress.Parse("203.0.114.50"), 30303);
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyE, acceptedAddress));
+            Assert.That((await ReadGateCandidate(gate, token)).Id, Is.EqualTo(TestItem.PublicKeyE));
+            admitted.Received().OnIncomingMessageFrom(Arg.Is<Node>(node => node.Id.Equals(TestItem.PublicKeyE)));
+            _msgSender.ClearReceivedCalls();
+            admitted.ClearReceivedCalls();
+
+            // The filtered sender completes the same bond exchange, so only admission can exclude it.
+            IPEndPoint address = new(IPAddress.Parse("203.0.113.50"), 30303);
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyD, address));
+
+            using (Assert.EnterMultipleScope())
+            {
+                // The ping is answered, so the peer can still complete its endpoint proof of us.
+                await _msgSender.Received(1).SendMsg(Arg.Any<PongMsg>());
+                await _msgSender.Received(1).SendMsg(Arg.Any<PingMsg>());
+                // But the bonded sender is neither tracked nor published.
+                admitted.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
+            }
+            await AssertNoCandidate(gate.ReadPeerCandidates, token);
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Filtered_peer_candidate_is_released_so_it_can_publish_after_the_window_expires(CancellationToken token)
+        {
+            ManualTimeProvider clock = new();
+            DiscoveryNodeAdmission admission = CreateAdmission(clock);
+            IKademliaAdapter gate = CreateGate(admission);
+            Queue<PublicKey> pendingPongs = new([TestItem.PublicKeyE, TestItem.PublicKeyD]);
+            _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(ci =>
+            {
+                PingMsg sent = (PingMsg)ci[0]!;
+                // Serialization assigns the ping MDC that the pong handler matching keys on.
+                _receiverSerializationManager.SerializeToArray(sent);
+                PongMsg pong = new(pendingPongs.Dequeue(), _timestamper.UnixTime.SecondsLong + 1, sent.Mdc!.Value);
+                pong.FarAddress = sent.FarAddress;
+                return _adapter.OnIncomingMsg(pong);
+            });
+
+            // Record the /24 through admission alone, as if a node in it had already been handled.
+            Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyC, "203.0.113.10", 30303, 30303)), Is.True);
+
+            // Control: a candidate from a free subnet is published, so the ping publish path is known to work.
+            IPEndPoint admittedAddress = new(IPAddress.Parse("203.0.114.50"), 30303);
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyE, admittedAddress));
+            Assert.That((await ReadGateCandidate(gate, token)).Id, Is.EqualTo(TestItem.PublicKeyE));
+
+            // An admitted candidate keeps its reservation, so a second ping must not republish it.
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyE, admittedAddress));
+            await AssertNoPeerCandidate(token);
+
+            // The gate drops this candidate; the publish reservation must not outlive the rejection.
+            IPEndPoint filteredAddress = new(IPAddress.Parse("203.0.113.50"), 30303);
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyD, filteredAddress));
+            await AssertNoCandidate(gate.ReadPeerCandidates, token);
+
+            clock.Advance(TimeSpan.FromMinutes(5));
+
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyD, filteredAddress));
+            Assert.That((await ReadGateCandidate(gate, token)).Id, Is.EqualTo(TestItem.PublicKeyD));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Unsolicited_response_through_the_gate_does_not_consume_admission()
+        {
+            INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
+            (DiscoveryNodeAdmission admission, INodeHealthTracker<Node> tracker) = CreateAdmission(admitted);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: tracker);
+            IKademliaAdapter gate = CreateGate(admission);
+
+            PongMsg pong = new(TestItem.PublicKeyB, _timestamper.UnixTime.SecondsLong + 1, TestItem.KeccakA.ValueHash256);
+            pong.FarAddress = new IPEndPoint(IPAddress.Parse("203.0.113.20"), 30303);
+
+            await gate.OnIncomingMsg(pong);
+
+            admitted.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
+            Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyC, "203.0.113.99", 30303, 30303)), Is.True);
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Correlated_response_through_the_gate_commits_admission()
+        {
+            INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
+            (DiscoveryNodeAdmission admission, INodeHealthTracker<Node> tracker) = CreateAdmission(admitted);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: tracker);
+            IKademliaAdapter gate = CreateGate(admission);
+            _receiver = new(TestItem.PublicKeyB, "203.0.113.20", 30303);
+            _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(ci =>
+            {
+                PingMsg sent = (PingMsg)ci[0]!;
+                _receiverSerializationManager.SerializeToArray(sent);
+                PongMsg pong = new(_receiver.Id, _timestamper.UnixTime.SecondsLong + 1, sent.Mdc!.Value);
+                pong.FarAddress = sent.FarAddress;
+                return gate.OnIncomingMsg(pong);
+            });
+
+            Assert.That(await gate.Ping(_receiver, CancellationToken.None), Is.True);
+
+            admitted.Received(1).OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
+            // The correlated reply recorded the responder's subnet.
+            Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyC, "203.0.113.99", 30303, 30303)), Is.False);
+        }
+
+        private (DiscoveryNodeAdmission Admission, INodeHealthTracker<Node> Tracker) CreateAdmission(
+            INodeHealthTracker<Node> inner)
+        {
+            DiscoveryNodeAdmission admission = CreateAdmission(TimeProvider.System);
+            IContainer container = DiscoveryAdmissionTestContainer.Create(
+                currentIp: "198.51.100.1",
+                kademliaConfig: _kademliaConfig,
+                routingTable: _routingTable,
+                logManager: _logManager,
+                admission: admission,
+                innerTracker: inner);
+            _containers.Add(container);
+            return (admission, container.Resolve<INodeHealthTracker<Node>>());
+        }
+
+        private DiscoveryNodeAdmission CreateAdmission(TimeProvider timeProvider)
+        {
+            IContainer container = DiscoveryAdmissionTestContainer.Create(
+                currentIp: "198.51.100.1",
+                timeProvider: timeProvider,
+                kademliaConfig: _kademliaConfig,
+                routingTable: _routingTable,
+                logManager: _logManager);
+            _containers.Add(container);
+            return container.Resolve<DiscoveryNodeAdmission>();
+        }
+
+        private IKademliaAdapter CreateGate(DiscoveryNodeAdmission admission)
+        {
+            IContainer container = DiscoveryAdmissionTestContainer.Create(
+                currentIp: "198.51.100.1",
+                kademliaConfig: _kademliaConfig,
+                routingTable: _routingTable,
+                logManager: _logManager,
+                admission: admission,
+                innerAdapter: _adapter,
+                reservations: _reservations);
+            _containers.Add(container);
+            return container.Resolve<IKademliaAdapter>();
+        }
+
+        private PingMsg CreatePing(PublicKey publicKey, IPEndPoint address)
+        {
+            PingMsg ping = new(
+                publicKey,
+                _timestamper.UnixTime.SecondsLong + 20,
+                address,
+                _kademliaConfig.CurrentNodeId.Address,
+                new byte[32]);
+            ping.FarAddress = address;
+            return ping;
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task OnIncomingMsg_unsolicited_response_should_not_create_session_stats([Values(MsgType.Pong, MsgType.Neighbors, MsgType.EnrResponse)] MsgType msgType)
         {
             DiscoveryMsg response = CreateUnsolicitedResponse(msgType);
@@ -1342,7 +1612,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 advertisedSequence,
                 advertisedSequence,
                 tcpPort: 30303,
-                ipAddress: IPAddress.Parse("2001:db8::2"));
+                ipAddress: IPAddress.Parse("2001:db8::2"),
+                responseEndpoint: discoveryEndpoint);
             PingMsg pingMsg = new(
                 discoveryEndpoint,
                 _timestamper.UnixTime.SecondsLong + 20,
@@ -1498,9 +1769,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             ConfigureBondCallback();
             await BondReceiver(token);
             _msgSender.ClearReceivedCalls();
-            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(null, 42, tcpPort: 30303);
-
             IPEndPoint differentEndpoint = new(IPAddress.Parse("192.168.1.3"), _receiver.Address.Port);
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(null, 42, tcpPort: 30303, responseEndpoint: differentEndpoint);
+
             PingMsg pingMsg = new(differentEndpoint, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address)
             {
                 EnrSequence = 42

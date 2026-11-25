@@ -46,6 +46,21 @@ public class TrustedNodesManagerTests
     }
 
     [Test]
+    public async Task ContainsNode_TracksMembershipByPublicKey()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"test-trusted-nodes-{System.Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(path, "[]");
+        TrustedNodesManager manager = new(path, LimboLogs.Instance);
+        Enode enode = new(EnodeString);
+
+        Assert.That(manager.ContainsNode(enode.PublicKey), Is.False);
+        await manager.AddAsync(enode, updateFile: false);
+        Assert.That(manager.ContainsNode(enode.PublicKey), Is.True);
+        await manager.RemoveAsync(enode, updateFile: false);
+        Assert.That(manager.ContainsNode(enode.PublicKey), Is.False);
+    }
+
+    [Test]
     public async Task IsTrusted_AfterAdd_ReturnsTrueRegardlessOfHostOrPort()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"test-trusted-nodes-{System.Guid.NewGuid():N}.json");

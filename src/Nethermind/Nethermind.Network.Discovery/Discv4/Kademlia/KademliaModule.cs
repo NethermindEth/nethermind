@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Kademlia;
+using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 
@@ -20,11 +24,57 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 /// <param name="bootNodes"></param>
 public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(currentNode, bootNodes, DbNames.DiscoveryNodes)
 {
+    protected override bool PersistBondedEndpoint => true;
+
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+
+        builder.AddSingleton<DiscoveryNodeAdmission>((ctx) =>
+        {
+            INetworkConfig networkConfig = ctx.Resolve<INetworkConfig>();
+            IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
+            IPAddress? currentIp = IPAddress.TryParse(networkConfig.ExternalIp ?? networkConfig.LocalIp, out IPAddress? ip) ? ip : null;
+            int filterSize = Math.Max(networkConfig.MaxActivePeers, discoveryConfig.MaxNodeLifecycleManagersCount);
+            NodeFilter filter = NodeFilter.Create(
+                filterSize,
+                networkConfig.FilterDiscoveryNodesByRecentIp,
+                networkConfig.FilterDiscoveryNodesBySameSubnet,
+                currentIp);
+
+            ILogManager logManager = ctx.Resolve<ILogManager>();
+            NetworkNode[] configuredStaticNodes = NetworkNode.ParseNodes(
+                networkConfig.StaticPeers,
+                logManager.GetClassLogger<KademliaModule>());
+
+            KademliaConfig<Node> kademliaConfig = ctx.Resolve<KademliaConfig<Node>>();
+            DiscoveryNodeAdmission admission = new(
+                filter,
+                networkConfig.FilterDiscoveryNodesByRecentIp,
+                kademliaConfig,
+                logManager,
+                ctx.ResolveOptional<IStaticNodesManager>(),
+                ctx.ResolveOptional<ITrustedNodesManager>(),
+                configuredStaticNodes);
+
+            // Promoting a cached replacement bypasses the health tracker, so it re-runs this same decision.
+            kademliaConfig.CanPromoteReplacement = admission.TryAdmitPromoted;
+            // A successful refresh ping renews the incumbent inside the tracker, past the filtering decorator.
+            // The stored instance may carry stale flags, so this re-runs the flagless decision.
+            kademliaConfig.CanRefreshNode = admission.TryAdmitRefresh;
+            return admission;
+        });
+        builder.AddDecorator<INodeHealthTracker<Node>, FilteringNodeHealthTracker>();
+    }
+
     protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
             // This two class contains the actual `INodeSource` logic. As in finding nodes within the network.
             .AddSingleton<IKademliaNodeSource, NodeSource>()
 
             // Some transport wiring.
+            // The factory keeps the registration and the adapter's compatibility constructor on one store.
+            .AddSingleton<PeerCandidateReservations, KademliaConfig<Node>>(
+                static kademliaConfig => PeerCandidateReservations.For(kademliaConfig))
             .AddSingleton<IKademliaAdapter, KademliaAdapter>()
             .Bind<IDiscoveryMsgListener, IKademliaAdapter>()
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()

@@ -56,18 +56,40 @@ public class KBucket<TNode, TKadKey>(int k)
 
     internal int CopyAllWithHash((TKadKey Hash, TNode Node)[] destination) => _items.CopyAllWithKey(destination);
 
-    public bool RemoveAndReplace(in TKadKey hash)
+    /// <summary>
+    /// Removes a node and promotes the most recent cached replacement.
+    /// </summary>
+    public bool RemoveAndReplace(in TKadKey hash) => RemoveAndReplace(hash, canPromote: null);
+
+    /// <summary>
+    /// Removes a node and promotes the most recent cached replacement that <paramref name="canPromote"/> accepts.
+    /// </summary>
+    /// <remarks>
+    /// Runs while the routing table is locked. A rejected entry is discarded rather than kept for a later removal,
+    /// because the reason it was rejected can outlive this call.
+    /// </remarks>
+    public bool RemoveAndReplace(in TKadKey hash, Func<TNode, bool>? canPromote)
     {
         if (!_items.Remove(hash)) return false;
 
-        if (_replacement.TryPopHead(out TKadKey replacementHash, out TNode? replacement))
+        try
         {
-            _items.AddOrRefresh(replacementHash, replacement!);
+            while (_replacement.TryPopHead(out TKadKey replacementHash, out TNode? replacement))
+            {
+                if (canPromote is null || canPromote(replacement!))
+                {
+                    _items.AddOrRefresh(replacementHash, replacement!);
+                    break;
+                }
+            }
         }
-
-        if (_cacheItems)
+        finally
         {
-            _cachedArray = _items.GetAll();
+            // A throwing callback must not leave the snapshot pointing at the removed node.
+            if (_cacheItems)
+            {
+                _cachedArray = _items.GetAll();
+            }
         }
 
         return true;

@@ -115,6 +115,34 @@ namespace Nethermind.Network.Test
             }
         }
 
+        [Test]
+        public void Can_do_bonded_endpoint_with_fallback_enr_roundtrip()
+        {
+            NetworkNodeDecoder networkNodeDecoder = new();
+            NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), 30303, 30304);
+            // Equal ports would otherwise select the legacy format, which has no room for the ENR; this asserts the
+            // fallback forces the node-string format.
+            NetworkNode node = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("8.8.4.4"), 30303, 30303))
+            {
+                Reputation = 100L,
+                FallbackEnr = enr
+            };
+
+            byte[] encoded = networkNodeDecoder.Encode(node);
+            RlpReader context = new(encoded);
+            NetworkNode decoded = networkNodeDecoder.Decode(ref context);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.IsEnode, Is.True);
+                Assert.That(decoded.Host, Is.EqualTo("8.8.4.4"));
+                Assert.That(decoded.Port, Is.EqualTo(30303));
+                Assert.That(decoded.DiscoveryPort, Is.EqualTo(30303));
+                Assert.That(decoded.Reputation, Is.EqualTo(100L));
+                Assert.That(decoded.FallbackEnr?.ToString(), Is.EqualTo(enr.ToString()));
+            }
+        }
+
         private static NodeRecord CreateTestEnr(PrivateKey privateKey, IPAddress ipAddress, int tcpPort, int udpPort)
         {
             NodeRecord enr = new();

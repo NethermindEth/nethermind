@@ -7,14 +7,17 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Discovery.Test.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -62,13 +65,14 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _discoveryDb.Dispose();
         }
 
-        private DiscoveryPersistenceManager CreateManager(INetworkStorage storage) => new(
+        private DiscoveryPersistenceManager CreateManager(INetworkStorage storage, bool persistBondedEndpoint = false) => new(
             storage,
             _nodeStatsManager,
             _discv4Adapter,
             _kademlia,
             _discoveryConfig,
-            _logManager);
+            _logManager,
+            persistBondedEndpoint);
 
         private static Task PingReceived(IKademliaAdapter adapter, NetworkNode node, int times = 1) =>
             adapter.Received(times).Ping(
@@ -187,6 +191,45 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Invoke_Restored_Callback_Before_Ping(CancellationToken cancellationToken)
+        {
+            NetworkNode persistedNode = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("192.168.1.1"), 30303, 30304));
+            Node restoredNode = new(TestItem.PublicKeyA, IPAddress.Parse("2001:db8::1").ToString(), 30305, 30306);
+            _networkStorage.UpdateNodes([persistedNode]);
+
+            List<string> events = [];
+            _discv4Adapter.Ping(Arg.Any<Node>(), Arg.Any<CancellationToken>())
+                .Returns(_ =>
+                {
+                    events.Add("ping");
+                    return Task.FromResult(true);
+                });
+
+            await _persistenceManager.LoadPersistedNodes(
+                cancellationToken,
+                node => node.NodeId.Equals(persistedNode.NodeId) ? restoredNode : null,
+                (node, _) => events.Add($"restored:{node.Host}"));
+
+            Assert.That(events, Is.EqualTo(["restored:2001:db8::1", "ping"]));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Not_Invoke_Restored_Callback_When_Restore_Fails(CancellationToken cancellationToken)
+        {
+            _networkStorage.UpdateNodes([NodeA]);
+            bool called = false;
+
+            await _persistenceManager.LoadPersistedNodes(
+                cancellationToken,
+                _ => null,
+                (_, _) => called = true);
+
+            Assert.That(called, Is.False);
+        }
+
+        [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Update_Nodes_In_Storage()
         {
             Node[] nodes =
@@ -235,7 +278,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
         [Test]
         [CancelAfter(10000)]
-        public async Task RunDiscoveryPersistenceCommit_Should_Preserve_Enr_In_Common_Storage(CancellationToken cancellationToken)
+        public async Task RunDiscoveryPersistenceCommit_Should_Preserve_Enr_When_Not_Persisting_Bonded_Endpoint(CancellationToken cancellationToken)
         {
             NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
             Node node = new(TestItem.PrivateKeyA.PublicKey, "8.8.8.8", 30304)
@@ -260,12 +303,205 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             }
         }
 
-        private async Task<NetworkNode[]> RunSinglePersistenceCommit(Node node, CancellationToken cancellationToken)
+        [Test]
+        [CancelAfter(10000)]
+        public async Task RunDiscoveryPersistenceCommit_Should_Persist_Bonded_Enode_For_Discv4(
+            CancellationToken cancellationToken)
+        {
+            // Bonded over IPv4; the ENR also advertises IPv6, which is the only family a restart could fall back to.
+            NodeRecord enr = TestEnrBuilder.BuildSigned(
+                TestItem.PrivateKeyA,
+                IPAddress.Parse("8.8.8.8"),
+                tcpPort: 30304,
+                udpPort: 30304,
+                configureExtras: record =>
+                {
+                    record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+                    record.SetEntry(new Udp6Entry(30306));
+                });
+            // The routing entry keeps the endpoint that answered a ping, which the ENR need not advertise.
+            Node node = CreateVerifiedNode("8.8.4.4", 30304, 30304, enr);
+
+            NetworkNode[] persistedNodes = await RunSinglePersistenceCommit(node, cancellationToken, persistBondedEndpoint: true);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedNodes, Has.Length.EqualTo(1));
+                NetworkNode persistedNode = persistedNodes[0];
+                Assert.That(persistedNode.IsEnode, Is.True);
+                Assert.That(persistedNode.Host, Is.EqualTo("8.8.4.4"));
+                Assert.That(persistedNode.Port, Is.EqualTo(30304));
+                Assert.That(persistedNode.DiscoveryPort, Is.EqualTo(30304));
+                // The bonded endpoint stays the record's identity, with the signed ENR kept for family fallback.
+                Assert.That(persistedNode.FallbackEnr?.ToString(), Is.EqualTo(enr.ToString()));
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task RunDiscoveryPersistenceCommit_Should_Not_Persist_Enr_Without_Alternate_Family(
+            CancellationToken cancellationToken)
+        {
+            NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30304, udpPort: 30304);
+            Node node = CreateVerifiedNode("8.8.4.4", 30304, 30304, enr);
+
+            NetworkNode persistedNode = (await RunSinglePersistenceCommit(node, cancellationToken, persistBondedEndpoint: true)).Single();
+
+            using (Assert.EnterMultipleScope())
+            {
+                // The ENR offers nothing a listener change could reach, so the row keeps its compact legacy format.
+                Assert.That(persistedNode.IsEnode, Is.True);
+                Assert.That(persistedNode.FallbackEnr, Is.Null);
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task RunDiscoveryPersistenceCommit_Should_Not_Persist_Unverified_Enr(
+            CancellationToken cancellationToken)
+        {
+            // A dual-stack record would qualify for the fallback, so only the missing verification keeps it out.
+            NodeRecord enr = TestEnrBuilder.BuildSigned(
+                TestItem.PrivateKeyA,
+                IPAddress.Parse("8.8.8.8"),
+                tcpPort: 30304,
+                udpPort: 30304,
+                configureExtras: record =>
+                {
+                    record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+                    record.SetEntry(new Udp6Entry(30306));
+                });
+            // The public setter leaves the record unverified, as a path that skipped authentication would.
+            Node node = new(TestItem.PrivateKeyA.PublicKey, "8.8.4.4", 30304, 30304)
+            {
+                Enr = enr
+            };
+
+            NetworkNode persistedNode = (await RunSinglePersistenceCommit(node, cancellationToken, persistBondedEndpoint: true)).Single();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Enr, Is.Not.Null);
+                Assert.That(persistedNode.IsEnode, Is.True);
+                Assert.That(persistedNode.FallbackEnr, Is.Null);
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task RunDiscoveryPersistenceCommit_Persisted_Bonded_Enode_Restores_To_The_Bonded_Endpoint(
+            CancellationToken cancellationToken)
+        {
+            NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30304, udpPort: 30304);
+            Node node = CreateVerifiedNode("8.8.4.4", 30304, 30304, enr);
+
+            NetworkNode persistedNode = (await RunSinglePersistenceCommit(node, cancellationToken, persistBondedEndpoint: true)).Single();
+            Node? restoredNode = DiscoveryApp.RestorePersistedNode(persistedNode, IPAddress.Parse("200.0.0.1"));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(restoredNode, Is.Not.Null);
+                // The bonded endpoint is the one that answered a ping, so restore prefers it over the ENR's endpoint.
+                Assert.That(restoredNode!.Enr, Is.Null);
+                Assert.That(restoredNode.DiscoveryAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse("8.8.4.4"), 30304)));
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Persisted_bonded_endpoint_closes_the_restart_exemption_gap(CancellationToken cancellationToken)
+        {
+            NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("203.0.114.20"), tcpPort: 30304, udpPort: 30304);
+            Node node = CreateVerifiedNode("203.0.113.10", 30304, 30304, enr);
+            NetworkNode persistedNode = (await RunSinglePersistenceCommit(node, cancellationToken, persistBondedEndpoint: true)).Single();
+
+            using IContainer container = DiscoveryAdmissionTestContainer.Create(persisted: [persistedNode]);
+            DiscoveryNodeAdmission admission = container.Resolve<DiscoveryNodeAdmission>();
+
+            using (Assert.EnterMultipleScope())
+            {
+                // Another identity holds the subnet the ENR advertised; that address never passed admission.
+                Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyB, "203.0.114.21", 30303, 30303)), Is.True);
+                Assert.That(admission.TryAdmit(new Node(TestItem.PrivateKeyA.PublicKey, "203.0.114.20", 30303, 30303)), Is.False);
+
+                // The bonded endpoint was admitted in the previous run, so its exemption survives the restart.
+                Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyB, "203.0.113.11", 30303, 30303)), Is.True);
+                Assert.That(admission.TryAdmit(new Node(TestItem.PrivateKeyA.PublicKey, "203.0.113.10", 30303, 30303)), Is.True);
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Persisted_bonded_endpoint_restores_alternate_family_after_listener_change(
+            CancellationToken cancellationToken)
+        {
+            // The peer was bonded over IPv6, and its signed ENR also advertises an IPv4 endpoint.
+            NodeRecord enr = TestEnrBuilder.BuildSigned(
+                TestItem.PrivateKeyA,
+                IPAddress.Parse("203.0.114.20"),
+                tcpPort: 30305,
+                udpPort: 30306);
+            Node node = CreateVerifiedNode("2001:db8::1", 30303, 30304, enr);
+
+            NetworkNode persistedNode = (await RunSinglePersistenceCommit(node, cancellationToken, persistBondedEndpoint: true)).Single();
+            // The node restarts with an IPv4-only listener, so the bonded IPv6 endpoint can no longer be reached.
+            Node? restoredNode = DiscoveryApp.RestorePersistedNode(persistedNode, IPAddress.Parse("203.0.113.1"));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(restoredNode, Is.Not.Null);
+                // Host and ports both come from the ENR, not from the unreachable bonded endpoint.
+                Assert.That(restoredNode!.Host, Is.EqualTo("203.0.114.20"));
+                Assert.That(restoredNode.Port, Is.EqualTo(30305));
+                Assert.That(restoredNode.DiscoveryPort, Is.EqualTo(30306));
+                Assert.That(restoredNode.Enr?.ToString(), Is.EqualTo(enr.ToString()));
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Restored_alternate_family_goes_through_ordinary_admission(CancellationToken cancellationToken)
+        {
+            NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("203.0.114.20"), tcpPort: 30303, udpPort: 30304);
+            // The peer was bonded over IPv6; the IPv4 listener restores it from the ENR instead.
+            Node node = CreateVerifiedNode("2001:db8::10", 30303, 30304, enr);
+            NetworkNode persistedNode = (await RunSinglePersistenceCommit(node, cancellationToken, persistBondedEndpoint: true)).Single();
+
+            using IContainer container = DiscoveryAdmissionTestContainer.Create(
+                persisted: [persistedNode],
+                localIp: "198.51.100.1");
+            DiscoveryNodeAdmission admission = container.Resolve<DiscoveryNodeAdmission>();
+            Node? restoredNode = DiscoveryApp.RestorePersistedNode(persistedNode, IPAddress.Parse("198.51.100.1"));
+            Assert.That(restoredNode, Is.Not.Null);
+
+            using (Assert.EnterMultipleScope())
+            {
+                // The ENR's endpoint never passed admission, so it is filtered like any other node in a taken subnet.
+                Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyB, "203.0.114.21", 30303, 30303)), Is.True);
+                Assert.That(admission.TryAdmit(restoredNode!), Is.False);
+
+                // The bonded endpoint was admitted in the previous run, so its exemption survives the restart.
+                Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyB, "2001:db8::11", 30303, 30303)), Is.True);
+                Assert.That(admission.TryAdmit(new Node(TestItem.PrivateKeyA.PublicKey, "2001:db8::10", 30303, 30303)), Is.True);
+            }
+        }
+
+        private static Node CreateVerifiedNode(string host, int port, int discoveryPort, NodeRecord enr)
+        {
+            Node node = new(TestItem.PrivateKeyA.PublicKey, host, port, discoveryPort);
+            Assert.That(node.SetVerifiedEnr(enr), Is.True);
+            return node;
+        }
+
+        private async Task<NetworkNode[]> RunSinglePersistenceCommit(
+            Node node,
+            CancellationToken cancellationToken,
+            bool persistBondedEndpoint = false)
         {
             TaskCompletionSource commitSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
             INetworkStorage storage = new SignallingNetworkStorage(_networkStorage, commitSource);
             using CancellationTokenSource cts = new();
-            DiscoveryPersistenceManager persistenceManager = CreateManager(storage);
+            DiscoveryPersistenceManager persistenceManager = CreateManager(storage, persistBondedEndpoint);
 
             _kademlia.IterateNodes().Returns([node]);
 

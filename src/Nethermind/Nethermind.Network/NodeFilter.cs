@@ -62,6 +62,10 @@ public sealed class NodeFilter
     /// Checks whether <paramref name="ipAddress"/> should be accepted.
     /// Returns <c>true</c> if the address was not seen recently, <c>false</c> if it was.
     /// </summary>
+    /// <remarks>
+    /// Makes no ownership claim: an entry that another identity holds keeps its owner, and callers that need to
+    /// reserve an address for an identity use <see cref="TryAcceptOrRefresh"/> instead.
+    /// </remarks>
     public bool TryAccept(IPAddress ipAddress, bool exactOnly = false)
     {
         if (_cache is null) return true;
@@ -81,7 +85,7 @@ public sealed class NodeFilter
         }
         else
         {
-            _cache.Set(key, new LastSeen(now));
+            _cache.Set(key, new LastSeen(now, owner: null));
         }
         return true;
     }
@@ -94,6 +98,40 @@ public sealed class NodeFilter
         if (_cache is null) return true;
 
         return !WasSeenRecently(GetKey(ipAddress, exactOnly), NowMs());
+    }
+
+    /// <summary>
+    /// Accepts <paramref name="ipAddress"/>, or extends the live entry that <paramref name="owner"/> already
+    /// holds, in one lock scope.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="TryAccept"/>, acceptance and the ownership refresh happen in one lock scope: an insertion
+    /// for another address cannot evict the entry between the two, so an owner is never rejected against the
+    /// reservation it owns. Use this method where an owner must be able to reclaim its own entry.
+    /// </remarks>
+    internal bool TryAcceptOrRefresh(IPAddress ipAddress, object owner, bool exactOnly = false)
+    {
+        if (_cache is null) return true;
+
+        IpSubnetKey key = GetKey(ipAddress, exactOnly);
+        using Lock.Scope scope = _lock.EnterScope();
+        long now = NowMs();
+        if (_cache.TryGet(key, out LastSeen lastSeen))
+        {
+            if (now - lastSeen.Timestamp < _timeoutMs && !object.Equals(lastSeen.Owner, owner))
+            {
+                return false;
+            }
+
+            Volatile.Write(ref lastSeen.Timestamp, now);
+            lastSeen.Owner = owner;
+        }
+        else
+        {
+            _cache.Set(key, new LastSeen(now, owner));
+        }
+
+        return true;
     }
 
     public void Touch(IPAddress ipAddress, bool exactOnly = false)
@@ -112,7 +150,7 @@ public sealed class NodeFilter
         }
         else
         {
-            _cache.Set(key, new LastSeen(now));
+            _cache.Set(key, new LastSeen(now, owner: null));
         }
     }
 
@@ -120,9 +158,10 @@ public sealed class NodeFilter
     private long NowMs() => _timeProvider is null ? Environment.TickCount64 : (long)_timeProvider.GetElapsedTime(0).TotalMilliseconds;
 
     // Mutate the timestamp without replacing ClockCache's dictionary entry on every packet.
-    private sealed class LastSeen(long timestamp)
+    private sealed class LastSeen(long timestamp, object? owner)
     {
         public long Timestamp = timestamp;
+        public object? Owner = owner;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

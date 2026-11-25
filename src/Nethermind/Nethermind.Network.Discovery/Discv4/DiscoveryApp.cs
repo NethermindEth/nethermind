@@ -53,6 +53,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
                     .AddSingleton<DiscV4Services>();
 
                 configureDiscv4Services?.Invoke(builder);
+                builder.AddDecorator<IKademliaAdapter, AdmissionGatedKademliaAdapter>();
             });
 
         DiscV4Services services = _discv4Services.Resolve<DiscV4Services>();
@@ -61,6 +62,8 @@ public class DiscoveryApp : KademliaDiscoveryApp
         _discoveryHandlerFactory = services.DiscoveryHandlerFactory;
         UseKademliaServices(services.NodeSource, services.Kademlia);
     }
+
+    internal T ResolveDiscv4Service<T>() where T : notnull => _discv4Services.Resolve<T>();
 
     public override void AddNodeToDiscovery(Node node)
     {
@@ -130,10 +133,27 @@ public class DiscoveryApp : KademliaDiscoveryApp
         }
 
         Node enode = new(networkNode);
-        return enode.HasDiscoveryEndpoint &&
-               DiscoveryAddressSupport.Supports(localIp, enode.DiscoveryAddress.Address)
-            ? enode
-            : null;
+        if (enode.HasDiscoveryEndpoint &&
+            DiscoveryAddressSupport.Supports(localIp, enode.DiscoveryAddress.Address))
+        {
+            return enode;
+        }
+
+        // The bonded endpoint is in a family the listener cannot serve. The ENR kept next to it may still advertise
+        // one the listener can, so restore from it now rather than dropping a peer that was bonded before the change.
+        if (networkNode.FallbackEnr is { Signature: not null } record &&
+            KademliaAdapterBase.HasExpectedNodeId(record, networkNode.NodeId.Hash.ValueHash256) &&
+            CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
+                record,
+                localIp,
+                preferredEndpoint: enode.DiscoveryAddress,
+                out Node? fallbackNode))
+        {
+            fallbackNode.SetVerifiedEnr(record);
+            return fallbackNode;
+        }
+
+        return null;
     }
 
     internal static List<Node> CreateBootNodes(NetworkNode[] configuredBootnodes, ILogger logger, IPAddress localIp)
@@ -217,9 +237,11 @@ public class DiscoveryApp : KademliaDiscoveryApp
     protected override async Task RunDiscoveryAsync(CancellationToken cancellationToken)
     {
         //Step 1 - read nodes and stats from db
+        DiscoveryNodeAdmission admission = ResolveDiscv4Service<DiscoveryNodeAdmission>();
         await _persistenceManager.LoadPersistedNodes(
             cancellationToken,
-            node => RestorePersistedNode(node, LocalIp));
+            node => RestorePersistedNode(node, LocalIp),
+            (_, persistedNode) => admission.AddPersistedNode(persistedNode));
 
         Task persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
 
