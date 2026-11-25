@@ -82,12 +82,14 @@ public class ConfigProvider : IConfigProvider
     {
         if (!typeof(IConfig).IsAssignableFrom(configType)) throw new ArgumentException($"Type {configType} is not {typeof(IConfig)}");
 
-        if (!_instances.ContainsKey(configType))
+        if (_instances.TryGetValue(configType, out IConfig? config))
         {
-            if (!_implementations.ContainsKey(configType))
-            {
-                Initialize();
-            }
+            return config;
+        }
+
+        if (!_implementations.ContainsKey(configType))
+        {
+            Initialize();
         }
 
         return _instances[configType];
@@ -221,7 +223,7 @@ public class ConfigProvider : IConfigProvider
 
                 _implementations[@interface] = directImplementation;
 
-                object config = Activator.CreateInstance(_implementations[@interface])!;
+                object config = Activator.CreateInstance(directImplementation)!;
                 _instances[@interface] = (IConfig)config;
 
                 foreach (PropertyInfo propertyInfo in config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
