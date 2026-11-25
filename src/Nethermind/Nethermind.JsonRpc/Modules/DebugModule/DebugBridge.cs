@@ -120,7 +120,10 @@ public class DebugBridge : IDebugBridge
 
     public IEnumerable<Block> GetBadBlocks() => _badBlockStore.GetAll();
 
-    public byte[] GetDbValue(string dbName, byte[] key) => _dbMappings[dbName][key];
+    public byte[] GetDbValue(string dbName, byte[] key) =>
+        _dbMappings.TryGetValue(dbName, out IDb? db)
+            ? db[key]
+            : throw new ArgumentException($"Unknown database, expected one of: {string.Join(", ", _dbMappings.Keys)}");
 
     public ChainLevelInfo GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
 

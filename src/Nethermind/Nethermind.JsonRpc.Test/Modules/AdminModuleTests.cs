@@ -406,6 +406,15 @@ public class AdminModuleTests
     }
 
     [Test]
+    public async Task AdminSubscribe_WithUnknownName_ReturnsMethodNotFound()
+    {
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "bogusType");
+
+        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32601,\"message\":\"no \\\"bogusType\\\" subscription in admin namespace\"},\"id\":67}";
+        Assert.That(serialized, Is.EqualTo(expectedResult));
+    }
+
+    [Test]
     public async Task AdminSubscribe_WithArgumentException_ReturnsInvalidParamsWithReason()
     {
         _subscriptionManager = Substitute.For<ISubscriptionManager>();
