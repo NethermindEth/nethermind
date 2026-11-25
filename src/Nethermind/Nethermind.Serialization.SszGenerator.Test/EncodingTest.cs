@@ -488,6 +488,53 @@ public class EncodingTest
     }
 
     [Test]
+    public void Encode_nested_variable_values_reports_the_bytes_written([Values(0, 1, 2, 40)] int itemCount, [Values(0, 3)] int spareBytes)
+    {
+        ProgressiveVarTestStructList[] items = [.. Enumerable.Range(0, itemCount).Select(static i => new ProgressiveVarTestStructList
+        {
+            Items = [.. Enumerable.Range(0, i % 3).Select(j => new VariableC { Fixed1 = (ulong)i, Fixed2 = new ulong[j + (i % 4)] })],
+        })];
+        NestedProgressiveListContainer container = new() { Items = items };
+        byte[] expectedItems = EncodeWithOffsets([.. items.Select(static item => VariableC.Encode(item.Items))]);
+        byte[] expected = [.. LittleEndian(4), .. expectedItems];
+        byte[] buffer = new byte[expected.Length + spareBytes];
+        byte[] itemsBuffer = new byte[expectedItems.Length + spareBytes];
+
+        int written = NestedProgressiveListContainer.Encode(buffer, container);
+        int itemsWritten = ProgressiveVarTestStructList.Encode(itemsBuffer, items);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written, Is.EqualTo(expected.Length));
+            Assert.That(itemsWritten, Is.EqualTo(expectedItems.Length));
+            Assert.That(buffer, Is.EqualTo((byte[])[.. expected, .. new byte[spareBytes]]));
+            Assert.That(itemsBuffer, Is.EqualTo((byte[])[.. expectedItems, .. new byte[spareBytes]]));
+            Assert.That(Encode(container), Is.EqualTo(expected));
+            Assert.That(ProgressiveVarTestStructList.Encode(items), Is.EqualTo(expectedItems));
+            Assert.That(NestedProgressiveListContainer.Encode([container, container]), Is.EqualTo(EncodeWithOffsets([expected, expected])));
+        }
+
+        static byte[] LittleEndian(int value)
+        {
+            byte[] bytes = new byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(bytes, value);
+            return bytes;
+        }
+
+        static byte[] EncodeWithOffsets(byte[][] parts)
+        {
+            int offset = parts.Length * sizeof(int);
+            List<byte> encoded = [];
+            foreach (byte[] part in parts)
+            {
+                encoded.AddRange(LittleEndian(offset));
+                offset += part.Length;
+            }
+            return [.. encoded, .. parts.SelectMany(static part => part)];
+        }
+    }
+
+    [Test]
     public void Merkleize_basic_list_mixes_in_the_actual_length()
     {
         SingleListContainer container = new() { Items = [1UL, 2UL] };

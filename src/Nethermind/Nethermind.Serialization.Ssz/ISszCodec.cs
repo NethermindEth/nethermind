@@ -37,14 +37,16 @@ public interface ISszCodec<T> where T : ISszCodec<T>
     /// <summary>Encodes <paramref name="value"/> to a freshly allocated SSZ buffer.</summary>
     static abstract byte[] Encode(T value);
 
-    /// <summary>Encodes <paramref name="value"/> into <paramref name="data"/>, which must already be sized for the result.</summary>
-    static abstract void Encode(Span<byte> data, T value);
+    /// <summary>Encodes <paramref name="value"/> at the start of <paramref name="data"/>, which must have room for the result.</summary>
+    /// <returns>The number of bytes written.</returns>
+    static abstract int Encode(Span<byte> data, T value);
 
     /// <summary>Encodes the collection <paramref name="items"/> to a freshly allocated SSZ buffer.</summary>
     static abstract byte[] Encode(ReadOnlySpan<T> items);
 
-    /// <summary>Encodes the collection <paramref name="items"/> into <paramref name="data"/>, which must already be sized for the result.</summary>
-    static abstract void Encode(Span<byte> data, ReadOnlySpan<T> items);
+    /// <summary>Encodes the collection <paramref name="items"/> at the start of <paramref name="data"/>, which must have room for the result.</summary>
+    /// <returns>The number of bytes written.</returns>
+    static abstract int Encode(Span<byte> data, ReadOnlySpan<T> items);
 
     /// <summary>Computes the SSZ hash-tree root of <paramref name="value"/>.</summary>
     static abstract void Merkleize(T value, out UInt256 root);
