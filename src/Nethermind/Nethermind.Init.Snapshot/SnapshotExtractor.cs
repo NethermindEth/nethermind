@@ -82,16 +82,22 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         string[] entryPaths = new string[entries.Count];
         for (int i = 0; i < entries.Count; i++)
         {
-            string entryPath = Path.GetFullPath(Path.Combine(destinationRoot, SanitizeZipEntryName(entries[i].FullName)));
+            ZipArchiveEntry entry = entries[i];
+            string entryPath = Path.GetFullPath(Path.Combine(destinationRoot, SanitizeZipEntryName(entry.FullName)));
             // As the runtime does, an entry whose path ends with a separator is taken for a directory.
+            bool isDirectory = Path.EndsInDirectorySeparator(entryPath);
             if (!entryPath.StartsWith(destinationRoot, StringComparison.Ordinal)
-                || SnapshotDatabase.IsReservedDestination(destinationRoot, entryPath, Path.EndsInDirectorySeparator(entryPath)))
-                throw new IOException($"Zip entry '{entries[i].FullName}' would extract outside the destination directory, into its lost+found or at the extraction marker.");
+                || !IsInsideByOriginalName(destinationRoot, entry.FullName)
+                || SnapshotDatabase.IsReservedDestination(destinationRoot, entryPath, isDirectory))
+                throw new IOException($"Zip entry '{entry.FullName}' would extract outside the destination directory, into its lost+found or at the extraction marker.");
+            // As the runtime does, a directory entry must not hold data: it is refused rather than extracted as a directory.
+            if (isDirectory && entry.Length != 0)
+                throw new IOException($"Zip entry '{entry.FullName}' is a directory entry that holds data.");
             entryPaths[i] = entryPath;
         }
 
-        // As ZipFile.ExtractToDirectory does, never overwriting a file, except that the directory entry of lost+found is
-        // skipped.
+        // Entry by entry, in archive order, creating parent directories and never overwriting a file; the directory entry
+        // of lost+found is skipped.
         Directory.CreateDirectory(destinationPath);
         for (int i = 0; i < entries.Count; i++)
         {
@@ -109,6 +115,12 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
             }
         }
     }
+
+    // On Windows the renaming below turns the colon of a drive-absolute name into an underscore, which would make it a
+    // relative name inside the destination. Such an entry is refused by its original name, as before.
+    private static bool IsInsideByOriginalName(string destinationRoot, string name) =>
+        !OperatingSystem.IsWindows()
+        || Path.GetFullPath(Path.Combine(destinationRoot, name.Replace('\0', '_'))).StartsWith(destinationRoot, StringComparison.Ordinal);
 
     // As the runtime names extracted entries: NUL becomes an underscore, and on Windows so do the control characters and
     // the characters a file name may not hold.

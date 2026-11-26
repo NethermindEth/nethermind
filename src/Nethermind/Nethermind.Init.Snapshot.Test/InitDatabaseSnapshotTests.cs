@@ -790,6 +790,52 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [TestCase("state", TestName = "Execute_ZipDirectoryEntryThatHoldsData_StopsBeforeWritingAnything")]
+    [TestCase("lost+found", TestName = "Execute_ZipLostAndFoundEntryThatHoldsData_StopsBeforeWritingAnything")]
+    public async Task Execute_ZipDirectoryEntryThatHoldsData_StopsBeforeWritingAnything(string directory)
+    {
+        // Alone, or before a good file: the runtime refuses such an entry, and an extraction that skipped or created it
+        // would drop its bytes and could complete.
+        Dictionary<string, byte[]> files = directory == "state" ? [] : new() { ["state/a.sst"] = [1] };
+        _snapshotConfig.SnapshotFileName = "snapshot.zip";
+        _snapshotPath = Path.Combine(_snapshotConfig.SnapshotDirectory, _snapshotConfig.SnapshotFileName);
+        byte[] archive = TestArchive.BuildZipWithDataInADirectoryEntry(directory, files);
+        File.WriteAllBytes(_snapshotPath, archive);
+        AdvanceCheckpoint(SnapshotStage.Verified);
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("is a directory entry that holds data"), "the entry must be refused");
+            Assert.That(Directory.GetFileSystemEntries(_dbPath), Is.EquivalentTo(new[] { MarkerPath }), "nothing may be extracted, and the extraction stays marked");
+            Assert.That(File.ReadAllBytes(_snapshotPath), Is.EqualTo(archive), "the archive must stay");
+            Assert.That(ReadCheckpoint(), Is.EqualTo(SnapshotStage.Verified), "the checkpoint must not advance");
+        }
+    }
+
+    [Test]
+    public async Task Execute_ZipEntryNamedByAnAbsolutePathOutside_StopsBeforeWritingAnything()
+    {
+        // On Windows a drive-absolute name, which the runtime's renaming would turn into a relative one.
+        string outside = Path.Combine(_tempDir.Path, "outside.bin");
+        _snapshotConfig.SnapshotFileName = "snapshot.zip";
+        _snapshotPath = Path.Combine(_snapshotConfig.SnapshotDirectory, _snapshotConfig.SnapshotFileName);
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildZip(new Dictionary<string, byte[]> { ["state/a.sst"] = [1], [outside.Replace('\\', '/')] = [2] }));
+        AdvanceCheckpoint(SnapshotStage.Verified);
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("outside the destination directory"), "the entry must be refused");
+            Assert.That(Path.Exists(outside), Is.False, "nothing may be written outside");
+            Assert.That(Directory.GetFileSystemEntries(_dbPath), Is.EquivalentTo(new[] { MarkerPath }), "a ZIP archive is checked whole before its first entry is written");
+        }
+    }
+
     private void UseArchiveWithTheDirectoryEntryOfLostAndFound(bool zip, Dictionary<string, byte[]> files)
     {
         if (zip)

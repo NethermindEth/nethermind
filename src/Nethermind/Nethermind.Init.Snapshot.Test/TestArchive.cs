@@ -61,6 +61,24 @@ internal static class TestArchive
         return zipBuffer.ToArray();
     }
 
+    /// <summary>A zip whose first entry is a directory entry, <paramref name="directory"/>, that holds data; then <paramref name="files"/>.</summary>
+    public static byte[] BuildZipWithDataInADirectoryEntry(string directory, IReadOnlyDictionary<string, byte[]> files)
+    {
+        using MemoryStream zipBuffer = new();
+        using (System.IO.Compression.ZipArchive zip = new(zipBuffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (Stream entry = zip.CreateEntry($"{directory}/").Open())
+                entry.Write([1, 2, 3]);
+            foreach ((string name, byte[] data) in files)
+            {
+                using Stream entry = zip.CreateEntry(name).Open();
+                entry.Write(data);
+            }
+        }
+
+        return zipBuffer.ToArray();
+    }
+
     public static byte[] BuildTar(int payloadSize = 1000)
     {
         using MemoryStream tarBuffer = new();
