@@ -82,8 +82,10 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
             // NUL becomes an underscore, as the runtime names entries on Unix. The characters it also replaces on Windows
             // cannot spell lost+found, and an entry they would bring inside from outside is refused here.
             string entryPath = Path.GetFullPath(Path.Combine(destinationRoot, entry.FullName.Replace('\0', '_')));
-            if (!entryPath.StartsWith(destinationRoot, StringComparison.Ordinal) || SnapshotDatabase.IsInRecoveryDirectory(destinationRoot, entryPath))
-                throw new IOException($"Zip entry '{entry.FullName}' would extract outside the destination directory or into its lost+found.");
+            // The runtime takes an entry whose path ends with a separator for a directory.
+            if (!entryPath.StartsWith(destinationRoot, StringComparison.Ordinal)
+                || SnapshotDatabase.IsReservedDestination(destinationRoot, entryPath, Path.EndsInDirectorySeparator(entryPath)))
+                throw new IOException($"Zip entry '{entry.FullName}' would extract outside the destination directory, into its lost+found or at the extraction marker.");
         }
 
         archive.ExtractToDirectory(destinationPath);
@@ -122,8 +124,8 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
             if (!destinationEntryPath.StartsWith(destinationRoot, StringComparison.Ordinal))
                 throw new IOException($"Tar entry '{entry.Name}' would extract outside the destination directory.");
 
-            if (SnapshotDatabase.IsInRecoveryDirectory(destinationRoot, destinationEntryPath))
-                throw new IOException($"Tar entry '{entry.Name}' would extract into lost+found, which stays the filesystem's.");
+            if (SnapshotDatabase.IsReservedDestination(destinationRoot, destinationEntryPath, entry.EntryType is TarEntryType.Directory))
+                throw new IOException($"Tar entry '{entry.Name}' would extract into lost+found, which stays the filesystem's, or at the extraction marker.");
 
             if (entry.EntryType is TarEntryType.Directory)
                 Directory.CreateDirectory(destinationEntryPath);

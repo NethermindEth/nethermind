@@ -533,10 +533,10 @@ public class InitDatabaseSnapshotTests
         }
     }
 
-    [TestCase("file in it", TestName = "Execute_LostAndFoundHoldingAFile_KeepsTheDatabase")]
-    [TestCase("file", TestName = "Execute_FileNamedLostAndFound_KeepsTheDatabase")]
-    [TestCase("link", TestName = "Execute_LinkNamedLostAndFound_KeepsTheDatabase")]
-    public async Task Execute_LostAndFoundThatIsNoEmptyDirectory_KeepsTheDatabase(string lostAndFound)
+    [TestCase("file in it", TestName = "Execute_LostAndFoundHoldingAFile_InitializesAroundIt")]
+    [TestCase("file", TestName = "Execute_FileNamedLostAndFound_InitializesAroundIt")]
+    [TestCase("link", TestName = "Execute_LinkNamedLostAndFound_InitializesAroundIt")]
+    public async Task Execute_LostAndFoundOfAnyKind_InitializesAroundIt(string lostAndFound)
     {
         if (lostAndFound == "link" && !OperatingSystem.IsLinux())
             Assert.Ignore("Links are made here on Linux only.");
@@ -564,8 +564,8 @@ public class InitDatabaseSnapshotTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ContentOf(_dbPath), Is.EqualTo(content), "only an empty lost+found directory counts as no content");
-            Assert.That(File.Exists(_snapshotPath), Is.True, "the snapshot must be skipped");
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True, "lost+found is skipped by name, whatever it is, as on master");
+            Assert.That(ContentOf(_dbPath).Where(entry => content.ContainsKey(entry.Key)).ToDictionary(), Is.EqualTo(content), "lost+found must stay as it was");
         }
     }
 
@@ -573,9 +573,10 @@ public class InitDatabaseSnapshotTests
     [TestCase(true, TestName = "Execute_ZipEntryInLostAndFound_StopsWithoutWritingIntoIt")]
     public async Task Execute_ArchiveEntryInLostAndFound_StopsWithoutWritingIntoIt(bool zip)
     {
-        // A freshly mounted disk: its lost+found is empty, so the database directory counts as empty.
-        string lostAndFound = Path.Combine(_dbPath, "lost+found");
-        Directory.CreateDirectory(lostAndFound);
+        // What a filesystem check saved: the database directory still counts as empty, and the file must keep its bytes.
+        string recovered = Path.Combine(_dbPath, "lost+found", "#1234");
+        Directory.CreateDirectory(Path.GetDirectoryName(recovered)!);
+        File.WriteAllBytes(recovered, [7, 7, 7]);
         Dictionary<string, byte[]> files = new() { ["state/a.sst"] = [1], ["lost+found/#1234"] = [2] };
         if (zip)
         {
@@ -592,8 +593,29 @@ public class InitDatabaseSnapshotTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception.Message, Does.Contain("lost+found"), "the error must name what the archive would write into");
-            Assert.That(Directory.EnumerateFileSystemEntries(lostAndFound), Is.Empty, "nothing may be written into lost+found");
+            Assert.That(File.ReadAllBytes(recovered), Is.EqualTo(new byte[] { 7, 7, 7 }), "a recovered file must keep its bytes");
+            Assert.That(Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(recovered)!).Count(), Is.EqualTo(1), "nothing may be written into lost+found");
             Assert.That(File.Exists(MarkerPath), Is.True, "the extraction that stopped must stay marked for the operator");
+        }
+    }
+
+    [TestCase("lost+found", TestName = "Execute_TarFileEntryNamedLostAndFound_StopsWithoutCreatingIt")]
+    [TestCase(".nethermind-snapshot-extracting", TestName = "Execute_TarEntryAtTheMarkerPath_StopsAndKeepsTheMarker")]
+    public async Task Execute_TarEntryAtAReservedPath_StopsWithoutWritingThere(string name)
+    {
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(new Dictionary<string, byte[]> { ["state/a.sst"] = [1], [name] = [2] }));
+        AdvanceCheckpoint(SnapshotStage.Verified);
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("would extract into lost+found"), "the archive entry must be refused");
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a.sst")), Is.True, "precondition: the extraction wrote files before the entry");
+            Assert.That(Path.Exists(Path.Combine(_dbPath, "lost+found")), Is.False, "no file may be created at lost+found");
+            Assert.That(File.ReadAllText(MarkerPath), Is.EqualTo("Nethermind snapshot extraction in progress"),
+                "the marker must stay as the extraction wrote it, or a later start would take the partial extraction for a database");
         }
     }
 
@@ -618,9 +640,10 @@ public class InitDatabaseSnapshotTests
     [Test]
     [Platform(Include = "Linux")] // Unix permissions
     [SupportedOSPlatform("linux")]
-    public async Task Execute_LostAndFoundThatCannotBeListed_KeepsTheDatabase()
+    public async Task Execute_LostAndFoundThatCannotBeListed_Initializes()
     {
-        // Needs a user the permissions apply to: as root every directory stays readable, and the test is skipped.
+        // A fresh ext4 volume as a node that does not run as root sees it: lost+found is root's, mode 0700. As root every
+        // directory stays readable, so the case is a real one only as another user.
         WriteSnapshotTar();
         AdvanceCheckpoint(SnapshotStage.Verified);
         string lostAndFound = Path.Combine(_dbPath, "lost+found");
@@ -629,15 +652,12 @@ public class InitDatabaseSnapshotTests
         File.SetUnixFileMode(lostAndFound, UnixFileMode.None);
         try
         {
-            if (CanList(lostAndFound))
-                Assert.Ignore("The permissions do not apply to this user (root); run as another user.");
-
             await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.False, "a lost+found that cannot be listed may hold content");
-                Assert.That(File.Exists(_snapshotPath), Is.True, "the snapshot must be skipped");
+                Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True, "lost+found is skipped by name and never listed");
+                Assert.That(File.Exists(MarkerPath), Is.False, "the marker must be removed after success");
             }
         }
         finally
@@ -735,19 +755,6 @@ public class InitDatabaseSnapshotTests
         _snapshotConfig.Streaming = true;
         _snapshotConfig.Checksum = Convert.ToHexString(SHA256.HashData(archive));
         return server;
-    }
-
-    private static bool CanList(string directory)
-    {
-        try
-        {
-            Directory.GetFileSystemEntries(directory);
-            return true;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
     }
 
     [Test]

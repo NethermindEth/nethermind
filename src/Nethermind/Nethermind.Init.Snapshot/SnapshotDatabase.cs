@@ -25,8 +25,9 @@ internal static class SnapshotDatabase
         {
             foreach (string entry in Directory.EnumerateFileSystemEntries(dbPath))
             {
+                // lost+found is the filesystem's, skipped by name and never opened: the extraction writes nothing into it.
                 string name = Path.GetFileName(entry);
-                if (name != ExtractionMarker && (name != MountArtifact || !IsEmptyDirectory(entry)))
+                if (name != ExtractionMarker && name != MountArtifact)
                     return true;
             }
         }
@@ -93,24 +94,27 @@ internal static class SnapshotDatabase
     }
 
     /// <summary>
-    /// Whether an extracted entry, given by its full path, would land in the top-level <c>lost+found</c>: only an empty one
-    /// counts as no content, and it stays the filesystem's.
+    /// Whether an archive entry, given by its full path under <paramref name="destinationRoot"/> (which ends with a
+    /// separator), would write where the extraction must not: below the top-level <c>lost+found</c>, which stays the
+    /// filesystem's, at <c>lost+found</c> itself unless it is a directory, or at the marker's path.
     /// </summary>
-    public static bool IsInRecoveryDirectory(string destinationRoot, string entryPath) =>
-        Path.TrimEndingDirectorySeparator(entryPath).StartsWith(destinationRoot + MountArtifact + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-
-    private static string MarkerPath(string dbPath) => Path.Combine(dbPath, ExtractionMarker);
-
-    // What a filesystem check saved in lost+found is content, and a link by that name may lead anywhere.
-    private static bool IsEmptyDirectory(string path)
+    public static bool IsReservedDestination(string destinationRoot, string entryPath, bool isDirectory)
     {
-        DirectoryInfo directory = new(path);
-        if (directory.LinkTarget is not null || !directory.Exists)
+        ReadOnlySpan<char> path = Path.TrimEndingDirectorySeparator(entryPath.AsSpan());
+        if (!path.StartsWith(destinationRoot, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        using IEnumerator<string> entries = Directory.EnumerateFileSystemEntries(path).GetEnumerator();
-        return !entries.MoveNext();
+        ReadOnlySpan<char> relative = path[destinationRoot.Length..];
+        if (relative.Equals(ExtractionMarker, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!relative.StartsWith(MountArtifact, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        ReadOnlySpan<char> rest = relative[MountArtifact.Length..];
+        return rest.IsEmpty ? !isDirectory : rest[0] == Path.DirectorySeparatorChar;
     }
+
+    private static string MarkerPath(string dbPath) => Path.Combine(dbPath, ExtractionMarker);
 
     private static bool TryRemoveDirectoryItself(string dbPath)
     {
