@@ -148,11 +148,8 @@ public class BlockAccessListsSyncFeedTests
 
         // The rejected heights are pending again, so the next request asks for the same three.
         using BlockAccessListsSyncBatch? retry = await _feed.PrepareRequest();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(retry, Is.Not.Null);
-            Assert.That(retry?.Infos.OfType<BlockInfo>().Select(static info => info.BlockNumber), Is.EquivalentTo(requested));
-        }
+        Assert.That(retry?.Infos.OfType<BlockInfo>().Select(static info => info.BlockNumber),
+            Is.Not.Null.And.EquivalentTo(requested));
     }
 
     [Test]
