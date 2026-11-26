@@ -517,11 +517,6 @@ public class RpcModuleProviderTests
         }
     }
 
-    [TestCase(null, 32, ExpectedResult = 32)]
-    [TestCase(null, 64, ExpectedResult = 64)]
-    [TestCase(2, 64, ExpectedResult = 2)]
-    public int Trace_module_capacity_defaults_to_processor_count(int? configured, int processorCount) =>
-        new JsonRpcConfig { TraceModuleConcurrentInstances = configured }.GetTraceModuleConcurrentInstances(processorCount);
     [Test]
     public void Eth_calls_within_the_limit_start_at_once()
     {

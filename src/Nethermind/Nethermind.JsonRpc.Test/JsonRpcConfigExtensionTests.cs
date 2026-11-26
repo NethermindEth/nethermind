@@ -47,4 +47,10 @@ public class JsonRpcConfigExtensionTests
         using CancellationTokenSource rented = new JsonRpcConfig { Timeout = 0 }.BuildTimeoutCancellationToken();
         Assert.That(rented.Token.WaitHandle.WaitOne(TimeSpan.FromSeconds(5)), Is.True);
     }
+
+    [TestCase(null, 32, ExpectedResult = 32)]
+    [TestCase(null, 64, ExpectedResult = 64)]
+    [TestCase(2, 64, ExpectedResult = 2)]
+    public int Trace_module_capacity_defaults_to_processor_count(int? configured, int processorCount) =>
+        new JsonRpcConfig { TraceModuleConcurrentInstances = configured }.GetTraceModuleConcurrentInstances(processorCount);
 }
