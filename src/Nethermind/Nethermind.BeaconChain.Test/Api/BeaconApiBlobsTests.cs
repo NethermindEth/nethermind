@@ -258,9 +258,12 @@ public class BeaconApiBlobsTests : BeaconApiFixture
     [Test]
     public async Task Rebuilds_past_the_bound_are_refused_until_one_response_completes([Values(Json, OctetStream)] string accept)
     {
-        ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
-        BeaconApiContext ctx = new(Spec, _host.StatusHolder, new SlotClock(Spec, time), _host.Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null);
+        BeaconApiHead view = BeaconApiHead.Capture(_host.StatusHolder);
+        using System.Threading.RateLimiting.ConcurrencyLimiter rebuilds = new(new()
+        {
+            PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds,
+            QueueLimit = 0,
+        });
         using BlockingResponse first = new();
         using BlockingResponse second = new();
         Task firstRequest = GetBlobs(Request(first));
@@ -285,10 +288,9 @@ public class BeaconApiBlobsTests : BeaconApiFixture
             first.Release.TrySetResult();
             second.Release.TrySetResult();
             await Task.WhenAll(firstRequest, secondRequest);
-            ctx.BlobRebuilds.Dispose();
         }
 
-        Task GetBlobs(HttpContext context) => new BlobsEndpoint(ctx).GetBlobs(SystematicRoot.ToString(), []).ExecuteAsync(context);
+        Task GetBlobs(HttpContext context) => new BlobsEndpoint(Spec, _host.Store, view, rebuilds).GetBlobs(SystematicRoot.ToString(), []).ExecuteAsync(context);
 
         DefaultHttpContext Request(Stream stream)
         {
