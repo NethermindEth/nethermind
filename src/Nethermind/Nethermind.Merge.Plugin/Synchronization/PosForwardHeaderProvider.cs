@@ -198,6 +198,14 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider, IDisposable
     protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty is null || bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero)) &&
             !_poSSwitcher.HasEverReachedTerminalBlock();
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Classifies the header with the call <see cref="MergeSealValidator.ValidateSeal"/> uses to accept a post-merge
+    /// seal without the pre-merge validator, so a post-merge header needs no hint (with Ethash, a hint for an epoch
+    /// without a cache starts a build). The terminal PoW block is not post-merge, so it is still hinted.
+    /// </remarks>
+    protected override bool NeedsSealHint(BlockHeader header) => !_poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge;
+
     protected override IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> response)
     {
         // Override PoW's RequestHeaders so that it won't request beyond PoW.
