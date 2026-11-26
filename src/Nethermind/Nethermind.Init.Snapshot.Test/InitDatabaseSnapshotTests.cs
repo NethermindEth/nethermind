@@ -608,6 +608,32 @@ public class InitDatabaseSnapshotTests
     }
 
     [Test]
+    [Platform(Include = "Linux")] // the 4,096-byte path limit
+    public async Task Execute_FileAtALongDatabasePath_KeepsItWithoutLookingBelowIt()
+    {
+        // A legal 4,080-byte path to a file, whose lock file name still fits; a name below it, such as the marker's, would
+        // exceed the limit.
+        string parent = _tempDir.Path;
+        while (4080 - parent.Length - 1 > 220)
+            parent = Path.Combine(parent, new string('p', 200));
+        string dbPath = Path.Combine(parent, new string('d', 4080 - parent.Length - 1));
+        Directory.CreateDirectory(parent);
+        File.WriteAllBytes(dbPath, [1, 2, 3]);
+        _api.Config<IInitConfig>().Returns(new InitConfig { BaseDbPath = dbPath });
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dbPath, Has.Length.EqualTo(4080), "precondition");
+            Assert.That(File.ReadAllBytes(dbPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "a file at the database path counts as content, as on master");
+            Assert.That(File.Exists(_snapshotPath), Is.True, "the snapshot must be skipped");
+        }
+    }
+
+    [Test]
     public async Task Execute_FileAtTheDatabasePath_KeepsItAndSkipsTheSnapshot()
     {
         WriteSnapshotTar();

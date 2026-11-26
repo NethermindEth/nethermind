@@ -63,10 +63,11 @@ public class InitDatabaseSnapshot(
         using FileStream? databaseLock = LockDatabase(dbPath);
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
 
-        // This step deletes nothing in the database directory but its own marker after success. The checkpoint lives in the
-        // snapshot directory, which can change or be lost, and cannot tell a partial extraction from a synced database; the
-        // marker shows one, and stays until the operator has emptied the directory. The content is read first: an
-        // extraction creates its marker before its first file, so a start that saw its files sees its marker too.
+        // This step deletes nothing in the database directory but its own marker after a successful extraction. The
+        // checkpoint lives in the snapshot directory, which can change or be lost, and cannot tell a partial extraction from
+        // a synced database; the marker can: a successful extraction removes it, and an unfinished one keeps it until the
+        // operator has emptied the directory. The content is read first: an extraction creates its marker before its first
+        // file, so a start that saw its files also sees its marker while that extraction remains unfinished.
         bool populated = SnapshotDatabase.Exists(dbPath);
         if (SnapshotDatabase.HasUnfinishedExtraction(dbPath))
             throw new IOException(SnapshotDatabase.UnfinishedExtraction(dbPath));
