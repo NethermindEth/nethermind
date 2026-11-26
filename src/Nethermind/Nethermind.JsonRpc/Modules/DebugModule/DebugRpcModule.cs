@@ -758,12 +758,15 @@ public class DebugRpcModule(
                 return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("could not read file: not a regular file", ErrorCodes.InvalidInput);
             }
 
-            if (stream.Length > jsonRpcConfig.MaxRequestBodySize)
+            // The length is read once, as the file can grow between the check and the allocation.
+            long length = stream.Length;
+            long maxLength = Math.Min(jsonRpcConfig.MaxRequestBodySize ?? Array.MaxLength, Array.MaxLength);
+            if (length > maxLength)
             {
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"could not read file: larger than {jsonRpcConfig.MaxRequestBodySize} bytes", ErrorCodes.InvalidInput);
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"could not read file: larger than {maxLength} bytes", ErrorCodes.InvalidInput);
             }
 
-            blockRlp = new byte[stream.Length];
+            blockRlp = new byte[length];
             stream.ReadExactly(blockRlp);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
