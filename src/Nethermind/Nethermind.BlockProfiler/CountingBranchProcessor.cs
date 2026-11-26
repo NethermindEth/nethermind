@@ -173,7 +173,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     {
         if (!_counting) return;
         _counting = false;
-        NoGcRegion.Exit();
+        NoGcRegion.Exit(_logger);
         _forcedGCExclusion?.Dispose();
         _forcedGCExclusion = null;
 
@@ -264,7 +264,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
             }
         }
 
-        public static void Exit()
+        public static void Exit(ILogger logger)
         {
             if (!s_entered) return;
             s_entered = false;
@@ -273,9 +273,10 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
             {
                 GC.EndNoGCRegion();
             }
-            catch (InvalidOperationException)
+            catch (InvalidOperationException exception)
             {
-                // A collection already ended the region.
+                // A collection can end the region between the mode check and EndNoGCRegion.
+                if (logger.IsDebug) logger.Debug($"EXPB-COUNT no-GC region already ended: {exception.Message}");
             }
         }
     }
