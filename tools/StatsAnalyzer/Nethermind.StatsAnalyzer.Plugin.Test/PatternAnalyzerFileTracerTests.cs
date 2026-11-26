@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Config;
-using Nethermind.Core.Resettables;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Evm.Tracing;
@@ -91,27 +92,36 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
         tracer.CompleteAllTasks();
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Write_frequency_includes_all_recorded_blocks_in_the_report(bool skipMiddleBlock)
+    [Test]
+    public void Write_frequency_includes_all_recorded_blocks_in_the_report([Values] bool skipMiddleBlock)
     {
         const string file = "two-block-report.json";
         PatternAnalyzerFileTracer tracer = new([], 1, 100, _patternStatsAnalyzer, [], _fileSystem, _logger, 2,
             ProcessingMode.Sequential, SortOrder.Descending, file, CancellationToken.None, new BlocksConfig { ParallelExecution = true });
 
-        ExecuteTransactions([Prepare.EvmCode.PushData(10).PushData(12).Done], tracer);
-        if (skipMiddleBlock)
+        bool writtenEarly = false;
+        // A stats task that never finishes blocks EndBlockTrace, so drive the blocks off the test thread with a bound.
+        Task blocks = Task.Run(() =>
         {
-            ExecuteTransactions([Prepare.EvmCode.PUSHx([1, 2, 3]).PushData(4).Done], tracer, blockOffset: 1, skip: true);
-        }
+            ExecuteTransactions([Prepare.EvmCode.PushData(10).PushData(12).Done], tracer);
+            if (skipMiddleBlock)
+            {
+                ExecuteTransactions([Prepare.EvmCode.PUSHx([1, 2, 3]).PushData(4).Done], tracer, blockOffset: 1, skip: true);
+            }
 
-        Assert.That(_fileSystem.File.Exists(file), Is.False);
-        ExecuteTransactions([Prepare.EvmCode.PUSHx([1, 2, 3, 4, 5]).PUSHx([3, 4]).Done], tracer, blockOffset: skipMiddleBlock ? 2UL : 1UL);
+            writtenEarly = _fileSystem.File.Exists(file);
+            ExecuteTransactions([Prepare.EvmCode.PUSHx([1, 2, 3, 4, 5]).PUSHx([3, 4]).Done], tracer, blockOffset: skipMiddleBlock ? 2UL : 1UL);
+        });
 
+        Assert.That(blocks.Wait(TimeSpan.FromSeconds(15)), Is.True, "block tracing stalled on the stats task");
         using JsonDocument report = JsonDocument.Parse(_fileSystem.File.ReadAllText(file));
         Dictionary<string, int> stats = report.RootElement.GetProperty("stats").EnumerateArray()
             .ToDictionary(entry => entry.GetProperty("pattern").GetString()!, entry => entry.GetProperty("count").GetInt32());
-        Assert.That(stats, Is.EqualTo(new Dictionary<string, int> { ["PUSH1 PUSH1"] = 1, ["PUSH5 PUSH2"] = 1 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writtenEarly, Is.False);
+            Assert.That(stats, Is.EqualTo(new Dictionary<string, int> { ["PUSH1 PUSH1"] = 1, ["PUSH5 PUSH2"] = 1 }));
+        }
     }
 
     [TestCaseSource(nameof(GetTraceCases))]

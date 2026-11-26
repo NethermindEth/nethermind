@@ -50,43 +50,35 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
 
     public override void EndBlockTrace()
     {
-        if (_fileTracingQueueSize < 1)
-        {
-            ResetBufferAndTracer();
-        }
-        else if (IsWriteDue())
-        {
-            TxTracer tracer = Tracer;
-            ulong initialBlockNumber = _initialBlock;
-            ulong currentBlockNumber = _currentBlock;
-            ResetBufferAndTracer();
+        TxTracer tracer = Tracer;
+        ulong initialBlockNumber = _initialBlock;
+        ulong currentBlockNumber = _currentBlock;
+        bool skip = _skipThisBlock;
 
+        ResetBufferAndTracer();
+
+        if (!skip)
+        {
+            _pos = (_pos + 1) % _writeFreq;
+            bool isWriteDue = _pos == 0;
             Enqueue(() =>
             {
                 Ct.ThrowIfCancellationRequested();
-                WriteTrace(
-                    initialBlockNumber,
-                    currentBlockNumber,
-                    tracer,
-                    FileName,
-                    _fileSystem,
-                    _serializerOptions,
-                    Ct);
+                // BuildResult hands this block's buffer to the shared analyzer, so it runs for every recorded block;
+                // only the file write follows the write frequency.
+                TxTrace trace = tracer.BuildResult(initialBlockNumber, currentBlockNumber);
+                if (isWriteDue)
+                    WriteTrace(trace, FileName, _fileSystem, _serializerOptions, Ct);
             });
         }
 
         base.EndBlockTrace();
     }
 
-    private bool IsWriteDue()
-    {
-        if (_skipThisBlock) return false;
-        _pos = (_pos + 1) % _writeFreq;
-        return _pos == 0;
-    }
-
     private void Enqueue(Action work)
     {
+        if (_fileTracingQueueSize < 1) return;
+
         // Chain via ContinueWith so the runtime starts the task itself rather
         // than leaving it in Created state where Wait/WaitAll would race.
         Task previous = _lastTask;
@@ -172,18 +164,12 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
     protected override TxTrace OnEnd(TxTracer txTracer) => throw new NotImplementedException();
 
     private static void WriteTrace(
-        ulong initialBlockNumber,
-        ulong currentBlockNumber,
-        IStatsAnalyzerTxTracer<TxTrace> tracer,
+        TxTrace trace,
         string fileName,
         IFileSystem fileSystem,
         JsonSerializerOptions serializerOptions,
         CancellationToken ct)
     {
-        ct.ThrowIfCancellationRequested();
-
-        TxTrace trace = tracer.BuildResult(initialBlockNumber, currentBlockNumber);
-
         ct.ThrowIfCancellationRequested();
 
         using Stream file = fileSystem.File.Open(fileName, FileMode.Create, FileAccess.Write);
