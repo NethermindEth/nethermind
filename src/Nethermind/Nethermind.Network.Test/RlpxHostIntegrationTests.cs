@@ -664,7 +664,7 @@ public class RlpxHostIntegrationTests
         IPEndPoint originalAddress = node.Address;
         int originalDiscoveryPort = node.DiscoveryPort;
 #pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out Node? alternate), Is.True);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(node, allowNonRoutable: true, out Node? alternate), Is.True);
 #pragma warning restore NUnit2045
         Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
 
@@ -971,7 +971,7 @@ public class RlpxHostIntegrationTests
         string address,
         bool allowNonRoutable,
         bool expected) =>
-        Assert.That(RlpxHost.IsDialAddressAcceptable(IPAddress.Parse(address), allowNonRoutable), Is.EqualTo(expected));
+        Assert.That(RlpxDialPolicy.IsDialAddressAcceptable(IPAddress.Parse(address), allowNonRoutable), Is.EqualTo(expected));
 
     [Test]
     public void Alternate_dial_requires_current_verified_record()
@@ -983,7 +983,7 @@ public class RlpxHostIntegrationTests
         unverified.IsStatic = true;
         unverified.IsTrusted = true;
         unverified.IsBootnode = true;
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(unverified, allowNonRoutable: false, out _), Is.False,
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(unverified, allowNonRoutable: false, out _), Is.False,
             "peer role flags must not authenticate an ENR");
 
         Node stale = CreateDualStackNode(
@@ -992,7 +992,7 @@ public class RlpxHostIntegrationTests
             verified: true,
             sequence: 1);
         stale.ObserveEnrSequence(2);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(stale, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(stale, allowNonRoutable: false, out _), Is.False);
     }
 
     [TestCase("10.0.0.1", "::1", false)]
@@ -1015,7 +1015,7 @@ public class RlpxHostIntegrationTests
 #pragma warning restore NUnit2045
         Assert.That(node!.SetVerifiedEnr(record), Is.True);
 
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out _), Is.EqualTo(expected));
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(node, allowNonRoutable: true, out _), Is.EqualTo(expected));
     }
 
     [Test]
@@ -1025,20 +1025,20 @@ public class RlpxHostIntegrationTests
             IPAddress.Parse("8.8.8.8"), 30303,
             IPAddress.Parse("fc00::1"), 30304,
             verified: true);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
 
         Node privateToPrivate = CreateDualStackNode(
             IPAddress.Parse("10.0.0.1"), 30303,
             IPAddress.Parse("fc00::1"), 30304,
             verified: true);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(privateToPrivate, allowNonRoutable: true, out _), Is.True);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(privateToPrivate, allowNonRoutable: true, out _), Is.True);
 
         NodeRecord mappedRecord = CreateDualStackRecord(
             IPAddress.Parse("8.8.8.8"), 30303,
             IPAddress.Parse("::ffff:8.8.4.4"), 30304,
             sequence: 0);
         Node mapped = CreateNode(mappedRecord, verified: true);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(mapped, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(mapped, allowNonRoutable: false, out _), Is.False);
 
         NodeRecord withdrawal = CreateDualStackRecord(
             IPAddress.Parse("8.8.8.8"), 30303,
@@ -1047,7 +1047,7 @@ public class RlpxHostIntegrationTests
 #pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(publicToPrivate.SetVerifiedEnr(withdrawal), Is.True);
 #pragma warning restore NUnit2045
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
     }
 
     private static Node CreateDualStackNode(int ipv4Port, int ipv6Port)

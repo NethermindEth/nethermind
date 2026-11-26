@@ -4,11 +4,8 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
-using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
-using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
@@ -172,41 +169,11 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 
     public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
     {
-        if (exception is SocketException or RlpReaderException or ReadTimeoutException)
-        {
-            if (_logger.IsTrace) TraceCommunicationError(exception);
-        }
-        else
-        {
-            if (_logger.IsDebug) _logger.Debug($"Error in communication with {GetClientId(_session):hide}: {exception:hide}");
-        }
-
-        if (exception is IInternalNethermindException)
-        {
-            // Do nothing as we don't want to drop peer for internal issue.
-        }
-        else if (_session?.Node?.IsStatic != true && _session?.Node?.IsTrusted != true)
-        {
-            DisconnectReason reason = exception switch
-            {
-                SocketException { SocketErrorCode: SocketError.ConnectionReset } => DisconnectReason.ConnectionReset,
-                RlpLimitException => DisconnectReason.MessageLimitsBreached,
-                _ => DisconnectReason.Exception,
-            };
-            _session.InitiateDisconnect(reason, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
-        }
-        else
+        if (!RlpxErrorHandler.TryHandle(_session, exception, _logger))
         {
             base.ExceptionCaught(context, exception);
         }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceCommunicationError(Exception communicationException) =>
-            _logger.Trace($"Error in communication with {GetClientId(_session):hide} ({communicationException.GetType().Name}): {communicationException:hide}");
     }
-
-    private static string GetClientId(ISession? session) =>
-        session?.Node?.ToString(Node.Format.Console) ?? $"unknown {session?.RemoteHost}";
 
     public void EnableSnappy() => SnappyEnabled = true;
 

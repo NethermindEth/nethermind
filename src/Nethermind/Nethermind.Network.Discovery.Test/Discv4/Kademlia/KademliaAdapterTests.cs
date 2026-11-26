@@ -1410,7 +1410,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             if (Socket.OSSupportsIPv6)
             {
-                Assert.That(RlpxHost.TryCreateAlternateDialNode(peerNode, true, out Node? alternate), Is.True);
+                Assert.That(RlpxDialPolicy.TryCreateAlternateDialNode(peerNode, true, out Node? alternate), Is.True);
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(ipv6Address, 30305)));
