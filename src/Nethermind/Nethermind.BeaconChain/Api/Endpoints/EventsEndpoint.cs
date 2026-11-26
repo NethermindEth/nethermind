@@ -3,8 +3,9 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Types;
@@ -15,33 +16,36 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// <summary>
 /// <c>/eth/v1/events</c>: server-sent events for <c>head</c> and <c>finalized_checkpoint</c>.
 /// </summary>
-internal static class EventsEndpoint
+/// <param name="ctx">The host's own context, not one request's view of it: a stream captures a new view at each poll.</param>
+internal sealed class EventsEndpoint(BeaconApiContext ctx, IHostApplicationLifetime lifetime)
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
     private static readonly string[] SupportedTopics = ["head", "finalized_checkpoint"];
 
-    public static void Map(WebApplication app, BeaconApiContext ctx) =>
-        app.MapGet("/eth/v1/events", (HttpContext c) => Stream(c, ctx, app.Lifetime.ApplicationStopping));
+    private readonly EventCache _events = new();
+    private int _activeStreams;
 
-    private static async Task Stream(HttpContext c, BeaconApiContext ctx, CancellationToken stopping)
+    [HttpGet("/eth/v1/events")]
+    public async Task Stream(HttpContext c)
     {
-        if (Interlocked.Increment(ref ctx.Events.ActiveStreams) > 32)
+        CancellationToken stopping = lifetime.ApplicationStopping;
+        if (Interlocked.Increment(ref _activeStreams) > 32)
         {
-            Interlocked.Decrement(ref ctx.Events.ActiveStreams);
+            Interlocked.Decrement(ref _activeStreams);
             await ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable, "Too many event streams.", c.RequestAborted);
             return;
         }
         try
         {
-            using CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted, stopping);
-            c.RequestAborted = lifetime.Token;
-            await StreamCore(c, ctx);
+            using CancellationTokenSource streamLifetime = CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted, stopping);
+            c.RequestAborted = streamLifetime.Token;
+            await StreamCore(c);
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested || c.RequestAborted.IsCancellationRequested) { }
-        finally { Interlocked.Decrement(ref ctx.Events.ActiveStreams); }
+        finally { Interlocked.Decrement(ref _activeStreams); }
     }
 
-    private static async Task StreamCore(HttpContext c, BeaconApiContext ctx)
+    private async Task StreamCore(HttpContext c)
     {
         string[] topics = c.Request.Query["topics"].ToString()
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -79,7 +83,7 @@ internal static class EventsEndpoint
                 BeaconApiContext poll = ctx.ForRequest();
                 StatusMessageV2 status = poll.StatusSource.CurrentStatus;
                 if (wantsHead && status.HeadRoot != Hash256.Zero && status.HeadRoot != lastHead
-                    && ctx.Events.Head(poll, status.HeadRoot!, lastHeadSlot) is { } headEvent)
+                    && _events.Head(poll, status.HeadRoot!, lastHeadSlot) is { } headEvent)
                 {
                     lastHead = status.HeadRoot;
                     lastHeadSlot = status.HeadSlot;
@@ -153,7 +157,6 @@ internal static class EventsEndpoint
 
     internal sealed class EventCache
     {
-        public int ActiveStreams;
         private readonly Lock _lock = new();
         private Hash256? _root;
         private HeadEventDto? _head;

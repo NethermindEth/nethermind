@@ -17,6 +17,7 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -39,6 +40,8 @@ namespace Nethermind.Optimism.Rpc;
 public class OptimismEthRpcModule(
     IJsonRpcConfig rpcConfig,
     IBlockchainBridge blockchainBridge,
+    FilterStore filterStore,
+    FilterManager filterManager,
     IBlockFinder blockFinder,
     IBlockTree blockTree,
     IReceiptFinder receiptFinder,
@@ -64,6 +67,8 @@ public class OptimismEthRpcModule(
     ForwardedNonceTracker nonceTracker)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
+        filterStore,
+        filterManager,
         blockFinder,
         blockTree,
         receiptFinder,
@@ -217,7 +222,8 @@ public class OptimismEthRpcModule(
             }
         }
 
-        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it.
+        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it. It keeps its WARN:
+        // a sequencer also answers -32000 for its own failures, so the code does not tell them apart from rejections.
         if (forwarded?.Error is { } error)
         {
             return ResultWrapper<Hash256>.Fail(error.Message ?? "Sequencer rejected the transaction", error.Code);

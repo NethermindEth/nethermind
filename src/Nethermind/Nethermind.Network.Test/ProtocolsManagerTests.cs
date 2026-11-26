@@ -215,6 +215,7 @@ public class ProtocolsManagerTests
         private readonly int _remotePort = 30000;
         private readonly string _remoteHost = "35.0.0.1";
         private ISession _currentSession;
+        private IRlpxConnection _connection;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IRlpxHost _rlpxHost;
         private readonly ProtocolsManager _manager;
@@ -320,8 +321,8 @@ public class ProtocolsManagerTests
 
         public Context CreateIncomingSession()
         {
-            IRlpxConnection connection = Substitute.For<IRlpxConnection>();
-            _currentSession = new Session(_localPort, connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            _connection = Substitute.For<IRlpxConnection>();
+            _currentSession = new Session(_localPort, _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             _rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
             return this;
         }
@@ -331,8 +332,8 @@ public class ProtocolsManagerTests
 
         public Context CreateOutgoingSession(Node node)
         {
-            IRlpxConnection connection = Substitute.For<IRlpxConnection>();
-            _currentSession = new Session(_localPort, node, connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            _connection = Substitute.For<IRlpxConnection>();
+            _currentSession = new Session(_localPort, node, _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             _rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
             return this;
         }
@@ -382,6 +383,13 @@ public class ProtocolsManagerTests
         public Context VerifyInitialized()
         {
             Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
+            return this;
+        }
+
+        public Context VerifySnappyEnabled(bool enabled)
+        {
+            Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
+            _connection.Received(enabled ? 1 : 0).EnableSnappy();
             return this;
         }
 
@@ -577,6 +585,16 @@ public class ProtocolsManagerTests
             .Init()
             .ReceiveHello()
             .VerifyPingSenderSet();
+
+    [TestCase((byte)5, true)]
+    [TestCase((byte)4, false)]
+    public void Enables_snappy_once_for_admitted_v5_hello(byte p2pVersion, bool snappy) => When
+            .CreateIncomingSession()
+            .ActivateChannel()
+            .Handshake()
+            .Init()
+            .ReceiveHello(p2pVersion)
+            .VerifySnappyEnabled(snappy);
 
     [Test]
     public void Disconnects_on_p2p_before_version_4() => When
@@ -804,6 +822,8 @@ public class ProtocolsManagerTests
         public SessionState State => SessionState.Disconnected;
         public SessionState BestStateReached => SessionState.Disconnected;
         public bool IsClosing => true;
+        public bool IsChannelClosed => false;
+        public bool IsOutboundBufferFull => false;
         public PublicKey RemoteNodeId => null!;
         public PublicKey ObsoleteRemoteNodeId => null!;
         public string RemoteHost { get; set; } = string.Empty;
@@ -849,6 +869,5 @@ public class ProtocolsManagerTests
         public void InitiateDisconnect(DisconnectReason disconnectReason, string details) => throw new NotSupportedException();
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details) => throw new NotSupportedException();
         public void Handshake(PublicKey handshakeRemoteNodeId) => throw new NotSupportedException();
-        public void StartTrackingSession() => throw new NotSupportedException();
     }
 }

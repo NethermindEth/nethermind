@@ -35,11 +35,6 @@ namespace Nethermind.Logging
                         foreach (string logEntry in _queuedEntries.GetConsumingEnumerable())
                         {
                             Console.Error.WriteLine(logEntry);
-
-                            if (_queuedEntries.IsAddingCompleted)
-                            {
-                                break;
-                            }
                         }
                     }
                     catch (Exception e)

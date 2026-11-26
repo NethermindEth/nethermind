@@ -1188,6 +1188,7 @@ public class EvmExecutorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(error!.Code, Is.EqualTo(-32001));
+            Assert.That(error.Message, Does.Contain("optimistic execution head is not available"));
             Assert.That(source.Fetches, Is.Zero);
         }
     }

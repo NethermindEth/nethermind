@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Autofac.Features.AttributeFilters;
-using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -12,21 +10,6 @@ namespace Nethermind.Network;
 
 public static class ContainerBuilderExtensions
 {
-    /// <summary>
-    /// Registers the serializer of <typeparamref name="TMessage"/> with <see cref="MessageSerializationService"/>, and
-    /// as <see cref="IMessageSerializer{T}"/>.
-    /// </summary>
-    public static ContainerBuilder AddMessageSerializer<TMessage, TSerializer>(this ContainerBuilder builder) where TSerializer : class, IMessageSerializer<TMessage> where TMessage : MessageBase
-    {
-        builder.RegisterType<TSerializer>()
-            .As<IMessageSerializer<TMessage>>()
-            .AsSelf()
-            .WithAttributeFiltering()
-            .SingleInstance();
-
-        return builder.AddSingleton((ctx) => new SerializerInfo(typeof(TMessage), ctx.Resolve<TSerializer>()));
-    }
-
     /// <summary>
     /// Registers a protocol handler type and its corresponding <see cref="IProtocolHandlerFactory"/>.
     /// Handler lifetime is owned by <see cref="ISession"/>: the session disposes its handlers

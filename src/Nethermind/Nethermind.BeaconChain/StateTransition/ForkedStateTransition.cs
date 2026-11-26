@@ -150,10 +150,14 @@ public static class ForkedStateTransition
     /// <summary>
     /// If <paramref name="state"/> is still Fulu but <paramref name="targetFork"/> is Gloas, advances it
     /// (via the existing, unmodified <see cref="SlotProcessing.ProcessSlots"/>) to exactly the fork
-    /// boundary slot and upgrades it. A no-op otherwise.
+    /// boundary slot and upgrades it. A no-op for any other fork this driver handles.
     /// </summary>
+    /// <exception cref="NotSupportedException"><paramref name="targetFork"/> is a fork this driver has no crossing for.</exception>
     internal static ForkedBeaconState CrossBoundaryIfNeeded(ForkedBeaconState state, BeaconFork targetFork, BeaconChainSpec spec, EpochCache cache)
     {
+        if (targetFork is not (BeaconFork.Electra or BeaconFork.Fulu or BeaconFork.Gloas))
+            throw new NotSupportedException($"Crossing into the {targetFork} fork is not implemented");
+
         cache.SigningSpec = spec;
         if (state is not ForkedBeaconState.OfFulu { State: var fulu } || targetFork != BeaconFork.Gloas)
             return state;

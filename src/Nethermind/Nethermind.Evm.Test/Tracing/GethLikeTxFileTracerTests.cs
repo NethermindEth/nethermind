@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -149,6 +150,22 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
         ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), ClearSstoreCode(), GethTraceOptions.Default);
 
         Assert.That(entries.Single(e => e.OpcodeRaw == Instruction.SSTORE).Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
+    }
+
+    [Test]
+    public void Should_include_storage_refund_on_the_restoring_opcode_on_Amsterdam()
+    {
+        List<GethTxFileTraceEntry> entries = [];
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.AmsterdamActivation, 1_000_000, GethLikeTxMemoryTracerTests.RestoredSlotCode);
+
+        ExecuteAndTraceToFile(block, transaction, entries);
+
+        GethTxFileTraceEntry restore = entries.Last(e => e.OpcodeRaw == Instruction.SSTORE);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restore.GasCost, Is.EqualTo(GasCostOf.WarmStateRead));
+            Assert.That(restore.Refund, Is.EqualTo((long)Eip8038Constants.StorageWrite));
+        }
     }
 
     [Test]

@@ -29,6 +29,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Facade.Filters;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Benchmark
@@ -73,6 +74,8 @@ namespace Nethermind.JsonRpc.Benchmark
             _ethModule = new EthRpcModule(
                 _container.Resolve<IJsonRpcConfig>(),
                 bridge,
+                _container.Resolve<FilterStore>(),
+                _container.Resolve<FilterManager>(),
                 blockTree,
                 blockTree,
                 _container.Resolve<IReceiptFinder>(),

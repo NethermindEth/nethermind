@@ -54,6 +54,7 @@ public class SyncPeerPoolTests
 
         public Hash256 HeadHash { get; set; } = null!;
         public byte ProtocolVersion { get; set; }
+        public bool CanGetNodeData => ProtocolVersion < EthVersions.Eth67;
         public string ProtocolCode { get; } = null!;
         public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);
         public string ClientId { get; } = description;
@@ -329,7 +330,7 @@ public class SyncPeerPoolTests
         Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(0));
     }
 
-    [Test]
+    [Test, NonParallelizable]
     public async Task Should_increment_PriorityPeerCount_when_called_SetPriorityPeer()
     {
         const int peersMaxCount = 1;
@@ -343,8 +344,38 @@ public class SyncPeerPoolTests
         await WaitForPeersInitialization(ctx);
         Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(0));
 
-        ctx.Pool.SetPeerPriority(peer.Id);
-        Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+        Metrics.PriorityPeers = 0;
+        Parallel.For(0, 20, _ => ctx.Pool.SetPeerPriority(peer.Id));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+            Assert.That(Metrics.PriorityPeers, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Removing_a_duplicate_session_preserves_the_registered_priority_peer()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+        SimpleSyncPeerMock registered = peers[0];
+        SimpleSyncPeerMock duplicate = new(registered.Id);
+        ctx.Pool.AddPeer(duplicate);
+        ctx.Pool.SetPeerPriority(registered.Id);
+
+        ctx.Pool.RemovePeer(duplicate);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PeerCount, Is.EqualTo(1));
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+        }
+
+        ctx.Pool.RemovePeer(registered);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PeerCount, Is.Zero);
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.Zero);
+        }
     }
 
     [Test]

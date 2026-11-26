@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core.Caching;
@@ -36,12 +35,10 @@ internal sealed class StoredBlockSlots(BeaconChainStore store, SlotClock slotClo
 
         try
         {
-            if (!store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? stored))
+            if (!store.TryGetBlockSlot(root, out slot))
             {
                 return false;
             }
-
-            slot = stored.Slot;
         }
         // A read failure must not turn a valid message into an SSZ REJECT in the router.
         catch (Exception e)

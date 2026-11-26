@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -122,11 +121,11 @@ internal static class DiscoveryContainer
             .SingleInstance();
 
         builder.RegisterInstance(new FileNetworkStorage(Path.Combine(options.DataDir, "discovery-v4-nodes.json"), logManager))
-            .Keyed<INetworkStorage>(DbNames.DiscoveryNodes)
+            .Keyed<INetworkStorage>(DiscoveryStorageKeys.V4)
             .SingleInstance();
 
         builder.RegisterInstance(new FileNetworkStorage(Path.Combine(options.DataDir, "discovery-v5-nodes.json"), logManager))
-            .Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes)
+            .Keyed<INetworkStorage>(DiscoveryStorageKeys.V5)
             .SingleInstance();
 
         builder.RegisterType<DiscoveryV5App>()

@@ -11,6 +11,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Logging;
 
@@ -89,7 +90,7 @@ public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initC
                 // Cancel dependent steps without the step manager logging the failure again.
                 throw new OperationCanceledException(processExitSource.Token);
             }
-            catch (Exception e) when (FindNativeLoadFailure(e) is { } failure)
+            catch (Exception e) when (VirtualMachineStatics.FindNativeLoadFailure(e) is { } failure)
             {
                 if (logger.IsError)
                     logger.Error(DescribeLoadFailure("c-kzg", "the point evaluation precompile", failure));
@@ -122,7 +123,7 @@ public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initC
             {
                 _ = probe.Precompile.Run(probe.Input, spec);
             }
-            catch (Exception e) when (FindNativeLoadFailure(e) is { } failure)
+            catch (Exception e) when (VirtualMachineStatics.FindNativeLoadFailure(e) is { } failure)
             {
                 loaded = false;
                 if (logger.IsError)
@@ -144,18 +145,6 @@ public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initC
     private static string DescribeLoadFailure(string library, string usedBy, Exception failure) =>
         $"Cannot start: the {library} native library, required by {usedBy}, cannot be loaded on {RuntimeInformation.RuntimeIdentifier}. " +
         $"Reinstall Nethermind from the package for this platform and restart the node. Details: {failure.Message}";
-
-    /// <summary>Finds the exception, if any, saying that a native library is missing, built for another platform or lacks an export.</summary>
-    private static Exception? FindNativeLoadFailure(Exception? exception)
-    {
-        for (; exception is not null; exception = exception.InnerException)
-        {
-            if (exception is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
-                return exception;
-        }
-
-        return null;
-    }
 
     /// <summary>A valid call of a natively backed precompile, which loads its native library the way a block would.</summary>
     /// <remarks>The probe runs when the spec enables any of <paramref name="Addresses"/>.</remarks>

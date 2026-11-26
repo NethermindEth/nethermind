@@ -280,12 +280,13 @@ public class FlatTreeSyncStore(
 
     public void EnsureStorageEmpty(in ValueHash256 address)
     {
-        // Only need to clean flat storage entries. Orphaned storage trie nodes are not a problem
-        // because the trie is always traversed from the account's storage root hash — when the
-        // account has EmptyTreeHash or the account no longer exists, no storage trie nodes will
-        // ever be reached.
+        // The storage trie nodes go with the slots. Healing takes a node stored at a path with the hash it expects as
+        // saved with all its subtree, so a node left here would make a later storage root that has it again skip that
+        // subtree, and the slots under it, deleted here, would never be written back. Any node can come back, not only
+        // the root, so all of them go.
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         writeBatch.DeleteStorageRange(address, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        writeBatch.DeleteStorageTrieNodeRange(address, ValueKeccak.Zero, ValueKeccak.MaxValue);
     }
 
     public void FinalizeSync(BlockHeader pivotHeader)

@@ -25,8 +25,8 @@ namespace Nethermind.Config
             }
 
             string variableName = string.IsNullOrEmpty(category) ? name : $"{category}.{name}";
-            bool isSet = _args.ContainsKey(variableName);
-            return (isSet, isSet ? _args[variableName] : null);
+            bool isSet = _args.TryGetValue(variableName, out string? value);
+            return (isSet, value);
         }
 
         public IEnumerable<(string? Category, string Name)> GetConfigKeys() =>

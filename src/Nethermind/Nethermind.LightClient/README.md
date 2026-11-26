@@ -239,15 +239,22 @@ The console prints live beacon, execution and SNAP peer counts every 12 seconds 
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
 serve the selected state, state queries return an error after 30 seconds.
 Wallet execution requests race at most two suppliers, use only a verified response,
-and cancel and join the other attempt. Bulk hosted storage pages and trie-node
-updates use one supplier at a time, with retries on other peers, avoiding duplicate
-large downloads. Account, storage and bytecode reads have
+and cancel and join the other attempt. Bulk block data and speculative history
+requests use one 250 ms backup delay per round. A failed supplier can be replaced
+immediately. If the delay has started, the replacement uses the remaining time.
+Bulk hosted storage pages and trie-node updates use one supplier at a time, with
+retries on other peers.
+Account, storage and bytecode reads have
 separate 32 MiB verified caches shared by RPC, EVM and hosted-account refreshes.
 Authenticated headers have another 32 MiB cache; each read rechecks the requested
 number and state root and returns an independent mutable copy.
 Concurrent misses share one download; canceling one caller does not cancel the
-other callers. Cache keys bind accounts to the world-state root, storage to its
-authenticated storage root and slot, and bytecode to its code hash.
+other callers. The client serves genesis and can answer peer requests for its
+two most recently advertised finalized headers when it has matching bytes at
+publication. Before Gloas, the beacon light-client header authenticates the execution
+hash and state root directly, so serving the execution header depends on an
+earlier execution peer lookup. Cache keys bind accounts to the world-state root,
+storage to its authenticated storage root and slot, and bytecode to its code hash.
 Both P2P stacks use Nethermind's automatic IPv4/IPv6 IP resolver and its bounded
 retry, refresh and address-validation behavior. The resolved public address is
 used in discovery records; IP detection does not open or forward router/firewall
@@ -446,15 +453,16 @@ A `false` result describes consensus freshness, not hosted-cache completeness or
 historical log coverage; requested data still has to be fetched and verified.
 `eth_capabilities` reports the authenticated head and supported resource types.
 It omits `oldestBlock` because actual retention depends on the supplying peers.
-Historical state selectors are limited to 32 ancestors of either the finalized
-head or the authenticated optimistic head. A wallet's pinned prior
-optimistic hash remains usable when the native head advances, provided it is
-still an ancestor in that window; orphan hashes fail canonical validation.
+Historical state selectors are limited to 128 ancestors of the newest
+authenticated execution head. A newer optimistic head sets that window even
+when the finalized head authenticates the requested ancestor. A wallet's
+pinned hash remains usable while it is canonical and in that window.
 Only authenticated canonical state is served, including when EIP-1898
 `requireCanonical` is false or omitted. Unknown block hashes return `-32001`;
 known non-canonical hashes return `-32000` when `requireCanonical` is true and
-`-32001` otherwise, because their state is unavailable to this client. State availability within that range
-still depends on a SNAP peer retaining the state root.
+`-32001` otherwise, because their state is unavailable to this client. This
+window bounds header verification. Serving the state still requires a SNAP
+peer that retains the selected state root.
 At most two historical state requests run concurrently. Additional requests wait
 up to five seconds for capacity before returning an overload error; cancellation
 removes a queued request. Current-head reads use independent admission.
@@ -514,6 +522,10 @@ reaches the requested range. Shutdown cancels and joins the worker before
 closing its database.
 `safe` and `earliest` return `-32001`. The beacon light-client protocol supplies
 optimistic and finalized heads. Genesis falls outside the bounded history.
+`eth_call`, `eth_estimateGas`, `eth_createAccessList`, and `eth_simulateV1` use
+the same fresh authenticated optimistic head for `"pending"` and `"latest"`.
+`debug_traceCall` rejects `"pending"` as full Nethermind does. The light client
+returns `-32001` for that selector.
 `eth_getTransactionCount(..., "pending")` starts at the latest authenticated
 nonce and advances over consecutive, affordable transactions this client has
 announced to execution peers. A frame transaction's fee counts against the sender
@@ -626,12 +638,15 @@ tail itself cannot fit, a final ID-less `-32005` ends the response and the
 remaining items are not executed. Notifications still produce no response, and invalid
 envelopes retain their standard errors. Oversized results fail explicitly rather
 than returning incomplete data.
-Normal HTTP requests, batches and WebSocket messages have a 64 KiB body limit.
-A single HTTP `eth_sendRawTransaction`, `eth_sendRawTransactionSync`, `eth_call`,
-`eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` or `debug_traceCall` request may
-use up to 4 MiB plus 64 KiB of JSON text, so permitted contract-initcode inputs
-fit. Submitted raw envelopes/sidecars are limited to 2 MiB; at most four such large
-requests run concurrently. Peer responses and proof nodes have separate size limits.
+Normal HTTP requests and WebSocket messages have a 64 KiB body limit. HTTP
+`eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` and
+`debug_traceCall` can use the 4 MiB plus 64 KiB HTTP body limit, including when
+they are among the first 128 envelopes of a batch. Other entries, excess
+envelopes, and framing share the 64 KiB budget. Standalone HTTP
+`eth_sendRawTransaction` and `eth_sendRawTransactionSync` can also use the larger
+body limit. Submitted raw envelopes and sidecars are limited to 2 MiB. At most
+four large HTTP requests run concurrently. Peer responses and proof nodes have
+separate size limits.
 The listener admits at most 64 active requests and has no authentication; keep
 it on loopback or place an authenticated gateway in front of it.
 Response budgets count committed UTF-8 bytes per request: 64 simultaneous
@@ -801,7 +816,12 @@ mainnet, Hoodi, Sepolia and Gnosis schedules. Gnosis uses five-second slots,
 Gloas authenticates an execution block
 hash through the payload bid's parent-block hash; the client then retrieves the matching execution
 header by hash before serving its state. Consequently the newest authenticated
-Gloas execution head inherently trails its attested beacon head by one slot.
+Gloas execution head trails its attested beacon head by at least one slot.
+Consensus publication shares the completed header cache and peer pool with RPC.
+Its finalized and optimistic workers share in-flight lookups for the same hash.
+The two consensus request slots are separate from the four used for other
+block-data requests. Each consensus lookup has a three-second budget,
+after which the publisher can retry the newest authenticated candidate.
 Gloas has synthetic fork-boundary
 tests and has authenticated native Sepolia bootstrap and subsequent optimistic
 updates from connected peers.

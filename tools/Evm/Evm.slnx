@@ -32,6 +32,7 @@
     <Project Path="../../src/Nethermind/Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Monitoring/Nethermind.Monitoring.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Network.Core/Nethermind.Network.Core.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Discovery/Nethermind.Network.Discovery.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />

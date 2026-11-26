@@ -1189,9 +1189,9 @@ public sealed class ForkChoiceRunner
         Hash256 selectionRoot = Domains.ComputeSigningRoot(new Hash256(slotRoot), GetDomain(state, DomainType.SelectionProof, targetEpoch));
         Hash256 aggregatorRoot = Domains.ComputeSigningRoot(proof.MessageRoot, GetDomain(state, DomainType.AggregateAndProof, targetEpoch));
 
-        BlockSignatureBatch batch = new();
-        if (!BlockSignatureBatch.Verify(key, proof.SelectionProof, selectionRoot, batch.Defer("Aggregate selection proof is invalid"))
-            || !BlockSignatureBatch.Verify(key, proof.Signature, aggregatorRoot, batch.Defer("Aggregator signature is invalid"))
+        BlockSignatureBatch batch = new(_pubkeys.SignatureVerifier);
+        if (!BlockSignatureBatch.Verify(_pubkeys.SignatureVerifier, key, proof.SelectionProof, selectionRoot, batch.Defer("Aggregate selection proof is invalid"))
+            || !BlockSignatureBatch.Verify(_pubkeys.SignatureVerifier, key, proof.Signature, aggregatorRoot, batch.Defer("Aggregator signature is invalid"))
             || !IsValidIndexedAttestation(state, vote, verifySignature: true, batch.Defer("Aggregate signature is invalid")))
             // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The aggregate signature is valid".
             throw new ForkChoiceException("Aggregate indices or signatures are invalid") { RejectGossip = true };
@@ -2230,7 +2230,7 @@ public sealed class ForkChoiceRunner
             return requireHeld ? GetHeldBlockState(checkpoint.Root) : GetBlockState(checkpoint.Root);
 
         // Only a copy is asked for, so a Fulu block state that has to be regenerated is not held for this.
-        ForkedBeaconState state = AdvanceCopy(checkpoint.Root, blockSlot, startSlot, IsGloasSlot(startSlot) ? BeaconFork.Gloas : BeaconFork.Fulu, requireHeld);
+        ForkedBeaconState state = AdvanceCopy(checkpoint.Root, blockSlot, startSlot, _spec.ForkAtEpoch(checkpoint.Epoch), requireHeld);
         // The epoch transitions above can apply pending deposits and grow the registry.
         ExtendPubkeys(ValidatorsOf(state));
         return state;

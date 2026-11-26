@@ -56,18 +56,20 @@ public class BeaconChainModule : Module
             .AddSingleton<BeaconChainService>()
             .AddSingleton<ProcessStallWatchdog>()
             // The network and its fork timing come from the execution layer's chainspec, so both sides follow the same schedule.
-            .AddSingleton<BeaconChainSpec, ISpecProvider, IBeaconChainConfig, ChainSpec>((specProvider, chainConfig, chainSpec) =>
+            .AddSingleton<ISignatureVerifier>(BlsSignatureVerifier.Instance)
+            .AddSingleton<BeaconChainSpec, ISpecProvider, IBeaconChainConfig, ChainSpec, ISignatureVerifier>((specProvider, chainConfig, chainSpec, signatureVerifier) =>
             {
                 BeaconPresetSelection.Initialize(specProvider.ChainId);
                 IEnumerable<ulong>? blobScheduleTimestamps = chainSpec.Parameters.BlobSchedule?.Select(static entry => entry.Timestamp);
                 BeaconChainSpec spec = chainConfig.NetworkConfigFile is { } networkConfigFile
                     ? BeaconChainSpec.ForNetworkConfig(networkConfigFile, specProvider, chainConfig.GloasForkVersion, blobScheduleTimestamps)
                     : BeaconChainSpec.ForExecution(specProvider, chainConfig.GloasForkVersion, blobScheduleTimestamps);
+                spec = spec with { SignatureVerifier = signatureVerifier };
                 ValidatePreset(spec);
                 return spec;
             })
             .AddSingleton<BeaconChainStore>()
-            .AddSingleton<PubkeyCache>()
+            .AddSingleton<PubkeyCache, BeaconChainSpec>(static spec => new PubkeyCache { SignatureVerifier = spec.SignatureVerifier })
             .AddSingleton<CheckpointSync>()
             .AddSingleton<BeaconChainStatusHolder>()
             .Bind<IBeaconChainStatusSource, BeaconChainStatusHolder>()

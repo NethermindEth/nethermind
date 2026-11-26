@@ -69,10 +69,6 @@ public class OptimismPlugin(ChainSpec chainSpec, IOptimismConfig optimismConfig)
         Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
     }
 
-    public bool MustInitialize => true;
-
-    public Type ApiType => typeof(OptimismNethermindApi);
-
     public IModule Module => new OptimismModule(chainSpec, optimismConfig);
 }
 
@@ -83,7 +79,6 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
         base.Load(builder);
 
         builder
-            .AddSingleton<NethermindApi, OptimismNethermindApi>()
             .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 
@@ -104,9 +99,6 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<IGossipPolicy>(ShouldNotGossip.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
-
-            // Step override
-            .AddStep(typeof(InitializeBlockchainOptimism))
 
             // Validators
             .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey,

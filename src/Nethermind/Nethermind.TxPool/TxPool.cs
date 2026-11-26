@@ -76,6 +76,7 @@ namespace Nethermind.TxPool
         private readonly string? _specChangeValidationFingerprint;
         private readonly ISpecChangeValidationStorage? _specChangeValidationStorage;
         private readonly bool _blobReorgsSupportEnabled;
+        private readonly bool _acceptTxWhenNotSynced;
         private readonly IProcessedBlobTxStorage? _processedBlobTxStorage;
         private readonly IncludedBlobLocations? _includedBlobLocations;
         // Head loop only: the new head's blob txs, mapped to the copy a reorg re-add read back from the processed rows.
@@ -234,7 +235,7 @@ namespace Nethermind.TxPool
                 && _specChangeValidationFingerprint is not null
                 ? blobTxStorage as ISpecChangeValidationStorage
                 : null;
-            AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
+            _acceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _processedBlobTxStorage = _blobReorgsSupportEnabled ? blobTxStorage as IProcessedBlobTxStorage : null;
             _includedBlobLocations = _processedBlobTxStorage is null ? null : new IncludedBlobLocations(IncludedBlobMaxBlockDistance);
@@ -913,7 +914,7 @@ namespace Nethermind.TxPool
                             EvictUnreferenceableRecentRootTransactions(unreferenceable);
                             RevalidateFrameTransactions(args.Block);
 
-                            if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || reorganised)
+                            if (!_headInfo.IsSyncing || _acceptTxWhenNotSynced || reorganised)
                             {
                                 _hashCache.ClearCurrentBlockCache();
                             }
@@ -1025,7 +1026,6 @@ namespace Nethermind.TxPool
             if (previousBlock is not null)
             {
                 Metrics.TransactionsReorged += previousBlock.Transactions.Length;
-                bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Header).IsEip155Enabled;
                 Transaction[] txs = previousBlock.Transactions;
                 for (int i = 0; i < txs.Length; i++)
                 {
@@ -1037,7 +1037,7 @@ namespace Nethermind.TxPool
                     {
                         continue;
                     }
-                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
+                    SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
                 }
 
                 if (_blobReorgsSupportEnabled
@@ -1062,7 +1062,7 @@ namespace Nethermind.TxPool
 
                             blobTx.SenderAddress = senderAddress;
                         }
-                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
+                        SubmitTx(blobTx, TxHandlingOptions.None, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
                     }
                     if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
@@ -1693,7 +1693,6 @@ namespace Nethermind.TxPool
                 _logger.Trace($"Removed a peer from TX pool: {peer.Id}");
         }
 
-        public bool AcceptTxWhenNotSynced { get; set; }
         public bool SupportsBlobs { get; }
         public long PendingTransactionsAdded => Volatile.Read(ref _pendingTransactionsAdded);
 
@@ -1749,11 +1748,9 @@ namespace Nethermind.TxPool
 
         bool IRecyclableTxPool.TrySubmitKnown(in ValueHash256 hash)
         {
-            // Only what SubmitTx settles without reading the body: a syncing pool answers Syncing first,
-            // and a NewDiscovered subscriber is handed the transaction itself.
+            // Only what SubmitTx settles without reading the body: a syncing pool answers Syncing first.
             if (GetType() != typeof(TxPool)
-                || (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
-                || NewDiscovered is not null
+                || (!_acceptTxWhenNotSynced && _headInfo.IsSyncing)
                 || !_hashCache.Get(in hash))
             {
                 return false;
@@ -1775,7 +1772,7 @@ namespace Nethermind.TxPool
                                   && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
 
-            if (!AcceptTxWhenNotSynced &&
+            if (!_acceptTxWhenNotSynced &&
                 _headInfo.IsSyncing &&
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
@@ -1800,14 +1797,6 @@ namespace Nethermind.TxPool
             // assign a sequence number to transaction so we can order them by arrival times when
             // gas prices are exactly the same
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);
-
-            EventHandler<TxEventArgs>? discovered = NewDiscovered;
-            if (discovered is not null)
-            {
-                canRecycle = false;
-                PooledBlobBuffers.Disown(tx);
-                discovered(this, new TxEventArgs(tx));
-            }
 
             if (_logger.IsTrace)
             {
@@ -1943,7 +1932,7 @@ namespace Nethermind.TxPool
 
         public AnnounceResult NotifyAboutTx(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler)
         {
-            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
+            if (!_acceptTxWhenNotSynced && _headInfo.IsSyncing)
             {
                 return AnnounceResult.Delayed;
             }
@@ -3167,7 +3156,6 @@ namespace Nethermind.TxPool
 
         public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash) && !_hashCache.HasInvalidBlobProofs(in hash);
 
-        public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
         public event EventHandler<TxEventArgs>? RemovedPending;
         public event EventHandler<TxEventArgs>? EvictedPending;

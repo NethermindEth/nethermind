@@ -390,6 +390,7 @@ public class KeyStoreTests
     private const string TwoPassesDerivedKey = "96acb7880103371e32d2133e61539c4485ceeab471e95819d5c41140d7c421fd"; // n 2, r 1, p 2
 
     private const string ScryptLimits = "scrypt may use at most 2 GiB of memory and n * r * p of at most 16777216";
+    private const string Pbkdf2Limits = "pbkdf2 may run at most 16777216 iterations, c for every 32 bytes of dklen";
 
     // Key files for the vector key, salt and IV with n = 1024, as written with lower-case names.
     private const string CtrCipherText = "07d6803a09be626843cf064d8e8f986eff6e65f99154e356691f912458153078";
@@ -506,6 +507,20 @@ public class KeyStoreTests
     [TestCase(1 << 30, int.MaxValue, int.MaxValue, ExpectedResult = false, Description = "no overflow")]
     public bool Scrypt_limits(int n, int r, int p) => FileKeyStore.IsWithinScryptLimits(n, r, p);
 
+    // The work is c for every started block of 32 derived bytes. The boundaries are checked here rather than by reading
+    // key files: a read at the limit derives for seconds, and one with int.MaxValue for minutes if the check is missing.
+    [TestCase(262144, 32, ExpectedResult = true, Description = "the definition's vector")]
+    [TestCase(1000000, 32, ExpectedResult = true, Description = "eth-keyfile's default")]
+    [TestCase(1 << 24, 32, ExpectedResult = true, Description = "at the limit")]
+    [TestCase((1 << 24) + 1, 32, ExpectedResult = false)]
+    [TestCase(1 << 23, 33, ExpectedResult = true, Description = "two blocks at the limit")]
+    [TestCase((1 << 23) + 1, 33, ExpectedResult = false, Description = "a started block counts")]
+    [TestCase(1 << 19, 1024, ExpectedResult = true, Description = "32 blocks at the limit")]
+    [TestCase((1 << 19) + 1, 1024, ExpectedResult = false)]
+    [TestCase(int.MaxValue, 1024, ExpectedResult = false, Description = "no overflow in the product")]
+    [TestCase(1, int.MaxValue, ExpectedResult = false, Description = "no overflow in the block count; a key file gets the dklen error first")]
+    public bool Pbkdf2_limits(int c, int dkLen) => FileKeyStore.IsWithinPbkdf2Limits(c, dkLen);
+
     [Test]
     public void Thread_probe_sees_a_started_thread() =>
         Assert.That(OtherThreadsReachedBy(static () =>
@@ -621,6 +636,11 @@ public class KeyStoreTests
         yield return new TestCaseData(ScryptKeyFile("scrypt", salt, 16)).SetArgDisplayNames("scrypt with dklen 16");
         yield return new TestCaseData(ScryptKeyFile("Scrypt", salt, 32)).SetArgDisplayNames("scrypt named Scrypt");
 
+        // The pbkdf2 limit applies to pbkdf2 key files only.
+        KeyStoreItem scryptWithC = ScryptKeyFile("scrypt", salt, 32);
+        scryptWithC.Crypto.KDFParams.C = (1 << 24) + 1;
+        yield return new TestCaseData(scryptWithC).SetArgDisplayNames("scrypt with a c above the pbkdf2 limit");
+
         KeyStoreItem ScryptKeyFile(string kdf, byte[] kdfSalt, int dkLen, bool definitionMac = false) => BuildKeyFile(
             kdf, new KdfParams { N = 1024, R = 8, P = 1, DkLen = dkLen, Salt = kdfSalt.ToHexString() },
             SCrypt.ComputeDerivedKey(password, kdfSalt, 1024, 8, 1, null, dkLen), definitionMac);
@@ -642,6 +662,10 @@ public class KeyStoreTests
     {
         yield return Case("pbkdf2 without c", static crypto => crypto.KDFParams.C = null, "Incorrect key: pbkdf2 requires a positive c");
         yield return Case("pbkdf2 with c 0", static crypto => crypto.KDFParams.C = 0, "Incorrect key: pbkdf2 requires a positive c");
+        yield return Case("pbkdf2 with c -1", static crypto => crypto.KDFParams.C = -1, "Incorrect key: pbkdf2 requires a positive c");
+        // Just above the limit, so that without the check each read derives for seconds and fails on the MAC instead.
+        yield return Case("pbkdf2 with c above the limit", static crypto => crypto.KDFParams.C = (1 << 24) + 1, $"Unsupported pbkdf2 parameters: c 16777217, dklen 32; {Pbkdf2Limits}");
+        yield return Case("pbkdf2 with dklen 1024 and c above the limit", static crypto => (crypto.KDFParams.C, crypto.KDFParams.DkLen) = ((1 << 19) + 1, 1024), $"Unsupported pbkdf2 parameters: c 524289, dklen 1024; {Pbkdf2Limits}");
         const string invalidScrypt = "Incorrect key: scrypt requires a power-of-two n above 1 and positive r and p";
         yield return Case("scrypt without n, r and p", static crypto => crypto.KDF = "scrypt", invalidScrypt);
         yield return Case("scrypt with n 3", Scrypt(3, 8, 1), invalidScrypt);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -50,6 +51,15 @@ public class XdcProtocolValidatorTests
         session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 
+    [Test]
+    public void Every_xdc_version_serves_node_data([Values(XdcProtocolVersions.Legacy, XdcProtocolVersions.Xdc164, XdcProtocolVersions.Xdc165)] byte version)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        Assert.That(CreateHandler(version, session).CanGetNodeData, Is.True);
+    }
+
     private static ISession Validate(byte negotiatedVersion, byte statusVersion, out bool valid)
     {
         ISession session = Substitute.For<ISession>();
@@ -92,13 +102,17 @@ public class XdcProtocolValidatorTests
             Substitute.For<ISyncInfoManager>(), Substitute.For<IBlockTree>(),
             Substitute.For<ISyncPeerPool>(), LimboLogs.Instance);
 
-        return version == XdcProtocolVersions.Legacy
-            ? new XdcProtocolHandler(consensusMessages, session, Substitute.For<IMessageSerializationService>(),
-                Substitute.For<INodeStatsManager>(), syncServer, Substitute.For<IBackgroundTaskScheduler>(),
-                Substitute.For<ITxPool>(), Substitute.For<IGossipPolicy>(), LimboLogs.Instance)
-            : new Xdc165ProtocolHandler(consensusMessages, session, Substitute.For<IMessageSerializationService>(),
-                Substitute.For<INodeStatsManager>(), syncServer, Substitute.For<IBackgroundTaskScheduler>(),
-                Substitute.For<ITxPool>(), Substitute.For<IGossipPolicy>(), Substitute.For<IForkInfo>(),
-                LimboLogs.Instance);
+        IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        IBackgroundTaskScheduler scheduler = Substitute.For<IBackgroundTaskScheduler>();
+        ITxPool pool = Substitute.For<ITxPool>();
+        IGossipPolicy gossip = Substitute.For<IGossipPolicy>();
+        return version switch
+        {
+            XdcProtocolVersions.Legacy => new XdcProtocolHandler(consensusMessages, session, serializer, stats, syncServer, scheduler, pool, gossip, LimboLogs.Instance),
+            XdcProtocolVersions.Xdc164 => new Xdc164ProtocolHandler(consensusMessages, session, serializer, stats, syncServer, scheduler, pool, gossip, Substitute.For<IForkInfo>(), LimboLogs.Instance),
+            XdcProtocolVersions.Xdc165 => new Xdc165ProtocolHandler(consensusMessages, session, serializer, stats, syncServer, scheduler, pool, gossip, Substitute.For<IForkInfo>(), LimboLogs.Instance),
+            _ => throw new ArgumentOutOfRangeException(nameof(version))
+        };
     }
 }

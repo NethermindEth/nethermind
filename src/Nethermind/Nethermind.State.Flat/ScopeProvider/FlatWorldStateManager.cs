@@ -7,8 +7,6 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Migration;
-using Nethermind.State.Flat.Sync.Snap;
-using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -20,7 +18,6 @@ public class FlatWorldStateManager(
     ITrieWarmer trieWarmer,
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
-    IFlatStateRootIndex flatStateRootIndex,
     IStateHeaderProvider stateHeaderProvider,
     FlatTrieVerifier trieVerifier,
     Lazy<HalfPathMigrationCursor> migrationCursor,
@@ -39,14 +36,8 @@ public class FlatWorldStateManager(
         logManager,
         isReadOnly: false);
 
-    private SnapFlatStateServer? _snapServer;
-
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
     public IStateReader GlobalStateReader => flatStateReader;
-    public ISnapStateServer SnapStateServer => _snapServer ??= new SnapFlatStateServer(
-        flatDbManager,
-        flatStateRootIndex,
-        logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
     public IWorldStateScopeProvider CreateResettableWorldState() => CreateReadOnlyScopeProvider(filterInMemorySlotReads: false);

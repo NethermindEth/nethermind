@@ -84,8 +84,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private int _trackedTransactionCount;
     private int _transactionOrderCount;
     private int _peerCount;
-    private double _cellServeTokens = GlobalCellServeTokenCapacity;
-    private DateTimeOffset _cellServeTokensUpdatedAt;
+    private CellServeTokenBucket _cellServeTokens;
     private int _maintenanceScheduled;
     private int _custodyUpdateScheduled;
     private int _activeCellServeOperations;
@@ -141,7 +140,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         _maxAdmissionDelay = maxAdmissionDelay;
         _cellRequestTimeout = cellRequestTimeout ?? DefaultCellRequestTimeout;
         _timestamper = timestamper ?? Timestamper.Default;
-        _cellServeTokensUpdatedAt = _timestamper.UtcNowOffset;
+        _cellServeTokens = new(GlobalCellServeTokenCapacity, GlobalCellServeTokensPerSecond, _timestamper.UtcNowOffset);
         _maintenanceTimer = (timerFactory ?? TimerFactory.Default).CreateTimer(MaintenanceInterval);
         _maintenanceTimer.AutoReset = true;
         _maintenanceTimer.Elapsed += OnMaintenanceElapsed;
@@ -1287,19 +1286,12 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 return false;
             }
 
-            DateTimeOffset now = _timestamper.UtcNowOffset;
-            double elapsedSeconds = Math.Max(0, (now - _cellServeTokensUpdatedAt).TotalSeconds);
-            _cellServeTokens = Math.Min(
-                GlobalCellServeTokenCapacity,
-                _cellServeTokens + elapsedSeconds * GlobalCellServeTokensPerSecond);
-            _cellServeTokensUpdatedAt = now;
-            if (_cellServeTokens < work)
+            if (!_cellServeTokens.TryConsume(work, _timestamper.UtcNowOffset))
             {
                 _cellServeConcurrency.Release();
                 return false;
             }
 
-            _cellServeTokens -= work;
             _activeCellServeOperations++;
             return true;
         }
@@ -1329,7 +1321,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         lock (_cellServeLock)
         {
-            _cellServeTokens = Math.Min(GlobalCellServeTokenCapacity, _cellServeTokens + work);
+            _cellServeTokens.Refund(work);
         }
     }
 

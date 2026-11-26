@@ -684,11 +684,13 @@ public class EraImporterTest
         Block block = blockTree.FindBlock(5, BlockTreeLookupOptions.None)!;
         KnownHeaders.EnsureMatch(blockTree, block);
 
+        // Under one byte per call: absorbs one-off JIT and tiering allocations on this thread, while any per-call allocation fails.
+        const int calls = 100_000;
         long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1_000; i++)
+        for (int i = 0; i < calls; i++)
             KnownHeaders.EnsureMatch(blockTree, block);
 
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(1_000));
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(calls));
     }
 
     private sealed class FindLevelCountingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
