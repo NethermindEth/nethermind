@@ -464,7 +464,7 @@ jobs:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,engineReorgTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
+      test_types: engineTest,engineXTest,blockTest,stateTest,syncTest,engineReorgTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
       setup_group: all
 
   tests-consensus-spec:

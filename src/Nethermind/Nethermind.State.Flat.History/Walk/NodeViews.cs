@@ -19,11 +19,10 @@ namespace Nethermind.State.Flat.History.Walk;
 internal static class NodeViews
 {
     private const int MaxNibbles = 2 * Hash256.Size;
-    private const int Avx2HashBatchSize = 4;
     private const int Avx512HashBatchSize = 8;
     private const int VectorByteLength = 32;
     private const int BranchHashBufferLength = Avx512HashBatchSize * (KeccakHash.Hash532InputLength + Hash256.Size);
-    private static int MinHashBatchSize => Avx512F.IsSupported ? 3 : Avx2HashBatchSize;
+    private static int MinHashBatchSize => Avx512F.IsSupported ? 3 : KeccakHash.MaxBatchWidth;
 
     public static NodeView FromRoot(TrieNode? root, int depth, ITrieNodeResolver resolver)
     {
@@ -74,7 +73,7 @@ internal static class NodeViews
     public static void FromChildrenRlp(ReadOnlySpan<byte[]?> children, Span<NodeView> views)
     {
         uint initialized = 0;
-        if (Avx2.IsSupported)
+        if (KeccakHash.MaxBatchWidth != 0)
         {
             uint candidates = 0;
 
@@ -104,7 +103,7 @@ internal static class NodeViews
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static uint InitializeBatched(ReadOnlySpan<byte[]?> children, Span<NodeView> views, uint candidates)
     {
-        int batchSize = Avx512F.IsSupported ? Avx512HashBatchSize : Avx2HashBatchSize;
+        int batchSize = KeccakHash.MaxBatchWidth;
         int inputLength = Avx512F.IsSupported ? KeccakHash.Hash532InputLength : KeccakHash.Hash532PaddedLength;
         Unsafe.SkipInit(out BranchHashBuffer buffer);
         Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
@@ -131,7 +130,7 @@ internal static class NodeViews
             if (Avx512F.IsSupported)
                 KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref hashes[0]);
             else
-                KeccakHash.ComputePaddedMultiBlocks4Avx2(ref inputs[0], inputLength, ref hashes[0]);
+                KeccakHash.ComputePaddedBatch(ref inputs[0], inputLength, batchSize, ref hashes[0]);
             for (int i = 0; i < count; i++)
             {
                 int index = BitOperations.TrailingZeroCount(batch);
