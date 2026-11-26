@@ -3,10 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
+using Nethermind.Zkvm.Abstractions;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.ZkEvm.Test;
@@ -82,6 +85,58 @@ public class GuestArith256Tests
 
         Assert.That(reduced, Is.EqualTo((UInt256)((BigInteger)left * (BigInteger)right)));
     }
+
+    /// <summary>The 256-bit moduli of OpenVM's standard configuration, in the order <see cref="OpenVmModular.IndexOf"/> numbers them.</summary>
+    private static readonly string[] OpenVmModuli =
+    [
+        "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001", // BN254 scalar
+        "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47", // BN254 base
+        "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f", // secp256k1 base
+        "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", // secp256k1 scalar
+        "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff", // P-256 base
+        "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551", // P-256 scalar
+        "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001", // BLS12-381 scalar
+    ];
+
+    private static IEnumerable<TestCaseData> OpenVmModulusCases() =>
+        OpenVmModuli.Select((hex, index) => new TestCaseData(hex, index).SetName($"OpenVM modulus {index}"));
+
+    [TestCaseSource(nameof(OpenVmModulusCases))]
+    public void OpenVM_modulus_lookup_finds_each_configured_modulus_and_no_neighbour(string hex, int index)
+    {
+        UInt256 modulus = FromHex(hex);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(IndexOf(modulus), Is.EqualTo(index), "modulus");
+            Assert.That(IndexOf(modulus - 1), Is.EqualTo(-1), "modulus - 1");
+            Assert.That(IndexOf(modulus + 1), Is.EqualTo(-1), "modulus + 1");
+            Assert.That(IndexOf(modulus ^ (UInt256.One << 192)), Is.EqualTo(-1), "top limb changed");
+        }
+    }
+
+    /// <remarks>
+    /// Only the cases that return before the extension runs: the extension exists only in the OpenVM guest, whose
+    /// stateless-tests blocks check the rest.
+    /// </remarks>
+    [Test]
+    public void OpenVM_modular_path_declines_an_unconfigured_modulus_or_an_unreduced_operand([Values] bool multiply)
+    {
+        UInt256 modulus = FromHex(OpenVmModuli[0]);
+        UInt256 one = UInt256.One;
+        UInt256 unconfigured = modulus - 2;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EvmInstructions.TryOpenVmModular(in one, in one, in unconfigured, multiply, out _), Is.False, "unconfigured modulus");
+            Assert.That(EvmInstructions.TryOpenVmModular(in modulus, in one, in modulus, multiply, out _), Is.False, "first operand equal to the modulus");
+            Assert.That(EvmInstructions.TryOpenVmModular(in one, in Max, in modulus, multiply, out _), Is.False, "second operand above the modulus");
+        }
+    }
+
+    private static int IndexOf(UInt256 modulus) => OpenVmModular.IndexOf(modulus.u0, modulus.u1, modulus.u2, modulus.u3);
+
+    private static UInt256 FromHex(string hex) => new(Bytes.FromHexString(hex), isBigEndian: true);
 
     /// <summary>Runs ADDMOD or MULMOD on <c>a</c> (top), <c>b</c> and <c>m</c>, the way the interpreter pops them.</summary>
     private static UInt256 Run3(Instruction op, UInt256 a, UInt256 b, UInt256 m)

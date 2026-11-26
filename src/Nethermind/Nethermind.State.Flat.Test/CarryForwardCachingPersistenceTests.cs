@@ -16,6 +16,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -137,6 +139,25 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
+    public async Task GetAccount_WrittenAccount_InvalidatedOnCommit([Values] bool slim)
+    {
+        FakePersistence inner = new();
+        await using CarryForwardCachingPersistence cache = new(inner);
+        Account account = new(1, 100);
+
+        ReadAccount(cache, Address);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+        {
+            if (slim) batch.SetSlimAccount(Address, AccountDecoder.Slim.Encode(account));
+            else batch.SetAccount(Address, account);
+        }
+        inner.ReaderState = Basis1;
+        ReadAccount(cache, Address);
+
+        Assert.That(inner.AccountReads, Is.EqualTo(2));
+    }
+
+    [Test]
     public async Task GetAccount_WhenCapacityExceeded_EvictsAllThenReCaches()
     {
         FakePersistence inner = new();
@@ -209,7 +230,7 @@ public class CarryForwardCachingPersistenceTests
         using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
         {
             // A raw write clears everything, as every snap sync and healing batch does.
-            batch.SetAccountRaw(default, new Account(1, 100));
+            batch.SetAccountRaw(default, new AccountStruct(1, 100));
         }
 
         Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(256 * 1024));
@@ -724,7 +745,7 @@ public class CarryForwardCachingPersistenceTests
         yield return ClearingScenario("self_destruct_clears_cache", batch => batch.SelfDestruct(Address));
         yield return ClearingScenario("delete_account_range_clears_cache", batch => batch.DeleteAccountRange(default, default));
         yield return ClearingScenario("delete_storage_range_clears_cache", batch => batch.DeleteStorageRange(default, default, default));
-        yield return ClearingScenario("set_account_raw_clears_cache", batch => batch.SetAccountRaw(default, new Account(1, 100)));
+        yield return ClearingScenario("set_account_raw_clears_cache", batch => batch.SetAccountRaw(default, new AccountStruct(1, 100)));
         yield return ClearingScenario("set_storage_raw_encoded_clears_cache", batch => batch.SetStorageRawEncoded(default, default, default));
 
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((cache, _) =>
@@ -953,7 +974,7 @@ public class CarryForwardCachingPersistenceTests
                         Pattern(keyToClear, block).ToBigEndian());
                     break;
                 case 2:
-                    batch.SetAccountRaw(HashOf(clearedAddress), new Account(block + 1, (UInt256)keyToClear));
+                    batch.SetAccountRaw(HashOf(clearedAddress), new AccountStruct(block + 1, (UInt256)keyToClear));
                     break;
                 case 3:
                     ValueHash256 slotHash = HashOf(clearedSlot);
@@ -1009,10 +1030,11 @@ public class CarryForwardCachingPersistenceTests
             }
 
             public StateId CurrentState => state.Id;
-            public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
-            public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+            public MigrationCursor? GetMigrationCursor() => null;
             public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
             public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
             public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
             public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
             public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
@@ -1044,7 +1066,7 @@ public class CarryForwardCachingPersistenceTests
             public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
                 _slots[(model._addressesByHash[addrHash], model._slotsByHash[slotHash])] = new UInt256(rlpValue, isBigEndian: true);
 
-            public void SetAccountRaw(in ValueHash256 addrHash, Account account) => _accounts[model._addressesByHash[addrHash]] = account;
+            public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) => _accounts[model._addressesByHash[addrHash]] = account.ToAccount();
 
             public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
             {
@@ -1059,19 +1081,20 @@ public class CarryForwardCachingPersistenceTests
             public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
                 RemoveSlots(model._addressesByHash[addressHash], fromPath, toPath, all: toPath == ValueKeccak.Zero);
 
-            public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+            public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount)
             {
                 foreach (Address address in model._addresses)
                 {
                     ValueHash256 hash = HashOf(address);
-                    if (hash.CompareTo(fromPath) >= 0 && hash.CompareTo(toPath) <= 0) RemoveSlots(address, ValueKeccak.Zero, ValueKeccak.Zero, all: true);
+                    if (hash.CompareTo(fromPath) >= 0 && hash.CompareTo(toPath) <= 0 && hash != keptAccount) RemoveSlots(address, ValueKeccak.Zero, ValueKeccak.Zero, all: true);
                 }
             }
 
             public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
-            public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
+            public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
             public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
             public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
+            public void SetMigrationCursor(in MigrationCursor? cursor) { }
 
             public void Dispose() => Volatile.Write(ref model._state, new State(block, _accounts.ToImmutable(), _slots.ToImmutable()));
 
@@ -1122,10 +1145,11 @@ public class CarryForwardCachingPersistenceTests
             }
 
             public StateId CurrentState => parent.ReaderState;
-            public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
-            public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+            public MigrationCursor? GetMigrationCursor() => null;
             public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
             public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
             public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
             public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
             public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();

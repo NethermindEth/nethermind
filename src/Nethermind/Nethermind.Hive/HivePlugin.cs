@@ -46,6 +46,7 @@ public class HiveModule : Module
         .AddDecorator<ITxPoolConfig>((_, txPoolConfig) =>
         {
             txPoolConfig.ProofsTranslationEnabled = true;
+            txPoolConfig.AcceptTxWhenNotSynced = true;
             return txPoolConfig;
         })
         .AddDecorator<IFlatDbConfig>((_, flatDbConfig) =>

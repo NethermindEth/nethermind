@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -43,8 +44,9 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         InclusionListTxSource il = new(
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
+            new TxValidator(MainnetSpecProvider.Instance.ChainId),
             LimboLogs.Instance);
-        byte[][] ilBytes = [TxDecoder.Instance.Encode(ilTx, RlpBehaviors.SkipTypedWrapping).Bytes];
+        byte[][] ilBytes = [TxDecoder.Instance.Encode(ilTx, RlpBehaviors.SkipTypedWrapping)];
         il.Set(ilBytes, Bogota.Instance);
         // IL is keyed by the build's PayloadAttributes array.
         PayloadAttributes payloadAttributes = new() { InclusionListTransactions = ilBytes };
@@ -81,6 +83,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         InclusionListTxSource il = new(
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
+            new TxValidator(MainnetSpecProvider.Instance.ChainId),
             LimboLogs.Instance);
         // IL is empty
 

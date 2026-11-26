@@ -66,9 +66,7 @@ public class XdcVoteReceiveBenchmarks
         _signatures = new Signature[Masternodes];
         for (int i = 0; i < Masternodes; i++)
         {
-            KeccakRlpWriter writer = new();
-            decoder.Encode(ref writer, new Vote(_block, GapNumber), RlpBehaviors.ForSealing);
-            _signatures[i] = ecdsa.Sign(keys[i], writer.GetValueHash());
+            _signatures[i] = ecdsa.Sign(keys[i], decoder.ComputeValueHash(new Vote(_block, GapNumber), RlpBehaviors.ForSealing));
             masternodes[i] = keys[i].Address;
         }
 

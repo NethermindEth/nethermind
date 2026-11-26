@@ -20,11 +20,24 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly LruCache<ulong, BlockInfo> _cache = new(maxCapacity: 64, startCapacity: 64, "blockInfo Cache");
         private ulong _lowestInsertWithoutGaps;
         private readonly ulong _lowerBound;
+        private readonly ulong _startingLowest;
 
+        /// <summary>
+        /// Gets the sync pointer to persist: every block above it, up to the pivot, is inserted.
+        /// </summary>
+        /// <remarks>
+        /// The internal pointer rests on the highest block not yet inserted, and feeds treat a persisted pointer at or
+        /// below the lower bound as a finished download. Once this list descends onto the lower bound, that block is still
+        /// missing, so the pointer is reported one above it and a feed cannot finish before the block is inserted.
+        /// A pointer the list started from was persisted earlier and is reported unchanged.
+        /// </remarks>
         public ulong LowestInsertWithoutGaps
         {
-            get => _lowestInsertWithoutGaps;
-            private init => _lowestInsertWithoutGaps = value;
+            get
+            {
+                ulong lowest = Volatile.Read(ref _lowestInsertWithoutGaps);
+                return lowest == _lowerBound && lowest != 0 && lowest != _startingLowest ? lowest + 1 : lowest;
+            }
         }
 
         public long QueueSize => _queueSize;
@@ -34,7 +47,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _statuses = new FastBlockStatusList(pivotNumber + 1);
 
-            LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
+            _lowestInsertWithoutGaps = _startingLowest = lowestInserted ?? pivotNumber;
             _lowerBound = lowerBound;
         }
 

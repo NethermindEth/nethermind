@@ -3,11 +3,14 @@
 
 using System;
 using System.IO.Abstractions;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Config;
+using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
-using System.Threading.Tasks;
-using Nethermind.Config;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.HealthChecks.Test;
 
@@ -28,11 +31,11 @@ public class FreeDiskSpaceCheckerTests
         FreeDiskSpaceChecker freeDiskSpaceChecker = new(
             hcConfig,
             DiskSpaceTestHelper.GetDriveInfos(availableDiskSpacePercent),
-            Core.Timers.TimerFactory.Default,
+            TimerFactory.Default,
             exitSource,
             LimboLogs.Instance);
 
-        freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default);
+        freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(TimerFactory.Default);
         exitSource.Received(exitExpected ? 1 : 0).Exit(ExitCodes.LowDiskSpace);
     }
 
@@ -41,7 +44,7 @@ public class FreeDiskSpaceCheckerTests
     [TestCase(2.5f, false)] //no wait
     public void free_disk_check_ensure_free_on_startup_wait_until_enough(float availableDiskSpacePercent, bool awaitsForFreeSpace)
     {
-        TimeSpan ts = TimeSpan.FromMilliseconds(100);
+        TimeSpan deadlockGuard = TimeSpan.FromSeconds(30);
         HealthChecksConfig hcConfig = new()
         {
             LowStorageCheckAwaitOnStartup = true,
@@ -54,16 +57,29 @@ public class FreeDiskSpaceCheckerTests
         FreeDiskSpaceChecker freeDiskSpaceChecker = new(
             hcConfig,
             drives,
-            Core.Timers.TimerFactory.Default,
+            Substitute.For<ITimerFactory>(),
             Substitute.For<IProcessExitSource>(),
-            LimboLogs.Instance,
-            ts.TotalMinutes);
+            LimboLogs.Instance);
+        using ManualResetEventSlim timerStarted = new();
+        ITimer startupTimer = Substitute.For<ITimer>();
+        startupTimer.When(static timer => timer.Start()).Do(_ => timerStarted.Set());
+        ITimerFactory startupTimerFactory = Substitute.For<ITimerFactory>();
+        startupTimerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(startupTimer);
 
-        Task t = Task.Run(() => freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default));
-        bool completed = t.Wait((int)ts.TotalMilliseconds * 2);
+        Task t = Task.Run(() => freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(startupTimerFactory));
+        if (awaitsForFreeSpace)
+        {
+            Assert.That(timerStarted.Wait(deadlockGuard) && !t.Wait(TimeSpan.FromMilliseconds(100)), Is.True, "the startup check waits on its timer");
+            startupTimer.Elapsed += Raise.Event();
+        }
 
-        Assert.That(completed, Is.True);
+        Assert.That(t.Wait(deadlockGuard), Is.True);
 
-        _ = drives[0].Received(awaitsForFreeSpace ? 3 : 1).AvailableFreeSpace;
+        using (Assert.EnterMultipleScope())
+        {
+            _ = drives[0].Received(awaitsForFreeSpace ? 3 : 1).AvailableFreeSpace;
+            Assert.That(timerStarted.IsSet, Is.EqualTo(awaitsForFreeSpace));
+            startupTimer.Received(awaitsForFreeSpace ? 1 : 0).Dispose();
+        }
     }
 }

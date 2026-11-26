@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -13,36 +14,40 @@ namespace Nethermind.Network.P2P.Messages
 
         public int Serialize(Span<byte> destination, DisconnectMessage msg)
         {
-            RlpWriter writer = new(destination);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            writer.StartSequence(GetContentLength(msg));
+            RlpSequence sequence = writer.StartSequence(GetContentLength(msg));
             writer.Encode((byte)msg.Reason);
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         private static int GetContentLength(DisconnectMessage message) => Rlp.LengthOf((byte)message.Reason);
 
         public DisconnectMessage Deserialize(ReadOnlySpan<byte> msg)
         {
-            if (msg.Length == 1)
-            {
-                return new DisconnectMessage((EthDisconnectReason)msg[0]);
-            }
-
-            if (msg.Length == 0)
+            if (msg.IsEmpty)
             {
                 // Sometimes 0x00 was sent, uncompressed, which interpreted as empty buffer by snappy.
                 return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
             }
 
-            RlpReader reader = new(msg);
-            if (!reader.IsSequenceNext())
+            if (msg.Length == 1 && msg[0] < Rlp.EmptyByteArrayByte)
             {
-                reader = new RlpReader(reader.DecodeByteArraySpan());
+                return new DisconnectMessage(msg[0]);
             }
 
-            reader.ReadSequenceLength();
-            int reason = reader.DecodeInt();
+            RlpReader reader = new(msg);
+            if (!reader.IsNextSequence)
+            {
+                ReadOnlySpan<byte> wrapped = reader.DecodeByteArraySpan();
+                if (wrapped.IsEmpty) return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
+                reader = new RlpReader(wrapped);
+            }
+
+            RlpReader fields = reader.EnterSequence(out _);
+            if (!fields.HasNext) return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
+            int reason = fields.DecodeInt();
             DisconnectMessage disconnectMessage = new(reason);
             return disconnectMessage;
         }

@@ -20,26 +20,25 @@ public partial class EthRpcModule
     /// <remarks>An omitted limit is resolved only when its frame can succeed, so a frame that always reverts fails the
     /// call with <see cref="ErrorCodes.ExecutionReverted"/> instead of returning a result as explicit limits would.</remarks>
     private ResultWrapper<TResult> ExecuteWithFrameGas<TResult>(TxExecutor<TResult> executor, SignableTransactionForRpc request,
-        BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride = null,
-        SearchResult<BlockHeader>? searchResult = null)
+        BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken,
+        BlockOverride? blockOverride = null, SearchResult<BlockHeader>? searchResult = null)
     {
         // Requests the executor rejects before execution get its errors, as they would with explicit limits.
         if (request is not FrameTransactionForRpc frameTx || !NeedsFrameGas(frameTx) || blockOverride?.GasLimit > _rpcConfig.GasCap.EffectiveGasCap())
-            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, searchResult: searchResult);
+            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, cancellationToken, searchResult);
 
         SearchResult<BlockHeader> search = searchResult ?? _blockFinder.SearchForHeader(blockParameter);
         if (search.IsError) return ResultWrapper<TResult>.Fail(search);
         if (!_blockchainBridge.HasStateForBlock(search.Object!))
-            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, searchResult: search);
-        using RentedTimeout timeout = _rpcConfig.RentTimeout();
-        Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, timeout.Token, out int errorCode, stateOverride, blockOverride);
+            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, cancellationToken, search);
+        Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, cancellationToken, out int errorCode, stateOverride, blockOverride);
         if (!result) return ResultWrapper<TResult>.Fail(result.Error!, errorCode);
 
         FrameForRpc[]? originalFrames = frameTx.Frames;
         frameTx.Frames = result.Data;
         try
         {
-            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, timeout.Token, search);
+            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, cancellationToken, search);
         }
         finally
         {
@@ -60,9 +59,11 @@ public partial class EthRpcModule
     {
         errorCode = ErrorCodes.InvalidInput;
         if (!_blockchainBridge.HasStateForBlock(header)) return Result<FrameForRpc[]>.Fail("No state available for block");
-        if ((BlockchainBridge.GetUnsupportedBlockOverrideError(blockOverride) ?? StateOverrideValidation.GetStorageConflictError(stateOverride)) is { } overrideError)
-            return Result<FrameForRpc[]>.Fail(overrideError);
+        if (BlockchainBridge.GetUnsupportedBlockOverrideError(blockOverride) is { } blockOverrideError)
+            return Result<FrameForRpc[]>.Fail(blockOverrideError);
         IReleaseSpec spec = _specProvider.GetSpec(blockOverride?.ApplyTo(header) ?? header);
+        if (StateOverrideValidation.GetError(stateOverride, spec) is { } stateOverrideError)
+            return Result<FrameForRpc[]>.Fail(stateOverrideError);
         Result<Transaction> converted = request.ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: false, checksFork: checksFork);
         if (!converted.Success(out Transaction? tx, out string? error)) return Result<FrameForRpc[]>.Fail(error);
         tx.ChainId = _blockchainBridge.GetChainId();

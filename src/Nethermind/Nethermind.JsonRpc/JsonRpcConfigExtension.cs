@@ -28,12 +28,17 @@ namespace Nethermind.JsonRpc
         /// </remarks>
         internal static void UseForNextTimeoutInFlow(CancellationTokenSource cts) => _flowTimeout.Value = new FlowTimeout(cts);
 
-        /// <summary>Ends <see cref="UseForNextTimeoutInFlow"/> in the current async flow.</summary>
-        /// <returns>Whether <paramref name="cts"/> was rented and then returned in a reusable state.</returns>
+        /// <summary>Ends the timeout override and reports whether the flow returned its source for reuse.</summary>
         internal static bool EndTimeoutInFlow(CancellationTokenSource cts)
         {
-            FlowTimeout? flow = _flowTimeout.Value;
+            bool returned = WasTimeoutReturnedInFlow(cts);
             _flowTimeout.Value = null;
+            return returned;
+        }
+
+        internal static bool WasTimeoutReturnedInFlow(CancellationTokenSource cts)
+        {
+            FlowTimeout? flow = _flowTimeout.Value;
             return flow is not null && ReferenceEquals(flow.Source, cts) && Volatile.Read(ref flow.State) == FlowTimeout.Returned;
         }
 

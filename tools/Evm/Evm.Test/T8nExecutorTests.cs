@@ -179,7 +179,7 @@ public class T8nExecutorTests
             Assert.That(log.Address, Is.EqualTo(TestItem.AddressC));
             Assert.That(log.TransactionHash, Is.EqualTo(receipt.TransactionHash));
             Assert.That(log.BlockHash, Is.EqualTo(receipt.BlockHash));
-            Assert.That(result.PostState.LogsHash, Is.EqualTo(Keccak.Compute(Rlp.Encode([new LogEntry(TestItem.AddressC, [], [])]).Bytes)));
+            Assert.That(result.PostState.LogsHash, Is.EqualTo(Keccak.Compute(Rlp.Encode([new LogEntry(TestItem.AddressC, [], [])]))));
         }
     }
 

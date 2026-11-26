@@ -41,6 +41,14 @@ public class NethermindRunnerModule(
     ILogManager logManager
 ) : Module
 {
+    // Warmup builds another runner root; Lazy registers once and makes concurrent builds wait for registration to finish.
+    private static readonly Lazy<TxReceiptConverter> _receiptConverterRegistration = new(() =>
+    {
+        TxReceiptConverter converter = new();
+        EthereumJsonSerializer.AddConverter(converter);
+        return converter;
+    });
+
     protected override void Load(ContainerBuilder builder)
     {
         IEnumerable<IConsensusPlugin> consensusPlugins = plugins.OfType<IConsensusPlugin>();
@@ -95,7 +103,7 @@ public class NethermindRunnerModule(
 
         builder.OnBuild((ctx) =>
         {
-            EthereumJsonSerializer.AddConverter(new TxReceiptConverter());
+            _ = _receiptConverterRegistration.Value;
         });
 
     }

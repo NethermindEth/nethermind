@@ -4,6 +4,8 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
@@ -226,15 +228,45 @@ internal static unsafe class GuestWord
         Unsafe.Add(ref destination, 3) = Unsafe.Add(ref source, 3);
     }
 
+    /// <summary>Loads the word of EVM memory at <paramref name="source"/> into a stack slot in limb layout.</summary>
+    /// <remarks>In the memory's own layout: <see cref="SwizzledMemory"/>'s where <see cref="EvmPooledMemory.IsSwizzled"/>, big-endian elsewhere.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void LoadMemoryWord(ref ulong slot, ref byte source)
+    {
+        if (EvmPooledMemory.IsSwizzled)
+            SwizzledMemory.LoadWord(ref slot, ref source);
+        else
+            LoadBigEndian(ref slot, ref source);
+    }
+
+    /// <summary>Stores the stack word that ends at <paramref name="end"/>, in limb layout, to the word of EVM memory at <paramref name="destination"/>.</summary>
+    /// <remarks>In the memory's own layout, as <see cref="LoadMemoryWord"/> reads it.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void StoreMemoryWord(ref byte destination, ref ulong end)
+    {
+        if (EvmPooledMemory.IsSwizzled)
+            SwizzledMemory.StoreWord(ref destination, ref end);
+        else
+            StoreBigEndian(ref destination, ref end);
+    }
+
     /// <summary>Loads a big-endian word into a stack slot in limb layout.</summary>
     /// <remarks>
     /// Where <see cref="StrictAlignmentFlag"/> is on and <paramref name="source"/> is on a word or a half-word boundary,
     /// the limbs are loaded in words or halves and byte-swapped: one alignment test for the word instead of a byte gather
     /// per limb. Call data arguments follow a 4-byte selector, so words on a half-word boundary are common.
+    /// OpenVM takes a misaligned load at the cost of an aligned one, so where <see cref="OpenVmFlag"/> is on the limbs
+    /// are loaded in words at any address.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void LoadBigEndian(ref ulong slot, ref byte source)
     {
+        if (OpenVmFlag.IsActive)
+        {
+            LoadAlignedBigEndian(ref slot, (ulong*)Unsafe.AsPointer(ref source));
+            return;
+        }
+
         if (StrictAlignmentFlag.IsActive)
         {
             nuint misalignment = Misalignment(ref source);
@@ -260,13 +292,20 @@ internal static unsafe class GuestWord
 
     /// <summary>Stores the stack word that ends at <paramref name="end"/>, in limb layout, big-endian to the 32 bytes at <paramref name="destination"/>.</summary>
     /// <remarks>
-    /// The store counterpart of <see cref="LoadBigEndian"/>. Where <see cref="StrictAlignmentFlag"/> is on, each limb is
-    /// loaded, swapped and stored before the next, so the four limbs are not live at once. The word is addressed from the
-    /// slot above it, which the MSTORE handlers hold, so the JIT folds the limbs' offsets into the loads.
+    /// The store counterpart of <see cref="LoadBigEndian"/>. Where <see cref="StrictAlignmentFlag"/> or
+    /// <see cref="OpenVmFlag"/> is on, each limb is loaded, swapped and stored before the next, so the four limbs are
+    /// not live at once. The word is addressed from the slot above it, which the MSTORE handlers hold, so the JIT folds
+    /// the limbs' offsets into the loads.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void StoreBigEndian(ref byte destination, ref ulong end)
     {
+        if (OpenVmFlag.IsActive)
+        {
+            StoreAlignedBigEndian((ulong*)Unsafe.AsPointer(ref destination), ref end);
+            return;
+        }
+
         if (StrictAlignmentFlag.IsActive)
         {
             nuint misalignment = Misalignment(ref destination);
@@ -289,7 +328,8 @@ internal static unsafe class GuestWord
         ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 24), Unsafe.Add(ref end, -4));
     }
 
-    // Separate from their callers so the IL that SP1 alone runs does not count against their inlining elsewhere.
+    // Separate from their callers so the IL that only SP1 and OpenVM run does not count against their inlining elsewhere.
+    // OpenVM passes them misaligned pointers too, which is sound only while its target emits plain ld/sd for them.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void LoadAlignedBigEndian(ref ulong slot, ulong* words)
     {

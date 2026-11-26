@@ -205,7 +205,7 @@ public class FrameTxPoolRetentionMeasurement
         ChainHeadInfoProvider headInfo = new(
             new ChainHeadSpecProvider(_specProvider, _blockTree),
             _blockTree,
-            _stateProvider);
+            _stateProvider, new());
 
         TxPoolConfig config = new() { GasLimit = 30_000_000 };
         return new TxPool(

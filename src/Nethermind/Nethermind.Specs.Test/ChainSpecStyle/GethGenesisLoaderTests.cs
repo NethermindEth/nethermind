@@ -7,10 +7,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -312,7 +314,8 @@ public class GethGenesisLoaderTests
     [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": true", 1234UL)]
     public void Dao_fork_is_enabled_by_block(string configExtra, ulong? expectedBlock)
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+        string configSuffix = configExtra.Length > 0 ? ", " + configExtra : "";
+        ChainSpec chainSpec = LoadFromString($$"""{ "config": { "chainId": 1, "homesteadBlock": 0{{configSuffix}} }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }""");
         EthashChainSpecEngineParameters ethashParameters = chainSpec.EngineChainSpecParametersProvider
             .GetChainSpecParameters<EthashChainSpecEngineParameters>();
         ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -357,7 +360,7 @@ public class GethGenesisLoaderTests
     public void Historical_forks_keep_validation_enabled([Values(0UL, 9UL, 10UL, 19UL, 20UL, 29UL, 30UL)] ulong blockNumber)
     {
         ChainSpecBasedSpecProvider provider = new(LoadStandardGethGenesis(configExtra:
-            "\"eip155Block\": 10, \"byzantiumBlock\": 20, \"constantinopleBlock\": 20, \"petersburgBlock\": 20, \"istanbulBlock\": 20, \"berlinBlock\": 30, \"londonBlock\": 30"));
+            "\"eip155Block\": 10, \"eip158Block\": 10, \"byzantiumBlock\": 20, \"constantinopleBlock\": 20, \"petersburgBlock\": 20, \"istanbulBlock\": 20, \"berlinBlock\": 30, \"londonBlock\": 30"));
         IReleaseSpec spec = provider.GetSpec(new ForkActivation(blockNumber));
 
         using (Assert.EnterMultipleScope())
@@ -451,7 +454,17 @@ public class GethGenesisLoaderTests
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"pragueTime\": 10, \"amsterdamTime\": 20", null)]
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"eip4758PrototypeTime\": 15", null)]
     [TestCase("\"homesteadBlock\": 0, \"daoForkBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"muirGlacierBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"grayGlacierBlock\": 0, \"mergeNetsplitBlock\": 0", null)]
-    public void Fork_schedule_must_not_skip_a_required_fork(string config, string? expectedError)
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 20, \"londonBlock\": 10", "berlinBlock enabled at block 20, but londonBlock enabled at block 10")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"shanghaiTime\": 100, \"cancunTime\": 50", "shanghaiTime enabled at timestamp 100, but cancunTime enabled at timestamp 50")]
+    [TestCase("\"homesteadBlock\": 10, \"daoForkBlock\": 5", "homesteadBlock enabled at block 10, but daoForkBlock enabled at block 5")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 10, \"eip158Block\": 5", "eip155Block enabled at block 10, but eip158Block enabled at block 5")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 10, \"berlinBlock\": 5", "istanbulBlock enabled at block 10, but berlinBlock enabled at block 5")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"cancunTime\": 10, \"osakaTime\": 5", "cancunTime enabled at timestamp 10, but osakaTime enabled at timestamp 5")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"cancunTime\": 10, \"pragueTime\": 10, \"osakaTime\": 10", null)]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 100, \"londonBlock\": 100, \"shanghaiTime\": 5", null)]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"amsterdamTime\": 20, \"eip8141PrototypeTime\": 10", null)]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"bpo2Time\": 20, \"amsterdamTime\": 10", "bpo2Time enabled at timestamp 20, but amsterdamTime enabled at timestamp 10")]
+    public void Fork_schedule_must_follow_geth_order(string config, string? expectedError)
     {
         string json = $$"""{ "config": { "chainId": 1, {{config}} }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }""";
 
@@ -477,7 +490,7 @@ public class GethGenesisLoaderTests
         int next = Array.IndexOf(schedule, skippedFork) + 1;
         string nextKind = schedule[next].EndsWith("Time", StringComparison.Ordinal) ? "timestamp" : "block";
 
-        Fork_schedule_must_not_skip_a_required_fork(config, $"{skippedFork} not enabled, but {schedule[next]} enabled at {nextKind} {next + 1}");
+        Fork_schedule_must_follow_geth_order(config, $"{skippedFork} not enabled, but {schedule[next]} enabled at {nextKind} {next + 1}");
     }
 
     [Test]
@@ -519,7 +532,8 @@ public class GethGenesisLoaderTests
                 Is.EqualTo(new[] { new NetworkNode(enode).NodeId, new NetworkNode(enr).NodeId }));
         }
 
-        logger.Received(includeInvalid ? 1 : 0).Error(Arg.Is<string>(static message => message.Contains("invalid")), Arg.Any<Exception>());
+        // Other tests flip the global sensitive-data masking, which hides the record, so match the text it keeps.
+        logger.Received(includeInvalid ? 1 : 0).Error(Arg.Is<string>(static message => message.StartsWith("Could not parse enode data from ")), Arg.Any<Exception?>());
     }
 
     [TestCase("", null)]
@@ -778,6 +792,60 @@ public class GethGenesisLoaderTests
             Assert.That(allocations[new Address("0x0000000000000000000000000000000000000002")].Balance, Is.EqualTo((UInt256)2));
         }
     }
+
+    [Test]
+    public void Reads_unprefixed_storage_keys_as_hex()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(allocJson: """
+            {
+                "0x0000000000000000000000000000000000000001": {
+                    "balance": "0x1",
+                    "storage": {
+                        "10": "0x01",
+                        "0000000000000000000000000000000000000000000000000000000000000002": "02",
+                        "0x0000000000000000000000000000000000000000000000000000000000000003": "0x03",
+                        "f0": "0x04",
+                        "20": "10",
+                        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff": "0x05",
+                        "f": "0x06",
+                        "0x123": "0x07"
+                    }
+                }
+            }
+            """);
+        Dictionary<UInt256, byte[]> storage = chainSpec.Allocations![new Address("0x0000000000000000000000000000000000000001")].Storage!;
+
+        Assert.That(storage.ToDictionary(static s => s.Key, static s => s.Value.ToHexString()), Is.EquivalentTo(new Dictionary<UInt256, string>
+        {
+            [0x10] = "01",
+            [2] = "02",
+            [3] = "03",
+            [0xf0] = "04",
+            [0x20] = "10",
+            [UInt256.MaxValue] = "05",
+            [0xf] = "06",
+            [0x123] = "07"
+        }));
+    }
+
+    [TestCase("")]
+    [TestCase("0x")]
+    public void Reads_empty_storage_key_as_slot_zero(string key)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(allocJson: $$"""
+            { "0x0000000000000000000000000000000000000001": { "balance": "0x1", "storage": { "{{key}}": "0x01" } } }
+            """);
+
+        Assert.That(chainSpec.Allocations![new Address("0x0000000000000000000000000000000000000001")].Storage!.Keys, Is.EqualTo(new[] { UInt256.Zero }));
+    }
+
+    [TestCase("111111111111111111111111111111111111111111111111111111111111111111")]
+    [TestCase("0xzz")]
+    [TestCase("g")]
+    public void Rejects_invalid_storage_key(string key) =>
+        Assert.That(() => LoadStandardGethGenesis(allocJson: $$"""
+            { "0x0000000000000000000000000000000000000001": { "balance": "0x1", "storage": { "{{key}}": "0x01" } } }
+            """), Throws.TypeOf<InvalidDataException>().With.InnerException.TypeOf<JsonException>());
 
     public static IEnumerable<TestCaseData> GethGenesisDetectionCases
     {
@@ -1091,7 +1159,7 @@ public class GethGenesisLoaderTests
         int forkClassesChecked = 0;
 
         // Every *Time and *Block property must label a fork class
-        HashSet<string> forksWithLabel = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> forksWithLabel = [with(StringComparer.OrdinalIgnoreCase)];
         foreach (PropertyInfo prop in configType.GetProperties())
         {
             bool isTime = IsForkLabel(prop, "Time");

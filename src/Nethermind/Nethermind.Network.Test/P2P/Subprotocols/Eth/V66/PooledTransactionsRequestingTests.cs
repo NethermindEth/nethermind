@@ -74,7 +74,7 @@ public class PooledTransactionsRequestingTests
             new EthereumEcdsa(specProvider.ChainId),
             new BlobTxStorage(),
             new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(specProvider, blockTree), blockTree, TestWorldStateFactory.CreateForTestWithStateReader(TestMemDbProvider.Init(), LimboLogs.Instance).Item2),
+                new ChainHeadSpecProvider(specProvider, blockTree), blockTree, TestWorldStateFactory.CreateForTestWithStateReader(TestMemDbProvider.Init(), LimboLogs.Instance).Item2, new()),
             new TxPoolConfig() { AcceptTxWhenNotSynced = true },
             new TxValidator(specProvider.ChainId),
             new SpecChangeTxValidator(specProvider.ChainId),
@@ -187,13 +187,13 @@ public class PooledTransactionsRequestingTests
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
-        handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
-    private void HandleZeroMessage<T>(Eth66ProtocolHandler handler, T msg, int messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(Eth66ProtocolHandler handler, T msg, int messageCode) where T : P2PMessage
     {
         using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
-        handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)messageCode });
     }
 }

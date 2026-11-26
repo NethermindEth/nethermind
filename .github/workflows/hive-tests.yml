@@ -74,7 +74,7 @@ jobs:
           LIMIT: ${{ github.event.inputs.limit }}
           PARALLELISM: ${{ github.event.inputs.parallelism || env.DEFAULT_PARALLELISM }}
         run: |
-          # Matches any text that does not start with the literal $1 (letters, spaces and commas
+          # Matches any text that does not start with the literal $1 (letters, spaces, commas and hyphens
           # only): Go RE2 has no lookahead, so the complement is spelled out character by character.
           not_prefixed() {
             local re='' i
@@ -93,10 +93,12 @@ jobs:
             # on the critical path of every PR. The patterns of each suite partition its tests:
             # "Invalid NewPayload, <field>" splits at the field's first letter (most fields start
             # with T, for Transaction), and the i-other shards take every other I* name.
+            # Re-Execute Payload runs alone because a loaded runner can miss Hive's fixed one-second wait.
             # engine-(auth|[^acw]) catches exchange-capabilities and any future engine suites.
             # The suites that finish in seconds share a job, as most of a job is image builds.
             # ethereum/graphql is left to manual runs: Nethermind serves no GraphQL, so it can only fail.
             cancun_i_other="^I$(not_prefixed 'nvalid NewPayload, ')"
+            cancun_n_z="^([N-QS-Z]|R$(not_prefixed 'e-Execute Payload'))"
             api_i_other="^I$(not_prefixed 'nvalid NewPayload')"
             {
               echo 'matrix<<MATRIX_END'
@@ -104,7 +106,8 @@ jobs:
                 {"suite":"ethereum/engine", "limit":"engine-cancun/^Invalid NewPayload, [A-S]", "parallelism":3, "name":"engine-cancun-newpayload-a-s"},
                 {"suite":"ethereum/engine", "limit":"engine-cancun/^Invalid NewPayload, ([^A-S]|$)", "parallelism":3, "name":"engine-cancun-newpayload-t-z"},
                 {"suite":"ethereum/engine", "limit":"engine-cancun/'"$cancun_i_other"'", "parallelism":3, "name":"engine-cancun-i-other"},
-                {"suite":"ethereum/engine", "limit":"engine-cancun/^[N-Z]", "parallelism":3, "name":"engine-cancun-n-z"},
+                {"suite":"ethereum/engine", "limit":"engine-cancun/'"$cancun_n_z"'", "parallelism":3, "name":"engine-cancun-n-z"},
+                {"suite":"ethereum/engine", "limit":"engine-cancun/^Re-Execute Payload", "parallelism":1, "name":"engine-cancun-reexecute"},
                 {"suite":"ethereum/engine", "limit":"engine-cancun/^[^IN-Z]", "parallelism":3, "name":"engine-cancun-other"},
                 {"suite":"ethereum/engine", "limit":"engine-api/^Invalid NewPayload", "parallelism":3, "name":"engine-api-newpayload"},
                 {"suite":"ethereum/engine", "limit":"engine-api/'"$api_i_other"'", "parallelism":3, "name":"engine-api-i-other"},

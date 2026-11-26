@@ -108,8 +108,9 @@ public sealed partial class KeccakHash
     /// handed them undefined — which is what lets <see cref="InitializeState"/> skip them there, and what
     /// makes a caller resuming a used sponge get a wrong digest on the guest and a right one on the host.
     /// The write drops seventeen loads and seventeen XORs per message; peeling the first block costs a host
-    /// more in register pressure than it saves, so the host form is the plain loop. See
-    /// <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    /// more in register pressure than it saves, so the host does not peel it: at the 136-byte rate it absorbs
+    /// all whole blocks in one scalar loop, except on AVX-512VL cores other than AMD Zen 5 and later, which
+    /// permute block by block. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     private static partial ReadOnlySpan<byte> AbsorbMessageIntoZeroState(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize);
 
     /// <summary>Absorbs the whole rate blocks of <paramref name="input"/>, of which there is at least one,

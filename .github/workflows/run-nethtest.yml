@@ -13,7 +13,7 @@ on:
   workflow_call:
     inputs:
       test_types:
-        description: Comma-separated test types to run (engineTest, blockTest, stateTest, syncTest, txTest)
+        description: Comma-separated test types to run (engineTest, blockTest, stateTest, syncTest, engineReorgTest, txTest)
         required: false
         default: engineTest
         type: string
@@ -25,12 +25,12 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: tests@v21.0.2
+        default: tests@v21.0.3
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v21.0.1
+        default: tests-zkevm@v21.0.7
         type: string
       focil_version:
         description: FOCIL fixtures release tag (focilTest only) - pin to an exact tag
@@ -65,7 +65,7 @@ on:
         default: ''
         type: string
       test_types:
-        description: Comma-separated test types (engineTest, blockTest, stateTest, syncTest, txTest)
+        description: Comma-separated test types (engineTest, blockTest, stateTest, syncTest, engineReorgTest, txTest)
         required: false
         default: engineTest
         type: string
@@ -81,12 +81,12 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: tests@v21.0.2
+        default: tests@v21.0.3
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v21.0.1
+        default: tests-zkevm@v21.0.7
         type: string
       focil_version:
         description: FOCIL fixtures release tag (focilTest only) - pin to an exact tag
@@ -122,12 +122,12 @@ env:
   # Fixture source: the mainnet tests releases of ethereum/execution-specs. They ship
   # fixtures for all forks (Frontier..Amsterdam). Pass an exact tag (e.g. tests@v21.0.1) to pin.
   EEST_REPOSITORY: ethereum/execution-specs
-  EEST_VERSION: ${{ inputs.eest_version || 'tests@v21.0.2' }}
+  EEST_VERSION: ${{ inputs.eest_version || 'tests@v21.0.3' }}
   EEST_ARCHIVE: fixtures.tar.gz
   # zkEVM stateless-preview fixtures ship in their own release line of the same repo;
   # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to the release whose stateless
   # input/output schemas this branch implements.
-  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v21.0.1' }}
+  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v21.0.7' }}
   # FOCIL fixtures ship in their own release line, resolved instead of EEST_VERSION. Keep it an exact
   # tag: latest-<keyword> resolution scans only the 20 newest releases and never reaches that line.
   FOCIL_VERSION: ${{ inputs.focil_version || 'tests-focil-devnet@v0.3.0' }}
@@ -295,6 +295,16 @@ jobs:
                 fi
                 if run_flat; then
                   emit "$type" flat_sequential full 1 false false 4 1
+                fi
+                ;;
+              engineReorgTest)
+                # Reorgs roll the state back and forth, so both layouts run, with the client's default BAL
+                # execution. One chunk runs the whole set in about a minute.
+                if run_sequential; then
+                  emit "$type" sequential full '' '' '' 4 1
+                fi
+                if run_flat; then
+                  emit "$type" flat_sequential full 1 '' '' 4 1
                 fi
                 ;;
               txTest)
@@ -474,6 +484,7 @@ jobs:
             stateTest)  FIXTURE_NAME=state_tests;             RUNNER_FLAG=--stateTest ;;
             # Sync fixtures use the engine-payload format; run them through the engine harness.
             syncTest)   FIXTURE_NAME=blockchain_tests_sync;   RUNNER_FLAG=--engineTest ;;
+            engineReorgTest) FIXTURE_NAME=blockchain_tests_engine_reorg; RUNNER_FLAG=--engineReorgTest ;;
             txTest)     FIXTURE_NAME=transaction_tests;       RUNNER_FLAG=--txTest ;;
             # The zkEVM archive ships blockchain-test-shaped fixtures with stateless bytes.
             zkevmTest)  FIXTURE_NAME=blockchain_tests;        RUNNER_FLAG=--zkevmTest ;;

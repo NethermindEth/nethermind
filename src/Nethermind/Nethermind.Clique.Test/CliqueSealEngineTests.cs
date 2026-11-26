@@ -56,31 +56,31 @@ public class CliqueSealEngineTests
         Block genesisBlock = GetGenesis();
         MineBlock(_blockTree, genesisBlock);
 
-        Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
+        Block block1 = Rlp.Decode<Block>(Bytes.FromHexString(Block1Rlp));
         block1.Header.ParentHash = genesisBlock.Hash;
         BuildSealer(1, db).SealBlock(block1, CancellationToken.None).Wait();
         block1.Header.Hash = block1.CalculateHash();
         MineBlock(_blockTree, block1);
 
-        Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
+        Block block2 = Rlp.Decode<Block>(Bytes.FromHexString(Block2Rlp));
         block2.Header.ParentHash = block1.Hash;
         BuildSealer(2, db).SealBlock(block2, CancellationToken.None).Wait();
         block2.Header.Hash = block2.CalculateHash();
         MineBlock(_blockTree, block2);
 
-        Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
+        Block block3 = Rlp.Decode<Block>(Bytes.FromHexString(Block3Rlp));
         block3.Header.ParentHash = block2.Hash;
         BuildSealer(3, db).SealBlock(block3, CancellationToken.None).Wait();
         block3.Header.Hash = block3.CalculateHash();
         MineBlock(_blockTree, block3);
 
-        Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
+        Block block4 = Rlp.Decode<Block>(Bytes.FromHexString(Block4Rlp));
         block4.Header.ParentHash = block3.Hash;
         BuildSealer(4, db).SealBlock(block4, CancellationToken.None).Wait();
         block4.Header.Hash = block4.CalculateHash();
         MineBlock(_blockTree, block4);
 
-        Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
+        Block block5 = Rlp.Decode<Block>(Bytes.FromHexString(Block5Rlp));
         block5.Header.ParentHash = block4.Hash;
         BuildSealer(5, db).SealBlock(block5, CancellationToken.None).Wait();
         block5.Header.Hash = block5.CalculateHash();

@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -12,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Config;
 using Nethermind.Crypto;
@@ -19,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
+using Nethermind.Network.StaticNodes;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
@@ -221,6 +226,44 @@ public class PeerPoolTests
         {
             await pool.StopAsync();
         }
+    }
+
+    [Test]
+    public async Task Static_and_trusted_nodes_reach_the_pool_once_with_their_flags()
+    {
+        using TempPath staticFile = TempPath.GetTempFile();
+        using TempPath trustedFile = TempPath.GetTempFile();
+        await File.WriteAllTextAsync(staticFile.Path, $"[\"{EnodeAt(0)}\"]");
+        await File.WriteAllTextAsync(trustedFile.Path, $"[\"{EnodeAt(1)}\"]");
+        StaticNodesManager staticNodes = new(staticFile.Path, LimboLogs.Instance);
+        TrustedNodesManager trustedNodes = new(trustedFile.Path, LimboLogs.Instance);
+        await staticNodes.InitAsync();
+        await trustedNodes.InitAsync();
+        using CompositeNodeSource nodeSource = new(staticNodes, trustedNodes);
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodes, maxActivePeers: 10, maxCandidatePeerCount: 10);
+        ConcurrentQueue<PublicKey> peersAdded = new();
+        pool.PeerAdded += (_, e) => peersAdded.Enqueue(e.Peer.Node.Id);
+
+        pool.Start();
+        try
+        {
+            await staticNodes.AddAsync(new NetworkNode(EnodeAt(2)), updateFile: false);
+            await trustedNodes.AddAsync(EnodeAt(3), updateFile: false);
+
+            Assert.That(() => pool.PeerCount, Is.EqualTo(4).After(5000, 10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peersAdded, Is.EquivalentTo(new[] { TestItem.PublicKeys[0], TestItem.PublicKeys[1], TestItem.PublicKeys[2], TestItem.PublicKeys[3] }), "each file node and each runtime add joins the pool once");
+                Assert.That(pool.StaticPeers.Select(static p => p.Node.Id), Is.EquivalentTo(new[] { TestItem.PublicKeys[0], TestItem.PublicKeys[2] }));
+                Assert.That(pool.Peers.Where(static kvp => kvp.Value.Node.IsTrusted).Select(static kvp => kvp.Value.Node.Id), Is.EquivalentTo(new[] { TestItem.PublicKeys[1], TestItem.PublicKeys[3] }));
+            }
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+
+        static Enode EnodeAt(int i) => new(TestItem.PublicKeys[i], IPAddress.Loopback, 30303 + i);
     }
 
     [TestCase(true, true)]   // active session → peer kept
@@ -580,7 +623,7 @@ public class PeerPoolTests
         }
     }
 
-    private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(
+    private static PeerPool CreatePeerPool(INodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
             new NetworkStorage(new TestMemDb(), LimboLogs.Instance),

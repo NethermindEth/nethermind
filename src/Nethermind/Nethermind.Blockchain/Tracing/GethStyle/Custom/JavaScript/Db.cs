@@ -11,22 +11,20 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public class Db(IWorldState worldState)
 {
-    public IWorldState WorldState { get; } = worldState;
+    public IJavaScriptObject getBalance(object address) => worldState.GetBalance(address.ToAddress()).ToBigInteger();
 
-    public IJavaScriptObject getBalance(object address) => WorldState.GetBalance(address.ToAddress()).ToBigInteger();
+    public ulong getNonce(object address) => worldState.GetNonce(address.ToAddress());
 
-    public ulong getNonce(object address) => WorldState.GetNonce(address.ToAddress());
-
-    public ITypedArray<byte> getCode(object address) => WorldState.GetCode(address.ToAddress()).ToTypedScriptArray();
+    public ITypedArray<byte> getCode(object address) => worldState.GetCode(address.ToAddress()).ToTypedScriptArray();
 
     public ITypedArray<byte> getState(object address, object index)
     {
         using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(32, out byte[] array);
 
-        WorldState.Get(new StorageCell(address.ToAddress(), new UInt256(index.ToBytes(), isBigEndian: true)), out UInt256 value);
+        worldState.Get(new StorageCell(address.ToAddress(), new UInt256(index.ToBytes(), isBigEndian: true)), out UInt256 value);
         value.ToBigEndian(array);
         return array.ToTypedScriptArray();
     }
 
-    public bool exists(object address) => WorldState.TryGetAccount(address.ToAddress(), out AccountStruct account) && !account.IsTotallyEmpty;
+    public bool exists(object address) => worldState.AccountExists(address.ToAddress());
 }

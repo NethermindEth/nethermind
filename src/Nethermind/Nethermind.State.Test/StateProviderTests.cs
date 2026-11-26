@@ -9,6 +9,7 @@ using System.Reflection;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -1123,6 +1124,30 @@ public class StateProviderTests(bool useFlat)
             Assert.That(provider.AccountExists(TestItem.AddressB), Is.True);
             Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
         }
+    }
+
+    [Test]
+    public void Failed_code_copy_leaves_the_next_insertion_revertible()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(TestItem.AddressB, 0);
+        byte[] code = [0x60, 0x00];
+        ValueHash256 hash = ValueKeccak.Compute(code);
+        ReadOnlyMemory<byte> released;
+        using MemDb db = new();
+        using (DbSpanMemoryManager owner = new(db, stackalloc byte[2]))
+        {
+            released = owner.Memory;
+        }
+
+        Assert.Throws<ObjectDisposedException>(() => provider.InsertCode(TestItem.AddressB, hash, released, Prague.Instance));
+
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.InsertCode(TestItem.AddressB, hash, code, Prague.Instance);
+        provider.Restore(snapshot);
+        Assert.Throws<InvalidOperationException>(() => provider.GetCode(hash));
     }
 
     [Test]

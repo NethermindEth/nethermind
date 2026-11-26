@@ -217,7 +217,7 @@ public class TxPoolLockContentionMeasurement
     {
         // The singleton [0] aliases the account nonce, so it is the ordinary, unkeyed shape.
         UInt256[] nonceKeys = keysPerTx == 1 ? [UInt256.Zero] : BuildNonceKeys(keysPerTx);
-        List<Address> seeded = new(senders);
+        List<Address> seeded = [with(senders)];
 
         for (int i = 0; i < senders; i++)
         {
@@ -303,7 +303,7 @@ public class TxPoolLockContentionMeasurement
 
     private TxPool CreatePool(TxPoolConfig config, IFrameTxPrefixSimulator? simulator)
     {
-        ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(_specProvider, _blockTree), _blockTree, _state);
+        ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(_specProvider, _blockTree), _blockTree, _state, new());
 
         return new TxPool(
             new EthereumEcdsa(_specProvider.ChainId),

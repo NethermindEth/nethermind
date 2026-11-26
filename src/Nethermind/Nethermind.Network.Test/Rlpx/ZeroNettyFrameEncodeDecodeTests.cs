@@ -12,6 +12,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
@@ -212,8 +213,8 @@ public class ZeroNettyFrameEncodeDecodeTests
         recordWrite.When((it) => it.FireChannelRead(Arg.Any<object>()))
             .Do((info =>
             {
-                ZeroPacket packet = (ZeroPacket)info[0];
-                RlpReader ctx = new(packet.Content.AsSpan());
+                NettyBufferPacket packet = (NettyBufferPacket)info[0];
+                RlpReader ctx = new(packet.Buffer.AsSpan());
                 byte[] bytes = ctx.DecodeByteArray();
                 reDecoded.WriteBytes(bytes);
             }));
@@ -229,7 +230,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             byte[] input = new byte[size];
             Random.Shared.NextBytes(input);
 
-            byte[] encByte = Rlp.Encode(input).Bytes;
+            byte[] encByte = Rlp.Encode(input);
             using DisposableByteBuffer buffer = Unpooled.Buffer(encByte.Length + 1).AsDisposable();
             buffer.WriteByte(0);
             buffer.WriteBytes(encByte);

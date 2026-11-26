@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Wallet;
@@ -67,14 +66,17 @@ namespace Nethermind.JsonRpc.Modules.Personal
             return ResultWrapper<Address>.Success(wallet.NewAccount(notSecuredHere));
         }
 
-        [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<Hash256> personal_sendTransaction(TransactionForRpc transaction, string passphrase) => throw new NotImplementedException();
-
         public ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature)
         {
             if (signature.Length != Signature.Size)
             {
                 return ResultWrapper<Address>.Fail($"Invalid signature length: {signature.Length}. Expected {Signature.Size} bytes.", ErrorCodes.InvalidParams);
+            }
+
+            byte recoveryByte = signature[^1];
+            if (recoveryByte is not (Signature.VOffset or Signature.VOffset + 1))
+            {
+                return ResultWrapper<Address>.Fail($"Invalid signature recovery byte: {recoveryByte}. Expected {Signature.VOffset} or {Signature.VOffset + 1}.", ErrorCodes.InvalidParams);
             }
 
             Hash256 msgHash = Eip191Hasher.HashMessage(message);

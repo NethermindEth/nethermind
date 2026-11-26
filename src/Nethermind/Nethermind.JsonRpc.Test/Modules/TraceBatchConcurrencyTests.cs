@@ -82,6 +82,13 @@ public class TraceBatchConcurrencyTests
             Is.EqualTo(fits));
 
     [Test]
+    public void Trace_transaction_default_streaming_keeps_batches_sequential([Values(2, 4)] int windowSize) =>
+        Assert.That(
+            CanExecuteConcurrently(new TraceTransactionBatchConcurrency(new JsonRpcConfig()),
+                "trace_transaction", """["0x01"]""", windowSize),
+            Is.False);
+
+    [Test]
     public async Task Concurrent_batch_of_transaction_traces_matches_sequential_byte_for_byte()
     {
         JsonRpcConfig config = CreateConfig(batchProcessingConcurrency: 2);
@@ -173,7 +180,7 @@ public class TraceBatchConcurrencyTests
 
         public bool TracesOverlapped => _tracesOverlapped.Task.IsCompleted;
 
-        public async ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context)
+        public async ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken = default)
         {
             bool trace = request.Method == "trace_transaction";
             if (Interlocked.Increment(ref _inFlight) > 1) _overlapped.TrySetResult();
@@ -181,7 +188,7 @@ public class TraceBatchConcurrencyTests
             try
             {
                 await WaitBriefly(trace ? _tracesOverlapped.Task : _overlapped.Task);
-                return await inner.SendRequestAsync(request, context);
+                return await inner.SendRequestAsync(request, context, cancellationToken);
             }
             finally
             {

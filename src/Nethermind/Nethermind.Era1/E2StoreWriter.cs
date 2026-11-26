@@ -28,7 +28,7 @@ public class E2StoreWriter(Stream stream) : IDisposable
         using SnappyStream compressor = new(bufferedStream!, CompressionMode.Compress, true);
 
         await compressor!.WriteAsync(bytes, cancellation);
-        await compressor.FlushAsync();
+        await compressor.FlushAsync(cancellation);
 
         bool canGetBuffer = bufferedStream!.TryGetBuffer(out ArraySegment<byte> arraySegment);
         Debug.Assert(canGetBuffer);
