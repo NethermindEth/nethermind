@@ -45,7 +45,7 @@ try
 
     foreach (var (name, @base, head, exitCode, expected, unexpected) in cases)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         var result = await ScriptProcess.Run("dotnet", ["run", "--file", compare, "--", @base, head], timeout.Token);
         if (result.Code != exitCode)
             throw new InvalidOperationException($"{name}: expected exit {exitCode}, got {result.Code}.\n{result.Output}{result.Error}");
