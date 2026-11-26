@@ -169,7 +169,7 @@ internal static class PayloadBodiesHandlerHelper
             balStore.AppendRlps(numbers.Slice(start, count), hashes.Slice(start, count), lists, ranges[..count]);
             for (int i = 0; i < count; i++)
             {
-                rlps[start + i] = ranges[i] is { } range ? destination.Add(lists.AsSpan()[range]) : null;
+                rlps[start + i] = ranges[i] is { } range ? destination.Add(lists.AsSpan()[range]) : (ReadOnlyMemory<byte>?)null;
             }
         }
     }

@@ -845,7 +845,7 @@ public partial class EngineModuleTests
             Assert.That(response.Data.ElementAt(2), Is.Null);
         }
 
-        await AssertStreamedJsonMatchesSerializer((PayloadBodiesV2DirectResponse)response.Data);
+        Assert.That(await StreamedAccessLists(response), Has.Exactly(2).Matches<string>(IsStoredAccessList));
     }
 
     [Test]
@@ -866,8 +866,31 @@ public partial class EngineModuleTests
             Assert.That(response.Data.Count, Is.EqualTo(4)); // cutoff at head
         }
 
-        await AssertStreamedJsonMatchesSerializer((PayloadBodiesV2DirectResponse)response.Data);
+        Assert.That(await StreamedAccessLists(response), Has.Exactly(4).Matches<string>(IsStoredAccessList));
     }
+
+    [Test]
+    public async Task GetPayloadBodiesV2_returns_null_access_list_for_blocks_before_Amsterdam([Values] bool byHash)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
+        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV4(chain.EngineRpcModule, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+
+        ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>> response = byHash
+            ? await chain.EngineRpcModule.engine_getPayloadBodiesByHashV2(payloads.Select(static p => p.BlockHash).ToArray())
+            : await chain.EngineRpcModule.engine_getPayloadBodiesByRangeV2(1, 2);
+
+        Assert.That(await StreamedAccessLists(response), Is.EqualTo(new[] { "null", "null" }));
+    }
+
+    /// <summary>Returns the JSON text of each body's <c>blockAccessList</c>, <c>"missing"</c> for no key, <c>"no body"</c> for a null body.</summary>
+    private static async Task<string[]> StreamedAccessLists(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>> response) =>
+        JsonNode.Parse(await AssertStreamedJsonMatchesSerializer((PayloadBodiesV2DirectResponse)response.Data))!.AsArray()
+            .Select(static b => b is null ? "no body"
+                : b.AsObject().TryGetPropertyValue("blockAccessList", out JsonNode? bal) ? bal?.ToJsonString() ?? "null"
+                : "missing")
+            .ToArray();
+
+    private static bool IsStoredAccessList(string? json) => json is not (null or "\"0x\"") && json.StartsWith("\"0x", StringComparison.Ordinal);
 
     [Test]
     public async Task GetBlobsV4_should_return_requested_cells_and_positional_nulls()
