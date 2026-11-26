@@ -327,7 +327,7 @@ internal sealed class SortedSpool : IDisposable
         records.Sort(new RecordKeyComparer(buffer));
 
         string path = NewRun();
-        ArenaBufferWriter writer = new(File.Create(path), firstOffset: 0);
+        ArenaBufferWriter writer = new(File.Create(path), firstOffset: 0, estimatedSize: buffer.Length);
         try
         {
             SortedTableBuilder<ArenaBufferWriter> table = new(ref writer);
@@ -363,7 +363,7 @@ internal sealed class SortedSpool : IDisposable
     private string MergeRuns(List<string> group)
     {
         string path = NewRun();
-        ArenaBufferWriter writer = new(File.Create(path), firstOffset: 0);
+        ArenaBufferWriter writer = new(File.Create(path), firstOffset: 0, estimatedSize: 1024 * 1024);
         try
         {
             SortedTableBuilder<ArenaBufferWriter> table = new(ref writer);

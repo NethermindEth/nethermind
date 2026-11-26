@@ -118,7 +118,7 @@ public class PersistenceManager(
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
     /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>, and not while the next boundary is finalized
-    /// and merely short of the finalized trigger's depth gate. When it finds no conversion and a positive
+    /// and merely short of the finalized trigger's depth gate within the count limit. When it finds no conversion and a positive
     /// <c>MaxInMemorySnapshotBytes</c> is exceeded, the next in-memory snapshot is force-persisted if that
     /// leaves at least <c>MinReorgDepth</c> blocks above the new base.
     /// </remarks>
@@ -192,9 +192,11 @@ public class PersistenceManager(
         // SnapshotCount also counts the blocks committed since. While catching up, that backlog alone pushes
         // the count past the limit although finality is not stalled, and converting then routes every block
         // through the persisted tier. With the next boundary finalized and only its depth gate pending, the
-        // jobs already queued persist it to RocksDB, so conversion waits for them.
+        // jobs already queued persist it to RocksDB, so conversion waits for them while the job-relative
+        // depth still fits the count limit.
         bool finalizedPersistPending = !held && finalizedBlockNumber >= nextBoundary
-            && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) < _minReorgDepth;
+            && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) < _minReorgDepth
+            && snapshotsDepth <= (ulong)_maxInMemoryBaseSnapshotCount;
         ConversionCandidate? conversion = _enableLongFinality && !finalizedPersistPending
             && snapshotRepository.SnapshotCount > _maxInMemoryBaseSnapshotCount
             ? TryFindSnapshotToConvert(currentPersistedState) : null;

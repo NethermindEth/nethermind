@@ -502,6 +502,33 @@ public class StorageLayerTests
         Assert.That(TestFixtureHelpers.ReadAll(session), Is.EqualTo(data));
     }
 
+    [Test]
+    public void BlobArenaWriter_SmallEstimate_GrowsForLargeValue([Values(20 * 1024, 3 * 1024 * 1024)] int size)
+    {
+        using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs"), 8 * 1024 * 1024);
+        using BlobArenaWriter writer = blobs.CreateWriter(16);
+        byte[][] values = [[1, 2, 3], new byte[size], [4, 5, 6]];
+        values[1].AsSpan().Fill(0xa5);
+        NodeRef[] references = new NodeRef[values.Length];
+        for (int i = 0; i < values.Length; i++) references[i] = writer.WriteRlp(values[i]);
+        writer.Complete();
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            Assert.That(blobs.TryLeaseFile(references[i].BlobArenaId, out BlobArenaFile? file), Is.True);
+            using (file)
+            {
+                byte[] actual = new byte[values[i].Length];
+                int read = file!.RandomRead(references[i].RlpDataOffset, actual);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(read, Is.EqualTo(actual.Length));
+                    Assert.That(actual, Is.EqualTo(values[i]));
+                }
+            }
+        }
+    }
+
     private static SnapshotLocation Write(ArenaManager manager, byte[] data, bool small)
     {
         using ArenaWriter writer = manager.CreateWriter(data.Length, small);

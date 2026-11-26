@@ -16,6 +16,13 @@ public sealed class BalanceChangeDecoder : IndexedChangeDecoder<BalanceChange>, 
     static BalanceChange IIndexedChangeReader<BalanceChange>.ReadFields<TCanonicalChecks>(ref RlpReader fields)
         => new(fields.DecodeUInt<TCanonicalChecks>(), fields.DecodeUInt256<TCanonicalChecks>());
 
+    static uint IIndexedChangeReader<BalanceChange>.ValidateFields(ref RlpReader fields)
+    {
+        uint index = fields.DecodeUInt();
+        fields.DecodeUInt256();
+        return index;
+    }
+
     protected override void EncodeValue(ref RlpWriter writer, BalanceChange item)
         => writer.Encode(item.Value);
 

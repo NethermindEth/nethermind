@@ -7,7 +7,7 @@ using Nethermind.State.Flat.Io;
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
-/// Arena-backed <see cref="IByteBufferWriter"/> with a write-buffer of at most 1 MiB.
+/// Arena-backed <see cref="IByteBufferWriter"/> whose write-buffer starts at no more than 1 MiB.
 /// </summary>
 /// <remarks>
 /// The buffer is a <see cref="NativeMemoryList{T}"/> held at <c>Count == Capacity</c>,
@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// the current buffer grows it by reconstruction (after a flush). The initial buffer is sized
 /// from the caller's estimate, so a writer of a few hundred bytes does not allocate and zero 1 MiB.
 /// </remarks>
-public struct ArenaBufferWriter(Stream stream, long firstOffset, long estimatedSize = ArenaBufferWriter.BufferSize)
+public struct ArenaBufferWriter(Stream stream, long firstOffset, long estimatedSize)
     : IByteBufferWriter, IDisposable
 {
     private const int BufferSize = 1024 * 1024;

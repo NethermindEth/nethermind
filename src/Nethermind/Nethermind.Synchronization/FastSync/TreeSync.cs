@@ -919,12 +919,14 @@ namespace Nethermind.Synchronization.FastSync
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
                         bool isAccountComplete = false;
+                        bool waitsForCode = false;
                         RlpReader ctx = new(trieNode.Value.AsSpan());
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
                             AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, TreePath.Empty, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
                             if (addCodeResult == AddNodeResult.AlreadySaved) isAccountComplete |= dependentItem.ResolveDependency();
+                            else waitsForCode = true;
                         }
                         else
                         {
@@ -950,6 +952,12 @@ namespace Nethermind.Synchronization.FastSync
                         else
                         {
                             TreePath finalPath = currentStateSyncItem.Path.Append(trieNode.Key);
+                            // A leaf that waits for its code can be left unsaved by a round that moves on. A leaf of the
+                            // account that an earlier root left deeper on its path would then stay over the storage
+                            // cleared here, and a later root that has that leaf again would find it saved. So the nodes
+                            // on that path go first, down to the depth checked below a leaf with storage. Once saved,
+                            // this leaf removes what is left under it itself.
+                            if (waitsForCode) RemoveSkippedNodes(currentStateSyncItem, finalPath.Truncate(DeepestStateLeafPathChecked + 1));
                             _store.EnsureStorageEmpty(finalPath.Path);
                             isAccountComplete |= dependentItem.ResolveDependency();
                         }

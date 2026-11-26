@@ -268,6 +268,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
             }
 
+            if (block.EncodedBlockAccessList is not null) block.BlockAccessList = null;
+
             // possible that headers sync finished before this was called, so blocks in cache weren't inserted
             if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
             {
@@ -279,6 +281,18 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
             _blockCacheService.TryAddBlock(block);
             return NewPayloadV1Result.Syncing;
+        }
+
+        if (block.BlockAccessList is null && block.EncodedBlockAccessList is { } encodedBlockAccessList && block.Header.BlockAccessListHash is not null)
+        {
+            if (!ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, PayloadTransactionCountGuard.GetParentBoundedGasLimit(block.Header.GasLimit, parentHeader, _specProvider.GetSpec(block.Header), block.Number), out ReadOnlyBlockAccessList? blockAccessList, out string? blockAccessListError, out bool isOverItemLimit))
+            {
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, blockAccessListError));
+                Hash256 parentHeaderHash = parentHeader.GetOrCalculateHash();
+                return NewPayloadV1Result.Invalid(isOverItemLimit && _blockTree.WasProcessed(parentHeader.Number, parentHeaderHash) ? parentHeaderHash : null, blockAccessListError);
+            }
+
+            block.BlockAccessList = blockAccessList;
         }
 
         if (_simulateBlockProduction)

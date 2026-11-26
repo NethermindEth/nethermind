@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Serialization.FluentRlp;
@@ -14,6 +16,8 @@ internal interface IIndexedChangeReader<out T> where T : struct, IIndexedChange
     /// <summary>Reads Index + value fields and returns a new <typeparamref name="T"/>.</summary>
     /// <param name="fields">The reader of the change sequence; the caller ends the sequence.</param>
     static abstract T ReadFields<TCanonicalChecks>(ref RlpReader fields) where TCanonicalChecks : struct, IFlag;
+
+    static abstract uint ValidateFields(ref RlpReader fields);
 }
 
 /// <summary>
@@ -60,6 +64,32 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
         reader.ExitSequence(in items, itemsLength);
         return result;
     }
+
+    internal static int ValidateArray<TReader>(ref RlpReader reader, RlpLimit limit, string changeName)
+        where TReader : IIndexedChangeReader<T>
+    {
+        RlpReader items = reader.EnterSequence(out int itemsLength);
+        int count = items.CountItems(limit);
+        uint lastIndex = 0;
+        for (int i = 0; i < count; i++)
+        {
+            RlpReader fields = items.EnterSequence(out int length);
+            uint index = TReader.ValidateFields(ref fields);
+            if (i != 0 && index <= lastIndex)
+            {
+                ThrowChangesOutOfOrder(changeName);
+            }
+            lastIndex = index;
+            items.ExitSequence(in fields, length);
+        }
+
+        reader.ExitSequence(in items, itemsLength);
+        return count;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowChangesOutOfOrder(string changeName) =>
+        throw new RlpReaderException($"{changeName} changes were in incorrect order.");
 
     public override void Encode(ref RlpWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
