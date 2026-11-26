@@ -33,7 +33,7 @@ internal sealed class StreamingSnapshotInitializer(
         bool verified;
         try
         {
-            verified = await StreamAndExtractAsync(client, remoteInfo, checkpoint, cancellationToken).ConfigureAwait(false);
+            verified = await StreamAndExtractAsync(client, remoteInfo, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -44,13 +44,18 @@ internal sealed class StreamingSnapshotInitializer(
         }
 
         if (!verified)
-            throw new IOException(SnapshotDatabase.UnfinishedExtraction(dbPath));
+            throw new IOException($"The streamed snapshot did not pass its checksum verification. {SnapshotDatabase.UnfinishedExtraction(dbPath)}");
 
+        // The marker goes first: a stop or a failed checkpoint write after it leaves a complete database, which the next
+        // start keeps, rather than a complete database that every later start refuses.
         SnapshotDatabase.CompleteExtraction(dbPath);
+        checkpoint.Advance(SnapshotStage.Completed);
+        if (_logger.IsInfo)
+            _logger.Info("Database successfully initialized from streamed snapshot.");
     }
 
     private async Task<bool> StreamAndExtractAsync(
-        SnapshotHttpClient client, SnapshotRemoteInfo remoteInfo, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
+        SnapshotHttpClient client, SnapshotRemoteInfo remoteInfo, CancellationToken cancellationToken)
     {
         string? expectedChecksum = config.Checksum;
         byte[]? checksum;
@@ -74,9 +79,6 @@ internal sealed class StreamingSnapshotInitializer(
             return false;
         }
 
-        checkpoint.Advance(SnapshotStage.Completed);
-        if (_logger.IsInfo)
-            _logger.Info("Database successfully initialized from streamed snapshot.");
         return true;
     }
 

@@ -3,6 +3,7 @@
 
 using System.IO.Abstractions;
 using System.Security.Cryptography;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using NSubstitute;
@@ -95,7 +96,7 @@ public class StreamingSnapshotInitializerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception.Message, Does.Contain("delete its contents by hand"), "the error must say what to do");
+            Assert.That(exception.Message, Does.Contain("empty the directory by hand"), "the error must say what to do");
             Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "what the stream extracted must stay for the operator");
             Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay, so a later start stops too");
             Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when the checksum fails");
@@ -110,12 +111,15 @@ public class StreamingSnapshotInitializerTests
         _server.Content = garbage;
         _config.Checksum = Convert.ToHexString(SHA256.HashData(garbage));
         SnapshotCheckpoint checkpoint = CreateCheckpoint();
+        TestLogger logger = new();
 
-        Assert.That(await Assert.CatchAsync(() => CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None)), Is.Not.Null,
+        Assert.That(await Assert.CatchAsync(() => CreateInitializer(logManager: new OneLoggerLogManager(new(logger))).InitializeAsync(checkpoint, CancellationToken.None)), Is.Not.Null,
             "a corrupt archive must stop the start");
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(logger.LogList.Any(static line => line.Contains("Snapshot streaming did not finish") && line.Contains("empty the directory by hand")), Is.True,
+                "the failed run must say what to do, as it leaves the partial extraction in place");
             Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay, so a later start stops too");
             Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when extraction fails");
         }
@@ -317,10 +321,10 @@ public class StreamingSnapshotInitializerTests
 
     private string MarkerPath => Path.Combine(_dbPath, ".nethermind-snapshot-extracting");
 
-    private StreamingSnapshotInitializer CreateInitializer(int connections = 2, IDriveInfo[]? drives = null) =>
+    private StreamingSnapshotInitializer CreateInitializer(int connections = 2, IDriveInfo[]? drives = null, ILogManager? logManager = null) =>
         new(_config, _server.Url, _dbPath, drives ?? [],
             new SnapshotStreamSettings(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(30)),
-            LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance);
 
     private SnapshotCheckpoint CreateCheckpoint() => new(_config, LimboLogs.Instance);
 

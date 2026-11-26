@@ -316,7 +316,7 @@ public class InitDatabaseSnapshotTests
         {
             Assert.That(File.Exists(synced), Is.True, "a database without the extraction marker is not the snapshot's to delete");
             Assert.That(server.RequestCount, Is.Zero, "the snapshot must be skipped, not downloaded over the kept database");
-            Assert.That(logger.LogList.Any(static line => line.Contains("was not written by an unfinished snapshot extraction")),
+            Assert.That(logger.LogList.Any(static line => line.Contains("holds content and no snapshot extraction marker")),
                 Is.EqualTo(checkpoint is not ("Extracted" or "Completed")),
                 "a kept database must be reported with the way to get the snapshot; a completed one is skipped as before");
         }
@@ -335,7 +335,7 @@ public class InitDatabaseSnapshotTests
         {
             Assert.That(File.Exists(MarkerPath), Is.True, "the extraction must mark the database directory before writing to it");
             Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "precondition: the failed extraction left files behind");
-            Assert.That(logger.LogList.Any(static line => line.Contains("delete its contents by hand")), Is.True,
+            Assert.That(logger.LogList.Any(static line => line.Contains("Snapshot extraction did not finish") && line.Contains("empty the directory by hand")), Is.True,
                 "the failed run must say what to do, as it leaves the partial extraction in place");
         }
 
@@ -349,10 +349,24 @@ public class InitDatabaseSnapshotTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception.Message, Does.Contain("did not finish").And.Contain("delete its contents by hand"),
+            Assert.That(exception.Message, Does.Contain("was not completed").And.Contain("empty the directory by hand"),
                 "the start must say what the directory holds and what to do");
             Assert.That(ContentOf(_dbPath), Is.EqualTo(content), "nothing in the database directory may be deleted or changed, the marker included");
             Assert.That(ReadCheckpoint(), Is.EqualTo(Enum.Parse<SnapshotStage>(checkpointOnRestart)), "the checkpoint must stay");
+        }
+
+        // What the guidance says: the operator empties the directory, the hidden marker included, and the next start
+        // initializes from the archive.
+        Directory.Delete(_dbPath, recursive: true);
+        Directory.CreateDirectory(_dbPath);
+
+        await step.Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a43.sst")), Is.True, "the emptied directory must be initialized");
+            Assert.That(File.Exists(MarkerPath), Is.False, "the marker must be removed after success");
+            Assert.That(ReadCheckpoint(), Is.EqualTo(SnapshotStage.Completed), "the checkpoint must complete");
         }
     }
 
@@ -392,7 +406,7 @@ public class InitDatabaseSnapshotTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception.Message, Does.Contain("did not finish"), "anything at the marker path shows an unfinished extraction");
+            Assert.That(exception.Message, Does.Contain("was not completed"), "anything at the marker path shows an unfinished extraction");
             Assert.That(File.ReadAllBytes(synced), Is.EqualTo(new byte[] { 1, 2, 3 }), "nothing may be deleted");
             Assert.That(Directory.EnumerateFileSystemEntries(_dbPath).Count(), Is.EqualTo(2), "the marker path must stay as it was");
         }
@@ -453,7 +467,7 @@ public class InitDatabaseSnapshotTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception.Message, Does.Contain("delete its contents by hand"), "the start must say what to do");
+            Assert.That(exception.Message, Does.Contain("empty the directory by hand"), "the start must say what to do");
             Assert.That(ContentOf(_dbPath), Is.EqualTo(content), "nothing the interrupted stream wrote may be deleted or written over");
             Assert.That(server.RequestCount, Is.EqualTo(requestsBefore), "the snapshot must not be streamed again over the partial extraction");
         }
@@ -477,10 +491,11 @@ public class InitDatabaseSnapshotTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(failed.Message, Does.Contain("delete its contents by hand"), "a stream that fails its checksum must stop the start, as the node must not start on it");
+            Assert.That(failed.Message, Does.Contain("did not pass its checksum verification").And.Contain("empty the directory by hand"),
+                "a stream that fails its checksum must stop the start, as the node must not start on it");
             Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "what the stream extracted must stay for the operator");
             Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay");
-            Assert.That(next.Message, Does.Contain("delete its contents by hand"), "the next start must stop too");
+            Assert.That(next.Message, Does.Contain("empty the directory by hand"), "the next start must stop too");
             Assert.That(ContentOf(_dbPath), Is.EqualTo(content), "the next start must delete nothing");
             Assert.That(server.RequestCount, Is.EqualTo(requests), "the next start must not stream again");
         }
@@ -741,6 +756,71 @@ public class InitDatabaseSnapshotTests
             {
                 Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "a directory beside the database is a valid setting");
             }
+        }
+    }
+
+    [TestCase(false, TestName = "Execute_CheckpointWriteFailsAfterTheExtraction_StopsAndTheNextStartKeepsTheDatabase")]
+    [TestCase(true, TestName = "Execute_CheckpointWriteFailsAfterTheStreamedExtraction_StopsAndTheNextStartKeepsTheDatabase")]
+    public async Task Execute_CheckpointWriteFailsAfterTheExtraction_StopsAndTheNextStartKeepsTheDatabase(bool streaming)
+    {
+        using FlakySnapshotServer server = StreamingServer();
+        _snapshotConfig.Streaming = streaming;
+        if (!streaming)
+        {
+            _snapshotPath = Path.Combine(_snapshotConfig.SnapshotDirectory, _snapshotConfig.SnapshotFileName);
+            File.WriteAllBytes(_snapshotPath, server.Content);
+            AdvanceCheckpoint(SnapshotStage.Verified);
+        }
+
+        SnapshotStage before = ReadCheckpoint();
+        // A directory where the checkpoint writes its temporary file: the success checkpoint cannot be written.
+        Directory.CreateDirectory(Path.Combine(_snapshotConfig.SnapshotDirectory, $"checkpoint_{_snapshotConfig.SnapshotFileName}.tmp"));
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        Exception? failed = await Assert.CatchAsync(() => step.Execute(CancellationToken.None));
+        Dictionary<string, byte[]> content = ContentOf(_dbPath);
+        int requests = server.RequestCount;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failed, Is.InstanceOf<IOException>().Or.InstanceOf<UnauthorizedAccessException>(), "the failed write must stop the start");
+            Assert.That(failed!.Message, Does.Contain($"checkpoint_{_snapshotConfig.SnapshotFileName}.tmp"), "the error must name the path that failed");
+            Assert.That(File.Exists(MarkerPath), Is.False, "the marker goes before the checkpoint once the extraction succeeded");
+            Assert.That(File.ReadAllBytes(Path.Combine(_dbPath, "state", "a42.sst")), Is.EqualTo(TestArchive.BuildFiles()["state/a42.sst"]), "the database must be complete");
+            Assert.That(ReadCheckpoint(), Is.EqualTo(before), "precondition: the checkpoint did not advance");
+        }
+
+        await step.Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ContentOf(_dbPath), Is.EqualTo(content), "the next start must keep the complete database as it is");
+            Assert.That(server.RequestCount, Is.EqualTo(requests), "the next start must not download again");
+        }
+    }
+
+    [Test]
+    public async Task Execute_SnapshotDirectoryInTheDatabaseByLetterCase_StopsWhereTheCaseIsIgnored()
+    {
+        using FlakySnapshotServer server = StreamingServer();
+        // The database directory spelled in other letter case: the same directory on Windows and macOS, another one on Linux.
+        _snapshotConfig.SnapshotDirectory = Path.Combine(Path.GetDirectoryName(_dbPath)!, "DB", "snapshot");
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+        Task run = new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token);
+
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
+        {
+            InvalidOperationException exception = (await Assert.ThrowsAsync<InvalidOperationException>(() => run))!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exception.Message, Does.Contain("Snapshot.SnapshotDirectory"), "the start must name the setting to change");
+                Assert.That(server.RequestCount, Is.Zero, "nothing may be downloaded");
+            }
+        }
+        else
+        {
+            await run;
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "on Linux letter case tells two directories apart");
         }
     }
 

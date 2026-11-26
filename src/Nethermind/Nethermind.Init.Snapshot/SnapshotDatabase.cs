@@ -48,7 +48,7 @@ internal static class SnapshotDatabase
     {
         // Checked here too: content can appear during a long download, and the extraction would write over it.
         if (Exists(dbPath))
-            throw new IOException($"The database at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} holds content when the snapshot extraction would begin, so nothing was extracted. To initialize from the snapshot, empty the database directory, then restart.");
+            throw new IOException($"The database at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} holds content when the snapshot extraction would begin, so nothing was extracted. Make sure no other node is using it. To initialize from the snapshot, empty the database directory, then restart.");
 
         Directory.CreateDirectory(dbPath);
         using FileStream marker = new(MarkerPath(dbPath), FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 0, FileOptions.WriteThrough);
@@ -70,9 +70,9 @@ internal static class SnapshotDatabase
         return File.Exists(markerPath) || Directory.Exists(markerPath);
     }
 
-    /// <summary>What the operator does about an unfinished extraction, which the step leaves in place.</summary>
+    /// <summary>What the marker shows and what the operator does about it; the step leaves the directory as it is.</summary>
     public static string UnfinishedExtraction(string dbPath) =>
-        $"The database directory {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} holds a snapshot extraction that did not finish: the marker {ExtractionMarker} and whatever the extraction wrote before it stopped. The snapshot initialization deletes nothing in the database directory. Make sure no node is using the directory, delete its contents by hand, then restart to initialize from the snapshot again.";
+        $"The database directory {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} holds the snapshot extraction marker {ExtractionMarker}: an extraction into it began and was not completed, or is still running in another process. The snapshot initialization leaves the directory as it is. Make sure no node or container is using the directory and let a running extraction finish. Otherwise empty the directory by hand, the hidden marker included (move aside anything you do not recognise), or configure a new empty database directory, then restart.";
 
     /// <summary>
     /// Whether an archive entry, given by its full path under <paramref name="destinationRoot"/> (which ends with a
