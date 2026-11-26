@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip2930;
 using NUnit.Framework;
@@ -89,7 +90,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip((string TestName, AccessList? AccessList) testCase)
         {
             byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             _decoder.Encode(ref writer, testCase.AccessList);
             RlpReader ctx = new(bytes);
             AccessList decoded = _decoder.Decode(ref ctx)!;
@@ -107,7 +108,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip_value((string TestName, AccessList? AccessList) testCase)
         {
             byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             _decoder.Encode(ref writer, testCase.AccessList);
             RlpReader ctx = new(bytes.AsSpan());
             AccessList decoded = _decoder.Decode(ref ctx)!;
@@ -136,7 +137,7 @@ namespace Nethermind.Core.Test.Encoding
                 _decoder.Decode(ref ctx);
             }
 
-            Assert.That(DecodeStream, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
+            Assert.That(DecodeStream, Throws.InstanceOf<RlpReaderException>().With.Message.Contain(error));
 
             void DecodeContext()
             {
@@ -144,7 +145,27 @@ namespace Nethermind.Core.Test.Encoding
                 _decoder.Decode(ref ctx);
             }
 
-            Assert.That(DecodeContext, Throws.InstanceOf<RlpException>().With.Message.Contain(error));
+            Assert.That(DecodeContext, Throws.InstanceOf<RlpReaderException>().With.Message.Contain(error));
+        }
+
+        [Test]
+        public void Rejects_list_of_one_byte_items(
+            [Values(1, 22, 23, 100_000)] int itemCount,
+            [Values(RlpBehaviors.None, RlpBehaviors.TrustedInput)] RlpBehaviors behaviors)
+        {
+            byte[] items = new byte[itemCount];
+            items.AsSpan().Fill(0x01);
+            byte[] invalid = new byte[RlpCodec.LengthOfSequence(itemCount)];
+            RlpWriter writer = RlpWriter.ContentWriter(invalid);
+            RlpSequence sequence = writer.StartSequence(itemCount);
+            writer.WriteEncoded(items);
+            writer.EndSequence(sequence);
+
+            Assert.That(() =>
+            {
+                RlpReader ctx = new(invalid);
+                _decoder.Decode(ref ctx, behaviors);
+            }, Throws.InstanceOf<RlpReaderException>());
         }
     }
 }

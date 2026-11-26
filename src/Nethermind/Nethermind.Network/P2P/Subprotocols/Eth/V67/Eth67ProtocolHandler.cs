@@ -36,6 +36,9 @@ public class Eth67ProtocolHandler(
     public new static byte Version => EthVersions.Eth67;
     public override byte ProtocolVersion => Version;
 
+    /// <remarks>eth/67 removed GetNodeData and NodeData (EIP-4938).</remarks>
+    public override bool CanGetNodeData => false;
+
     protected override bool HandleMessageCore(ZeroPacket message)
     {
         switch (message.PacketType)

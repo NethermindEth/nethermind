@@ -11,6 +11,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -36,9 +37,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
+    private readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig;
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
 
-    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
+    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context, CancellationToken cancellationToken = default)
     {
         if (context.IsAuthenticated && rpcRequest?.Method?.StartsWith("engine_newPayload", StringComparison.Ordinal) == true)
             gcKeeper.CancelPendingGC();
@@ -58,28 +60,32 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context);
+            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context, cancellationToken);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
-                : AwaitRequestAsync(responseTask, rpcRequest);
+                : AwaitRequestAsync(responseTask, rpcRequest, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsTransportCancellation(ex, cancellationToken))
         {
             return ValueTask.FromResult<JsonRpcResponse>(ReturnErrorResponse(rpcRequest, ex));
         }
 
-        async ValueTask<JsonRpcResponse> AwaitRequestAsync(ValueTask<JsonRpcResponse> responseTask, JsonRpcRequest rpcRequest)
+        async ValueTask<JsonRpcResponse> AwaitRequestAsync(ValueTask<JsonRpcResponse> responseTask, JsonRpcRequest rpcRequest, CancellationToken cancellationToken)
         {
             try
             {
                 return await responseTask;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!IsTransportCancellation(ex, cancellationToken))
             {
                 return ReturnErrorResponse(rpcRequest, ex);
             }
         }
     }
+
+    /// <summary>Whether <paramref name="ex"/> is the caller abandoning the request, which is not answered: nobody is left to read the answer.</summary>
+    private static bool IsTransportCancellation(Exception ex, CancellationToken cancellationToken) =>
+        ex is OperationCanceledException canceled && cancellationToken.IsCancellationRequested && canceled.CancellationToken == cancellationToken;
 
     private JsonRpcErrorResponse ReturnErrorResponse(JsonRpcRequest rpcRequest, Exception ex)
     {
@@ -125,12 +131,19 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         if (_logger.IsDebug) _logger.Debug($"Internal error cause, request: {DescribeRequestForLog(request)}, exception chain: {ex.DescribeChain(MaxLoggedExceptionChainDepth):hide}");
     }
 
-    private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
+    private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context, CancellationToken cancellationToken)
     {
         const string GetLogsMethodName = "eth_getLogs";
 
+        LogRequest(methodName);
+
+        if (request.ParamsKind is not (JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.Array))
+        {
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "non-array args", in request.IdRef);
+        }
+
         // Rented before decoding so that requests the pool queues or sheds do not pay for, or hold, decoded params.
-        IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
+        IRpcModule rpcModule = await _rpcModuleProvider.Rent(method, cancellationToken);
         if (rpcModule is IContextAwareRpcModule contextAwareModule)
         {
             contextAwareModule.Context = context;
@@ -138,18 +151,28 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool returnImmediately = methodName != GetLogsMethodName;
         Action? returnAction = returnImmediately ? null : CreateReturnAction(method, rpcModule);
         IResultWrapper? resultWrapper = null;
+        CancellationTokenSource? methodCancellation = null;
+        CancellationTokenRegistration abortRegistration = default;
         try
         {
             JsonRpcErrorResponse? value;
             object?[]? parameters;
             int parameterCount;
             bool returnParametersToPool;
+            if (method.HasCancellationToken)
+            {
+                // A rented timeout source rather than a linked one, so a request costs no new source.
+                methodCancellation = _jsonRpcConfig.BuildTimeoutCancellationToken();
+                abortRegistration = cancellationToken.UnsafeRegister(static source => ((CancellationTokenSource)source!).Cancel(), methodCancellation);
+            }
+
             try
             {
                 value = PrepareParameters(
                     request,
                     methodName,
                     method,
+                    methodCancellation,
                     out parameters,
                     out parameterCount,
                     out returnParametersToPool);
@@ -192,12 +215,24 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 returnAction = CreateReturnAction(method, rpcModule);
             }
         }
+        catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is OperationCanceledException or { InnerException: OperationCanceledException })
+        {
+            // Nobody is left to read an answer, so the request ends unanswered, like one abandoned in the module queue.
+            returnImmediately = true;
+            throw new OperationCanceledException(ex.Message, ex, cancellationToken);
+        }
         catch (Exception ex)
         {
             return HandleInvocationException(ex, methodName, request, returnAction);
         }
         finally
         {
+            if (methodCancellation is not null)
+            {
+                abortRegistration.Dispose();
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(methodCancellation);
+            }
+
             if (returnImmediately)
             {
                 _rpcModuleProvider.Return(method, rpcModule);
@@ -274,6 +309,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         JsonRpcRequest request,
         string methodName,
         ResolvedMethodInfo method,
+        CancellationTokenSource? methodCancellation,
         out object?[]? parameters,
         out int parameterCount,
         out bool returnParametersToPool)
@@ -281,20 +317,20 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         parameters = null;
         parameterCount = 0;
         returnParametersToPool = false;
+        int reservedParameterCount = methodCancellation is null ? 0 : 1;
         ReadOnlyMemory<byte> providedParametersUtf8 = request.ParamsUtf8;
         ExpectedParameter[] expectedParameters = method.ExpectedParameters;
         bool useUtf8Parameters = CanDeserializeParametersFromUtf8(request, expectedParameters);
         JsonElement providedParameters = useUtf8Parameters ? default : request.Params;
 
-        LogRequest(methodName);
-
-        return expectedParameters.Length == 0
+        JsonRpcErrorResponse? error = expectedParameters.Length == 0
             ? PrepareNoParameters(
                 request,
                 methodName,
                 useUtf8Parameters,
                 providedParametersUtf8,
                 providedParameters,
+                reservedParameterCount,
                 out parameters)
             : PrepareNonEmptyParameters(
                 request,
@@ -303,9 +339,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 useUtf8Parameters,
                 providedParametersUtf8,
                 providedParameters,
+                reservedParameterCount,
                 out parameters,
                 out parameterCount,
                 out returnParametersToPool);
+        if (error is null && methodCancellation is not null)
+        {
+            parameters![parameterCount++] = methodCancellation.Token;
+        }
+
+        return error;
     }
 
     private JsonRpcErrorResponse? PrepareNoParameters(
@@ -314,9 +357,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool useUtf8Parameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
         JsonElement providedParameters,
+        int reservedParameterCount,
         out object?[] parameters)
     {
-        parameters = [];
+        parameters = reservedParameterCount == 0 ? [] : new object?[reservedParameterCount];
         if (HasUnexpectedZeroParameterArray(useUtf8Parameters, providedParametersUtf8, providedParameters))
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, TooManyArguments(0), in request.IdRef);
@@ -332,6 +376,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool useUtf8Parameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
         JsonElement providedParameters,
+        int reservedParameterCount,
         out object?[]? parameters,
         out int parameterCount,
         out bool returnParametersToPool)
@@ -347,6 +392,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     methodName,
                     in request.IdRef,
                     providedParametersUtf8,
+                    reservedParameterCount,
                     out parameters,
                     out parameterCount,
                     out returnParametersToPool)
@@ -356,6 +402,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     in request.IdRef,
                     providedParameters,
                     providedParametersUtf8,
+                    reservedParameterCount,
                     out parameters,
                     out parameterCount,
                     out returnParametersToPool);
@@ -410,6 +457,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         string methodName,
         in JsonRpcId requestId,
         ReadOnlyMemory<byte> providedParametersUtf8,
+        int reservedParameterCount,
         out object?[]? parameters,
         out int parameterCount,
         out bool returnParametersToPool)
@@ -417,6 +465,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         parameters = DeserializeParameters(
             expectedParameters,
             providedParametersUtf8,
+            reservedParameterCount,
             out int providedParametersLength,
             out int missingParamsCount,
             out int missingRequiredParameterIndex,
@@ -451,6 +500,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         in JsonRpcId requestId,
         JsonElement providedParameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
+        int reservedParameterCount,
         out object?[]? parameters,
         out int parameterCount,
         out bool returnParametersToPool)
@@ -480,6 +530,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             providedParameters,
             providedParametersUtf8,
             missingParamsCount,
+            reservedParameterCount,
             out parameterCount,
             out returnParametersToPool);
         return null;
@@ -646,7 +697,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             TargetParameterCountException or ArgumentException =>
                 LogFailureType(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, in request.IdRef, returnAction)),
 
-            TraceDurationFormatException when isStreaming =>
+            GethTraceDeadlineException =>
+                GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.Message, in request.IdRef, returnAction),
+
+            TraceDurationFormatException =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.Message, in request.IdRef, returnAction),
 
             JsonException or TargetInvocationException and { InnerException: JsonException } when !isStreaming =>
@@ -852,6 +906,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private static object?[] DeserializeParameters(
         ExpectedParameter[] expectedParameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
+        int reservedParameterCount,
         out int providedParametersLength,
         out int missingParamsCount,
         out int missingRequiredParameterIndex,
@@ -864,7 +919,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         parameterDeserializationException = null;
         returnParametersToPool = false;
 
-        object?[] executionParameters = RentParameterArray(expectedParameters.Length, out returnParametersToPool);
+        object?[] executionParameters = RentParameterArray(expectedParameters.Length + reservedParameterCount, out returnParametersToPool);
 
         Utf8JsonReader reader = new(providedParametersUtf8.Span, isFinalBlock: true, state: default);
         if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
@@ -932,15 +987,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         JsonElement providedParameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
         int missingParamsCount,
+        int reservedParameterCount,
         out int parameterCount,
         out bool returnParametersToPool)
     {
         int totalLength = Math.Min(expectedParameters.Length, providedParametersLength + missingParamsCount);
         parameterCount = totalLength;
         returnParametersToPool = false;
-        if (totalLength == 0) return [];
+        if (totalLength + reservedParameterCount == 0) return [];
 
-        object?[] executionParameters = RentParameterArray(totalLength, out returnParametersToPool);
+        object?[] executionParameters = RentParameterArray(totalLength + reservedParameterCount, out returnParametersToPool);
 
         int i = 0;
 
@@ -1032,7 +1088,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         Action? disposableAction = null,
         bool suppressWarning = false)
     {
-        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : methodName)}, id: {id}, errorType: {errorCode}");
+        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : JsonRpcRequest.EncodeLogText(methodName))}, id: {id}, errorType: {errorCode}");
         // Counted here, at the funnel every error response passes through: concurrency-cap
         // rejections reach this point along two distinct paths (module rental before invocation,
         // and the override-environment cap during invocation), and their warnings are suppressed

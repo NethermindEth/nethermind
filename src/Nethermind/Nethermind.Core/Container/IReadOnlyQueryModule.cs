@@ -29,7 +29,7 @@ public enum ReadOnlyQueryKind
     /// <summary>
     /// Replays and traced calls - debug_traceCall, debug_traceCallMany when none of its bundles carries its own override
     /// (overrides in its trace options keep it here), debug_traceTransaction and its by-index and in-block variants,
-    /// debug_traceBlock, debug_traceBlockByNumber, debug_traceBlockByHash, debug_traceBadBlock, debug_traceBlockFromFile,
+    /// debug_traceBlock, debug_traceBlockByNumber, debug_traceBlockByHash, debug_traceBadBlock,
     /// debug_intermediateRoots, debug_standardTraceBlockToFile, debug_standardTraceBadBlockToFile, trace_call,
     /// trace_callMany, trace_rawTransaction, trace_replayTransaction, trace_replayBlockTransactions, trace_block,
     /// trace_transaction, trace_get, trace_filter and proof_getTransactionReceipt - including the workers that trace the
@@ -54,8 +54,8 @@ public enum ReadOnlyQueryKind
 /// The modules are never applied to main block processing, prewarming, validation or sync. A
 /// <see cref="ReadOnlyQueryKind.Call"/> module configures every environment of the shared read-only transaction
 /// processor source, though, and other users also run calls there whose results they act on: Taiko builds its transaction
-/// lists there, Shutter reads its eon keys and validator registry there, and the Flashbots rbuilder module serves its
-/// calls there. A module must therefore leave every result exactly as it would be without it.
+/// lists there, and the Flashbots rbuilder module serves its calls there. A module must therefore leave every result
+/// exactly as it would be without it.
 /// </para>
 /// <para>
 /// Some environments that run calls without persisting them are left out on purpose, because their results are acted on

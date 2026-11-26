@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -22,5 +23,5 @@ internal static class ErrorWrapper
     public static string CreateAccessList(string inner, Hash256 txHash) =>
         $"failed to apply transaction: {txHash} err: {inner}";
 
-    public static string DebugTrace(string inner) => $"tracing failed: {inner}";
+    public static string DebugTrace(string inner) => RpcTransactionErrors.DebugTrace(inner);
 }

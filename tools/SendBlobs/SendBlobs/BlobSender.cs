@@ -151,7 +151,7 @@ internal class BlobSender
                 switch (@break)
                 {
                     case "3": blobsContainer.Blobs[0] = blobsContainer.Blobs[0].Take(blobsContainer.Blobs[0].Length - 2).ToArray(); break;
-                    case "4": blobsContainer.Proofs[0][2] = (byte)~blobsContainer.Proofs[0][2]; break;
+                    case "4": blobsContainer.Proofs[2] = (byte)~blobsContainer.Proofs[2]; break;
                     case "5": blobsContainer.Commitments[0][2] = (byte)~blobsContainer.Commitments[0][2]; break;
                     case "6":
                         Array.Copy(KzgPolynomialCommitments.BlsModulus.ToBigEndian(), blobsContainer.Blobs[0], 32);
@@ -159,7 +159,7 @@ internal class BlobSender
                         break;
                     case "7": maxFeePerBlobGas = UInt256.MaxValue; break;
                     //case "8": maxFeePerBlobGas = 42_000_000_000; break;
-                    case "9": blobsContainer = blobsContainer with { Proofs = blobsContainer.Proofs.Skip(1).ToArray() }; break;
+                    case "9": blobsContainer = blobsContainer with { Proofs = blobsContainer.Proofs[ShardBlobNetworkWrapper.BytesPerProof..] }; break;
                     case "10": blobsContainer = blobsContainer with { Commitments = blobsContainer.Commitments.Skip(1).ToArray() }; break;
                     case "11": maxFeePerBlobGas = UInt256.MaxValue / Eip4844Constants.GasPerBlob + 1; break;
                 }
@@ -193,7 +193,7 @@ internal class BlobSender
         IReleaseSpec spec)
     {
         int capacity = data.Length + data.Length / 32; // at most one extra byte per 32-byte chunk
-        List<byte> normalized = new(capacity);
+        List<byte> normalized = [with(capacity)];
         for (int i = 0; i < data.Length; i++)
         {
             byte value = data[i];
@@ -319,7 +319,7 @@ internal class BlobSender
             throw new InvalidOperationException($"Signer {signer.Address} could not sign blob transaction.");
 
         string txRlp = Hex.ToHexString(txDecoder
-            .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
+            .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping));
 
         string? result = await _rpcClient.SendRawTransactionAsync($"0x{txRlp}");
 

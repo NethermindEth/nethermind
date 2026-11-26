@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
@@ -29,8 +29,8 @@ public class TimeoutCertificateDecoderTests
     {
         TimeoutCertificateDecoder decoder = new();
 
-        Rlp encoded = decoder.Encode(tc);
-        RlpReader decoderContext = new(encoded.Bytes);
+        byte[] encoded = decoder.Encode(tc);
+        RlpReader decoderContext = new(encoded);
         TimeoutCertificate decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(tc).UsingXdcComparer());

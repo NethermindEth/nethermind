@@ -293,6 +293,17 @@ public class InitDatabaseSnapshotTests
         Assert.That(SnapshotDiskSpace.GetRequiredSpaceForDownload(totalSize, existingSize), Is.EqualTo(expected),
             "the pre-download requirement should be the remaining bytes plus the extraction estimate of the full snapshot");
 
+    [TestCase(99, 1_000, true, TestName = "Check_DatabaseDriveShort_ThrowsIOException")]
+    [TestCase(100, 99, false, TestName = "Check_OnlyLinkedDriveShort_DoesNotThrow")]
+    public void Check_HoldsOnlyTheDatabaseDriveToTheWholeSize(long databaseDriveFree, long linkedDriveFree, bool throws)
+    {
+        IDriveInfo[] drives = [.. DrivesWithFreeSpace(databaseDriveFree), .. DrivesWithFreeSpace(linkedDriveFree)];
+
+        Assert.That(() => SnapshotDiskSpace.Check(drives, 100, "extract"),
+            throws ? Throws.TypeOf<IOException>() : Throws.Nothing,
+            "only the database directory's drive must hold the whole snapshot; a linked disk holds only part of the database");
+    }
+
     private long WriteSnapshotTar()
     {
         File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(SnapshotPayloadSize));

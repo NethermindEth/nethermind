@@ -16,6 +16,7 @@ public class ConfigItemAttribute : Attribute
 
     public bool DisabledForCli { get; set; }
 
+    [Obsolete("Has no effect. The environment variable of a configuration item is derived from its category and name.")]
     public string EnvironmentVariable { get; set; } = "";
 
     public bool IsPortOption { get; set; }

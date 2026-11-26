@@ -37,6 +37,7 @@ public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
     public bool IsInitialized { get; set; }
     public bool IsPriority { get; set; }
     public virtual byte ProtocolVersion { get; }
+    public virtual bool CanGetNodeData => ProtocolVersion < EthVersions.Eth67;
     public virtual byte SnapProtocolVersion => SnapVersions.Snap1;
     public string ProtocolCode { get; } = null!;
     public virtual void Disconnect(DisconnectReason reason, string details)

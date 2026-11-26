@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Analyzers\Nethermind.Analyzers.csproj" />
+    <ProjectReference Include="..\Nethermind.BeaconChain.Generators\Nethermind.BeaconChain.Generators.csproj" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />

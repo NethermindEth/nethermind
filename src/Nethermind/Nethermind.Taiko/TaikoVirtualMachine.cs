@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -65,10 +64,9 @@ public class TaikoVirtualMachine(
             {
                 output = contextAwarePrecompile.Run(callData, spec, in extras);
             }
-            catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
+            catch (Exception exception) when (GetFatalLoadFailure(exception) is { } loadFailure)
             {
-                if (_logger.IsError) LogMissingDependency(precompile, (exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException)!);
-                Environment.Exit(ExitCodes.MissingPrecompile);
+                ExitOnMissingDependency(precompile, loadFailure);
                 throw; // Unreachable
             }
             catch (Exception exception) when (exception is not (KzgSetupUnavailableException or OutOfMemoryException or { InnerException: OutOfMemoryException }))

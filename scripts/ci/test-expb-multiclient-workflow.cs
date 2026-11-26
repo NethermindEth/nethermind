@@ -432,6 +432,12 @@ foreach (var (blocks, status) in new[] { (new[] { 100, 101, 102 }, "ok"), (new[]
         var kept = File.ReadAllText(Path.Combine(Path.GetDirectoryName(values["metrics_file"])!, "expb-counts.log"));
         Require(kept.Split("EXPB-COUNT block=").Length - 1 == blocks.Length, "counted lines not kept");
     });
+tests.Case("adjacent warm-up cannot replace a measured block after counting stops", () =>
+{
+    var counts = string.Concat(new[] { 99, 100, 101 }.Select(block => $"EXPB-COUNT block={block} instr=1000 cycles=500\n"));
+    var (code, values, log, _) = Analyze(counts + "EXPB-COUNT stopped: read failed\n" + Table(3), ("CELL_MODE", "instructions"));
+    Require(code == 0 && values["counts_status"] == "missing", log);
+});
 tests.Case("timing cell keeps no instruction counts", () =>
 {
     var (code, values, log, _) = Analyze("EXPB-COUNT block=100 instr=1000 cycles=500\n" + Table(3));

@@ -19,5 +19,16 @@ public sealed partial class GuestWorldState : IGuestSlotStore
         return index;
     }
 
-    void IGuestSlotStore.WriteAt(int slot, in UInt256 newValue) => SetSlot(slot, in newValue);
+    void IGuestSlotStore.WriteAt(int slot, in StorageCell storageCell, in UInt256 current, in UInt256 newValue) => SetSlot(slot, in newValue);
+
+    void IGuestSlotStore.ReadTransient(Address address, in UInt256 index, out UInt256 value)
+    {
+        if (_transientCount != 0 && _transientIndex.TryGetValue(new StorageCell(address, in index), out int entry))
+        {
+            value = _transients[entry].Value;
+            return;
+        }
+
+        value = default;
+    }
 }

@@ -6,6 +6,10 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory)tests.globalconfig" />
+  </ItemGroup>
+
   <!-- Roslyn test analyzers are outside the zkVM-compatible build graph. -->
   <ItemGroup Condition="'$(EnableZkEvm)' != 'true'">
     <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.Test.Analyzers\Nethermind.Test.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

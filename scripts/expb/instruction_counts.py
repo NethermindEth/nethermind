@@ -62,6 +62,8 @@ NOISE_NOTE = (
 
 def parse_log(text: str) -> list[dict]:
     """The block lines of a run log, one row per block number (a block processed twice keeps its last line)."""
+    if "EXPB-COUNT stopped:" in ANSI.sub("", text):
+        raise ValueError("The instruction counter stopped; refusing incomplete counts.")
     rows: dict[int, dict] = {}
     for raw in text.splitlines():
         match = BLOCK_LINE.search(ANSI.sub("", raw))

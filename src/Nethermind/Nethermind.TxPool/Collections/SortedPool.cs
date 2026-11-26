@@ -140,7 +140,7 @@ namespace Nethermind.TxPool.Collections
         public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot()
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
-            Dictionary<TGroupKey, TValue[]> snapshots = new(_buckets.Count);
+            Dictionary<TGroupKey, TValue[]> snapshots = [with(_buckets.Count)];
             foreach ((TGroupKey key, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
                 snapshots[key] = CopyBucketToArray(bucket);
@@ -336,7 +336,7 @@ namespace Nethermind.TxPool.Collections
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
 
-            EnhancedSortedSet<TValue> sortedValues = new(_sortedComparer);
+            EnhancedSortedSet<TValue> sortedValues = [with(_sortedComparer)];
             foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
             {
                 sortedValues.Add(bucket.Value.Min!);
@@ -570,30 +570,30 @@ namespace Nethermind.TxPool.Collections
 
         private bool RemoveLast(out TValue? removed)
         {
-        TryAgain:
-            KeyValuePair<TValue, TKey> worstValue = _worstValue.GetValueOrDefault();
-            TKey? key = worstValue.Value;
-            if (key is not null)
+            while (true)
             {
-                if (TryRemoveNonLocked(key, true, out removed, out _))
+                KeyValuePair<TValue, TKey> worstValue = _worstValue.GetValueOrDefault();
+                // Only the value can tell that no worst value is left: a struct key's default is not null.
+                if (worstValue.Key is not { } worst)
+                {
+                    removed = default;
+                    return false;
+                }
+
+                if (TryRemoveNonLocked(worstValue.Value, true, out removed, out _))
                 {
                     return true;
                 }
 
-                if (worstValue.Key is not null && _worstSortedValues.Remove(worstValue.Key))
+                if (_worstSortedValues.Remove(worst))
                 {
-                    RemoveFromBucket(worstValue.Key, out _);
+                    RemoveFromBucket(worst, out _);
                 }
                 else
                 {
                     UpdateWorstValue();
                 }
-
-                goto TryAgain;
             }
-
-            removed = default;
-            return false;
         }
 
         /// <summary>

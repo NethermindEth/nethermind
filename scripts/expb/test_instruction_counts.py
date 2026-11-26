@@ -62,6 +62,11 @@ class ParseTests(unittest.TestCase):
         self.assertEqual((500_000, 250_000, 250_000), (first["exec_cycles"], first["roots_cycles"], first["commit_cycles"]))
         self.assertEqual("0/0/0", first["gc"])
 
+    def test_adjacent_warmup_cannot_replace_a_measured_block_after_counting_stops(self):
+        text = "\n".join([count_line(block, 1000) for block in (99, 100, 101)] + ["EXPB-COUNT stopped: read failed"])
+        with self.assertRaisesRegex(ValueError, "counter stopped"):
+            counts.parse_log(text)
+
     def test_a_block_processed_twice_keeps_its_last_count(self):
         rows = counts.parse_log("\n".join([count_line(100, 1_000_000), count_line(100, 1_500_000)]))
         self.assertEqual([1_500_000], [row["instr"] for row in rows])

@@ -232,7 +232,8 @@ namespace Nethermind.Serialization.Json
         private static readonly StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: true);
         private static readonly StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: false);
 
-        private static CountingStreamPipeWriter GetPipeWriter(Stream stream, bool leaveOpen) => new(stream, leaveOpen ? optionsLeaveOpen : options);
+        private static CountingStreamPipeWriter GetPipeWriter(Stream stream, bool leaveOpen, bool flushOnThreshold = true) =>
+            new(stream, leaveOpen ? optionsLeaveOpen : options, flushOnThreshold: flushOnThreshold);
 
         public long Serialize<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
@@ -253,7 +254,7 @@ namespace Nethermind.Serialization.Json
 
         public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, CancellationToken cancellationToken, bool indented = false, bool leaveOpen = true)
         {
-            CountingStreamPipeWriter writer = GetPipeWriter(stream, leaveOpen);
+            CountingStreamPipeWriter writer = GetPipeWriter(stream, leaveOpen, flushOnThreshold: false);
             await TypeInfoJsonSerializer.SerializeAsync(writer, value, GetSerializerOptions(indented), cancellationToken);
             await writer.CompleteAsync();
 

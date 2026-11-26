@@ -778,16 +778,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip8360 : struct, IFlag =>
         (SpecFlags.Eip8037<Eip8038>(spec), SpecFlags.Eip7708<Eip8038>(spec)) switch
         {
-            (true, true) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
-            (true, false) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
-            (false, true) => TerminatingOpcodeHandler<SelfDestructOpcode<OffFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
-            (false, false) => TerminatingOpcodeHandler<SelfDestructOpcode<OffFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
+            (true, true) => TerminatingOpcodeHandler<SelfDestructOpcode<TTracingInst, OnFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
+            (true, false) => TerminatingOpcodeHandler<SelfDestructOpcode<TTracingInst, OnFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
+            (false, true) => TerminatingOpcodeHandler<SelfDestructOpcode<TTracingInst, OffFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
+            (false, false) => TerminatingOpcodeHandler<SelfDestructOpcode<TTracingInst, OffFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
         };
 
     private readonly struct BadInstructionOpcode : IOpcodeBody
     {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionBadInstruction(ref stack, ref gas, vm);
+        public static bool UsesVm => true;
+
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            EvmExceptionType result = EvmInstructions.InstructionBadInstruction(ref stack, ref gas, vm);
+            // Dispatch consumed the opcode byte; this handler never consumes an immediate operand.
+            if (result == EvmExceptionType.BadInstruction && vm.IsTracingActions)
+                vm.TraceInvalidOpcode((Instruction)Unsafe.Add(ref stack.Code, programCounter - 1));
+            return result;
+        }
     }
 
     private readonly struct StopOpcode : IOpcodeBody
@@ -1342,6 +1350,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct BlockHashFromStateOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static ulong? TraceGasCost => GasPolicy.BlockHashGasCost.GasCost;
+        public static int? TraceStackInputs => 1;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionBlockHashFromState<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
@@ -1532,8 +1543,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (Unsafe.IsNullRef(ref source))
                 return false;
 
-            // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
-            Unsafe.WriteUnaligned(ref slot, Unsafe.ReadUnaligned<EvmWord>(ref source).ByteSwap());
+            // Memory holds the word big-endian, or swizzled; the slot takes it in limb layout, over the offset it held.
+            if (EvmPooledMemory.IsSwizzled)
+                SwizzledMemory.LoadWord(ref Unsafe.As<byte, ulong>(ref slot), ref source);
+            else
+                Unsafe.WriteUnaligned(ref slot, Unsafe.ReadUnaligned<EvmWord>(ref source).ByteSwap());
             gasLeft -= GasPolicy.VeryLowGasCost.GasCost;
             return true;
         }
@@ -1582,8 +1596,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // take a callee-saved register; the charge writes through a reference, so the JIT reloads them.
             ref byte top = ref stack.PeekBytesByRefUnchecked();
             ref byte destination = ref state.Vm.VmState.Memory.CommitWordOverwrite(Unsafe.As<byte, ulong>(ref top));
-            // The value sits below the offset in limb layout; memory holds it big-endian.
-            Unsafe.WriteUnaligned(ref destination, Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Subtract(ref top, EvmStack.WordSize)).ByteSwap());
+            // The value sits below the offset in limb layout; memory holds it big-endian, or swizzled.
+            if (EvmPooledMemory.IsSwizzled)
+                SwizzledMemory.StoreWord(ref destination, ref Unsafe.As<byte, ulong>(ref top));
+            else
+                Unsafe.WriteUnaligned(ref destination, Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Subtract(ref top, EvmStack.WordSize)).ByteSwap());
             stack.Head -= 2;
             return true;
         }
@@ -1732,6 +1749,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private readonly struct JumpDestOpcode : IOpcodeBody
     {
         public static bool HasCheckedBody => true;
+        public static ulong? TraceGasCost => GasPolicy.JumpDestGasCost.GasCost;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.JumpDestGasCost>(ref gas);
 
@@ -1758,6 +1776,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct CallDestOpcode : IOpcodeBody
     {
+        public static ulong? TraceGasCost => GasPolicy.JumpDestGasCost.GasCost;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             TGasPolicy.UpdateGas<GasPolicy.JumpDestGasCost>(ref gas) ? EvmExceptionType.None : EvmExceptionType.OutOfGas;
     }
@@ -1932,6 +1951,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct DupNOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static ulong? TraceGasCost => GasPolicy.VeryLowGasCost.GasCost;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionDupN<TGasPolicy, TTracingInst>(ref stack, ref gas, ref programCounter);
     }
@@ -1939,6 +1959,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct SwapNOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static ulong? TraceGasCost => GasPolicy.VeryLowGasCost.GasCost;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSwapN<TGasPolicy, TTracingInst>(ref stack, ref gas, ref programCounter);
     }
@@ -1946,6 +1967,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct ExchangeOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static ulong? TraceGasCost => GasPolicy.VeryLowGasCost.GasCost;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionExchange<TGasPolicy, TTracingInst>(ref stack, ref gas, ref programCounter);
     }
@@ -2014,20 +2036,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct InvalidOpcode : IOpcodeBody
     {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionInvalid(ref stack, ref gas, vm);
+        public static bool UsesVm => true;
+
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            EvmExceptionType result = EvmInstructions.InstructionInvalid(ref stack, ref gas, vm);
+            if (result == EvmExceptionType.BadInstruction && vm.IsTracingActions)
+                vm.TraceInvalidOpcode(Instruction.INVALID);
+            return result;
+        }
     }
 
     [SkipLocalsInit]
-    private readonly struct SelfDestructOpcode<TEip8037, TEip7708, TSpec> : IOpcodeBody
+    private readonly struct SelfDestructOpcode<TTracingInst, TEip8037, TEip7708, TSpec> : IOpcodeBody
+        where TTracingInst : struct, IFlag
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
         where TSpec : struct, EvmInstructions.ISelfDestructSpec
     {
-        public static ulong? TraceGasCost => TSpec.UseShanghaiDDosProtection ? GasCostOf.SelfDestructEip150 : 0;
+        public static ulong? TraceGasCost => EvmInstructions.SelfDestructConstantGas<TSpec>();
         public static int? TraceStackInputs => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708, TSpec>(ref stack, ref gas, vm);
+            EvmInstructions.InstructionSelfDestruct<TGasPolicy, TTracingInst, TEip8037, TEip7708, TSpec>(ref stack, ref gas, vm);
     }
 }

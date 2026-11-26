@@ -35,6 +35,8 @@ internal sealed partial class StatelessSpecProvider(
 
     public IReleaseSpec GenesisSpec => baseProvider.GenesisSpec;
 
+    public bool GenesisStateUnavailable => baseProvider.GenesisStateUnavailable;
+
     public ulong? DaoBlockNumber => baseProvider.DaoBlockNumber;
 
     public ulong? BeaconChainGenesisTimestamp => baseProvider.BeaconChainGenesisTimestamp;

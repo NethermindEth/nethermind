@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -152,6 +153,22 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
+    public void Should_include_storage_refund_on_the_restoring_opcode_on_Amsterdam()
+    {
+        List<GethTxFileTraceEntry> entries = [];
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.AmsterdamActivation, 1_000_000, GethLikeTxMemoryTracerTests.RestoredSlotCode);
+
+        ExecuteAndTraceToFile(block, transaction, entries);
+
+        GethTxFileTraceEntry restore = entries.Last(e => e.OpcodeRaw == Instruction.SSTORE);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restore.GasCost, Is.EqualTo(GasCostOf.WarmStateRead));
+            Assert.That(restore.Refund, Is.EqualTo((long)Eip8038Constants.StorageWrite));
+        }
+    }
+
+    [Test]
     public void Should_include_self_destruct_refund_once_on_the_final_opcode()
     {
         List<GethTxFileTraceEntry> entries = [];
@@ -273,6 +290,24 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
             Assert.That(entries[4].StackWordCount(), Is.EqualTo(1));
             Assert.That(entries[5].StackWordCount(), Is.EqualTo(2));
             Assert.That(entries[6].StackWordCount(), Is.EqualTo(0));
+        }
+    }
+
+    [TestCase(Instruction.REVERT, "execution reverted", 0)]
+    [TestCase(Instruction.INVALID, "invalid opcode: INVALID", 2)]
+    public void Should_repeat_faulting_opcode_with_error_without_action_ends(Instruction opcode, string error, int faultStackWords)
+    {
+        List<GethTxFileTraceEntry> entries = [];
+        ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), Prepare.EvmCode.PushData(0).PushData(0).Op(opcode).Done, GethTraceOptions.Default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.Select(static e => e.Opcode), Is.EqualTo(new[] { "PUSH1", "PUSH1", opcode.ToString(), opcode.ToString() }));
+            Assert.That(entries[2].Error, Is.Null);
+            Assert.That(entries[2].GasCost, Is.Zero);
+            Assert.That(entries[2].StackWordCount(), Is.EqualTo(2));
+            Assert.That(entries[3].Error, Is.EqualTo(error));
+            Assert.That(entries[3].StackWordCount(), Is.EqualTo(faultStackWords));
         }
     }
 

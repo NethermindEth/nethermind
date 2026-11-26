@@ -9,6 +9,7 @@ using Autofac;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -42,6 +43,34 @@ public class BlockAccessListStoreTests
     }
 
     [Test]
+    public async Task AppendRlps_appends_stored_and_pending_lists_in_order()
+    {
+        TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        BlockAccessListStore store = new(db, null, writer);
+        byte[] storedBal = [0xc1, 0x80];
+        byte[] pendingBal = [0xc2, 0x80, 0x80];
+        store.Insert(7, TestItem.KeccakA, storedBal);
+        Block pendingBlock = BlockWithBal(8, pendingBal);
+        store.InsertFromBlockDeferred(pendingBlock);
+        store.Insert(10, TestItem.KeccakC, Array.Empty<byte>());
+        ulong[] numbers = [8, 9, 7, 10];
+        ValueHash256[] hashes = [pendingBlock.Hash!, TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakC];
+
+        using ArrayPoolList<byte> lists = new(0);
+        Range?[] ranges = new Range?[hashes.Length];
+        store.AppendRlps(numbers, hashes, lists, ranges);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lists.AsSpan()[ranges[0]!.Value].ToArray(), Is.EqualTo(pendingBal));
+            Assert.That(ranges[1], Is.Null);
+            Assert.That(lists.AsSpan()[ranges[2]!.Value].ToArray(), Is.EqualTo(storedBal));
+            Assert.That(ranges[3], Is.Null, "an empty value reads as missing, as GetRlp reads it");
+        }
+    }
+
+    [Test]
     public void Round_trips_decoded_block_access_list()
     {
         TestMemDb db = new();
@@ -57,7 +86,7 @@ public class BlockAccessListStoreTests
         Assert.That(retrieved, Is.Not.Null);
 
         using MemoryManager<byte>? rlp = store.GetRlp(blockNumber, blockHash);
-        Assert.That(rlp!.Memory, Is.SequenceEqualTo(Rlp.Encode(bal).Bytes));
+        Assert.That(rlp!.Memory, Is.SequenceEqualTo(Rlp.Encode(bal)));
     }
 
     [Test]

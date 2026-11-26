@@ -44,8 +44,12 @@ internal sealed partial class TracerRuntime : IDisposable
 
     private const string TracersPath = "Data/JSTracers/";
     private const string Extension = ".js";
+    private const string LegacySuffix = "_legacy";
+    private const string GethLegacySuffix = "Legacy";
     private const string BigIntegerJavaScript = "_bigInteger.js";
-    private const string CreateUint8ArrayCode = "(function (buffer) {return new Uint8Array(buffer);}).valueOf()";
+    private const string CreateUint8ArrayCode = "(function (U) {return function (length) {return new U(length);};})(Uint8Array)";
+    // Element assignment coerces like Uint8Array.from without calling anything a tracer script can replace.
+    private const string ToUint8ArrayCode = "(function (U) {return function (values) {var n = values.length, bytes = new U(n); for (var i = 0; i < n; i++) bytes[i] = values[i]; return bytes;};})(Uint8Array)";
 
     // PublicationOnly does not cache a failed load, so a later request retries it instead of rethrowing it for the process lifetime.
     private static readonly Lazy<Dictionary<string, string>> _builtInSources = new(LoadBuiltInSources, LazyThreadSafetyMode.PublicationOnly);
@@ -85,6 +89,8 @@ internal sealed partial class TracerRuntime : IDisposable
 
     public V8Script CreateUint8Array => GetScript(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode);
 
+    public V8Script ToUint8Array => GetScript(nameof(ToUint8ArrayCode), ToUint8ArrayCode);
+
     /// <summary>
     /// Compiles the tracer given as inline code or as the name of a tracer shipped under <c>Data/JSTracers</c>.
     /// </summary>
@@ -99,6 +105,12 @@ internal sealed partial class TracerRuntime : IDisposable
         fileName = string.Empty;
         if (!BuiltInNameRegex().IsMatch(tracer)) return false;
         fileName = ToTracerFileName(tracer);
+        if (IsBuiltIn(fileName)) return true;
+
+        // Geth names the legacy tracers in camel case, e.g. callTracerLegacy for callTracer_legacy.
+        string name = Path.GetFileNameWithoutExtension(fileName);
+        if (!name.EndsWith(GethLegacySuffix, StringComparison.Ordinal)) return false;
+        fileName = ToTracerFileName(name[..^GethLegacySuffix.Length] + LegacySuffix);
         return IsBuiltIn(fileName);
     }
 
@@ -109,7 +121,8 @@ internal sealed partial class TracerRuntime : IDisposable
     /// Refuses a tracer no engine could load, returning the runtime inline code was compiled in so the tracer can
     /// reuse it and its cached script, or <see langword="null"/> for a shipped tracer, which needs no compile check.
     /// </summary>
-    /// <exception cref="ArgumentException">The tracer is not found or its code does not compile.</exception>
+    /// <exception cref="ArgumentException">The tracer selector is null.</exception>
+    /// <exception cref="InvalidDataException">The tracer code does not compile.</exception>
     public static TracerRuntime? CreateValidated(string? tracer)
     {
         if (tracer is null)
@@ -131,7 +144,7 @@ internal sealed partial class TracerRuntime : IDisposable
         catch (ScriptEngineException e) when (!e.IsFatal)
         {
             runtime.Dispose();
-            throw new ArgumentException($"Tracer code could not be compiled: {e.Message}", e);
+            throw new InvalidDataException(e.Message, e);
         }
         catch
         {

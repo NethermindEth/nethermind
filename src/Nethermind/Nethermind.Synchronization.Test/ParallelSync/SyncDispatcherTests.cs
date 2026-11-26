@@ -208,6 +208,20 @@ public class SyncDispatcherTests
         }
     }
 
+    [Test]
+    public void Activating_a_finished_feed_keeps_it_finished_with_a_completed_task()
+    {
+        TestSyncFeed feed = new();
+        feed.Finish();
+        feed.Activate();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(feed.FeedTask.IsCompleted, Is.True);
+        }
+    }
+
     [Test, CancelAfter(30_000)]
     public async Task Failed_dispatch_is_retried_and_warns_only_for_non_peer_faults(
         [Values] bool peerFault, [Values] bool maskSensitiveData, CancellationToken cancellationToken)
@@ -266,7 +280,7 @@ public class SyncDispatcherTests
         await syncFeed.WaitForHandleResponse().WaitAsync(cancellationToken);
         syncFeed.Finish();
 
-        Task disposeTask = Task.Run(() => dispatcher.DisposeAsync().AsTask());
+        Task disposeTask = Task.Run(() => dispatcher.DisposeAsync().AsTask(), cancellationToken);
 
         // Production invariant: DisposeAsync must remain blocked while HandleResponse is in flight.
         // WaitAsync throws TimeoutException iff disposeTask is still running after the window —

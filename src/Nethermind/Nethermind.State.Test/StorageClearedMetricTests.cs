@@ -94,4 +94,23 @@ public class StorageClearedMetricTests(bool useFlat)
 
         Assert.That(Db.Metrics.StorageCleared, Is.EqualTo(storageClearedBefore + addresses.Length));
     }
+
+    [Test]
+    public void StorageClearedMetric_CountsClearOfRemovedAccount()
+    {
+        using StorageProviderTests.Context ctx = new(useFlat);
+        WorldState provider = ctx.StateProvider;
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, UInt256.One);
+        provider.Commit(Frontier.Instance);
+        long storageClearedBefore = Db.Metrics.StorageCleared;
+
+        provider.Get(cell, out UInt256 _);
+        provider.ClearStorage(ctx.Address1);
+        provider.DeleteAccount(ctx.Address1);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(Db.Metrics.StorageCleared, Is.EqualTo(storageClearedBefore + 1));
+    }
 }

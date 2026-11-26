@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;
@@ -14,6 +15,8 @@ public static class SszKzgCommitmentVectorTypeConverter
     public const int Length = SszKzgCommitment.KzgCommitmentLength;
 
     public static SszKzgCommitment FromSpan(ReadOnlySpan<byte> span) => SszKzgCommitment.FromSpan(span);
+
+    public static ref readonly SszKzgCommitment ValueFromSpan(ReadOnlySpan<byte> span) => ref MemoryMarshal.AsRef<SszKzgCommitment>(span);
 
     public static void FromSpan(ReadOnlySpan<byte> span, Span<SszKzgCommitment> values)
     {

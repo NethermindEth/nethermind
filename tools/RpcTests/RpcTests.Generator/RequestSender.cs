@@ -16,7 +16,7 @@ public class RequestSender(Uri clientUrl, HttpClient httpClient)
     public async Task<TestCase> SendAsync(TestInfo test, CancellationToken ct)
     {
         if (Interlocked.Increment(ref _requestN) % LogPerRequests == 0)
-            await Console.Out.WriteLineAsync($"Sending request #{_requestN}");
+            await Console.Out.WriteLineAsync($"Sending request #{_requestN}".AsMemory(), ct);
 
         JsonNode response = await SendToClientAsync(test.Data, ct);
         return new TestCase(test, response);

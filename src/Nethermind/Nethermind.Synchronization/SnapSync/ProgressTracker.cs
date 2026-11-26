@@ -345,7 +345,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             Interlocked.Increment(ref _activeCodeRequests);
 
-            ArrayPoolList<ValueHash256> codesToQuery = new(CODES_BATCH_SIZE);
+            ArrayPoolList<ValueHash256> codesToQuery = [with(CODES_BATCH_SIZE)];
             for (int i = 0; i < CODES_BATCH_SIZE && CodesToRetrieve.TryDequeue(out ValueHash256 codeHash); i++)
             {
                 codesToQuery.Add(codeHash);
@@ -362,7 +362,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             Interlocked.Increment(ref _activeStorageRequests); // for race condition so that snap does not exit prematurely
 
-            ArrayPoolList<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
+            ArrayPoolList<PathWithAccount> storagesToQuery = [with(STORAGE_BATCH_SIZE)];
             for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
             {
                 storagesToQuery.Add(storage);
@@ -477,7 +477,9 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash, int slotCount)
+        /// <param name="runRoot">The storage root the range ending at <paramref name="lastProcessedHash"/> was verified against.</param>
+        /// <param name="runStart">Where the consecutive ranges of the storage downloaded at <paramref name="runRoot"/> begin.</param>
+        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash, int slotCount, in ValueHash256 runRoot, in ValueHash256 runStart)
         {
             ValueHash256 limitHash = parentRequest.LimitHash ?? Keccak.MaxValue;
             if (lastProcessedHash > limitHash)
@@ -506,9 +508,12 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
                     StartingHash = lastProcessedHash.IncrementPath(),
-                    LimitHash = halfOfLeftHash
+                    LimitHash = halfOfLeftHash,
+                    PrevRunRoot = runRoot,
+                    PrevRunStart = runStart
                 });
 
+                // Continues no range: the half before it may download at another root.
                 NextSlotRange.Enqueue(new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
@@ -526,7 +531,9 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
                     StartingHash = lastProcessedHash.IncrementPath(),
-                    LimitHash = limitHash
+                    LimitHash = limitHash,
+                    PrevRunRoot = runRoot,
+                    PrevRunStart = runStart
                 };
                 NextSlotRange.Enqueue(storageRange);
             }

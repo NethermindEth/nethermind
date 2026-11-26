@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="All" />
+    <Compile Include="../Nethermind.Serialization.SszGenerator/IsExternalInit.cs" Link="IsExternalInit.cs" />
+    <Compile Include="../Nethermind.Serialization.SszGenerator/SszPropertyOrder.cs" Link="SszPropertyOrder.cs" />
+  </ItemGroup>
+</Project>

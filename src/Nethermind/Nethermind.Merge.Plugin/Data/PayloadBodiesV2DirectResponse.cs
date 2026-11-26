@@ -9,7 +9,6 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -17,10 +16,17 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <summary>Wraps payload body V2 results and writes JSON directly into a <see cref="PipeWriter"/>.</summary>
 public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnlyList<ExecutionPayloadBodyV2Result?>, IDisposable
 {
-    private readonly PayloadBody?[] _items;
+    private readonly ReadOnlyMemory<PayloadBody?> _items;
+    private readonly IDisposable? _itemsOwner;
     private bool _disposed;
 
-    internal PayloadBodiesV2DirectResponse(PayloadBody?[] items) => _items = items;
+    /// <param name="items">The bodies to write.</param>
+    /// <param name="itemsOwner">The owner of the memory the bodies are in, disposed with this response.</param>
+    internal PayloadBodiesV2DirectResponse(ReadOnlyMemory<PayloadBody?> items, IDisposable? itemsOwner = null)
+    {
+        _items = items;
+        _itemsOwner = itemsOwner;
+    }
 
     public int Count => _items.Length;
 
@@ -29,7 +35,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         get
         {
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)_items.Length, nameof(index));
-            return _items[index]?.ToResult();
+            return _items.Span[index]?.ToResult();
         }
     }
 
@@ -54,53 +60,14 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
 
         _disposed = true;
-        DisposeItems(_items);
+        _itemsOwner?.Dispose();
     }
 
-    internal static PayloadBody CreatePayloadBody(
-        Transaction[] transactions,
-        Withdrawal[]? withdrawals,
-        MemoryManager<byte>? blockAccessList)
-    {
-        try
-        {
-            return new PayloadBody(transactions, withdrawals, blockAccessList);
-        }
-        catch
-        {
-            blockAccessList?.TryDispose();
-            throw;
-        }
-    }
-
-    internal static PayloadBody CreatePayloadBody(
-        byte[] blockRlp,
-        MemoryManager<byte>? blockAccessList)
-    {
-        try
-        {
-            return new PayloadBody(blockRlp, blockAccessList);
-        }
-        catch
-        {
-            blockAccessList?.TryDispose();
-            throw;
-        }
-    }
-
-    internal static void DisposeItems(PayloadBody?[] items)
-    {
-        for (int i = 0; i < items.Length; i++)
-        {
-            if (items[i] is { } item) item.Dispose();
-        }
-    }
-
-    private readonly struct ItemWriter(PayloadBody?[] items) : IJsonArrayItemWriter
+    private readonly struct ItemWriter(ReadOnlyMemory<PayloadBody?> items) : IJsonArrayItemWriter
     {
         public void WriteItem(PipeWriter writer, int index)
         {
-            PayloadBody? item = items[index];
+            PayloadBody? item = items.Span[index];
             if (item is null)
             {
                 writer.Write("null"u8);
@@ -111,22 +78,22 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    internal readonly struct PayloadBody : IDisposable
+    internal readonly struct PayloadBody
     {
         private readonly Transaction[]? _transactions;
-        private readonly byte[]? _blockRlp;
+        private readonly ReadOnlyMemory<byte> _blockRlp;
         private readonly Withdrawal[]? _withdrawals;
-        private readonly MemoryManager<byte>? _blockAccessList;
+        private readonly ReadOnlyMemory<byte>? _blockAccessList;
 
-        public PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, MemoryManager<byte>? blockAccessList)
+        public PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, ReadOnlyMemory<byte>? blockAccessList)
         {
             _transactions = transactions;
-            _blockRlp = null;
+            _blockRlp = default;
             _withdrawals = withdrawals;
             _blockAccessList = blockAccessList;
         }
 
-        public PayloadBody(byte[] blockRlp, MemoryManager<byte>? blockAccessList)
+        public PayloadBody(ReadOnlyMemory<byte> blockRlp, ReadOnlyMemory<byte>? blockAccessList)
         {
             _transactions = null;
             _blockRlp = blockRlp;
@@ -136,9 +103,9 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
         public void WriteTo(PipeWriter writer)
         {
-            if (_blockRlp is { } blockRlp)
+            if (_transactions is null)
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _blockAccessList, includeBlockAccessList: true);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _blockRlp.Span, _blockAccessList, includeBlockAccessList: true);
             }
             else
             {
@@ -148,19 +115,17 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
         public ExecutionPayloadBodyV2Result ToResult()
         {
-            if (_blockRlp is { } blockRlp)
+            if (_transactions is null)
             {
-                (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
-                ExecutionPayloadBodyV2Result result = new([], withdrawals, _blockAccessList?.Memory.ToArray())
+                (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(_blockRlp.Span);
+                ExecutionPayloadBodyV2Result result = new([], withdrawals, _blockAccessList?.ToArray())
                 {
                     Transactions = transactions
                 };
                 return result;
             }
 
-            return new ExecutionPayloadBodyV2Result(_transactions!, _withdrawals, _blockAccessList?.Memory.ToArray());
+            return new ExecutionPayloadBodyV2Result(_transactions!, _withdrawals, _blockAccessList?.ToArray());
         }
-
-        public void Dispose() => _blockAccessList?.TryDispose();
     }
 }

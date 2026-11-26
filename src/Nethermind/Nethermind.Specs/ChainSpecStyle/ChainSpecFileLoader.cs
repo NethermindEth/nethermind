@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text;
-using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -34,7 +33,7 @@ public class ChainSpecFileLoader
         string extension = Path.GetExtension(fileName);
 
         string resourceName = FileNameToResource(fileName);
-        Assembly assembly = typeof(IConfig).Assembly;
+        Assembly assembly = typeof(ChainSpecFileLoader).Assembly;
         using Stream? stream = assembly.GetManifestResourceStream(resourceName);
         if (stream is not null)
         {
@@ -51,7 +50,7 @@ public class ChainSpecFileLoader
     private static string FileNameToResource(string fileName)
     {
         StringBuilder sb = new();
-        sb.Append("Nethermind.Config.");
+        sb.Append("Nethermind.Specs.");
         if (!fileName.Contains('/'))
         {
             sb.Append("chainspec/");

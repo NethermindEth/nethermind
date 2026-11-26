@@ -303,7 +303,7 @@ namespace Nethermind.TxPool
 
                     if (tx.CanBeBroadcast())
                     {
-                        persistentTxsToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
+                        persistentTxsToSend ??= [with(numberOfPersistentTxsToBroadcast)];
                         persistentTxsToSend.Add(tx);
                     }
                     else
@@ -312,7 +312,7 @@ namespace Nethermind.TxPool
                         {
                             continue;
                         }
-                        persistentHashesToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
+                        persistentHashesToSend ??= [with(numberOfPersistentTxsToBroadcast)];
                         persistentHashesToSend.Add(tx);
                     }
                     numberOfPersistentTxsToBroadcast--;
@@ -372,19 +372,30 @@ namespace Nethermind.TxPool
 
                 if (_logger.IsTrace) _logger.Trace($"Broadcasting transactions to all peers");
 
-                NotifyAllPeers(_txsToSend, false);
-
-                _txsToSend.Reset();
+                try
+                {
+                    NotifyAllPeers(_txsToSend, false);
+                }
+                finally
+                {
+                    _txsToSend.Reset();
+                }
             }
 
-            // Don't broadcast txs while producing a block as it
-            // allocates a lot and we want to minimize GCs at this time
-            // also head about to change which could change the filter results
-            if (!_headInfo.IsProcessingBlock)
+            try
             {
-                NotifyPeers();
+                // Don't broadcast txs while producing a block as it
+                // allocates a lot and we want to minimize GCs at this time
+                // also head about to change which could change the filter results
+                if (!_headInfo.IsProcessingBlock)
+                {
+                    NotifyPeers();
+                }
             }
-            _timer.Enabled = true;
+            finally
+            {
+                _timer.Enabled = true;
+            }
         }
 
         private bool CanGossipTransactions => _txGossipPolicy.CanGossipTransactions;
@@ -480,6 +491,8 @@ namespace Nethermind.TxPool
         public bool AddPeer(ITxPoolPeer peer) => _peers.TryAdd(peer.Id, peer);
 
         public bool RemovePeer(PublicKey nodeId) => _peers.TryRemove(nodeId, out _);
+
+        public bool RemovePeer(ITxPoolPeer peer) => _peers.TryRemove(KeyValuePair.Create(peer.Id, peer));
 
         public void Dispose() => _timer.Dispose();
     }

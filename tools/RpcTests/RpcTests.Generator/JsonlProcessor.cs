@@ -24,7 +24,7 @@ internal abstract class JsonlProcessor<T>(FilePos[] sources, ITargetBlock<T> tar
             await foreach (string line in File.ReadLinesAsync(startLocation.FilePath, ct))
             {
                 if (++_lineN % LogPerLines == 0)
-                    await Console.Out.WriteLineAsync($"Reading line #{_lineN}");
+                    await Console.Out.WriteLineAsync($"Reading line #{_lineN}".AsMemory(), ct);
 
                 if (fileLineN++ < startLocation.LineNumber) continue;
                 if (string.IsNullOrWhiteSpace(line)) continue;
