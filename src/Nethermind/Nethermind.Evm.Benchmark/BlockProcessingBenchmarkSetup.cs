@@ -32,20 +32,21 @@ internal static class BlockProcessingBenchmarkSetup
     /// <param name="stateHeaderProvider">Receives the parent header once the caller has seeded the state.</param>
     public static ILifetimeScope BeginProcessingScope(IContainer container, out TestStateHeaderProvider stateHeaderProvider)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
         stateHeaderProvider = new TestStateHeaderProvider();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, stateHeaderProvider, NullLogManager.Instance);
-        IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
+        (IWorldStateScopeProvider scopeProvider, IContainer stateContainer) = TestWorldStateFactory.CreateFlatScopeProvider(stateHeaderProvider);
+        IWorldStateManager wsm = stateContainer.Resolve<IWorldStateManager>();
 
         IBlockValidationModule[] validationModules = container.Resolve<IBlockValidationModule[]>();
         IMainProcessingModule[] mainProcessingModules = container.Resolve<IMainProcessingModule[]>();
-        return container.BeginLifetimeScope(b =>
+        ILifetimeScope scope = container.BeginLifetimeScope(b =>
         {
             b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
             b.RegisterInstance(wsm).As<IWorldStateManager>().ExternallyOwned();
             b.AddModule(validationModules);
             b.AddModule(mainProcessingModules);
         });
+        scope.Disposer.AddInstanceForDisposal(stateContainer);
+        return scope;
     }
 
     /// <summary>Opens a scope over one in-memory world state wired as a block producer's environment.</summary>
@@ -56,13 +57,12 @@ internal static class BlockProcessingBenchmarkSetup
     /// <param name="stateHeaderProvider">Receives the parent header once the caller has seeded the state.</param>
     public static ILifetimeScope BeginProductionScope(IContainer container, out TestStateHeaderProvider stateHeaderProvider)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
         stateHeaderProvider = new TestStateHeaderProvider();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, stateHeaderProvider, NullLogManager.Instance);
-        IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
+        (IWorldStateScopeProvider scopeProvider, IContainer stateContainer) = TestWorldStateFactory.CreateFlatScopeProvider(stateHeaderProvider);
+        IWorldStateManager wsm = stateContainer.Resolve<IWorldStateManager>();
         TransactionProcessorAdapterFactory buildUpAdapter = static transactionProcessor => new BuildUpTransactionProcessorAdapter(transactionProcessor);
 
-        return container.BeginLifetimeScope(b =>
+        ILifetimeScope scope = container.BeginLifetimeScope(b =>
         {
             b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
             b.RegisterInstance(wsm).As<IWorldStateManager>().ExternallyOwned();
@@ -72,6 +72,8 @@ internal static class BlockProcessingBenchmarkSetup
                 // The executor only evicts unpaid frame transactions through the pool.
                 .AddSingleton<ITxPool>(NullTxPool.Instance);
         });
+        scope.Disposer.AddInstanceForDisposal(stateContainer);
+        return scope;
     }
 
     /// <summary>Deploys a STOP stub at every system contract that the end of a block calls.</summary>

@@ -32,9 +32,9 @@ using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Synchronization.Test;
+namespace Nethermind.Core.Test;
 
-internal sealed class TestTrieSnapStateServer : ISnapStateServer
+public sealed class TestTrieSnapStateServer : ISnapStateServer
 {
     public bool CanServe => true;
 

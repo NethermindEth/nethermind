@@ -73,7 +73,7 @@ public class SnapFlatStateServerBenchmark
         Address storageAddress = DeriveAddress(AccountCount);
         Hash256 storageAddressHash = Keccak.Compute(storageAddress.Bytes);
 
-        NodeStorage nodeStorage = new(new MemDb());
+        MemoryNodeStorage nodeStorage = new();
         StorageTree storageTree = new(new RawScopedTrieStore(nodeStorage, storageAddressHash), NullLogManager.Instance);
         for (int i = 0; i < SlotCount; i++) storageTree.Set((UInt256)i, [(byte)(i % 255 + 1)]);
         storageTree.Commit();
@@ -94,7 +94,7 @@ public class SnapFlatStateServerBenchmark
         }
 
         RocksDbPersistence persistence = new(_columnsDb, NullLogManager.Instance, NullTrieNodeLog.Instance);
-        new Importer(nodeStorage, persistence, NullLogManager.Instance).Copy(stateId).GetAwaiter().GetResult();
+        FlatBenchmarkSeed.Copy(nodeStorage, persistence, stateId);
 
         _nodeRecordBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         _snapshots = [];

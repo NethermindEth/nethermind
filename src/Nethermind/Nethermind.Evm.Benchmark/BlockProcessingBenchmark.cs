@@ -473,7 +473,7 @@ public class BlockProcessingBenchmark
 
         // Single world state — BranchProcessor.Process() manages scope internally,
         // matching the live client's block processing path.
-        _processingScope = BlockProcessingBenchmarkSetup.BeginProcessingScope(_container, out TestStateHeaderProvider stateHeaderProvider);
+        _processingScope = BlockProcessingBenchmarkSetup.BeginProcessingScope(_container, out stateHeaderProvider);
 
         IWorldState stateProvider = _processingScope.Resolve<IWorldState>();
 

@@ -10,7 +10,12 @@
     <RootNamespace>Nethermind.BeaconChain</RootNamespace>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <BeaconForkTemplates Condition="'$(BeaconForkTemplates)' == ''">Fulu,Gloas</BeaconForkTemplates>
   </PropertyGroup>
+
+  <ItemGroup>
+    <CompilerVisibleProperty Include="BeaconForkTemplates" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Nethermind.Crypto.Bls" />

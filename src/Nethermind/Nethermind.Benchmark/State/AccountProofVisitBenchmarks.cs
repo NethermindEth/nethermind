@@ -7,6 +7,7 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -35,7 +36,7 @@ public class AccountProofVisitBenchmarks
     public void Setup()
     {
         MemDb db = new();
-        StorageTree storageTree = new(new RawScopedTrieStore(db, _address.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+        StorageTree storageTree = new(new RawScopedTrieStore(new TestNodeStorage(db), _address.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
         byte[] value = new byte[32];
         for (ulong i = 0; i < StorageSlots; i++)
         {
@@ -44,7 +45,7 @@ public class AccountProofVisitBenchmarks
         }
         storageTree.Commit();
 
-        _tree = new StateTree(new RawScopedTrieStore(db), LimboLogs.Instance);
+        _tree = new StateTree(new RawScopedTrieStore(new TestNodeStorage(db)), LimboLogs.Instance);
         _tree.Set(_address, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
         _tree.Set(TestItem.AddressB, Build.An.Account.WithBalance(2).TestObject);
         _tree.Commit();

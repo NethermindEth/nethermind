@@ -28,12 +28,6 @@ namespace Nethermind.Benchmarks.State;
 [MemoryDiagnoser]
 public class SnapStorageRangesBenchmark
 {
-    public enum ServerKind
-    {
-        Patricia,
-        Flat
-    }
-
     private const int AccountCount = 512;
     private const int SlotsPerAccount = 4;
 
@@ -43,13 +37,10 @@ public class SnapStorageRangesBenchmark
     private Hash256 _rootHash = null!;
     private PathWithAccount[] _accounts = null!;
 
-    [Params(ServerKind.Patricia, ServerKind.Flat)]
-    public ServerKind Server { get; set; }
-
     [GlobalSetup]
     public void Setup()
     {
-        NodeStorage nodeStorage = new(new MemDb());
+        MemoryNodeStorage nodeStorage = new();
         StateTree stateTree = new(new RawScopedTrieStore(nodeStorage), NullLogManager.Instance);
         Hash256[] paths = new Hash256[AccountCount];
         for (int i = 0; i < AccountCount; i++) paths[i] = Keccak.Compute(BitConverter.GetBytes(i));
@@ -70,16 +61,10 @@ public class SnapStorageRangesBenchmark
         stateTree.Commit();
         _rootHash = stateTree.RootHash;
 
-        if (Server == ServerKind.Patricia)
-        {
-            _server = new SnapStateServer(new TestRawTrieStore(nodeStorage).AsReadOnly(), NullLogManager.Instance);
-            return;
-        }
-
         StateId stateId = new(0, _rootHash.ValueHash256);
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         RocksDbPersistence persistence = new(_columnsDb, NullLogManager.Instance, NullTrieNodeLog.Instance);
-        new Importer(nodeStorage, persistence, NullLogManager.Instance).Copy(stateId).GetAwaiter().GetResult();
+        FlatBenchmarkSeed.Copy(nodeStorage, persistence, stateId);
         _nodeRecordBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         _server = new SnapFlatStateServer(
             new SnapFlatStateServerBenchmark.InMemoryFlatDbManager(persistence, _nodeRecordBuffer, []),
