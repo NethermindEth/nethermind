@@ -171,13 +171,13 @@ public class SpanToArrayAtCallSiteAnalyzerTests
         yield return new TestCaseData("unmanaged", "string", false); // CS8377
         yield return new TestCaseData("class", "string", true);
         yield return new TestCaseData("class", "int", false); // CS0452
-        yield return new TestCaseData("class", "string?", false); // CS8634, an error when warnings are errors
+        yield return new TestCaseData("struct", "int", true);
+        yield return new TestCaseData("struct", "string", false); // CS0453
+        yield return new TestCaseData("new()", "object", true);
+        yield return new TestCaseData("new()", "string", false); // CS0310
         yield return new TestCaseData("notnull", "string", true);
-        yield return new TestCaseData("notnull", "string?", false); // CS8714, an error when warnings are errors
         yield return new TestCaseData("IComparable<T>", "int", true);
         yield return new TestCaseData("IComparable<T>", "object", false); // CS0311
-        yield return new TestCaseData("IDisposable?", "IDisposable?", true);
-        yield return new TestCaseData("IDisposable", "IDisposable?", false); // CS8631, an error when warnings are errors
     }
 
     [TestCaseSource(nameof(ConstrainedSpanOverloadCases))]

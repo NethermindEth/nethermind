@@ -279,8 +279,7 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
                 }
 
                 if (reboundMethod is null
-                    || !SymbolEqualityComparer.Default.Equals((reboundMethod.ReducedFrom ?? reboundMethod).OriginalDefinition, candidate.OriginalDefinition)
-                    || MayViolateNullableConstraint(candidate, reboundMethod, context.Operation))
+                    || !SymbolEqualityComparer.Default.Equals((reboundMethod.ReducedFrom ?? reboundMethod).OriginalDefinition, candidate.OriginalDefinition))
                     continue;
             }
 
@@ -295,7 +294,7 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
 
     /// <summary>
     /// Returns whether <paramref name="candidate"/> may reject type arguments that <paramref name="current"/> accepts,
-    /// through a constraint or a missing <c>allows ref struct</c>.
+    /// through a constraint the compiler enforces as an error or a missing <c>allows ref struct</c>.
     /// </summary>
     private static bool MayRejectTypeArguments(IMethodSymbol candidate, IMethodSymbol current)
     {
@@ -303,7 +302,7 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         {
             ITypeParameterSymbol parameter = candidate.TypeParameters[i];
             if (parameter.HasReferenceTypeConstraint || parameter.HasValueTypeConstraint || parameter.HasUnmanagedTypeConstraint
-                || parameter.HasNotNullConstraint || parameter.HasConstructorConstraint || !parameter.ConstraintTypes.IsEmpty
+                || parameter.HasConstructorConstraint || !parameter.ConstraintTypes.IsEmpty
                 || (current.TypeParameters[i].AllowsRefLikeType && !parameter.AllowsRefLikeType))
                 return true;
         }
@@ -342,49 +341,6 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
 
         return null;
     }
-
-    /// <summary>
-    /// Returns whether a type argument of the bound span overload may break a nullable constraint of <paramref name="candidate"/>.
-    /// </summary>
-    /// <remarks>
-    /// Binding succeeds despite such mismatches: they are warnings (CS8631, CS8634, CS8714), which builds treating
-    /// warnings as errors still reject. Type parameters without a non-null constraint count as possibly null.
-    /// Only top-level nullability is checked; nested nullability in constraint types is not.
-    /// </remarks>
-    private static bool MayViolateNullableConstraint(IMethodSymbol candidate, IMethodSymbol boundMethod, IOperation call)
-    {
-        if (call.SemanticModel?.GetNullableContext(call.Syntax.SpanStart).WarningsEnabled() != true)
-            return false;
-
-        ImmutableArray<ITypeSymbol> typeArguments = boundMethod.TypeArguments;
-        for (int i = 0; i < typeArguments.Length; i++)
-        {
-            if (!MayBeNull(typeArguments[i]))
-                continue;
-
-            ITypeParameterSymbol parameter = candidate.TypeParameters[i];
-            if (parameter.HasNotNullConstraint
-                || parameter is { HasReferenceTypeConstraint: true, ReferenceTypeConstraintNullableAnnotation: NullableAnnotation.NotAnnotated })
-                return true;
-
-            foreach (ITypeSymbol constraintType in parameter.ConstraintTypes)
-            {
-                if (constraintType is { IsValueType: false, NullableAnnotation: NullableAnnotation.NotAnnotated })
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool MayBeNull(ITypeSymbol type) => type switch
-    {
-        { IsValueType: true } => type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T,
-        { NullableAnnotation: NullableAnnotation.Annotated } => true,
-        ITypeParameterSymbol parameter => !parameter.HasNotNullConstraint
-            && parameter is not { HasReferenceTypeConstraint: true, ReferenceTypeConstraintNullableAnnotation: NullableAnnotation.NotAnnotated },
-        _ => false,
-    };
 
     private static string? MatchingSpanParamKind(
         ITypeSymbol candidateParamType,
