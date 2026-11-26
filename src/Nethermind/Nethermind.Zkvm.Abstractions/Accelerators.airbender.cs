@@ -94,7 +94,7 @@ public static partial class Accelerators
 
     /// <summary>Sets in the 256-byte <paramref name="bloom"/>, and in <paramref name="master"/> unless null, the
     /// three bits the keccak of the 20 or 32 bytes at <paramref name="data"/> picks.</summary>
-    /// <remarks>The native routine reads exactly <paramref name="length"/> bytes from <paramref name="data"/>.</remarks>
+    /// <remarks>A 20-byte address can be passed without padding.</remarks>
     public static unsafe void AirbenderBloomSet(byte* bloom, byte* master, byte* data, uint length) =>
         airbender_bloom_set(bloom, master, data, length);
 

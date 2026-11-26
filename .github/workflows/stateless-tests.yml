@@ -122,12 +122,13 @@ jobs:
       - name: Check trusted-input fallbacks in the Airbender simulator
         if: matrix.vm == 'airbender' && matrix.input == 'Trusted'
         working-directory: src/Nethermind/Nethermind.Stateless.AirbenderGuest
-        run: make test-trusted-input GUEST_INPUT=Trusted
+        # The build above made the managed assemblies.
+        run: make -o dotnet-build test-trusted-input GUEST_INPUT=Trusted
 
       - name: Build the Airbender guests that report their trie provider
         if: matrix.vm == 'airbender' && matrix.input == 'Trusted'
         working-directory: src/Nethermind/Nethermind.Stateless.AirbenderGuest
-        run: make build-scope-guests
+        run: make -o dotnet-build build-scope-guests
 
       - name: Upload guest binary
         uses: actions/upload-artifact@v7

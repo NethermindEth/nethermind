@@ -94,6 +94,7 @@ $(GUEST_DIR)/bin/trusted-input-test.hex: $(MAKEFILE_DIR)/../../../scripts/ci/air
 # Trusted-input guests that print the trie provider each block runs on: nethermind-trusted-scope as production
 # chooses it, and nethermind-trusted-fallback with libairbender's tries refused, so on the managed witness nodes.
 .PHONY: build-scope-guests
+build-scope-guests: GUEST_INPUT = Trusted
 build-scope-guests: dotnet-build
 	$(MAKE) -o dotnet-build build GUEST_INPUT=Trusted GUEST_NAME=nethermind-trusted-scope \
 		GUEST_SUBSTITUTIONS='$(GUEST_SUBSTITUTIONS) --substitution $(SRC_DIR)/scope-report.xml'
