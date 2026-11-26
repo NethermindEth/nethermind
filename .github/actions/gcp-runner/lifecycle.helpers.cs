@@ -9,8 +9,10 @@ sealed partial class Lifecycle(Func<string, string[], string?, CancellationToken
 {
     [GeneratedRegex("^[0-9]+$")]
     private static partial Regex SsdCountRegex();
-    [GeneratedRegex(@"\(HTTP (429|5[0-9]{2})\)|couldn't respond to your request in time|No server is currently available")]
+    [GeneratedRegex(@"\bHTTP (429|5[0-9]{2})\b|couldn't respond to your request in time|No server is currently available")]
     private static partial Regex TransientApiErrorRegex();
+    [GeneratedRegex(@"\bHTTP 409\b")]
+    private static partial Regex ConflictRegex();
     private const int RegistrationAttempts = 4;
 
     private string Env(string key, string fallback = "") => environment(key) ?? fallback;
@@ -271,7 +273,7 @@ sealed partial class Lifecycle(Func<string, string[], string?, CancellationToken
             var result = await run("gh", ["api", "--method", "POST", $"/repos/{Env("GITHUB_REPOSITORY")}/actions/runners/generate-jitconfig", "-H", "X-GitHub-Api-Version: 2022-11-28", "--input", "-"], request, token);
             if (result.Code == 0 || attempt == RegistrationAttempts) return result;
             // A request that timed out on GitHub's side may still have registered the name.
-            if (attempt > 1 && result.Error.Contains("(HTTP 409)", StringComparison.Ordinal)) await RemoveRegistration(token);
+            if (attempt > 1 && ConflictRegex().IsMatch(result.Error)) await RemoveRegistration(token);
             else if (!TransientApiErrorRegex().IsMatch(result.Error)) return result;
             Console.WriteLine($"::notice title=GCP runner::JIT runner registration attempt {attempt} failed, retrying: {result.Error.Trim()}");
             await delay(TimeSpan.FromSeconds(10 * attempt), token);
