@@ -4,6 +4,7 @@
 using System.IO;
 using System.Text;
 using System.Text.Json.Nodes;
+using Autofac;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -139,9 +140,9 @@ public class BeaconChainSpecTests
 
     // Independent source: a Lighthouse node of the Kurtosis devnet these files were generated for advertised fork digest 0x3b5bd9ca in its ENR.
     [Test]
-    public void A_network_config_file_defines_a_network_the_chain_id_does_not()
+    public void A_network_config_file_defines_a_network_the_chain_id_does_not([Values] bool throughContainer)
     {
-        BeaconChainSpec spec = ForDevnet(DevnetConfig, writeGenesisState: true, chainspecGenesisTime: null);
+        BeaconChainSpec spec = ForDevnet(DevnetConfig, writeGenesisState: true, chainspecGenesisTime: null, throughContainer: throughContainer);
 
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(spec.ChainId, Is.EqualTo(DevnetChainId));
@@ -170,6 +171,7 @@ public class BeaconChainSpecTests
     [TestCase("FULU_FORK_EPOCH: 0", "FULU_FORK_EPOCH: 1", "FULU_FORK_EPOCH")]
     [TestCase("GLOAS_FORK_EPOCH: 18446744073709551615", "GLOAS_FORK_EPOCH: 10", "GLOAS_FORK_EPOCH")]
     [TestCase("MAX_BLOBS_PER_BLOCK: 21", "MAX_BLOBS_PER_BLOCK: 15", "BLOB_SCHEDULE")]
+    [TestCase("- EPOCH: 0", "- EPOCH: 18446744073709551615", "BLOB_SCHEDULE")]
     [TestCase("GENESIS_FORK_VERSION: 0x10000038", "", "GENESIS_FORK_VERSION")]
     [TestCase("ALTAIR_FORK_EPOCH: 0", "ALTAIR_FORK_EPOCH: soon", "ALTAIR_FORK_EPOCH")]
     [TestCase("MAX_BLOBS_PER_BLOCK_ELECTRA: 9", "MAX_BLOBS_PER_BLOCK_ELECTRA: 9\nMAX_REQUEST_PAYLOADS: 64", "MAX_REQUEST_PAYLOADS")]
@@ -183,6 +185,21 @@ public class BeaconChainSpecTests
     public void The_genesis_state_beside_a_network_config_file_must_exist_and_match_the_chainspec(bool writeGenesisState, ulong? chainspecGenesisTime, string reason) =>
         Assert.That(() => ForDevnet(DevnetConfig, writeGenesisState, chainspecGenesisTime),
             Throws.InstanceOf<InvalidConfigurationException>().With.Message.Contains(reason));
+
+    [Test]
+    public void A_network_config_file_accepts_an_uppercase_hex_prefix() =>
+        Assert.That(ForDevnet(DevnetConfig.Replace("0x", "0X"), writeGenesisState: true, chainspecGenesisTime: null).Forks[0].Version,
+            Is.EqualTo(Bytes.FromHexString("0x10000038")));
+
+    [Test]
+    public void A_duplicate_Gloas_version_from_the_file_names_the_fork()
+    {
+        InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => ForDevnet(
+            DevnetConfig.Replace("0x80000038", "0x70000038").Replace("GLOAS_FORK_EPOCH: 18446744073709551615", "GLOAS_FORK_EPOCH: 0"),
+            writeGenesisState: true, chainspecGenesisTime: null, scheduleAmsterdam: true))!;
+
+        Assert.That(ex.Message, Does.Contain("Gloas fork version 0x70000038 repeats").And.Not.Contain("BeaconChain.GloasForkVersion"));
+    }
 
     private const ulong DevnetChainId = 3151908;
     private const ulong DevnetGenesisTime = 1795524678;
@@ -244,7 +261,7 @@ public class BeaconChainSpecTests
         }
         """;
 
-    private static BeaconChainSpec ForDevnet(string config, bool writeGenesisState, ulong? chainspecGenesisTime)
+    private static BeaconChainSpec ForDevnet(string config, bool writeGenesisState, ulong? chainspecGenesisTime, bool throughContainer = false, bool scheduleAmsterdam = false)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         Directory.CreateDirectory(directory.Path);
@@ -255,8 +272,16 @@ public class BeaconChainSpecTests
 
         JsonObject genesis = JsonNode.Parse(DevnetGenesis)!.AsObject();
         if (chainspecGenesisTime is not null) genesis["config"]!["beaconChainGenesisTimestamp"] = chainspecGenesisTime;
+        if (scheduleAmsterdam) genesis["config"]!["amsterdamTime"] = 0;
         using MemoryStream genesisJson = new(Encoding.UTF8.GetBytes(genesis.ToJsonString()));
         ChainSpec chainSpec = new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(genesisJson);
+        if (throughContainer)
+        {
+            using IContainer container = BeaconChainTestContainer.Builder(
+                config: new BeaconChainConfig { NetworkConfigFile = configFile },
+                execution: new ChainSpecBasedSpecProvider(chainSpec), chainSpec: chainSpec).Build();
+            return container.Resolve<BeaconChainSpec>();
+        }
         return BeaconChainSpec.ForNetworkConfig(configFile, new ChainSpecBasedSpecProvider(chainSpec), null, chainSpec.Parameters.BlobSchedule?.Select(static entry => entry.Timestamp));
     }
 

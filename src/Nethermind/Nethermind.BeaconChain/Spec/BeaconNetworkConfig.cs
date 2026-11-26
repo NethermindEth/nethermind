@@ -211,7 +211,7 @@ internal sealed class BeaconNetworkConfig(string path, Dictionary<string, string
     {
         string value = Required(path, values, key);
         return value.Length == 10 && value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) && !value.AsSpan(2).ContainsAnyExcept("0123456789abcdefABCDEF")
-            ? Bytes.FromHexString(value)
+            ? Bytes.FromHexString(value[2..])
             : throw new InvalidConfigurationException($"BeaconChain.NetworkConfigFile {path} sets {key} to '{value}', which is not 4 bytes of 0x-prefixed hex.", ExitCodes.ForbiddenOptionValue);
     }
 }

@@ -263,7 +263,7 @@ public partial record BeaconChainSpec
             foreach (ForkScheduleEntry fork in forks)
             {
                 if (fork.Version.AsSpan().SequenceEqual(gloasVersion))
-                    throw Conflict($"BeaconChain.GloasForkVersion {gloasVersion.ToHexString(withZeroX: true)} repeats an earlier fork version of this network.");
+                    throw Conflict($"{(gloasForkVersion is not null ? "BeaconChain.GloasForkVersion" : "The Gloas fork version")} {gloasVersion.ToHexString(withZeroX: true)} repeats an earlier fork version of this network.");
             }
 
             forks.Add(new ForkScheduleEntry(gloasVersion, gloasEpoch));
