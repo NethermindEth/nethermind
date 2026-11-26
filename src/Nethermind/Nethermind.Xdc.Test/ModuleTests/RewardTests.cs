@@ -21,7 +21,6 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
@@ -447,7 +446,7 @@ public class RewardTests
         const ulong mergeSignRange = 15;
         const ulong checkpointNumber = 2700;
 
-        PrivateKey[] keys = XdcTestHelper.GeneratePrivateKeys(9);
+        PrivateKey[] keys = XdcTestHelper.GeneratePrivateKeys(10);
         PrivateKey[] masternodeKeys = [keys[0], keys[1], keys[2], keys[3], keys[4]];
         PrivateKey signer1 = masternodeKeys.First();
         PrivateKey signer2 = masternodeKeys.Last();
@@ -455,6 +454,7 @@ public class RewardTests
         PrivateKey protector2 = keys[6];
         PrivateKey observer1 = keys[7];
         PrivateKey observer2 = keys[8];
+        PrivateKey candidateAfterRewardedEpoch = keys[9];
 
         Address[] masternodes = masternodeKeys.Select(key => key.Address).ToArray();
 
@@ -523,6 +523,7 @@ public class RewardTests
             BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, protector2, nonce: 6),
             BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, observer1, nonce: 7),
             BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, observer2, nonce: 8),
+            BuildSigningTx(xdcSpec, 1785, blockHeaders[1785].Hash!, candidateAfterRewardedEpoch, nonce: 9),
         ];
 
         blocks[916] = new Block(blockHeaders[916], new BlockBody(txsAt916, null, null));
@@ -533,22 +534,27 @@ public class RewardTests
         tree.FindBlock(Arg.Any<Hash256>(), Arg.Any<ulong?>())
             .Returns(ci => blocks[(int)ci.ArgAt<ulong?>(1)!]);
 
+        // The rewarded epoch's standby nodes, which the current candidates no longer match.
+        XdcBlockHeader rewardedCheckpoint = blockHeaders[epochLength];
+        epochSwitchManager.GetEpochSwitchInfo(rewardedCheckpoint).Returns(new EpochSwitchInfo(
+            masternodes,
+            [protector1.Address, protector2.Address, observer1.Address],
+            [observer2.Address],
+            new BlockRoundInfo(rewardedCheckpoint.Hash!, epochLength, epochLength)));
+
         IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
         votingContract.GetCandidateOwner(Arg.Any<IWorldState>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(1));
-        Address[] rewardCandidates =
+        Address[] currentCandidates =
         [
             ..masternodes,
+            candidateAfterRewardedEpoch.Address,
             protector1.Address,
             protector2.Address,
             observer1.Address,
             observer2.Address,
         ];
-        votingContract.GetCandidates(Arg.Any<BlockHeader>())
-            .Throws(new InvalidOperationException("Readonly candidates lookup should not be used for block-processing rewards."));
-        votingContract.GetCandidates(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>()).Returns(rewardCandidates);
-        votingContract.GetCandidateStake(Arg.Any<BlockHeader>(), Arg.Any<Address>())
-            .Throws(new InvalidOperationException("Readonly stake lookup should not be used for block-processing rewards."));
+        votingContract.GetCandidates(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>()).Returns(currentCandidates);
         votingContract.GetCandidateStake(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>()).Returns(UInt256.One);
 
         IWorldState worldState = TestWorldStateFactory.CreateForTest(TestMemDbProvider.Init(), LimboLogs.Instance);
@@ -584,6 +590,7 @@ public class RewardTests
             Assert.That(rewards.Single(r => r.Address == observer1.Address).Value, Is.EqualTo((UInt256)270));
             Assert.That(rewards.Single(r => r.Address == foundationWalletAddr).Value, Is.EqualTo((UInt256)210));
             Assert.That(rewards.Any(r => r.Address == observer2.Address), Is.False);
+            Assert.That(rewards.Any(r => r.Address == candidateAfterRewardedEpoch.Address), Is.False);
         }
 
         // Validate minted-record accounting side effects produced by the reward upgrade path.

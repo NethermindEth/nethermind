@@ -13,7 +13,6 @@ using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Xdc;
@@ -164,25 +163,13 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
 
                     if (spec.IsTipUpgradeRewardEnabled)
                     {
-                        // TIPUpgradeReward path: select protector and observer sets from stake-sorted candidates.
-                        // Exclude current masternodes and penalized nodes from the checkpoint header.
-                        Address[] candidatesByStake = GetCandidatesByStakeForReward(epochHeader);
-                        int penaltiesCount = h.PenaltiesAddress?.Length ?? 0;
-                        HashSet<Address> excludedCandidates = [with(masternodes.Count + penaltiesCount)];
-                        excludedCandidates.UnionWith(masternodes);
-                        if (h.PenaltiesAddress is not null)
-                            excludedCandidates.UnionWith(h.PenaltiesAddress);
-
-                        foreach (Address candidate in candidatesByStake)
-                        {
-                            if (candidate == Address.Zero || excludedCandidates.Contains(candidate))
-                                continue;
-
-                            if (protectors.Count < spec.MaxProtectorNodes)
-                                protectors.Add(candidate);
-                            else if (observers.Count < spec.MaxObserverNodes)
-                                observers.Add(candidate);
-                        }
+                        // Protectors and observers come from the rewarded epoch's own standby nodes, not the
+                        // current candidates, as in XinFinOrg/XDPoSChain#2612.
+                        Address[] standbyNodes = _epochSwitchManager.GetEpochSwitchInfo(h)?.StandbyNodes ?? [];
+                        int protectorEnd = Math.Min(spec.MaxProtectorNodes, standbyNodes.Length);
+                        int observerEnd = (int)Math.Min((long)protectorEnd + spec.MaxObserverNodes, standbyNodes.Length);
+                        protectors.UnionWith(standbyNodes[..protectorEnd]);
+                        observers.UnionWith(standbyNodes[protectorEnd..observerEnd]);
                     }
                     break;
                 }
@@ -231,33 +218,6 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         }
 
         return [.. checkpointHeader.ValidatorsAddress!];
-    }
-
-    private Address[] GetCandidatesByStakeForReward(XdcBlockHeader checkpointHeader)
-    {
-        // We intentionally avoid GetCandidatesByStake here to preserve Go-equivalent ordering:
-        // fetch candidates at the checkpoint header and apply a stable stake-descending sort locally.
-        Address[] candidates = _masternodeVotingContract.GetCandidates(_transactionProcessor, checkpointHeader) ?? [];
-        if (candidates.Length == 0)
-            return [];
-
-        List<CandidateStake> candidatesAndStake = [with(candidates.Length)];
-        foreach (Address candidate in candidates)
-        {
-            if (candidate == Address.Zero)
-                continue;
-
-            candidatesAndStake.Add(new CandidateStake
-            {
-                Address = candidate,
-                Stake = _masternodeVotingContract.GetCandidateStake(_transactionProcessor, checkpointHeader, candidate),
-            });
-        }
-
-        return candidatesAndStake
-            .OrderByDescending(static x => x.Stake)
-            .Select(static x => x.Address)
-            .ToArray();
     }
 
     private static void IncrementSignerCount(Dictionary<Address, XdcRewardLog> signers, Address addr)
