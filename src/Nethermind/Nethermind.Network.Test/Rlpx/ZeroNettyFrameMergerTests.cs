@@ -214,6 +214,22 @@ public class ZeroNettyFrameMergerTests
     }
 
     [Test]
+    public void Frame_merger_drops_the_packet_in_progress_when_a_frame_fails_its_checks([Values] bool malformedHeader)
+    {
+        FrameMerger merger = new();
+        using DisposableByteBuffer firstChunk = BuildFrame([2, 0], contextId: 1, totalPacketSize: 4).AsDisposable();
+        Assert.That(merger.Read(firstChunk.AsSpan()).IsComplete, Is.False, "the first chunk must leave a packet in progress");
+
+        using DisposableByteBuffer failingFrame = BuildFrame([0, 0], contextId: 1).AsDisposable();
+        if (malformedHeader) failingFrame.SetByte(3, 0xf7);
+        else failingFrame.SetWriterIndex(failingFrame.WriterIndex - 1);
+        Assert.That(() => merger.Read(failingFrame.AsSpan()), Throws.InstanceOf<InvalidFrameException>());
+
+        using DisposableByteBuffer standalone = BuildFrame([3, 99], contextId: 0).AsDisposable();
+        Assert.That(merger.Read(standalone.AsSpan()).Kind, Is.EqualTo(MergedFrameKind.SinglePacket));
+    }
+
+    [Test]
     public void Handles_non_chunked_frames()
     {
         using DisposableByteBuffer input = BuildFrames(1).AsDisposable();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using DotNetty.Codecs;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
@@ -42,6 +43,17 @@ namespace Nethermind.Network.Test.Rlpx
             result.ReadBytes(resultBytes);
             TestContext.Out.WriteLine(resultBytes.ToHexString());
             Assert.That(resultBytes.ToHexString(), Is.EqualTo("96cd2d950a261eae89f0e0cd0432c7d142d19e629f6b6d653a1424b0b7dcd1a6fc75caed4bbbb6d3c888618db2453158b06548d9bdb1b8208b70e0075d675bbe80268afff07570005454467c0c3e85a3468e3225015521fecb9a0c1a2092fd445f14552e33d4ebb4d7b533606989210b4c702662b4d2417f293b2701ee4336624916cddefb4c3777d1a144e1df66162b60bcaed3319becbbe19062f7e3715505dc84fa23a531d7dfd35b9ad95042a85faa643a40365d52d0b57e67cc428676cc364567a6c8cf7fda48bd4c54fd2c8fad1e504f3c2451f538793c022fcdfaef9d8fdafae2c989a7e61dba88879cc9062b774bc3f999b0cdece9aab3d34fafc1513e2de18e6c297d07a5992cc68adb27ce3de39c290884e2f6f0f8b24645c622b2cd9d396498e689a44dc775c22f4baa6b5c1685c19b020110c5788b0e61ebf1794f05df9237d61ca95f49f00fa0217c6a0935f5674c32f8eb7b9c5fe351d429ba0383761d980b53b1187a9a367f80075c020fcc71a75689a4a9e74b8c6137ab267ce6e697008ff5f8c29af53fd4f97018da197f990181f112be738fd0f57bcfc72a78dda731b64aecdd3f83586f1fcfdbdf2c58eff42b38fed19730a1fd0dd21d248d78a396689a508561590543dbe62b44475bec724f2c13678dc877d6cc15099634c10ee4206b339e45c4829c8d81537c3b57fab792929f79a391c29d4f10f6db8318d9f2bffffdafb3038f005ab5e9ce4bf46960f7cf078cebc4287da0330f6a02555851db05eb28dab481313b43dd64eb9a70e8b4460da9955c39e5c24d2d3432189911b6bbdc05c5c6d50fc8e2422a833c3b9ff407ed69cf8fa55248cddddab62951b60c822588ae6b22c67bd9126a5a84cb5723a3079d52972341bcf216"));
+        }
+
+        [Test]
+        public void Reports_a_malformed_header_as_a_corrupted_frame()
+        {
+            using DisposableByteBuffer result = Unpooled.Buffer(64).AsDisposable();
+            using DisposableByteBuffer input = Unpooled.Buffer(Frame.HeaderSize).AsDisposable();
+            input.WriteBytes(Bytes.FromHexString("000010f7000000000000000000000000"));
+            ZeroFrameEncoderTestWrapper zeroFrameEncoderTestWrapper = new(_frameCipher, _macProcessor);
+
+            Assert.That(() => zeroFrameEncoderTestWrapper.Encode(input, result), Throws.TypeOf<CorruptedFrameException>());
         }
 
         [Test]

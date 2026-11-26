@@ -24,10 +24,13 @@ internal sealed class FrameMerger
     /// <exception cref="InvalidFrameException">The frame breaks the framing rules.</exception>
     public MergedFrame Read(ReadOnlySpan<byte> frame)
     {
-        FrameHeaderReader.FrameInfo info = FrameHeaderReader.ReadFrameHeader(frame[..Frame.HeaderSize]);
+        FrameHeaderReader.FrameInfo info = ReadHeader(frame[..Frame.HeaderSize]);
         ReadOnlySpan<byte> payload = frame[Frame.HeaderSize..];
         if (payload.Length != info.PayloadSize)
+        {
+            Reset();
             ThrowInvalidFrameLength(payload.Length, info.PayloadSize);
+        }
 
         if (!info.TotalPacketSize.HasValue && _inProgress)
         {
@@ -90,6 +93,20 @@ internal sealed class FrameMerger
     {
         if (frame.IsComplete) Reset();
         return frame;
+    }
+
+    /// <remarks>Like <see cref="DecodePacketType"/>, keeps the exception handling region out of <see cref="Read"/>.</remarks>
+    private FrameHeaderReader.FrameInfo ReadHeader(ReadOnlySpan<byte> header)
+    {
+        try
+        {
+            return FrameHeaderReader.ReadFrameHeader(header);
+        }
+        catch (InvalidFrameException)
+        {
+            Reset();
+            throw;
+        }
     }
 
     /// <remarks>

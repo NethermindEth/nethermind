@@ -35,7 +35,7 @@ namespace Nethermind.Network.Rlpx
                 }
 
                 input.ReadBytes(_headerBytes);
-                FrameHeaderReader.FrameInfo frame = FrameHeaderReader.ReadFrameHeader(_headerBytes);
+                FrameHeaderReader.FrameInfo frame = ReadFrameHeader();
 
                 output.EnsureWritable(Frame.HeaderSize + Frame.MacSize + frame.PayloadSize + Frame.MacSize);
 
@@ -47,6 +47,18 @@ namespace Nethermind.Network.Rlpx
                 }
 
                 WritePayloadMac(output);
+            }
+        }
+
+        private FrameHeaderReader.FrameInfo ReadFrameHeader()
+        {
+            try
+            {
+                return FrameHeaderReader.ReadFrameHeader(_headerBytes);
+            }
+            catch (InvalidFrameException exception)
+            {
+                throw exception.ToCorruptedFrameException();
             }
         }
 
