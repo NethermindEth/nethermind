@@ -41,22 +41,24 @@ namespace Nethermind.Core.Extensions
             HashSet<IDriveInfo> seen = [];
             // Ordered, so the top-level drive comes first for callers that take a single drive
             List<IDriveInfo> driveInfos = [];
-            AddDriveOf(topDir);
+            string topPath = ResolvePath(fileSystem, topDir, topDir.FullName);
+            AddDriveOf(topPath);
 
             foreach (IDirectoryInfo di in topDir.EnumerateDirectories())
             {
                 //only want to handle symlinks - otherwise will be on same drive as parent
                 if (di.LinkTarget is not null)
                 {
-                    AddDriveOf(di);
+                    // On Unix the lexical path of the link can be on another drive than the directory that holds it
+                    AddDriveOf(ResolvePath(fileSystem, di, OperatingSystem.IsWindows() ? di.FullName : topPath));
                 }
             }
 
             return driveInfos.ToArray();
 
-            void AddDriveOf(IDirectoryInfo dir)
+            void AddDriveOf(string path)
             {
-                IDriveInfo? drive = FindDrive(allDrives, ResolvePath(fileSystem, dir));
+                IDriveInfo? drive = FindDrive(allDrives, path);
                 if (drive is not null && seen.Add(drive))
                 {
                     driveInfos.Add(drive);
@@ -99,11 +101,11 @@ namespace Nethermind.Core.Extensions
         /// <remarks>
         /// On Unix every component is followed from the root, so a database directory under a linked parent directory
         /// resolves to the volume of the link target. On Windows only a linked directory itself is resolved.
-        /// A listed link that cannot be resolved (for example, it changed after the directory was listed) falls back to
-        /// its own path, the drive that holds the link, so it never stops the node from starting. Dangling and looping
-        /// links are not listed as directories on Linux, so they are skipped before this.
+        /// A directory that cannot be resolved (for example, a listed link changed after the directory was listed) falls
+        /// back to <paramref name="fallback"/> with a warning, so it never stops the node from starting. Dangling and
+        /// looping links are not listed as directories on Linux, so they are skipped before this.
         /// </remarks>
-        private static string ResolvePath(IFileSystem fileSystem, IDirectoryInfo dir)
+        private static string ResolvePath(IFileSystem fileSystem, IDirectoryInfo dir, string fallback)
         {
             try
             {
@@ -115,7 +117,7 @@ namespace Nethermind.Core.Extensions
             {
                 ILogger logger = Static.LogManager.GetClassLogger(typeof(DbDriveInfoProvider));
                 if (logger.IsWarn) logger.Warn($"Cannot resolve the linked database directory {dir.FullName:hide}, so the free space of its target is not monitored: {e.Message:hide}");
-                return dir.FullName;
+                return fallback;
             }
         }
 

@@ -41,10 +41,9 @@ public class DbDriveInfoProviderTests
     public void Lists_each_drive_once_with_the_top_level_drive_first()
     {
         IDriveInfo main = Drive(Main), other = Drive(Other);
-        string broken = Path.Combine(Db, "broken"), removed = Path.Combine(Db, "removed");
-        IDirectoryInfo brokenLink = Dir(broken, broken), removedLink = Dir(removed, Path.Combine(Other, "removed"));
+        string broken = Path.Combine(Db, "broken");
+        IDirectoryInfo brokenLink = Dir(broken, broken);
         brokenLink.ResolveLinkTarget(true).Throws(new IOException("Too many levels of symbolic links"));
-        removedLink.ResolveLinkTarget(true).Throws(new DirectoryNotFoundException("Could not find a part of the path"));
         IDirectoryInfo[] children =
         [
             Dir(Path.Combine(Db, "plain")),
@@ -52,28 +51,34 @@ public class DbDriveInfoProviderTests
             Dir(Path.Combine(Db, "b"), Path.Combine(Other, "b"), Path.Combine(Other, "b")),
             Dir(Path.Combine(Db, "back"), Path.Combine(Main, "back"), Path.Combine(Main, "back")),
             brokenLink,
-            removedLink,
         ];
         IFileSystem fileSystem = FileSystem(Dir(Db), children, other, Drive(Root), main);
-        // Listed as a link, then removed before it is resolved
-        IDirectoryInfo removedLater = Dir(removed, exists: false);
-        fileSystem.DirectoryInfo.New(removed).Returns(removedLater);
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsWarn.Returns(true);
-        ILogManager originalLogManager = Static.LogManager;
-        Static.LogManager = new OneLoggerLogManager(new ILogger(logger));
-        try
-        {
-            Assert.That(fileSystem.GetDriveInfos(Db), Is.EqualTo(new[] { main, other }));
-        }
-        finally
-        {
-            Static.LogManager = originalLogManager;
-        }
+
+        Assert.That(GetDriveInfosLoggingTo(logger, fileSystem), Is.EqualTo(new[] { main, other }));
 
         logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(broken)));
-        logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(removed)));
         fileSystem.DirectoryInfo.DidNotReceive().New(Root);
+    }
+
+    [Test]
+    [NonParallelizable] // swaps the static log manager
+    [Platform(Include = "Linux")] // Windows resolves only a linked directory itself, and macOS lists no drives
+    public void Keeps_the_database_drive_when_a_link_under_a_linked_parent_cannot_be_resolved()
+    {
+        IDriveInfo main = Drive(Main), other = Drive(Other);
+        string removed = Path.Combine(Db, "removed"), physical = Path.Combine(Other, "db", "removed");
+        IFileSystem fileSystem = FileSystem(Dir(Db), [Dir(removed, Path.Combine(Other, "state"))], main, other);
+        IDirectoryInfo linkedMain = Dir(Main, Other);
+        fileSystem.DirectoryInfo.New(Main).Returns(linkedMain);
+        // Listed as a link, then removed before it is resolved
+        IDirectoryInfo removedLater = Dir(physical, exists: false);
+        fileSystem.DirectoryInfo.New(physical).Returns(removedLater);
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+
+        Assert.That(GetDriveInfosLoggingTo(logger, fileSystem), Is.EqualTo(new[] { other }));
+        logger.Received(1).Warn(Arg.Any<string>());
+        logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(removed)));
     }
 
     [TestCase("absolute")]
@@ -163,6 +168,21 @@ public class DbDriveInfoProviderTests
         }
         fileSystem.DriveInfo.GetDrives().Returns(drives);
         return fileSystem;
+    }
+
+    private static IDriveInfo[] GetDriveInfosLoggingTo(InterfaceLogger logger, IFileSystem fileSystem)
+    {
+        logger.IsWarn.Returns(true);
+        ILogManager originalLogManager = Static.LogManager;
+        Static.LogManager = new OneLoggerLogManager(new ILogger(logger));
+        try
+        {
+            return fileSystem.GetDriveInfos(Db);
+        }
+        finally
+        {
+            Static.LogManager = originalLogManager;
+        }
     }
 
     private static IDirectoryInfo Dir(string fullName, string? linkTarget = null, string? target = null, bool exists = true)
