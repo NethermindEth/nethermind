@@ -181,9 +181,14 @@ namespace Nethermind.TxPool.Collections
         internal IDictionary<TGroupKey, TValue[]> GetProductionSnapshotAllowingPreUpdateMembership() =>
             _productionSnapshot ?? Volatile.Read(ref _productionSnapshotBeforeBulkUpdate) ?? GetProductionSnapshot();
 
-        private protected void BeginBulkUpdateNonLocked() => Volatile.Write(ref _productionSnapshotBeforeBulkUpdate, _productionSnapshot);
+        /// <summary>Keeps the cached production snapshot for <see cref="GetProductionSnapshotAllowingPreUpdateMembership"/>
+        /// until the next <see cref="EndBulkUpdate"/>.</summary>
+        /// <remarks>Keeps a snapshot an earlier call already holds, so a caller can open the window before the
+        /// membership changes that lead up to a bulk update. Calls must not run concurrently.</remarks>
+        internal void BeginBulkUpdate() =>
+            Volatile.Write(ref _productionSnapshotBeforeBulkUpdate, Volatile.Read(ref _productionSnapshotBeforeBulkUpdate) ?? _productionSnapshot);
 
-        private protected void EndBulkUpdateNonLocked() => Volatile.Write(ref _productionSnapshotBeforeBulkUpdate, null);
+        internal void EndBulkUpdate() => Volatile.Write(ref _productionSnapshotBeforeBulkUpdate, null);
 
         /// <summary>
         /// Gets all items of requested group.

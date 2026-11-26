@@ -5040,6 +5040,70 @@ namespace Nethermind.TxPool.Test
         }
 
         /// <summary>
+        /// A producer that reads the pool while a head update revalidates its buckets gets the snapshot cached
+        /// before that head without waiting, and without the entry the head spent.
+        /// </summary>
+        /// <remarks>The read is made from inside the bucket update, which holds the pool lock, so a read that
+        /// needs the lock cannot complete. The included transaction leaves the pool before the update starts,
+        /// so the cached snapshot must survive its removal.</remarks>
+        [Test]
+        public async Task Production_read_during_a_head_update_uses_the_pre_head_snapshot_without_spent_entries()
+        {
+            Address waitingSender = TestItem.AddressB;
+            BlockHeader parent = _blockTree.Head!.Header;
+            int armed = 0;
+            Task<PendingTransactionsView> concurrentRead = null;
+            bool readDuringUpdate = false;
+            AccountReadHook state = new(_stateProvider, address =>
+            {
+                if (address != waitingSender || Interlocked.Exchange(ref armed, 0) == 0) return;
+                concurrentRead = RunOnDedicatedThread(() => _txPool.GetPendingForProduction(parent, filterToReadyTx: true, UInt256.Zero));
+                readDuringUpdate = concurrentRead.Wait(TimeSpan.FromSeconds(5));
+            });
+            _txPool = CreatePool(chainHeadInfoProvider: new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(_specProvider, _blockTree), _blockTree, state, blockProcessingTracker: _blockProcessing));
+
+            Transaction included = Build.A.Transaction.WithNonce(0).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction successor = Build.A.Transaction.WithNonce(1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction other = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            foreach (Transaction tx in new[] { included, successor, other })
+            {
+                EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Assert.That(_txPool.GetPendingForProduction(parent, filterToReadyTx: false, UInt256.Zero).Transactions, Has.Count.EqualTo(2));
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+            Volatile.Write(ref armed, 1);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(parent.Number + 1).WithTransactions(included).TestObject);
+
+            Assert.That(readDuringUpdate, Is.True, "the read waited for the bucket update");
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> view = (await concurrentRead).Transactions;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(view[TestItem.AddressA], Is.EqualTo(new[] { successor }));
+                Assert.That(view[waitingSender], Is.EqualTo(new[] { other }));
+            }
+        }
+
+        private sealed class AccountReadHook(TestReadOnlyStateProvider state, Action<Address> onAccountRead) : IReadOnlyStateProvider
+        {
+            public bool TryGetAccount(Address address, out AccountStruct account)
+            {
+                onAccountRead(address);
+                return state.TryGetAccount(address, out account);
+            }
+
+            public Hash256 StateRoot => state.StateRoot;
+            public ReadOnlyMemory<byte> GetCode(Address address) => state.GetCode(address);
+            public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => state.GetCode(in codeHash);
+            public bool IsContract(Address address) => state.IsContract(address);
+            public bool AccountExists(Address address) => state.AccountExists(address);
+            public bool IsDeadAccount(Address address) => state.IsDeadAccount(address);
+            public void Get(in StorageCell storageCell, out UInt256 value) => state.Get(in storageCell, out value);
+        }
+
+        /// <summary>
         /// The bucket is judged on whether anything in it is includable, not on its lowest entry: a keyed frame
         /// transaction sorts ahead of the sender's ordinary ones and says nothing about their domain, so its own
         /// fee must not delete an ordinary transaction that can pay.

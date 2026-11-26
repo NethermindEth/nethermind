@@ -345,19 +345,27 @@ public class TxDistinctSortedPoolTests
     }
 
     [Test]
-    public void Bulk_update_leaves_an_invalidated_production_snapshot_to_the_next_reader()
+    public void Bulk_update_keeps_an_invalidated_production_snapshot_only_when_opened_before_the_change([Values] bool openedBeforeChange)
     {
         Transaction first = AccountTx(0, 100, TestItem.KeccakA);
         TxDistinctSortedPool pool = Pool(blobs: false, first);
-        pool.GetProductionSnapshotAllowingPreUpdateMembership();
+        IDictionary<AddressAsKey, Transaction[]> cached = pool.GetProductionSnapshotAllowingPreUpdateMembership();
+        if (openedBeforeChange) pool.BeginBulkUpdate();
         Transaction next = AccountTx(1, 100, TestItem.KeccakB);
         pool.TryInsert(next.Hash!, next);
 
         pool.UpdatePool(Substitute.For<IAccountStateProvider>(),
             (in AccountStruct _, EnhancedSortedSet<Transaction> _, ref Transaction? _, TxDistinctSortedPool.UpdateTransactionDelegate _) =>
             {
-                // A cache miss takes the non-reentrant lock already held by this update.
-                Assert.That(() => pool.GetProductionSnapshotAllowingPreUpdateMembership(), Throws.InvalidOperationException);
+                if (openedBeforeChange)
+                {
+                    Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership(), Is.SameAs(cached));
+                }
+                else
+                {
+                    // A cache miss takes the non-reentrant lock already held by this update.
+                    Assert.That(() => pool.GetProductionSnapshotAllowingPreUpdateMembership(), Throws.InvalidOperationException);
+                }
             });
 
         Assert.That(pool.GetProductionSnapshotAllowingPreUpdateMembership()[Sender], Is.EqualTo(new[] { first, next }));

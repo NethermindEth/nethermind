@@ -498,7 +498,7 @@ namespace Nethermind.TxPool
             // concrete type rather than the IDictionary the caller returns is what holds us to that guarantee.
             foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
             {
-                if (bucket.Length == 0 || !HasReadyTransaction(bucket, sender, baseFee)) bySender.Remove(sender);
+                if (bucket.Length == 0 || !HasReadyTransaction(bucket, _accounts.GetNonce(sender), baseFee)) bySender.Remove(sender);
             }
 
             return bySender;
@@ -519,9 +519,8 @@ namespace Nethermind.TxPool
         /// the way down. Judging one reads a NONCE_MANAGER slot per key it selects, so the whole scan is bounded by
         /// the pool's configured size times <see cref="Eip8250Constants.MaxNonceKeys"/>; a per-sender limit spreads
         /// that same total over more buckets rather than lowering it.</remarks>
-        private bool HasReadyTransaction(ReadOnlySpan<Transaction> bucket, Address sender, in UInt256 baseFee)
+        private bool HasReadyTransaction(ReadOnlySpan<Transaction> bucket, ulong accountNonce, in UInt256 baseFee)
         {
-            ulong accountNonce = _accounts.GetNonce(sender);
             bool accountNonceBlocked = false;
             foreach (Transaction tx in bucket)
             {
@@ -544,7 +543,10 @@ namespace Nethermind.TxPool
         /// which is why this is not <see cref="DropUnreadySenders"/> itself: a production snapshot is shared with
         /// the pool's cache and with other callers, while that one owns the dictionary it filters.
         /// The two agree only by both calling <see cref="HasReadyTransaction"/>, so a readiness rule added to one
-        /// must be added to the other; there is no longer a call between them to enforce it.</remarks>
+        /// must be added to the other; there is no longer a call between them to enforce it.
+        /// <para>Also drops spent account-nonce entries, which a snapshot taken before a head update still holds:
+        /// the producer ends a sender's chain at its first filtered-out entry, so a spent one could hide its
+        /// includable successor.</para></remarks>
         private IDictionary<AddressAsKey, Transaction[]> SelectReadySenders(
             IDictionary<AddressAsKey, Transaction[]> bySender, bool filterToReadyTx, in UInt256 baseFee)
         {
@@ -553,10 +555,38 @@ namespace Nethermind.TxPool
             Dictionary<AddressAsKey, Transaction[]> ready = [with(bySender.Count)];
             foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
             {
-                if (bucket.Length != 0 && HasReadyTransaction(bucket, sender, baseFee)) ready.Add(sender, bucket);
+                if (bucket.Length == 0) continue;
+                ulong accountNonce = _accounts.GetNonce(sender);
+                Transaction[] unspent = WithoutSpentAccountNonces(bucket, accountNonce);
+                if (HasReadyTransaction(unspent, accountNonce, baseFee)) ready.Add(sender, unspent);
             }
 
             return ready;
+        }
+
+        /// <summary>Returns <paramref name="bucket"/>, or a copy of it without the account-nonce entries below
+        /// <paramref name="accountNonce"/>.</summary>
+        private static Transaction[] WithoutSpentAccountNonces(Transaction[] bucket, ulong accountNonce)
+        {
+            int spent = 0;
+            foreach (Transaction tx in bucket)
+            {
+                if (KeyedNonceManager.UsesKeyedNonce(tx)) continue;
+                // Account-nonce entries are in nonce order, so the first unspent one ends the spent run.
+                if (tx.Nonce >= accountNonce) break;
+                spent++;
+            }
+
+            if (spent == 0) return bucket;
+
+            Transaction[] unspent = new Transaction[bucket.Length - spent];
+            int count = 0;
+            foreach (Transaction tx in bucket)
+            {
+                if (KeyedNonceManager.UsesKeyedNonce(tx) || tx.Nonce >= accountNonce) unspent[count++] = tx;
+            }
+
+            return unspent;
         }
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
@@ -880,6 +910,9 @@ namespace Nethermind.TxPool
                         // Read from the database before the lock, so submissions are not held up by it.
                         List<Block>? rewound = LoadCompletedRewind(args.Block);
                         _newHeadLock.EnterWriteLock();
+                        // Opened before included transactions leave the pool: their removal would otherwise drop
+                        // the cached snapshot and make production wait for the bucket update.
+                        _transactions.BeginBulkUpdate();
                         try
                         {
                             ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
@@ -933,6 +966,7 @@ namespace Nethermind.TxPool
                         }
                         finally
                         {
+                            _transactions.EndBulkUpdate();
                             _newHeadLock.ExitWriteLock();
                         }
 
