@@ -34,11 +34,12 @@ public class TraceStorePruner : IStoppableService, IDisposable
     private readonly IDb _db;
     private readonly ulong _blockToKeep;
     private readonly ILogger _logger;
-    private readonly Lock _checkpointLock = new();
     private readonly Channel<bool> _wake = Channel.CreateBounded<bool>(
         new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite, SingleReader = true });
     private readonly Task _worker = Task.CompletedTask;
+    private ulong _lowestChanged = ulong.MaxValue;
     private ulong _next;
+    private bool _loaded;
     private volatile bool _stopped;
 
     /// <summary>Starts removing the traces outside <see cref="ITraceStoreConfig.BlocksToKeep"/>, unless it is <c>0</c>.</summary>
@@ -62,79 +63,74 @@ public class TraceStorePruner : IStoppableService, IDisposable
             return;
         }
 
-        _next = LoadCheckpoint();
         _blockTree.BlockAddedToMain += OnBlockAddedToMain;
         _wake.Writer.TryWrite(true);
         _worker = Task.Run(RunAsync);
-        if (_logger.IsDebug) _logger.Debug($"TraceStore pruning is enabled, keeping last {blockToKeep} blocks, checking from block {_next}.");
+        if (_logger.IsDebug) _logger.Debug($"TraceStore pruning is enabled, keeping last {blockToKeep} blocks.");
     }
 
-    private ulong LoadCheckpoint()
-    {
-        if (!_db.WasRepairedOnOpen && _db.Get(CheckpointKey) is { Length: sizeof(ulong) } checkpoint)
-            return BinaryPrimitives.ReadUInt64BigEndian(checkpoint);
-
-        // Without a valid checkpoint any block may have traces, so a store that is not empty is checked from genesis.
-        using (IEnumerator<byte[]> keys = _db.GetAllKeys().GetEnumerator())
-        {
-            if (keys.MoveNext()) return 0;
-        }
-
-        // Blocks traced from now on are above the window, and a deeper reorganization moves the checkpoint back.
-        ulong next = _blockTree.Head is { } head && head.Number >= _blockToKeep ? head.Number - _blockToKeep + 1 : 0;
-        WriteCheckpoint(_db, next);
-        return next;
-    }
-
-    private static void WriteCheckpoint(IWriteOnlyKeyValueStore store, ulong next)
-    {
-        byte[] value = new byte[sizeof(ulong)];
-        BinaryPrimitives.WriteUInt64BigEndian(value, next);
-        store.Set(CheckpointKey, value);
-    }
-
+    // Runs on the block processing thread, so it only records the level and signals the worker.
     private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
     {
-        ulong number = e.Block.Number;
-        if (number < Volatile.Read(ref _next))
-        {
-            // A reorganization deeper than the window traced blocks the checkpoint has already passed.
-            lock (_checkpointLock)
-            {
-                if (number < _next)
-                {
-                    _next = number;
-                    WriteCheckpoint(_db, number);
-                }
-            }
-        }
-
+        LowerChangedLevel(e.Block.Number);
         _wake.Writer.TryWrite(true);
+    }
+
+    private void LowerChangedLevel(ulong number)
+    {
+        ulong current = Volatile.Read(ref _lowestChanged);
+        while (number < current)
+        {
+            ulong seen = Interlocked.CompareExchange(ref _lowestChanged, number, current);
+            if (seen == current) return;
+            current = seen;
+        }
     }
 
     private async Task RunAsync()
     {
-        try
+        while (await _wake.Reader.WaitToReadAsync())
         {
-            while (await _wake.Reader.WaitToReadAsync())
+            _wake.Reader.TryRead(out _);
+            try
             {
-                _wake.Reader.TryRead(out _);
                 while (!_stopped && PruneNextBatch()) { }
             }
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error("TraceStore pruning failed; it resumes from the last checkpoint on the next start.", e);
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("TraceStore pruning failed; it retries from the last checkpoint on the next block.", e);
+            }
         }
     }
 
-    /// <returns>Whether a batch of levels was processed; <see langword="false"/> once the checkpoint reached the window.</returns>
+    /// <returns>Whether to continue; <see langword="false"/> once the checkpoint reached the window.</returns>
     private bool PruneNextBatch()
     {
-        ulong from = Volatile.Read(ref _next);
-        if (_blockTree.Head is not { } head || head.Number < _blockToKeep) return false;
-        ulong last = head.Number - _blockToKeep;
-        if (last < from) return false;
+        if (!_loaded)
+        {
+            _next = LoadCheckpoint();
+            _loaded = true;
+        }
+
+        ulong changed = Interlocked.Exchange(ref _lowestChanged, ulong.MaxValue);
+        if (changed < _next)
+        {
+            // A block replaced a level the checkpoint has passed, by a reorganization deeper than the window or a rewind.
+            try
+            {
+                WriteCheckpoint(_db, changed);
+            }
+            catch
+            {
+                LowerChangedLevel(changed);
+                throw;
+            }
+
+            _next = changed;
+        }
+
+        ulong from = _next;
+        if (!TryGetCutoff(out ulong last) || last < from) return false;
         if (last - from >= LevelsPerBatch) last = from + LevelsPerBatch - 1;
 
         int count = (int)(last - from + 1);
@@ -152,21 +148,58 @@ public class TraceStorePruner : IStoppableService, IDisposable
             }
         }
 
-        lock (_checkpointLock)
-        {
-            // A reorganization moved the checkpoint below this batch; check again from there.
-            if (_stopped || _next != from) return !_stopped;
-            using (IWriteBatch batch = _db.StartWriteBatch())
-            {
-                foreach (Hash256 hash in expired.AsSpan()) batch.Remove(hash.Bytes);
-                WriteCheckpoint(batch, last + 1);
-            }
+        // The levels read above are stale if a block was added at or below them since, and the window moved if the head went back.
+        if (_stopped || Volatile.Read(ref _lowestChanged) <= last || !TryGetCutoff(out ulong cutoff) || cutoff < last) return !_stopped;
 
-            _next = last + 1;
+        using (IWriteBatch batch = _db.StartWriteBatch())
+        {
+            foreach (Hash256 hash in expired.AsSpan()) batch.Remove(hash.Bytes);
+            WriteCheckpoint(batch, last + 1);
         }
 
+        _next = last + 1;
         if (_logger.IsTrace) _logger.Trace($"Removed {expired.Count} traces from TraceStore on levels {from} to {last}.");
         return true;
+    }
+
+    private bool TryGetCutoff(out ulong cutoff)
+    {
+        if (_blockTree.Head is { } head && head.Number >= _blockToKeep)
+        {
+            cutoff = head.Number - _blockToKeep;
+            return true;
+        }
+
+        cutoff = 0;
+        return false;
+    }
+
+    private ulong LoadCheckpoint()
+    {
+        if (!_db.WasRepairedOnOpen && _db.Get(CheckpointKey) is { Length: sizeof(ulong) } checkpoint)
+            return BinaryPrimitives.ReadUInt64BigEndian(checkpoint);
+
+        // Without a valid checkpoint any block may have traces, so a store that is not empty is checked from genesis.
+        if (!IsEmpty()) return 0;
+
+        // Blocks traced from now on are above the window, and a block added below it moves the checkpoint back.
+        ulong next = TryGetCutoff(out ulong cutoff) ? cutoff + 1 : 0;
+        WriteCheckpoint(_db, next);
+        return next;
+    }
+
+    private bool IsEmpty()
+    {
+        if (_db is ISortedKeyValueStore sorted) return sorted.FirstKey is null;
+        using IEnumerator<byte[]> keys = _db.GetAllKeys().GetEnumerator();
+        return !keys.MoveNext();
+    }
+
+    private static void WriteCheckpoint(IWriteOnlyKeyValueStore store, ulong next)
+    {
+        byte[] value = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(value, next);
+        store.Set(CheckpointKey, value);
     }
 
     /// <inheritdoc />
