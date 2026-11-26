@@ -54,7 +54,8 @@ public interface IBlobProofsVerifier
 
         for (int i = 0; i < blobVersionedHashes.Length; i++)
         {
-            if (blobVersionedHashes[i].Length != Eip4844Constants.BytesPerBlobVersionedHash || blobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+            if (blobVersionedHashes[i] is not { Length: Eip4844Constants.BytesPerBlobVersionedHash } hashBytes
+                || hashBytes[0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
             {
                 return false;
             }

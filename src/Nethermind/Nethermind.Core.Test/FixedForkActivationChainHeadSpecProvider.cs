@@ -20,6 +20,8 @@ namespace Nethermind.Core.Test
 
         public IReleaseSpec GenesisSpec => specProvider.GenesisSpec;
 
+        public bool GenesisStateUnavailable => specProvider.GenesisStateUnavailable;
+
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => specProvider.GetSpec(forkActivation);
 
         public ulong? DaoBlockNumber => specProvider.DaoBlockNumber;
@@ -28,6 +30,7 @@ namespace Nethermind.Core.Test
 
         public ulong NetworkId => specProvider.NetworkId;
         public ulong ChainId => specProvider.ChainId;
+        public string SealEngine => specProvider.SealEngine;
 
         public ForkActivation[] TransitionActivations => specProvider.TransitionActivations;
 

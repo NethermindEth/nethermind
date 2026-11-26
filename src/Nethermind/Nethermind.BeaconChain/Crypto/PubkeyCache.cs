@@ -46,6 +46,8 @@ public class PubkeyCache
 
     private int _count;
     public int Count { get => Volatile.Read(ref _count); private set => Volatile.Write(ref _count, value); }
+    /// <summary>Verifies the signatures checked against keys from this cache.</summary>
+    public ISignatureVerifier SignatureVerifier { get; init; } = BlsSignatureVerifier.Instance;
     /// <summary>Called by <see cref="Extend"/> once the new keys are decoded, before it publishes them; lets a test place a warm-up there.</summary>
     internal Action? ExtensionDecoded { get; set; }
     /// <summary>Called by <see cref="Extend"/> inside the swap lock after copying the verdicts, before it publishes them; lets a test place a warm-up there.</summary>

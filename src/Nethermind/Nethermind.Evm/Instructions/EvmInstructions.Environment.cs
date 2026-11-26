@@ -566,7 +566,7 @@ public static partial class EvmInstructions
 
         // Charge gas for account access. If insufficient gas remains, abort.
         ulong traceGasCost = TTracingInst.IsActive && vm.IsTracingOperationStart ? vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.BalanceCost) : 0;
-        bool gasAvailable = TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address);
+        bool gasAvailable = TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, address);
         if (TTracingInst.IsActive)
             vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
         if (!gasAvailable) goto OutOfGas;
@@ -643,7 +643,7 @@ public static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
         ulong traceGasCost = TTracingInst.IsActive && vm.IsTracingOperationStart ? vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.ExtCodeHashCost) : 0;
-        bool gasAvailable = TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address);
+        bool gasAvailable = TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, address);
         if (TTracingInst.IsActive)
             vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
         if (!gasAvailable) goto OutOfGas;
@@ -696,7 +696,7 @@ public static partial class EvmInstructions
 
         Address? source = stack.PopAddress(vm.AddressCache);
         if (source is null) goto StackUnderflow;
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, source)) goto OutOfGas;
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, source)) goto OutOfGas;
         // EIP-8279: the source enters the block access list on the transaction's first touch, metered after its charge.
         if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(source)) goto OutOfGas;
 
@@ -935,7 +935,7 @@ public static partial class EvmInstructions
 
         ulong traceGasCost = TTracingInst.IsActive && vm.IsTracingOperationStart ? GasCostOf.BlockHash + vm.GetStorageLoadTraceGasCost(in storageCell) : 0;
         bool gasAvailable = TGasPolicy.UpdateGas<SLoadGasCost>(ref gas, spec)
-            && TGasPolicy.TryConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec);
+            && TGasPolicy.TryConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, in storageCell, StorageAccessType.SLOAD, spec);
         if (TTracingInst.IsActive)
             vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
         if (!gasAvailable || !vm.TryMeterBalStorageKey(in storageCell))

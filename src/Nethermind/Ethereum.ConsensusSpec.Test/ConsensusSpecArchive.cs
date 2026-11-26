@@ -47,6 +47,7 @@ public static class ConsensusSpecArchive
         ("rewards", StateTransitionForks),
         ("shuffling", ["phase0"]),
         ("merkle_proof", ["electra", "fulu"]),
+        ("light_client", StateTransitionForks),
         ("sync", ["fulu"]),
         ("genesis", null),
     ];

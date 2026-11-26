@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -255,7 +254,7 @@ public static class DataColumnSidecarVerifier
                 sibling.CopyTo(combined[32..]);
             }
 
-            SHA256.HashData(combined, value);
+            ThreadSha256.HashData(combined, value);
         }
 
         return value.SequenceEqual(root);

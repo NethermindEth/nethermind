@@ -96,6 +96,38 @@ public class NodeRecordSignerTests
     }
 
     [Test]
+    public void Quic_endpoints_roundtrip_with_their_address_family([Values] bool ipv6)
+    {
+        using PrivateKey privateKey = new(TestPrivateKey);
+        NodeRecordSigner signer = new(new Ecdsa(), privateKey);
+        IPAddress address = IPAddress.Parse(ipv6 ? "2001:db8::1" : "192.0.2.1");
+        NodeRecord record = new();
+        record.SetEntry(ipv6 ? new Ip6Entry(address) : new IpEntry(address));
+        record.SetEntry(ipv6 ? new Quic6Entry(9051) : new QuicEntry(9051));
+        record.SetEntry(ipv6 ? new Tcp6Entry(9050) : new TcpEntry(9050));
+        record.SetEntry(ipv6 ? new Udp6Entry(9000) : new UdpEntry(9000));
+        record.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        signer.Sign(record);
+        byte[] encoded = record.ToRlpBytes();
+
+        RlpReader reader = new(encoded);
+        NodeRecord decoded = signer.Deserialize(ref reader);
+        bool hasQuic = decoded.TryGetQuicEndpoint(address.AddressFamily, out IPEndPoint? endpoint);
+        bool validSignature = signer.Verify(decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.Remaining, Is.Zero);
+            Assert.That(hasQuic, Is.True);
+            Assert.That(endpoint, Is.EqualTo(new IPEndPoint(address, 9051)));
+            Assert.That(decoded.GetValue<int>(ipv6 ? EnrContentKey.Tcp6 : EnrContentKey.Tcp), Is.EqualTo(9050));
+            Assert.That(decoded.GetValue<int>(ipv6 ? EnrContentKey.Udp6 : EnrContentKey.Udp), Is.EqualTo(9000));
+            Assert.That(validSignature, Is.True);
+            Assert.That(decoded.ToRlpBytes(), Is.EqualTo(encoded));
+        }
+    }
+
+    [Test]
     public void Verification_accepts_both_recovery_parities_and_rejects_changed_content([Values(0, 1)] int recoveryId)
     {
         using PrivateKey privateKey = new(TestPrivateKey);

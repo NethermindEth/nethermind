@@ -3,11 +3,11 @@
 
 using System.Buffers.Binary;
 using System.Collections;
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -237,7 +237,7 @@ public static partial class EpochProcessing
             if (i % 16 == 0)
             {
                 BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], i / 16);
-                SHA256.HashData(preimage, randomBytes);
+                ThreadSha256.HashData(preimage, randomBytes);
             }
             ulong randomValue = BinaryPrimitives.ReadUInt16LittleEndian(randomBytes[(int)(i % 16 * 2)..]);
             ulong effectiveBalance = state.Validators![candidateIndex].EffectiveBalance;

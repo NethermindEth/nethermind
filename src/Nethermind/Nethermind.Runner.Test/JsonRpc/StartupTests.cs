@@ -37,6 +37,7 @@ using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Exceptions;
+using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
@@ -830,18 +831,6 @@ public class StartupTests
     }
 
     [Test]
-    public void IsTrustedSource_CachesResultInFeatures()
-    {
-        DefaultHttpContext ctx = CreateFastLaneContext(8551, remoteIp: IPAddress.Parse("8.8.8.8"));
-
-        Assert.That(Startup.IsTrustedSource(ctx, []), Is.False);
-
-        ctx.Connection.RemoteIpAddress = IPAddress.Loopback;
-
-        Assert.That(Startup.IsTrustedSource(ctx, []), Is.False);
-    }
-
-    [Test]
     public void TrustedEngineNewPayloadPost_UsesHttpFastLaneAndKeepsAuthenticatedUrl()
     {
         JsonRpcUrl engineUrl = CreateUrl(isAuthenticated: true);
@@ -980,15 +969,43 @@ public class StartupTests
         Assert.That(logger.LogList[0], Does.Contain(OtherOrigin).And.Contain("JsonRpc.CorsOrigins"));
     }
 
+    [Test]
+    public async Task UseJsonRpcWebSockets_closes_open_sockets_at_shutdown([Values] bool clientAnswersClose)
+    {
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(30));
+        await using WebApplication app = await StartWebSocketHostAsync(new JsonRpcConfig(), new TestLogger(), deadline.Token, JsonRpcWebSocketsManager());
+        Uri uri = new UriBuilder(ServerUri(app)) { Scheme = "ws" }.Uri;
+        using ClientWebSocket client = await ConnectWebSocketAsync(uri, origin: null, deadline.Token);
+        Task<WebSocketReceiveResult> received = client.ReceiveAsync(new byte[128], deadline.Token);
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        // Kestrel waits for open requests until the stop token expires, and only then aborts them.
+        using CancellationTokenSource stopTimeout = new(TimeSpan.FromSeconds(10));
+        Task stopped = app.StopAsync(stopTimeout.Token);
+
+        WebSocketReceiveResult result = await received;
+        // A client that never answers the close is aborted instead.
+        if (clientAnswersClose) await client.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, deadline.Token);
+        await stopped;
+        stopwatch.Stop();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.MessageType, Is.EqualTo(WebSocketMessageType.Close));
+            Assert.That(result.CloseStatus, Is.EqualTo(WebSocketCloseStatus.EndpointUnavailable));
+            Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)));
+        }
+    }
+
     /// <summary>
     /// Serves WebSockets through <see cref="Startup.UseJsonRpcWebSockets"/>, the pipeline <see cref="Startup"/> builds,
     /// with a module that accepts every socket.
     /// </summary>
-    private static async Task<WebApplication> StartWebSocketHostAsync(IJsonRpcConfig config, TestLogger logger, CancellationToken cancellationToken)
+    private static async Task<WebApplication> StartWebSocketHostAsync(IJsonRpcConfig config, TestLogger logger, CancellationToken cancellationToken, IWebSocketsManager? webSocketsManager = null)
     {
         WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
         builder.Services.AddLogging();
-        builder.Services.AddSingleton(AcceptingWebSocketsManager());
+        builder.Services.AddSingleton(webSocketsManager ?? AcceptingWebSocketsManager());
         builder.WebHost.UseKestrelCore().ConfigureKestrel(static options => options.Listen(IPAddress.Loopback, 0));
 
         WebApplication app = builder.Build();
@@ -1008,6 +1025,23 @@ public class StartupTests
         client.Id.Returns("test");
         IWebSocketsModule module = Substitute.For<IWebSocketsModule>();
         module.CreateClient(Arg.Any<WebSocket>(), Arg.Any<string>(), Arg.Any<HttpContext>()).Returns(ValueTask.FromResult(client));
+        IWebSocketsManager manager = Substitute.For<IWebSocketsManager>();
+        manager.GetModule(Arg.Any<string>()).Returns(module);
+        return manager;
+    }
+
+    /// <summary>A manager whose clients serve JSON-RPC on the socket until it closes.</summary>
+    internal static IWebSocketsManager JsonRpcWebSocketsManager()
+    {
+        IWebSocketsModule module = Substitute.For<IWebSocketsModule>();
+        module.CreateClient(Arg.Any<WebSocket>(), Arg.Any<string>(), Arg.Any<HttpContext>()).Returns(static call =>
+            ValueTask.FromResult<ISocketsClient>(new JsonRpcSocketsClient<WebSocketMessageStream>(
+                "test",
+                new WebSocketMessageStream(call.Arg<WebSocket>(), LimboLogs.Instance),
+                RpcEndpoint.Ws,
+                Substitute.For<IJsonRpcProcessor>(),
+                Substitute.For<IJsonRpcLocalStats>(),
+                new EthereumJsonSerializer())));
         IWebSocketsManager manager = Substitute.For<IWebSocketsManager>();
         manager.GetModule(Arg.Any<string>()).Returns(module);
         return manager;

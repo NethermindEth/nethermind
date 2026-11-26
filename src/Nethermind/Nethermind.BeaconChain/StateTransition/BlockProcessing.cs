@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Reflection;
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
@@ -11,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Ssz.Merkleization;
 using Transaction = Nethermind.Merge.Plugin.SszRest.SszTransaction;
 using Withdrawal = Nethermind.Merge.Plugin.SszRest.SszWithdrawal;
 
@@ -85,7 +85,7 @@ public static partial class BlockProcessing
     public static void ProcessBlock(BeaconStateFulu state, BeaconBlock block, EpochCache cache, PubkeyCache pubkeys, INewPayloadNotifier notifier, ulong maxBlobsPerBlock, bool verifySignatures = true)
     {
         if (verifySignatures)
-            BlockSignatureBatch.Run(batch => ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures: true, batch));
+            BlockSignatureBatch.Run(pubkeys.SignatureVerifier, batch => ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures: true, batch));
         else
             ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures: false, batch: null);
     }
@@ -368,7 +368,7 @@ public static partial class BlockProcessing
                 value.CopyTo(preimage);
                 branch[i].Bytes.CopyTo(preimage[32..]);
             }
-            SHA256.HashData(preimage, value);
+            ThreadSha256.HashData(preimage, value);
         }
         return value.SequenceEqual(root.Bytes);
     }

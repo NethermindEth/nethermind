@@ -3,8 +3,9 @@
 
 using System;
 using System.Collections;
-using System.Linq;
+using System.Globalization;
 using System.Numerics;
+using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -21,9 +22,21 @@ public static class JavaScriptConverter
         ITypedArray<byte> typedArray => typedArray.Length == 0 ? [] : typedArray.ToArray(),
         IArrayBuffer arrayBuffer => arrayBuffer.GetBytes(),
         IArrayBufferView arrayBufferView => arrayBufferView.GetBytes(),
-        IList list => list.ToEnumerable().Select(Convert.ToByte).ToArray(),
+        ScriptObject values and IList => CurrentEngine.ToBytes(values),
+        IList list => ToWrappedBytes(list),
         _ => throw new ArgumentException("Unsupported input type.", nameof(input))
     };
+
+    private static byte[] ToWrappedBytes(IList list)
+    {
+        byte[] bytes = new byte[list.Count];
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            double value = list[i] is IConvertible convertible ? convertible.ToDouble(CultureInfo.InvariantCulture) : 0;
+            bytes[i] = double.IsFinite(value) ? unchecked((byte)(long)value) : (byte)0;
+        }
+        return bytes;
+    }
 
     public static byte[] ToWord(this object input) => input switch
     {

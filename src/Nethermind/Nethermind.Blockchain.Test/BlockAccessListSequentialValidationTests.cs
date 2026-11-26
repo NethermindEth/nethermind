@@ -113,6 +113,25 @@ public class BlockAccessListSequentialValidationTests
                 .TestObject)));
     }
 
+    [Test]
+    public void Sequential_validation_rejects_bal_missing_account_with_only_storage_reads()
+    {
+        ReadOnlyBlockAccessList generated = GenerateBlockAccessList(value: 0);
+        ReadOnlyAccountChanges recipient = generated.GetAccountChanges(TestItem.AddressB)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recipient.StorageReads, Is.EqualTo(new UInt256[] { ReadSlot }));
+            Assert.That(recipient.BalanceChanges, Is.Empty);
+        }
+
+        ReadOnlyAccountChanges[] withoutRecipient = Array.FindAll(generated.AccountChanges.AsSpan().ToArray(), static account => account.Address != TestItem.AddressB);
+        ReadOnlyBlockAccessList suggested = WithWireHash(Build.A.BlockAccessList.WithAccountChanges(withoutRecipient).TestObject);
+
+        Assert.That(() => RunSequentialValidation(suggested, value: 0),
+            Throws.TypeOf<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>()
+                .With.Message.Contains($"missing account changes for {TestItem.AddressB} at index 1"));
+    }
+
     [TestCase(ProcessingOptions.NoValidation)]
     [TestCase(ProcessingOptions.ForceSequentialBlockAccessList)]
     public void Sequential_validation_defers_mismatched_bal_when_requested(ProcessingOptions processingOptions)
@@ -165,13 +184,13 @@ public class BlockAccessListSequentialValidationTests
     /// Runs the block once on the sequential path with no suggested BAL so the executor
     /// constructs the generated BAL, then re-encodes it as a wire <see cref="ReadOnlyBlockAccessList"/>.
     /// </summary>
-    private static ReadOnlyBlockAccessList GenerateBlockAccessList(Action<Block>? configureBlock = null)
+    private static ReadOnlyBlockAccessList GenerateBlockAccessList(Action<Block>? configureBlock = null, ulong value = 1)
     {
         (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         FundSender(stateProvider);
 
-        Block block = BuildBlock();
+        Block block = BuildBlock(value);
         configureBlock?.Invoke(block);
         RunSequential(stateProvider, balManager, block, blockAccessList: null);
 
@@ -192,13 +211,14 @@ public class BlockAccessListSequentialValidationTests
 
     private static (BlockAccessListManager, Block) RunSequentialValidation(
         ReadOnlyBlockAccessList suggested,
-        ProcessingOptions processingOptions = ProcessingOptions.None)
+        ProcessingOptions processingOptions = ProcessingOptions.None,
+        ulong value = 1)
     {
         (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         FundSender(stateProvider);
 
-        Block block = BuildBlock();
+        Block block = BuildBlock(value);
         block.Header.BlockAccessListHash = Keccak.Zero;
         RunSequential(stateProvider, balManager, block, suggested, processingOptions);
         return (balManager, block);
@@ -256,11 +276,11 @@ public class BlockAccessListSequentialValidationTests
         stateProvider.CommitTree(0);
     }
 
-    private static Block BuildBlock()
+    private static Block BuildBlock(ulong value)
     {
         Transaction tx = Build.A.Transaction
             .WithNonce(0)
-            .WithValue(1)
+            .WithValue(value)
             .WithGasPrice(0)
             .WithGasLimit(GasCostOf.Transaction + GasCostOf.ColdSLoad + GasCostOf.VeryLow)
             .WithTo(TestItem.AddressB)

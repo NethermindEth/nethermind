@@ -16,7 +16,6 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
@@ -849,7 +848,7 @@ public sealed class BlockImporter : IBlockImporter
         else if (!SignatureSets.TryGetValidatorKey(_pubkeys, validators, proposerIndex, out key))
             return false;
 
-        return BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
+        return _pubkeys.SignatureVerifier.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
     }
 
     private BlockImportResult? CheckProposerBeforeAdvance(Hash256 root, ulong slot, ulong proposer, ulong parentEpoch, ulong[] lookahead, bool budgetUsed, bool? proposerSignatureValid)

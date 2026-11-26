@@ -36,7 +36,6 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
     public bool ValidateSeal(BlockHeader header, bool force) => Validate(out _);
     public bool Validate(BlockHeader header, BlockHeader[] uncles) => Validate(out _);
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) => _validationResult;
-    public bool ValidateWithdrawals(Block block, out string? error) => Validate(out error);
     public bool ValidateOrphanedBlock(Block block, out string? error) => Validate(out error);
     public bool ValidateSuggestedBlock(Block block, BlockHeader parent, out string? error, bool validateHashes = true) => Validate(out error);
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error) => Validate(out error);

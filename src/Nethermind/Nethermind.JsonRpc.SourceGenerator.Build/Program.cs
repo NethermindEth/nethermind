@@ -73,7 +73,7 @@ internal static class Program
             return;
         }
 
-        string output = GenerateContextSource(sortedTypes);
+        string output = GenerateContextSource(sortedTypes, arguments.AssemblyName);
         Directory.CreateDirectory(Path.GetDirectoryName(arguments.OutputPath)!);
         WriteIfChanged(arguments.OutputPath, output);
     }
@@ -105,16 +105,18 @@ internal static class Program
     /// Builds the source file that declares all eligible <see cref="JsonSerializableAttribute"/> roots
     /// and registers the generated resolver at module initialization time.
     /// </summary>
-    private static string GenerateContextSource(JsonRoot[] sortedTypes)
+    private static string GenerateContextSource(JsonRoot[] sortedTypes, string assemblyName)
     {
+        // Friend assemblies can see generated contexts in their dependencies.
+        string assemblyIdentifier = Convert.ToHexString(Encoding.UTF8.GetBytes(assemblyName));
         StringBuilder builder = new();
         builder.AppendLine(GeneratedSourceHeader).AppendLine(
-            """
+            $"""
             using System.Runtime.CompilerServices;
             using System.Text.Json.Serialization;
             using Nethermind.Serialization.Json;
 
-            namespace Nethermind.JsonRpc;
+            namespace Nethermind.JsonRpc.Generated.A{assemblyIdentifier};
 
             [JsonSourceGenerationOptions(
                 GenerationMode = JsonSourceGenerationMode.Metadata,

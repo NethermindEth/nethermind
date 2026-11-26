@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.Intrinsics.X86;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -257,7 +256,11 @@ public partial class TrieStoreScopeProvider(
                     sink.OnStorageRead(in cell, in value);
                 }
             }
-            catch (MissingTrieNodeException) { }
+            catch (MissingTrieNodeException e)
+            {
+                ILogger logger = _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>();
+                if (logger.IsTrace) logger.Trace($"BAL warmup of {address} stopped on a missing trie node: {e.Message}");
+            }
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
@@ -428,7 +431,7 @@ public partial class TrieStoreScopeProvider(
             }
             else
             {
-                if (Avx2.IsSupported)
+                if (KeccakHash.MaxBatchWidth != 0)
                 {
                     if (!StorageTree.TryGetCachedKey(index, out _keyBuff, out ValueHash256 preimage))
                     {

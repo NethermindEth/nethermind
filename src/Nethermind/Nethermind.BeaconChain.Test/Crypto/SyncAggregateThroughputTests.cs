@@ -103,7 +103,7 @@ public class SyncAggregateThroughputTests
                 return false;
         }
 
-        return BlockSignatureBatch.Verify(participants.PublicKey, syncAggregate.SyncCommitteeSignature, signingRoot, deferral: null);
+        return BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, participants.PublicKey, syncAggregate.SyncCommitteeSignature, signingRoot, deferral: null);
     }
 
     private static void Check(bool valid)

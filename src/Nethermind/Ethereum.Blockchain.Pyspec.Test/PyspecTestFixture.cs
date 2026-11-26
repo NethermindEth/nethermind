@@ -77,6 +77,59 @@ public abstract class PyspecSyncBlockchainTestFixture<TSelf>() : PyspecLinuxX64B
         PyspecLoader.LoadCases<BlockchainTest, TSelf>("blockchain_tests_sync", "SyncBlockchainTests");
 }
 
+// Engine X fixtures: one case per pre-allocation group, whose tests run in turn on one client. Linux x64 only.
+public abstract class PyspecEngineXBlockchainTestFixture<TSelf>() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
+{
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(EngineXGroup group)
+    {
+        List<string> failures = [];
+        // Tests are parsed as the group runs them, so a large group never holds all of its payloads at once.
+        using IEnumerator<BlockchainTest> tests = LoadGroupTests(group, failures).GetEnumerator();
+        if (tests.MoveNext())
+        {
+            foreach (EthereumTestResult result in await RunEngineXGroup(EngineXFixtures.CreateGroupTest(group, tests.Current), Remaining(tests)))
+            {
+                if (!result.Pass)
+                    failures.Add($"{result.Name}: {result.LoadFailure ?? result.Error}");
+            }
+        }
+
+        Assert.That(failures, Is.Empty);
+    }
+
+    private static IEnumerable<BlockchainTest> LoadGroupTests(EngineXGroup group, List<string> failures)
+    {
+        foreach (EthereumTest test in group.Tests.SelectMany(EngineXFixtures.LoadTests))
+        {
+            if (test is BlockchainTest blockchainTest)
+                yield return blockchainTest;
+            else
+                failures.Add($"{test.Name}: {test.LoadFailure}");
+        }
+    }
+
+    private static IEnumerable<BlockchainTest> Remaining(IEnumerator<BlockchainTest> tests)
+    {
+        do
+            yield return tests.Current;
+        while (tests.MoveNext());
+    }
+
+    public static IEnumerable<TestCaseData> LoadTests() =>
+        PyspecLoader.LoadEngineXCases($"fixtures/blockchain_tests_engine_x/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("EngineXBlockchainTests")}");
+}
+
+// Engine reorg fixtures: a payload DAG driven by a branching script of Engine API and JSON-RPC steps.
+public abstract class PyspecEngineReorgBlockchainTestFixture<TSelf>() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
+{
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(PyspecTestRef testRef) => Assert.That((await RunEngineReorgTest(PyspecLoader.LoadTest<EngineReorgTest>(testRef))).Pass, Is.True);
+
+    public static IEnumerable<TestCaseData> LoadTests() =>
+        PyspecLoader.LoadCases<EngineReorgTest, TSelf>("blockchain_tests_engine_reorg", "EngineReorgBlockchainTests");
+}
+
 // Bogota engine-payload fixtures ship in their own release archive, hence the override below.
 public abstract class PyspecBogotaEngineBlockchainTestFixture() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
 {
@@ -213,6 +266,25 @@ internal static class PyspecLoader
             // A changed file can invalidate a saved byte range; re-read only on failure to report the fixture's load error.
             ThrowIfFileFails(testRef.File, testRef.TestType);
             throw new InvalidDataException($"Pyspec fixture '{testRef.File}': {e}", e);
+        }
+    }
+
+    /// <summary>Yields a case per <c>blockchain_tests_engine_x</c> pre-allocation group of <paramref name="testsDir"/>.</summary>
+    /// <exception cref="InvalidDataException">A fixture file cannot be indexed or names a missing group.</exception>
+    public static IEnumerable<TestCaseData> LoadEngineXCases(string testsDir)
+    {
+        string rootDir = new LoadPyspecTestsStrategy().ResolveTestsRoot(testsDir);
+        if (!Directory.Exists(rootDir))
+            yield break;
+
+        (List<EngineXGroup> groups, List<FailedToLoadTest> failures) =
+            EngineXFixtures.Index(LoadPyspecTestsStrategy.EnumerateTestFiles(rootDir).Select(static entry => entry.File));
+        if (failures.Count > 0)
+            throw new InvalidDataException(string.Join(Environment.NewLine, failures.Select(static failure => $"{failure.Name}: {failure.LoadFailure}")));
+
+        foreach (EngineXGroup group in TestChunkFilter.FilterByChunk(groups))
+        {
+            yield return new TestCaseData(group).SetName($"{group.PreHash}_{group.Tests.Count}_tests");
         }
     }
 

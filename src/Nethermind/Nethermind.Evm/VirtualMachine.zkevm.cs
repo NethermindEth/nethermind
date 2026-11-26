@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -24,6 +25,27 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// </remarks>
     public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
         ExecuteTransactionCore<OffFlag>(vmState, worldState, txTracer);
+
+    private IWorldState? _guestSlotsSource;
+    private IGuestSlotStore? _guestSlots;
+
+    /// <summary>The world state as a <see cref="IGuestSlotStore"/>, or null when it is not one.</summary>
+    /// <remarks>Resolved once per world state: a type test against an interface walks the type's interfaces.</remarks>
+    internal IGuestSlotStore? GuestSlots
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            IWorldState worldState = _worldState;
+            if (!ReferenceEquals(worldState, _guestSlotsSource))
+            {
+                _guestSlots = worldState as IGuestSlotStore;
+                _guestSlotsSource = worldState;
+            }
+
+            return _guestSlots;
+        }
+    }
 
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
@@ -242,6 +264,85 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         }
         child.Dispose();
         return push;
+    }
+
+    /// <summary>
+    /// Runs a STATICCALL or a value-less CALL to <paramref name="precompile"/> in the calling frame, with no child frame,
+    /// environment or snapshot, as the host's inline STATICCALL does.
+    /// </summary>
+    /// <param name="succeeded">Whether the precompile succeeded, which the call's status reports.</param>
+    /// <returns>Whether the call ran here; if not, nothing was charged or changed and it takes the frame path.</returns>
+    /// <remarks>
+    /// A value-less call changes no state but the touch of its target, which matters only to an existing empty account
+    /// (EIP-158), and only once the precompile succeeds: a failed call would revert it. The block access list entry
+    /// comes from the code lookup. Swizzled memory, which the precompile input would need converting from, and the
+    /// precompiles <see cref="CanExecutePrecompileCallDirectly"/> excludes take the frame path.
+    /// </remarks>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal bool TryRunPrecompileInCaller(
+        IPrecompile precompile,
+        Address target,
+        ref TGasPolicy gas,
+        ulong childGasLimit,
+        in UInt256 dataOffset,
+        in UInt256 dataLength,
+        in UInt256 outputOffset,
+        in UInt256 outputLength,
+        out bool succeeded)
+    {
+        if (EvmPooledMemory.IsSwizzled || IsTracingActions || !CanExecutePrecompileCallDirectly(precompile, target))
+        {
+            succeeded = false;
+            return false;
+        }
+
+        ref EvmPooledMemory memory = ref VmState.Memory;
+        ReadOnlyMemory<byte> callData = memory.LoadAfterGas(in dataOffset, in dataLength);
+        TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, childGasLimit);
+        IReleaseSpec spec = Spec;
+        // Read before the precompile runs, as the frame path reads it.
+        bool touches = !spec.IsEip158Enabled || (_worldState.AccountExists(target) && _worldState.IsDeadAccount(target));
+        ReadOnlyMemory<byte> outputData;
+        if (!TGasPolicy.TryConsumePrecompileGas(ref childGas, precompile, callData, spec))
+        {
+            goto Failed;
+        }
+
+        if (precompile is IdentityPrecompile)
+        {
+            outputData = CopyToPrecompileScratch(callData.Span);
+        }
+        else
+        {
+            if (!(TryRunPrecompileDirectly(precompile, callData, spec, out Result<byte[]> output) && output))
+            {
+                TGasPolicy.ClearExecutionGas(ref childGas);
+                goto Failed;
+            }
+
+            outputData = output.Data;
+        }
+
+        if (touches)
+            _worldState.AddToBalanceAndCreateIfNotExists(target, UInt256.Zero, spec);
+
+        TGasPolicy.Refund(ref gas, in childGas);
+        ReturnDataBuffer = outputData;
+        int copyLength = outputData.Length;
+        if (outputLength < (UInt256)copyLength)
+            copyLength = (int)outputLength.u0;
+        if (copyLength > 0)
+            memory.SaveAfterGas(in outputOffset, outputData.Span[..copyLength]);
+
+        succeeded = true;
+        return true;
+
+    Failed:
+        TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
+        ReturnDataBuffer = default;
+        succeeded = false;
+        return true;
     }
 
     /// <summary>The deepest frame <see cref="TryRunStagedFrameNested"/> runs; a deeper one goes through the frame loop.</summary>

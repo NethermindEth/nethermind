@@ -28,6 +28,11 @@ public class LoadPyspecTestsStrategy
 
     internal static TestType GetTestType(string testsDir)
     {
+        if (testsDir.Contains("blockchain_tests_engine_reorg", StringComparison.OrdinalIgnoreCase))
+        {
+            return TestType.EngineReorg;
+        }
+
         foreach (TestType type in Enum.GetValues<TestType>())
         {
             if (testsDir.Contains($"{type}_tests", StringComparison.OrdinalIgnoreCase))

@@ -132,6 +132,100 @@ public class RequestFailureCauseTests
 
     public enum SlotCancellation { Queued, BeforeChannelOpen, WhileChannelOpen }
 
+    [Test]
+    [CancelAfter(30_000)]
+    public Task Light_client_cancellation_retains_open_exchanges_and_refuses_late_channels(
+        [Values(0, 1, 2, 3)] int protocol, [Values] bool beforeChannelOpen, CancellationToken token) => protocol switch
+        {
+            0 => CheckLightClientCancellationAsync<LightClientBootstrapProtocol, Hash256, LightClientBootstrap>(new LightClientBootstrapProtocol(Spec),
+                static (node, session, stopping, timing) => node.RequestLightClientBootstrapAsync(session, Hash256.Zero, stopping, timing), beforeChannelOpen, 32, token),
+            1 => CheckLightClientCancellationAsync<LightClientUpdatesByRangeProtocol, Uint64Request, LightClientUpdate>(new LightClientUpdatesByRangeProtocol(Spec),
+                static (node, session, stopping, timing) => node.RequestLightClientUpdateAsync(session, 42, stopping, timing), beforeChannelOpen, 16, token),
+            2 => CheckLightClientCancellationAsync<LightClientFinalityUpdateProtocol, Uint64Request, LightClientFinalityUpdate>(new LightClientFinalityUpdateProtocol(Spec),
+                static (node, session, stopping, timing) => node.RequestLightClientFinalityAsync(session, stopping, timing), beforeChannelOpen, 0, token),
+            _ => CheckLightClientCancellationAsync<LightClientOptimisticUpdateProtocol, Uint64Request, LightClientOptimisticUpdate>(new LightClientOptimisticUpdateProtocol(Spec),
+                static (node, session, stopping, timing) => node.RequestLightClientOptimisticAsync(session, stopping, timing), beforeChannelOpen, 0, token),
+        };
+
+    private static async Task CheckLightClientCancellationAsync<TProtocol, TRequest, TResponse>(TProtocol protocol,
+        Func<BeaconP2P, ISession, CancellationToken, RequestTiming, Task<TResponse>> request,
+        bool beforeChannelOpen, int requestLength, CancellationToken token)
+        where TProtocol : LightClientProtocol<TRequest, TResponse>
+    {
+        ISession session = Substitute.For<ISession>();
+        Channel channel = new();
+        TRequest? argument = default;
+        Task<TResponse>? exchange = null;
+        Task<TResponse>? late = null;
+        TaskCompletionSource<TResponse> queued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        session.DialAsync<TProtocol, TRequest, TResponse>(default!, default).ReturnsForAnyArgs(call =>
+        {
+            argument = call.Arg<TRequest>();
+            exchange = beforeChannelOpen ? null : protocol.DialAsync(channel, ReqRespTestChannel.Context(), argument);
+            return (exchange ?? queued.Task).WaitAsync(call.Arg<CancellationToken>());
+        });
+        await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(20));
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using CancellationTokenSource retry = CancellationTokenSource.CreateLinkedTokenSource(token);
+        RequestTiming timing = new();
+        Task<TResponse> pending = request(node, session, stopping.Token, timing);
+        Task<TResponse>? active = null;
+        try
+        {
+            if (!beforeChannelOpen)
+            {
+                using Stream remote = new ChannelStreamAdapter(channel.Reverse);
+                if (requestLength == 0) Assert.That(await remote.ReadAsync(new byte[1], token), Is.Zero);
+                else Assert.That(await ReqRespFraming.ReadRequestAsync(remote, requestLength, token), Has.Length.EqualTo(requestLength));
+            }
+            await stopping.CancelAsync();
+            await Assert.CatchAsync<OperationCanceledException>(() => pending);
+            Task settled = timing.Settled();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(timing.ChannelOpened, Is.EqualTo(!beforeChannelOpen));
+                Assert.That(settled.IsCompleted, Is.EqualTo(beforeChannelOpen), "the per-protocol permit follows the open stream, not just its cancelled waiter");
+            }
+            if (beforeChannelOpen)
+            {
+                TRequest abandoned = argument!;
+                if (abandoned is Hash256 root)
+                {
+                    // Bootstrap fan-out supplies the same root to every attempt.
+                    active = request(node, session, retry.Token, new());
+                    Assert.That((object?)argument as Hash256, Is.EqualTo(root).And.Not.SameAs(root));
+                }
+                late = protocol.DialAsync(channel, ReqRespTestChannel.Context(), abandoned);
+                Assert.That(late.IsCompleted, Is.True, "an abandoned attempt is refused before any channel work");
+                await Assert.CatchAsync<OperationCanceledException>(() => late);
+                ReadResult buffered = await channel.Reverse.ReadAsync(1, ReadBlockingMode.DoNotWait, token);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(buffered.Data.Length, Is.Zero, "the refused attempt must not send request bytes");
+                    Assert.That(buffered.Result, Is.Not.EqualTo(IOResult.Ended), "the refused attempt must not send EOF");
+                }
+            }
+            else
+            {
+                await channel.Reverse.WriteEofAsync(token);
+                await ((Task)exchange!).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                await settled.WaitAsync(token);
+            }
+        }
+        finally
+        {
+            await channel.AbortAsync();
+            if (exchange is not null) await ((Task)exchange).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (late is not null) await ((Task)late).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (active is not null)
+            {
+                await retry.CancelAsync();
+                await ((Task)active).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
+        }
+
+    }
+
     // Consensus-specs v1.7.0-beta.2 req/resp requesting side: the requester MUST NOT make more than MAX_CONCURRENT_REQUESTS concurrent requests with the same protocol ID.
     [Test]
     [CancelAfter(30_000)]
@@ -229,7 +323,7 @@ public class RequestFailureCauseTests
         finally
         {
             release.Set();
-            await disconnected.WaitAsync(TimeSpan.FromSeconds(5));
+            await disconnected.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
         }
 
         Assert.That(released, Is.True, "the cancellation callback must be released before its bound expires");
@@ -325,13 +419,13 @@ public class RequestFailureCauseTests
         try
         {
             Assert.That(PeerManager.RequestsInFlightForTest(silent), Is.EqualTo(2));
-            silentSession.ColumnDials[0].SetCanceled();
+            silentSession.ColumnDials[0].SetCanceled(CancellationToken.None);
             ReqRespTimeoutException? exempt = await Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await first.WaitAsync(token));
 
             Task<IReadOnlyList<DataColumnSidecar>> answered = answering.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
             answeringSession.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
             await answered.WaitAsync(token);
-            silentSession.ColumnDials[1].SetCanceled();
+            silentSession.ColumnDials[1].SetCanceled(CancellationToken.None);
             ReqRespTimeoutException? blamed = await Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await second.WaitAsync(token));
             using (Assert.EnterMultipleScope())
             {

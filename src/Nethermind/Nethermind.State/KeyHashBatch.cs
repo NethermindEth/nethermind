@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
@@ -14,8 +13,7 @@ namespace Nethermind.State;
 internal struct KeyHashBatch
 {
     private const int MaximumBatchSize = 8;
-    /// <summary>The AVX2 lane width, also the minimum account-batching threshold for both state backends.</summary>
-    internal const int MinimumBatchSize = 4;
+    internal static int MinimumBatchSize => KeccakHash.GetBatchWidth(2);
     /// <summary>Below this, a batch kernel's setup and lane-clearing is not worth it over one scalar hash.</summary>
     private const int MinimumBatchCount = 2;
     private const int Rate = 136;
@@ -43,7 +41,7 @@ internal struct KeyHashBatch
     private int _count;
     private int _length;
 
-    internal readonly bool IsFull => _count == (Avx512F.IsSupported ? MaximumBatchSize : MinimumBatchSize);
+    internal readonly bool IsFull => _count != 0 && _count == KeccakHash.MaxBatchWidth;
 
     internal void Initialize(int length)
     {
@@ -55,7 +53,7 @@ internal struct KeyHashBatch
     internal void Add(ReadOnlySpan<byte> input, int index, out ValueHash256 hash)
     {
         Debug.Assert(input.Length == _length && _count < MaximumBatchSize);
-        if (!Avx2.IsSupported)
+        if (KeccakHash.MaxBatchWidth == 0)
         {
             KeccakCache.ComputeTo(input, out hash);
             return;
@@ -78,7 +76,7 @@ internal struct KeyHashBatch
     {
         if (_count == 0) return;
         int hashed = 0;
-        if (Avx2.IsSupported)
+        if (KeccakHash.MaxBatchWidth != 0)
         {
             Unsafe.SkipInit(out Scratch scratch);
             Span<byte> buffer = MemoryMarshal.AsBytes((Span<ulong>)scratch);
@@ -88,7 +86,7 @@ internal struct KeyHashBatch
             while (_count - hashed >= MinimumBatchCount)
             {
                 int remaining = _count - hashed;
-                int batchSize = Avx512F.IsSupported && remaining > MinimumBatchSize ? MaximumBatchSize : MinimumBatchSize;
+                int batchSize = KeccakHash.GetBatchWidth(remaining);
                 int batchCount = Math.Min(batchSize, remaining);
                 Span<byte> inputs = buffer[..(batchSize * Rate)];
                 Span<byte> hashes = buffer.Slice(batchSize * Rate, batchSize * Hash256.Size);
@@ -104,10 +102,7 @@ internal struct KeyHashBatch
                 // Lanes past batchCount carry no key; zero-fill them so the kernel runs, and their
                 // digests are never read back.
                 inputs[(batchCount * Rate)..].Clear();
-                if (batchSize == MaximumBatchSize)
-                    KeccakHash.ComputePaddedBlocks8Avx512(ref inputs[0], ref hashes[0]);
-                else
-                    KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref hashes[0]);
+                KeccakHash.ComputePaddedBatch(ref inputs[0], Rate, batchSize, ref hashes[0]);
 
                 for (int i = 0; i < batchCount; i++)
                 {

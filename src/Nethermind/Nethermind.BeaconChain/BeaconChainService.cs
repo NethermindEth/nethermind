@@ -180,7 +180,12 @@ public sealed class BeaconChainService(
         if ((state, block) is not ((ForkedBeaconState.OfFulu, ForkedSignedBeaconBlock.OfFulu) or (ForkedBeaconState.OfGloas, ForkedSignedBeaconBlock.OfGloas)))
         {
             // The importer takes only an anchor state and block of the same fork; checkpoint sync refuses such a pair before it is persisted.
-            BeaconFork blockFork = block is ForkedSignedBeaconBlock.OfGloas ? BeaconFork.Gloas : BeaconFork.Fulu;
+            BeaconFork blockFork = block switch
+            {
+                ForkedSignedBeaconBlock.OfFulu => BeaconFork.Fulu,
+                ForkedSignedBeaconBlock.OfGloas => BeaconFork.Gloas,
+                _ => throw new NotSupportedException($"Unhandled beacon block shape {block.GetType().Name}"),
+            };
             throw new InvalidDataException($"The anchor block {anchorRoot} at slot {block.Slot} is a {blockFork} block, but the anchor state at slot {state.Slot} is a {state.Fork} state. Delete the beaconChain database to checkpoint-sync again.");
         }
 

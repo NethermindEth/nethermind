@@ -69,6 +69,10 @@ namespace Nethermind.TxPool
             GetPendingLightBlobTransactionsBySender().TryGetValue(address, out Transaction[]? txs) ? txs : [];
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
+
+        /// <summary>Removes the gossip registration owned by this peer connection.</summary>
+        void RemovePeer(ITxPoolPeer peer);
+
         AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         /// <summary>
@@ -181,9 +185,6 @@ namespace Nethermind.TxPool
         bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof);
-        bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            out ReadOnlyMemory<byte> cellProofs);
         int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs);
         /// <summary>
@@ -252,21 +253,14 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>
-        /// Verifies and merges newly received cells into a pending sparse blob transaction.
-        /// </summary>
-        bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);
-
-        /// <summary>
         /// Verifies and merges newly received cells and reports why the merge was rejected.
         /// </summary>
         /// <returns>The outcome of the merge attempt.</returns>
         BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);
         ulong GetLatestPendingNonce(Address address);
-        event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
         event EventHandler<TxEventArgs> EvictedPending;
-        public bool AcceptTxWhenNotSynced { get; set; }
         bool SupportsBlobs { get; }
         long PendingTransactionsAdded { get; }
 

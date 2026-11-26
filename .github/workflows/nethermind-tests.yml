@@ -58,6 +58,7 @@ jobs:
           - Nethermind.BeaconChain.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.Mcp.Plugin.Test
+          - Nethermind.LightClient.Test
           - Nethermind.Merge.AuRa.Test
           - Nethermind.Merge.Plugin.Test
           - Nethermind.Synchronization.Test
@@ -108,7 +109,6 @@ jobs:
               Nethermind.OpcodeTracing.Plugin.Test
               Nethermind.Serialization.FluentRlp.Test
               Nethermind.Serialization.JsonGenerator.Test
-              Nethermind.Shutter.Test
               Nethermind.State.Flat.Test
               Nethermind.TrustedInput.Test
           - name: Nethermind tests 6
@@ -225,7 +225,7 @@ jobs:
     name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     # A pack runs several projects one after another, so a hang in its last project needs more room to be dumped.
-    timeout-minutes: ${{ matrix.project.list && 25 || 15 }}
+    timeout-minutes: ${{ matrix.project == 'Nethermind.BeaconChain.Test' && 30 || matrix.project.list && 25 || 15 }}
     env:
       DOTNET_GCConserveMemory: 9
     strategy:
@@ -246,6 +246,11 @@ jobs:
           - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
           - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.BeaconChain.Test, chunk: 1of4 }
+          - { runner: windows-latest, project: Nethermind.BeaconChain.Test, chunk: 2of4 }
+          - { runner: windows-latest, project: Nethermind.BeaconChain.Test, chunk: 3of4 }
+          - { runner: windows-latest, project: Nethermind.BeaconChain.Test, chunk: 4of4 }
+          - { runner: windows-latest, project: Nethermind.LightClient.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
           - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
           - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
@@ -460,7 +465,7 @@ jobs:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
+      test_types: engineTest,engineXTest,blockTest,stateTest,syncTest,engineReorgTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
       setup_group: all
 
   tests-consensus-spec:

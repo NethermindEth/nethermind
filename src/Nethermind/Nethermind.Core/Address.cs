@@ -100,7 +100,11 @@ namespace Nethermind.Core
                         return true;
                     }
                 }
-                catch (IndexOutOfRangeException) { }
+                catch (IndexOutOfRangeException)
+                {
+                    address = default;
+                    return false;
+                }
             }
 
             address = default;

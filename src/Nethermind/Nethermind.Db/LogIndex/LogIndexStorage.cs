@@ -805,7 +805,9 @@ namespace Nethermind.Db.LogIndex
                     .ToArray();
 
                 await Task.WhenAll(tasks);
-                await _compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30));
+                TimeSpan compressionWait = TimeSpan.FromSeconds(30);
+                if (!await _compressor.WaitUntilEmptyAsync(compressionWait) && _logger.IsWarn)
+                    _logger.Warn($"Log index: compression queue did not drain within {compressionWait}, continuing compaction");
             }
 
             CompactingStats compactStats = await _compactor.ForceAsync();

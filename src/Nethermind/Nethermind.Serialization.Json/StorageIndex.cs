@@ -23,6 +23,9 @@ public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
 {
     private const int MaxLength = 2 + 64;
 
+    /// <summary>Longest key an error message repeats in full; a longer one is cut, so the error stays small whatever was sent.</summary>
+    private const int MaxEchoedLength = 2 * MaxLength;
+
     [SkipLocalsInit]
     public override StorageIndex Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         new(ReadValue(ref reader));
@@ -66,7 +69,10 @@ public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidKey(string reason, ref Utf8JsonReader reader, Exception? innerException) =>
-        throw new SafePublicMessageFormatException($"{reason}: \"{reader.GetString()}\"", innerException, omitArgumentPosition: true);
+        throw new SafePublicMessageFormatException($"{reason}: \"{Echo(reader.GetString()!)}\"", innerException, omitArgumentPosition: true);
+
+    private static string Echo(string key) =>
+        key.Length <= MaxEchoedLength ? key : string.Concat(key.AsSpan(0, MaxEchoedLength), "...");
 
     private static UInt256 Parse(ReadOnlySpan<byte> hex)
     {

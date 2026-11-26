@@ -95,16 +95,22 @@ public class AdminRpcModule : IAdminRpcModule
     public async Task<ResultWrapper<bool>> admin_addPeer(string enode, bool persistent = false)
     {
         if (TryParseAsNetworkNode(enode, out NetworkNode? networkNode) is { } error) return error;
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-
-        await _staticNodesManager.AddAsync(networkNode!, updateFile: persistent, timeout.Token);
+        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        try
+        {
+            await _staticNodesManager.AddAsync(networkNode!, updateFile: persistent, timeout.Token);
+        }
+        finally
+        {
+            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+        }
         return ResultWrapper<bool>.Success(true);
     }
 
     public async Task<ResultWrapper<bool>> admin_removePeer(string enode, bool persistent = false)
     {
         if (TryParseAsNetworkNode(enode, out NetworkNode? networkNode) is { } error) return error;
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         try
         {
@@ -112,6 +118,7 @@ public class AdminRpcModule : IAdminRpcModule
         }
         finally
         {
+            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
             _peerPool.TryRemove(networkNode!.NodeId, out _);
         }
         return ResultWrapper<bool>.Success(true);
@@ -121,7 +128,7 @@ public class AdminRpcModule : IAdminRpcModule
     {
         if (TryParseAsEnode(enode, out Enode? enodeObj) is { } error) return error;
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         try
         {
@@ -129,6 +136,7 @@ public class AdminRpcModule : IAdminRpcModule
         }
         finally
         {
+            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
             _peerPool.GetOrAdd(new NetworkNode(enodeObj!));
         }
         return ResultWrapper<bool>.Success(true);
@@ -137,9 +145,15 @@ public class AdminRpcModule : IAdminRpcModule
     public async Task<ResultWrapper<bool>> admin_removeTrustedPeer(string enode, bool persistent = false)
     {
         if (TryParseAsEnode(enode, out Enode? enodeObj) is { } error) return error;
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-
-        await _trustedNodesManager.RemoveAsync(enodeObj!, updateFile: persistent, timeout.Token);
+        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        try
+        {
+            await _trustedNodesManager.RemoveAsync(enodeObj!, updateFile: persistent, timeout.Token);
+        }
+        finally
+        {
+            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+        }
         return ResultWrapper<bool>.Success(true);
     }
 
@@ -187,7 +201,7 @@ public class AdminRpcModule : IAdminRpcModule
         }
         catch (KeyNotFoundException)
         {
-            return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+            return ResultWrapper<string>.Fail($"no \"{subscriptionName}\" subscription in admin namespace", ErrorCodes.MethodNotFound);
         }
         catch (LimitExceededException e)
         {

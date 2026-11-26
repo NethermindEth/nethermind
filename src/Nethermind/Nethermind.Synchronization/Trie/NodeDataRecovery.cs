@@ -154,10 +154,10 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
 
     private async Task<byte[]?> RecoverNodeFromPeer(ISyncPeer syncPeer, Hash256 rootHash, Hash256? address, TreePath treePath, Hash256 hash, CancellationToken cancellationToken)
     {
-        if (syncPeer.ProtocolVersion < EthVersions.Eth67)
+        if (syncPeer.CanGetNodeData)
         {
             if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer:hide} via eth");
-            IByteArrayList? data = await syncPeer.GetNodeData([hash], cancellationToken);
+            using IByteArrayList? data = await syncPeer.GetNodeData([hash], cancellationToken);
             if (data?.Count > 0 && Keccak.Compute(data[0]) == hash)
             {
                 return data[0].ToArray();
