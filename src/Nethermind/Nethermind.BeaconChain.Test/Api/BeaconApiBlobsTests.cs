@@ -16,7 +16,6 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
-using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.DataAvailability;
 using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
@@ -24,7 +23,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
