@@ -2,14 +2,19 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 //
-// Print a Markdown comparison of two BenchmarkDotNet runs, including the runner's grouped resume layout.
+// Print a Markdown comparison of two joined BenchmarkDotNet runs.
 //
 //   compare.cs <base artifacts directory> <head artifacts directory>
+//
+// Use a dedicated artifacts root for each benchmark campaign. Read runner-job/results and
+// own-job/results only when results contains no matching reports, regardless of report age.
 //
 // Reads BASE_SHA, HEAD_SHA, BASE_OUTCOME, HEAD_OUTCOME and RUNNER_NAME from the environment.
 // Benchmarks are listed in the head run's order; one missing from the base run shows dashes.
 // Exits with 1 when the head run has no results or any of its benchmarks failed: the benchmark runner
 // itself exits with 0 regardless.
+
+#:property PublishAot=false
 
 using System.Globalization;
 using System.Text.Json;
@@ -106,7 +111,6 @@ static IEnumerable<string> ReportPaths(string artifactsDirectory)
         yield return path;
     }
 
-    // Don't mix a regular run's reports with stale resume groups under the same root.
     if (hasFlatReports) yield break;
     foreach (var path in ReportsIn(Path.Combine(artifactsDirectory, "runner-job"))) yield return path;
     foreach (var path in ReportsIn(Path.Combine(artifactsDirectory, "own-job"))) yield return path;
