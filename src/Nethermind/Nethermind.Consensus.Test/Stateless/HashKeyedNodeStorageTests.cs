@@ -240,8 +240,11 @@ public class HashKeyedNodeStorageTests
 
         for (int i = 0; i < nodes.Length; i++)
         {
-            Assert.That(storage.Get(null, TreePath.Empty, hashes[i]), Is.Null);
-            Assert.That(storage.KeyExists(null, TreePath.Empty, hashes[i]), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.Get(null, TreePath.Empty, hashes[i]), Is.Null);
+                Assert.That(storage.KeyExists(null, TreePath.Empty, hashes[i]), Is.False);
+            }
         }
 
         Parallel.Invoke(
@@ -255,8 +258,11 @@ public class HashKeyedNodeStorageTests
 
         for (int i = 0; i < nodes.Length; i++)
         {
-            Assert.That(storage.Get(null, TreePath.Empty, hashes[i]), Is.EqualTo(nodes[i]));
-            Assert.That(storage.KeyExists(null, TreePath.Empty, hashes[i]), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.Get(null, TreePath.Empty, hashes[i]), Is.EqualTo(nodes[i]));
+                Assert.That(storage.KeyExists(null, TreePath.Empty, hashes[i]), Is.True);
+            }
         }
     }
 

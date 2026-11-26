@@ -744,9 +744,9 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_storage_values_match_the_per_slot_reads([Values] bool useFlatDb)
+    public async Task Eth_get_storage_values_match_the_per_slot_reads()
     {
-        using Context ctx = await Context.Create(useFlatDb: useFlatDb);
+        using Context ctx = await Context.Create();
         BlockHeader head = ctx.Test.BlockTree.Head!.Header;
         Dictionary<Address, UInt256[]> requests = new()
         {
@@ -845,11 +845,11 @@ public partial class EthRpcModuleTests
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithSyncMode(syncMode)
-            .WithFlatDb(false)
+
             .WithConfig(new JsonRpcConfig { Timeout = -1 })
             .Build();
         chain.WorldStateManager.FlushCache(CancellationToken.None);
-        chain.StateDb.Clear();
+        chain.BlockTree.Head!.Header.StateRoot = Keccak.Compute("unavailable state");
 
         string serialized = await chain.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), new[] { "0x1" }, "latest");
         Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"), serialized);
@@ -3835,7 +3835,6 @@ public partial class EthRpcModuleTests
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,
             Action<ContainerBuilder>? configurer = null,
-            bool? useFlatDb = null,
             int estimateErrorMargin = 0,
             IWallet? wallet = null)
         {
@@ -3849,12 +3848,6 @@ public partial class EthRpcModuleTests
                 .WithBlockchainBridge(blockchainBridge!)
                 .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
                 .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false });
-
-            // Left unset, the chain follows the suite-wide backend selection.
-            if (useFlatDb is not null)
-            {
-                testBlockchainBuilder.WithFlatDb(useFlatDb.Value);
-            }
 
             if (wallet is not null)
             {

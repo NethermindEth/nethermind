@@ -25,8 +25,10 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     public void UpdateRootHash()
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        byte[]? rootRlp = reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None);
-        _rootHash = rootRlp is null ? Keccak.EmptyTreeHash : ValueKeccak.Compute(rootRlp).ToHash256();
+        ValueHash256 hash = default;
+        bool found = reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None,
+            static (rlp, result) => result[0] = ValueKeccak.Compute(rlp), new Span<ValueHash256>(ref hash));
+        _rootHash = found ? hash.ToHash256() : Keccak.EmptyTreeHash;
     }
 
     public void SetAccountsAndCommit(params (Hash256 Address, Account? Account)[] accounts)

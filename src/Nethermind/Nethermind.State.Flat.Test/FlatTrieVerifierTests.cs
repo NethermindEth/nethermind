@@ -427,7 +427,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
         // Store an edited root's RLP under the original root hash and make flat agree with the edit,
         // so only the hash check can tell the node is stale.
-        NodeStorage nodeStorage = new(_trieDb);
+        INodeStorage nodeStorage = _trieDb;
         if (inStorageTrie)
         {
             storageTree.Set((UInt256)1, [0x22]);

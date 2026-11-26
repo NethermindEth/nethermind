@@ -367,6 +367,7 @@ public class SyncServerTests
             LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
+            Substitute.For<IWorldStateManager>(),
             new MemDb(),
             localBlockTree,
             Substitute.For<IBlockStore>(),
@@ -594,6 +595,7 @@ public class SyncServerTests
             LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
+            Substitute.For<IWorldStateManager>(),
             new MemDb(),
             localBlockTree,
             Substitute.For<IBlockStore>(),
@@ -882,6 +884,7 @@ public class SyncServerTests
         blockTree.GetLowestBlock().Returns(lowestStored);
 
         SyncServer syncServer = new(
+            Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
             Substitute.For<IBlockStore>(),
@@ -1128,6 +1131,7 @@ public class SyncServerTests
 
         // Block-scoped using: roots the server and its event subscriptions for the whole concurrent run.
         using (new SyncServer(
+            Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
             Substitute.For<IBlockStore>(),
@@ -1428,6 +1432,7 @@ public class SyncServerTests
 
             StaticSelector selector = StaticSelector.Full;
             SyncServer = new SyncServer(
+                WorldStateManager,
                 new MemDb(),
                 BlockTree,
                 BlockStore,
@@ -1461,6 +1466,8 @@ public class SyncServerTests
 
         public IHeaderStore HeaderStore { get; }
 
+        public IWorldStateManager WorldStateManager { get; }
+
         public SyncServer CreateSyncServer(
             IBlockTree localBlockTree,
             IBlockValidator? blockValidator = null,
@@ -1473,6 +1480,7 @@ public class SyncServerTests
             IBlockStore? blockStore = null) =>
 
             new(
+                WorldStateManager,
                 new MemDb(),
                 localBlockTree,
                 blockStore ?? Substitute.For<IBlockStore>(),
@@ -1493,6 +1501,7 @@ public class SyncServerTests
 
         public SyncServer CreateSyncServer(IBlockAccessListStore blockAccessListStore) =>
             new(
+                WorldStateManager,
                 new MemDb(),
                 BlockTree,
                 Substitute.For<IBlockStore>(),

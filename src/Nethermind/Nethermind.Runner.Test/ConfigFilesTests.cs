@@ -105,14 +105,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Eth_stats_disabled_by_default(string configWildcard) => Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
 
-    [TestCase("mainnet archive", 2147483648UL, 536870912UL)]
-    [TestCase("op-mainnet_archive.json", 1073741824UL, 268435456UL)]
-    [TestCase("^archive", 536870912UL, 134217728UL)]
-    public void Db_cache_values_are_correct(string configWildcard, ulong sharedBlockCacheSize, ulong stateDbRowCacheSize)
-    {
+    [TestCase("mainnet archive", 2147483648UL)]
+    [TestCase("op-mainnet_archive.json", 1073741824UL)]
+    [TestCase("^archive", 536870912UL)]
+    public void Db_cache_values_are_correct(string configWildcard, ulong sharedBlockCacheSize) =>
         Test<IDbConfig, ulong>(configWildcard, static c => c.SharedBlockCacheSize, sharedBlockCacheSize);
-        Test<IDbConfig, ulong?>(configWildcard, static c => c.StateDbRowCacheSize, stateDbRowCacheSize);
-    }
 
     [Test]
     public void Removed_memory_hint_settings_are_accepted_and_reported_as_deprecated()
@@ -121,9 +118,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         {
             { "NETHERMIND_INITCONFIG_MEMORYHINT", "2000000000" },
             { "NETHERMIND_DBCONFIG_SKIPMEMORYHINTSETTING", "true" },
-            { "NETHERMIND_SYNCCONFIG_FASTBLOCKS", "true" },
-            // Changes the derived, obsolete Pruning.Enabled without setting it.
-            { "NETHERMIND_PRUNINGCONFIG_MODE", "None" }
+            { "NETHERMIND_SYNCCONFIG_FASTBLOCKS", "true" }
         };
         IEnvironment environment = Substitute.For<IEnvironment>();
         environment.GetEnvironmentVariables().Returns(variables);

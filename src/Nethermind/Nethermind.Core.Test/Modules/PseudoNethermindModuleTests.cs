@@ -52,11 +52,11 @@ public class PseudoNethermindModuleTests
     }
 
     [Test]
-    public void Test_blockchain_rejects_explicit_flat_disable()
+    public async Task Test_blockchain_rejects_explicit_flat_disable()
     {
         using BackendTestBlockchain chain = new(new FlatDbConfig { Enabled = false });
 
-        DependencyResolutionException exception = Assert.ThrowsAsync<DependencyResolutionException>(async () => await chain.Initialize())!;
+        DependencyResolutionException exception = (await Assert.ThrowsAsync<DependencyResolutionException>(async () => await chain.Initialize()))!;
         Assert.That(exception.ToString(), Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
     }
 

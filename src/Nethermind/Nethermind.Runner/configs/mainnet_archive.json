@@ -22,6 +22,9 @@
   "Receipt": {
     "TxLookupLimit": 0
   },
+  "Db": {
+    "SharedBlockCacheSize": 2147483648
+  },
   "JsonRpc": {
     "Enabled": true,
     "Timeout": 20000,

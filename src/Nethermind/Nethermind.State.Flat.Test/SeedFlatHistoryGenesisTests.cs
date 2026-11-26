@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -121,7 +122,7 @@ public class SeedFlatHistoryGenesisTests
     }
 
     private SeedFlatHistoryGenesis Step(ChainSpec chainSpec, int headBlockNumber = 100, bool hasGenesis = true) =>
-        new(chainSpec, BlockTree(headBlockNumber, hasGenesis), _writer, _reader, LimboLogs.Instance);
+        new(chainSpec, BlockTree(headBlockNumber, hasGenesis), _writer, _reader, _image, LimboLogs.Instance);
 
     private static IBlockTree BlockTree(int headBlockNumber = 100, bool hasGenesis = true)
     {

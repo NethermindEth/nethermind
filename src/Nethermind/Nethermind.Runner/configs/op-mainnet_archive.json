@@ -20,6 +20,9 @@
   "Receipt": {
     "TxLookupLimit": 0
   },
+  "Db": {
+    "SharedBlockCacheSize": 1073741824
+  },
   "JsonRpc": {
     "Enabled": true,
     "Port": 8545,

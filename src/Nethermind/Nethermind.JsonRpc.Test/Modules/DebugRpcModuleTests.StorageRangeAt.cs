@@ -33,9 +33,9 @@ public partial class DebugRpcModuleTests
     private const int StorageRangeInitialSlots = 5;
 
     [Test]
-    public async Task Debug_storageRangeAt_pages_slots_in_hashed_key_order([Values] bool flatDb, [Values(1, 2, 10)] int maxResult)
+    public async Task Debug_storageRangeAt_pages_slots_in_hashed_key_order([Values(1, 2, 10)] int maxResult)
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(flatDb).Build();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         (Address contract, Block block) = await AddStorageRangeBlocks(chain);
 
         List<(string Key, string Value)> slots = [];
@@ -64,9 +64,9 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_storageRangeAt_returns_storage_before_the_transaction([Values] bool flatDb, [Values(0, 1)] int txIndex)
+    public async Task Debug_storageRangeAt_returns_storage_before_the_transaction([Values(0, 1)] int txIndex)
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(flatDb).Build();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         (Address contract, Block block) = await AddStorageRangeBlocks(chain);
 
         JToken result = await StorageRangeAt(chain, block.Hash!, txIndex, contract, "0x", 100);
@@ -160,9 +160,9 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_storageRangeAt_returns_null_storage_for_account_without_storage([Values] bool flatDb, [Values] bool accountExists)
+    public async Task Debug_storageRangeAt_returns_null_storage_for_account_without_storage([Values] bool accountExists)
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(flatDb).Build();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         (_, Block block) = await AddStorageRangeBlocks(chain);
         Address address = accountExists ? TestItem.AddressB : TestItem.GetRandomAddress();
 

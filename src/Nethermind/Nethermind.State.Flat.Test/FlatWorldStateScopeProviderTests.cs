@@ -1116,7 +1116,7 @@ public class FlatWorldStateScopeProviderTests
         Dictionary<(Hash256? Storage, TreePath Path), byte[]> persistedNodes = [];
         if (persistedRoot)
         {
-            RawTrieStore store = new(new TestMemDb());
+            RawTrieStore store = new(new TestNodeStorage(new TestMemDb()));
             StorageTree storage = new(store.GetTrieStore(address.ToAccountPath.ToHash256()), LimboLogs.Instance);
             storage.Set(1, ((UInt256)10).ToMinimalBigEndian());
             storage.Commit();
@@ -1318,7 +1318,7 @@ public class FlatWorldStateScopeProviderTests
 
     private static void AssertStorageRoot(TestContext context, UInt256[] values)
     {
-        StorageTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        StorageTree expected = new(new RawScopedTrieStore(new TestNodeStorage(new TestMemDb())), LimboLogs.Instance);
         for (int slot = 0; slot < values.Length; slot++)
         {
             if (!values[slot].IsZero) expected.Set((UInt256)slot, values[slot].ToMinimalBigEndian());
@@ -1392,7 +1392,7 @@ public class FlatWorldStateScopeProviderTests
         }
         scope.Commit(2);
 
-        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestNodeStorage(new TestMemDb())), LimboLogs.Instance);
         for (int slot = 0; slot <= slotCount; slot++) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
         expectedTree.UpdateRootHash();
         foreach (Address address in addresses)
@@ -1450,7 +1450,7 @@ public class FlatWorldStateScopeProviderTests
         FlatDbConfig config = new() { DeferStorageTrieCommit = deferStorageTrieCommit };
         Account baseAccount = new(1, 1);
 
-        RawTrieStore expectedStore = new(new TestMemDb());
+        RawTrieStore expectedStore = new(new TestNodeStorage(new TestMemDb()));
         StateTree expectedState = new(expectedStore.GetTrieStore(null), LimboLogs.Instance);
         StorageTree[] expectedStorages = new StorageTree[contractCount];
         for (int contract = 0; contract < contractCount; contract++)
@@ -1587,7 +1587,7 @@ public class FlatWorldStateScopeProviderTests
         UInt256 slot = 1;
         UInt256 value = 42;
 
-        RawTrieStore expectedStore = new(new TestMemDb());
+        RawTrieStore expectedStore = new(new TestNodeStorage(new TestMemDb()));
         StateTree expectedState = new(expectedStore.GetTrieStore(null), LimboLogs.Instance);
         StorageTree expectedStorage = new(expectedStore.GetTrieStore(TestItem.AddressA.ToAccountPath.ToHash256()), LimboLogs.Instance);
         expectedStorage.Set(slot, value.ToMinimalBigEndian());
@@ -1864,7 +1864,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Compute expected storage root with both slots
         TestMemDb testDb = new();
-        RawScopedTrieStore trieStore = new(testDb);
+        RawScopedTrieStore trieStore = new(new TestNodeStorage(testDb));
         StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
         expectedTree.Set(slot1, value1);
         expectedTree.Set(slot2, value2);
@@ -1920,7 +1920,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Expected: only slot2 should exist (storage was cleared)
         TestMemDb testDb = new();
-        RawScopedTrieStore trieStore = new(testDb);
+        RawScopedTrieStore trieStore = new(new TestNodeStorage(testDb));
         StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
         expectedTree.Set(slot2, value2);
         expectedTree.UpdateRootHash();

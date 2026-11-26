@@ -34,7 +34,7 @@ public class PatriciaTreeBulkSetterTests
         if (Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires parallel trie work.");
 
         using MemDb db = new();
-        RawScopedTrieStore backing = new(db);
+        RawScopedTrieStore backing = new(new TestNodeStorage(db));
         PatriciaTree initial = new(backing, LimboLogs.Instance);
         List<(Hash256 key, byte[] value)> items = GenRandomOfLength(4096);
         foreach ((Hash256 key, byte[] value) in items) initial.Set(key.Bytes, value);
@@ -100,7 +100,7 @@ public class PatriciaTreeBulkSetterTests
             observedScopes.Add(ParallelUnbalancedWork.WorkerScope.Current);
             return new CappedArray<byte>(new byte[call.Arg<int>()]);
         });
-        PatriciaTree tree = new(new RawScopedTrieStore(db), Keccak.EmptyTreeHash, true, LimboLogs.Instance, pool);
+        PatriciaTree tree = new(new RawScopedTrieStore(new TestNodeStorage(db)), Keccak.EmptyTreeHash, true, LimboLogs.Instance, pool);
         tree.Set(Keccak.EmptyTreeHash.Bytes, [42]);
         using ParallelUnbalancedWork.WorkerScope outer = inheritedScope ? ParallelUnbalancedWork.BeginWorkerScope(2) : null;
 
@@ -119,14 +119,14 @@ public class PatriciaTreeBulkSetterTests
     private const int MissingDepth = 3;
 
     [Test]
-    public void Write_after_a_failed_parallel_bulk_set_on_the_same_thread_is_applied([Values(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)] INodeStorage.KeyScheme scheme)
+    public void Write_after_a_failed_parallel_bulk_set_on_the_same_thread_is_applied()
     {
         if (Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires parallel trie work.");
 
         using MemDb db = new();
-        (Hash256 root, List<(Hash256 key, byte[] value)> updates) = OnNewThread(() => CreatePrefixedTree(db, scheme));
+        (Hash256 root, List<(Hash256 key, byte[] value)> updates) = OnNewThread(() => CreatePrefixedTree(db));
         (Hash256 key, byte[] value) write = updates[0];
-        Hash256 expected = OnNewThread(() => SetOneByOne(CreateTree(db, scheme, root), [write]));
+        Hash256 expected = OnNewThread(() => SetOneByOne(CreateTree(db, root), [write]));
 
         (Exception failure, Hash256 actual) = OnNewThread(() =>
         {
@@ -134,10 +134,10 @@ public class PatriciaTreeBulkSetterTests
             // A budget of one runs every job on this thread, so the job that throws hands its stack back here.
             using (ParallelUnbalancedWork.BeginWorkerScope(1))
             {
-                failed = TryBulkSet(CreateTree(db, scheme, root, missingDepth: MissingDepth), updates);
+                failed = TryBulkSet(CreateTree(db, root, missingDepth: MissingDepth), updates);
             }
 
-            return (failed, SetOneByOne(CreateTree(db, scheme, root), [write]));
+            return (failed, SetOneByOne(CreateTree(db, root), [write]));
         });
 
         using (Assert.EnterMultipleScope())
@@ -148,13 +148,13 @@ public class PatriciaTreeBulkSetterTests
     }
 
     [Test]
-    public void Parallel_bulk_set_on_a_worker_that_ran_a_failed_job_computes_the_right_root([Values(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)] INodeStorage.KeyScheme scheme)
+    public void Parallel_bulk_set_on_a_worker_that_ran_a_failed_job_computes_the_right_root()
     {
         if (Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires parallel trie work.");
 
         using MemDb db = new();
-        (Hash256 root, List<(Hash256 key, byte[] value)> updates) = OnNewThread(() => CreatePrefixedTree(db, scheme));
-        Hash256 expected = OnNewThread(() => SetOneByOne(CreateTree(db, scheme, root), updates));
+        (Hash256 root, List<(Hash256 key, byte[] value)> updates) = OnNewThread(() => CreatePrefixedTree(db));
+        Hash256 expected = OnNewThread(() => SetOneByOne(CreateTree(db, root), updates));
 
         using Rendezvous failingJobs = new();
         using Rendezvous laterJobs = new();
@@ -177,12 +177,12 @@ public class PatriciaTreeBulkSetterTests
                 using (new ParallelUnbalancedWork.WorkerScope(2, runners.Add))
                 {
                     // Each thread's job reaches a missing node before either throws, so both threads end up with a failed job.
-                    PatriciaTree failing = CreateTree(db, scheme, root, missingDepth: MissingDepth,
+                    PatriciaTree failing = CreateTree(db, root, missingDepth: MissingDepth,
                         onLoad: path => { if (path.Length >= MissingDepth) failingJobs.Arrive(); });
                     Exception failed = TryBulkSet(failing, updates);
 
                     // An unrelated tree on the same threads; each of them takes a job before either goes on.
-                    PatriciaTree later = CreateTree(db, scheme, root, onLoad: path => { if (path.Length >= 1) laterJobs.Arrive(); });
+                    PatriciaTree later = CreateTree(db, root, onLoad: path => { if (path.Length >= 1) laterJobs.Arrive(); });
                     Exception laterFailed = TryBulkSet(later, updates);
                     if (laterFailed is null) later.UpdateRootHash();
                     return (failed, laterFailed, later.RootHash);
@@ -211,10 +211,10 @@ public class PatriciaTreeBulkSetterTests
     /// second nibble is below 9: 144 entries over all 16 first nibbles, so a bulk set of them runs in parallel, and one
     /// entry per depth-2 node, so each job writes it with a single walk from that node.
     /// </summary>
-    private static (Hash256 root, List<(Hash256 key, byte[] value)> updates) CreatePrefixedTree(MemDb db, INodeStorage.KeyScheme scheme)
+    private static (Hash256 root, List<(Hash256 key, byte[] value)> updates) CreatePrefixedTree(MemDb db)
     {
         Random rng = new(1);
-        PatriciaTree tree = CreateTree(db, scheme, Keccak.EmptyTreeHash);
+        PatriciaTree tree = CreateTree(db, Keccak.EmptyTreeHash);
         List<(Hash256 key, byte[] value)> updates = [];
         for (int prefix = 0; prefix < 256; prefix++)
         {
@@ -232,8 +232,8 @@ public class PatriciaTreeBulkSetterTests
         return (tree.RootHash, updates);
     }
 
-    private static PatriciaTree CreateTree(MemDb db, INodeStorage.KeyScheme scheme, Hash256 root, int missingDepth = int.MaxValue, Action<TreePath> onLoad = null) =>
-        new(new FailingTrieStore(new RawScopedTrieStore(new NodeStorage(db, scheme)), missingDepth, onLoad), root, true, LimboLogs.Instance);
+    private static PatriciaTree CreateTree(MemDb db, Hash256 root, int missingDepth = int.MaxValue, Action<TreePath> onLoad = null) =>
+        new(new FailingTrieStore(new RawScopedTrieStore(new TestNodeStorage(db)), missingDepth, onLoad), root, true, LimboLogs.Instance);
 
     private static Hash256 SetOneByOne(PatriciaTree tree, List<(Hash256 key, byte[] value)> items)
     {
@@ -1062,7 +1062,6 @@ public class PatriciaTreeBulkSetterTests
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => baseTrieStore.GetStorageTrieNodeResolver(address);
 
-        public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
 
         public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) => baseTrieStore.BeginCommit(root, writeFlags);
     }

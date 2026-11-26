@@ -508,7 +508,7 @@ public class E2ESyncTests(bool isPostMerge)
     [Category("Flaky"), Retry(2)]
     public async Task ForkchoiceUpdated_head_on_top_of_a_block_left_unprocessed_is_processed_by_sync()
     {
-        if (!isPostMerge || dbMode != DbMode.Default)
+        if (!isPostMerge)
         {
             Assert.Ignore("Engine API recovery is covered on the default post-merge fixture.");
         }
@@ -635,7 +635,7 @@ public class E2ESyncTests(bool isPostMerge)
     [Category("Flaky"), Retry(2)]
     public async Task SnapSync_with_unwindowed_history_writes_the_pivot_state_as_rows_that_rebuild_the_headers()
     {
-        if (!isPostMerge || dbMode != DbMode.Flat) Assert.Ignore("Unwindowed history at a snap pivot is a flat post-merge feature.");
+        if (!isPostMerge) Assert.Ignore("Unwindowed history at a snap pivot is a flat post-merge feature.");
 
         await RunWithTimeout(PivotHistoryTestTimeout, async cancellationToken =>
         {
@@ -830,7 +830,7 @@ public class E2ESyncTests(bool isPostMerge)
     [Category("Flaky"), Retry(2)]
     public async Task FullSync_catches_up_finalized_blocks_from_block_access_lists()
     {
-        if (!isPostMerge || dbMode is not (DbMode.Default or DbMode.Flat))
+        if (!isPostMerge)
         {
             Assert.Ignore("Finalized BAL catch-up is covered on the post-merge trie and flat fixtures.");
         }

@@ -479,7 +479,7 @@ public class GuestWorldStateTests
     private static (IWorldState State, BlockHeader Base) CreatePreState(bool guest, Action<WorldState> addState = null, MemDb codeDb = null)
     {
         TrieStoreScopeProvider scopeProvider = new(
-            new TestRawTrieStore(new NodeStorage(new MemDb())), codeDb ?? new MemDb(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
+            new TestRawTrieStore(new MemDb()), codeDb ?? new MemDb(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
         WorldState builder = new(scopeProvider, LimboLogs.Instance);
 
         BlockHeader baseBlock;

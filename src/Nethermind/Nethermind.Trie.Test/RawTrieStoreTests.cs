@@ -22,8 +22,11 @@ public class RawTrieStoreTests
         ValueHash256 hash = Keccak.Compute("node").ValueHash256;
 
         byte[] emptyRoot = storage.Get(null, TreePath.Empty, Keccak.EmptyTreeHash.ValueHash256)!;
-        Assert.That(emptyRoot, Is.EqualTo(new byte[] { 128 }));
-        Assert.That(storage.KeyExists(null, TreePath.Empty, Keccak.EmptyTreeHash.ValueHash256), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(emptyRoot, Is.EqualTo(new byte[] { 128 }));
+            Assert.That(storage.KeyExists(null, TreePath.Empty, Keccak.EmptyTreeHash.ValueHash256), Is.True);
+        }
 
         emptyRoot[0] = 0;
         Assert.That(storage.Get(null, TreePath.Empty, Keccak.EmptyTreeHash.ValueHash256), Is.EqualTo(new byte[] { 128 }));
@@ -85,7 +88,7 @@ public class RawTrieStoreTests
     [Test]
     public void Every_lookup_gets_its_own_node()
     {
-        RawTrieStore store = new(new MemDb());
+        RawTrieStore store = new(new MemoryNodeStorage());
         IScopedTrieStore scoped = store.GetTrieStore(null);
         TrieNode first = store.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA);
         TrieNode firstScoped = scoped.FindCachedOrUnknown(TreePath.Empty, TestItem.KeccakA);
@@ -100,7 +103,7 @@ public class RawTrieStoreTests
     [Test]
     public void Keys_longer_than_32_bytes_can_be_set_and_read([Values(33, 40, 64, 65)] int keyLength)
     {
-        PatriciaTree patriciaTree = new(new RawTrieStore(new MemDb()).GetTrieStore(null), LimboLogs.Instance);
+        PatriciaTree patriciaTree = new(new RawTrieStore(new MemoryNodeStorage()).GetTrieStore(null), LimboLogs.Instance);
         byte[] key = new byte[keyLength];
         key[^1] = 1;
         byte[] value = TestItem.KeccakA.BytesToArray();

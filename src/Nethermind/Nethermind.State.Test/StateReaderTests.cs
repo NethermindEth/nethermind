@@ -18,6 +18,8 @@ using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
@@ -267,7 +269,7 @@ namespace Nethermind.Store.Test
             get
             {
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
-                    Assert.That(r.CollectStats(h, new MemDb(), Logger).AccountCount, Is.EqualTo(1)))).SetName("CollectStats");
+                    Assert.That(r.CollectStats(h, new MemDb(), LimboLogs.Instance).AccountCount, Is.EqualTo(1)))).SetName("CollectStats");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
                     r.RunTreeVisitor(new TrieStatsCollector(new MemDb(), LimboLogs.Instance), h, visitingOptions: null, diagnostics: null))).SetName("RunTreeVisitor");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>

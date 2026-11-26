@@ -6,6 +6,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
 using System;
@@ -34,6 +35,11 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
+using Nethermind.State.Flat.Sync;
+using Nethermind.State.Healing;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Test.FastSync;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Proofs;
 using Nethermind.State.SnapServer;
@@ -1135,7 +1141,7 @@ public class SnapProviderTests
 
         TestRawTrieStore sourceStore = new(new TestMemDb());
         StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
-        SnapStateServer server = new(sourceStore.AsReadOnly(), LimboLogs.Instance);
+        TestTrieSnapStateServer server = new(sourceStore, LimboLogs.Instance);
         SortedDictionary<ValueHash256, Account> accounts = [];
         Dictionary<ValueHash256, StorageTree> storages = [];
         for (int i = 0; i < 40; i++)
@@ -1233,7 +1239,6 @@ public class SnapProviderTests
 
         Hash256 CommitSource(ulong blockNumber)
         {
-            using IBlockCommitter _ = sourceStore.BeginBlockCommit(blockNumber);
             foreach ((ValueHash256 path, StorageTree storage) in storages)
             {
                 storage.Commit();
@@ -1283,7 +1288,6 @@ public class SnapProviderTests
         {
             storage.Set(toggledSlot, [toggledValue]);
             storage.Set(counterSlot, [(byte)blockNumber]);
-            using (sourceStore.BeginBlockCommit(blockNumber))
             {
                 storage.Commit();
                 sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
@@ -1311,7 +1315,7 @@ public class SnapProviderTests
 
         TestRawTrieStore sourceStore = new(new TestMemDb());
         StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
-        SnapStateServer server = new(sourceStore.AsReadOnly(), LimboLogs.Instance);
+        TestTrieSnapStateServer server = new(sourceStore, LimboLogs.Instance);
         Dictionary<ValueHash256, Account> accounts = [];
         for (int i = 0; i < 8; i++) accounts[Keccak.Compute(i.ToBigEndianByteArray())] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
         ValueHash256 owner = accounts.Keys.First();
@@ -1354,7 +1358,6 @@ public class SnapProviderTests
 
         BlockHeader CommitSource(ulong blockNumber)
         {
-            using (sourceStore.BeginBlockCommit(blockNumber))
             {
                 storage.Commit();
                 accounts[owner] = accounts[owner].WithChangedStorageRoot(storage.RootHash);
@@ -1420,7 +1423,6 @@ public class SnapProviderTests
             storage.Set(leafSlot, [value]);
             storage.Set(deeperSlot, [value]);
             storage.Set(counterSlot, [(byte)blockNumber]);
-            using (sourceStore.BeginBlockCommit(blockNumber))
             {
                 storage.Commit();
                 sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
@@ -1479,7 +1481,6 @@ public class SnapProviderTests
         BlockHeader CommitSource(ulong blockNumber, params (ValueHash256 Slot, byte Value)[] slots)
         {
             foreach ((ValueHash256 slot, byte value) in slots) storage.Set(slot, [value]);
-            using (sourceStore.BeginBlockCommit(blockNumber))
             {
                 storage.Commit();
                 sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
@@ -1537,7 +1538,6 @@ public class SnapProviderTests
         BlockHeader CommitSource(ulong blockNumber, byte slotValue, bool withSibling)
         {
             storage.Set(changedSlot, [slotValue]);
-            using (sourceStore.BeginBlockCommit(blockNumber))
             {
                 storage.Commit();
                 sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
@@ -1616,7 +1616,6 @@ public class SnapProviderTests
         BlockHeader CommitSource(ulong blockNumber, params byte[] values)
         {
             for (int i = 0; i < slots.Length; i++) storage.Set(slots[i], [values[i]]);
-            using (sourceStore.BeginBlockCommit(blockNumber))
             {
                 storage.Commit();
                 witnessStorage.Commit();
@@ -1694,7 +1693,6 @@ public class SnapProviderTests
         BlockHeader CommitSource(ulong blockNumber, byte slotValue, bool withNeighbor)
         {
             foreach (ValueHash256 slot in slots) storage.Set(slot, [slotValue]);
-            using (sourceStore.BeginBlockCommit(blockNumber))
             {
                 storage.Commit();
                 witnessStorage.Commit();
@@ -1759,7 +1757,7 @@ public class SnapProviderTests
 
         TestRawTrieStore sourceStore = new(new TestMemDb());
         StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
-        SnapStateServer server = new(sourceStore.AsReadOnly(), LimboLogs.Instance);
+        TestTrieSnapStateServer server = new(sourceStore, LimboLogs.Instance);
         Dictionary<Address, Account> accounts = [];
         Dictionary<Address, StorageTree> storages = [];
         for (int i = 0; i < accountCount; i++)
@@ -1908,9 +1906,9 @@ public class SnapProviderTests
             syncModeSelector.WaitUntilMode(Arg.Any<Func<SyncMode, bool>>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             syncPeerPool.InitializedPeers.Returns([]);
-            return new StateSyncRunner(snapSyncRunner, factory, healing, new StateHealingStrategy(syncConfig, new Lazy<IBalHealing>(healing), LimboLogs.Instance),
+            return new StateSyncRunner(snapSyncRunner, factory, healing, new StateHealingStrategy(syncConfig, LimboLogs.Instance),
                 new BalFetcher(syncPeerPool, blockTree, observedBals, syncConfig, LimboLogs.Instance), pivot, blockTree, null!, null!, syncConfig, syncModeSelector,
-                Substitute.For<ISyncProgressResolver>(), Substitute.For<IBeaconSyncStrategy>(), syncPeerPool, timestamper, null, null, LimboLogs.Instance);
+                Substitute.For<ISyncProgressResolver>(), Substitute.For<IBeaconSyncStrategy>(), syncPeerPool, timestamper, null, LimboLogs.Instance);
 
             void StopIf(HealingStop at)
             {
@@ -1959,7 +1957,6 @@ public class SnapProviderTests
 
         Hash256 CommitSource(ulong blockNumber)
         {
-            using IBlockCommitter _ = sourceStore.BeginBlockCommit(blockNumber);
             foreach ((Address address, StorageTree storage) in storages)
             {
                 storage.Commit();
@@ -2245,19 +2242,19 @@ public class SnapProviderTests
     private static (ISnapStateServer, Hash256) BuildSnapServerFromEntries((Hash256, Account)[] entries)
     {
         SnapshotableMemColumnsDb<FlatDbColumns> columns = new();
-        RocksDbPersistence persistence = new(columns, LimboLogs.Instance);
-        FlatSnapTrieFactory factory = new(persistence, new TestSyncConfig(), LimboLogs.Instance);
+        RocksDbPersistence persistence = new(columns, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        FlatSnapTrieFactory factory = new(persistence, Substitute.For<IPersistenceManager>(), columns, new MemDb(), new TestSyncConfig(), LimboLogs.Instance);
         Hash256 root;
 
         using (ISnapTree<PathWithAccount> stateTree = factory.CreateStateTree())
         {
             PathWithAccount[] accounts = entries
-                .Select(static entry => new PathWithAccount(entry.Item1, entry.Item2))
+                .Select(static entry => new PathWithAccount(entry.Item1, entry.Item2.ToStruct()))
                 .ToArray();
             Array.Sort(accounts, static (left, right) => left.Path.CompareTo(right.Path));
             stateTree.BulkSetAndUpdateRootHash(accounts);
             root = stateTree.RootHash;
-            stateTree.Commit(ValueKeccak.MaxValue);
+            stateTree.Commit(ValueKeccak.Zero, ValueKeccak.MaxValue);
         }
 
         // Flat snap trees intentionally omit the root node because the sync target receives it from the
@@ -2277,12 +2274,12 @@ public class SnapProviderTests
 
         StateId stateId = new(0, root.ValueHash256);
         IFlatDbManager flatDbManager = Substitute.For<IFlatDbManager>();
-        flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
+        flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>(), Arg.Any<ReaderFlags>())
             .Returns(_ => new ReadOnlySnapshotBundle(
                 new SnapshotPooledList(0),
                 persistence.CreateReader(),
                 recordDetailedMetrics: false,
-                PersistedSnapshotStack.Empty()));
+                PersistedSnapshotStack.Empty(), bufferPin: null));
 
         IFlatStateRootIndex stateRootIndex = Substitute.For<IFlatStateRootIndex>();
         stateRootIndex.TryGetStateId(Arg.Any<Hash256>(), out Arg.Any<StateId>())

@@ -157,40 +157,6 @@ public class FlatStateReaderTests
         }
     }
 
-    [Test]
-    public void Reads_what_the_reader_cannot_read_flat_with_the_trie_of_the_bundle([Values] bool persistedSnapshot)
-    {
-        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA, TestItem.AddressC);
-        trieReader.Cursor = MigrationCursor.Start;
-        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        ResourcePool pool = new(new FlatDbConfig());
-        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
-        // The snapshot holds the branch root, A's leaf below it and A's storage root; only persistence holds C's leaf and storage root.
-        trieReader.AddNodesTo(snapshot, TestItem.AddressA, TreePath.Empty, FlatTestHelpers.CanonicalPath(Keccak.Compute(TestItem.AddressA.Bytes), 1));
-        using TempPath arenaPath = TempPath.GetTempDirectory();
-        using TempPath blobsPath = TempPath.GetTempDirectory();
-        using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaPath.Path);
-        using BlobArenaManager blobs = new(blobsPath.Path, 4L * 1024 * 1024);
-        using PersistedSnapshot? persisted = persistedSnapshot
-            ? TestFixtureHelpers.CreatePersistedSnapshot(arena, blobs, snapshot.From, snapshot.To, PersistedSnapshotBuilderTestExtensions.Build(snapshot, blobs))
-            : null;
-        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, persistedSnapshot ? null : snapshot, persisted));
-
-        bool foundA = reader.TryGetAccount(header, TestItem.AddressA, out AccountStruct accountA);
-        reader.GetStorage(header, TestItem.AddressA, 1, out UInt256 slotA);
-        (int StateLoads, int StorageLoads) loadsForA = (trieReader.StateRlpLoads, trieReader.StorageRlpLoads);
-        bool foundC = reader.TryGetAccount(header, TestItem.AddressC, out AccountStruct accountC);
-        reader.GetStorage(header, TestItem.AddressC, 1, out UInt256 slotC);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((foundA, accountA.Balance, slotA), Is.EqualTo((true, UInt256.One, UInt256.One)));
-            Assert.That((foundC, accountC.Balance, slotC), Is.EqualTo((true, UInt256.One, UInt256.One)));
-            Assert.That(loadsForA, Is.EqualTo((0, 0)), "A is read from the snapshot alone");
-            // C's leaf is loaded twice: for the account and for the storage root its slot read needs.
-            Assert.That((trieReader.StateRlpLoads, trieReader.StorageRlpLoads), Is.EqualTo((2, 1)));
-        }
-    }
 
     [Test]
     public void RunTreeVisitor_ReportsTheAccountOfEachStorageTrie([Values(1, 4)] int parallelism)
@@ -360,18 +326,17 @@ public class FlatStateReaderTests
         public int StorageRlpLoads { get; private set; }
         public bool StateAvailable { get; set; } = true;
         public bool StorageAvailable { get; set; } = true;
-        public MigrationCursor? Cursor { get; set; }
 
         /// <summary>A reader over a state trie of <paramref name="addresses"/>, each with a balance of 1 and slot 1 set to 1.</summary>
         public static CountingTrieReader WithAccountsAndSlot(out Hash256 stateRoot, params Address[] addresses)
         {
             MemDb trieDb = new();
-            StateTree stateTree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
+            StateTree stateTree = new(new RawScopedTrieStore(new TestNodeStorage(trieDb)), LimboLogs.Instance);
             Dictionary<Hash256, StorageTree> storageTrees = [];
             foreach (Address address in addresses)
             {
                 Hash256 addressHash = Keccak.Compute(address.Bytes);
-                StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
+                StorageTree storageTree = new(new RawScopedTrieStore(new TestNodeStorage(trieDb), addressHash), LimboLogs.Instance);
                 storageTree.Set(1, [0x01]);
                 storageTree.Commit();
                 storageTrees[addressHash] = storageTree;
@@ -438,7 +403,7 @@ public class FlatStateReaderTests
 
         public Account? GetAccount(Address address) => null;
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
-        public MigrationCursor? GetMigrationCursor() => Cursor;
+        public MigrationCursor? GetMigrationCursor() => null;
         public StateId CurrentState => new(5, Keccak.EmptyTreeHash);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;

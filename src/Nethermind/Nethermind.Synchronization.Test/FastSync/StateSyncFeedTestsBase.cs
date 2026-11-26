@@ -26,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;

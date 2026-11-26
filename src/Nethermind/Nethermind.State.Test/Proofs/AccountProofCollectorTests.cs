@@ -142,7 +142,7 @@ namespace Nethermind.Store.Test.Proofs
         {
             const ulong slots = 4096;
             IDb memDb = new MemDb();
-            StorageTree storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(new RawScopedTrieStore(new TestNodeStorage(memDb), TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
             byte[] value = new byte[8];
             for (ulong i = 0; i < slots; i++)
             {
@@ -150,7 +150,7 @@ namespace Nethermind.Store.Test.Proofs
                 storageTree.Set(new UInt256(i), value);
             }
             storageTree.Commit();
-            StateTree tree = new(new RawScopedTrieStore(memDb), LimboLogs.Instance);
+            StateTree tree = new(new RawScopedTrieStore(new TestNodeStorage(memDb)), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
             tree.Set(TestItem.AddressB, Build.An.Account.WithBalance(2).TestObject);
             tree.Commit();

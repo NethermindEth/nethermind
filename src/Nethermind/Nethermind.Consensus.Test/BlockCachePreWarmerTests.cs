@@ -600,7 +600,6 @@ public class BlockCachePreWarmerTests
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
-        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
 
         using ManualResetEventSlim gate = new(initialState: false);
         using CountdownEvent txScopesInFlight = new(2);
@@ -613,7 +612,6 @@ public class BlockCachePreWarmerTests
             minPoolSize: 4,
             concurrency: 2,
             parallelExecutionBatchRead: true,
-            nodeStorageCache,
             preBlockCaches,
             LimboLogs.Instance);
 
@@ -3536,7 +3534,6 @@ public class BlockCachePreWarmerTests
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
-        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
         const int senders = 8;
         const int workers = 2;
         Block block = BuildOneTxPerSenderBlock(senders, 1.Wei);
@@ -3552,7 +3549,7 @@ public class BlockCachePreWarmerTests
                 if (!scope.WorldState.GetBalance(TestItem.AddressC).IsZero) Interlocked.Increment(ref jobsSeeingEarlierJobs);
             });
         using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 10, concurrency: workers,
-            parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+            parallelExecutionBatchRead: true, preBlockCaches, LimboLogs.Instance);
 
         await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
 
@@ -3573,13 +3570,12 @@ public class BlockCachePreWarmerTests
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
-        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
         const int senders = 8;
         int warmups = 0;
         using ManualResetEventSlim openGate = new(initialState: true);
         WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate, () => Interlocked.Increment(ref warmups));
         using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 10, concurrency: 2,
-            parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+            parallelExecutionBatchRead: true, preBlockCaches, LimboLogs.Instance);
 
         await RunPreWarmCaches(preWarmer, BuildOneTxPerSenderBlock(senders, 1.Wei, excessBlobGas: ulong.MaxValue), BuildParentHeader(), Osaka.Instance);
         Assert.That(warmups, Is.Zero, "a block whose context cannot be built must not be warmed");

@@ -101,9 +101,10 @@ public class FlatSameBlockDestroyTests
         using IContainer flatContainer = container;
         BlockHeader flatHeader = RemoveAndFundInOneBlock(flatWorldState, markDestroyed: true, recreatedBeforeRemoval);
 
-        (IWorldState trieWorldState, IStateReader trieReader) = TestWorldStateFactory.CreateForTestWithStateReader();
+        IWorldState trieWorldState = TestWorldStateFactory.CreateForTest();
         BlockHeader trieHeader = RemoveAndFundInOneBlock(trieWorldState, markDestroyed: false, recreatedBeforeRemoval);
-        trieReader.GetStorage(trieHeader, Contract, 1, out UInt256 trieValue);
+        using IDisposable trieScope = trieWorldState.BeginScope(trieHeader);
+        trieWorldState.Get(new StorageCell(Contract, 1), out UInt256 trieValue);
 
         using (Assert.EnterMultipleScope())
         {

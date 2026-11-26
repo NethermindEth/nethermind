@@ -452,6 +452,19 @@ public partial struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         pathBytes[7] = (byte)(pathBytes[7] & 0xf0);
         return new TreePath(new ValueHash256(pathBytes), length);
     }
+    public readonly byte[] ToNibble()
+    {
+        if ((Length & 1) != 0)
+        {
+            Span<byte> theNibbles = stackalloc byte[Length + 1];
+            Nibbles.BytesToNibbleBytes(Span[..((Length + 1) / 2)], theNibbles);
+            return theNibbles[..Length].ToArray();
+        }
+
+        byte[] nibbles = GC.AllocateUninitializedArray<byte>(Length);
+        Nibbles.BytesToNibbleBytes(Span[..(Length / 2)], nibbles);
+        return nibbles;
+    }
 }
 
 public static class TreePathExtensions
@@ -462,4 +475,6 @@ public static class TreePathExtensions
         path.AppendMut(nibbles);
         return new TreePath.AppendScope(previousLength, ref path);
     }
+
+
 }

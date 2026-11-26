@@ -441,6 +441,7 @@ public class MetricsTests
             TestErrorLogManager logManager = new();
             await using IContainer container = new ContainerBuilder()
                 .AddModule(new MonitoringModule())
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IMetricsConfig>(metricsConfig)
                 .AddSingleton<ISyncConfig>(new SyncConfig())
                 .AddSingleton<IFlatDbConfig>(new FlatDbConfig())
@@ -487,7 +488,8 @@ public class MetricsTests
         {
             MetricsConfig metricsConfig = new() { Enabled = true };
             await using IContainer container = new ContainerBuilder()
-                .AddModule(new MonitoringModule(metricsConfig))
+                .AddModule(new MonitoringModule())
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IMetricsConfig>(metricsConfig)
                 .AddSingleton<ISyncConfig>(new SyncConfig())
                 .AddSingleton<IFlatDbConfig>(new FlatDbConfig { HistoryEnabled = historyEnabled })

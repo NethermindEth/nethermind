@@ -325,7 +325,7 @@ public class FlatStateActivationPolicyTests
 
         CreatePolicy(syncConfig: syncConfig, flatDb: flatDb);
 
-        Assert.That(flatDb.Events, Is.EqualTo(new[] { SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent }));
+        Assert.That(flatDb.Events, Is.EqualTo(new[] { SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent }));
     }
 
     private static FlatStateActivationPolicy CreatePolicy(
@@ -387,7 +387,7 @@ public class FlatStateActivationPolicyTests
     {
         SpyFlatColumnsDb flatDb = new() { WasRepairedOnOpen = repaired };
         if (flatState is { } state)
-            new RocksDbPersistence(flatDb, LimboLogs.Instance).CreateWriteBatch(StateId.PreGenesis, state, WriteFlags.None).Dispose();
+            new RocksDbPersistence(flatDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateWriteBatch(StateId.PreGenesis, state, WriteFlags.None).Dispose();
         if (wipedForSync)
             MarkWipedForSync(flatDb);
         if (flatDataKeys)

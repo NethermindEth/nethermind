@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -34,7 +35,7 @@ public class PersistedStateAccountSourceTests
     {
         _loads = 0;
         using MemDb trieDb = new();
-        StateTree tree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
+        StateTree tree = new(new RawScopedTrieStore(new TestNodeStorage(trieDb)), LimboLogs.Instance);
         _accounts = [];
         Random random = new(42);
         byte[] addressBytes = new byte[Address.Size];

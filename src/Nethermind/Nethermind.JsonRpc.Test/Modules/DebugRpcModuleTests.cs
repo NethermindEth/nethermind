@@ -76,7 +76,7 @@ public partial class DebugRpcModuleTests
         List<Transaction> executed = [];
         bool history = scenario is "uninitialized-completed-history" or "uninitialized-unfinished-history";
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
-            .WithFlatDb(false)
+
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream })
             .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 0 })
             .Build(builder =>
@@ -150,7 +150,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceTransaction_indexing_inflight_retained_boundary([Values] bool stream)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
-            .WithFlatDb(false)
+
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream })
             .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 1 })
             .Build();
@@ -212,7 +212,7 @@ public partial class DebugRpcModuleTests
         [Values] bool stream)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
-            .WithFlatDb(false)
+
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream }).Build();
         Block block = chain.BlockTree.Head!;
         using (Assert.EnterMultipleScope())

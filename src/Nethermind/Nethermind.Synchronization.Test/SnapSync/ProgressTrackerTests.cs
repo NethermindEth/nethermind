@@ -630,7 +630,7 @@ public class ProgressTrackerTests
         IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
         pivot.Diff.Returns(diff);
         SyncConfig syncConfig = new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1, StateMinDistanceFromHead = 32UL };
-        using ProgressTracker progressTracker = new(syncConfig, pivot, LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(Substitute.For<ISnapTrieFactory>(), syncConfig, pivot, LimboLogs.Instance);
 
         progressTracker.UpdatePivot();
 

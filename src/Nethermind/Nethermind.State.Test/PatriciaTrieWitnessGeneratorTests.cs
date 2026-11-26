@@ -28,7 +28,7 @@ public class PatriciaTrieWitnessGeneratorTests
         int expectedBudget = budget != 0 ? budget : parallelize ? Core.Cpu.RuntimeInformation.ProcessorCount : 0;
         CollectingSink sink = new(() => Assert.That(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0, Is.EqualTo(expectedBudget)));
 
-        PatriciaTrieWitnessGenerator.Generate(new RawScopedTrieStore(db), root, BuildEntries(scenario), sink, parallelize);
+        PatriciaTrieWitnessGenerator.Generate(new RawScopedTrieStore(new TestNodeStorage(db)), root, BuildEntries(scenario), sink, parallelize);
 
         using (Assert.EnterMultipleScope())
         {

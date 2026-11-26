@@ -630,7 +630,7 @@ public class PrewarmerReadAheadTests
             PreWarmStateConcurrency = 2,
             PreWarmInFlightReadAhead = readAhead
         };
-        using BlockCachePreWarmer preWarmer = new(_scope.Resolve<PrewarmerEnvFactory>(), config, _scope.Resolve<NodeStorageCache>(), _caches, LimboLogs.Instance);
+        using BlockCachePreWarmer preWarmer = new(_scope.Resolve<PrewarmerEnvFactory>(), config, _caches, LimboLogs.Instance);
         Block block = BuildBlock(WalkerCall(TestItem.PrivateKeyA, 0, 0x5000, 6), Transfer(TestItem.PrivateKeyB, 0), Transfer(TestItem.PrivateKeyC, 0));
         bool listening;
         using (OpenSession(preWarmer, block))
@@ -806,7 +806,6 @@ public class PrewarmerReadAheadTests
             minPoolSize: 4,
             concurrency: concurrency,
             parallelExecutionBatchRead: true,
-            _scope.Resolve<NodeStorageCache>(),
             _caches,
             LimboLogs.Instance,
             senderRecovery: senderRecovery,

@@ -88,10 +88,10 @@ public class SnapSyncRunnerTests
         batch.Dispose();
     }
 
-    private static ProgressTracker CreateProgressTracker()
+    private static ProgressTracker CreateProgressTracker(ISnapTrieFactory? factory = null)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
         SyncConfig syncConfig = new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 };
-        return new(syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+        return new(factory ?? Substitute.For<ISnapTrieFactory>(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }
