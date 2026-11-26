@@ -27,6 +27,7 @@ using Nethermind.Network.Config;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Hive.Test
 {
@@ -64,7 +65,7 @@ namespace Nethermind.Hive.Test
         }
 
         [Test]
-        public void Enables_blob_proof_translation_for_hive_devp2p()
+        public void Configures_tx_pool_for_hive()
         {
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider: new ConfigProvider(new TxPoolConfig())))
@@ -73,7 +74,11 @@ namespace Nethermind.Hive.Test
 
             ITxPoolConfig txPoolConfig = container.Resolve<ITxPoolConfig>();
 
-            Assert.That(txPoolConfig.ProofsTranslationEnabled, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(txPoolConfig.ProofsTranslationEnabled, Is.True);
+                Assert.That(txPoolConfig.AcceptTxWhenNotSynced, Is.True);
+            }
         }
 
         [Test]
@@ -161,6 +166,32 @@ namespace Nethermind.Hive.Test
                 .Build();
 
             return container.Resolve<IKeyStoreConfig>();
+        }
+
+        [Test]
+        public void Start_removes_its_handlers([Values] bool chainFileUnreadable)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            IOException readFailure = new("unreadable");
+            fileSystem.File.Exists(Arg.Any<string>()).Returns(chainFileUnreadable);
+            fileSystem.File.ReadAllBytes(Arg.Any<string>()).Returns(_ => throw readFailure);
+            HiveRunner hiveRunner = new(
+                blockTree,
+                blockProcessingQueue,
+                new HiveConfig { BlocksDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")) },
+                LimboLogs.Instance,
+                fileSystem,
+                Substitute.For<IBlockValidator>());
+
+            IResolveConstraint startOutcome = chainFileUnreadable ? Throws.Exception.SameAs(readFailure) : Throws.Nothing;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => hiveRunner.Start(CancellationToken.None), startOutcome);
+                blockTree.Received(1).NewBestSuggestedBlock -= Arg.Any<EventHandler<BlockEventArgs>>();
+                blockProcessingQueue.Received(1).BlockRemoved -= Arg.Any<EventHandler<BlockRemovedEventArgs>>();
+            }
         }
 
         [Test]

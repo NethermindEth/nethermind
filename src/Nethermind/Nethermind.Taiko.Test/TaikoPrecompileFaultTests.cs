@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -24,12 +26,14 @@ using NUnit.Framework;
 namespace Nethermind.Taiko.Test;
 
 /// <summary>
-/// A KZG setup fault or running out of memory in a context-aware precompile is a node fault, so it must escape the Taiko VM's
-/// precompile dispatch that turns every other exception into a failed call.
+/// The Taiko VM's dispatch of a context-aware precompile handles an exception in this order: a native library that cannot
+/// be used ends the process; a KZG setup fault or running out of memory is a node fault, so it escapes; any other exception
+/// fails the call. Within a node fault, only a missing library directly in it or one level down ends the process.
 /// </summary>
 public class TaikoPrecompileFaultTests : VirtualMachineTestsBase
 {
     private const int CallGas = 100_000;
+    private const string NativeLoadFailureChildArgument = "--nethermind-taiko-precompile-native-load-failure";
 
     private TaikoEthereumVirtualMachine _taikoMachine = null!;
 
@@ -53,6 +57,8 @@ public class TaikoPrecompileFaultTests : VirtualMachineTestsBase
         yield return new KzgSetupUnavailableException("KZG trusted setup failed to load");
         yield return new OutOfMemoryException();
         yield return new TypeInitializationException("Precompile", new OutOfMemoryException());
+        // A missing library two levels down in a node fault does not end the process.
+        yield return new KzgSetupUnavailableException("KZG trusted setup failed to load", new TypeInitializationException("Precompile", new DllNotFoundException("missing library")));
     }
 
     [Test]
@@ -61,6 +67,39 @@ public class TaikoPrecompileFaultTests : VirtualMachineTestsBase
         UseContextAwarePrecompile(new ThrowingPrecompile(new InvalidOperationException("malformed input")));
 
         Assert.That(ExecuteCall(), Is.False);
+    }
+
+    [Test]
+    public async Task Wrapped_wrong_format_library_ends_the_process_from_a_context_aware_call()
+    {
+        (int exitCode, string output) = await PrecompileFaultTests.RunInChildProcess(typeof(TaikoPrecompileFaultTests).Assembly, NativeLoadFailureChildArgument);
+
+        Assert.That(exitCode, Is.EqualTo(ExitCodes.MissingPrecompile), output);
+    }
+
+    // Runs before the test host starts, so whatever ends a child process ends only that process.
+    private static Task<int> Main(string[] args) => args switch
+    {
+        [NativeLoadFailureChildArgument] => Task.FromResult(RunNativeLoadFailureChild()),
+        _ => MicrosoftTestingPlatformEntryPoint.Main(args)
+    };
+
+    /// <returns>1 when the call returns or throws instead of ending the process.</returns>
+    private static int RunNativeLoadFailureChild()
+    {
+        TaikoPrecompileFaultTests fixture = new();
+        try
+        {
+            fixture.Setup();
+            fixture.UseContextAwarePrecompile(new ThrowingPrecompile(new TypeInitializationException("Precompile", new BadImageFormatException("wrong format"))));
+            Console.Error.WriteLine($"The call returned instead of ending the process; it succeeded: {fixture.ExecuteCall()}.");
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"The call threw instead of ending the process: {exception}");
+        }
+
+        return 1;
     }
 
     private void UseContextAwarePrecompile(IPrecompile precompile)
@@ -92,13 +131,15 @@ public class TaikoPrecompileFaultTests : VirtualMachineTestsBase
         return !callSucceeded.IsZero;
     }
 
+    /// <summary>Throws from the context-aware overload, the one the Taiko VM must run.</summary>
+    /// <remarks>The ordinary overload succeeds instead, so a call routed to the base dispatch fails every test here.</remarks>
     private sealed class ThrowingPrecompile(Exception exception) : IContextAwarePrecompile
     {
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => 50_000;
 
         public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
 
-        public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => throw exception;
+        public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => Array.Empty<byte>();
 
         public Result<(byte[] returnValue, ulong gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, in PrecompileExtras extras) =>
             throw exception;

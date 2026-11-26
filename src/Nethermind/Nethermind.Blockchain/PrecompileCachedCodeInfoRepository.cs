@@ -47,8 +47,10 @@ public class PrecompileCachedCodeInfoRepository : ICodeInfoRepository
     {
         if (vmSpec.IsPrecompile(codeSource) && TryGetCachedPrecompile(codeSource, out CodeInfo? cachedCodeInfo))
         {
-            // EIP-7928: mirror base CodeInfoRepository.GetCachedCodeInfo precompile path so the read lands in the BAL.
+            // Mirror the base CodeInfoRepository.GetCachedCodeInfo precompile path, so the read lands in the BAL
+            // (EIP-7928) and the account in a witness being generated.
             _worldState.AddAccountRead(codeSource);
+            _worldState.RecordAccountAccess(codeSource);
             delegationAddress = null;
             return cachedCodeInfo;
         }

@@ -30,6 +30,7 @@ public class SimulateReadOnlyBlocksProcessingEnv(
     BlockTreeOverlay blockTreeOverlay,
     IOverridableEnv overridableEnv,
     IReadOnlyDbProvider readOnlyDbProvider,
+    IBlockhashCache blockhashCache,
     SimulateDictionaryHeaderStore headerStore,
     SimulateDictionaryBlockStore blockStore,
     ChainLevelInfoRepository chainLevelInfoRepository
@@ -42,7 +43,7 @@ public class SimulateReadOnlyBlocksProcessingEnv(
         blockTreeOverlay.ResetMainChain();
         IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock);
         return new SimulateReadOnlyBlocksProcessingScope(
-            worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer, _requestStores
+            worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, blockhashCache, envDisposer, _requestStores
         );
     }
 }
@@ -55,6 +56,7 @@ public class SimulateReadOnlyBlocksProcessingScope(
     SimulateRequestState simulateState,
     IBlockProcessor blockProcessor,
     IReadOnlyDbProvider readOnlyDbProvider,
+    IBlockhashCache blockhashCache,
     IDisposable overridableWorldStateCloser,
     IClearableCache[] requestStores
 ) : IDisposable
@@ -68,6 +70,7 @@ public class SimulateReadOnlyBlocksProcessingScope(
 
     public void Dispose()
     {
+        blockhashCache.Clear();
         foreach (IClearableCache store in requestStores)
         {
             store.ClearCache();

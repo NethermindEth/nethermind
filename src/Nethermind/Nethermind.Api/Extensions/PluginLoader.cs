@@ -71,16 +71,25 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                     }
                 };
 
+                bool isPlugin = false;
                 foreach (Type type in assembly.GetExportedTypes().Where(t => !t.IsInterface))
                 {
                     if (typeof(INethermindPlugin).IsAssignableFrom(type))
                     {
+                        isPlugin = true;
                         if (!PluginTypes.Contains(type))
                         {
                             if (logger.IsInfo) logger.Info($"  Found plugin type {pluginAssembly}");
                             _pluginTypes.Add(type);
                         }
                     }
+                }
+
+                // A plugin can ship named configurations for --config, as configs/<name>.json resources.
+                if (isPlugin)
+                {
+                    foreach (string configName in BuiltInConfigs.AddFrom(assembly))
+                        if (logger.IsInfo) logger.Info($"  Found configuration {configName}");
                 }
             }
             catch (Exception e)

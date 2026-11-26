@@ -14,4 +14,11 @@
     <PackageReference Include="ZstdSharp.Port" />
   </ItemGroup>
 
+  <!-- The zkEVM guest never reads a chainspec; embedding chainspecs would add 6.9 MB, a third of the guest image. -->
+  <ItemGroup Condition="'$(EnableZkEvm)' != 'true'">
+    <EmbeddedResource Include="..\Chains\**\*.*">
+      <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

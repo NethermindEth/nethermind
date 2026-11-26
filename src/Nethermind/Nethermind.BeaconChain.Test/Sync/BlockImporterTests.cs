@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Test.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
@@ -71,6 +72,16 @@ public class BlockImporterTests
         if (block is ForkedSignedBeaconBlock.OfGloas unknown) unknown.Block.Message!.ProposerIndex = ulong.MaxValue;
         else ((ForkedSignedBeaconBlock.OfFulu)block).Block.Message!.ProposerIndex = ulong.MaxValue;
         Assert.That(importer.VerifyCachedProposerSignature(block), Is.Null);
+    }
+
+    [Test]
+    public void A_verifier_that_rejects_every_signature_refuses_a_correctly_signed_proposer()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(),
+            pubkeys: RejectingSignatureVerifier.PubkeysFor(chain.AnchorState.Validators!));
+
+        Assert.That(importer.VerifyCachedProposerSignature(new ForkedSignedBeaconBlock.OfFulu(chain.Block)), Is.False);
     }
 
     [Test]
@@ -2327,11 +2338,11 @@ public class BlockImporterTests
     private static long RefusedByForkChoice(string operation) =>
         Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(new StringLabel(operation));
 
-    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, TestLogRecorder? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null, ProposerLookaheadHolder? proposerLookaheads = null, FailedBlockRoots? failedBlocks = null, IDataAvailabilityRule? availability = null, BeaconChainStore? store = null, UnsignedChain.ChainBlock? anchor = null) =>
+    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, TestLogRecorder? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null, ProposerLookaheadHolder? proposerLookaheads = null, FailedBlockRoots? failedBlocks = null, IDataAvailabilityRule? availability = null, BeaconChainStore? store = null, UnsignedChain.ChainBlock? anchor = null, PubkeyCache? pubkeys = null) =>
         new(
             chain.Spec,
             store ?? new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
-            chain.Pubkeys,
+            pubkeys ?? chain.Pubkeys,
             engine ?? new ValidPayloadEngine(),
             new BeaconChainConfig(),
             warnings is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(warnings)),

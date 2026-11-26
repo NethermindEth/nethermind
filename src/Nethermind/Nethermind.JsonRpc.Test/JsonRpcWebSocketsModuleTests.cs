@@ -28,6 +28,12 @@ public class JsonRpcWebSocketsModuleTests
 {
     private const int PublicConcurrency = 16;
 
+    /// <remarks>
+    /// Only a hang guard: other fixtures in this assembly can starve the thread pool on CI runners, which stalls
+    /// socket completions for seconds.
+    /// </remarks>
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+
     [Test]
     public async Task CreateClient_EngineConnection_ProcessesPipelinedRequestsInOrder()
     {
@@ -36,7 +42,7 @@ public class JsonRpcWebSocketsModuleTests
         // 3. The fast request must start only after the slow one has answered.
         TaskCompletionSource fastSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         PipelinedRequestRecorder processor = new(slowGate: fastSent.Task);
-        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+        using CancellationTokenSource cts = new(Timeout);
 
         await using (WsConnection connection = await WsConnection.OpenAsync(CreateUrl(isAuthenticated: true, engine: true), processor.Processor, cts.Token))
         {
@@ -65,7 +71,7 @@ public class JsonRpcWebSocketsModuleTests
         // 3. Processing one request at a time would never answer the fast request, so the bounded wait fails.
         TaskCompletionSource releaseSlow = new(TaskCreationOptions.RunContinuationsAsynchronously);
         PipelinedRequestRecorder processor = new(slowGate: releaseSlow.Task);
-        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+        using CancellationTokenSource cts = new(Timeout);
 
         await using WsConnection connection = await WsConnection.OpenAsync(CreateUrl(isAuthenticated: false, engine: false), processor.Processor, cts.Token);
         try
@@ -88,7 +94,7 @@ public class JsonRpcWebSocketsModuleTests
     public async Task CreateClient_PublicConnection_RejectsMessagesOverTheConfiguredBodyCap(long? urlCap, long? configuredCap)
     {
         PipelinedRequestRecorder processor = new(slowGate: Task.CompletedTask);
-        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+        using CancellationTokenSource cts = new(Timeout);
         JsonRpcUrl url = CreateUrl(isAuthenticated: false, engine: false, maxRequestBodySize: urlCap);
 
         await using WsConnection connection = await WsConnection.OpenAsync(url, processor.Processor, cts.Token, configuredCap);

@@ -301,7 +301,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             foreach (ParityLikeTxTrace trace in blockTraces)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                ParityTxTraceFromStore.Write(writer, trace, filter, EthereumJsonSerializer.JsonOptions);
+                ParityTxTraceFromStore.Write(writer, trace, filter, EthereumJsonSerializer.JsonOptions, cancellationToken);
                 FlushPipe(writer, pipeWriter, cancellationToken);
             }
         }
@@ -410,7 +410,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                     foreach (ParityLikeTxTrace trace in traces)
                     {
                         ct.ThrowIfCancellationRequested();
-                        ParityTxTraceFromStore.Write(writer, trace, null, EthereumJsonSerializer.JsonOptions);
+                        ParityTxTraceFromStore.Write(writer, trace, null, EthereumJsonSerializer.JsonOptions, ct);
                         FlushPipe(writer, pipeWriter, ct);
                     }
                 },

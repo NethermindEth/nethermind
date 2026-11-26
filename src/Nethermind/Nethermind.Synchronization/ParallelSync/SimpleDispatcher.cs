@@ -129,7 +129,7 @@ public class SimpleDispatcher<T>(
                                 inFlightSemaphore.Release();
                                 SignalDispatchCompleted();
                             }
-                        });
+                        }, CancellationToken.None);
                         inFlightSlotTransferred = true;
                     }
                     catch

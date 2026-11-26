@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -39,6 +40,11 @@ public sealed partial class CodeInfo
                 ? (object)segment.Array
                 : code;
     }
+
+    internal static partial CodeInfo ForInitCode(ReadOnlyMemory<byte> initCode, int callDepth) => new(initCode);
+
+    internal static partial bool TryLoadInitCode(ref EvmPooledMemory memory, in UInt256 location, in UInt256 length, int callDepth, out ReadOnlyMemory<byte> initCode) =>
+        memory.TryLoadOwned(in location, in length, out initCode);
 
     public partial ReadOnlyMemory<byte> Code => ViewOf(_code);
 

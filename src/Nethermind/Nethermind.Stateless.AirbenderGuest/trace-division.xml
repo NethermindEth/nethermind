@@ -1,0 +1,9 @@
+<!-- SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+     SPDX-License-Identifier: LGPL-3.0-only -->
+<linker>
+  <assembly fullname="Nethermind.Evm">
+    <type fullname="Nethermind.Evm.WordDivision">
+      <method signature="System.Boolean get_TraceDivisionHints()" body="stub" value="true" />
+    </type>
+  </assembly>
+</linker>

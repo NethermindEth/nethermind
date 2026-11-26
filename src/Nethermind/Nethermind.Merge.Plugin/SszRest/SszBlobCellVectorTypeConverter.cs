@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;
@@ -14,6 +15,8 @@ public static class SszBlobCellVectorTypeConverter
     public const int Length = SszBlobCell.BlobCellLength;
 
     public static SszBlobCell FromSpan(ReadOnlySpan<byte> span) => SszBlobCell.FromSpan(span);
+
+    public static ref readonly SszBlobCell ValueFromSpan(ReadOnlySpan<byte> span) => ref MemoryMarshal.AsRef<SszBlobCell>(span);
 
     public static void FromSpan(ReadOnlySpan<byte> span, Span<SszBlobCell> values)
     {

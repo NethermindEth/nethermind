@@ -65,7 +65,20 @@ namespace Nethermind.KeyStore
         private const int MinWriteSaltLength = 16;
         // Reading needs derived bytes 0..15 for the cipher key and 16 bytes for the MAC key (see IsMacValid).
         private const int MinReadDkLen = 16;
+        private const int MaxReadDkLen = 1024;
         private const int MacKeyLength = 16;
+
+        // Resource limits for scrypt on read and write, far above the parameters wallets use. Memory is
+        // 128 * r * (n + 2p + 3) bytes: n + 3 blocks of 128 * r bytes for the mixing and the p input blocks, held twice.
+        // Work is n * r * p, which the default settings put at 1 << 21.
+        private const long MaxScryptMemory = 1L << 31;
+        private const long MaxScryptWork = 1L << 24;
+        private const string ScryptLimits = "scrypt may use at most 2 GiB of memory and n * r * p of at most 16777216";
+
+        // Work limit for pbkdf2 on read. pbkdf2 runs c iterations per started 32-byte block of derived key; the limit
+        // leaves headroom above eth-keyfile's default of 1000000 iterations for 32 bytes.
+        private const long MaxPbkdf2Work = 1L << 24;
+        private const string Pbkdf2Limits = "pbkdf2 may run at most 16777216 iterations, c for every 32 bytes of dklen";
 
         private readonly PrivateKeyGenerator _privateKeyGenerator;
         private readonly IKeyStoreConfig _config;
@@ -143,7 +156,7 @@ namespace Nethermind.KeyStore
 
             KdfParams kdfParams = keyStoreItem.Crypto.KDFParams;
             int dkLen = kdfParams.DkLen;
-            if (dkLen < MinReadDkLen)
+            if (dkLen is < MinReadDkLen or > MaxReadDkLen)
             {
                 return (null, Result.Fail($"Unsupported dklen: {dkLen}"));
             }
@@ -161,14 +174,22 @@ namespace Nethermind.KeyStore
                         return (null, Result.Fail("Incorrect key: scrypt requires a power-of-two n above 1 and positive r and p"));
                     }
 
-                    // ComputeDerivedKey uses too little stack size in case of multithread processing, which may cause stack overflow.
-                    // Switch to single thread if "cost" is too high, see Scrypt.ThreadSMixCalls internals
-                    derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, n, r, p, n > 8192 ? 1 : null, dkLen);
+                    if (!IsWithinScryptLimits(n, r, p))
+                    {
+                        return (null, Result.Fail($"Unsupported scrypt parameters: n {n}, r {r}, p {p}; {ScryptLimits}"));
+                    }
+
+                    derivedKey = DeriveScryptKey(passBytes, salt, n, r, p, dkLen);
                     break;
                 case Pbkdf2:
                     if (kdfParams.C is not int c || c <= 0)
                     {
                         return (null, Result.Fail("Incorrect key: pbkdf2 requires a positive c"));
+                    }
+
+                    if (!IsWithinPbkdf2Limits(c, dkLen))
+                    {
+                        return (null, Result.Fail($"Unsupported pbkdf2 parameters: c {c}, dklen {dkLen}; {Pbkdf2Limits}"));
                     }
 
                     derivedKey = Rfc2898DeriveBytes.Pbkdf2(passBytes, salt, c, HashAlgorithmName.SHA256, dkLen);
@@ -289,7 +310,7 @@ namespace Nethermind.KeyStore
             byte[] salt = _cryptoRandom.GenerateRandomBytes(saltLength);
             byte[] passBytes = password.ToByteArray(_keyStoreEncoding);
 
-            byte[] derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, n, r, p, null, dkLen);
+            byte[] derivedKey = DeriveScryptKey(passBytes, salt, n, r, p, dkLen);
 
             byte[] encryptKey;
             if (kdf == Scrypt && cipherType == Aes128Cbc)
@@ -397,6 +418,20 @@ namespace Nethermind.KeyStore
         // Scrypt needs a cost above 1.
         private static bool IsValidScryptN(int n) => n > 1 && int.IsPow2(n);
 
+        // For p above 1 the library would start extra threads with an 8 KB stack, on which the runtime can overflow and
+        // end the process. On one thread the p passes run on the caller's stack, one after another, and give the same key.
+        private static byte[] DeriveScryptKey(byte[] password, byte[] salt, int n, int r, int p, int dkLen) =>
+            SCrypt.ComputeDerivedKey(password, salt, n, r, p, 1, dkLen);
+
+        /// <summary>Whether scrypt with these parameters stays within the memory and work a key file may ask for.</summary>
+        /// <remarks>Expects positive <paramref name="r"/> and <paramref name="p"/>. Divides the limits, so nothing overflows.</remarks>
+        internal static bool IsWithinScryptLimits(int n, int r, int p) =>
+            n + 2L * p + 3 <= MaxScryptMemory / (128L * r) && (long)n * r <= MaxScryptWork / p;
+
+        /// <summary>Whether pbkdf2 with these parameters stays within the work a key file may ask for.</summary>
+        /// <remarks>Expects positive <paramref name="c"/> and <paramref name="dkLen"/>. Computes in long, so nothing overflows.</remarks>
+        internal static bool IsWithinPbkdf2Limits(int c, int dkLen) => (long)c * ((dkLen + 31L) / 32) <= MaxPbkdf2Work;
+
         // Accepts the MAC key of the Web3 Secret Storage definition, derived bytes 16..31, and, for a dklen other than 32,
         // the last 16 derived bytes, which Nethermind key files with such a dklen use.
         private static bool IsMacValid(ReadOnlySpan<byte> mac, ReadOnlySpan<byte> derivedKey, ReadOnlySpan<byte> cipher)
@@ -471,6 +506,13 @@ namespace Nethermind.KeyStore
             if (p <= 0)
             {
                 throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsP), p, "use at least 1");
+            }
+
+            if (!IsWithinScryptLimits(n, r, p))
+            {
+                throw new InvalidConfigurationException(
+                    $"KeyStore.{nameof(IKeyStoreConfig.KdfparamsN)} '{n}', KeyStore.{nameof(IKeyStoreConfig.KdfparamsR)} '{r}' and KeyStore.{nameof(IKeyStoreConfig.KdfparamsP)} '{p}' are not supported together for new key files: {ScryptLimits}.",
+                    ExitCodes.ForbiddenOptionValue);
             }
 
             static InvalidConfigurationException UnsupportedWriteSetting(string setting, object? value, string rule) =>

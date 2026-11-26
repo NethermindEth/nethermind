@@ -68,10 +68,10 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
     internal virtual string? GetTraceCallUnsupportedField(IReleaseSpec spec) =>
         AccessList is not null && !spec.IsEip2930Enabled ? "access list" : null;
 
-    internal virtual string GetTraceCallPrecheckError(string? unsupported, IReleaseSpec spec, UInt256 baseFee) =>
+    internal virtual string? GetTraceCallPrecheckError(string? unsupported, IReleaseSpec spec, UInt256 baseFee) =>
         GetTraceCallExecutionError(unsupported, spec, baseFee, GasPrice ?? UInt256.Zero, GasPrice ?? UInt256.Zero);
 
-    internal string GetTraceCallExecutionError(string? unsupported, IReleaseSpec spec, UInt256 baseFee, UInt256 feeCap, UInt256 tipCap)
+    internal string? GetTraceCallExecutionError(string? unsupported, IReleaseSpec spec, UInt256 baseFee, UInt256 feeCap, UInt256 tipCap)
     {
         string sender = (From ?? Address.Zero).ToString(withEip55Checksum: true);
         // Geth's message precheck rejects fees before unsupported fields, and fields before intrinsic gas or balance.
@@ -82,7 +82,7 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
             if (feeCap < baseFee && (!feeCap.IsZero || !tipCap.IsZero))
                 return RpcTransactionErrors.DebugTrace($"{RpcTransactionErrors.FeeCapBelowBaseFee}: address {sender}, maxFeePerGas: {feeCap}, baseFee: {baseFee}");
         }
-        return RpcTransactionErrors.DebugTrace($"transaction type not supported: {unsupported} tx (sender {sender})");
+        return unsupported is null ? null : RpcTransactionErrors.DebugTrace($"transaction type not supported: {unsupported} tx (sender {sender})");
     }
 
     /// <inheritdoc/>

@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Nethermind.BeaconChain.Api.Common;
+using Nethermind.BeaconChain.Api.Endpoints;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -27,7 +29,6 @@ namespace Nethermind.BeaconChain.Api;
 /// </summary>
 public sealed class BeaconApiHost(
     IBeaconApiConfig apiConfig,
-    IBeaconChainConfig chainConfig,
     BeaconChainSpec spec,
     IBeaconChainStatusSource statusSource,
     SlotClock slotClock,
@@ -63,13 +64,14 @@ public sealed class BeaconApiHost(
         builder.Logging.ClearProviders();
         builder.WebHost.UseKestrelCore().UseUrls($"http://{apiConfig.Host}:{apiConfig.Port}");
         builder.Services.AddRoutingCore();
+        BeaconApiEndpoints.AddServices(builder.Services, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, columnPool);
 
         WebApplication app = builder.Build();
         if (IsLoopbackHost(apiConfig.Host))
             app.Use(ValidateLoopbackRequest);
         app.Use(stateLimiter.InvokeAsync);
-        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, columnPool);
-        BeaconApiEndpoints.MapAll(app, ctx);
+        BeaconApiEndpoints.UseMiddleware(app, logManager);
+        MapRoutes(app);
 
         await app.StartAsync(token);
         int port = new Uri(app.Urls.First()).Port;
@@ -85,6 +87,21 @@ public sealed class BeaconApiHost(
         _driverRegistration = driver?.Stopping.Register(static state => _ = ((BeaconApiHost)state!).StopAsync(), this) ?? default;
 
         if (_logger.IsInfo) _logger.Info($"Beacon API listening on http://{apiConfig.Host}:{port}");
+    }
+
+    /// <summary>Maps the routes every endpoint service declares; they depend on what <see cref="BeaconApiEndpoints.AddServices"/> registers.</summary>
+    internal static void MapRoutes(WebApplication app)
+    {
+        app.MapService(typeof(NodeEndpoints));
+        app.MapService(typeof(ConfigEndpoints));
+        app.MapService(typeof(BeaconEndpoints));
+        app.MapService(typeof(BlobsEndpoint));
+        app.MapService(typeof(BeaconStatesEndpoints));
+        app.MapService(typeof(DebugEndpoints));
+        app.MapService(typeof(ValidatorEndpoints));
+        app.MapService(typeof(EventsEndpoint));
+
+        app.MapFallback(c => ApiErrors.Write(c, StatusCodes.Status404NotFound, "Unknown endpoint", c.RequestAborted));
     }
 
     private static bool IsLoopbackHost(string host) =>

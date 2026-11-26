@@ -156,7 +156,7 @@ public class InitializeNetwork : IStep
             {
                 _logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
             }
-        });
+        }, CancellationToken.None);
 
         if (cancellationToken.IsCancellationRequested)
         {

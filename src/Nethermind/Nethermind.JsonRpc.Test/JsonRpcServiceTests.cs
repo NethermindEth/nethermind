@@ -1360,14 +1360,16 @@ public class JsonRpcServiceTests
             .Returns(ModuleResolution.Unknown);
         JsonRpcService service = new(provider, new OneLoggerLogManager(new(logger)), new JsonRpcConfig(), _gcKeeper);
         using JsonDocument parameters = JsonDocument.Parse($"[\"{secret}\"]");
-        JsonRpcRequest request = new() { Id = 67, Method = "unknown_method", Params = parameters.RootElement };
+        JsonRpcRequest request = new() { Id = 67, Method = "unknown\tmethod", Params = parameters.RootElement };
 
         using JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
         string log = logger.LogList.Single(line => line.Contains("Validation error when handling request"));
+        string errorLog = logger.LogList.Single(line => line.StartsWith("Sending error response", StringComparison.Ordinal));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(log, Does.Contain("unknown_method").And.Contain("67"));
+            Assert.That(log, Does.Contain(@"unknown\tmethod").And.Contain("67"));
+            Assert.That(errorLog, Does.Contain(@"unknown\tmethod").And.Contain("67"));
             Assert.That(log, Does.Not.Contain(secret));
         }
     }
@@ -1637,6 +1639,22 @@ public class JsonRpcServiceTests
         AssertInvalidParamsWithoutData(response, "non-array args");
         await pool.DidNotReceive().GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>());
         pool.DidNotReceive().ReturnModule(Arg.Any<INetRpcModule>());
+    }
+
+    // Plugins compiled against Fail(string, int, bool) bind to that exact signature, and a positional bool means
+    // isTemporary rather than the error data of a ResultWrapper<bool>.
+    [Test]
+    public void Fail_with_temporary_flag_keeps_its_three_parameter_overload()
+    {
+        MethodInfo? fail = typeof(ResultWrapper<string>).GetMethod(nameof(ResultWrapper<string>.Fail), [typeof(string), typeof(int), typeof(bool)]);
+        ResultWrapper<bool> wrapper = ResultWrapper<bool>.Fail("busy", ErrorCodes.ResourceUnavailable, true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fail?.ReturnType, Is.EqualTo(typeof(ResultWrapper<string>)));
+            Assert.That(wrapper.IsTemporary, Is.True);
+            Assert.That(wrapper.HasErrorData, Is.False);
+        }
     }
 
     [Test]

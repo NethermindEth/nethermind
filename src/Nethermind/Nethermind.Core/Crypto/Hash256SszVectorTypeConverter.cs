@@ -15,6 +15,8 @@ public static class Hash256SszVectorTypeConverter
 
     public static Hash256 FromSpan(ReadOnlySpan<byte> span) => new(span);
 
+    public static ValueHash256 ValueFromSpan(ReadOnlySpan<byte> span) => new(span);
+
     public static void FromSpan(ReadOnlySpan<byte> span, Span<Hash256> values)
     {
         for (int i = 0; i < values.Length; i++)

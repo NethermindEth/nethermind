@@ -188,6 +188,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
         }
         catch (TimeoutException)
         {
+            if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Node health tracker refreshes did not stop within {_refreshPingTimeout + TimeSpan.FromMilliseconds(500)} of disposal");
         }
         catch (OperationCanceledException)
         {

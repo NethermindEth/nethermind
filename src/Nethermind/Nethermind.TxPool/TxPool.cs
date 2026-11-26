@@ -56,6 +56,8 @@ namespace Nethermind.TxPool
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _hashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
+        private readonly IIncomingTxFilter[] _samplingHashFilters;
+        private readonly IIncomingTxFilter[] _samplingPostHashFilters;
 
         private readonly HashCache _hashCache;
         private readonly TxBroadcaster _broadcaster;
@@ -74,6 +76,7 @@ namespace Nethermind.TxPool
         private readonly string? _specChangeValidationFingerprint;
         private readonly ISpecChangeValidationStorage? _specChangeValidationStorage;
         private readonly bool _blobReorgsSupportEnabled;
+        private readonly bool _acceptTxWhenNotSynced;
         private readonly IProcessedBlobTxStorage? _processedBlobTxStorage;
         private readonly IncludedBlobLocations? _includedBlobLocations;
         // Head loop only: the new head's blob txs, mapped to the copy a reorg re-add read back from the processed rows.
@@ -220,6 +223,8 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
+            // A pool larger than the sender cache would evict senders recovered on ingress before their block arrives.
+            EthereumEcdsaExtensions.EnsureSenderCacheCapacity(txPoolConfig.Size);
             _hashCache = new(txPoolConfig.HashCacheSize);
             _peerValidationShares = txPoolConfig.FrameTxPeerSimulationFairShare && txPoolConfig.FrameTxSimulationBudgetPerHeadMs > 0
                 ? new PeerValidationShares(txPoolConfig.FrameTxSimulationBudgetPerHeadMs * Stopwatch.Frequency / 1000)
@@ -230,7 +235,7 @@ namespace Nethermind.TxPool
                 && _specChangeValidationFingerprint is not null
                 ? blobTxStorage as ISpecChangeValidationStorage
                 : null;
-            AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
+            _acceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _processedBlobTxStorage = _blobReorgsSupportEnabled ? blobTxStorage as IProcessedBlobTxStorage : null;
             _includedBlobLocations = _processedBlobTxStorage is null ? null : new IncludedBlobLocations(IncludedBlobMaxBlockDistance);
@@ -410,6 +415,9 @@ namespace Nethermind.TxPool
             }
 
             _postHashFilters = postHashFilters.ToArray();
+            // Sampling precedes submission, so keep the hash unmarked and defer proofs until the cells arrive.
+            _samplingHashFilters = Array.FindAll(_hashFilters, static filter => filter is not AlreadyKnownTxFilter);
+            _samplingPostHashFilters = Array.FindAll(_postHashFilters, static filter => filter is not BlobProofsTxFilter);
 
             int? reportMinutes = txPoolConfig.ReportMinutes;
             if (_logger.IsInfo && reportMinutes.HasValue)
@@ -906,7 +914,7 @@ namespace Nethermind.TxPool
                             EvictUnreferenceableRecentRootTransactions(unreferenceable);
                             RevalidateFrameTransactions(args.Block);
 
-                            if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || reorganised)
+                            if (!_headInfo.IsSyncing || _acceptTxWhenNotSynced || reorganised)
                             {
                                 _hashCache.ClearCurrentBlockCache();
                             }
@@ -1018,7 +1026,6 @@ namespace Nethermind.TxPool
             if (previousBlock is not null)
             {
                 Metrics.TransactionsReorged += previousBlock.Transactions.Length;
-                bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Header).IsEip155Enabled;
                 Transaction[] txs = previousBlock.Transactions;
                 for (int i = 0; i < txs.Length; i++)
                 {
@@ -1030,7 +1037,7 @@ namespace Nethermind.TxPool
                     {
                         continue;
                     }
-                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
+                    SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
                 }
 
                 if (_blobReorgsSupportEnabled
@@ -1055,7 +1062,7 @@ namespace Nethermind.TxPool
 
                             blobTx.SenderAddress = senderAddress;
                         }
-                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
+                        SubmitTx(blobTx, TxHandlingOptions.None, ownsTransaction: false, peer: null, out _, reAddedFromReorg: true);
                     }
                     if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
@@ -1680,7 +1687,12 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool AcceptTxWhenNotSynced { get; set; }
+        public void RemovePeer(ITxPoolPeer peer)
+        {
+            if (_broadcaster.RemovePeer(peer) && _logger.IsTrace)
+                _logger.Trace($"Removed a peer from TX pool: {peer.Id}");
+        }
+
         public bool SupportsBlobs { get; }
         public long PendingTransactionsAdded => Volatile.Read(ref _pendingTransactionsAdded);
 
@@ -1736,11 +1748,9 @@ namespace Nethermind.TxPool
 
         bool IRecyclableTxPool.TrySubmitKnown(in ValueHash256 hash)
         {
-            // Only what SubmitTx settles without reading the body: a syncing pool answers Syncing first,
-            // and a NewDiscovered subscriber is handed the transaction itself.
+            // Only what SubmitTx settles without reading the body: a syncing pool answers Syncing first.
             if (GetType() != typeof(TxPool)
-                || (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
-                || NewDiscovered is not null
+                || (!_acceptTxWhenNotSynced && _headInfo.IsSyncing)
                 || !_hashCache.Get(in hash))
             {
                 return false;
@@ -1762,7 +1772,7 @@ namespace Nethermind.TxPool
                                   && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
 
-            if (!AcceptTxWhenNotSynced &&
+            if (!_acceptTxWhenNotSynced &&
                 _headInfo.IsSyncing &&
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
@@ -1787,14 +1797,6 @@ namespace Nethermind.TxPool
             // assign a sequence number to transaction so we can order them by arrival times when
             // gas prices are exactly the same
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);
-
-            EventHandler<TxEventArgs>? discovered = NewDiscovered;
-            if (discovered is not null)
-            {
-                canRecycle = false;
-                PooledBlobBuffers.Disown(tx);
-                discovered(this, new TxEventArgs(tx));
-            }
 
             if (_logger.IsTrace)
             {
@@ -1823,6 +1825,14 @@ namespace Nethermind.TxPool
             _newHeadLock.EnterReadLock();
             try
             {
+                // Disposal sets the flag under the write lock before detaching the handlers that release a pooled
+                // transaction's reservations. Answered like a syncing pool, as the sender is not at fault.
+                if (_isDisposed)
+                {
+                    Metrics.PendingTransactionsDiscarded++;
+                    PooledBlobBuffers.Return(tx);
+                    return AcceptTxResult.Syncing.WithMessage("Transaction pool is disposed.");
+                }
                 IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
                 // Observation and insertion share the head lock so an A -> B -> A transition cannot cross a validation publish unseen.
                 ObserveHeadSpec(headSpec);
@@ -1922,7 +1932,7 @@ namespace Nethermind.TxPool
 
         public AnnounceResult NotifyAboutTx(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler)
         {
-            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
+            if (!_acceptTxWhenNotSynced && _headInfo.IsSyncing)
             {
                 return AnnounceResult.Delayed;
             }
@@ -1960,9 +1970,8 @@ namespace Nethermind.TxPool
                 }
             }
 
-            foreach (IIncomingTxFilter filter in _hashFilters)
+            foreach (IIncomingTxFilter filter in skipSamplingDeferredFilters ? _samplingHashFilters : _hashFilters)
             {
-                if (skipSamplingDeferredFilters && filter is AlreadyKnownTxFilter) continue;
                 AcceptTxResult accepted = filter.Accept(tx, ref state, handlingOptions);
                 if (!accepted) return accepted;
             }
@@ -1970,15 +1979,9 @@ namespace Nethermind.TxPool
             // Validators and later filters can be supplied by plugins and retain the transaction.
             canRecycle = false;
             PooledBlobBuffers.Disown(tx);
-            filters = _postHashFilters;
+            filters = skipSamplingDeferredFilters ? _samplingPostHashFilters : _postHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
-                if (skipSamplingDeferredFilters
-                    && filters[i] is BlobProofsTxFilter)
-                {
-                    continue;
-                }
-
                 AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted) return accepted;
@@ -3153,15 +3156,22 @@ namespace Nethermind.TxPool
 
         public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash) && !_hashCache.HasInvalidBlobProofs(in hash);
 
-        public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
         public event EventHandler<TxEventArgs>? RemovedPending;
         public event EventHandler<TxEventArgs>? EvictedPending;
 
         public async ValueTask DisposeAsync()
         {
-            if (_isDisposed) return;
-            _isDisposed = true;
+            _newHeadLock.EnterWriteLock();
+            try
+            {
+                if (_isDisposed) return;
+                _isDisposed = true;
+            }
+            finally
+            {
+                _newHeadLock.ExitWriteLock();
+            }
             _timer?.Dispose();
             await _cts.CancelAsync();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;

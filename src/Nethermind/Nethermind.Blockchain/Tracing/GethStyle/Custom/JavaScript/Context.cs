@@ -31,6 +31,7 @@ public class Context
     private UInt256 _value;
     private UInt256 _gasPrice;
 
+    [NoScriptAccess]
     public Address? From
     {
         get => _from;
@@ -41,6 +42,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public Address? To
     {
         get => _to;
@@ -51,6 +53,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public Address? Coinbase
     {
         get => _coinbase;
@@ -61,6 +64,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public ReadOnlyMemory<byte> Input
     {
         get => _input;
@@ -71,6 +75,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public byte[]? Output
     {
         get => _output;
@@ -81,6 +86,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public Hash256? BlockHash
     {
         get => _blockHash;
@@ -91,6 +97,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public Hash256? TxHash
     {
         get => _txHash;
@@ -101,6 +108,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public UInt256 Value
     {
         get => _value;
@@ -111,6 +119,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public UInt256 GasPrice
     {
         get => _gasPrice;

@@ -16,7 +16,6 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
-using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.DataAvailability;
 using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
@@ -24,7 +23,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
@@ -258,26 +256,29 @@ public class BeaconApiBlobsTests : BeaconApiFixture
     [Test]
     public async Task Rebuilds_past_the_bound_are_refused_until_one_response_completes([Values(Json, OctetStream)] string accept)
     {
-        ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
-        BeaconApiContext ctx = new(new BeaconChainConfig(), Spec, _host.StatusHolder, new SlotClock(Spec, time), _host.Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null);
+        BeaconApiHead view = BeaconApiHead.Capture(_host.StatusHolder);
+        using System.Threading.RateLimiting.ConcurrencyLimiter rebuilds = new(new()
+        {
+            PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds,
+            QueueLimit = 0,
+        });
         using BlockingResponse first = new();
         using BlockingResponse second = new();
-        Task firstRequest = BlobsEndpoint.GetBlobs(Request(first), SystematicRoot.ToString(), ctx);
-        Task secondRequest = BlobsEndpoint.GetBlobs(Request(second), SystematicRoot.ToString(), ctx);
+        Task firstRequest = GetBlobs(Request(first));
+        Task secondRequest = GetBlobs(Request(second));
         try
         {
             await Task.WhenAll(first.Entered.Task, second.Entered.Task).WaitAsync(TimeSpan.FromSeconds(20));
             using MemoryStream busyBody = new();
             DefaultHttpContext busy = Request(busyBody);
-            await BlobsEndpoint.GetBlobs(busy, SystematicRoot.ToString(), ctx);
+            await GetBlobs(busy);
             Assert.That(busy.Response.StatusCode, Is.EqualTo(StatusCodes.Status503ServiceUnavailable));
 
             first.Release.TrySetResult();
             await firstRequest;
             using MemoryStream servedBody = new();
             DefaultHttpContext served = Request(servedBody);
-            await BlobsEndpoint.GetBlobs(served, SystematicRoot.ToString(), ctx);
+            await GetBlobs(served);
             Assert.That(served.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         }
         finally
@@ -285,8 +286,9 @@ public class BeaconApiBlobsTests : BeaconApiFixture
             first.Release.TrySetResult();
             second.Release.TrySetResult();
             await Task.WhenAll(firstRequest, secondRequest);
-            ctx.BlobRebuilds.Dispose();
         }
+
+        Task GetBlobs(HttpContext context) => new BlobsEndpoint(Spec, _host.Store, view, rebuilds).GetBlobs(SystematicRoot.ToString(), []).ExecuteAsync(context);
 
         DefaultHttpContext Request(Stream stream)
         {

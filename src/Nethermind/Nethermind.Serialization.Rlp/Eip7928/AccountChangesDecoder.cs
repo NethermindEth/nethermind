@@ -87,6 +87,76 @@ public sealed class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         return new ReadOnlyAccountChanges(address, slotChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
     }
 
+    internal static ReadOnlySpan<byte> Validate(scoped ref RlpReader reader, scoped ref int itemCount)
+    {
+        RlpReader fields = reader.EnterSequence(out int length);
+        ReadOnlySpan<byte> address = fields.DecodeByteArraySpan(size: Address.Size);
+
+        RlpReader slots = fields.EnterSequence(out int slotsLength);
+        itemCount += slots.CountItems(_slotsLimit);
+        RlpReader slotKeys = slots;
+        bool hasLastSlot = false;
+        UInt256 lastSlot = default;
+        while (slots.HasNext)
+        {
+            UInt256 slot = SlotChangesDecoder.Validate(ref slots);
+            if (hasLastSlot && slot <= lastSlot)
+            {
+                ThrowStorageChangesOutOfOrder();
+            }
+            lastSlot = slot;
+            hasLastSlot = true;
+        }
+        fields.ExitSequence(in slots, slotsLength);
+
+        RlpReader reads = fields.EnterSequence(out int readsLength);
+        itemCount += reads.CountItems(_storageLimit);
+        bool hasSlotKey = TryReadValidatedSlotKey(ref slotKeys, out UInt256 slotKey);
+        bool hasLastRead = false;
+        UInt256 lastRead = default;
+        while (reads.HasNext)
+        {
+            UInt256 storageRead = reads.DecodeUInt256();
+            if (hasLastRead && storageRead <= lastRead)
+            {
+                ThrowStorageReadsOutOfOrder();
+            }
+            while (hasSlotKey && slotKey < storageRead)
+            {
+                hasSlotKey = TryReadValidatedSlotKey(ref slotKeys, out slotKey);
+            }
+            if (hasSlotKey && slotKey == storageRead)
+            {
+                ThrowInvalidStorageRead();
+            }
+            lastRead = storageRead;
+            hasLastRead = true;
+        }
+        fields.ExitSequence(in reads, readsLength);
+
+        RlpLimit changesLimit = SlotChangesDecoder.ChangesLimit;
+        IndexedChangeDecoder<BalanceChange>.ValidateArray<BalanceChangeDecoder>(ref fields, changesLimit, "Balance");
+        IndexedChangeDecoder<NonceChange>.ValidateArray<NonceChangeDecoder>(ref fields, changesLimit, "Nonce");
+        IndexedChangeDecoder<CodeChange>.ValidateArray<CodeChangeDecoder>(ref fields, changesLimit, "Code");
+
+        reader.ExitSequence(in fields, length);
+        return address;
+    }
+
+    private static bool TryReadValidatedSlotKey(ref RlpReader slotKeys, out UInt256 slotKey)
+    {
+        if (!slotKeys.HasNext)
+        {
+            slotKey = default;
+            return false;
+        }
+
+        RlpReader fields = slotKeys.EnterSequence<OffFlag>(out _);
+        slotKey = fields.DecodeUInt256<OffFlag>();
+        slotKeys.SkipItem<OffFlag>();
+        return true;
+    }
+
     private static ReadOnlySlotChanges[] DecodeSlotChanges<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
         RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemsLength);

@@ -35,8 +35,7 @@ namespace Nethermind.Consensus.AuRa;
 /// <remarks>
 /// On top of the standard producer wiring it registers the sealing <see cref="IAuRaValidator"/> (shared between
 /// <see cref="AuRaBlockProcessor"/> and the tx source), the producer tx filter, the block gas limit contract
-/// override and contract rewriter when configured, and wraps the tx pool source with posdao/randomness
-/// transaction sources.
+/// override when configured, and wraps the tx pool source with posdao/randomness transaction sources.
 /// </remarks>
 internal sealed class AuRaBlockProducerEnvFactory(
     ILifetimeScope rootLifetime,
@@ -74,13 +73,6 @@ internal sealed class AuRaBlockProducerEnvFactory(
         if (gasLimitOverride is not null)
         {
             builder.AddScoped(gasLimitOverride);
-        }
-
-        IDictionary<ulong, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
-        (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. parameters.RewriteBytecodeTimestampParsed];
-        if (rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0)
-        {
-            builder.AddScoped(new ContractRewriter(rewriteBytecode, rewriteBytecodeTimestamp));
         }
 
         return builder;

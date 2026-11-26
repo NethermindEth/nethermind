@@ -248,7 +248,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     /// <param name="blockHashes">The blocks to get the receipts of.</param>
     /// <param name="expectedReceiptCounts">
-    /// Per block, from the caller, its transaction count or a negative value when unknown; blocks without a count
+    /// Per block, from the caller, an upper bound on its receipt count or a negative value when unknown; blocks without a bound
     /// are bounded by the transactions of the local block body when there is one.
     /// </param>
     /// <param name="token">Cancels the requests.</param>
@@ -294,9 +294,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         for (int i = 0; i < blockHashes.Count; i++)
         {
             int expected = i < expectedCounts.Length ? expectedCounts[i] : -1;
-            maxReceiptsPerBlock[i] = expected >= 0 ? expected : validationContexts[i].TransactionGasLimits?.Length ?? -1;
+            int local = validationContexts[i].TransactionGasLimits?.Length ?? -1;
+            maxReceiptsPerBlock[i] = expected < 0 ? local : local < 0 ? expected : Math.Min(expected, local);
         }
-
         try
         {
             while (blockIndex < blockHashes.Count)

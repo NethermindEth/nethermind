@@ -25,7 +25,8 @@ using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State;
 
-internal partial class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJournal<int>
+internal partial class StateProvider(ILogManager logManager, LocalMetrics metrics,
+    int initialAccountCapacity = WorldState.DefaultInitialAccountCapacity) : IJournal<int>
 {
     private static readonly UInt256 _zero = UInt256.Zero;
 
@@ -45,7 +46,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // Code staged for CodeDb by the current transaction, paired with the change-log position of the
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
     private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
-    private readonly OptimizedDictionary<AddressAsKey, ChangeTrace> _blockChanges = [with(4_096)];
+    private readonly OptimizedDictionary<AddressAsKey, ChangeTrace> _blockChanges = [with(initialAccountCapacity)];
     private Dictionary<AddressAsKey, ChangeTrace>? _commitTrace;
     private List<AddressAsKey> _removedWithStorage = [];
     // Handed back by a detached write-back once it is done with the list it took.
@@ -198,9 +199,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
             // Only first-time additions are journaled; an entry staged by an already committed
             // transaction must stay in the batch even if a later frame re-inserts and reverts.
-            bool journalCode = !_codeBatchAlternate.ContainsKey(codeHash);
-
-            _codeBatchAlternate[codeHash] = code.AsArray();
+            byte[] codeBytes = code.AsArray();
+            CollectionsMarshal.GetValueRefOrAddDefault(_codeBatchAlternate, codeHash, out bool alreadyStaged) = codeBytes;
+            bool journalCode = !alreadyStaged;
 
             _blockCodeInsertFilter.Set(codeHash);
             inserted = true;

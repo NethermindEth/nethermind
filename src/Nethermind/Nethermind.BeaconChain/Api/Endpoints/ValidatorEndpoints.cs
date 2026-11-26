@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Nethermind.BeaconChain.Api.Common;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
@@ -16,7 +16,8 @@ internal static class ValidatorEndpoints
     private const string NonAttestingMessage =
         "This node is non-attesting: it drives the execution layer through the engine API but performs no validator duties, so /eth/v1/validator/* is not served.";
 
-    public static void Map(WebApplication app, BeaconApiContext ctx) =>
-        app.MapMethods("/eth/v1/validator/{**path}", ["GET", "POST"],
-            c => ApiErrors.Write(c, StatusCodes.Status501NotImplemented, NonAttestingMessage, c.RequestAborted));
+    [HttpGet("/eth/v1/validator/{**path}")]
+    [HttpPost("/eth/v1/validator/{**path}")]
+    public static Task NotServed(HttpContext c) =>
+        ApiErrors.Write(c, StatusCodes.Status501NotImplemented, NonAttestingMessage, c.RequestAborted);
 }

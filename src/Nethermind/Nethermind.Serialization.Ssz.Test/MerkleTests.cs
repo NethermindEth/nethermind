@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -312,6 +314,19 @@ public class MerkleTests
         merkleizer.CalculateRoot(out UInt256 result);
 
         Assert.That(result, Is.EqualTo(Merkle.ZeroHashes[6]));
+    }
+
+    [Test]
+    public void Thread_sha256_matches_the_one_shot_api_on_every_thread()
+    {
+        Parallel.For(0, 10_000, i =>
+        {
+            byte[] source = new byte[i % 200];
+            new Random(i).NextBytes(source);
+            Assert.That(ThreadSha256.HashData(source), Is.EqualTo(SHA256.HashData(source)));
+        });
+
+        Assert.That(() => ThreadSha256.HashData([], new byte[31]), Throws.ArgumentException);
     }
 
     private delegate void FeedItem<T>(ref Merkleizer merkleizer, T value);

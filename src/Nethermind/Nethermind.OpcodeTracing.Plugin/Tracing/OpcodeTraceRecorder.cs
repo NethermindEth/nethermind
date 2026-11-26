@@ -461,6 +461,7 @@ public sealed class OpcodeTraceRecorder(
                 catch (TimeoutException)
                 {
                     // Task didn't complete in time
+                    if (_logger.IsWarn) _logger.Warn("Opcode tracing task did not stop within 5 seconds of cancellation; disposing without waiting for it.");
                 }
                 catch (OperationCanceledException)
                 {

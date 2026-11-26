@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class NullReceiptStorage : IReceiptMigrationStore
+    public class NullReceiptStorage : IReceiptMigrationStore, IReceiptPruner
     {
         public static NullReceiptStorage Instance { get; } = new();
 
@@ -50,14 +51,18 @@ namespace Nethermind.Blockchain.Receipts
         {
         }
 
-        // Bound as the node's receipt storage when Receipt.StoreReceipts is off, and the pruner runs regardless -
-        // inheriting the throwing default would abort every pass after the blocks of its first chunk were gone.
         public void RemoveReceipts(ulong blockNumber, Hash256 blockHash)
         {
         }
 
         public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)
         {
+        }
+
+        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, Func<ulong, bool>? isHeightRetained, CancellationToken cancellationToken, out int removed)
+        {
+            removed = 0;
+            return null;
         }
     }
 }
