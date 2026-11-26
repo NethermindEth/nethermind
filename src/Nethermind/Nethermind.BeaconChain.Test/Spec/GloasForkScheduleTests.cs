@@ -46,21 +46,19 @@ public class GloasForkScheduleTests
         Assert.Throws<BeaconStateException>(() => SyntheticGloasSpec().ForkAtEpoch(0));
 
     [Test]
-    public void ForkAtEpoch_on_mainnet_and_hoodi_never_reaches_gloas_since_it_is_unscheduled()
-    {
-        using IDisposable scope = Assert.EnterMultipleScope();
+    public void ForkAtEpoch_on_mainnet_never_reaches_gloas_since_it_is_unscheduled() =>
         Assert.That(BeaconChainSpec.Mainnet.ForkAtEpoch(10_000_000), Is.EqualTo(BeaconFork.Fulu),
             "GloasForkEpoch is the far-future sentinel until a real date is confirmed");
-        Assert.That(BeaconChainSpec.Hoodi.ForkAtEpoch(10_000_000), Is.EqualTo(BeaconFork.Fulu));
-    }
 
-    [Test]
-    public void ForkAtEpoch_on_sepolia_selects_gloas_at_its_confirmed_epoch_and_fulu_immediately_before_it()
+    // Sepolia: ethereum/pm#2205, lodestar#10119. Hoodi: eth-clients/hoodi#35.
+    [TestCase("Sepolia", 353024ul)]
+    [TestCase("Hoodi", 143616ul)]
+    public void ForkAtEpoch_selects_gloas_at_the_confirmed_epoch_and_fulu_immediately_before_it(string network, ulong gloasEpoch)
     {
+        BeaconChainSpec spec = network == "Hoodi" ? BeaconChainSpec.Hoodi : BeaconChainSpec.Sepolia;
         using IDisposable scope = Assert.EnterMultipleScope();
-        Assert.That(BeaconChainSpec.Sepolia.ForkAtEpoch(353024), Is.EqualTo(BeaconFork.Gloas),
-            "Sepolia's confirmed GLOAS_FORK_EPOCH (ethereum/pm#2205, lodestar#10119)");
-        Assert.That(BeaconChainSpec.Sepolia.ForkAtEpoch(353023), Is.EqualTo(BeaconFork.Fulu));
+        Assert.That(spec.ForkAtEpoch(gloasEpoch), Is.EqualTo(BeaconFork.Gloas));
+        Assert.That(spec.ForkAtEpoch(gloasEpoch - 1), Is.EqualTo(BeaconFork.Fulu));
     }
 
     // Expected digest reproduced independently in Python: sha256(fork_version ++ 28 zero bytes ++

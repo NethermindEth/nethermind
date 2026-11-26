@@ -55,7 +55,8 @@ internal sealed partial record BeaconNetwork
         ForkVersions = Versions("0x10000910", "0x20000910", "0x30000910", "0x40000910", "0x50000910", "0x60000910", "0x70000910"),
         AltairForkEpoch = 0,
         BellatrixForkEpoch = 0,
-        GloasForkVersion = Bytes.FromHexString("0x07000000"), // eth-clients/hoodi unscheduled Gloas on 2026-10-22
+        GloasForkVersion = Bytes.FromHexString("0x80000910"),
+        GloasForkVersionConfirmed = true,
     };
 
     /// <summary>Values from the <c>eth-clients/sepolia</c> <c>metadata/config.yaml</c> as of 2026-09-22.</summary>

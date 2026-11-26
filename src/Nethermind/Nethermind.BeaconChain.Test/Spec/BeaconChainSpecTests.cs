@@ -53,8 +53,8 @@ public class BeaconChainSpecTests
         "0x00000000@0 0x01000000@74240 0x02000000@144896 0x03000000@194048 0x04000000@269568 0x05000000@364032 0x06000000@411392",
         "412672:15 419072:21", 9ul, "0x07000000")]
     [TestCase("hoodi", BlockchainIds.Hoodi, 1742213400ul,
-        "0x10000910@0 0x20000910@0 0x30000910@0 0x40000910@0 0x50000910@0 0x60000910@2048 0x70000910@50688",
-        "52480:15 54016:21", 9ul, "0x07000000")]
+        "0x10000910@0 0x20000910@0 0x30000910@0 0x40000910@0 0x50000910@0 0x60000910@2048 0x70000910@50688 0x80000910@143616",
+        "52480:15 54016:21", 9ul, "0x80000910")]
     [TestCase("sepolia", BlockchainIds.Sepolia, 1655733600ul,
         "0x90000069@0 0x90000070@50 0x90000071@100 0x90000072@56832 0x90000073@132608 0x90000074@222464 0x90000075@272640 0x90000076@353024",
         "274176:15 275712:21", 9ul, "0x90000076")]
@@ -101,8 +101,8 @@ public class BeaconChainSpecTests
         Assert.That(BeaconChainSpec.Hoodi.ElectraForkEpoch, Is.EqualTo(2048ul));
         Assert.That(BeaconChainSpec.Hoodi.FuluForkEpoch, Is.EqualTo(50688ul));
         Assert.That(BeaconChainSpec.Hoodi.MaxBlobsPerBlockElectra, Is.EqualTo(9ul));
-        Assert.That(BeaconChainSpec.Hoodi.GloasForkEpoch, Is.EqualTo(Presets.FarFutureEpoch));
-        Assert.That(BeaconChainSpec.Hoodi.Forks, Has.Length.EqualTo(7));
+        Assert.That(BeaconChainSpec.Hoodi.GloasForkEpoch, Is.EqualTo(143616ul));
+        Assert.That(BeaconChainSpec.Hoodi.Forks, Has.Length.EqualTo(8));
         Assert.That(BeaconChainSpec.Hoodi.BlobSchedule, Has.Length.EqualTo(2));
     }
 

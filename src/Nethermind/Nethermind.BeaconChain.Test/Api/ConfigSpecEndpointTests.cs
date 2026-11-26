@@ -54,14 +54,15 @@ public class ConfigSpecEndpointTests
         Assert.That(data["GAS_LIMIT_SCHEDULE"].GetArrayLength(), Is.Zero);
     }
 
-    [Test]
-    public async Task Sepolia_serves_its_gas_limit_schedule()
+    [TestCase("sepolia", "353024")]
+    [TestCase("hoodi", "143616")]
+    public async Task Serves_the_gas_limit_schedule_of_the_network(string network, string epoch)
     {
-        JsonElement served = await ServedSpecAsync(BeaconChainSpec.Sepolia);
+        JsonElement served = await ServedSpecAsync(network == "hoodi" ? BeaconChainSpec.Hoodi : BeaconChainSpec.Sepolia);
         JsonElement schedule = served.GetProperty("GAS_LIMIT_SCHEDULE");
         Assert.That(schedule.GetArrayLength(), Is.EqualTo(1));
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(schedule[0].GetProperty("EPOCH").GetString(), Is.EqualTo("353024"));
+        Assert.That(schedule[0].GetProperty("EPOCH").GetString(), Is.EqualTo(epoch));
         Assert.That(schedule[0].GetProperty("GAS_LIMIT").GetString(), Is.EqualTo("200000000"));
     }
 
@@ -155,6 +156,7 @@ public class ConfigSpecEndpointTests
             ("GENESIS_DELAY", "600"), ("TERMINAL_TOTAL_DIFFICULTY", "0"), ("MIN_GENESIS_ACTIVE_VALIDATOR_COUNT", "16384"), ("SECONDS_PER_ETH1_BLOCK", "12"),
             ("ALTAIR_FORK_VERSION", "0x20000910"), ("ALTAIR_FORK_EPOCH", "0"), ("DENEB_FORK_VERSION", "0x50000910"), ("ELECTRA_FORK_VERSION", "0x60000910"),
             ("ELECTRA_FORK_EPOCH", "2048"), ("FULU_FORK_VERSION", "0x70000910"), ("FULU_FORK_EPOCH", "50688"),
+            ("GLOAS_FORK_VERSION", "0x80000910"), ("GLOAS_FORK_EPOCH", "143616"),
             ("DEPOSIT_CHAIN_ID", "560048"), ("DEPOSIT_NETWORK_ID", "560048"),
             ("DEPOSIT_CONTRACT_ADDRESS", "0x00000000219ab540356cBB839Cbe05303d7705Fa"), ("SLOT_DURATION_MS", "12000"),
         ];
@@ -208,7 +210,7 @@ public class ConfigSpecEndpointTests
         JsonElement served = await ServedSpecAsync(spec);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        string[] omittedKeys = network == "sepolia" ? [] : ["GLOAS_FORK_EPOCH", "GLOAS_FORK_VERSION"];
+        string[] omittedKeys = network is "sepolia" or "hoodi" ? [] : ["GLOAS_FORK_EPOCH", "GLOAS_FORK_VERSION"];
         Assert.That(PinnedScalars().Keys.Except(omittedKeys).Except(served.EnumerateObject().Select(p => p.Name)), Is.Empty);
         Assert.That(served.EnumerateObject().Select(p => p.Name).Intersect(omittedKeys), Is.Empty);
         Assert.That(ConstantMismatches(served), Is.Empty);
