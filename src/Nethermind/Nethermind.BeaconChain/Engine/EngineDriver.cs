@@ -279,7 +279,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// Submits a Gloas execution payload via <c>engine_newPayloadV5</c> with an execution request
     /// list that is already encoded as EIP-7685 <c>request_type ++ request_data</c> entries.
     /// </summary>
-    public async Task<PayloadStatusV1> NewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, byte[][] requests)
+    internal async Task<PayloadStatusV1> NewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, byte[][] requests)
     {
         Interlocked.Increment(ref Metrics.NewPayloadCallsCount);
         ExecutionPayloadV4 converted = PayloadConverter.ToExecutionPayloadV4(payload);
@@ -305,7 +305,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         NotifyNewPayload(payload, versionedHashes, parentBeaconBlockRoot, PayloadConverter.ToExecutionRequestsList(executionRequests), out latestValidHash);
 
     /// <summary>Same as the <see cref="ExecutionRequestsGloas"/> overload, with an already encoded execution request list.</summary>
-    public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, byte[][] executionRequests, out Hash256? latestValidHash)
+    internal ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, byte[][] executionRequests, out Hash256? latestValidHash)
     {
         PayloadStatusV1 status = NewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests).GetAwaiter().GetResult();
         latestValidHash = status.LatestValidHash;
