@@ -1206,22 +1206,20 @@ public class FlatWorldStateScopeProviderTests
         ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
         FlatStorageTree tree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
         UInt256[] expected = new UInt256[20];
-        for (int slot = 1; slot < 10; slot++) expected[slot] = (UInt256)(slot + 100);
-        ApplyEarlyHints(tree, () =>
+        for (int slot = 1; slot < expected.Length; slot++) expected[slot] = (UInt256)(slot + 100);
+        ApplyEarlyHints(tree, () => tree.HintSet(1, 500));
+        for (int slot = 1; slot < 10; slot++)
         {
-            for (int slot = 1; slot < 10; slot++) tree.HintSet((UInt256)slot, expected[slot]);
-        });
+            int committedSlot = slot;
+            ApplyEarlyHints(tree, () => tree.HintSet((UInt256)committedSlot, expected[committedSlot]));
+        }
 
         using ManualResetEventSlim started = new();
         using ManualResetEventSlim resume = new();
         tree.OnEarlyPassDrained = () => { started.Set(); resume.Wait(); };
         try
         {
-            for (int slot = 10; slot < expected.Length; slot++)
-            {
-                expected[slot] = (UInt256)(slot + 100);
-                tree.HintSet((UInt256)slot, expected[slot]);
-            }
+            tree.HintSet(1, 999);
             Assert.That(started.Wait(5000), Is.True);
 
             Task blockEnd = Task.Run(() =>
@@ -1237,10 +1235,10 @@ public class FlatWorldStateScopeProviderTests
             resume.Set();
         }
 
-        Assert.That(() => tree.EarlyWritesDrained, Is.True.After(5000, 10));
+        Assert.That(() => ctx.Scope.EarlyApplyCounts.Applied, Is.EqualTo(11).After(5000, 10));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ctx.Scope.EarlyApplyCounts.Reused, Is.EqualTo(9), "the slots of the finished pass are reused");
+            Assert.That(ctx.Scope.EarlyApplyCounts.Reused, Is.EqualTo(9), "the slots of the finished passes are reused");
             Assert.That(ctx.Scope.EarlyApplyCounts.Abandoned, Is.EqualTo(1));
         }
         ctx.Scope.Commit(1);
@@ -1330,6 +1328,20 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(enabled.Scope.AppliesStorageWritesEarly, Is.False);
         using TestContext next = new();
         Assert.That(next.Scope.AppliesStorageWritesEarly, Is.False);
+    }
+
+    [Test]
+    public void EarlyStorageApply_StartupFailureStopsStartedHelpers([Values(1, 2)] int startedCount)
+    {
+        List<Thread> started = [];
+        Assert.Throws<ThreadStateException>(() => new IdleStorageApplier(LimboLogs.Instance, 2, thread =>
+        {
+            if (started.Count == startedCount) throw new ThreadStateException();
+            thread.Start();
+            started.Add(thread);
+        }));
+
+        foreach (Thread thread in started) Assert.That(thread.Join(5000), Is.True);
     }
 
     [Test]

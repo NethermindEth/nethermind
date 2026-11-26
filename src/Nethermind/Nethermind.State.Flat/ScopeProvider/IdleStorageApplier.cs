@@ -14,9 +14,8 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// It runs under SCHED_IDLE on Linux, never blocks the block thread, and is skipped by blocks processed back to back.
 /// </summary>
 /// <remarks>
-/// A large pass spreads its trie update over helper threads at the same idle priority. A contract with thousands of
-/// writes in a block needs them: on one thread its pass is still running when the block ends, so all of its early
-/// work is dropped. Thread-pool workers would take CPU from block execution instead.
+/// A large pass spreads its trie update over helper threads at the same idle priority so that more passes finish
+/// before block end. Thread-pool workers would take CPU from block execution.
 /// </remarks>
 internal sealed partial class IdleStorageApplier
 {
@@ -40,16 +39,22 @@ internal sealed partial class IdleStorageApplier
     private long _lastBlockCommit;
     private readonly BlockingCollection<IThreadPoolWorkItem> _helperWork = [];
     // About one per physical core: SCHED_IDLE does not keep a helper off the SMT sibling of a busy block thread.
-    private readonly int _helperCount = Math.Min(Environment.ProcessorCount / 2, MaxHelpers);
+    private readonly int _helperCount;
 
-    private IdleStorageApplier(ILogManager logManager)
+    internal IdleStorageApplier(ILogManager logManager, int helperCount, Action<Thread> startThread)
     {
         _logger = logManager.GetClassLogger<IdleStorageApplier>();
-        Thread thread = new(Run) { IsBackground = true, Name = "Storage early apply" };
-        thread.Start();
-        for (int i = 0; i < _helperCount; i++)
+        _helperCount = helperCount;
+        try
         {
-            new Thread(RunHelper) { IsBackground = true, Name = "Storage early apply helper" }.Start();
+            for (int i = 0; i < helperCount; i++)
+                startThread(new Thread(RunHelper) { IsBackground = true, Name = "Storage early apply helper" });
+            startThread(new Thread(Run) { IsBackground = true, Name = "Storage early apply" });
+        }
+        catch
+        {
+            _helperWork.CompleteAdding();
+            throw;
         }
     }
 
@@ -60,7 +65,7 @@ internal sealed partial class IdleStorageApplier
 
         lock (InstanceLock)
         {
-            return _instance ??= new IdleStorageApplier(logManager);
+            return _instance ??= new IdleStorageApplier(logManager, Math.Min(Environment.ProcessorCount / 2, MaxHelpers), static thread => thread.Start());
         }
     }
 

@@ -54,7 +54,7 @@ public sealed class FlatStorageTree(
     private SnapshotBundle.BackgroundTrieSource? _earlySource;
     // Owned by the pass in progress.
     private (ValueHash256 Hash, ulong Pointer) _earlyRoot;
-    private Dictionary<UInt256, UInt256>? _earlyApplied;
+    private Dictionary<UInt256, UInt256>? _workingApplied;
     // The last finished pass. A block end reads it without a lock, so it never waits for the idle-priority thread.
     private EarlyPass? _earlyPass;
     private int _earlyState;
@@ -177,18 +177,14 @@ public sealed class FlatStorageTree(
             Dictionary<UInt256, UInt256> latest = [with(writes.Count)];
             while (writes.TryDequeue(out (UInt256 Slot, UInt256 Value) write)) latest[write.Slot] = write.Value;
             if (Volatile.Read(ref _earlyState) != EarlyApplying) return;
-            using ArrayPoolListRef<(UInt256 Slot, UInt256 Value)> changed = new(latest.Count);
-            Dictionary<UInt256, UInt256>? applied = _earlyApplied;
-            foreach ((UInt256 slot, UInt256 value) in latest)
-            {
-                if (applied is null || !applied.TryGetValue(slot, out UInt256 current) || current != value) changed.Add((slot, value));
-            }
-
-            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(changed.Count);
+            Dictionary<UInt256, UInt256> applied = _workingApplied ??= [with(latest.Count)];
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(latest.Count);
             Unsafe.SkipInit(out EvmWord word);
             ValueHash256 key = default;
-            foreach ((UInt256 slot, UInt256 value) in changed)
+            foreach ((UInt256 slot, UInt256 value) in latest)
             {
+                if (applied.TryGetValue(slot, out UInt256 current) && current == value) continue;
+                applied[slot] = value;
                 bool isZero = value.IsZero;
                 StorageTree.ComputeKeyWithLookup(slot, ref key);
                 entries.Add(StorageTree.CreateBulkSetEntry(key, isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word), isZero));
@@ -202,11 +198,19 @@ public sealed class FlatStorageTree(
                 _scope.CountEarlyApplied(entries.Count);
                 if (Volatile.Read(ref _earlyState) == EarlyApplying)
                 {
-                    applied = _earlyApplied ??= [];
-                    foreach ((UInt256 slot, UInt256 value) in changed) applied[slot] = value;
                     _earlyRoot = root;
-                    // The block end changes the map it adopts, so it gets a copy; the root and slots publish together.
-                    Volatile.Write(ref _earlyPass, new EarlyPass(root, [with(applied)]));
+                    EarlyPass? previous = Interlocked.Exchange(ref _earlyPass, new EarlyPass(root, applied));
+                    if (previous is null)
+                    {
+                        _workingApplied = latest;
+                    }
+                    else if (Volatile.Read(ref _earlyState) == EarlyApplying)
+                    {
+                        // After the exchange, new claims see the new map. If nobody has claimed the old map, we
+                        // can reuse it for the next pass by replaying just this pass's writes.
+                        _workingApplied = previous.Applied;
+                        foreach ((UInt256 slot, UInt256 value) in latest) _workingApplied[slot] = value;
+                    }
                 }
             }
         }
