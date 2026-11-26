@@ -43,8 +43,48 @@ public class BlockAccessListDecoderTests
         Assert.That(bal.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(bytes))));
     }
 
+    [TestCaseSource(nameof(BlockAccessListTestSource))]
+    public void CountItems_matches_the_item_count_of_the_decoded_list(string rlp, ReadOnlyBlockAccessList expected) =>
+        Assert.That(BlockAccessListDecoder.CountItems(Bytes.FromHexString(rlp)), Is.EqualTo(expected.ItemCount));
+
     // Block processing reuses WireHash as the header commitment of the generated BAL, which holds only
     // if every encoding the decoder accepts is the canonical one.
+    [TestCaseSource(nameof(BlockAccessListTestSource))]
+    public void Validate_returns_the_item_count_of_the_decoded_list(string rlp, ReadOnlyBlockAccessList expected) =>
+        Assert.That(BlockAccessListDecoder.Validate(Bytes.FromHexString(rlp)), Is.EqualTo(expected.ItemCount));
+
+    [TestCaseSource(nameof(BlockAccessListEncodingFormsSource))]
+    public bool Validate_accepts_the_same_encodings_as_decode(string rlp)
+    {
+        try
+        {
+            BlockAccessListDecoder.Validate(Bytes.FromHexString(rlp));
+            return true;
+        }
+        catch (RlpReaderException)
+        {
+            return false;
+        }
+    }
+
+    [TestCaseSource(nameof(UnsortedOrDuplicateEntrySource))]
+    public void Validate_rejects_an_unsorted_or_duplicate_entry(byte[] encoded, string expectedMessage)
+    {
+        RlpReaderException exception = Assert.Throws<RlpReaderException>(() => BlockAccessListDecoder.Validate(encoded))!;
+        Assert.That(expectedMessage, Does.StartWith(exception.Message));
+    }
+
+    [TestCase("0xe2e1940000000000000000000000000000000000000001c0c0c4c3008180c3c20105c0", TestName = "validate_zero_index_as_0x00")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c5c480820080c3c20105c0", TestName = "validate_value_with_leading_zero")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3810105c0", TestName = "validate_single_byte_index_as_string")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3018105c0", TestName = "validate_single_byte_value_as_string")]
+    [TestCase("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", TestName = "validate_short_list_with_long_header")]
+    [TestCase("0xe3e2b8140000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", TestName = "validate_short_address_with_long_header")]
+    [TestCase("0xe2e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c000", TestName = "validate_trailing_bytes")]
+    [TestCase("0xc1c0", TestName = "validate_inner_empty_list")]
+    public void Validate_rejects_a_malformed_encoding(string rlp) =>
+        Assert.That(() => BlockAccessListDecoder.Validate(Bytes.FromHexString(rlp)), Throws.InstanceOf<RlpReaderException>());
+
     [TestCaseSource(nameof(BlockAccessListEncodingFormsSource))]
     public bool Decode_accepts_only_the_canonical_encoding(string rlp)
     {

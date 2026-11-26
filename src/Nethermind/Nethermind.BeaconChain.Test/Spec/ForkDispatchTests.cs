@@ -198,11 +198,9 @@ public class ForkDispatchTests
     {
         (Func<BeaconChainSpec, byte[]> version, string? refusal) = Expect(CheckpointStateVersions, fork);
         BeaconChainSpec spec = CheckpointSpec();
-        BeaconStateGloas state = ForkCrossingChain.Instance.First.PostState.Clone();
-        state.Fork = new Fork { PreviousVersion = state.Fork!.PreviousVersion, CurrentVersion = version(spec), Epoch = state.Fork.Epoch };
-        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(state, new ForkedSignedBeaconBlock.OfGloas(ForkCrossingChain.Instance.First.Block));
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
-        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, spec, store, LimboLogs.Instance);
+        (CheckpointSync sync, BeaconChainStore store, GloasCheckpointFiles files) = CheckpointSyncWithStateVersion(spec, version(spec));
+        using GloasCheckpointFiles checkpointFiles = files;
+        using CheckpointSync checkpointSync = sync;
 
         if (refusal is null)
         {
@@ -215,6 +213,25 @@ public class ForkDispatchTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ex.Message, Does.Contain(refusal));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
+    }
+
+    [TestCase(0UL)]
+    [TestCase(1UL)]
+    public async Task Checkpoint_state_version_of_a_fork_after_gloas_is_refused_by_name(ulong epochsAfterGloas)
+    {
+        byte[] laterVersion = Bytes.FromHexString("0x08000000");
+        BeaconChainSpec spec = CheckpointSpec();
+        spec = spec with { Forks = [.. spec.Forks, new(laterVersion, spec.GloasForkEpoch + epochsAfterGloas)] };
+        (CheckpointSync sync, BeaconChainStore store, GloasCheckpointFiles files) = CheckpointSyncWithStateVersion(spec, laterVersion);
+        using GloasCheckpointFiles checkpointFiles = files;
+        using CheckpointSync checkpointSync = sync;
+
+        NotSupportedException ex = (await Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None)))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain("scheduled after Gloas"));
             Assert.That(store.TryGetAnchor(out _, out _), Is.False);
         }
     }
@@ -310,6 +327,38 @@ public class ForkDispatchTests
             CheckpointSyncUrl = null,
             Forks = [new(ElectraVersion, shared.ElectraForkEpoch), .. shared.Forks],
         };
+    }
+
+    [Test]
+    public void Fork_at_epoch_refuses_a_live_fork_scheduled_after_gloas()
+    {
+        BeaconChainSpec spec = CheckpointSpec();
+        spec = spec with { Forks = [.. spec.Forks, new(Bytes.FromHexString("0x08000000"), spec.GloasForkEpoch + 1)] };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.ForkAtEpoch(spec.GloasForkEpoch), Is.EqualTo(BeaconFork.Gloas));
+            Assert.Throws<NotSupportedException>(() => spec.ForkAtEpoch(spec.GloasForkEpoch + 1));
+        }
+    }
+
+    [Test]
+    public void Boundary_crossing_refuses_a_fork_it_has_no_crossing_for()
+    {
+        BeaconFork laterFork = Enum.GetValues<BeaconFork>().Max() + 1;
+        ForkedBeaconState state = new ForkedBeaconState.OfGloas(ForkCrossingChain.Instance.First.PostState.Clone());
+
+        NotSupportedException ex = Assert.Throws<NotSupportedException>(() => ForkedStateTransition.CrossBoundaryIfNeeded(state, laterFork, Spec, new EpochCache()))!;
+        Assert.That(ex.Message, Does.Contain(laterFork.ToString()));
+    }
+
+    private static (CheckpointSync Sync, BeaconChainStore Store, GloasCheckpointFiles Files) CheckpointSyncWithStateVersion(BeaconChainSpec spec, byte[] version)
+    {
+        BeaconStateGloas state = ForkCrossingChain.Instance.First.PostState.Clone();
+        state.Fork = new Fork { PreviousVersion = state.Fork!.PreviousVersion, CurrentVersion = version, Epoch = state.Fork.Epoch };
+        GloasCheckpointFiles files = GloasCheckpointFiles.Write(state, new ForkedSignedBeaconBlock.OfGloas(ForkCrossingChain.Instance.First.Block));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
+        return (new CheckpointSync(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, spec, store, LimboLogs.Instance), store, files);
     }
 
     private static BlockImporter CreateImporter()

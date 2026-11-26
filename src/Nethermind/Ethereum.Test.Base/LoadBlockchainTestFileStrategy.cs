@@ -5,12 +5,12 @@ using System.Collections.Generic;
 
 namespace Ethereum.Test.Base
 {
-    public class LoadBlockchainTestFileStrategy : ITestLoadStrategy
+    public class LoadBlockchainTestFileStrategy(TestType testType = TestType.Blockchain) : ITestLoadStrategy
     {
         public IEnumerable<EthereumTest> Load(string testName, string? wildcard = null)
         {
             FileTestsSource fileTestsSource = new(testName, wildcard);
-            return fileTestsSource.LoadTests(TestType.Blockchain);
+            return fileTestsSource.LoadTests(testType);
         }
     }
 }

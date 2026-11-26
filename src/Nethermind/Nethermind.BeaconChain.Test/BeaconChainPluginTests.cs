@@ -5,6 +5,7 @@ using System.Net;
 using Autofac;
 using Autofac.Core;
 using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
@@ -35,6 +36,7 @@ public class BeaconChainPluginTests
         BeaconChainSpec spec = container.Resolve<BeaconChainSpec>();
         Assert.That(spec.GenesisValidatorsRoot, Is.EqualTo(BeaconChainSpec.Mainnet.GenesisValidatorsRoot));
         Assert.That(spec.Forks.Select(static fork => fork.Epoch), Is.EqualTo(BeaconChainSpec.Mainnet.Forks.Select(static fork => fork.Epoch)));
+        Assert.That(container.Resolve<PubkeyCache>().SignatureVerifier, Is.SameAs(spec.SignatureVerifier));
         Assert.That(new BeaconChainPlugin(new BeaconChainConfig()).Enabled, Is.False);
         Assert.That(new BeaconChainPlugin(new BeaconChainConfig { Enabled = true }).Enabled, Is.True);
     }

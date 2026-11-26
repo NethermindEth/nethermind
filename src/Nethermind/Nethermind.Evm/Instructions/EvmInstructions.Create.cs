@@ -175,7 +175,7 @@ public static partial class EvmInstructions
         }
 
         // Load the initialization code from memory based on the specified position and length.
-        if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+        if (!CodeInfo.TryLoadInitCode(ref vm.VmState.Memory, in memoryPositionOfInitCode, in initCodeLength, env.CallDepth + 1, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
@@ -210,7 +210,7 @@ public static partial class EvmInstructions
         if (isTransientCreate)
         {
             // EIP-8360: no account-creation charge; the target access is priced as an EIP-8038 account access.
-            if (!TSpec.TryConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, contractAddress))
+            if (!TSpec.TryConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, contractAddress))
                 goto OutOfGas;
             if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(contractAddress))
                 goto OutOfGas;
@@ -290,7 +290,7 @@ public static partial class EvmInstructions
         // This environment sets up the call frame for executing the contract's initialization code.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             vm.EnvironmentCache,
-            codeInfo: new CodeInfo(initCode),
+            codeInfo: CodeInfo.ForInitCode(initCode, env.CallDepth + 1),
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
             codeSource: null,

@@ -59,6 +59,7 @@ public class GethTraceOptionsDeserializationTests
     [TestCase("bad", null)]
     [TestCase("5s", 5)]
     [TestCase("00:00:05", 5)]
+    [TestCase("5", 432000)]
     [TestCase("\\u0035s", 5)]
     public void ByNumber_options_defer_duration_parsing(string timeout, int? seconds)
     {
@@ -480,7 +481,7 @@ public class GethTraceOptionsDeserializationTests
     public void ByNumber_options_clear_malformed_timeout_on_explicit_override(string json)
     {
         GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(json, CreateByNumberSerializerOptions())!;
-        Assert.That(options.ParsedTimeout.Error, Does.Contain("Cannot parse 'bad'"));
+        Assert.That(options.ParsedTimeout.Error, Is.EqualTo("time: invalid duration \"bad\""));
 
         GethTraceOptions overridden = options with { Timeout = null };
         using (Assert.EnterMultipleScope())

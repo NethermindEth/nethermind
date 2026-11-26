@@ -1241,7 +1241,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
 
-            return _speculativeTask = Task.Run(() => RunSpeculativeLoop(headHash, head, spec, nextDelta, idlePassDelayMs, token));
+            return _speculativeTask = Task.Run(() => RunSpeculativeLoop(headHash, head, spec, nextDelta, idlePassDelayMs, token), CancellationToken.None);
         }
     }
 
@@ -1387,9 +1387,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             _speculativeTask.GetAwaiter().GetResult();
         }
-        catch
+        catch (OperationCanceledException)
         {
-            // Warming failures are already logged inside the pass; nothing actionable here.
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugError("Speculative pre-warming pass ended with an error", ex);
         }
         _speculativeCts.Dispose();
         _speculativeCts = null;
@@ -1418,7 +1421,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         => block.Transactions.Length < MinTransactionsForReactiveWarming
         && !(IsBalReadWarmingEnabled(spec) && block.BlockAccessList is not null);
 
-    public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
+    internal bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
 
     /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
@@ -1834,6 +1837,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
             // Ignore, regular tx processing exceptions
+            if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Pre-warming tx[{txIndex}] {tx.Hash} stopped: {ex.Message}");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -2421,8 +2425,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     worldState.WarmUp(to);
                 }
             }
-            catch (MissingTrieNodeException)
+            catch (MissingTrieNodeException ex)
             {
+                ILogger logger = Static.LogManager.GetClassLogger<BlockCachePreWarmer>();
+                if (logger.IsTrace) logger.Trace($"Skipped warming {sender} and {to}: {ex.Message}");
             }
         }
     }

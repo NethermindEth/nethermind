@@ -1,9 +1,12 @@
 name: Sync PR Gate (Hoodi)
 
 on:
-  pull_request:
+  # pull_request_target runs master's copy of this file and of the gcp-runner action, so only reviewed
+  # code can use the GCP spawner identity. PR code runs only on the VM, which cannot impersonate it.
+  pull_request_target:
     branches: [master]
-    # Syncs Hoodi with the PR's Docker image on a paid larger runner, so it only runs when the
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Syncs Hoodi with the PR's Docker image on GCP VMs, so it only runs when the
     # PR can change that image or this gate. Not a required check, so skipping leaves no pending status.
     paths:
       - 'Dockerfile'
@@ -17,6 +20,7 @@ on:
       - 'nuget.config'
       - 'global.json'
       - '.github/workflows/sync-pr-gate.yml'
+      - '.github/actions/gcp-runner/**'
 
 concurrency:
   group: sync-pr-${{ github.event.pull_request.number }}
@@ -31,7 +35,7 @@ permissions:
 
 jobs:
   select-consensus:
-    if: github.event.pull_request.head.repo.fork == false
+    if: github.event.pull_request.head.repo.fork == false && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -53,11 +57,60 @@ jobs:
             return files.length >= 3000 || files.some(file => affectsEmbedded(file.filename) || affectsEmbedded(file.previous_filename || ''))
               ? ['Lodestar', 'Embedded'] : ['Lodestar'];
 
+  create-runner:
+    name: "Create runner (${{ matrix.mode }}, ${{ matrix.consensus }})"
+    needs: select-consensus
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [HalfPath, Flat]
+        consensus: ${{ fromJSON(needs.select-consensus.outputs.clients) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      # This gate exists to cover arm64. 16 GB matches the smoke tests' non-validator Hoodi nodes;
+      # C4A has no highcpu -lssd shape and only boots from Hyperdisk.
+      - name: Create a runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: prg-${{ github.run_id }}-${{ matrix.mode }}-${{ matrix.consensus }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          machine_type: c4a-standard-4-lssd
+          local_ssd_count: 1
+          boot_disk_type: hyperdisk-balanced
+          image_family: ubuntu-2404-lts-arm64
+          provisioning_model: SPOT
+          max_run_duration: 4h
+          zones: ${{ vars.GCP_ZONES }}
+          zone_order: rotate
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
   sync-hoodi:
     name: "Sync hoodi (${{ matrix.mode }}${{ matrix.consensus == 'Embedded' && ', embedded CL' || '' }})"
-    if: github.event.pull_request.head.repo.fork == false
-    needs: select-consensus
-    runs-on: ubuntu-arm64-8-core
+    # A matrix `needs` waits on every entry, so one failed create skips all syncs instead of
+    # leaving a job queued for a runner that never registers.
+    needs: [select-consensus, create-runner]
+    runs-on: prg-${{ github.run_id }}-${{ matrix.mode }}-${{ matrix.consensus }}
     timeout-minutes: 180
     strategy:
       fail-fast: false
@@ -78,11 +131,22 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           repositories: "nethermind,post-merge-smoke-tests"
+          permission-contents: read
 
-      - name: Checkout repository
+      # PR code only runs inside Docker: the image build and the client container. Everything run on the
+      # VM itself comes from master's checkout, as the job holds secrets and master's cache scope.
+      - name: Checkout PR
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          persist-credentials: false
+
+      - name: Checkout master scripts
+        uses: actions/checkout@v6
+        with:
+          path: base
+          sparse-checkout: scripts
           persist-credentials: false
 
       - name: Build PR image
@@ -94,7 +158,7 @@ jobs:
             --build-arg BUILD_CONFIG=release \
             --build-arg CI=true \
             --build-arg COMMIT_HASH=${{ github.event.pull_request.head.sha }} \
-            .
+            pr
 
       - name: Checkout tests repository
         uses: actions/checkout@v6
@@ -105,37 +169,26 @@ jobs:
           clean: true
           persist-credentials: false
 
-      - name: Cache apt packages
-        uses: awalsh128/cache-apt-pkgs-action@v1
-        with:
-          packages: make build-essential jq zip
-          version: 1.0
-
       - name: Setup Go environment
         uses: actions/setup-go@v6
         with:
           # Pinned to 1.26: Go 1.27 breaks sedge's abigen build (cockroachdb/swiss has no go1.27 case)
           go-version: '1.26'
           check-latest: true
-          cache: true
+          # A pull_request_target run saves caches to master's scope, and this job runs PR code.
+          cache: false
 
       - name: Set up .NET for CI scripts
         uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: base/global.json
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.X"
 
-      - name: Cache Sedge binary
-        id: cache-sedge
-        uses: actions/cache@v5
-        with:
-          path: sedge/build/sedge
-          key: sedge-core-${{ runner.arch }}
-
       - name: Install Sedge
-        if: steps.cache-sedge.outputs.cache-hit != 'true'
         env:
           # proxy.golang.org serves large module zips as a redirect to storage.googleapis.com,
           # unreachable from the sync runners; `|` falls back to direct on any error, not just 404/410
@@ -185,26 +238,26 @@ jobs:
         env:
           NETWORK: hoodi
           SYNC_MODE: ${{ matrix.mode }}
-        run: dotnet run --file scripts/wait-for-sync.cs
+        run: dotnet run --file base/scripts/wait-for-sync.cs
 
+      # The container writes these files as root, so never follow its symlinks or trust its file names.
       - name: Get Nethermind Debug Logs
         if: failure() || cancelled()
+        working-directory: sedge
         run: |
-          target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
-          cd "$target_dir/logs"
-          log_file=$(find . -type f -name "*.log" | head -n 1)
-          echo "Found log file: $log_file"
-          artifact_name=$(basename "$log_file")-hoodi-${{ matrix.mode }}-${{ matrix.consensus }}-${{ github.run_id }}
-          zip "${artifact_name}.zip" "$log_file"
-          echo "artifact_name=$artifact_name" >> $GITHUB_ENV
-          echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV
+          log_dir=$(realpath -e execution-data/logs) || exit 0
+          if [[ "$log_dir" != "$PWD"/* ]]; then
+            echo "::warning::Skipping logs outside the workspace: $log_dir"
+            exit 0
+          fi
+          find "$log_dir" -type f -name '*.log' -print0 | head -zn 1 | xargs -0r zip -j -y "$RUNNER_TEMP/nethermind-log.zip"
 
       - name: Upload Nethermind Debug logs artifact
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.artifact_name }}
-          path: ${{ env.artifact_path }}
+          name: nethermind-log-hoodi-${{ matrix.mode }}-${{ matrix.consensus }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/nethermind-log.zip
           retention-days: 7
 
       - name: Get Consensus Logs
@@ -214,3 +267,45 @@ jobs:
       - name: Check size of DB
         if: always()
         run: du -h $GITHUB_WORKSPACE/sedge
+
+  # always() also runs this when a newer push cancels the run, so VMs are not left until max_run_duration.
+  destroy-runner:
+    name: "Destroy runner (${{ matrix.mode }}, ${{ matrix.consensus }})"
+    needs: [select-consensus, create-runner, sync-hoodi]
+    if: always() && needs.select-consensus.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [HalfPath, Flat]
+        consensus: ${{ fromJSON(needs.select-consensus.outputs.clients) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Destroy runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: prg-${{ github.run_id }}-${{ matrix.mode }}-${{ matrix.consensus }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          expect_instance: ${{ needs.create-runner.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}

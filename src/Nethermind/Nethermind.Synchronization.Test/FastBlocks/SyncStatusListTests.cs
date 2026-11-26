@@ -59,6 +59,29 @@ public class SyncStatusListTests
     }
 
     [Test]
+    public void Pointer_stays_above_the_lower_bound_until_it_is_inserted()
+    {
+        const ulong lowerBound = 90;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>())
+            .Returns(static ci => new BlockInfo(TestItem.KeccakA, 0) { BlockNumber = ci.ArgAt<ulong>(0) });
+        SyncStatusList syncStatusList = new(blockTree, 100, null, lowerBound);
+
+        syncStatusList.TryGetInfosForBatch(50, new AlwaysDownloadStrategy(), out _);
+        for (ulong number = lowerBound + 1; number <= 100; number++)
+        {
+            syncStatusList.MarkInserted(number);
+        }
+
+        syncStatusList.TryGetInfosForBatch(50, new AlwaysDownloadStrategy(), out _);
+        Assert.That(syncStatusList.LowestInsertWithoutGaps, Is.EqualTo(lowerBound + 1));
+
+        syncStatusList.MarkInserted(lowerBound);
+        syncStatusList.TryGetInfosForBatch(50, new AlwaysDownloadStrategy(), out _);
+        Assert.That(syncStatusList.LowestInsertWithoutGaps, Is.EqualTo(lowerBound - 1));
+    }
+
+    [Test]
     public void Will_skip_existing_keys()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();

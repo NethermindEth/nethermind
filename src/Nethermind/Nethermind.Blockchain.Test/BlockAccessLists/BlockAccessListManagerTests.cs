@@ -35,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 
 namespace Nethermind.Blockchain.Test.BlockAccessLists;
 
@@ -261,9 +262,9 @@ public class BlockAccessListManagerTests
     private static readonly byte[] ReadAndIncrement = Bytes.FromHexString("0x6001545060005460010160005500");
 
     [Test]
-    public async Task Parallel_execution_matches_sequential_execution_for_transactions_sharing_accounts_and_slots()
+    public async Task Parallel_execution_matches_sequential_execution_for_transactions_sharing_accounts_and_slots([Values] bool readOnly)
     {
-        using BasicTestBlockchain chain = await CreateCounterChain();
+        using BasicTestBlockchain chain = await CreateCounterChain(readOnly);
         Transaction[] transactions = SharedAccountTransactions();
         int calls = transactions.Count(static tx => tx.To == Counter);
 
@@ -284,7 +285,7 @@ public class BlockAccessListManagerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(produced.Select(static r => r.StatusCode), Is.All.EqualTo(StatusCode.Success));
-            Assert.That(count, Is.EqualTo(InitialCount + (UInt256)calls), "every call incremented the shared slot");
+            Assert.That(count, Is.EqualTo(readOnly ? InitialCount : InitialCount + (UInt256)calls), "only writing calls increment the shared slot");
             Assert.That(parallel.Parallel, Is.True, "the first run took the parallel path");
             Assert.That(sequential.Parallel, Is.False, "the second run took the sequential path");
             Assert.That(parallelAgain.Parallel, Is.True, "the third run took the parallel path");
@@ -305,6 +306,11 @@ public class BlockAccessListManagerTests
             using IDisposable scope = chain.MainWorldState.BeginScope(parent);
             (Block processed, TxReceipt[] receipts) = chain.BlockProcessor.ProcessOne(
                 suggested, options, NullBlockTracer.Instance, spec, CancellationToken.None);
+            if (readOnly)
+            {
+                balManager.SpendGas(ulong.MaxValue);
+                balManager.ValidateBlockAccessList(processed, (uint)processed.Transactions.Length + 1);
+            }
             return (processed, receipts, balManager.ParallelExecutionEnabled);
         }
     }
@@ -366,15 +372,17 @@ public class BlockAccessListManagerTests
         return new ReadOnlyBlockAccessList(accounts, bal.ItemCount + 1);
     }
 
-    private static Task<BasicTestBlockchain> CreateCounterChain() => BasicTestBlockchain.Create(builder => builder
-        .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))
+    private static Task<BasicTestBlockchain> CreateCounterChain(bool readOnly = false) => BasicTestBlockchain.Create(builder => builder
+        .AddSingleton<ISpecProvider>(new TestSpecProvider(readOnly
+            ? new OverridableReleaseSpec(Amsterdam.Instance) { IsEip7002Enabled = false, IsEip7251Enabled = false, IsEip8282Enabled = false }
+            : Amsterdam.Instance))
         .Intercept<IBlocksConfig>(blocksConfig => blocksConfig.ParallelExecution = true)
         .WithGenesisPostProcessor((genesis, state, specProvider) =>
         {
             // The transaction count scales with the core count, so the default 4M gas limit can't fit them all on many-core machines.
             genesis.Header.GasLimit = 1_000_000_000;
             state.CreateAccount(Counter, UInt256.Zero);
-            state.InsertCode(Counter, ReadAndIncrement, specProvider.GenesisSpec);
+            state.InsertCode(Counter, readOnly ? Bytes.FromHexString("0x600054506001545000") : ReadAndIncrement, specProvider.GenesisSpec);
             state.Set(new StorageCell(Counter, UInt256.Zero), InitialCount);
             state.Set(new StorageCell(Counter, UInt256.One), ReadOnlyValue);
         }));

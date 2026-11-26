@@ -61,6 +61,7 @@ namespace Nethermind.Core.Test
 
         public Node Node { get; }
         public byte ProtocolVersion { get; } = default;
+        public bool CanGetNodeData => true;
         public string ProtocolCode { get; } = null!;
         public string ClientId => Node.ClientId ?? string.Empty;
         public Hash256 HeadHash { get; set; }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
@@ -552,6 +553,29 @@ namespace Nethermind.Serialization.SszGenerator.Test
     }
 
     [SszContainer]
+    public partial struct ProgressiveLeadingGapSample
+    {
+        [SszField(1)]
+        public ulong Head { get; set; }
+
+        [SszField(2)]
+        public ulong Tail { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct ProgressiveManyGapsSample
+    {
+        [SszField(3)]
+        public ulong Head { get; set; }
+
+        [SszField(10)]
+        public ulong Middle { get; set; }
+
+        [SszField(25)]
+        public ulong Tail { get; set; }
+    }
+
+    [SszContainer]
     public partial struct ProgressiveListContainer
     {
         [SszProgressiveList]
@@ -614,6 +638,47 @@ namespace Nethermind.Serialization.SszGenerator.Test
     public partial class ShadowDerived : ShadowBase
     {
         public new uint X { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct LeafContainer
+    {
+        public Hash256 Hash { get; set; }
+        public Address Address { get; set; }
+        public Bloom Bloom { get; set; }
+        public PrimitiveEnum Enum { get; set; }
+        public TestBytes48 Reference { get; set; }
+
+        [SszVector(2)]
+        public Hash256[] Hashes { get; set; }
+
+        [SszList(2)]
+        public Bloom[] Blooms { get; set; }
+
+        [SszList(2)]
+        public Address[] Addresses { get; set; }
+
+        [SszVector(2)]
+        public Address[] AddressVector { get; set; }
+
+        [SszList(2)]
+        public PrimitiveEnum[] Enums { get; set; }
+
+        [SszList(4)]
+        public byte[] Bytes { get; set; }
+    }
+
+    [SszContainer]
+    public partial class GenericContainer<T> where T : ISszCodec<T>, new()
+    {
+        public ulong Head { get; set; }
+        public T Value { get; set; } = new();
+    }
+
+    [SszContainer]
+    public partial class GenericContainerOwner
+    {
+        public GenericContainer<VariableC> Inner { get; set; } = new();
     }
 
     [SszContainer(isCollectionItself: true)]

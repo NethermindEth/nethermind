@@ -549,7 +549,9 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
     private void SetSharedAccountBit(int accountOrdinal)
     {
         Span<uint> halves = MemoryMarshal.Cast<ulong, uint>(_hasAccountWords.AsSpan());
-        Interlocked.Or(ref halves[accountOrdinal >> 5], 1u << (accountOrdinal & 31));
+        ref uint word = ref halves[accountOrdinal >> 5];
+        uint mask = 1u << (accountOrdinal & 31);
+        if ((Volatile.Read(ref word) & mask) == 0) Interlocked.Or(ref word, mask);
     }
 
     private void MarkAccount(int accountOrdinal)

@@ -441,8 +441,9 @@ namespace Nethermind.Db.Test
         {
             IDbConfig config = new DbConfig();
             config.EnableFileWarmer = true;
+            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
             {
-                using DbOnTheRocks db = TestRocksDbFactory.OpenDb("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+                using DbOnTheRocks db = TestRocksDbFactory.OpenDb("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
                 IKeyValueStore asKv = db;
                 for (int i = 0; i < 1000; i++)
                 {
@@ -451,7 +452,7 @@ namespace Nethermind.Db.Test
             }
 
             {
-                using DbOnTheRocks _ = TestRocksDbFactory.OpenDb("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+                using DbOnTheRocks _ = TestRocksDbFactory.OpenDb("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
             }
         }
 
@@ -862,6 +863,23 @@ namespace Nethermind.Db.Test
                 corruptedDb.Dispose();
                 Assert.That(corruptedDb.NativeCloses, Is.EqualTo(1), "failed reads must not leave a lease deferring native close");
             }
+        }
+
+        [Test]
+        public void Open_with_delete_on_start_fails_when_the_old_files_remain()
+        {
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            TestRocksDbFactory factory = new(_rocksdbConfigFactory, new DbConfig(), LimboLogs.Instance, DbPath, fileSystem);
+            DbSettings settings = GetRocksDbSettings(DbPath, "Blocks");
+            settings.DeleteOnStart = true;
+            string fullPath = factory.GetFullDbPath(settings);
+            Directory.CreateDirectory(fullPath);
+            string table = Path.Join(fullPath, "000001.sst");
+            fileSystem.Directory.Exists(fullPath).Returns(true);
+            fileSystem.Directory.EnumerateFiles(fullPath).Returns([table]);
+            fileSystem.File.When(f => f.Delete(table)).Do(static _ => throw new IOException());
+
+            Assert.That(() => factory.Open(settings, _rocksdbConfigFactory.GetForDatabase("Blocks", null), null), Throws.InstanceOf<IOException>());
         }
 
         // Background readers can outlive the block that queued them; a read after dispose begins must not reach the closed native DB.

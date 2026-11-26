@@ -18,6 +18,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.LightClient" />
+    <InternalsVisibleTo Include="Nethermind.LightClient.Test" />
     <InternalsVisibleTo Include="Ethereum.ConsensusSpec.Test" />
     <InternalsVisibleTo Include="Nethermind.BeaconChain.Gnosis.Test" />
   </ItemGroup>

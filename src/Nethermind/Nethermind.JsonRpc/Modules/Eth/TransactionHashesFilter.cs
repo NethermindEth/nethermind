@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -14,6 +15,11 @@ public class TransactionHashesFilter : IJsonRpcParam
 
     public void ReadJson(JsonElement jsonValue, JsonSerializerOptions options)
     {
+        if (jsonValue.ValueKind != JsonValueKind.Object)
+        {
+            throw new SafePublicMessageFormatException("expected an object with transactionHashes");
+        }
+
         // An empty list leaves the filter unset so every receipt is delivered, the same as a missing list.
         if (jsonValue.TryGetProperty("transactionHashes", out JsonElement hashesElement) &&
             hashesElement.ValueKind == JsonValueKind.Array &&

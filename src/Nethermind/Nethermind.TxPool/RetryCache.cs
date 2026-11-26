@@ -119,6 +119,13 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         IMessageHandler<TMessage>? SourceHandler,
         long RequestGeneration);
 
+    private sealed class OverflowRequestHandler : IMessageHandler<TMessage>
+    {
+        public static readonly OverflowRequestHandler Instance = new();
+
+        public void HandleMessage(TMessage message) { }
+    }
+
     private sealed class PendingHandlerCount
     {
         private int _count;
@@ -552,11 +559,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             return AnnounceResult.RequestRequired;
         }
 
-        if (IsOverflowRequestPending(resourceId))
-        {
-            return AnnounceResult.Delayed;
-        }
-
         while (!_requestingResources.Contains(resourceId))
         {
             if (_retryRequests.TryGetValue(resourceId, out RetryRequestEntry existingEntry))
@@ -621,7 +623,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                     return AnnounceResult.RequestRequired;
                 }
 
-                _logger.TraceWarn($"Shared pending {typeof(TResourceId)} overflow capacity is full, suppressing request from {handler}");
+                _logger.TraceWarn($"Shared pending {typeof(TResourceId)} overflow request is already pending or capacity is full, suppressing request from {handler}");
                 return AnnounceResult.Delayed;
             }
 
@@ -663,6 +665,21 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                     queueSlotReserved = false;
                     handlerSlotReserved = false;
                     return AnnounceResult.RequestRequired;
+                }
+
+                RetryRequestEntry overflowEntry = newEntry with { SourceHandler = OverflowRequestHandler.Instance };
+                published = TryPromoteOverflowRequest(resourceId, overflowEntry);
+                if (published)
+                {
+                    if (newBag.Add(handler, _maxRetryRequests, overflowEntry.Generation) is HandlerBagAddResult.Added)
+                    {
+                        handlerSlotReserved = false;
+                    }
+
+                    Enqueue(resourceId, overflowEntry);
+                    trackedSlotReserved = false;
+                    queueSlotReserved = false;
+                    return AnnounceResult.Delayed;
                 }
             }
             finally
@@ -1127,22 +1144,54 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                 long epoch = Volatile.Read(ref _overflowEpoch);
                 OverflowRequestStripe stripe = GetOverflowRequestStripe(resourceId);
                 PrepareOverflowStripe(stripe, epoch);
-                for (long candidateEpoch = epoch; candidateEpoch >= epoch - 1; candidateEpoch--)
-                {
-                    int generation = (int)(candidateEpoch & 1);
-                    if (stripe.Generations[generation].Remove(resourceId))
-                    {
-                        Interlocked.Decrement(ref _overflowRequestGenerationCounts![generation]);
-                        Interlocked.Decrement(ref _overflowRequestsInUse);
-                        return;
-                    }
-                }
+                RemoveOverflowRequest(stripe, resourceId, epoch);
             }
             finally
             {
                 _overflowGenerationLock.ExitReadLock();
             }
         }
+    }
+
+    private bool TryPromoteOverflowRequest(in TResourceId resourceId, RetryRequestEntry entry)
+    {
+        if (_overflowRequestStripes is null)
+        {
+            return false;
+        }
+
+        RotateOverflowGenerations(_timeProvider.GetTimestamp());
+        lock (GetAdmissionLock(resourceId))
+        {
+            _overflowGenerationLock.EnterReadLock();
+            try
+            {
+                long epoch = Volatile.Read(ref _overflowEpoch);
+                OverflowRequestStripe stripe = GetOverflowRequestStripe(resourceId);
+                PrepareOverflowStripe(stripe, epoch);
+                return RemoveOverflowRequest(stripe, resourceId, epoch) && _retryRequests.TryAdd(resourceId, entry);
+            }
+            finally
+            {
+                _overflowGenerationLock.ExitReadLock();
+            }
+        }
+    }
+
+    private bool RemoveOverflowRequest(OverflowRequestStripe stripe, in TResourceId resourceId, long epoch)
+    {
+        for (long candidateEpoch = epoch; candidateEpoch >= epoch - 1; candidateEpoch--)
+        {
+            int generation = (int)(candidateEpoch & 1);
+            if (stripe.Generations[generation].Remove(resourceId))
+            {
+                Interlocked.Decrement(ref _overflowRequestGenerationCounts![generation]);
+                Interlocked.Decrement(ref _overflowRequestsInUse);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool IsOverflowRequestPending(in TResourceId resourceId)

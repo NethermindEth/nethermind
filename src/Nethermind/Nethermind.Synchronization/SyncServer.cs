@@ -733,6 +733,12 @@ namespace Nethermind.Synchronization
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
         private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
         {
+            if (!_gossipPolicy.CanGossipBlocks)
+            {
+                StopNotifyingPeersAboutNewBlocks();
+                return;
+            }
+
             Block block = blockEventArgs.Block;
             if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
             {
@@ -863,7 +869,7 @@ namespace Nethermind.Synchronization
 
         private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
 
-        public void StopNotifyingPeersAboutNewBlocks()
+        private void StopNotifyingPeersAboutNewBlocks()
         {
             if (!_gossipStopped)
             {

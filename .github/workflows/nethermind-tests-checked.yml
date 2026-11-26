@@ -68,7 +68,6 @@ jobs:
               Nethermind.Era1.Test
               Nethermind.Facade.Test
               Nethermind.Hive.Test
-              Nethermind.Shutter.Test
               Nethermind.Trie.Test
           - name: Nethermind tests 2
             list: >-

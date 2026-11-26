@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -64,6 +65,12 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         // SlicedReceiptRetention and turn the whole retention half of that feature into a no-op.
         builder.RegisterInstance(NullPrunedReceiptRetention.Instance)
             .As<IPrunedReceiptRetention>()
+            .ExternallyOwned()
+            .PreserveExistingDefaults();
+
+        builder.Register(ctx => ctx.Resolve<IReceiptStorage>() as IReceiptPruner
+                ?? throw new DependencyResolutionException("The configured receipt storage must implement IReceiptPruner or register a separate IReceiptPruner."))
+            .As<IReceiptPruner>()
             .ExternallyOwned()
             .PreserveExistingDefaults();
 

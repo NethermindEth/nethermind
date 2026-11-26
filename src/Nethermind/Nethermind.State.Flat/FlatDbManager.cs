@@ -261,6 +261,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
         GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads: false);
 
+    /// <remarks>
+    /// A <see cref="ResourcePool.Usage.ReadOnlyProcessingEnv"/> bundle (block building, read-only queries) never hands its
+    /// snapshots to the repository, so its trie nodes go to a private buffer freed with the bundle. Written to the global
+    /// buffer, they would stay there for as long as any in-memory snapshot taken before them is retained.
+    /// </remarks>
     public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
@@ -269,7 +274,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             _nodeRecordBuffer,
             _resourcePool,
             usage: usage,
-            filterInMemorySlotReads: filterInMemorySlotReads);
+            filterInMemorySlotReads: filterInMemorySlotReads,
+            privateNodeRecords: usage == ResourcePool.Usage.ReadOnlyProcessingEnv);
     }
 
     private static readonly StableStringLabel _depthInMemoryLabel = StableStringLabel.Get("in_memory");
@@ -543,9 +549,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public bool HasStateForBlock(in StateId stateId)
     {
-        if (_snapshotRepository.HasState(stateId)) return true;
-        if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;
-        return false;
+        StateId persistedState = _persistenceManager.GetCurrentPersistedStateId();
+        if (stateId == persistedState) return true;
+        // The signed order places the PreGenesis and Sync sentinels before block zero.
+        if ((long)stateId.BlockNumber <= (long)persistedState.BlockNumber) return false;
+        // Persistence publishes its new state before removing the in-memory snapshot.
+        return _snapshotRepository.HasState(stateId) || _persistenceManager.GetCurrentPersistedStateId() == stateId;
     }
 
     public void DropStateNotReachableFrom(in StateId head)

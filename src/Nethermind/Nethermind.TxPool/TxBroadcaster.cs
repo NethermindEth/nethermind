@@ -492,6 +492,8 @@ namespace Nethermind.TxPool
 
         public bool RemovePeer(PublicKey nodeId) => _peers.TryRemove(nodeId, out _);
 
+        public bool RemovePeer(ITxPoolPeer peer) => _peers.TryRemove(KeyValuePair.Create(peer.Id, peer));
+
         public void Dispose() => _timer.Dispose();
     }
 }

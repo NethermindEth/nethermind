@@ -210,6 +210,7 @@ public partial class BlockAccessListManager
             {
                 if (!gen.ChangesAtIndexEqual(sug, index))
                 {
+                    if (gen.HasNoChangesAtIndex(index)) ThrowSurplusChanges(block, gen.Address, index);
                     ThrowIncorrectChanges(block, gen.Address, index);
                 }
                 continue;
@@ -270,9 +271,7 @@ public partial class BlockAccessListManager
             if (sug.HasAccount(ordinal)) continue;
 
             Address address = gen.AddressOf(ordinal);
-            // With coverage, BAL-backed storage reads reject undeclared accounts before completing.
-            // Generated-only storage-read tolerance therefore applies only to materialized reads.
-            bool hasChargeableReads = !IsSystemContract(address) && gen.HasStorageReadsForOrdinal(ordinal);
+            bool hasChargeableReads = index == 0 && address == Address.SystemUser && gen.HasStorageReadsForOrdinal(ordinal);
             if (IsToleratedGeneratedOnlyAccount(address, index, hasNoChangesAtIndex: !gen.Lanes.HasAt(row, ordinal), hasChargeableReads)) continue;
 
             ThrowMissingAccountChanges(block, address, index);
@@ -283,42 +282,26 @@ public partial class BlockAccessListManager
         ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
     }
 
-    /// <summary>What a worker already did for its slice, so the in-order validator only consumes it.</summary>
-    /// <remarks>
-    /// The in-order validator touched every slice long after a worker on another core filled it, so indexing the slice
-    /// there walked cold memory on the block's critical path. A worker now indexes its own slice right after the
-    /// transaction (see <see cref="BlockAccessListValidationIndex.TryAddConcurrent"/>) and records the order-independent
-    /// per-slice facts; everything order-dependent (gas, cumulative read budget, fast/slow path) stays in order.
-    /// </remarks>
-    private readonly struct SlicePrecompute(bool requiredReadAccountMissing, ulong chargeableStorageReads)
-    {
-        public readonly bool IsSet = true;
-        public readonly bool RequiredReadAccountMissing = requiredReadAccountMissing;
-        public readonly ulong ChargeableStorageReads = chargeableStorageReads;
-    }
-
-    private SlicePrecompute[] _slicePrecompute = [];
+    private bool[] _slicePrecomputed = [];
 
     private void PrepareSlicePrecompute(int txCount)
     {
         int size = txCount + 2;
-        if (_slicePrecompute.Length < size) _slicePrecompute = new SlicePrecompute[size];
-        else Array.Clear(_slicePrecompute, 0, size);
+        if (_slicePrecomputed.Length < size) _slicePrecomputed = new bool[size];
+        else Array.Clear(_slicePrecomputed, 0, size);
     }
 
     /// <summary>Runs on the worker, after it stashed the slice and before it publishes the transaction's gas result.</summary>
     private void PrecomputeSliceValidation(uint balIndex)
     {
-        if (_generatedValidationIndex is not { } generated || balIndex >= (uint)_slicePrecompute.Length) return;
+        if (_generatedValidationIndex is not { } generated || balIndex >= (uint)_slicePrecomputed.Length) return;
         if (_parallelTxProcessorWithWorldStateManager!.Value.GetStashedSlice(balIndex) is not { } slice) return;
         // The validator looks the record up by the slice's own index; a slice filed under another one must not be
         // indexed here, or the in-order path would index its row a second time.
         if (slice.Index != balIndex) return;
         if (!generated.TryAddConcurrent(slice)) return; // the validator takes the full in-order path for this slice
 
-        // An eligible slice has no storage reads, so only the coverage counter can add chargeable reads.
-        bool missing = _suggestedValidationIndex is { } suggested && HasRequiredReadAccountMissing(slice, suggested, frozenOnly: true);
-        _slicePrecompute[balIndex] = new SlicePrecompute(missing, slice.CoveredStorageReads);
+        _slicePrecomputed[balIndex] = true;
     }
 
     /// <summary>
@@ -339,14 +322,10 @@ public partial class BlockAccessListManager
             return;
         }
 
-        if (slice.Index < (uint)_slicePrecompute.Length && _slicePrecompute[slice.Index] is { IsSet: true } pre)
+        if (slice.Index < (uint)_slicePrecomputed.Length && _slicePrecomputed[slice.Index])
         {
-            _slicePrecompute[slice.Index] = default;
-            _generatedChargeableStorageReads += pre.ChargeableStorageReads;
-            if (_suggestedValidationIndex is not null && !_hasGeneratedRequiredReadAccountMismatch)
-            {
-                _hasGeneratedRequiredReadAccountMismatch = pre.RequiredReadAccountMissing;
-            }
+            _slicePrecomputed[slice.Index] = default;
+            _generatedChargeableStorageReads += slice.CoveredStorageReads;
 
             _hasGeneratedValidationIndexUpdates = true;
             return;
@@ -380,21 +359,19 @@ public partial class BlockAccessListManager
     }
 
     /// <summary>
-    /// True iff any account in <paramref name="slice"/> has no state changes, isn't a tolerated
-    /// read-only entry (system-user at index 0 or any storage-read row), and isn't declared in
+    /// True iff any account in <paramref name="slice"/> has no state changes, isn't the tolerated
+    /// system-user read at index 0, and isn't declared in
     /// <paramref name="suggestedValidationIndex"/>. Such an account is invisible to the
     /// column-index fast path (no lane rows land for it on either side) but must still be
     /// rejected — <see cref="ValidateBlockAccessList"/>'s fallback walk catches it.
     /// </summary>
-    /// <param name="frozenOnly">For concurrent callers: look up only the suggested addresses, which is the same answer.</param>
-    private static bool HasRequiredReadAccountMissing(BlockAccessListAtIndex slice, BlockAccessListValidationIndex suggestedValidationIndex, bool frozenOnly = false)
+    private static bool HasRequiredReadAccountMissing(BlockAccessListAtIndex slice, BlockAccessListValidationIndex suggestedValidationIndex)
     {
         foreach (AccountChangesAtIndex ac in slice.AccountChanges)
         {
             if (HasStateChanges(ac)) continue;
-            if (IsSystemUserReadAt0(ac, slice.Index) || ac.StorageReads.Count > 0) continue;
-            bool declared = frozenOnly ? suggestedValidationIndex.HasFrozenAccount(ac.Address) : suggestedValidationIndex.HasAccount(ac.Address);
-            if (!declared) return true;
+            if (IsSystemUserReadAt0(ac, slice.Index)) continue;
+            if (!suggestedValidationIndex.HasAccount(ac.Address)) return true;
         }
         return false;
     }
@@ -438,8 +415,7 @@ public partial class BlockAccessListManager
     }
 
     private static bool IsToleratedGeneratedOnlyAccount(Address address, uint index, bool hasNoChangesAtIndex, bool hasChargeableReads)
-        => hasNoChangesAtIndex
-        && ((index == 0 && address == Address.SystemUser && !hasChargeableReads) || hasChargeableReads);
+        => hasNoChangesAtIndex && index == 0 && address == Address.SystemUser && !hasChargeableReads;
 
     /// <summary>
     /// Upper bound on the chargeable storage reads the post-execution request calls can add without spending block gas.
