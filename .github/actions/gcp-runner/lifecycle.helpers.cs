@@ -9,6 +9,9 @@ sealed partial class Lifecycle(Func<string, string[], string?, CancellationToken
 {
     [GeneratedRegex("^[0-9]+$")]
     private static partial Regex SsdCountRegex();
+    [GeneratedRegex(@"\(HTTP (429|5[0-9]{2})\)|couldn't respond to your request in time|No server is currently available")]
+    private static partial Regex TransientApiErrorRegex();
+    private const int RegistrationAttempts = 4;
 
     private string Env(string key, string fallback = "") => environment(key) ?? fallback;
     private string Name => Gcp.InstanceName(Env("RUNNER_LABEL"), Env("GITHUB_RUN_ATTEMPT", "1"));
@@ -94,16 +97,7 @@ sealed partial class Lifecycle(Func<string, string[], string?, CancellationToken
                     : $"::warning title=GCP runner::{Name} was terminated externally ({ops.Replace("\n", ", ", StringComparison.Ordinal)})");
             }
         }
-        if (!lookupFailedInitially && Env("GH_TOKEN").Length > 0)
-        {
-            var result = await run("gh", ["api", "--paginate", $"/repos/{Env("GITHUB_REPOSITORY")}/actions/runners", "-q", $".runners[] | select(.name == \"{Name}\") | .id"], null, token);
-            var id = result.Output.Split('\n')[0].Trim();
-            if (id.Length > 0)
-            {
-                Console.WriteLine($"removing leftover runner registration {id}");
-                await run("gh", ["api", "--method", "DELETE", $"/repos/{Env("GITHUB_REPOSITORY")}/actions/runners/{id}"], null, token);
-            }
-        }
+        if (!lookupFailedInitially && Env("GH_TOKEN").Length > 0) await RemoveRegistration(token);
         Output($"instance_name={Name}", $"zone={zone}", $"preempted={preempted.ToString().ToLowerInvariant()}", $"preempted_at={timestamp}", $"terminated_by={terminated}");
         return failed ? 1 : 0;
     }
@@ -124,7 +118,7 @@ sealed partial class Lifecycle(Func<string, string[], string?, CancellationToken
         try
         {
             var request = new JsonObject { ["name"] = Name, ["runner_group_id"] = int.Parse(Env("RUNNER_GROUP_ID")), ["labels"] = new JsonArray(Env("RUNNER_LABEL")), ["work_folder"] = "_work" };
-            var registration = await run("gh", ["api", "--method", "POST", $"/repos/{Env("GITHUB_REPOSITORY")}/actions/runners/generate-jitconfig", "-H", "X-GitHub-Api-Version: 2022-11-28", "--input", "-"], request.ToJsonString(), token);
+            var registration = await Register(request.ToJsonString(), token);
             if (registration.Code != 0) throw new InvalidOperationException("Failed to register JIT runner: " + registration.Error);
             var response = JsonNode.Parse(registration.Output)!;
             runnerId = response["runner"]!["id"]!.ToString();
@@ -258,6 +252,29 @@ sealed partial class Lifecycle(Func<string, string[], string?, CancellationToken
                 catch (Exception exception) { Console.Error.WriteLine($"Runner cleanup failed: {exception.Message}"); }
             }
             File.Delete(jit);
+        }
+    }
+
+    private async Task RemoveRegistration(CancellationToken token)
+    {
+        var result = await run("gh", ["api", "--paginate", $"/repos/{Env("GITHUB_REPOSITORY")}/actions/runners", "-q", $".runners[] | select(.name == \"{Name}\") | .id"], null, token);
+        var id = result.Output.Split('\n')[0].Trim();
+        if (id.Length == 0) return;
+        Console.WriteLine($"removing leftover runner registration {id}");
+        await run("gh", ["api", "--method", "DELETE", $"/repos/{Env("GITHUB_REPOSITORY")}/actions/runners/{id}"], null, token);
+    }
+
+    private async Task<CommandResult> Register(string request, CancellationToken token)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            var result = await run("gh", ["api", "--method", "POST", $"/repos/{Env("GITHUB_REPOSITORY")}/actions/runners/generate-jitconfig", "-H", "X-GitHub-Api-Version: 2022-11-28", "--input", "-"], request, token);
+            if (result.Code == 0 || attempt == RegistrationAttempts) return result;
+            // A request that timed out on GitHub's side may still have registered the name.
+            if (attempt > 1 && result.Error.Contains("(HTTP 409)", StringComparison.Ordinal)) await RemoveRegistration(token);
+            else if (!TransientApiErrorRegex().IsMatch(result.Error)) return result;
+            Console.WriteLine($"::notice title=GCP runner::JIT runner registration attempt {attempt} failed, retrying: {result.Error.Trim()}");
+            await delay(TimeSpan.FromSeconds(10 * attempt), token);
         }
     }
 

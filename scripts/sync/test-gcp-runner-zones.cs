@@ -97,6 +97,24 @@ foreach (var removed in new[] { true, false })
         Cases.Equal(!removed, fixture.Commands.Any(command => command.Contains("delete") && command.Contains("instances")));
         Cases.Equal(!removed, fixture.Commands.Any(command => command[0] == "gh" && command.Contains("DELETE")));
     });
+foreach (var (scenario, errors, expected) in new[]
+{
+    ("gateway timeout", new[] { "gh: We couldn't respond to your request in time. (HTTP 504)" }, 0),
+    ("server error then name taken", new[] { "gh: Server Error (HTTP 502)", "gh: Already exists (HTTP 409)" }, 0),
+    ("persistent outage", new[] { "gh: Server Error (HTTP 502)", "gh: Server Error (HTTP 502)", "gh: Server Error (HTTP 502)", "gh: Server Error (HTTP 502)" }, 1),
+    ("not retryable", new[] { "gh: Resource not accessible by integration (HTTP 403)" }, 1),
+    ("first-attempt conflict", new[] { "gh: Already exists (HTTP 409)" }, 1),
+})
+    await Cases.Test($"JIT registration {scenario}", async () =>
+    {
+        using var fixture = new LifecycleFixture { SucceedZone = "europe-west1-b" };
+        foreach (var error in errors) fixture.RegistrationErrors.Enqueue(error);
+        Cases.Equal(expected, await fixture.Execute());
+        var posts = fixture.Commands.Count(command => command[0] == "gh" && command.Contains("POST"));
+        Cases.Equal(scenario switch { "persistent outage" => 4, "not retryable" or "first-attempt conflict" => 1, _ => errors.Length + 1 }, posts);
+        Cases.Equal(scenario == "server error then name taken", fixture.Commands.Any(command => command[0] == "gh" && command.Any(argument => argument.EndsWith("/actions/runners", StringComparison.Ordinal))));
+        Cases.Equal(expected == 0, fixture.Attempts.Count > 0);
+    });
 Cases.Finish();
 
 partial class Program

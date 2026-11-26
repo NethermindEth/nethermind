@@ -28,6 +28,7 @@ sealed class LifecycleFixture : IDisposable
     internal int RemoveMetadataStatus { get; set; }
     internal string DeleteError = "";
     internal readonly Queue<string> RunnerResponses = [];
+    internal readonly Queue<string> RegistrationErrors = [];
     internal string OnlineStatus = "online";
     internal int HttpStatus = 200;
     internal string Transcript = "";
@@ -61,6 +62,7 @@ sealed class LifecycleFixture : IDisposable
             {
                 var request = JsonNode.Parse(input!)!;
                 Cases.Equal("_work", request["work_folder"]!.ToString());
+                if (RegistrationErrors.TryDequeue(out var registrationError)) return Task.FromResult(new CommandResult(1, Error: registrationError));
                 return Task.FromResult(new CommandResult(0, """{"runner":{"id":42},"encoded_jit_config":"ZmFrZQ=="}"""));
             }
             return Task.FromResult(new CommandResult(0));
