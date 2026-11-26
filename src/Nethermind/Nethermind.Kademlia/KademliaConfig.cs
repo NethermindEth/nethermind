@@ -69,4 +69,14 @@ public class KademliaConfig<TNode>
     /// acquire a lock that callers can hold while entering that routing table (which would invert the lock order).
     /// </remarks>
     public Func<TNode, TNode, TNode>? MergeOnRefresh { get; set; }
+
+    /// <summary>
+    /// Optional admission policy consulted before a node takes a slot in the routing table. The default,
+    /// <see langword="null"/>, admits every node.
+    /// </summary>
+    /// <remarks>
+    /// The routing table calls <see cref="IRoutingTableNodeLimiter{TNode}.TryAdmit"/> while holding its own lock, so an
+    /// implementation must not call back into the table; the lock order is routing-table lock, then limiter lock.
+    /// </remarks>
+    public IRoutingTableNodeLimiter<TNode>? NodeLimiter { get; set; }
 }

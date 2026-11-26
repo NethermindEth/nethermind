@@ -30,6 +30,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     private readonly TKadKey _currentNodeHash;
     private readonly IKademliaDistance<TKadKey> _distance;
     private readonly Func<TNode, TNode, TNode>? _mergeOnRefresh;
+    private readonly IRoutingTableNodeLimiter<TNode>? _limiter;
     private readonly ILogger _logger;
 
     private readonly Lock _lock = new();
@@ -54,6 +55,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         _distance = distance;
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
         _mergeOnRefresh = config.MergeOnRefresh;
+        _limiter = config.NodeLimiter;
         _root = new TreeNode(config.KSize, distance.Zero);
         _logger = loggerFactory.CreateLogger<KBucketTree<TNode, TKadKey>>();
         if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
@@ -81,7 +83,23 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
                 }
             }
 
+            IRoutingTableNodeLimiter<TNode>? limiter = _limiter;
+            if (limiter is not null && !limiter.TryAdmit(nodeToStore, bucket.GetAllCached()))
+            {
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Subnet limiter rejected node {nodeToStore}");
+                toRefresh = default;
+                fireAdded = false;
+                return BucketAddResult.Rejected;
+            }
+
             resp = TryAddOrRefreshLocked(nodeHash, nodeToStore, out toRefresh, out fireAdded);
+            if (resp == BucketAddResult.Full)
+            {
+                // The node landed in the replacement cache, not the table: release the
+                // charge so only active entries count. Full implies the key was absent
+                // from the active set, so this cannot release a live slot.
+                limiter?.Release(nodeToStore);
+            }
         }
 
         if (fireAdded) OnNodeAdded?.Invoke(this, nodeToStore);
@@ -199,7 +217,12 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
 
             KBucket<TNode, TKadKey> bucket = GetBucketForHash(nodeHash);
             removedNode = bucket.GetByHash(nodeHash);
-            removed = bucket.RemoveAndReplace(nodeHash);
+            removed = bucket.Remove(nodeHash);
+            if (removed)
+            {
+                if (removedNode is not null) _limiter?.Release(removedNode);
+                bucket.TryPromote(node => _limiter is null || _limiter.TryAdmit(node, bucket.GetAllCached()));
+            }
         }
 
         if (removed && removedNode is not null) OnNodeRemoved?.Invoke(this, removedNode);

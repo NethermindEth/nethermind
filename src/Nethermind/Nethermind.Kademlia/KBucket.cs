@@ -56,21 +56,32 @@ public class KBucket<TNode, TKadKey>(int k)
 
     internal int CopyAllWithHash((TKadKey Hash, TNode Node)[] destination) => _items.CopyAllWithKey(destination);
 
-    public bool RemoveAndReplace(in TKadKey hash)
+    public bool Remove(in TKadKey hash)
     {
         if (!_items.Remove(hash)) return false;
 
-        if (_replacement.TryPopHead(out TKadKey replacementHash, out TNode? replacement))
-        {
-            _items.AddOrRefresh(replacementHash, replacement!);
-        }
-
-        if (_cacheItems)
-        {
-            _cachedArray = _items.GetAll();
-        }
-
+        UpdateCachedArray();
         return true;
+    }
+
+    /// <summary>
+    /// Promotes the most recently cached replacement that <paramref name="canPromote"/> accepts, discarding the
+    /// candidates it rejects.
+    /// </summary>
+    /// <param name="canPromote">Admission predicate for a candidate, or <see langword="null"/> to accept the first.</param>
+    /// <returns><see langword="true"/> when a replacement was promoted.</returns>
+    public bool TryPromote(Func<TNode, bool>? canPromote)
+    {
+        while (_replacement.TryPopHead(out TKadKey replacementHash, out TNode? replacement))
+        {
+            if (canPromote is not null && !canPromote(replacement!)) continue;
+
+            _items.AddOrRefresh(replacementHash, replacement!);
+            UpdateCachedArray();
+            return true;
+        }
+
+        return false;
     }
 
     public void Clear()
@@ -86,6 +97,11 @@ public class KBucket<TNode, TKadKey>(int k)
 
     internal bool TryGetStored(in TKadKey hash, [MaybeNullWhen(false)] out TNode node)
         => _items.TryGetValue(hash, out node) || _replacement.TryGetValue(hash, out node);
+
+    private void UpdateCachedArray()
+    {
+        if (_cacheItems) _cachedArray = _items.GetAll();
+    }
 
     private static bool ShouldUpdateCachedArray(TNode? previous, TNode item)
         => previous is not null &&
