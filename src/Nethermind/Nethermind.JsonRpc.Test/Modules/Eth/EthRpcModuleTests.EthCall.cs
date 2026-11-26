@@ -1429,9 +1429,8 @@ public partial class EthRpcModuleTests
 
     /// <summary>
     /// A gas-less call defaults its gas limit to the RPC gas cap, which is unbounded when
-    /// <c>JsonRpc.GasCap</c> is unset or <c>0</c>. EIP-8037 rejects any transaction above
-    /// TX_MAX_TOTAL_GAS_LIMIT regardless of validation being skipped, so the default has to be
-    /// clamped to that cap or the call is rejected before it runs.
+    /// <c>JsonRpc.GasCap</c> is unset or <c>0</c>. The default is clamped to EIP-8037's
+    /// TX_MAX_TOTAL_GAS_LIMIT, which eth_estimateGas and eth_createAccessList, sharing the default, reject above.
     /// </summary>
     [TestCase(0UL, TestName = "Eth_call_without_gas_is_clamped_to_eip8037_total_cap(uncapped)")]
     [TestCase(1_000_000_000_000UL, TestName = "Eth_call_without_gas_is_clamped_to_eip8037_total_cap(above cap)")]
@@ -1449,29 +1448,65 @@ public partial class EthRpcModuleTests
     }
 
     /// <summary>
-    /// Only eth_simulateV1 with <c>validation: false</c> lifts the EIP-7825 execution gas cap; eth_call keeps it.
+    /// eth_call and debug_traceCall skip the transaction gas caps (execution-apis#977): all gas after the intrinsic
+    /// cost is execution gas, and a gas limit above EIP-8037's TX_MAX_TOTAL_GAS_LIMIT still runs.
     /// </summary>
     [Test]
-    public async Task Eth_call_keeps_the_execution_gas_cap_for_gas_above_it()
+    public async Task Call_methods_give_all_gas_after_intrinsic_to_execution(
+        [Values("eth_call", "debug_traceCall")] string method,
+        [Values(0x2000000UL, Eip8037Constants.TxMaxTotalGasLimit + 1)] ulong gas)
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
-        ulong gas = Eip7825Constants.DefaultTxGasLimitCap * 2;
         ctx.Test.RpcConfig.GasCap = gas * 2;
 
-        Address probe = EthRpcSimulateTestsBase.GasProbeContractAddress;
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $$"""{"from":"{{TestItem.AddressA}}","to":"{{probe}}","gas":"0x{{gas:X}}"}""")!;
-        object stateOverride = JsonSerializer.Deserialize<object>(
-            $$$"""{"{{{probe}}}":{"code":"{{{EthRpcSimulateTestsBase.GasProbeBytecode}}}"}}""")!;
-        object blockOverride = JsonSerializer.Deserialize<object>($$"""{"gasLimit":"0x{{gas:X}}"}""")!;
+        string serialized = await RunGasCapCall(ctx, method, EthRpcSimulateTestsBase.GasProbeBytecode, gas);
 
-        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
-
-        string? result = JToken.Parse(serialized)["result"]?.Value<string>();
+        JToken response = JToken.Parse(serialized);
+        string? result = method == "eth_call"
+            ? response["result"]?.Value<string>()
+            : response["result"]?["returnValue"]?.Value<string>();
 #pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(result, Is.Not.Null, serialized);
 #pragma warning restore NUnit2045
-        Assert.That(new UInt256(Bytes.FromHexString(result!), isBigEndian: true), Is.LessThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap));
+        // Before GAS runs, the call pays TX_BASE_COST, the recipient's cold access and GAS itself.
+        ulong expected = gas - GasCostOf.TransactionEip2780 - Eip8038Constants.ColdAccountAccess - GasCostOf.Base;
+        Assert.That(new UInt256(Bytes.FromHexString(result!), isBigEndian: true), Is.EqualTo((UInt256)expected), serialized);
+    }
+
+    /// <summary>
+    /// eth_estimateGas keeps the transaction rule, since its result goes into a transaction: gas above EIP-7825's cap
+    /// goes to the state-gas reservoir, so code that needs more execution gas than the cap cannot succeed.
+    /// </summary>
+    [Test]
+    public async Task Eth_estimateGas_keeps_the_execution_gas_cap()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        const ulong gas = 0x2000000;
+        ctx.Test.RpcConfig.GasCap = gas * 2;
+        // Reverts unless GAS reads at least EIP-7825's cap.
+        const string needsMoreThanTheCap = "0x5a6301000000111560105760006000fd5b00";
+
+        string call = await RunGasCapCall(ctx, "eth_call", needsMoreThanTheCap, gas);
+        string estimate = await RunGasCapCall(ctx, "eth_estimateGas", needsMoreThanTheCap, gas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(call)["error"], Is.Null, call);
+            Assert.That(JToken.Parse(estimate)["error"]?["message"]?.Value<string>(), Is.EqualTo("execution reverted"), estimate);
+        }
+    }
+
+    private static Task<string> RunGasCapCall(Context ctx, string method, string code, ulong gas)
+    {
+        Address probe = EthRpcSimulateTestsBase.GasProbeContractAddress;
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"{{probe}}","gas":"0x{{gas:X}}"}""")!;
+        object stateOverride = JsonSerializer.Deserialize<object>($$$"""{"{{{probe}}}":{"code":"{{{code}}}"}}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>($$"""{"gasLimit":"0x{{gas:X}}"}""")!;
+        return method == "debug_traceCall"
+            ? RpcTest.TestSerializedRequest(ctx.Test.DebugRpcModule, method, transaction, "latest",
+                new { stateOverrides = stateOverride, blockOverrides = blockOverride })
+            : ctx.Test.TestEthRpc(method, transaction, "latest", stateOverride, blockOverride);
     }
 
     /// <summary>

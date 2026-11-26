@@ -209,7 +209,8 @@ public class GethStyleTracer(
 
     private sealed class TraceCallTransactionProcessorAdapter(ITransactionProcessor processor, BlockOverride? overrides, UInt256? blobBaseFee) : ITransactionProcessorAdapter
     {
-        public TransactionResult Execute(Transaction transaction, ITxTracer tracer) => processor.Trace(transaction, tracer);
+        public TransactionResult Execute(Transaction transaction, ITxTracer tracer) =>
+            processor.Process(transaction, tracer, ExecutionOptions.SkipValidationAndCommit | ExecutionOptions.SkipTxGasCaps);
 
         public void SetBlockExecutionContext(in BlockExecutionContext context)
         {

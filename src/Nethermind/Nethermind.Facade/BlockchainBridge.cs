@@ -303,7 +303,7 @@ namespace Nethermind.Facade
             {
                 // The call keeps its changes, so the rerun that names the failure must start from the state the call started from.
                 nonceSource.Reset(resetBlockChanges: false);
-                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText))
+                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText, ExecutionOptions.SkipTxGasCaps))
                 {
                     error = failureText;
                 }
@@ -544,7 +544,7 @@ namespace Nethermind.Facade
             try
             {
                 txProcessor.SetBlockExecutionContext(in blockContext);
-                return txProcessor.Process(transaction, tracer, ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp);
+                return txProcessor.Process(transaction, tracer, ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp | ExecutionOptions.SkipTxGasCaps);
             }
             catch (InsufficientBalanceException)
             {

@@ -77,10 +77,12 @@ public static class ITransactionProcessorExtensions
             return transactionProcessor.Execute(transaction, txTracer);
         }
 
-        public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
+        /// <param name="extraOptions">Options added to <see cref="ExecutionOptions.CommitAndRestore"/>.</param>
+        public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer,
+            ExecutionOptions extraOptions = ExecutionOptions.None)
         {
             transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
-            return transactionProcessor.CallAndRestore(transaction, txTracer);
+            return transactionProcessor.Process(transaction, txTracer, ExecutionOptions.CommitAndRestore | extraOptions);
         }
 
         public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
