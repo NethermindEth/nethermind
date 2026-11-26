@@ -51,8 +51,7 @@ public class NethermindLoggerFactoryTests
     public void Severity_ceiling_does_not_enable_none()
     {
         CapturingLogger capturingLogger = new(true);
-        using NethermindLoggerFactory factory = new(new OneLoggerLogManager(new ILogger(capturingLogger)),
-            lowerLogLevel: true, maxLogLevel: MsLogLevel.Trace);
+        using NethermindLoggerFactory factory = CreateFactory(capturingLogger, lowerLogLevel: true, maxLogLevel: MsLogLevel.Trace);
         MsLogger logger = factory.CreateLogger(nameof(NethermindLoggerFactoryTests));
         int noneFormatCalls = 0;
 
@@ -114,8 +113,8 @@ public class NethermindLoggerFactoryTests
         }
     }
 
-    private static NethermindLoggerFactory CreateFactory(CapturingLogger logger, bool lowerLogLevel = false) =>
-        new(new OneLoggerLogManager(new ILogger(logger)), lowerLogLevel);
+    private static NethermindLoggerFactory CreateFactory(CapturingLogger logger, bool lowerLogLevel = false, MsLogLevel? maxLogLevel = null) =>
+        new(new OneLoggerLogManager(new ILogger(logger)), lowerLogLevel, maxLogLevel);
 
     private static CapturedLevel ExpectedLevel(MsLogLevel logLevel, bool lowerLogLevel)
     {
