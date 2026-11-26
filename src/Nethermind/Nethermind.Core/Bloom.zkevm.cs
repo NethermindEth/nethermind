@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Zkvm.Abstractions;
 using Nethermind.Core.Extensions;
@@ -34,19 +33,9 @@ public partial class Bloom
 
     private unsafe void SetNatively(ReadOnlySpan<byte> sequence, Bloom? masterBloom)
     {
-        int length = sequence.Length;
-        // libairbender v1.0.7 loads eight words even for a 20-byte address.
-        Span<uint> padded = stackalloc uint[Hash256.Size / sizeof(uint)];
-        scoped ReadOnlySpan<byte> input = sequence;
-        if (length == Address.Size)
-        {
-            sequence.CopyTo(MemoryMarshal.AsBytes(padded));
-            input = MemoryMarshal.AsBytes(padded);
-        }
-
-        fixed (byte* source = input)
+        fixed (byte* source = sequence)
         fixed (byte* bloom = _bloomData.AsSpan())
         fixed (byte* master = masterBloom is null ? default : masterBloom._bloomData.AsSpan())
-            Accelerators.AirbenderBloomSet(bloom, master, source, (uint)length);
+            Accelerators.AirbenderBloomSet(bloom, master, source, (uint)sequence.Length);
     }
 }

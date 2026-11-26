@@ -63,10 +63,6 @@ public static partial class Accelerators
 
     [LibraryImport("__Internal")]
     [SuppressGCTransition]
-    private static unsafe partial int airbender_mpt_get_account(void* trie, byte* address, byte** value, uint* length);
-
-    [LibraryImport("__Internal")]
-    [SuppressGCTransition]
     private static unsafe partial int airbender_mpt_set_account(void* trie, byte* address, byte* value, uint length);
 
     [LibraryImport("__Internal")]

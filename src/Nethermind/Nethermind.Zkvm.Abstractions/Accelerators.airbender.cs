@@ -68,11 +68,6 @@ public static partial class Accelerators
     /// <summary>Writes the root hash of <paramref name="trie"/>; negative when a node it needs is missing or malformed.</summary>
     public static unsafe int AirbenderMptRoot(void* trie, byte* output) => airbender_mpt_root(trie, output);
 
-    /// <summary>Finds the account at the 20-byte <paramref name="address"/>: 0 with its encoding where it lies, 1
-    /// when absent, negative when a witness node is missing or malformed.</summary>
-    public static unsafe int AirbenderMptGetAccount(void* trie, byte* address, byte** value, uint* length) =>
-        airbender_mpt_get_account(trie, address, value, length);
-
     /// <summary>Sets the account to the <paramref name="length"/> bytes at <paramref name="value"/>, or removes it when
     /// the length is 0.</summary>
     public static unsafe int AirbenderMptSetAccount(void* trie, byte* address, byte* value, uint length) =>
@@ -99,7 +94,7 @@ public static partial class Accelerators
 
     /// <summary>Sets in the 256-byte <paramref name="bloom"/>, and in <paramref name="master"/> unless null, the
     /// three bits the keccak of the 20 or 32 bytes at <paramref name="data"/> picks.</summary>
-    /// <remarks>The native routine reads 32 bytes from <paramref name="data"/> for either length.</remarks>
+    /// <remarks>The native routine reads exactly <paramref name="length"/> bytes from <paramref name="data"/>.</remarks>
     public static unsafe void AirbenderBloomSet(byte* bloom, byte* master, byte* data, uint length) =>
         airbender_bloom_set(bloom, master, data, length);
 
