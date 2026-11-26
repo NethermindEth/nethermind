@@ -15,9 +15,12 @@ static partial class Metrics
 
     internal static readonly Dictionary<string, string> Markers = new()
     {
-        ["snap_start"] = "Starting snap sync.", ["snap_end"] = "Snap sync completed.",
-        ["state_finished"] = "STATE SYNC FINISHED", ["verify_start"] = "Collecting trie stats",
-        ["drain_start"] = "Waiting for storage verification workers", ["verify_end_flat"] = "Verification complete.",
+        ["snap_start"] = "Starting snap sync.",
+        ["snap_end"] = "Snap sync completed.",
+        ["state_finished"] = "STATE SYNC FINISHED",
+        ["verify_start"] = "Collecting trie stats",
+        ["drain_start"] = "Waiting for storage verification workers",
+        ["verify_end_flat"] = "Verification complete.",
         ["verify_end_halfpath"] = "Stats after finishing state"
     };
 
