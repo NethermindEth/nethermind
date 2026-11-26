@@ -6,7 +6,9 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -21,6 +23,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
+using Nethermind.State.Proofs;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
@@ -112,6 +115,7 @@ public class TrustedInputTests
     private const int WitnessHeadersList = 60;
     private const int StateNodesList = 64;
     private const int CodesList = 68;
+    private const int TotalLengthOffset = 72;
     // Codes carry their execution padding before the padding to 8.
     private const int CodeExecutionPadding = 34;
 
@@ -227,6 +231,62 @@ public class TrustedInputTests
         }
     }
 
+    /// <remarks>
+    /// The KZG setup is process-wide and is never unloaded, so an earlier test that loads it would hide a writer that
+    /// skips it. The scenario therefore runs in a test process of its own.
+    /// </remarks>
+    [Test]
+    public void Writer_collects_recoveries_after_point_evaluation()
+    {
+        string assembly = typeof(TrustedInputTests).Assembly.Location;
+        string host = Environment.ProcessPath!;
+        ProcessStartInfo start = new(host) { RedirectStandardOutput = true, RedirectStandardError = true };
+        if (Path.GetFileNameWithoutExtension(host) == "dotnet") start.ArgumentList.Add(assembly);
+        start.ArgumentList.Add("--filter");
+        start.ArgumentList.Add($"FullyQualifiedName={typeof(TrustedInputTests).FullName}.{nameof(Writer_collects_recoveries_after_point_evaluation_in_a_fresh_process)}");
+        using Process process = Process.Start(start)!;
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        string output = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        Assert.That(process.ExitCode, Is.Zero, $"{output}{error.Result}");
+    }
+
+    [Test]
+    [Explicit("Run by Writer_collects_recoveries_after_point_evaluation in a process of its own")]
+    public void Writer_collects_recoveries_after_point_evaluation_in_a_fresh_process()
+    {
+        Assert.That(KzgPolynomialCommitments.IsInitialized, Is.False, "The KZG setup must start unloaded");
+        (Block template, Witness witness, _) = StatelessInputGeneratorTests.CreateBlock(amsterdam: false, currentChainActivation: true);
+        using (witness)
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
+            ValueHash256 message = ValueKeccak.Compute("after point evaluation"u8);
+            Signature signature = ecdsa.Sign(TestItem.PrivateKeyB, in message);
+            byte[] recovery = new byte[128];
+            message.Bytes.CopyTo(recovery);
+            recovery[63] = (byte)(27 + signature.RecoveryId);
+            signature.Bytes.CopyTo(recovery.AsSpan(64));
+
+            // Commitment and proof at infinity for the zero polynomial.
+            byte[] point = new byte[192];
+            point[96] = point[144] = 0xc0;
+            Assert.That(KzgPolynomialCommitments.TryComputeCommitmentHashV1(point.AsSpan(96, 48), point.AsSpan(0, 32)), Is.True);
+            Transaction Call(int nonce, Address target, byte[] input) => Build.A.Transaction
+                .WithTo(target).WithNonce(nonce).WithData(input).WithGasLimit(100_000).WithGasPrice(1)
+                .SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction[] transactions = [Call(0, KzgPointEvaluationPrecompile.Address, point), Call(1, ECRecoverPrecompile.Address, recovery)];
+            Block block = new(template.Header.Clone(), transactions, [], template.Withdrawals);
+            block.Header.TxRoot = TxTrie.CalculateRoot(transactions);
+            Assert.That(KzgPolynomialCommitments.IsInitialized, Is.False, "Building the block must not load the KZG setup");
+            byte[] encoded = TrustedInput.Write(BlockchainIds.Mainnet, block, witness);
+
+            TrustedPayload payload = TrustedInput.Read(encoded);
+            using Witness decoded = payload.Witness;
+            Assert.That(TrustedInput.RecoveryHintColumn(payload.RecoveryHints, RecoveryHintField.Message).ToArray(), Is.EqualTo(message.ToByteArray()));
+        }
+    }
+
     /// <summary>Hints cover the ECRECOVER calls that recover a key, and the EIP-7702 authorizations, in columns.</summary>
     [Test]
     public void Recovery_hints_hold_each_recovery_with_its_key()
@@ -303,6 +363,31 @@ public class TrustedInputTests
             Assert.That(result.IsSuccess, Is.False);
             Assert.That(result.SchemaId, Is.Zero);
         }
+    }
+
+    [Test]
+    public async Task Disjoint_sections_may_have_trailing_hints()
+    {
+        (byte[] input, _) = await CreateInput(amsterdam: false);
+        byte[] extended = [.. input, 0, 0, 0, 0, 0, 0, 0, 0];
+        Assert.That(StatelessExecutor.ExecuteTrusted(extended), Is.EqualTo(StatelessExecutor.ExecuteTrusted(input)));
+    }
+
+    [Test]
+    public async Task Declared_size_must_fit_the_header_and_input([Values] bool belowHeader)
+    {
+        (byte[] input, _) = await CreateInput(amsterdam: false);
+        uint size = (uint)(belowHeader ? TrustedInput.HeaderLength - 1 : input.Length + 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(input.AsSpan(TotalLengthOffset), size);
+        Assert.That(() => TrustedInput.Read(input), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("data"));
+    }
+
+    [Test]
+    public async Task Lists_must_occupy_disjoint_regions()
+    {
+        (byte[] input, _) = await CreateInput(amsterdam: false);
+        input.AsSpan(TransactionsList, sizeof(uint)).CopyTo(input.AsSpan(WitnessHeadersList));
+        Assert.That(() => TrustedInput.Read(input), Throws.ArgumentException);
     }
 
     /// <summary>An item length that runs past the input, or into a code's execution padding, makes the input malformed.</summary>
