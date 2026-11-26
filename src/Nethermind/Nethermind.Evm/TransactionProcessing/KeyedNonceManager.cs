@@ -18,8 +18,7 @@ namespace Nethermind.Evm.TransactionProcessing;
 public static class KeyedNonceManager
 {
     private const int SlotPreimageLength = 2 * 32;
-    /// <summary>Batch width of <see cref="KeccakHash.ComputeHash64Bytes8Avx512"/>.</summary>
-    private const int HashBatchSize = 8;
+    private static bool CanBatchStorageIndices => Avx512F.IsSupported || KeccakHash.ArmSha3BatchSupported;
     private const int MinHashBatchSize = 2;
 
     [SkipLocalsInit]
@@ -60,7 +59,7 @@ public static class KeyedNonceManager
     public static int FirstUseCount(IReadOnlyStateProvider state, Address sender, ReadOnlySpan<UInt256> nonceKeys)
     {
         int firstUseCount = 0;
-        if (Avx512F.IsSupported && nonceKeys.Length is >= MinHashBatchSize and <= Eip8250Constants.MaxNonceKeys)
+        if (CanBatchStorageIndices && nonceKeys.Length is >= MinHashBatchSize and <= Eip8250Constants.MaxNonceKeys)
         {
             Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
             StorageIndices(sender, nonceKeys, indices);
@@ -92,7 +91,7 @@ public static class KeyedNonceManager
 
         UInt256 nextSeq = nonceSeq == Eip8250Constants.MaxNonceSeq ? nonceSeq : (UInt256)nonceSeq + UInt256.One;
 
-        if (Avx512F.IsSupported && nonceKeys.Length is >= MinHashBatchSize and <= Eip8250Constants.MaxNonceKeys)
+        if (CanBatchStorageIndices && nonceKeys.Length is >= MinHashBatchSize and <= Eip8250Constants.MaxNonceKeys)
         {
             Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
             StorageIndices(sender, nonceKeys, indices);
@@ -162,7 +161,7 @@ public static class KeyedNonceManager
 
         ulong expected = nonceSeq == Eip8250Constants.MaxNonceSeq ? 0 : nonceSeq;
 
-        if (Avx512F.IsSupported && nonceKeys.Length >= MinHashBatchSize)
+        if (CanBatchStorageIndices && nonceKeys.Length >= MinHashBatchSize)
         {
             Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
             StorageIndices(sender, nonceKeys, indices);
@@ -188,34 +187,44 @@ public static class KeyedNonceManager
         return true;
     }
 
-    /// <summary>Computes the NONCE_MANAGER storage index for each key in <paramref name="nonceKeys"/>, batching the Keccak hashes with AVX-512 where possible.</summary>
+    /// <summary>Computes the NONCE_MANAGER storage index for each key in <paramref name="nonceKeys"/>, batching the Keccak hashes where possible.</summary>
     [SkipLocalsInit]
     internal static void StorageIndices(Address sender, ReadOnlySpan<UInt256> nonceKeys, Span<UInt256> indices)
     {
         Debug.Assert(indices.Length >= nonceKeys.Length);
 
         int keyIndex = 0;
-        if (Avx512F.IsSupported && nonceKeys.Length >= MinHashBatchSize)
+        if (CanBatchStorageIndices && nonceKeys.Length >= MinHashBatchSize)
         {
-            Span<byte> preimages = stackalloc byte[SlotPreimageLength * HashBatchSize];
-            Span<byte> hashes = stackalloc byte[Keccak.Size * HashBatchSize];
+            int batchSize = KeccakHash.MaxBatchWidth;
+            int stride = Avx512F.IsSupported ? SlotPreimageLength : KeccakHash.RateBlockLength;
+            Span<byte> preimages = stackalloc byte[stride * batchSize];
+            Span<byte> hashes = stackalloc byte[Keccak.Size * batchSize];
             preimages.Clear();
 
-            for (int i = 0; i < HashBatchSize; i++)
+            for (int i = 0; i < batchSize; i++)
             {
-                Span<byte> senderBlock = preimages.Slice(i * SlotPreimageLength, 32);
-                sender.Bytes.CopyTo(senderBlock[(32 - Address.Size)..]);
+                Span<byte> block = preimages.Slice(i * stride, stride);
+                sender.Bytes.CopyTo(block[(32 - Address.Size)..32]);
+                if (!Avx512F.IsSupported)
+                {
+                    block[SlotPreimageLength] = 0x01;
+                    block[^1] = 0x80;
+                }
             }
 
             do
             {
-                int count = Math.Min(HashBatchSize, nonceKeys.Length - keyIndex);
+                int count = Math.Min(batchSize, nonceKeys.Length - keyIndex);
                 for (int i = 0; i < count; i++)
                 {
-                    nonceKeys[keyIndex + i].ToBigEndian(preimages.Slice(i * SlotPreimageLength + 32, 32));
+                    nonceKeys[keyIndex + i].ToBigEndian(preimages.Slice(i * stride + 32, 32));
                 }
 
-                KeccakHash.ComputeHash64Bytes8Avx512(ref preimages[0], ref hashes[0]);
+                if (Avx512F.IsSupported)
+                    KeccakHash.ComputeHash64Bytes8Avx512(ref preimages[0], ref hashes[0]);
+                else
+                    KeccakHash.ComputePaddedBatch(ref preimages[0], stride, batchSize, ref hashes[0]);
                 for (int i = 0; i < count; i++)
                 {
                     indices[keyIndex + i] = new UInt256(hashes.Slice(i * Keccak.Size, Keccak.Size), isBigEndian: true);
