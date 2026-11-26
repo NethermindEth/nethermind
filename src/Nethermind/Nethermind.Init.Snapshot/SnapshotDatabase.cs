@@ -74,25 +74,6 @@ internal static class SnapshotDatabase
     public static string UnfinishedExtraction(string dbPath) =>
         $"The database directory {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} holds a snapshot extraction that did not finish: the marker {ExtractionMarker} and whatever the extraction wrote before it stopped. The snapshot initialization deletes nothing in the database directory. Make sure no node is using the directory, delete its contents by hand, then restart to initialize from the snapshot again.";
 
-    public static void Delete(string dbPath)
-    {
-        if (!Directory.Exists(dbPath))
-            return;
-
-        foreach (string entry in Directory.GetFileSystemEntries(dbPath))
-        {
-            if (Path.GetFileName(entry) == MountArtifact)
-                continue;
-
-            if (Directory.Exists(entry))
-                Directory.Delete(entry, true);
-            else
-                File.Delete(entry);
-        }
-
-        TryRemoveDirectoryItself(dbPath);
-    }
-
     /// <summary>
     /// Whether an archive entry, given by its full path under <paramref name="destinationRoot"/> (which ends with a
     /// separator), would write where the extraction must not: below the top-level <c>lost+found</c>, which stays the
@@ -115,17 +96,4 @@ internal static class SnapshotDatabase
     }
 
     private static string MarkerPath(string dbPath) => Path.Combine(dbPath, ExtractionMarker);
-
-    private static bool TryRemoveDirectoryItself(string dbPath)
-    {
-        try
-        {
-            Directory.Delete(dbPath);
-            return true;
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
 }
