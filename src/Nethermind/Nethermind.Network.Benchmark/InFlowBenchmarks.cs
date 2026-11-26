@@ -58,7 +58,7 @@ namespace Nethermind.Network.Benchmarks
         {
             _secrets = NetTestVectors.GetSecretsPair();
             FrameCipher frameCipher = new(_secrets.B.AesSecret);
-            FrameMacProcessor frameMacProcessor = new(TestItem.IgnoredPublicKey, _secrets.B);
+            FrameMacProcessor frameMacProcessor = new(_secrets.B);
             _zeroDecoder = new TestZeroDecoder(frameCipher, frameMacProcessor);
         }
 

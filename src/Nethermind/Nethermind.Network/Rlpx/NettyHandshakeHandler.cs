@@ -142,7 +142,7 @@ namespace Nethermind.Network.Rlpx
             context.Channel.Pipeline.AddLast(new ReadTimeoutHandler(TimeSpan.FromSeconds(30))); // read timeout instead of session monitoring
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameDecoder)} for {RemoteId:hide} @ {context.Channel.RemoteAddress:hide}");
 
-            using (FrameMacProcessor macProcessor = new(_session.RemoteNodeId, _handshake.Secrets))
+            using (FrameMacProcessor macProcessor = new(_handshake.Secrets))
             {
                 FrameCipher frameCipher = new(_handshake.Secrets.AesSecret);
                 context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor));
