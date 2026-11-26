@@ -197,26 +197,55 @@ foreach (var hive in new HiveRun[]
             $"Print results must exit {hive.CheckerCode} with '{string.Join("', '", hive.CheckerOutput)}', got {check.Code}: {check.Output}{check.Error}");
     });
 
-// Only a limit without a suite part (/<test>) lets suites without cases pass: Hive then starts every suite.
+// Only a limit with a test part (text after its first /) lets suites without cases pass: Hive then starts every suite
+// that the suite part selects, also those where no test matches. Without a test part, every started suite runs all its
+// tests, so a suite without cases stays a problem.
 const string withEmptySuite = """{"name":"graphql","testCases":{"1":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
-tests.Case("empty suites allowed only under a limit without a suite part", () =>
+const string ethHeaders = """{"name":"eth","testCases":{"1":{"name":"GetBlockHeaders","summaryResult":{"pass":true}},"2":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
+const string snapWrapperOnly = """{"name":"snap","testCases":{"1":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
+const string reExecute = """{"name":"engine-cancun","simLog":"1-simulator-a.log","testCases":{"1":{"name":"Re-Execute Payload","summaryResult":{"pass":true}}}}""";
+const string cancunEmpty = """{"name":"engine-cancun","simLog":"1-simulator-a.log","testCases":{}}""";
+tests.Case("empty suites allowed only under a limit with a test part", () =>
 {
-    foreach (var (limit, code) in new[] { ("/Status", 0), ("eth/Status", 1), ("", 1) })
+    var failures = new List<string>();
+    var index = 0;
+    foreach (var (limit, status, files, code, problem) in new (string, string, string[], int, string?)[]
     {
-        var root = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, "limit-" + limit.Replace('/', '_')));
+        ("/Status", "1", [listedFailure, withEmptySuite], 0, null),
+        ("eth/Status", "1", [listedFailure, withEmptySuite], 0, null),
+        // Hive starts both suites; eth runs the test, snap only its devp2p wrapper.
+        ("^(eth|snap)$/^GetBlockHeaders$", "0", [ethHeaders, snapWrapperOnly], 0, null),
+        // Only the first / splits: a test pattern that ends in a literal / is still a test part.
+        ("^(eth|snap)$/^GetBlockHeaders$|^archive/", "0", [ethHeaders, snapWrapperOnly], 0, null),
+        // A test pattern with spaces, as in the default matrix; both files share one simulator log.
+        ("engine-cancun/^Re-Execute Payload", "0", [reExecute, cancunEmpty], 0, null),
+        ("^(eth|snap)$", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
+        // Empty suite and test patterns select every test of every suite.
+        ("/", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
+        ("eth", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
+        ("eth/", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
+        ("", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
+        // Under a test part the selected suites must still run a case between them.
+        ("^(eth|snap)$/^GetBlockHeaders$", "0", [withEmptySuite, snapWrapperOnly], 1, "Hive ran no test cases."),
+    })
+    {
+        var root = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, "limit-" + index++));
         var logs = Directory.CreateDirectory(Path.Combine(root.FullName, "hive", "workspace", "logs"));
         var scripts = Directory.CreateDirectory(Path.Combine(root.FullName, "nethermind", "scripts"));
         File.WriteAllText(Path.Combine(scripts.FullName, "known-failing-hive-tests.txt"), "# suite\n\nknown failing (nethermind)\n");
         File.WriteAllText(Path.Combine(scripts.FullName, "known-flaky-hive-tests.txt"), "# suite\n");
-        File.WriteAllText(Path.Combine(logs.FullName, "1-suite.json"), listedFailure);
-        File.WriteAllText(Path.Combine(logs.FullName, "2-suite.json"), withEmptySuite);
+        for (var file = 0; file < files.Length; file++)
+            File.WriteAllText(Path.Combine(logs.FullName, $"{file + 1}-suite.json"), files[file]);
+        if (files.Any(file => file.Contains("1-simulator-a.log", StringComparison.Ordinal)))
+            File.WriteAllText(Path.Combine(logs.FullName, "1-simulator-a.log"), "");
         var check = CiWorkflow.Run(resultsShim + printBody, new()
         {
-            ["HIVE_STATUS"] = "1", ["LIMIT"] = limit, ["HIVE_RESULTS"] = Path.Combine(tests.DirectoryPath, "build", "hive-results.dll")
+            ["HIVE_STATUS"] = status, ["LIMIT"] = limit, ["HIVE_RESULTS"] = Path.Combine(tests.DirectoryPath, "build", "hive-results.dll")
         }, Path.Combine(root.FullName, "nethermind"));
-        RpcScriptTests.Assert(check.Code == code && check.Output.Contains("Suite 'graphql' ran no test cases.", StringComparison.Ordinal) == (code == 1),
-            $"limit '{limit}' must give exit {code}, got {check.Code}: {check.Output}{check.Error}");
+        if (check.Code != code || (problem is null ? check.Output.Contains("ran no test cases", StringComparison.Ordinal) : !check.Output.Contains(problem, StringComparison.Ordinal)))
+            failures.Add($"limit '{limit}' must give exit {code}{(problem is null ? "" : " with '" + problem + "'")}, got {check.Code}: {check.Output}{check.Error}");
     }
+    RpcScriptTests.Assert(failures.Count == 0, string.Join("\n", failures));
 });
 
 tests.Case("results step fails without a status", () =>

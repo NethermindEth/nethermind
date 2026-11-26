@@ -143,9 +143,16 @@ try
         new("simulator_with_launch_only", [new("engine", [Passed("test_a")], SimLog: "1-simulator-a.log"), new("graphql", [Passed(launch)], SimLog: "2-simulator-b.log")], 1, ["Simulator log '2-simulator-b.log' has no suite with test cases."], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
         new("first_simulator_without_suites", [new("engine", [Passed("test_a")], SimLog: "2-simulator-b.log")], 1, ["Simulator log '1-simulator-a.log' has no suite with test cases."], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
         new("simulators_all_reported", [new("engine", [Passed("test_a")], SimLog: "1-simulator-a.log"), new("rpc-compat", [Passed("test_a")], SimLog: "2-simulator-b.log")], 0, ["Unexpected fails: 0"], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
-        // Under a limit without a suite part (/<test>) suites without cases are expected; the other rules stay.
+        // Under a limit with a test part (text after its first /) suites without cases are expected; the other rules stay.
         new("empty_suite_allowed", [new("engine", [Passed(launch)]), new("rpc-compat", [Passed("test_a")])], 0, ["Unexpected fails: 0"], Options: ["--allow-empty-suites"], Absent: ["ran no test cases"]),
         new("empty_suites_allowed_none_ran", [new("engine", [Passed(launch)]), new("rpc-compat", [])], 1, ["Hive ran no test cases."], Options: ["--allow-empty-suites"]),
+        // A failed or ended devp2p wrapper still fails, also in a suite without cases.
+        new("empty_suite_allowed_failed_wrapper", [new("eth", [Passed(launch), Passed("test_a")]), new("snap", [Failed(launch)])], 1,
+            ["\u001b[31m✖\u001b[0m client launch (nethermind)", "Unexpected fails: 1"], Options: ["--allow-empty-suites"], Absent: ["ran no test cases"]),
+        new("empty_suite_allowed_wrapper_fails_after_passes", [new("eth", [Failed(launch), Passed("test_a")]), new("snap", [Passed(launch)])], 1,
+            ["\u001b[31m✖\u001b[0m client launch (nethermind)", "Unexpected fails: 1"], Options: ["--allow-empty-suites"], Absent: ["ran no test cases"]),
+        new("empty_suite_allowed_terminated_wrapper", [new("eth", [Passed(launch), Passed("test_a")]), new("snap", [Terminated(launch)])], 1,
+            ["\u001b[31m✖ client launch (nethermind) (terminated by Hive)\u001b[0m", "Unexpected fails: 1"], Options: ["--allow-empty-suites"], Absent: ["ran no test cases"]),
         new("empty_suite_allowed_simulator_without_cases", [new("engine", [Passed("test_a")], SimLog: "1-simulator-a.log"), new("graphql", [Passed(launch)], SimLog: "2-simulator-b.log")], 1,
             ["Simulator log '2-simulator-b.log' has no suite with test cases."], Logs: ["1-simulator-a.log", "2-simulator-b.log"], Options: ["--allow-empty-suites"], Absent: ["ran no test cases"]),
         new("allow_empty_suites_twice", [new("engine", [Passed("test_a")])], 2, ["Usage:"], Options: ["--allow-empty-suites", "--allow-empty-suites"]),

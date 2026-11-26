@@ -275,6 +275,8 @@ jobs:
         run: |
           rm -f ../hive/workspace/logs/hive.json
           options=(--hive-exit-code "$HIVE_STATUS")
-          # A limit without a suite part (/<test>) makes Hive start every suite, also those where no test matches.
-          [[ "$LIMIT" == /* ]] && options+=(--allow-empty-suites)
+          # Hive splits a limit at its first / into a suite and a test pattern. With a test pattern (/<test>, eth/<test>),
+          # Hive still starts every suite that matches, also those where no test matches. Without one (eth, eth/ or no
+          # limit), every suite it starts runs all its tests.
+          [[ "$LIMIT" == */?* ]] && options+=(--allow-empty-suites)
           dotnet run --file scripts/hive-results.cs -- "${options[@]}" "../hive/workspace/logs/*.json"
