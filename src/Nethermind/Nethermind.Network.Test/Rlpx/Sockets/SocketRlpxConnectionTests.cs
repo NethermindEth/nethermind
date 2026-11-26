@@ -105,6 +105,49 @@ public class SocketRlpxConnectionTests
         await test.StopAndAssertBuffersReturnedAsync();
     }
 
+    [TestCase(SocketRlpxConnection.MaxHandshakeLength, true)]
+    [TestCase(SocketRlpxConnection.MaxHandshakeLength + 1, false)]
+    public async Task Takes_a_handshake_message_up_to_the_size_limit(int length, bool accepted)
+    {
+        await using ConnectionUnderTest test = ConnectionUnderTest.Create();
+        int bodyLength = length - sizeof(ushort);
+        byte[] prefix = [(byte)(bodyLength >> 8), (byte)bodyLength];
+        test.Start();
+
+        if (accepted)
+        {
+            await test.Peer.SendAsync([.. prefix, .. new byte[bodyLength]]);
+            await test.Initialized.Task.WaitAsync(Timeout);
+        }
+        else
+        {
+            await test.Peer.SendAsync(prefix);
+            Task closed = test.Connection.Closed;
+            Assert.That(await Task.WhenAny(closed, Task.Delay(1000)), Is.SameAs(closed), "rejected on the prefix, before the handshake timeout");
+            test.Session.DidNotReceive().Handshake(Arg.Any<PublicKey>());
+        }
+
+        await test.StopAndAssertBuffersReturnedAsync();
+    }
+
+    [Test]
+    public async Task Completes_the_handshake_while_the_ack_is_still_being_sent()
+    {
+        TaskCompletionSource sending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using ConnectionUnderTest test = ConnectionUnderTest.Create();
+        test.Socket.SendGate = sending.Task;
+        long sent = Interlocked.Read(ref Metrics.P2PBytesSent);
+        test.Start();
+
+        await test.Peer.SendAsync(FakeHandshakeService.Message);
+        await test.Initialized.Task.WaitAsync(Timeout);
+        Assert.That(Interlocked.Read(ref Metrics.P2PBytesSent), Is.GreaterThanOrEqualTo(sent + FakeHandshakeService.Message.Length), "the ACK counts as sent once queued");
+
+        sending.SetResult();
+        Assert.That(await test.Peer.ReceiveHandshakeAsync(test.Cancellation), Is.EqualTo(FakeHandshakeService.Message));
+        await test.StopAndAssertBuffersReturnedAsync();
+    }
+
     [Test]
     public async Task Stops_decoding_after_a_frame_fails_authentication(
         [Values] bool header,
@@ -313,6 +356,47 @@ public class SocketRlpxConnectionTests
     }
 
     [Test]
+    public async Task Sends_and_receives_at_the_same_time()
+    {
+        const int Packets = 200;
+        await using ConnectionUnderTest test = await ConnectionUnderTest.StartAsync();
+        byte[][] inbound = [.. Enumerable.Range(0, Packets).Select(static i => Content(50 * (i % 40) + 1, i))];
+        byte[][] outbound = [.. Enumerable.Range(0, Packets).Select(static i => Content(50 * (i % 40) + 1, Packets + i))];
+
+        // Each direction has its own cipher and MAC, so the frame and send loops share no state.
+        Task peerSends = Task.Run(async () =>
+        {
+            foreach (byte[] content in inbound)
+            {
+                await test.Peer.SendAsync(test.Peer.Encode(0x10, content, EncodingMode.Framed));
+            }
+        });
+        Task connectionSends = Task.Run(() =>
+        {
+            foreach (byte[] content in outbound)
+            {
+                test.Enqueue(content);
+            }
+        });
+        List<byte[]> peerReceived = [];
+        for (int i = 0; i < Packets; i++)
+        {
+            peerReceived.Add((await test.Peer.ReceivePacketAsync(test.Cancellation)).Content);
+        }
+
+        await Task.WhenAll(peerSends, connectionSends);
+        await test.WaitForEventsAsync(Packets);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerReceived, Is.EqualTo(outbound));
+            Assert.That(test.Packets.Select(static packet => packet.Item2), Is.EqualTo(inbound));
+        }
+
+        await test.StopAndAssertBuffersReturnedAsync();
+    }
+
+    [Test]
     public async Task Sends_a_packet_larger_than_the_batch_and_the_one_after_it([Values(1, 7, 1000, int.MaxValue)] int maxSendLength)
     {
         await using ConnectionUnderTest test = await ConnectionUnderTest.StartAsync();
@@ -400,6 +484,45 @@ public class SocketRlpxConnectionTests
         Assert.That(() => test.Connection.IsWritable, Is.True.After(5000, 10));
         await test.Connection.DisconnectAsync();
         Assert.That(test.Connection.IsWritable, Is.False, "a closed connection takes nothing");
+        await test.StopAndAssertBuffersReturnedAsync();
+    }
+
+    [Test]
+    public async Task Charges_a_delayed_packet_when_it_is_queued()
+    {
+        await using ConnectionUnderTest test = await ConnectionUnderTest.StartAsync(sendLatency: TimeSpan.FromSeconds(30));
+        byte[] content = Content(100_000, 1);
+
+        int queued = 0;
+        while (test.Connection.IsWritable && queued < 100)
+        {
+            test.Enqueue(content);
+            queued++;
+        }
+
+        Assert.That(queued, Is.EqualTo(30), "unlike DotNetty, which charges a delayed packet once its write starts");
+        await test.StopAndAssertBuffersReturnedAsync();
+    }
+
+    [Test]
+    public async Task Keeps_a_partly_sent_packet_charged_until_its_last_byte_is_sent()
+    {
+        await using ConnectionUnderTest test = await ConnectionUnderTest.StartAsync();
+        using SemaphoreSlim permits = new(0);
+        test.Socket.SendPermits = permits;
+        test.Socket.MaxSendLength = 1_000_000;
+
+        test.Enqueue(Content(3_100_000, 1));
+        Assert.That(test.Connection.IsWritable, Is.False, "over the high watermark");
+
+        // Three sends leave less than the low watermark unsent, but the packet is still incomplete, as DotNetty counts it.
+        permits.Release(3);
+        await test.Peer.Socket.ReceiveExactlyAsync(3_000_000, test.Cancellation);
+        await Task.Delay(100);
+        Assert.That(test.Connection.IsWritable, Is.False, "the packet is not sent until its last byte is");
+
+        permits.Release(int.MaxValue / 2);
+        Assert.That(() => test.Connection.IsWritable, Is.True.After(5000, 10));
         await test.StopAndAssertBuffersReturnedAsync();
     }
 

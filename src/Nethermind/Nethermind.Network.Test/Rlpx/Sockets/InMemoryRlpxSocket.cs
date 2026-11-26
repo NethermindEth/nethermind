@@ -45,6 +45,9 @@ internal sealed class InMemoryRlpxSocket : IRlpxSocket
     /// <summary>Gets or sets a gate that every send waits for.</summary>
     public Task SendGate { get; set; } = Task.CompletedTask;
 
+    /// <summary>Gets or sets permits that each send takes one of, so that a test lets sends through one at a time.</summary>
+    public SemaphoreSlim? SendPermits { get; set; }
+
     /// <summary>Gets or sets an error that sends throw.</summary>
     public Exception? SendError { get; set; }
 
@@ -97,6 +100,11 @@ internal sealed class InMemoryRlpxSocket : IRlpxSocket
     public async ValueTask<int> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
     {
         await SendGate.WaitAsync(cancellationToken);
+        if (SendPermits is { } permits)
+        {
+            await permits.WaitAsync(cancellationToken);
+        }
+
         ObjectDisposedException.ThrowIf(_closed, this);
         if (SendError is { } error)
         {

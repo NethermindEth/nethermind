@@ -220,6 +220,37 @@ public class SocketRlpxHostTests
         }
     }
 
+    /// <remarks>DotNetty starts no connect timer for a zero timeout, which leaves <see cref="RlpxHost"/>'s 2-second watchdog.</remarks>
+    [TestCase(0, 2000)]
+    [TestCase(500, 500)]
+    public async Task Gives_a_dial_the_connect_timeout_or_two_seconds_for_zero(int connectTimeoutMs, int expectedMs)
+    {
+        await using IContainer container = CreateFilterContainer(filterEnabled: false, subnetBucketing: false, transport: RlpxTransport.Sockets, connectTimeoutMs: connectTimeoutMs);
+        SocketRlpxHost host = (SocketRlpxHost)container.Resolve<IRlpxHost>();
+        try
+        {
+            Assert.That(host.ConnectTimeout, Is.EqualTo(TimeSpan.FromMilliseconds(expectedMs)));
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
+    public async Task Every_shutdown_call_waits_for_the_first()
+    {
+        await using IContainer container = CreateFilterContainer(filterEnabled: false, subnetBucketing: false, transport: RlpxTransport.Sockets);
+        IRlpxHost host = container.Resolve<IRlpxHost>();
+        await host.Init();
+
+        Task first = host.Shutdown();
+        Task second = host.Shutdown();
+
+        Assert.That(second, Is.SameAs(first));
+        await first;
+    }
+
     [Test]
     public async Task Shutdown_waits_for_a_pending_dial_which_publishes_nothing()
     {

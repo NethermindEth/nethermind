@@ -639,7 +639,7 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
-    public async Task ConnectAsync_FallsBackToVerifiedIpv6EndpointWithoutPublishingFailedAttempt()
+    public async Task ConnectAsync_FallsBackToVerifiedIpv6EndpointWithoutPublishingFailedAttempt([Values] RlpxTransport transport)
     {
         if (!Socket.OSSupportsIPv6)
         {
@@ -651,8 +651,8 @@ public class RlpxHostIntegrationTests
         int listeningPort = ((IPEndPoint)ipv6Listener.LocalEndpoint).Port;
         using Socket refused = ReserveRefusedPort(IPAddress.Loopback);
         int refusedPort = ((IPEndPoint)refused.LocalEndPoint!).Port;
-        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
-        RlpxHost host = container.Resolve<RlpxHost>();
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort(), transport: transport);
+        IRlpxHost host = container.Resolve<IRlpxHost>();
         TaskCompletionSource<ISession> sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int sessionCount = 0;
         host.SessionCreated += (_, args) =>
@@ -1097,7 +1097,7 @@ public class RlpxHostIntegrationTests
     }
 
     internal static IContainer CreateFilterContainer(bool filterEnabled, bool subnetBucketing, string? externalIp = null,
-        IPrivilegedIpProvider? privilegedIpProvider = null, RlpxTransport transport = RlpxTransport.DotNetty)
+        IPrivilegedIpProvider? privilegedIpProvider = null, RlpxTransport transport = RlpxTransport.DotNetty, int connectTimeoutMs = 2000)
     {
         NetworkConfig networkConfig = new()
         {
@@ -1107,7 +1107,8 @@ public class RlpxHostIntegrationTests
             FilterPeersBySameSubnet = subnetBucketing,
             ExternalIp = externalIp,
             MaxActivePeers = 50,
-            RlpxTransport = transport
+            RlpxTransport = transport,
+            ConnectTimeoutMs = connectTimeoutMs
         };
 
         IIPResolver ipResolver = Substitute.For<IIPResolver>();

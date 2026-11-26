@@ -50,6 +50,7 @@ public sealed class SocketRlpxHost : IRlpxHost, IStoppableService
     private readonly TimeSpan _shutdownCloseTimeout;
     private readonly int _processingThreadCount;
     private readonly CancellationTokenSource _shutdown = new();
+    private readonly Lazy<Task> _shutdownTask;
     private readonly TaskCompletionSource _listenerClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     // Guards the shutdown flag, the connections and the pending dials, so that shutdown sees every one of them.
@@ -96,6 +97,7 @@ public sealed class SocketRlpxHost : IRlpxHost, IStoppableService
         _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
         _processingThreadCount = networkConfig.ProcessingThreadCount;
         _tryConnect = TryConnect;
+        _shutdownTask = new Lazy<Task>(ShutdownAsync);
         NodeFilter nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp);
         _dialPolicy = new RlpxDialPolicy(nodeFilter, privilegedIpProvider, _logger);
         _sessions = new RlpxSessionTracker(this, sessionMonitor, _dialPolicy, _logger, () => _shutdown.Token);
@@ -119,6 +121,9 @@ public sealed class SocketRlpxHost : IRlpxHost, IStoppableService
 
     /// <summary>Gets the endpoint the listener is bound to, once initialized.</summary>
     internal IPEndPoint? ListenerEndPoint => _listener?.LocalEndPoint as IPEndPoint;
+
+    /// <summary>Gets the time a dial waits for the socket to connect.</summary>
+    internal TimeSpan ConnectTimeout => _connectTimeout;
 
     internal int ConnectionCount
     {
@@ -422,16 +427,14 @@ public sealed class SocketRlpxHost : IRlpxHost, IStoppableService
 
     string IStoppableService.Description => "rlpx host";
 
-    public async Task Shutdown()
+    /// <remarks>Every call returns the first call's task, so a later caller also waits for the shutdown to finish.</remarks>
+    public Task Shutdown() => _shutdownTask.Value;
+
+    private async Task ShutdownAsync()
     {
         Task[] dials;
         lock (_lock)
         {
-            if (_shuttingDown)
-            {
-                return;
-            }
-
             _shuttingDown = true;
             dials = [.. _pendingDials];
         }
