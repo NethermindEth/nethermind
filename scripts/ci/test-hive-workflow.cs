@@ -204,6 +204,7 @@ foreach (var hive in new HiveRun[]
 const string withEmptySuite = """{"name":"graphql","testCases":{"1":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
 const string ethHeaders = """{"name":"eth","testCases":{"1":{"name":"GetBlockHeaders","summaryResult":{"pass":true}},"2":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
 const string snapWrapperOnly = """{"name":"snap","testCases":{"1":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
+const string ethWrapperOnly = """{"name":"eth","testCases":{"1":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
 const string reExecute = """{"name":"engine-cancun","simLog":"1-simulator-a.log","testCases":{"1":{"name":"Re-Execute Payload","summaryResult":{"pass":true}}}}""";
 const string cancunEmpty = """{"name":"engine-cancun","simLog":"1-simulator-a.log","testCases":{}}""";
 tests.Case("empty suites allowed only under a limit with a test part", () =>
@@ -230,10 +231,15 @@ tests.Case("empty suites allowed only under a limit with a test part", () =>
         ("^[^/]+$", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
         ("^(eth|snap|a/b)$", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
         (@"eth\/x", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
+        // Classes and groups nest: the / sits inside the outer one after the inner one closes.
+        ("^[[:alpha:]/]+$", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
+        ("^((eth|snap)/x|eth|snap)$", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
         // The first / outside them splits, also after a class with a /, an unmatched ] (a literal) or a class with a (.
         ("^[a/b]+$/^Status$", "1", [listedFailure, withEmptySuite], 0, null),
         ("]/Status", "1", [listedFailure, withEmptySuite], 0, null),
         ("[(]/Status", "1", [listedFailure, withEmptySuite], 0, null),
+        // Hive rejoins the fields after the first split, so the test pattern of eth// is /, not empty.
+        ("eth//", "0", [ethHeaders, ethWrapperOnly], 0, null),
         // Under a test part the selected suites must still run a case between them.
         ("^(eth|snap)$/^GetBlockHeaders$", "0", [withEmptySuite, snapWrapperOnly], 1, "Hive ran no test cases."),
     })
