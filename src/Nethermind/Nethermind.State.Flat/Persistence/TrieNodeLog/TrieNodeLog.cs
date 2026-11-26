@@ -413,12 +413,9 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             try
             {
                 foreach (ShardWriter writer in _writers) writer.Complete();
-                // From here commit records reach the files, and a failure can leave one file synced with this batch's
-                // commit while another file's sync failed. The rollback below truncates without a sync, so a power loss
-                // could bring the commit back for a later version to confirm; disposal therefore takes such a batch out
-                // of service until a restart, whose recovery cuts the unconfirmed tail. A body abort skips Commit.
-                // A roll failure reported by Complete also precedes this flag, so either path permits a new batch after
-                // successful rollback.
+                // Commit records can reach disk from here on, so a failure takes the shards out of service until a
+                // restart (see Dispose). A body abort skips Commit, and a roll failure reported by Complete precedes
+                // this flag, so either path permits a new batch after successful rollback.
                 _commitRecordsStarted = true;
                 Parallel.ForEach(_batches, static batch => batch.MakeDurable());
             }
