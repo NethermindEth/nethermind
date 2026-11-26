@@ -103,7 +103,8 @@ static partial class RuleBot
     {
         ["[*.cs]"] = "warning",
         ["[src/Nethermind/{*Test*,*Benchmark*}/**.cs]"] = "none",
-        ["[tools/*/{*Test*,*Benchmark*}/**.cs]"] = "none"
+        ["[tools/*/{*Test*,*Benchmark*}/**.cs]"] = "none",
+        ["[{scripts,.github}/**.cs]"] = "none"
     };
     private static readonly string[] GuardedPrefixes = [".github/", ".agents/", "scripts/"];
     private static readonly string[] AnalyzerDirs = ["src/Nethermind/Nethermind.Analyzers/", "src/Nethermind/Nethermind.Analyzers.Test/"];
@@ -196,6 +197,15 @@ static partial class RuleBot
 
     [GeneratedRegex(@"\{\{(\w+)\}\}")]
     private static partial Regex TemplateKey();
+
+    [GeneratedRegex(@"^\s*🤖\s*AI agent\b.*\bon behalf of @", RegexOptions.Multiline)]
+    private static partial Regex AgentFooter();
+
+    [GeneratedRegex(@"\A\+(?!\+\+ ).*(#\s*pragma\s+warning\s+disable|SuppressMessage)")]
+    private static partial Regex AddedSuppression();
+
+    [GeneratedRegex(@"<TargetFramework>net([0-9]+)\.0</TargetFramework>")]
+    private static partial Regex TargetFrameworkMajor();
 
     [GeneratedRegex(@"\A-\d+\z|\A-\d*\.\d+\z")]
     private static partial Regex NegativeNumber();
@@ -318,7 +328,7 @@ static partial class RuleBot
     internal static bool IsBot(string name) => Bots.Contains(name) || name.EndsWith("[bot]", StringComparison.Ordinal);
 
     internal static Comment Slim(ApiComment comment) => new(comment.Id, long.Parse(comment.PullRequestUrl[(comment.PullRequestUrl.LastIndexOf('/') + 1)..], CultureInfo.InvariantCulture),
-        string.IsNullOrEmpty(comment.User?.Login) ? "ghost" : comment.User.Login, comment.User?.Type == "Bot", comment.AuthorAssociation, comment.InReplyToId, comment.Path,
+        string.IsNullOrEmpty(comment.User?.Login) ? "ghost" : comment.User.Login, comment.User?.Type == "Bot" || AgentFooter().IsMatch(comment.Body), comment.AuthorAssociation, comment.InReplyToId, comment.Path,
         comment.Line is null or 0 ? comment.OriginalLine : comment.Line, comment.CreatedAt, comment.Body, comment.HtmlUrl);
 
     internal static Dictionary<long, Comment> InWindow(IEnumerable<ApiComment> comments, string since)
@@ -413,7 +423,7 @@ static partial class RuleBot
     {
         long prs = rows.Select(r => r.Pr).Distinct().Count(), commenters = rows.Select(r => r.Author).Distinct().Count(), human = rows.Count(r => !r.Bot), valid = rows.Count(CountedValid);
         var validity = rows.Count > 0 ? Round2((double)valid / rows.Count) : 0.0;
-        var fails = new (string Name, bool Ok)[] { ("prs", prs >= 10), ("commenters", commenters >= 3), ("human", human >= 5), ("validity", validity >= 0.6) }
+        var fails = new (string Name, bool Ok)[] { ("prs", prs >= 10), ("commenters", commenters >= 3), ("human", human >= 5), ("validity", rows.Count > 0 && valid * 5 >= (long)rows.Count * 3) }
             .Where(gate => !gate.Ok).Select(gate => gate.Name).ToList();
         return new(rows.Count, prs, commenters, human, valid, validity, fails, fails.Count == 0);
     }
@@ -467,12 +477,19 @@ static partial class RuleBot
         return sdkDefaults.TryGetValue(ruleId, out var severity) && severity is "warning" or "error";
     }
 
+    internal static string SdkDefaultsFile(string repo, string sdk)
+    {
+        var framework = TargetFrameworkMajor().Match(ReadText(Path.Combine(repo, "Directory.Build.props")));
+        if (!framework.Success) throw new BotExit(1, "catalog: no netN.0 TargetFramework in Directory.Build.props");
+        var file = Path.Combine(sdk, "Sdks", "Microsoft.NET.Sdk", "analyzers", "build", "config", $"analysislevel_{framework.Groups[1].Value}_default.globalconfig");
+        return File.Exists(file) ? file : throw new BotExit(1, $"catalog: SDK analyzer config not found: {file}");
+    }
+
     private static void Catalog(string repo, string sdk, string data)
     {
         var rows = EditorConfigRules(ReadText(Path.Combine(repo, ".editorconfig")));
         var sdkDefaults = new Dictionary<string, string>();
-        foreach (var file in GlobIn(Path.Combine(sdk, "analyzers/build/config"), "analysislevel_", "_default.globalconfig"))
-            foreach (Match match in Severity().Matches(ReadText(file))) sdkDefaults[match.Groups[1].Value] = match.Groups[2].Value;
+        foreach (Match match in Severity().Matches(ReadText(SdkDefaultsFile(repo, sdk)))) sdkDefaults[match.Groups[1].Value] = match.Groups[2].Value;
         foreach (var file in GlobTree(repo, ".globalconfig"))
             foreach (Match match in Severity().Matches(ReadText(file))) rows.Add(new(match.Groups[1].Value, match.Groups[2].Value, "*", 0));
         var ids = Routes().Values.SelectMany(route => route.Ids).Distinct().Order(StringComparer.Ordinal).ToList();
@@ -497,7 +514,7 @@ static partial class RuleBot
     internal static HashSet<string> RecentlyTried(IEnumerable<BotPr> botPrs, IEnumerable<string> clusters, DateOnly today)
     {
         var keys = clusters.ToList();
-        return botPrs.Where(pr => DaysSince(today, pr.CreatedAt) < CooldownDays)
+        return botPrs.Where(pr => pr.State == "MERGED" || DaysSince(today, pr.CreatedAt) < CooldownDays)
             .SelectMany(pr => keys.Where(k => pr.HeadRefName.StartsWith($"rule-bot/{k}-", StringComparison.Ordinal))).ToHashSet();
     }
 
@@ -572,7 +589,7 @@ static partial class RuleBot
         var output = new StringBuilder("\n[*.cs]\n");
         foreach (var id in list) output.Append($"dotnet_diagnostic.{id}.severity = warning\n");
         if (excludeTests)
-            foreach (var section in new[] { "src/Nethermind/{*Test*,*Benchmark*}/**.cs", "tools/*/{*Test*,*Benchmark*}/**.cs" })
+            foreach (var section in new[] { "src/Nethermind/{*Test*,*Benchmark*}/**.cs", "tools/*/{*Test*,*Benchmark*}/**.cs", "{scripts,.github}/**.cs" })
             {
                 output.Append($"\n[{section}]\n");
                 foreach (var id in list) output.Append($"dotnet_diagnostic.{id}.severity = none\n");
@@ -719,18 +736,20 @@ static partial class RuleBot
     internal static bool EnablesRule(string patches, string ruleId) =>
         Lines(patches).Any(line => line == UnknownPatch || (EnabledRuleRow().Match(line) is { Success: true } row && row.Groups[1].Value == ruleId));
 
-    internal static async Task<List<long>> OpenPrsFor(string ruleId, CancellationToken token)
+    internal static async Task<Dictionary<long, string>> OpenEditorConfigPatches(CancellationToken token)
     {
-        var output = await Gh(["pr", "list", "-R", Repo, "--state", "open", "--search", $"{ruleId} in:title,body", "--json", "number", "--limit", "20"], token, check: false);
-        var open = new List<long>();
-        foreach (var number in ParseGitHub<List<NumberedPr>>(output.Length > 0 ? output : "[]").Select(x => x.Number).Order())
+        var patches = new Dictionary<long, string>();
+        foreach (var line in Lines(await Gh(["api", "--paginate", $"repos/{Repo}/pulls?state=open&per_page={Page}", "--jq", ".[].number"], token)).Where(line => line.Length > 0))
         {
-            var (code, patches, _) = await Exec(["gh", "api", "-X", "GET", $"repos/{Repo}/pulls/{number}/files?per_page=100", "--paginate", "--jq",
-                $".[] | select(.filename | endswith(\"{EditorConfig}\")) | .patch // \"{UnknownPatch}\""], false, token);
-            if (code != 0 || EnablesRule(patches, ruleId)) open.Add(number);
+            if (!long.TryParse(line, NumberStyles.None, CultureInfo.InvariantCulture, out var number)) throw new BotExit(1, $"propose: unreadable open PR number: {Cut(line, 80)}");
+            patches[number] = await Gh(["api", "--paginate", $"repos/{Repo}/pulls/{number}/files?per_page={Page}", "--jq",
+                $".[] | select(.filename | endswith(\"{EditorConfig}\")) | .patch // \"{UnknownPatch}\""], token);
         }
-        return open;
+        return patches;
     }
+
+    internal static List<long> OpenPrsFor(string ruleId, IReadOnlyDictionary<long, string> patches) =>
+        patches.Where(item => EnablesRule(item.Value, ruleId)).Select(item => item.Key).Order().ToList();
 
     internal static async Task Propose(string data, bool offline, string? githubOutput, CancellationToken token)
     {
@@ -738,10 +757,16 @@ static partial class RuleBot
         var catalog = Load<Dictionary<string, CatalogEntry>>(Path.Combine(data, "catalog.json"));
         var routes = Routes();
         var plan = Load<PlanFile>(Path.Combine(data, "plan.json"));
-        var counts = Load<HitsFile>(Path.Combine(data, "hits.json")).Counts;
+        var hits = Load<HitsFile>(Path.Combine(data, "hits.json"));
+        var counts = hits.Counts;
         var routeB = LoadOr<RouteBState>(Path.Combine(data, "route_b.json"));
         long Prod(string id) => counts.GetValueOrDefault(id)?.Prod ?? 0;
         long Tests(string id) => counts.GetValueOrDefault(id)?.Test ?? 0;
+        string Fixable(string id, string verdict)
+        {
+            var unfixable = hits.Hits.Count(hit => hit.Id == id && hit.Scope == "prod" && !FixAllowed(hit.File));
+            return verdict == "propose" && unfixable > 0 ? $"skip: {unfixable} prod hits in files the bot may not change" : verdict;
+        }
         var decisions = new List<Decision>();
         var packages = new List<Package>();
         foreach (var (key, gate) in gates.OrderByDescending(item => item.Value.Prs))
@@ -750,7 +775,7 @@ static partial class RuleBot
             var accepted = new List<string>();
             foreach (var id in route.Ids)
             {
-                var verdict = Verdict(Prod(id), catalog.GetValueOrDefault(id)?.Enforced == true);
+                var verdict = Fixable(id, Verdict(Prod(id), catalog.GetValueOrDefault(id)?.Enforced == true));
                 if (plan.RejectedIds?.TryGetValue(id, out var number) == true) verdict = $"skip: rule-bot PR #{number} closed without merge in the last {CooldownDays} days";
                 decisions.Add(new(key, id, "A", Prod(id), Tests(id), verdict));
                 if (verdict == "propose") accepted.Add(id);
@@ -764,18 +789,19 @@ static partial class RuleBot
             var cluster = routeB.Cluster ?? plan.RouteB;
             var fails = new (string Name, bool? Ok)[] { ("analyzer tests", routeB.TestsOk), ("red control", routeB.RedOk), ("path guard", routeB.GuardOk), ("precision sample", routeB.Precision?.Ok) }
                 .Where(check => check.Ok != true).Select(check => check.Name).ToList();
-            var verdict = !string.IsNullOrEmpty(routeB.Analyzer) ? Verdict(Prod(id), false) : "propose";
+            var verdict = Fixable(id, !string.IsNullOrEmpty(routeB.Analyzer) ? Verdict(Prod(id), false) : "propose");
             if (verdict == "propose" && fails.Count > 0)
                 verdict = "skip: " + (!string.IsNullOrEmpty(routeB.Skip) ? routeB.Skip : string.Join(", ", fails) + " failed");
             decisions.Add(new(cluster, id, "B", Prod(id), Tests(id), verdict));
             if (verdict == "propose") packages.Add(new("B", cluster, [id], Prod(id), Tests(id), routeB.Analyzer));
         }
+        var openPatches = offline || packages.All(package => package.Route == "B") ? [] : await OpenEditorConfigPatches(token);
         for (var i = 0; i < packages.Count; i++)
         {
             var package = packages[i];
             var open = new SortedSet<long>();
             if (!offline && package.Route != "B")
-                foreach (var id in package.Ids) open.UnionWith(await OpenPrsFor(id, token));
+                foreach (var id in package.Ids) open.UnionWith(OpenPrsFor(id, openPatches));
             packages[i] = package with { Slug = $"{package.Cluster}-{string.Join('-', package.Ids.Select(id => id.ToLowerInvariant()))}", OpenPrs = [.. open] };
         }
         var botOpen = offline ? [] : ParseGitHub<List<NumberedPr>>(await Gh(["pr", "list", "-R", Repo, "--state", "open", "--label", BotLabel, "--json", "number"], token));
@@ -949,6 +975,19 @@ static partial class RuleBot
         return NumstatPaths(output).Where(path => !seen.Contains(path)).Select(path => $"{path}: git applies it but the guard did not parse it").ToList();
     }
 
+    internal static List<string> Suppressions(string text)
+    {
+        string? path = null;
+        var bad = new List<string>();
+        foreach (var line in FileLines(text))
+        {
+            var header = DiffHeader().Match(line);
+            if (header.Success) path = header.Groups[2].Value;
+            else if (path is not null && !StartsWithAny(path, AnalyzerDirs) && AddedSuppression().IsMatch(line)) bad.Add($"{path}: adds a warning suppression");
+        }
+        return bad.Distinct().ToList();
+    }
+
     private static async Task<List<string>?> AppendedEditorConfigLines(string baseRef, string? patch, CancellationToken token)
     {
         var directory = Directory.CreateTempSubdirectory("rule-bot-guard-").FullName;
@@ -973,8 +1012,9 @@ static partial class RuleBot
         List<string> unshipped, edits, gitBad = [];
         if (!string.IsNullOrEmpty(patch))
         {
-            (changes, unshipped, edits) = PatchChanges(LenientUtf8.GetString(File.ReadAllBytes(patch)));
-            gitBad = await PathsOnlyGitSees(patch, changes, token);
+            var text = LenientUtf8.GetString(File.ReadAllBytes(patch));
+            (changes, unshipped, edits) = PatchChanges(text);
+            gitBad = [.. await PathsOnlyGitSees(patch, changes, token), .. Suppressions(text)];
         }
         else
         {

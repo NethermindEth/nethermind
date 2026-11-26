@@ -237,20 +237,17 @@ var tests = new (string Name, Func<Task> Body)[]
         True(workflow.Contains("Edit(/$DATA/labels.json)", StringComparison.Ordinal));
         True(!workflow.Contains("Write(", StringComparison.Ordinal));
     })),
-    ("test_open_pr_counts_only_when_it_enables_the_rule", async () =>
+    ("test_open_pr_counts_only_when_it_enables_the_rule", Sync(() =>
     {
-        using var scope = new Seams();
-        Exec = (argv, _, _) => Task.FromResult(argv switch
+        var patches = new Dictionary<long, string>
         {
-            [_, "pr", "list", ..] => (0, """[{"number": 8}, {"number": 7}, {"number": 9}, {"number": 10}, {"number": 11}]""", ""),
-            [_, "api", _, _, var path, ..] when path.Contains("/pulls/7/") => (0, "@@ -1 +1,2 @@\n+dotnet_diagnostic.CA1512.severity = warning\n", ""),
-            [_, "api", _, _, var path, ..] when path.Contains("/pulls/9/") => (1, "", "boom"),
-            [_, "api", _, _, var path, ..] when path.Contains("/pulls/10/") => (0, "@@ -1 +1,2 @@\n+dotnet_diagnostic.CA1512.severity = none\n-dotnet_diagnostic.CA1512.severity = warning\n", ""),
-            [_, "api", _, _, var path, ..] when path.Contains("/pulls/11/") => (0, "?\n", ""),
-            _ => (0, "", "")
-        });
-        True((await OpenPrsFor("CA1512", default)).SequenceEqual([7L, 9L, 11L]));
-    }),
+            [8] = "",
+            [7] = "@@ -1 +1,2 @@\n+dotnet_diagnostic.CA1512.severity = warning\n",
+            [10] = "@@ -1 +1,2 @@\n+dotnet_diagnostic.CA1512.severity = none\n-dotnet_diagnostic.CA1512.severity = warning\n",
+            [11] = "?\n"
+        };
+        True(OpenPrsFor("CA1512", patches).SequenceEqual([7L, 11L]));
+    })),
     ("test_deny_tools_cover_every_denied_prefix", Sync(() =>
     {
         var tools = FixDenyTools().Split(',');
@@ -410,7 +407,7 @@ var tests = new (string Name, Func<Task> Body)[]
         var first = ids[0];
         var bot = BotPrJson(42, "CLOSED", $"rule-bot/{entry.Key}-{first.ToLowerInvariant()}-1", "2026-10-01T00:00:00Z", "2026-11-10T00:00:00Z");
         SeedPlan(directory.Path, [(entry.Key, 50L, true)], unshipped: false);
-        Exec = (argv, _, _) => Task.FromResult((0, argv.Contains("--label") && argv.Contains("all") ? bot : "[]", ""));
+        Exec = (argv, _, _) => Task.FromResult((0, argv.Contains("--label") && argv.Contains("all") ? bot : argv[1] == "api" ? "" : "[]", ""));
         await Quiet(() => Plan(directory.Path, directory.Path, "2026-11-20", false, null, default));
         var plan = Load<PlanFile>(Path.Combine(directory.Path, "plan.json"));
         Equal(string.Join(',', ids.Skip(1)), string.Join(',', plan.MeasureIds));
@@ -501,16 +498,16 @@ var tests = new (string Name, Func<Task> Body)[]
     {
         string[] rows =
         [
-            """{"file":"f.cs","line":"5","label":"false_positive"}""",
-            """{"file":"f.cs","line":true,"label":"false_positive"}""",
+            """{"file":"src/Nethermind/Nethermind.Core/F.cs","line":"5","label":"false_positive"}""",
+            """{"file":"src/Nethermind/Nethermind.Core/F.cs","line":true,"label":"false_positive"}""",
             """{"file":7,"line":5,"label":"false_positive"}""",
-            """{"file":"f.cs","line":5,"label":1}""",
+            """{"file":"src/Nethermind/Nethermind.Core/F.cs","line":5,"label":1}""",
         ];
         foreach (var row in rows)
         {
             using var directory = new TempDirectory();
             string In(string name) => Path.Combine(directory.Path, name);
-            var hit = """{"id":"NETH050","file":"f.cs","line":5,"col":1,"scope":"prod","msg":"m"}""";
+            var hit = """{"id":"NETH050","file":"src/Nethermind/Nethermind.Core/F.cs","line":5,"col":1,"scope":"prod","msg":"m"}""";
             File.WriteAllText(In("hits.json"), """{"counts":{"NETH050":{"prod":5,"test":0,"generated":0}},"solutions":["a.slnx"],"hits":[""" + string.Join(',', Enumerable.Repeat(hit, 5)) + "]}");
             File.WriteAllText(In("gates.json"), "{}");
             File.WriteAllText(In("catalog.json"), "{}");
@@ -628,6 +625,128 @@ var tests = new (string Name, Func<Task> Body)[]
         var hits = Parse<HitsFile>("""{"hits": [{"id": "A", "scope": "prod", "solutions": ["x.slnx", "y.slnx"]}, {"id": "A", "scope": "test", "solutions": ["z.slnx"]}, {"id": "B", "scope": "prod", "solutions": ["w.slnx"]}]}""");
         Equal("x.slnx,y.slnx", string.Join(',', RebuildSet(hits, ["A"])));
     })),
+
+    ("test_validity_gate_does_not_round_up", Sync(() =>
+    {
+        List<Finding> Rows(int valid, int total) => Enumerable.Range(0, total).Select(n => GateRow(n % 12, "abcde"[n % 5].ToString(), valid: n < valid ? "valid" : "invalid")).ToList();
+        True(GateCluster(Rows(28, 47)).Fails!.Contains("validity"));
+        Equal(0.6, GateCluster(Rows(28, 47)).Validity);
+        True(GateCluster(Rows(30, 50)).Pass);
+    })),
+    ("test_signed_agent_comments_count_as_bot", Sync(() =>
+    {
+        True(Slim(ApiRow(1, 7, body: "unused field\n\n🤖 AI agent (Claude Code / Opus 5.5) acting on behalf of @someone.")).Bot);
+        True(!Slim(ApiRow(2, 7, body: "unused field, an AI agent said so on behalf of @someone")).Bot);
+    })),
+    ("test_merged_route_b_cluster_stays_out", Sync(() =>
+    {
+        List<BotPr> prs = [new(1, "MERGED", "rule-bot/sleep-neth012-1", "2026-10-05T00:00:00Z", "2026-10-07T00:00:00Z"), new(2, "CLOSED", "rule-bot/linq-neth013-2", "2026-09-01T00:00:00Z", null)];
+        Equal("sleep", string.Join(',', RecentlyTried(prs, ["sleep", "linq"], new DateOnly(2026, 11, 30))));
+    })),
+    ("test_overlay_turns_rules_off_in_scripts", Sync(() =>
+    {
+        True(Overlay(["IDE0051"], excludeTests: true).Contains("[{scripts,.github}/**.cs]\ndotnet_diagnostic.IDE0051.severity = none"));
+        True(OverlayOnly(OverlayDiff("IDE0051"), ["IDE0051"]));
+    })),
+    ("test_catalog_reads_the_sdk_default_of_the_target_framework", async () =>
+    {
+        using var directory = new TempDirectory();
+        string In(string name) => Path.Combine(directory.Path, name);
+        var id = Routes().Values.First(route => route.Route == "A").Ids[0];
+        Directory.CreateDirectory(In("repo"));
+        File.WriteAllText(In("repo/.editorconfig"), "root = true\n");
+        File.WriteAllText(In("repo/Directory.Build.props"), "<Project><PropertyGroup><TargetFramework>net11.0</TargetFramework></PropertyGroup></Project>\n");
+        var config = In("sdk/Sdks/Microsoft.NET.Sdk/analyzers/build/config");
+        Directory.CreateDirectory(config);
+        File.WriteAllText(Path.Combine(config, "analysislevel_11_default.globalconfig"), $"dotnet_diagnostic.{id}.severity = warning\n");
+        File.WriteAllText(Path.Combine(config, "analysislevel_12_default.globalconfig"), $"dotnet_diagnostic.{id}.severity = none\n");
+        var code = -1;
+        await Quiet(async () => code = await Run(["catalog", "--repo", In("repo"), "--sdk", In("sdk"), "--data", In("data")], default));
+        Equal(0, code);
+        True(Load<Dictionary<string, CatalogEntry>>(In("data/catalog.json"))[id].Enforced);
+        await Quiet(async () => code = await Run(["catalog", "--repo", In("repo"), "--sdk", In("missing"), "--data", In("data")], default));
+        Equal(1, code);
+    }),
+    ("test_propose_skips_hits_the_bot_may_not_change", async () =>
+    {
+        using var directory = new TempDirectory();
+        string In(string name) => Path.Combine(directory.Path, name);
+        var entry = Routes().First(item => item.Value.Route == "A");
+        var id = entry.Value.Ids[0];
+        SeedPlan(directory.Path, [(entry.Key, 50L, true)], unshipped: false);
+        Save(In("plan.json"), new PlanFile([id], [], null, null, []));
+        var hits = Enumerable.Range(1, 6).Select(n => new Hit(id, $"src/Nethermind/Nethermind.Core/A{n}.cs", n, 1, "prod", "m")).Append(new Hit(id, FixDeniedPrefixes[0] + "X.cs", 1, 1, "prod", "m")).ToList();
+        Save(In("hits.json"), new HitsFile(new Dictionary<string, HitCounts> { [id] = new(7, 0, 0) }, hits, null));
+        await Quiet(() => Propose(directory.Path, true, null, default));
+        var candidates = Load<CandidatesFile>(In("candidates.json"));
+        Equal("skip: 1 prod hits in files the bot may not change", candidates.Decisions.First(decision => decision.Id == id).Verdict);
+        True(candidates.Chosen is null);
+    }),
+    ("test_open_pr_lookup_reads_every_open_pr_and_fails_closed", async () =>
+    {
+        var entry = Routes().First(item => item.Value.Route == "A");
+        var id = entry.Value.Ids[0];
+        (int ListCode, int FilesCode, int Expected)[] cases = [(0, 0, 0), (1, 0, 1), (0, 1, 1)];
+        foreach (var (listCode, filesCode, expected) in cases)
+        {
+            using var scope = new Seams();
+            using var directory = new TempDirectory();
+            string In(string name) => Path.Combine(directory.Path, name);
+            SeedPlan(directory.Path, [(entry.Key, 50L, true)], unshipped: false);
+            Save(In("plan.json"), new PlanFile([id], [], null, null, []));
+            Save(In("hits.json"), new HitsFile(new Dictionary<string, HitCounts> { [id] = new(10, 0, 0) }, [], null));
+            Exec = (argv, _, _) => Task.FromResult(argv switch
+            {
+                [_, "pr", "list", ..] => (0, "[]", ""),
+                [_, "api", ..] when argv.Any(arg => arg.Contains("pulls?state=open", StringComparison.Ordinal)) => listCode == 0 ? (0, "5\n", "") : (1, "", "boom"),
+                [_, "api", ..] when argv.Any(arg => arg.Contains("/pulls/5/files", StringComparison.Ordinal)) => filesCode == 0 ? (0, $"@@ -1 +1,2 @@\n+dotnet_diagnostic.{id}.severity = warning\n", "") : (1, "", "boom"),
+                _ => (1, "", "unexpected")
+            });
+            var code = -1;
+            await Quiet(async () => code = await Run(["propose", "--data", directory.Path], default));
+            Equal(expected, code);
+            if (expected == 0) Equal("5", string.Join(',', Load<CandidatesFile>(In("candidates.json")).Packages[0].OpenPrs!));
+        }
+    }),
+    ("test_guard_rejects_added_suppressions", async () =>
+    {
+        using var directory = new TempDirectory();
+        string In(string name) => Path.Combine(directory.Path, name);
+        File.WriteAllText(In("fix-hits.txt"), $"IDE0051\t{Hit}:3:5\tm\n");
+        async Task<(int Code, string Output)> GuardPatch(string path, string added, params string[] extra)
+        {
+            File.WriteAllText(In("fix.patch"), $"diff --git a/{path} b/{path}\nindex 1111111..2222222 100644\n--- a/{path}\n+++ b/{path}\n@@ -1,1 +1,2 @@\n class A {{ }}\n+{added}\n");
+            var code = -1;
+            var output = await Quiet(async () => code = await Run(["guard", "--patch", In("fix.patch"), "--files", In("fix-hits.txt"), "--ids", "IDE0051", .. extra], default));
+            return (code, output);
+        }
+        foreach (var added in new[] { "#pragma warning disable IDE0051", "[System.Diagnostics.CodeAnalysis.SuppressMessage(\"Style\", \"IDE0051\")]", "  #  pragma   warning disable" })
+        {
+            var (code, output) = await GuardPatch(Hit, added);
+            Equal(1, code);
+            True(output.Contains($"guard: FAIL {Hit}: adds a warning suppression"));
+        }
+        Equal(0, (await GuardPatch(Hit, "private int x;")).Code);
+    }),
+    ("test_fix_result_is_writable_and_read", Sync(() =>
+    {
+        var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "rule-bot.yml"));
+        True(workflow.Contains("Edit(/$DATA/fix-result.json)", StringComparison.Ordinal));
+        True(workflow.Contains("jq -c '.unfixable[]?' \"$DATA/fix-result.json\"", StringComparison.Ordinal));
+        True(!File.ReadAllText(Path.Combine(Home, "prompts", "fix.txt")).Contains("unless the site is listed as unfixable", StringComparison.Ordinal));
+    })),
+    ("test_build_retries_once_after_a_stall", async () =>
+    {
+        using var directory = new TempDirectory();
+        string In(string name) => Path.Combine(directory.Path, name);
+        Directory.CreateDirectory(In("bin"));
+        File.WriteAllText(In("bin/dotnet"), $"#!/usr/bin/env bash\nif [ ! -e '{In("stalled")}' ]; then touch '{In("stalled")}'; exec sleep 60; fi\necho 'Build succeeded.'\n");
+        await ScriptProcess.Run("chmod", ["+x", In("bin/dotnet")], default);
+        using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var result = await ScriptProcess.Run("bash", ["-c", "PATH=\"$1:$PATH\" RULE_BOT_BUILD_TIMEOUT=2s exec bash \"$2\" s.slnx \"$3\"", "build", In("bin"), Path.Combine(Home, "build.sh"), In("logs")], limit.Token);
+        Equal(0, result.Code);
+        True(result.Output.Contains("build: s.slnx stalled (attempt 1)"));
+    }),
 
     ("test_prod_only_overlay", Sync(() =>
     {

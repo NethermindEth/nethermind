@@ -440,7 +440,7 @@ jobs:
         run: |
           RULE_BOT_DENY=$("$RUNNER_TEMP/rule-bot/rule-bot" deny-tools)
           export RULE_BOT_DENY
-          bash "$RUNNER_TEMP/rule-bot/llm.sh" "$RUNNER_TEMP/rule-bot/prompts/fix.txt" "Read,Glob,Grep,Edit(src/**/*.cs),Edit(tools/**/*.cs),Bash(dotnet build:*)" \
+          bash "$RUNNER_TEMP/rule-bot/llm.sh" "$RUNNER_TEMP/rule-bot/prompts/fix.txt" "Read,Glob,Grep,Edit(src/**/*.cs),Edit(tools/**/*.cs),Edit(/$DATA/fix-result.json),Bash(dotnet build:*)" \
             "IDS=$IDS" "HITS=$DATA/fix-hits.txt" "SOLUTIONS=$SOLUTIONS" "RESULT=$DATA/fix-result.json" > "$DATA/fix-llm.log" 2>&1 || true
           git diff --stat
 
@@ -453,7 +453,7 @@ jobs:
           for s in $SOLUTIONS; do bash "$RUNNER_TEMP/rule-bot/build.sh" "$s" "$LOGS"; done
           "$RUNNER_TEMP/rule-bot/rule-bot" hits --logs "$LOGS" --root "$GITHUB_WORKSPACE" --ids "$IDS" --out "$DATA/after.json"
           left=$(jq '[.counts[].prod] | add' "$DATA/after.json")
-          [ "$left" = 0 ] || { echo "fix: $left production hits left"; exit 1; }
+          [ "$left" = 0 ] || { echo "fix: $left production hits left"; jq -c '.unfixable[]?' "$DATA/fix-result.json" || true; exit 1; }
 
       - name: Check changed paths
         env:
