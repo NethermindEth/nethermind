@@ -50,6 +50,36 @@ public class SocketRlpxConnectionTests
     }
 
     [Test]
+    public async Task Decompresses_a_packet_that_arrives_in_the_same_read_as_the_hello_enabling_snappy()
+    {
+        TaskCompletionSource queued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        SocketRlpxConnection? connection = null;
+        await using ConnectionUnderTest test = await ConnectionUnderTest.StartAsync(onReceive: packet =>
+        {
+            if (packet.PacketType == P2PMessageCode.Hello)
+            {
+                // Waits until the next packet is queued behind it, then enables Snappy as P2PProtocolHandler does.
+                queued.Task.Wait();
+                connection!.EnableSnappy();
+            }
+        });
+        connection = test.Connection;
+        byte[] hello = Content(50, 1);
+        byte[] compressed = Content(500, 2);
+        byte[] frames = [.. test.Peer.Encode(P2PMessageCode.Hello, hello, EncodingMode.Framed), .. test.Peer.Encode(0x10, compressed, EncodingMode.Snappy)];
+        long received = test.Socket.Received;
+
+        await test.Peer.SendAsync(frames);
+        Assert.That(() => test.Socket.Received, Is.EqualTo(received + frames.Length).After(5000, 10));
+        await Task.Delay(100);
+        queued.SetResult();
+        await test.WaitForEventsAsync(2);
+
+        Assert.That(test.Packets, Is.EqualTo(new (byte, byte[])[] { (P2PMessageCode.Hello, hello), (0x10, compressed) }));
+        await test.StopAndAssertBuffersReturnedAsync();
+    }
+
+    [Test]
     public async Task Completes_the_handshake_before_init_and_decodes_bytes_that_follow_the_auth()
     {
         await using ConnectionUnderTest test = ConnectionUnderTest.Create();

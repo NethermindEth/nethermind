@@ -39,14 +39,23 @@ internal sealed class ScriptedRlpxPeer
     public InMemoryRlpxSocket Socket { get; }
 
     /// <summary>Encodes a packet into frames, without sending them.</summary>
+    /// <param name="packetType">A packet type below 0x80, which RLP encodes in one byte.</param>
     public byte[] Encode(byte packetType, ReadOnlySpan<byte> content, FrameEncoder.EncodingMode mode)
     {
         byte[] packet = new byte[1 + content.Length];
-        packet[0] = packetType;
+        // RLP encodes the integer zero as the empty string.
+        packet[0] = packetType == 0 ? (byte)0x80 : packetType;
         content.CopyTo(packet.AsSpan(1));
-        byte[] frames = new byte[_encoder.GetMaxEncodedLength(packet.Length, mode)];
-        return frames[.._encoder.Encode(packet, frames, mode)];
+        byte[] frames = new byte[GetMaxEncodedLength(packet.Length, mode)];
+        return frames[..EncodePacket(packet, frames, mode)];
     }
+
+    /// <summary>Gets an upper bound of the encoded size of a packet, its packet type included.</summary>
+    public int GetMaxEncodedLength(int packetLength, FrameEncoder.EncodingMode mode) => _encoder.GetMaxEncodedLength(packetLength, mode);
+
+    /// <summary>Encodes a packet, its packet type first, into frames in <paramref name="destination"/>, without allocating.</summary>
+    /// <returns>The number of bytes written.</returns>
+    public int EncodePacket(ReadOnlySpan<byte> packet, Span<byte> destination, FrameEncoder.EncodingMode mode) => _encoder.Encode(packet, destination, mode);
 
     /// <summary>Encrypts and authenticates a frame from a plaintext header and a padded payload, without checking either.</summary>
     public byte[] EncryptFrame(ReadOnlySpan<byte> header, ReadOnlySpan<byte> payload)
