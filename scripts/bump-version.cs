@@ -25,6 +25,7 @@ try
     var version = $"{branch.Groups[1].Value}.{next.ToString(CultureInfo.InvariantCulture)}.0";
     var text = File.ReadAllText(args[1]);
     var current = ScriptVersion.Property(text, "VersionPrefix");
+    if (current.Length == 0 && !VersionPrefix().IsMatch(text)) throw new InvalidOperationException($"error: '{args[1]}' declares no <VersionPrefix>");
     var update = current != version;
     if (update) File.WriteAllText(args[1], VersionPrefix().Replace(text, $"<VersionPrefix>{version}</VersionPrefix>"));
     Console.WriteLine(update ? $"Updated version from {current} to {version}" : $"Version {version} is already set in {args[1]}");
