@@ -2332,12 +2332,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static void SetAddressWord(ref ulong slot, Address address)
         {
             ref byte bytes = ref MemoryMarshal.GetReference(address.Bytes);
-            slot = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - sizeof(ulong)));
-            Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - 2 * sizeof(ulong)));
+            slot = ZkEvmBitOperations.ReadUInt64BigEndianGathered(ref Unsafe.Add(ref bytes, Address.Size - sizeof(ulong)));
+            Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndianGathered(ref Unsafe.Add(ref bytes, Address.Size - 2 * sizeof(ulong)));
             // The leading four bytes of the address end the third limb. Without a byte reverse they are gathered
             // alone, as the shift does not drop the gather of the four bytes after them.
             Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.HasByteReverse
-                ? ZkEvmBitOperations.ReadUInt64BigEndian(ref bytes) >> 32
+                ? ZkEvmBitOperations.ReadUInt64BigEndianGathered(ref bytes) >> 32
                 : ((uint)bytes << 24) | ((uint)Unsafe.Add(ref bytes, 1) << 16) | ((uint)Unsafe.Add(ref bytes, 2) << 8) | Unsafe.Add(ref bytes, 3);
             Unsafe.Add(ref slot, 3) = 0;
         }
@@ -2508,7 +2508,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // The leading limb takes the bytes that do not fill a whole one, or a whole one; the rest follow it whole.
                 int leadingBytes = ((TOpCount.Count - 1) & 7) + 1;
                 int limbs = (TOpCount.Count + 7) >> 3;
-                ulong leading = ZkEvmBitOperations.ReadUInt64BigEndian(ref immediates) >> (64 - 8 * leadingBytes);
+                ulong leading = ZkEvmBitOperations.ReadUInt64BigEndianGathered(ref immediates) >> (64 - 8 * leadingBytes);
                 ref byte rest = ref Unsafe.Add(ref immediates, leadingBytes);
                 if (limbs == 1)
                 {
@@ -2538,7 +2538,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>The big-endian limb <paramref name="index"/> limbs past <paramref name="bytes"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong ReadBigEndianLimb(ref byte bytes, nint index) =>
-            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, index * sizeof(ulong)));
+            ZkEvmBitOperations.ReadUInt64BigEndianGathered(ref Unsafe.Add(ref bytes, index * sizeof(ulong)));
 
         /// <summary>PUSH2, fused with a JUMP or JUMPI after it whenever <see cref="EvmInstructions.InstructionPush2{TGasPolicy, TTracingInst}"/> would fuse them, with a POP, and with the gas test GAS LT PUSH1 JUMPI.</summary>
         /// <remarks>
