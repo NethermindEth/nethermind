@@ -35,13 +35,16 @@ COMMA := ,
 # .NET 11, not 10: both pass the soft-float suite, but 11 is the line it is
 # maintained on. It costs ~2.6% more SP1 cycles and ~2.5% more ZisK steps over
 # the nine stateless-tests blocks, and gives ~6.5% smaller binaries.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:dd05dd8af0a14065a9974492007dd5e568acfecc@sha256:34235a4a8050b171dd03562a875752c08db5b6fdb33bb505be1eeeb7c4ea19be
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:eadcaf8cd2fdcf4008c902fb47cfc4fe2c27c016@sha256:9aba9c8f58944e91d935863a12a00df25edc0adbfe8d05107d3548f9a22b4217
 
 # Every rv64 target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.
 # Floating point in the IL is not an error: the guest is soft-float (lp64), and
 # --error-on-float-binary checks that no F/D instruction is in the image.
 ISA_GATES ?= --error-on-float-binary --error-on-compressed --error-on-atomic
+
+# Extra bflat options, such as --codegenopt Name=Value.
+BFLAT_EXTRA_FLAGS ?=
 
 # The guest has no instruction cache, so favouring speed over size is near free.
 # Requires the TrieNode seqlock collapse: -Ot over the seqlock built a guest whose
@@ -78,7 +81,11 @@ BFLAT_DOCKER_ARGS ?=
 SHARED_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 SHARED_SRC_DIR := /nethermind/shared
 SHARED_MOUNT := --mount type=bind,source="$(SHARED_DIR)",target=$(SHARED_SRC_DIR),readonly
-GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SRC_DIR)/Program.cs
+# The input the guest takes - Ssz, the spec StatelessInput, or Trusted, the trusted-input format - picks the shared
+# file that implements Execute, and the guest's name.
+GUEST_INPUT ?= Ssz
+GUEST_NAME ?= $(if $(filter Trusted,$(GUEST_INPUT)),nethermind-trusted,nethermind)
+GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SHARED_SRC_DIR)/Input.$(GUEST_INPUT).cs $(SRC_DIR)/Program.cs
 # Pinned rather than derived: with more than one source bflat names the output
 # after the first, which is the shared one.
 GUEST_OUT := -o $(SRC_DIR)/Program
@@ -109,6 +116,7 @@ BFLAT_REFS := \
   -r $(BIN_DIR)/Nethermind.Evm.Precompiles.dll \
   -r $(BIN_DIR)/Nethermind.Int256.dll \
   -r $(BIN_DIR)/Nethermind.Logging.dll \
+  -r $(BIN_DIR)/Nethermind.Serialization.FluentRlp.dll \
   -r $(BIN_DIR)/Nethermind.Serialization.Rlp.dll \
   -r $(BIN_DIR)/Nethermind.Serialization.Ssz.dll \
   -r $(BIN_DIR)/Nethermind.Specs.dll \
@@ -130,8 +138,12 @@ BFLAT_REFS := \
 
 .DEFAULT_GOAL := build
 
+# Extra properties of the guest's managed build, given on the command line so that
+# every referenced project sees them too.
+GUEST_DOTNET_FLAGS ?=
+
 dotnet-build:
-	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/$(GUEST_PROJECT).csproj
+	dotnet build -c release -p:EnableZkEvm=true -p:GuestInput=$(GUEST_INPUT) $(GUEST_DOTNET_FLAGS) $(GUEST_DIR)/$(GUEST_PROJECT).csproj
 
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).
@@ -161,6 +173,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
+		$(BFLAT_EXTRA_FLAGS) \
 		$(GUEST_OUT) \
 		$(GUEST_SOURCES)
 	@len=$$(sed -n 's/.*Name="__embedded_resourcedata" Length="\([0-9]*\)".*/\1/p' $(GUEST_DIR)/Program.map.xml); \
@@ -169,10 +182,10 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 	if [ "$$len" != "0" ]; then echo "error: the guest image embeds $$len bytes of manifest resources; the guest reads none, find the assembly that added them" >&2; exit 1; fi; \
 	echo "Resource verification: OK - no manifest resources in the guest image"
 	mkdir -p $(GUEST_DIR)/bin && \
-		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
+		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/$(GUEST_NAME)
 	@# The flat ROM image and instruction section bflat writes beside an Airbender ELF.
 	@for ext in bin text; do \
-		if [ -f $(GUEST_DIR)/Program.$$ext ]; then mv -f $(GUEST_DIR)/Program.$$ext $(GUEST_DIR)/bin/nethermind.$$ext; fi; \
+		if [ -f $(GUEST_DIR)/Program.$$ext ]; then mv -f $(GUEST_DIR)/Program.$$ext $(GUEST_DIR)/bin/$(GUEST_NAME).$$ext; fi; \
 	done
 
 # Assembled by the bflat image's own clang, for the ISA the gates above allow.

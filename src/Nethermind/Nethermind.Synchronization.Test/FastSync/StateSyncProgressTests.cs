@@ -4,12 +4,14 @@
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync
@@ -72,6 +74,16 @@ namespace Nethermind.Synchronization.Test.FastSync
             progress = new BranchProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Code, NodeProgressState.AlreadySaved);
             Assert.That(progress.LastProgress, Is.EqualTo(0d), "code, already");
+        }
+
+        [TestCase(NodeProgressState.Requested, 0)]
+        [TestCase(NodeProgressState.AlreadySaved, 1)]
+        [TestCase(NodeProgressState.Saved, 1)]
+        public void Sync_item_overload_reports_the_given_state(NodeProgressState state, int expectedProgress)
+        {
+            BranchProgress progress = new(7, LimboTraceLogger.Instance);
+            progress.ReportSynced(new StateSyncItem(Keccak.Zero, null, TreePath.Empty, NodeDataType.State), state);
+            Assert.That(progress.LastProgress, Is.EqualTo((decimal)expectedProgress));
         }
 
         [Test]

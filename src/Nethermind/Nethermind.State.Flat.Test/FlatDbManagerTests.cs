@@ -83,7 +83,7 @@ public class FlatDbManagerTests
         _buffer.Dispose();
     }
 
-    private FlatDbManager CreateManager() => new(
+    private FlatDbManager CreateManager(ILogManager? logManager = null) => new(
         _resourcePool,
         _processExitSource,
         _buffer,
@@ -93,7 +93,7 @@ public class FlatDbManagerTests
         _persistedSnapshotLoader,
         _config,
         _blocksConfig,
-        LimboLogs.Instance,
+        logManager ?? LimboLogs.Instance,
         enableDetailedMetrics: false);
 
     private static StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
@@ -162,6 +162,28 @@ public class FlatDbManagerTests
         bool result = manager.HasStateForBlock(stateId);
 
         Assert.That(result, Is.False);
+    }
+
+    // The compacted snapshots only shorten reads, so a start that cannot write them goes on with the reloaded ones.
+    [Test]
+    public async Task Constructor_starts_when_compacting_the_reloaded_snapshots_fails(
+        [Values(typeof(InvalidOperationException), typeof(OperationCanceledException))] Type failure,
+        [Values] bool stopping)
+    {
+        _persistenceManager.CompactReloadedSnapshots(Arg.Any<CancellationToken>()).Returns(_ => throw (Exception)Activator.CreateInstance(failure)!);
+        if (stopping) _cts.Cancel();
+        TestLogger logger = new();
+
+        await using FlatDbManager manager = CreateManager(new OneLoggerLogManager(new ILogger(logger)));
+
+        Received.InOrder(() =>
+        {
+            _persistedSnapshotLoader.Load();
+            _persistenceManager.CompactReloadedSnapshots(_cts.Token);
+        });
+        // A cancellation during a stop is quiet; any other failure, a cancellation without a stop included, is an Error.
+        Assert.That(logger.LogList.Exists(static line => line.StartsWith("Could not compact", StringComparison.Ordinal)),
+            Is.EqualTo(!(stopping && failure == typeof(OperationCanceledException))));
     }
 
     // Regression: flushing on dispose persisted the unfinalized tail as the single RocksDB state, so a
@@ -632,6 +654,42 @@ public class FlatDbManagerTests
                 Throws.TypeOf<StateNotRetainedException>().With.Message.StartsWith("No state available for block 0"));
             _persistenceManager.Received(2).LeaseReader();
         }
+    }
+
+    [Test]
+    public async Task HasStateForBlock_requires_the_current_state_or_a_newer_snapshot()
+    {
+        StateId persisted = CreateStateId(5, rootByte: 5);
+        StateId sibling = CreateStateId(5, rootByte: 6);
+        StateId older = CreateStateId(4, rootByte: 4);
+        StateId newer = CreateStateId(6, rootByte: 7);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(persisted);
+        _snapshotRepository.HasState(Arg.Any<StateId>()).Returns(true);
+        await using FlatDbManager manager = CreateManager();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.HasStateForBlock(persisted), Is.True);
+            Assert.That(manager.HasStateForBlock(sibling), Is.False);
+            Assert.That(manager.HasStateForBlock(older), Is.False);
+            Assert.That(manager.HasStateForBlock(newer), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task HasStateForBlock_accepts_a_state_persisted_during_snapshot_lookup()
+    {
+        StateId persisted = CreateStateId(5, rootByte: 5);
+        StateId requested = CreateStateId(6, rootByte: 6);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(_ => persisted);
+        _snapshotRepository.HasState(requested).Returns(_ =>
+        {
+            persisted = requested;
+            return false;
+        });
+        await using FlatDbManager manager = CreateManager();
+
+        Assert.That(manager.HasStateForBlock(requested), Is.True);
     }
 
     [Test]

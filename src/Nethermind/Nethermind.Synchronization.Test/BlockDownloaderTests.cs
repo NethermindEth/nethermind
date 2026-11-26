@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -28,6 +29,7 @@ using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
@@ -563,6 +565,52 @@ public partial class BlockDownloaderTests
         Assert.That(res, Is.Null);
     }
 
+    // The request lists are locals, so the shared pool shows whether they went back: it hands a thread the array that
+    // thread returned last, per size class (the technique of TxTrieTests.Encoding_failure_returns_the_scratch_rental).
+    [Test]
+    public async Task Returns_the_request_lists_to_the_pool_when_assembling_a_request_throws()
+    {
+        IForwardHeaderProvider headerProvider = Substitute.For<IForwardHeaderProvider>();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IForwardHeaderProvider>(headerProvider));
+        Context ctx = node.Resolve<Context>();
+
+        using IOwnedReadOnlyList<BlockHeader> chain = (await ctx.ResponseBuilder.BuildHeaderResponse(0, 3, Response.AllCorrect))!;
+        // Capacity 100 puts the batch in another size class, so its own return cannot hide the request lists.
+        ArrayPoolList<BlockHeader?> headers = new(100, chain);
+        headerProvider.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers));
+        int estimates = 0;
+        ctx.PeerPool.EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns<Task<int?>>(_ =>
+            {
+                estimates++;
+                throw new InvalidOperationException("estimate failed");
+            });
+
+        int size = headers.Count;
+        BlockHeader[] headerList = ArrayPool<BlockHeader>.Shared.Rent(size);
+        ArrayPool<BlockHeader>.Shared.Return(headerList);
+        int[] countList = ArrayPool<int>.Shared.Rent(size);
+        ArrayPool<int>.Shared.Return(countList);
+
+        Task<BlocksRequest?> request = ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None);
+        bool completedOnThisThread = request.IsCompleted;
+        BlockHeader[] headerListAfter = ArrayPool<BlockHeader>.Shared.Rent(size);
+        int[] countListAfter = ArrayPool<int>.Shared.Rent(size);
+        ArrayPool<BlockHeader>.Shared.Return(headerListAfter);
+        ArrayPool<int>.Shared.Return(countListAfter);
+        BlocksRequest? result = await request;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completedOnThisThread, Is.True, "the pool check needs the request to complete on this thread");
+            Assert.That(result, Is.Null);
+            Assert.That(estimates, Is.EqualTo(1), "the first request-limit estimate must be the throw site");
+            Assert.That(headerListAfter, Is.SameAs(headerList), "the first header list was not returned to the pool");
+            Assert.That(countListAfter, Is.SameAs(countList), "the receipt count list was not returned to the pool");
+        }
+    }
+
     [Test]
     public async Task Skit_spawning_request_when_block_processing_queue_is_high()
     {
@@ -706,6 +754,7 @@ public partial class BlockDownloaderTests
             .Returns(ci =>
             {
                 IList<Hash256> blockHashes = ci.ArgAt<IList<Hash256>>(0);
+                int responseLength = Math.Min(minResponseLength, blockHashes.Count);
                 lock (requestedHashes)
                 {
                     blockHashes = blockHashes.Where((hash) =>
@@ -726,9 +775,9 @@ public partial class BlockDownloaderTests
                     .Result
                     .Bodies!;
 
-                if (response.Length < minResponseLength)
+                if (response.Length < responseLength)
                 {
-                    BlockBody?[] nullPaddedResponse = new BlockBody[minResponseLength];
+                    BlockBody?[] nullPaddedResponse = new BlockBody[responseLength];
                     for (int i = 0; i < response.Length; i++)
                     {
                         nullPaddedResponse[i] = response[i];
@@ -853,6 +902,105 @@ public partial class BlockDownloaderTests
         _ = await ctx.Feed.PrepareRequest(default); // The block is validated here.
 
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Reports_breach_on_body_that_does_not_decode([Values] bool rlpError)
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        Response options = Response.AllCorrect | Response.Consistent;
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), options));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(1000UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
+        // A body whose uncles item is a byte string instead of a sequence, or one whose uncle decode fails otherwise.
+        byte[] malformedBody = rlpError ? [0xc2, 0xc0, 0x80] : ThrowingHeaderDecoder.BodyWithUncle();
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(malformedBody.Length);
+        malformedBody.CopyTo(memory.Memory);
+        blockRequest.OwnedBodies = new OwnedBlockBodies(memory, [new Range(0, malformedBody.Length)],
+            rlpError ? BlockBodyDecoder.Instance : ThrowingHeaderDecoder.BodyDecoder);
+
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(blockRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Rejects_more_bodies_than_requested_without_decoding_them([Values] bool lastEntryEmpty)
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        Response options = Response.AllCorrect | Response.Consistent;
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), options));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(1000UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
+        int present = lastEntryEmpty ? blockRequest.BodiesRequests.Count : blockRequest.BodiesRequests.Count + 1;
+        byte[] body = ThrowingHeaderDecoder.BodyWithUncle();
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(body.Length * (blockRequest.BodiesRequests.Count + 1));
+        Range[] ranges = new Range[blockRequest.BodiesRequests.Count + 1];
+        for (int i = 0; i < present; i++)
+        {
+            body.CopyTo(memory.Memory[(i * body.Length)..]);
+            ranges[i] = new Range(i * body.Length, (i + 1) * body.Length);
+        }
+
+        if (lastEntryEmpty)
+        {
+            memory.Memory.Span[present * body.Length] = Rlp.EmptyListByte;
+            ranges[present] = new Range(present * body.Length, present * body.Length + 1);
+        }
+
+        blockRequest.OwnedBodies = new OwnedBlockBodies(memory, ranges, ThrowingHeaderDecoder.BodyDecoder);
+
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(blockRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "more block bodies received than requested");
+        ctx.PeerPool.DidNotReceive().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "invalid block bodies received");
+    }
+
+    [Test]
+    public async Task Reports_breach_on_receipts_that_do_not_decode()
+    {
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig { FastSync = true, SnapSync = true }));
+        Context ctx = node.Resolve<Context>();
+        SyncPeerMock syncPeer = new(101, withReceipts: true, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+        ISyncFeed<BlocksRequest> feed = ctx.FastSyncFeedComponent.Feed;
+
+        BlocksRequest bodiesRequest = await feed.PrepareRequest(default);
+        await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, bodiesRequest, default);
+        feed.HandleResponse(bodiesRequest, peerInfo);
+        BlocksRequest receiptsRequest = await feed.PrepareRequest(default);
+        Assert.That(receiptsRequest.ReceiptsRequests, Is.Not.Empty);
+        // Receipts kept encoded decode on the first read, so a malformed peer reply throws there.
+        IOwnedReadOnlyList<TxReceipt[]?> receipts = Substitute.For<IOwnedReadOnlyList<TxReceipt[]?>>();
+        receipts.Count.Returns(receiptsRequest.ReceiptsRequests.Count);
+        receipts[Arg.Any<int>()].Throws(new RlpReaderException("malformed"));
+        receiptsRequest.Receipts = receipts;
+
+        SyncResponseHandlingResult result = feed.HandleResponse(receiptsRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "invalid receipts received");
     }
 
     [Test]
@@ -1581,6 +1729,7 @@ public partial class BlockDownloaderTests
         public Node Node { get; } = null!;
         public string ClientId { get; } = null!;
         public byte ProtocolVersion { get; } = default;
+        public bool CanGetNodeData => true;
         public string ProtocolCode { get; } = null!;
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;

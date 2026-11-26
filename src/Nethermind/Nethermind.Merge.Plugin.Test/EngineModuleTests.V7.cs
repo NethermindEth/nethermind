@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Utils;
@@ -35,8 +37,10 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -234,7 +238,7 @@ public partial class EngineModuleTests
     public async Task Inclusion_list_recheck_needs_a_valid_bal_only_for_account_checks([Values] UnavailableBal reason, [Values] bool omittedEntry)
     {
         IBlockAccessListStore unavailable = Substitute.For<IBlockAccessListStore>();
-        if (reason == UnavailableBal.Corrupt) unavailable.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(_ => throw new RlpException("Malformed BAL"));
+        if (reason == UnavailableBal.Corrupt) unavailable.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(_ => throw new RlpReaderException("Malformed BAL"));
         if (reason == UnavailableBal.Mismatched) unavailable.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(new ReadOnlyBlockAccessList([], 0, Keccak.Zero));
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
             configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton(unavailable)));
@@ -242,7 +246,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(chain, chain.BlockTree.HeadHash, 2);
         chain.BlockTree.FindBlock(payload.BlockHash, BlockTreeLookupOptions.None)!.BlockAccessList = reason == UnavailableBal.CarriedMismatch
             ? new ReadOnlyBlockAccessList([], 0, Keccak.Zero) : null;
-        byte[][] list = omittedEntry ? [Rlp.Encode(BuildInclusionListTransfer()).Bytes] : [];
+        byte[][] list = omittedEntry ? [Rlp.Encode(BuildInclusionListTransfer())] : [];
 
         bool? result = chain.Container.Resolve<IInclusionListComplianceEvaluator>().TryEvaluate(payload.BlockHash, list);
 
@@ -266,7 +270,7 @@ public partial class EngineModuleTests
             .WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithMaxFeePerBlobGas(1.GWei)
             .WithBlobVersionedHashes(1).WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         byte[][] list = ordinaryOmitted
-            ? [Rlp.Encode(blob).Bytes, Rlp.Encode(BuildInclusionListTransfer()).Bytes] : [Rlp.Encode(blob).Bytes];
+            ? [Rlp.Encode(blob), Rlp.Encode(BuildInclusionListTransfer())] : [Rlp.Encode(blob)];
 
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, built.Data.ExecutionRequests, list);
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -289,7 +293,7 @@ public partial class EngineModuleTests
         chain.BlockTree.GetInfo(payload.BlockNumber, payload.BlockHash).Info!.WasProcessed = executed;
 
         bool? answer = chain.Container.Resolve<IInclusionListComplianceEvaluator>().TryEvaluate(payload.BlockHash,
-            [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+            [Rlp.Encode(BuildInclusionListTransfer())]);
 
         Assert.That(answer, Is.EqualTo(executed ? false : (bool?)null));
     }
@@ -343,7 +347,7 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV5(new(payload.BlockHash, payload.BlockHash, payload.BlockHash), null);
         Transaction omitted = Build.A.Transaction.WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
             .WithGasLimit(100_000).WithValue(0).WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
-        byte[][] inclusionList = [Rlp.Encode(omitted).Bytes];
+        byte[][] inclusionList = [Rlp.Encode(omitted)];
 
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, built.Data.ExecutionRequests, inclusionList);
         ResultWrapper<ForkchoiceUpdatedV2Result> forkchoice = await rpc.engine_forkchoiceUpdatedV5(new(payload.BlockHash, payload.BlockHash, payload.BlockHash), null);
@@ -463,7 +467,7 @@ public partial class EngineModuleTests
             .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         ResultWrapper<PayloadStatusV2> np = await rpc.engine_newPayloadV6(
-            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, [Rlp.Encode(censoredTx).Bytes]);
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, [Rlp.Encode(censoredTx)]);
         Assert.That(np.Data.InclusionListSatisfied, Is.False);
 
         // FCU V5 to that VALID head reports the retained compliance.
@@ -500,7 +504,7 @@ public partial class EngineModuleTests
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
-        byte[][] inclusionList = [Rlp.Encode(censoredTx).Bytes];
+        byte[][] inclusionList = [Rlp.Encode(censoredTx)];
 
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
             emptyPayload,
@@ -532,7 +536,7 @@ public partial class EngineModuleTests
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
-        byte[][] censoringList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
+        byte[][] censoringList = [Rlp.Encode(BuildInclusionListTransfer())];
 
         ResultWrapper<PayloadStatusV2> first = await rpc.engine_newPayloadV6(
             emptyPayload,
@@ -764,7 +768,7 @@ public partial class EngineModuleTests
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
-        byte[] txBytes = Rlp.Encode(tx).Bytes;
+        byte[] txBytes = Rlp.Encode(tx);
 
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
@@ -812,7 +816,7 @@ public partial class EngineModuleTests
         Transaction tx = Build.A.Transaction
             .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        byte[][] inclusionList = [Rlp.Encode(tx).Bytes];
+        byte[][] inclusionList = [Rlp.Encode(tx)];
 
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
@@ -858,7 +862,7 @@ public partial class EngineModuleTests
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
         // Reversed order (nonce 1 before nonce 0): a one-pass producer would skip nonce 1 forever.
-        byte[][] inclusionList = [Rlp.Encode(tx1).Bytes, Rlp.Encode(tx0).Bytes];
+        byte[][] inclusionList = [Rlp.Encode(tx1), Rlp.Encode(tx0)];
 
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
@@ -870,8 +874,224 @@ public partial class EngineModuleTests
         Assert.That(payload.Transactions, Has.Length.EqualTo(2));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(payload.Transactions[0], Is.EqualTo(Rlp.Encode(tx0).Bytes));
-            Assert.That(payload.Transactions[1], Is.EqualTo(Rlp.Encode(tx1).Bytes));
+            Assert.That(payload.Transactions[0], Is.EqualTo(Rlp.Encode(tx0)));
+            Assert.That(payload.Transactions[1], Is.EqualTo(Rlp.Encode(tx1)));
+        }
+    }
+
+    [Test]
+    public async Task Should_build_block_including_inclusion_list_transaction_funded_by_later_entry()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        (Transaction spend, Transaction fund) = BuildSpendFundedByLaterTransaction();
+        byte[] spendBytes = Rlp.Encode(spend);
+        byte[] fundBytes = Rlp.Encode(fund);
+        byte[][] inclusionList = [spendBytes, fundBytes];
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: inclusionList));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
+
+        Assert.That(payload.Transactions, Is.EqualTo(new[] { fundBytes, spendBytes }));
+
+        ResultWrapper<PayloadStatusV2> verify = await rpc.engine_newPayloadV6(
+            payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verify.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(verify.Data.InclusionListSatisfied, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Should_build_block_including_inclusion_list_transaction_after_pool_fills_nonce_gap()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        Transaction tx0 = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction tx1 = Build.A.Transaction
+            .WithNonce(1).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.TxPool.SubmitTx(tx0, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(chain.TxPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(tx1)]);
+        await rpc.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead), payloadAttributes);
+
+        Block? block = await chain.BlockProducer!.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes);
+
+        Assert.That(block!.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { tx0.Hash, tx1.Hash }));
+    }
+
+    [Test]
+    public async Task Should_not_offer_inclusion_list_transaction_again_while_its_sender_is_unchanged()
+    {
+        CountingTransactionPicker.Counter counter = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<BlockProcessor.IBlockProductionTransactionPicker>((_, inner) => new CountingTransactionPicker(inner, counter)));
+
+        Transaction unfunded = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
+        (Transaction spend, Transaction fund) = BuildSpendFundedByLaterTransaction();
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(unfunded), Rlp.Encode(spend), Rlp.Encode(fund)]);
+        chain.InclusionListTxSource!.Set(payloadAttributes.InclusionListTransactions!, Bogota.Instance);
+
+        Block? block = await chain.BlockProducer!.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block!.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { fund.Hash, spend.Hash }));
+            Assert.That(counter.OffersPerBlock(unfunded.Hash!), Is.EqualTo(counter.OffersPerBlock(spend.Hash!)));
+        }
+    }
+
+    [Test]
+    public async Task Should_offer_inclusion_list_transaction_again_after_its_sender_changes_in_a_later_pass()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+
+        PrivateKey spender = Build.A.PrivateKey.TestObject;
+        Transaction spend = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(spender).TestObject;
+        Transaction relay = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithValue(1.Ether).WithGasLimit(1_000_000)
+            .WithTo(spender.Address).SignedAndResolved(TestItem.PrivateKeyE).TestObject;
+        Transaction fund = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithValue(2.Ether).WithGasLimit(1_000_000)
+            .WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(spend), Rlp.Encode(relay), Rlp.Encode(fund)]);
+        chain.InclusionListTxSource!.Set(payloadAttributes.InclusionListTransactions!, Bogota.Instance);
+
+        Block? block = await chain.BlockProducer!.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes);
+
+        Assert.That(block!.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { fund.Hash, relay.Hash, spend.Hash }));
+    }
+
+    [Test]
+    public async Task Should_offer_inclusion_list_transactions_again_when_the_improvement_timeout_stops_the_build()
+    {
+        CountingTransactionPicker.Counter counter = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<BlockProcessor.IBlockProductionTransactionPicker>((_, inner) => new CountingTransactionPicker(inner, counter)));
+        (Transaction first, Transaction second, PayloadAttributes payloadAttributes) = SetTwoSenderInclusionList(chain);
+        TimeSpan timeout = TimeSpan.FromMilliseconds(500);
+        counter.OnNextOffer(() => Thread.Sleep(timeout * 4));
+
+        using BlockImprovementContext context = new(null, chain.BlockProducer!, timeout, chain.BlockTree.Head!.Header, payloadAttributes,
+            DateTimeOffset.UtcNow, UInt256.Zero, new SharedCancellationTokenSource(new CancellationTokenSource()));
+        Block? block = await context.ImprovementTask;
+
+        Assert.That(block!.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { first.Hash, second.Hash }));
+    }
+
+    [Test]
+    public async Task Should_not_offer_inclusion_list_transactions_again_when_the_build_is_abandoned()
+    {
+        CountingTransactionPicker.Counter counter = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<BlockProcessor.IBlockProductionTransactionPicker>((_, inner) => new CountingTransactionPicker(inner, counter)));
+        (Transaction first, Transaction second, PayloadAttributes payloadAttributes) = SetTwoSenderInclusionList(chain);
+        using CancellationTokenSource round = new();
+        counter.OnNextOffer(round.Cancel);
+
+        using BlockImprovementContext context = new(null, chain.BlockProducer!, TimeSpan.FromMinutes(10), chain.BlockTree.Head!.Header, payloadAttributes,
+            DateTimeOffset.UtcNow, UInt256.Zero, new SharedCancellationTokenSource(round));
+        await context.ImprovementTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counter.OffersPerBlock(first.Hash!), Is.Not.Empty);
+            Assert.That(counter.OffersPerBlock(second.Hash!), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Should_not_offer_inclusion_list_transactions_again_when_a_build_without_an_abandon_token_is_cancelled()
+    {
+        CountingTransactionPicker.Counter counter = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<BlockProcessor.IBlockProductionTransactionPicker>((_, inner) => new CountingTransactionPicker(inner, counter)));
+        (Transaction first, Transaction second, PayloadAttributes payloadAttributes) = SetTwoSenderInclusionList(chain);
+        using CancellationTokenSource cts = new();
+        counter.OnNextOffer(cts.Cancel);
+
+        await chain.BlockProducer!.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes, cancellationToken: cts.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counter.OffersPerBlock(first.Hash!), Is.Not.Empty);
+            Assert.That(counter.OffersPerBlock(second.Hash!), Is.Empty);
+        }
+    }
+
+    private (Transaction First, Transaction Second, PayloadAttributes PayloadAttributes) SetTwoSenderInclusionList(MergeTestBlockchain chain)
+    {
+        Transaction first = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction second = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(first), Rlp.Encode(second)]);
+        chain.InclusionListTxSource!.Set(payloadAttributes.InclusionListTransactions!, Bogota.Instance);
+        return (first, second, payloadAttributes);
+    }
+
+    private static (Transaction Spend, Transaction Fund) BuildSpendFundedByLaterTransaction()
+    {
+        Transaction spend = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyE).TestObject;
+        Transaction fund = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithValue(1.Ether).WithGasLimit(1_000_000)
+            .WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        return (spend, fund);
+    }
+
+    private sealed class CountingTransactionPicker(BlockProcessor.IBlockProductionTransactionPicker inner, CountingTransactionPicker.Counter counter)
+        : BlockProcessor.IBlockProductionTransactionPicker
+    {
+        public sealed class Counter
+        {
+            private readonly ConcurrentDictionary<(int Block, Hash256 Tx), int> _offers = new();
+            private Action? _onNextOffer;
+
+            public void OnNextOffer(Action action) => _onNextOffer = action;
+
+            public void Add(Block block, Hash256 tx)
+            {
+                Interlocked.Exchange(ref _onNextOffer, null)?.Invoke();
+                _offers.AddOrUpdate((RuntimeHelpers.GetHashCode(block), tx), 1, static (_, count) => count + 1);
+            }
+
+            public Dictionary<int, int> OffersPerBlock(Hash256 tx) => _offers.Where(entry => entry.Key.Tx == tx).ToDictionary(static entry => entry.Key.Block, static entry => entry.Value);
+        }
+
+        public event EventHandler<BlockProcessor.AddingTxEventArgs>? AddingTransaction
+        {
+            add => inner.AddingTransaction += value;
+            remove => inner.AddingTransaction -= value;
+        }
+
+        public BlockProcessor.AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock,
+            IReadOnlyStateProvider stateProvider, ulong cumulativeBlockExecutionGas, ulong cumulativeBlockStateGas)
+        {
+            if (currentTx.Hash is not null) counter.Add(block, currentTx.Hash);
+            return inner.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider, cumulativeBlockExecutionGas, cumulativeBlockStateGas);
         }
     }
 
@@ -902,8 +1122,8 @@ public partial class EngineModuleTests
 
         using InclusionListBytes inclusionList = (await rpc.engine_getInclusionListV1()).Data!;
 
-        byte[] tx1Bytes = Rlp.Encode(tx1).Bytes;
-        byte[] tx2Bytes = Rlp.Encode(tx2).Bytes;
+        byte[] tx1Bytes = Rlp.Encode(tx1);
+        byte[] tx2Bytes = Rlp.Encode(tx2);
         byte[][] inclusionListBytes = inclusionList.Select(b => b.AsSpan().ToArray()).ToArray();
 
         using (Assert.EnterMultipleScope())
@@ -994,7 +1214,7 @@ public partial class EngineModuleTests
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
         Assert.That(chain.TxPool.SubmitTx(mempoolTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(inclusionListTx).Bytes]);
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(inclusionListTx)]);
         await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead), payloadAttributes);
 
@@ -1015,7 +1235,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Transaction inclusionListTx = BuildInclusionListTransfer();
-        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(inclusionListTx).Bytes]);
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(inclusionListTx)]);
 
         try
         {
@@ -1079,7 +1299,7 @@ public partial class EngineModuleTests
         int processed = 0;
         chain.BranchProcessor.BlockProcessing += (_, _) => Interlocked.Increment(ref processed);
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
-            first, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
+            first, [], Keccak.Zero, [], [Rlp.Encode(censoredTx)]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1134,7 +1354,7 @@ public partial class EngineModuleTests
             .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         probe.Watch(block.BlockHash);
-        Task<ResultWrapper<PayloadStatusV2>> resent = rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [Rlp.Encode(censoredTx).Bytes]);
+        Task<ResultWrapper<PayloadStatusV2>> resent = rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [Rlp.Encode(censoredTx)]);
         await Task.WhenAny(probe.WaitEntered.Task, resent, Task.Delay(TimeSpan.FromSeconds(20)));
         bool waitedForCommit = probe.WaitEntered.Task.IsCompleted;
         commit.SetResult();
@@ -1171,7 +1391,7 @@ public partial class EngineModuleTests
             }));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block parent = chain.BlockTree.Head!;
-        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
+        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer())];
 
         // Build with the list only in the satisfied case; the other build censors it.
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
@@ -1243,7 +1463,7 @@ public partial class EngineModuleTests
         // An empty list is trivially satisfied, so this leaves inclusionListSatisfied=true cached for the head.
         ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(chain, chain.BlockTree.HeadHash, slot: 2);
 
-        await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+        await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer())]);
         if (!stateHealed) headState.PrunedBlock = payload.BlockHash;
         if (dimensionsLost)
         {
@@ -1273,7 +1493,7 @@ public partial class EngineModuleTests
         Hash256 parentHash = chain.BlockTree.HeadHash;
 
         ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(chain, parentHash, slot: 2, finalize: false);
-        await RetainInclusionListByPrunedResend(rpc, headState, first, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+        await RetainInclusionListByPrunedResend(rpc, headState, first, [Rlp.Encode(BuildInclusionListTransfer())]);
 
         for (ulong slot = 3; slot < 21; slot++)
         {
@@ -1306,7 +1526,7 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV4 parent = await BuildAndInsertEmptyBlock(chain, genesis, slot: 2, finalize: false, finalizedHash: genesis);
         ExecutionPayloadV4 child = await BuildAndInsertEmptyBlock(chain, parent.BlockHash, slot: 3, finalize: false, finalizedHash: genesis);
-        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
+        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer())];
 
         if (parentAnswered)
         {
@@ -1359,7 +1579,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 third = await BuildAndInsertEmptyBlock(chain, second.BlockHash, slot: 4, finalize: false, finalizedHash: genesis);
         ExecutionPayloadV4 sibling = await BuildAndInsertEmptyBlock(chain, second.BlockHash, slot: 5, finalize: false, finalizedHash: genesis);
 
-        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
+        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer())];
         await RetainInclusionListByPrunedResend(rpc, headState, first, inclusionList);
         await RetainInclusionListByPrunedResend(rpc, headState, second, inclusionList);
         ResultWrapper<PayloadStatusV2> thirdResend = await rpc.engine_newPayloadV6(third, [], Keccak.Zero, [], []);
@@ -1474,7 +1694,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(chain, chain.BlockTree.HeadHash, slot: 2);
-        await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+        await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer())]);
 
         // A nonce the sender is past cannot be appended, so this list is satisfied where the censoring one is not.
         Transaction unappendableTx = Build.A.Transaction
@@ -1486,7 +1706,7 @@ public partial class EngineModuleTests
         evaluator.BeforeEvaluate = () =>
         {
             evaluator.BeforeEvaluate = null;
-            RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(unappendableTx).Bytes]).GetAwaiter().GetResult();
+            RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(unappendableTx)]).GetAwaiter().GetResult();
         };
 
         ForkchoiceStateV1 forkchoiceState = new(payload.BlockHash, payload.BlockHash, payload.BlockHash);
@@ -1510,7 +1730,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(chain, chain.BlockTree.HeadHash, slot: 2);
-        await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+        await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer())]);
 
         int evaluations = 0;
         evaluator.BeforeEvaluate = () =>
@@ -1577,7 +1797,7 @@ public partial class EngineModuleTests
             await firstCopyQueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
             probe.Watch(payload.BlockHash);
-            resend = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+            resend = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, [Rlp.Encode(BuildInclusionListTransfer())]);
             await Task.WhenAny(secondCopyQueued.Task, probe.RemovalWaitPending.Task).WaitAsync(TimeSpan.FromSeconds(10));
         }
         finally
@@ -1615,7 +1835,7 @@ public partial class EngineModuleTests
                 .UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<TimeProvider>(clock)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block parent = chain.BlockTree.Head!;
-        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
+        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer())];
 
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(parent.Hash!, Keccak.Zero, parent.Hash!), BuildBogotaPayloadAttributes(inclusionList: []));
@@ -1848,7 +2068,7 @@ public partial class EngineModuleTests
         Transaction included = Build.A.Transaction
             .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        byte[][] firstList = [Rlp.Encode(included).Bytes];
+        byte[][] firstList = [Rlp.Encode(included)];
 
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(chain.BlockTree.HeadHash, Keccak.Zero, chain.BlockTree.HeadHash),
@@ -1898,7 +2118,7 @@ public partial class EngineModuleTests
         accountReader.TrackedBlockHash = first.BlockHash;
 
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
-            first, [], Keccak.Zero, [], entry == InclusionListEntry.Included ? firstList : [Rlp.Encode(censored).Bytes]);
+            first, [], Keccak.Zero, [], entry == InclusionListEntry.Included ? firstList : [Rlp.Encode(censored)]);
 
         if (dimensionsLost && resendHead && entry == InclusionListEntry.Boundary)
         {

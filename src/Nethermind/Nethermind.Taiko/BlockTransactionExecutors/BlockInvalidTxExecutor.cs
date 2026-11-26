@@ -7,7 +7,9 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -19,7 +21,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Taiko.BlockTransactionExecutors;
 
-public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ZkGasMeterHolder? zkGasMeterHolder = null, ISpecProvider? specProvider = null) : IBlockProcessor.IBlockTransactionsExecutor
+public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ISpecProvider specProvider, ITxValidator txValidator, IEthereumEcdsa ecdsa, ZkGasMeterHolder? zkGasMeterHolder = null) : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockInvalidTxExecutor>();
 
@@ -44,9 +46,11 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         // faithfully re-executes every transaction and produces the same GasUsed as the
         // producer. Gated on IsUnzenEnabled so the meter stays dormant pre-Unzen (matches
         // the validator-side gate in TaikoBlockProcessor.ProcessBlock).
-        bool enforceZkGas = (processingOptions & ProcessingOptions.ProducingBlock) != 0
+        bool producingBlock = processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock);
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        bool enforceZkGas = producingBlock
                             && zkGasMeterHolder is not null
-                            && specProvider?.GetSpec(block.Header) is ITaikoReleaseSpec { IsUnzenEnabled: true };
+                            && spec is ITaikoReleaseSpec { IsUnzenEnabled: true };
 
         using ArrayPoolListRef<Transaction> correctTransactions = new(block.Transactions.Length);
 
@@ -74,6 +78,22 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             {
                 // Skip blob transactions
                 continue;
+            }
+
+            if (!isAnchor && producingBlock)
+            {
+                ValidationResult validation = txValidator.IsWellFormed(tx, spec, block.Header.GasLimit);
+                if (!validation && tx.SenderAddress is null && spec.IsEip2780Enabled && tx.Signature is not null && TxErrorMessages.IsIntrinsicGasError(validation.Error))
+                {
+                    tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+                    validation = txValidator.IsWellFormed(tx, spec, block.Header.GasLimit);
+                }
+
+                if (!validation)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Skipping proposed transaction {tx.Hash}: {validation}");
+                    continue;
+                }
             }
 
             using ITxTracer _ = receiptsTracer.StartNewTxTrace(tx);

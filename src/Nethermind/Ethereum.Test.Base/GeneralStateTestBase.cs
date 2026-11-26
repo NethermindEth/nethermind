@@ -22,7 +22,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -101,7 +100,6 @@ namespace Ethereum.Test.Base
             await using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
-                .AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false))
                 .AddSingleton(specProvider)
                 .AddSingleton(_logManager)
                 .Build();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,7 +17,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
     [RpcModule(ModuleType.Trace)]
     public interface ITraceRpcModule : IRpcModule
     {
-        [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
+        [JsonRpcMethod(Description = "Executes and traces a call without submitting a transaction. A non-null `input` takes precedence over `data`."
+            + " Blob versioned hashes are decoded as byte arrays; invalid lengths are rejected during Blob transaction conversion, not JSON decoding. For duplicate fields, the last value is used.", IsImplemented = true, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call,
             [JsonRpcParameter(Description = "Possible values : [\"VmTrace\", \"StateDiff\", \"Trace\", \"Rewards\", \"All\"]")] string[] traceTypes,
             BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null);
@@ -72,6 +74,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> trace_transaction([JsonRpcParameter(ExampleValue = "\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\"")] Hash256 txHash, [JsonRpcParameter(Description = "If true, traces the transaction even if it is in a non-canonical block. Default: false.")] bool traceNonCanonical = false);
 
         [JsonRpcMethod(Description = "Returns parity like traces for simulated blocks", IsImplemented = true, IsSharable = true)]
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null, CancellationToken cancellationToken = default);
     }
 }

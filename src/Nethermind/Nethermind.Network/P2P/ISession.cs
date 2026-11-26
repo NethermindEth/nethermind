@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
@@ -22,12 +21,12 @@ namespace Nethermind.Network.P2P
         /// <summary>
         /// Gets whether the transport channel has closed before delayed disconnect bookkeeping completes.
         /// </summary>
-        bool IsChannelClosed => false;
+        bool IsChannelClosed { get; }
 
         /// <summary>
         /// Gets whether the transport channel cannot take new messages: its outgoing buffer is above the high watermark, or the channel is closed.
         /// </summary>
-        bool IsOutboundBufferFull => false;
+        bool IsOutboundBufferFull { get; }
 
         PublicKey RemoteNodeId { get; }
         PublicKey ObsoleteRemoteNodeId { get; }
@@ -53,7 +52,7 @@ namespace Nethermind.Network.P2P
 
         bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler);
 
-        void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender);
+        void Init(byte p2PVersion, IPacketSender packetSender);
 
         /// <summary>
         /// Starts local disconnect (triggers disconnect on each protocolHandler, down to tcp disconnect)
@@ -66,8 +65,6 @@ namespace Nethermind.Network.P2P
         void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details);
 
         void Handshake(PublicKey handshakeRemoteNodeId);
-
-        void StartTrackingSession();
 
         event EventHandler<DisconnectEventArgs> Disconnecting;
         event EventHandler<DisconnectEventArgs> Disconnected;

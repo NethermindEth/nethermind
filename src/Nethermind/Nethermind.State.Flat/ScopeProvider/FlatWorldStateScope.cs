@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -35,7 +36,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // Taken before the block's first trie write and handed to its snapshot at commit, so every node the block writes stays readable.
     private INodeRecordBufferPin? _bufferPin;
 
-    private readonly Hash256 _initialStateRoot;
+    private readonly ValueHash256 _initialStateRoot;
+    private Hash256? _initialStateRootHash;
     // The state root warm-ups walk from; default in a trie-less scope.
     private readonly (ValueHash256 Hash, ulong Pointer) _initialTrieRoot;
     // Null in a trie-less scope.
@@ -92,7 +94,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CodeDb = codeDb;
         _commitTarget = commitTarget;
 
-        _initialStateRoot = currentStateId.StateRoot.ToCommitment();
+        _initialStateRoot = currentStateId.StateRoot;
 
         _configuration = configuration;
         _warmReadPool = warmReadPool;
@@ -107,7 +109,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             INodeRecordBuffer buffer = snapshotBundle.NodeRecordBuffer!;
             _bufferPin = buffer.PinHead();
-            _initialTrieRoot = buffer.ResolveRoot(null, _initialStateRoot.ValueHash256);
+            _initialTrieRoot = buffer.ResolveRoot(null, _initialStateRoot);
             _stateTrie = new NodeRecordTrie(snapshotBundle, null, _initialTrieRoot);
         }
 
@@ -219,7 +221,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (Interlocked.Decrement(ref _outstandingWarmups) == 0) Volatile.Read(ref _warmupsDrained)?.Set();
     }
 
-    public Hash256 RootHash => _stateTrie?.RootHash ?? _initialStateRoot;
+    public Hash256 RootHash => _stateTrie?.RootHash ?? (_initialStateRootHash ??= _initialStateRoot.ToCommitment());
 
     /// <summary>A trie-less scope never rehashes storage, so an account it wrote storage to keeps its old root.</summary>
     public bool StorageRootsAreAuthoritative => !_trieless;
@@ -263,7 +265,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (accountCount == 0) return Task.CompletedTask;
 
         // Copy the span into a pooled array so the Task.Run body can capture it.
-        ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
+        ArrayPoolList<ReadOnlyAccountChanges> accountChanges = [with(bal.AccountChanges.AsSpan())];
 
         _hintBalCts = new CancellationTokenSource();
         CancellationToken token = _hintBalCts.Token;
@@ -702,6 +704,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
+        // A snapshot whose trie nodes live in a private buffer must not outlive the bundle that frees that buffer.
+        Debug.Assert(!shouldAddSnapshot || !_snapshotBundle.OwnsNodeRecordBuffer, "Snapshots over a private node buffer cannot be added to the repository.");
         // Taken after the roots were published, so the next block's pin also bounds this snapshot's root lookups.
         INodeRecordBufferPin? nextBufferPin = _trieless ? null : _snapshotBundle.NodeRecordBuffer!.PinHead();
         (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(
@@ -743,7 +747,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private void ReleaseStorageTrees()
     {
-        foreach (FlatStorageTree storage in _storages.Values) storage.ReleaseTrie();
+        foreach (KeyValuePair<AddressAsKey, FlatStorageTree> storage in _storages) storage.Value.ReleaseTrie();
         _storages.Clear();
     }
 
@@ -786,16 +790,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         private readonly FlatWorldStateScope _scope;
         private readonly ILogger _logger;
+        [ThreadStatic] private static Dictionary<AddressAsKey, Account?>? _spareDirtyAccounts;
+        [ThreadStatic] private static ConcurrentQueue<(AddressAsKey, Hash256)>? _spareDirtyStorageTrees;
+
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts;
-        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree;
         // One delegate for every storage batch of the block.
         private readonly Action<Address, Hash256> _markDirty;
+        private bool _disposed;
+        private bool _collectionsReleased;
 
         public WriteBatch(FlatWorldStateScope scope, int estimatedAccountCount, ILogger logger)
         {
             _scope = scope;
             _logger = logger;
-            _dirtyAccounts = new(estimatedAccountCount);
+            _dirtyAccounts = _spareDirtyAccounts ?? [with(estimatedAccountCount)];
+            _spareDirtyAccounts = null;
+            _dirtyAccounts.EnsureCapacity(estimatedAccountCount);
+            _dirtyStorageTree = _spareDirtyStorageTrees ?? new();
+            _spareDirtyStorageTrees = null;
             _markDirty = MarkDirty;
         }
 
@@ -803,6 +816,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         public void Set(Address key, Account? account)
         {
+            Debug.Assert(!_disposed);
             _dirtyAccounts[key] = account;
 
             if (account is null)
@@ -829,11 +843,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     estimatedEntries: estimatedEntries,
                     onRootUpdated: _markDirty);
 
-        private void MarkDirty(Address address, Hash256 storageTreeRootHash) =>
+        private void MarkDirty(Address address, Hash256 storageTreeRootHash)
+        {
+            Debug.Assert(!_collectionsReleased);
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
+        }
 
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
+
             try
             {
                 while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
@@ -872,7 +892,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
             finally
             {
-                _dirtyAccounts.Clear();
+                _dirtyAccounts.ClearAndTrim();
+                _collectionsReleased = true;
+                _spareDirtyAccounts = _dirtyAccounts;
+                if (_dirtyStorageTree.IsEmpty) _spareDirtyStorageTrees = _dirtyStorageTree;
 
                 Interlocked.Increment(ref _scope._hintSequenceId);
             }

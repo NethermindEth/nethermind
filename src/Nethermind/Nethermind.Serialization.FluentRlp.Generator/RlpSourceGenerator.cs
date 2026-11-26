@@ -148,7 +148,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             diagnostics.Add(Diagnostic.Create(InvalidLength, location));
         }
 
-        if (isNewtype && parameters.Count == 1 && ContainsWithoutSequence(parameters[0].Type, symbol, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default)))
+        if (isNewtype && parameters.Count == 1 && ContainsWithoutSequence(parameters[0].Type, symbol, [with(SymbolEqualityComparer.Default)]))
         {
             diagnostics.Add(Diagnostic.Create(RecursiveNewtype, location, symbol.Name));
         }
@@ -157,7 +157,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         List<string> readCalls = [];
         List<string> writeCalls = [];
         List<int?> fixedLengths = [];
-        bool canMeasure = CanMeasure(symbol, null, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default));
+        bool canMeasure = CanMeasure(symbol, null, [with(SymbolEqualityComparer.Default)]);
         List<string> writeLengthDeclarations = [];
         List<string> writeLengths = [];
         for (int i = 0; i < parameters.Count; i++)
@@ -188,7 +188,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 collectionPayload = $"_{i}PayloadLength";
                 writeLengthDeclarations.Add($"int {collectionPayload} = {mapper.PayloadOfItems(type, element, name, $"value.{name}")};");
             }
-            writeLengths.Add(collectionPayload is null ? "" : $"{Library}.Rlp.LengthOfSequence({collectionPayload})");
+            writeLengths.Add(collectionPayload is null ? "" : $"{Library}.RlpCodec.LengthOfSequence({collectionPayload})");
             writeCalls.Add(mapper.Write(type, name, $"value.{name}", byteLength, collectionPayload));
         }
 
@@ -198,7 +198,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         string? payloadLength = null;
         if (canMeasure)
         {
-            List<string> lengths = new(parameters.Count);
+            List<string> lengths = [with(parameters.Count)];
             for (int i = 0; i < parameters.Count; i++)
             {
                 lengths.Add(mapper.Length(parameters[i].Type, parameterSymbols[i], $"value.{parameters[i].Name}"));
@@ -510,7 +510,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
                     """
                 : $$"""
-                        public static int GetLength({{fullTypeName}} value) => {{Library}}.Rlp.LengthOfSequence(GetPayloadLength(value));
+                        public static int GetLength({{fullTypeName}} value) => {{Library}}.RlpCodec.LengthOfSequence(GetPayloadLength(value));
 
                         private static int GetPayloadLength({{fullTypeName}} value) => checked({{payloadLength}});
 
@@ -697,7 +697,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
         private string WriteItems(ITypeSymbol type, ITypeSymbol itemType, string member, string value, string? collectionPayloadLength)
         {
-            if (!CanMeasure(itemType, null, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default)))
+            if (!CanMeasure(itemType, null, [with(SymbolEqualityComparer.Default)]))
             {
                 return $"w.WriteSequence({value}, static (ref {Library}.RlpWriter w, {Name(type)} items) => {{ foreach ({Name(itemType)} item in items) {{ {Write(itemType, member, "item")}; }} }})";
             }
@@ -730,16 +730,16 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         public string Length(ITypeSymbol type, IParameterSymbol? parameter, string value)
         {
             if (FixedLength(type, parameter) is { } fixedLength) return fixedLength.ToString();
-            if (IsByteArray(type)) return $"{Library}.Rlp.LengthOf({value})";
-            if (IsInteger(type)) return $"{Library}.Rlp.LengthOf<{Name(type)}>({value})";
+            if (IsByteArray(type)) return $"{Library}.RlpCodec.LengthOf({value})";
+            if (IsInteger(type)) return $"{Library}.RlpCodec.LengthOf<{Name(type)}>({value})";
             if (IsUInt256(type)) return $"{Instances}.UInt256RlpConverter.GetLength({value})";
 
             switch (type)
             {
                 case IArrayTypeSymbol { Rank: 1 } array:
-                    return $"{Library}.Rlp.LengthOfSequence({PayloadOfItems(type, array.ElementType, value, value)})";
+                    return $"{Library}.RlpCodec.LengthOfSequence({PayloadOfItems(type, array.ElementType, value, value)})";
                 case INamedTypeSymbol named when IsCollection(named, "List", 1):
-                    return $"{Library}.Rlp.LengthOfSequence({PayloadOfItems(type, named.TypeArguments[0], value, value)})";
+                    return $"{Library}.RlpCodec.LengthOfSequence({PayloadOfItems(type, named.TypeArguments[0], value, value)})";
                 case INamedTypeSymbol { IsTupleType: true } tuple:
                     return $"({Length(tuple.TupleElements[0].Type, null, $"{value}.Item1")} + {Length(tuple.TupleElements[1].Type, null, $"{value}.Item2")})";
                 default:

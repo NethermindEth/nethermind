@@ -10,14 +10,13 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 public record GethTraceOptions
 {
-    // Setters rather than init: source-generated metadata assigns every init-only member, defaulting absent ones, which would
-    // let one of these aliases reset the other; setters apply only the members present, in JSON order.
     [Obsolete("Use EnableMemory instead.")]
     public bool DisableMemory { get => !EnableMemory; set => EnableMemory = !value; }
 
@@ -130,10 +129,12 @@ public record GethTraceOptions
         }
 
         [DoesNotReturn]
-        private static void ThrowInvalidToken() => throw new JsonException("Transaction index must be a hex quantity string.");
+        private static void ThrowInvalidToken() => throw new TransactionIndexFormatException("Transaction index must be a hex quantity string.");
 
         [DoesNotReturn]
-        private static void ThrowInvalidQuantity() => throw new JsonException("Invalid transaction index hex quantity.");
+        private static void ThrowInvalidQuantity() => throw new TransactionIndexFormatException("Invalid transaction index hex quantity.");
+
+        private sealed class TransactionIndexFormatException(string message) : JsonException(message), IExceptionWithSafePublicMessage;
 
         /// <inheritdoc/>
         public override void Write(Utf8JsonWriter writer, ulong value, JsonSerializerOptions options) => Nethermind.Serialization.Json.HexWriter.WriteUlongHexStringValue(writer, value);

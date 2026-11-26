@@ -70,6 +70,7 @@ public class RecoveryTests
 
         _syncPeerEth66 = Substitute.For<ISyncPeer>();
         _syncPeerEth66.ProtocolVersion.Returns(EthVersions.Eth66);
+        _syncPeerEth66.CanGetNodeData.Returns(true);
         _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Hash256>>(l => l.Contains(_hash)), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp })));
         _peerEth66 = new(_syncPeerEth66);
@@ -79,7 +80,7 @@ public class RecoveryTests
             .Returns(c => Task.FromResult(new AccountsAndProofs()
             {
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp }),
-                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(_fullPath, TestItem.GenerateIndexedAccount(0)) },
+                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(_fullPath, TestItem.GenerateIndexedAccount(0).ToStruct()) },
             }));
         _snapSyncPeer.GetByteCodes(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp })));
@@ -127,8 +128,9 @@ public class RecoveryTests
     }
 
     [Test]
-    public async Task can_recover_eth66()
+    public async Task can_recover_from_peer_serving_node_data([Values(EthVersions.Eth66, EthVersions.Eth67)] byte protocolVersion)
     {
+        _syncPeerEth66.ProtocolVersion.Returns(protocolVersion);
         using IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
         AssertRecoveredNode(response);
     }

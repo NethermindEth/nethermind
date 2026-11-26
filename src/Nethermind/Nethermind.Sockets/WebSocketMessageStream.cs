@@ -13,7 +13,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Sockets;
 
-public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logManager) : Stream, IMessageBorderPreservingStream
+public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logManager, bool textOnly = false) : Stream, IMessageBorderPreservingStream
 {
     private readonly WebSocket _socket = socket;
     private readonly ILogger _logger = logManager.GetClassLogger<WebSocketMessageStream>();
@@ -93,11 +93,14 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
 
     public async ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
     {
-        if (_socket.State != WebSocketState.Open) return default;
+        // In CloseSent the client has yet to answer the close (e.g. one sent at shutdown), so keep reading until it does.
+        if (_socket.State is not (WebSocketState.Open or WebSocketState.CloseSent)) return default;
 
         try
         {
             ValueWebSocketReceiveResult result = await _socket.ReceiveAsync(buffer.AsMemory(), cancellationToken);
+            if (textOnly && result.MessageType == WebSocketMessageType.Binary)
+                throw new InvalidDataException("JSON-RPC requests must use WebSocket text messages.");
             return new ReceiveResult()
             {
                 Closed = result.MessageType == WebSocketMessageType.Close,
@@ -112,7 +115,12 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
                 innerException = innerException.InnerException;
             }
 
-            if (innerException is SocketException socketException)
+            if (cancellationToken.IsCancellationRequested)
+            {
+                // The caller ended the connection, e.g. at shutdown, so the abort is expected.
+                if (_logger.IsTrace) _logger.Trace($"WebSockets receive cancelled: {innerException?.Message}");
+            }
+            else if (innerException is SocketException socketException)
             {
                 if (socketException.SocketErrorCode == SocketError.ConnectionReset)
                 {

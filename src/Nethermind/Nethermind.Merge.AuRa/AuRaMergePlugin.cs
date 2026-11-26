@@ -6,26 +6,26 @@ using Autofac.Core;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.Merge.AuRa.Contracts;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Network;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -39,7 +39,6 @@ namespace Nethermind.Merge.AuRa
         public string Description => "AuRa Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
         public bool Enabled => mergeConfig.Enabled && chainSpec.SealEngineType == SealEngineType.AuRa;
-        public bool MustInitialize => true;
         public IModule Module => new AuRaMergeModule();
     }
 
@@ -65,10 +64,7 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
                 .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
 
-                .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
-                .AddScoped<IWithdrawalContract, IWithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
-                .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
-                .AddSingleton<IWithdrawalProcessorFactory, AuraWithdrawalProcessorFactory>()
+                .AddModule(new AuRaWithdrawalModule())
                 .AddScoped<IBlockProcessor, AuRaMergeBlockProcessor>()
 
                 .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
@@ -77,6 +73,13 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<ISealer, MergeSealer>()
 
                 .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
+
+                // Overrides AuRaModule's registration (relies on Aura loading before AuRaMerge in Plugin.PluginOrder).
+                // A post-merge head skips the startup scan; see AuRaBlockFinalizationManager's loadLastFinalizedBlockLevel.
+                .AddSingleton<IAuRaBlockFinalizationManager, IBlockTree, IChainLevelInfoRepository, IValidatorStore, ILogManager, AuRaChainSpecEngineParameters, IPoSSwitcher>(
+                    static (blockTree, chainLevelInfoRepository, validatorStore, logManager, param, poSSwitcher) =>
+                        new AuRaBlockFinalizationManager(blockTree, chainLevelInfoRepository, validatorStore, logManager, param.TwoThirdsMajorityTransition,
+                            loadLastFinalizedBlockLevel: !poSSwitcher.IsHeadPostMerge(blockTree)))
 
                 // Disposes the AuRa finalization manager at the merge transition. Resolved eagerly in
                 // InitializeBlockchainAuRaMerge for its constructor side-effect; Autofac owns disposal.

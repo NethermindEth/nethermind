@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -25,6 +26,7 @@ using static Nethermind.Evm.VirtualMachineStatics;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Evm.Precompiles")]
 [assembly: InternalsVisibleTo("Nethermind.Evm.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain")]
 namespace Nethermind.Evm;
 
 using Int256;
@@ -114,6 +116,20 @@ public static class VirtualMachineStatics
 
     [DoesNotReturn]
     internal static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
+
+    /// <summary>Finds the exception, if any, saying that a native library is missing, built for another platform or lacks an export.</summary>
+    /// <remarks>Searches the <see cref="Exception.InnerException"/> chain from the outside in and returns the first match.
+    /// Such a failure says nothing about the input of the call that met it, so it must not become a failed precompile call.</remarks>
+    public static Exception? FindNativeLoadFailure(Exception? exception)
+    {
+        for (; exception is not null; exception = exception.InnerException)
+        {
+            if (exception is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
+                return exception;
+        }
+
+        return null;
+    }
 }
 
 /// <summary>Retains nested return scratch and tracks the logical length of the currently staged output.</summary>
@@ -127,7 +143,8 @@ internal struct ReturnDataScratch
 
     internal int RetainedLength => _retained.Length;
 
-    internal byte[] Stage(ReadOnlySpan<byte> returnData, bool allowReuse)
+    /// <param name="laidOut">Whether <paramref name="returnData"/> is swizzled memory, which this then copies out in natural order.</param>
+    internal byte[] Stage(ReadOnlySpan<byte> returnData, bool allowReuse, bool laidOut = false)
     {
         _stagedLength = returnData.Length;
 
@@ -145,12 +162,15 @@ internal struct ReturnDataScratch
                 _retained = scratch = GC.AllocateUninitializedArray<byte>(size);
             }
 
-            Bytes.Copy(returnData, scratch);
+            if (laidOut)
+                SwizzledMemory.Read(ref MemoryMarshal.GetReference(returnData), scratch.AsSpan(0, returnData.Length));
+            else
+                Bytes.Copy(returnData, scratch);
             output = scratch;
         }
         else
         {
-            output = returnData.ToArray();
+            output = laidOut ? SwizzledMemory.ToArray(ref MemoryMarshal.GetReference(returnData), returnData.Length) : returnData.ToArray();
         }
 
         _staged = output;
@@ -247,7 +267,8 @@ public partial class VirtualMachine<TGasPolicy>(
     public ref readonly UInt256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
 
-    internal void StageReturnData(ReadOnlySpan<byte> returnData, bool isRevert)
+    /// <param name="laidOut">Whether <paramref name="returnData"/> is swizzled memory (see <see cref="EvmPooledMemory.LoadLaidOutSpanAfterGas"/>).</param>
+    internal void StageReturnData(ReadOnlySpan<byte> returnData, bool isRevert, bool laidOut = false)
     {
         // Nested outputs are consumed before this buffer can be reused by a later child call, and a create's
         // output may become the deployed code. A top-level call output may reuse it only when the tracer reads no
@@ -259,7 +280,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 : _tracerFlags.AllowsReturnScratch
                     && (!_currentState.ExecutionType.IsAnyCreate() || IsUndeployableCreateOutput(returnData.Length, isRevert)));
 
-        ReturnData = _returnDataScratch.Stage(returnData, allowReuse);
+        ReturnData = _returnDataScratch.Stage(returnData, allowReuse, laidOut);
     }
 
     /// <summary>Whether a create frame's output of <paramref name="length"/> bytes, reverted or returned, is never deployed, so nothing reads it once the frame returns.</summary>
@@ -331,8 +352,6 @@ public partial class VirtualMachine<TGasPolicy>(
     public void AddOpCodes(int count) => OpCodeCount += count;
     internal ExecutionMetricsCounters MetricsCounters;
 
-    public void FlushMetricsCounters() => MetricsCounters.Flush();
-
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
     /// or a failure condition is reached. This method handles both precompiled contracts and regular
@@ -392,6 +411,8 @@ public partial class VirtualMachine<TGasPolicy>(
         _previousCallOutputWindowLength = 0;
         nuint previousCallOutputLength = 0;
         RunFrames<TTracingInst>(baseDepth: 0, ref previousCallOutputLength, out TransactionSubstate substate);
+        Metrics.IncrementOpCodes(OpCodeCount);
+        MetricsCounters.Flush();
         return substate;
     }
 
@@ -827,11 +848,11 @@ public partial class VirtualMachine<TGasPolicy>(
                 if (previousState.ExecutionType == ExecutionType.TCREATE)
                 {
                     // EIP-8360: paid no deposit, so the code must not reach the code database.
-                    _codeInfoRepository.InsertTransientCode(code, callCodeOwner, spec);
+                    _codeInfoRepository.InsertTransientCode(_worldState, code, callCodeOwner, spec);
                 }
                 else
                 {
-                    _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
+                    _codeInfoRepository.InsertCode(_worldState, code, callCodeOwner, spec);
                 }
                 if (IsTracingActions)
                 {
@@ -871,12 +892,20 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 // The deposit failure consumed the gas the frame returned, so it ends with none left.
                 _txTracer.ReportActionRemainingGas(0);
+                if (spec.LimitCodeSize && code.Length > spec.MaxCodeSize)
+                {
+                    TraceCodeDepositError("max code size exceeded");
+                }
+                else if (!hasEnoughGas && !invalidCode && executionDepositCost != ulong.MaxValue)
+                {
+                    TraceCodeDepositError("contract creation code storage out of gas");
+                }
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
         else if (!chargedCodeDeposit && IsTracingActions)
         {
-            _txTracer.ReportActionEnd(0UL, callCodeOwner, code);
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), callCodeOwner, code);
         }
     }
 
@@ -1335,10 +1364,9 @@ public partial class VirtualMachine<TGasPolicy>(
             output = precompile.Run(callData, spec);
             return true;
         }
-        catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
+        catch (Exception exception) when (GetFatalLoadFailure(exception) is { } loadFailure)
         {
-            if (_logger.IsError) LogMissingDependency(precompile, GetMissingDependencyException(exception));
-            Environment.Exit(ExitCodes.MissingPrecompile);
+            ExitOnMissingDependency(precompile, loadFailure);
             throw; // Unreachable
         }
         catch (Exception exception) when (!IsNodeFault(exception))
@@ -1420,14 +1448,28 @@ public partial class VirtualMachine<TGasPolicy>(
         else if (currentState.ExecutionType.IsAnyCreate())
         {
             ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
+            // EIP-3541 prefix validation precedes deposit gas, but not the EIP-170 size limit.
+            if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes) && codeDepositGasCost != ulong.MaxValue)
+            {
+                _txTracer.ReportActionRemainingGas(0);
+                _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+            }
             // If available gas is insufficient to cover the code deposit cost...
-            if (!hasEnoughGasForCodeDeposit)
+            else if (!hasEnoughGasForCodeDeposit)
             {
                 // When the spec mandates charging for top-level creation, report an out-of-gas error,
                 // which consumes all the frame's gas.
                 if (spec.ChargeForTopLevelCreate)
                 {
                     _txTracer.ReportActionRemainingGas(0);
+                    if (spec.LimitCodeSize && outputBytes.Length > spec.MaxCodeSize)
+                    {
+                        TraceCodeDepositError("max code size exceeded");
+                    }
+                    else if (codeDepositGasCost != ulong.MaxValue)
+                    {
+                        TraceCodeDepositError("contract creation code storage out of gas");
+                    }
                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
                 // Otherwise, report a successful action end with the remaining gas.
@@ -1435,12 +1477,6 @@ public partial class VirtualMachine<TGasPolicy>(
                 {
                     _txTracer.ReportActionEnd(gasAvailable, currentState.To, outputBytes);
                 }
-            }
-            // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
-            else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
-            {
-                _txTracer.ReportActionRemainingGas(0);
-                _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
             }
             // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
             else
@@ -1455,6 +1491,9 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceCodeDepositError(string error) => _txTracer.ReportCodeDepositError(error);
+
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);
 
@@ -1468,7 +1507,8 @@ public partial class VirtualMachine<TGasPolicy>(
             return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
 
-        ReadOnlyMemory<byte> callData = state.Env.InputData;
+        // Precompiles take their input in natural order, where a guest's call input is laid out as its memory.
+        ReadOnlyMemory<byte> callData = EvmPooledMemory.IsSwizzled ? SwizzledMemory.ToNatural(state.Env.InputData) : state.Env.InputData;
         ref readonly UInt256 transferValue = ref state.ExecutionType.GetBalanceCredit(in state.Env.Value);
         TGasPolicy gas = state.Gas;
 
@@ -1476,23 +1516,29 @@ public partial class VirtualMachine<TGasPolicy>(
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
 
-        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
-
-        // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
-        // An additional issue was found in Parity,
-        // where the Parity client incorrectly failed
-        // to revert empty account deletions in a more limited set of contexts
-        // involving out-of-gas calls to precompiled contracts;
-        // the new Geth behavior matches Parity's,
-        // and empty accounts will cease to be a source of concern in general
-        // in about one week once the state clearing process finishes.
-        if (!wasCreated &&
-            transferValue.IsZero &&
-            Eip158.IsActive &&
-            state.Env.ExecutingAccount.Equals(Ripemd160Address) &&
-            _worldState.IsDeadAccount(Ripemd160Address))
+        // Under EIP-158 a zero credit only matters to an existing empty account, which it touches: an absent one it creates
+        // would be deleted with the transaction, and a non-empty one it leaves as it is.
+        if (!Eip158.IsActive || !transferValue.IsZero ||
+            (_worldState.AccountExists(state.Env.ExecutingAccount) && _worldState.IsDeadAccount(state.Env.ExecutingAccount)))
         {
-            _shouldRestoreRipemdTouch = true;
+            bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
+
+            // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
+            // An additional issue was found in Parity,
+            // where the Parity client incorrectly failed
+            // to revert empty account deletions in a more limited set of contexts
+            // involving out-of-gas calls to precompiled contracts;
+            // the new Geth behavior matches Parity's,
+            // and empty accounts will cease to be a source of concern in general
+            // in about one week once the state clearing process finishes.
+            if (!wasCreated &&
+                transferValue.IsZero &&
+                Eip158.IsActive &&
+                state.Env.ExecutingAccount.Equals(Ripemd160Address) &&
+                _worldState.IsDeadAccount(Ripemd160Address))
+            {
+                _shouldRestoreRipemdTouch = true;
+            }
         }
 
         // The policy reads the precompile's own base/data cost (with the overflow guard inside).
@@ -1512,8 +1558,11 @@ public partial class VirtualMachine<TGasPolicy>(
     /// gas consumption after execution.
     /// </summary>
     /// <remarks>
-    /// An exception from <see cref="IPrecompile.Run"/> fails the call, except a missing KZG setup and running out of
-    /// memory (even as an inner exception): those are node faults with no counterpart in the execution spec, so they propagate instead.
+    /// An exception from <see cref="IPrecompile.Run"/> is handled in this order. A native library that cannot be used
+    /// (<see cref="GetFatalLoadFailure"/>) ends the process. A missing KZG setup and running out of memory (even as an inner
+    /// exception) are node faults with no counterpart in the execution spec, so they propagate. Any other exception fails
+    /// the call. Within a node fault only a missing library directly in it or one level down ends the process: a KZG setup
+    /// failure caused directly by a missing library exits, one caused directly by a library built for another platform propagates.
     /// </remarks>
     protected virtual CallResult ExecutePrecompileCall(
         VmState<TGasPolicy> state,
@@ -1546,10 +1595,9 @@ public partial class VirtualMachine<TGasPolicy>(
                 SubstateError = success || !state.IsTopLevel ? null : GetErrorString(output.Error)
             };
         }
-        catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
+        catch (Exception exception) when (GetFatalLoadFailure(exception) is { } loadFailure)
         {
-            if (_logger.IsError) LogMissingDependency(precompile, GetMissingDependencyException(exception));
-            Environment.Exit(ExitCodes.MissingPrecompile);
+            ExitOnMissingDependency(precompile, loadFailure);
             throw; // Unreachable
         }
         catch (Exception exception) when (!IsNodeFault(exception))
@@ -1582,7 +1630,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         Address recovered = new(output.AsSpan(output.Length - Address.Size));
-        if (!TGasPolicy.TryConsumeAccountAccessGas(ref state.Gas, spec, in state.AccessTracker, IsTracingAccess, recovered)
+        if (!TGasPolicy.TryConsumeAccountAccessGas(ref state.Gas, spec, in state.AccessTracker, recovered)
             || !TGasPolicy.UpdateGas(ref state.Gas, GasCostOf.WarmStateRead)
             || (spec.IsEip8279Enabled && !TryMeterBalAddress(recovered)))
         {
@@ -1606,14 +1654,30 @@ public partial class VirtualMachine<TGasPolicy>(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected void LogMissingDependency(IPrecompile precompile, DllNotFoundException exception)
-        => _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
+        => LogMissingDependency(precompile, (Exception)exception);
 
-    private static DllNotFoundException GetMissingDependencyException(Exception exception) => exception switch
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void LogMissingDependency(IPrecompile precompile, Exception loadFailure)
+        => _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", loadFailure);
+
+    /// <summary>Finds the native load failure, if any, that must end the process instead of failing the call.</summary>
+    /// <remarks>A node fault keeps the narrower rule it had before: a missing library, directly or one level down.
+    /// Anything else uses <see cref="VirtualMachineStatics.FindNativeLoadFailure"/>.</remarks>
+    protected static Exception? GetFatalLoadFailure(Exception exception) =>
+        IsNodeFault(exception)
+            ? exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException
+            : FindNativeLoadFailure(exception);
+
+    /// <summary>Logs <paramref name="loadFailure"/> and ends the process with <see cref="ExitCodes.MissingPrecompile"/>.</summary>
+    /// <remarks>The process ends whether or not errors are logged: a node that cannot run the precompile cannot know the
+    /// result of the call.</remarks>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected void ExitOnMissingDependency(IPrecompile precompile, Exception loadFailure)
     {
-        DllNotFoundException missingDependency => missingDependency,
-        { InnerException: DllNotFoundException missingDependency } => missingDependency,
-        _ => throw new ArgumentOutOfRangeException(nameof(exception)),
-    };
+        if (_logger.IsError) LogMissingDependency(precompile, loadFailure);
+        Environment.Exit(ExitCodes.MissingPrecompile);
+    }
 
     private static bool IsNodeFault(Exception exception) =>
         exception is KzgSetupUnavailableException or OutOfMemoryException or { InnerException: OutOfMemoryException };
@@ -1981,7 +2045,7 @@ public partial class VirtualMachine<TGasPolicy>(
         if (!Spec.UseHotAndColdStorage)
             return baseCost + extraCost;
 
-        bool isCold = !IsTracingAccess && VmState.AccessTracker.IsCold(address) && !Spec.IsPrecompile(address);
+        bool isCold = VmState.AccessTracker.IsCold(address) && !Spec.IsPrecompile(address);
         ulong accessCost = isCold
             ? Spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess
             : GasCostOf.WarmStateRead;
@@ -1994,7 +2058,7 @@ public partial class VirtualMachine<TGasPolicy>(
         if (!Spec.UseHotAndColdStorage)
             return Spec.GasCosts.SLoadCost;
 
-        return !IsTracingAccess && VmState.AccessTracker.IsCold(in cell)
+        return VmState.AccessTracker.IsCold(in cell)
             ? Spec.IsEip8038Enabled ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad
             : GasCostOf.WarmStateRead;
     }
@@ -2008,6 +2072,10 @@ public partial class VirtualMachine<TGasPolicy>(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceActionErrorDetailsCore(string error) => _txTracer.ReportActionErrorDetails(error);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceInvalidOpcode(Instruction opcode) =>
+        _txTracer.ReportActionErrorDetails($"invalid opcode: {InstructionNames.GetName(opcode)}", actionOnly: true);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(ulong gasAvailable, EvmExceptionType? evmExceptionType = null)

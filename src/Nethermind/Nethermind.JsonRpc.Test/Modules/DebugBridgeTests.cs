@@ -93,7 +93,7 @@ public class DebugBridgeTests
 
         if (lookup == RawTransactionLookup.ReceiptsRemoved)
         {
-            storage.RemoveReceipts(block.Number, block.Hash!);
+            container.Resolve<IReceiptPruner>().RemoveReceipts(block.Number, block.Hash!);
             Assert.That(storage.FindBlockHash(hash), Is.EqualTo(block.Hash), "removing receipt bodies must retain the transaction locator");
         }
         else if (lookup == RawTransactionLookup.Unindexed)
@@ -107,13 +107,29 @@ public class DebugBridgeTests
         else if (lookup == RawTransactionLookup.Mismatched)
         {
             container.Resolve<IDbProvider>().ReceiptsDb!.GetColumnDb(ReceiptsColumns.Transactions)
-                .Set(hash.Bytes, compactIndex ? Rlp.Encode(genesis.Number).Bytes : genesis.Hash!.Bytes.ToArray());
+                .Set(hash.Bytes, compactIndex ? Rlp.Encode(genesis.Number) : genesis.Hash!.Bytes.ToArray());
             Assert.That(storage.FindBlockHash(hash), Is.EqualTo(genesis.Hash), "the stale locator must point to a block without the requested transaction");
         }
 
         Transaction? actual = container.Resolve<IDebugBridge>().GetTransactionFromHash(hash);
         Assert.That(actual?.Hash, Is.EqualTo(lookup is RawTransactionLookup.Present or RawTransactionLookup.ReceiptsRemoved or RawTransactionLookup.Pending ? hash : null));
         receiptFinder.DidNotReceiveWithAnyArgs().Get(default(Block)!);
+    }
+
+    [Test]
+    public async Task GetFromDb_with_unknown_database_returns_invalid_params()
+    {
+        await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        IDebugRpcModule module = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+
+        using JsonRpcResponse response = await RpcTest.TestRequest(module, "debug_getFromDb", "0x", "0x");
+
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error.Message, Does.StartWith("Unknown database, expected one of: "));
+        }
     }
 
     public enum ProcessingState { Running, PausedExecuting, PausedQueued, PausedIdle }
@@ -276,7 +292,7 @@ public class DebugBridgeTests
             Assert.That(tree.SyncPivot, Is.EqualTo(accepted ? (retainedHead, blocks[retainedHead].Hash!) : (expectedPivot, blocks[expectedPivot].Hash!)));
             Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash), Is.EqualTo(headerProgress));
             Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber), Is.EqualTo(bodyProgress));
-            Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber), Is.EqualTo(accepted && activatesAccessLists ? Rlp.Encode(expectedAccessList).Bytes : accessListProgress));
+            Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber), Is.EqualTo(accepted && activatesAccessLists ? Rlp.Encode(expectedAccessList) : accessListProgress));
         }
         if (accepted)
         {
@@ -598,7 +614,7 @@ public class DebugBridgeTests
         tree.SuggestBlock(next);
         IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         if (processingState != ProcessingState.Running) container.Resolve<IBlockProcessingPauseControl>().Pause();
-        tree.IsProcessingBlock = processingState == ProcessingState.PausedExecuting;
+        container.Resolve<BlockProcessingTracker>().IsProcessingBlock = processingState == ProcessingState.PausedExecuting;
         if (processingState == ProcessingState.PausedQueued)
             await container.Resolve<IBlockProcessingQueue>().Enqueue(head, ProcessingOptions.None);
         const string refusalWarning = "Cannot mutate the chain: pause block processing and wait for it to drain.";
@@ -632,7 +648,7 @@ public class DebugBridgeTests
         finally
         {
             releaseRefusal.Set();
-            tree.IsProcessingBlock = false;
+            container.Resolve<BlockProcessingTracker>().IsProcessingBlock = false;
         }
         await DrainWorkers(request, assertionFailure);
         int result = await request;
@@ -658,7 +674,7 @@ public class DebugBridgeTests
         AddToMainChain(tree, head);
         IBlockProcessingPauseControl pause = container.Resolve<IBlockProcessingPauseControl>();
         if (processingState != ProcessingState.Running) pause.Pause();
-        tree.IsProcessingBlock = processingState == ProcessingState.PausedExecuting;
+        container.Resolve<BlockProcessingTracker>().IsProcessingBlock = processingState == ProcessingState.PausedExecuting;
         if (processingState == ProcessingState.PausedQueued)
             await container.Resolve<IBlockProcessingQueue>().Enqueue(head, ProcessingOptions.None);
         IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
@@ -675,7 +691,7 @@ public class DebugBridgeTests
         }
         if (!accepted && processingState != ProcessingState.PausedQueued)
         {
-            tree.IsProcessingBlock = false;
+            container.Resolve<BlockProcessingTracker>().IsProcessingBlock = false;
             pause.Pause();
             Assert.That(MutateChain(debug, genesis, mutation), Is.EqualTo(1), "retry must succeed after processing becomes paused and idle");
         }
@@ -1029,12 +1045,15 @@ public class DebugBridgeTests
         public Task AddToPersistence(StateId latestSnapshot) => inner.AddToPersistence(latestSnapshot);
         public StateId FlushToPersistence(CancellationToken cancellationToken) => inner.FlushToPersistence(cancellationToken);
         public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken) => inner.PersistInMemoryTailForShutdown(cancellationToken);
+        public int CompactReloadedSnapshots(CancellationToken cancellationToken) => inner.CompactReloadedSnapshots(cancellationToken);
         public void ResetPersistedStateId() => inner.ResetPersistedStateId();
         public void DropStateNotReachableFrom(in StateId head)
         {
             BeforeDrop?.Invoke();
             inner.DropStateNotReachableFrom(head);
         }
+        public bool TryWriteOnPersistedState(in StateId expected, Action<State.Flat.Persistence.IPersistence.IWriteBatch> write) =>
+            inner.TryWriteOnPersistedState(expected, write);
     }
 
     private static int MutateChain(IDebugRpcModule debug, Block target, ChainMutation mutation) => mutation switch
@@ -1188,7 +1207,7 @@ public class DebugBridgeTests
             Substitute.For<IBadBlockStore>(),
             Substitute.For<IBlockStore>(),
             worldStateManager,
-            logManager, new BlockTreeMutationLock(), pauseControl, processingQueue,
+            logManager, new BlockTreeMutationLock(), pauseControl, processingQueue, new BlockProcessingTracker(),
             Substitute.For<ISyncProgressResolver>(), Substitute.For<ISyncPointers>(), Substitute.For<ITxPool>());
 
         List<(Hash256 CleanupTarget, Hash256? LiveHead, byte[]? PersistedHead)> cleanupHeads = [];

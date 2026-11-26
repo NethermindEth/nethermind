@@ -24,7 +24,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb, IReadPrefetcher
 {
     protected ILogger _logger;
 
@@ -68,6 +68,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private ITunableDb.TuneType _currentTune = ITunableDb.TuneType.Default;
 
+    // Serializes option changes, but is never held across the native compaction.
+    private readonly Lock _tuneLock = new();
+
+    // Steady-state options, including tunes deferred during a rewrite. Guarded by _tuneLock.
+    private readonly Dictionary<string, string> _effectiveBlobGcOptions;
+
+    // Withhold blob-GC keys from live tuning until the rewrite finishes. Guarded by _tuneLock.
+    private bool _blobCompactionInProgress;
+    private int _compactionsInterrupted;
+
     public bool WasRepairedOnOpen => _instance.WasRepairedOnOpen;
 
     // Striped: every concurrent reader (RPC workers, prewarm workers) updates these per Get, and
@@ -99,6 +109,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         ReadAheadSize = config.ReadAheadSize ?? 256UL.KiB;
 
         IDictionary<string, string> optionsAsDict = ExtractOptions(config.RocksDbOptions + config.AdditionalRocksDbOptions);
+        _effectiveBlobGcOptions = BuildEffectiveBlobGcOptions(optionsAsDict);
         _targetFileSizeBase = ulong.Parse(optionsAsDict["target_file_size_base"]);
         _maxBytesForLevelBase = ulong.Parse(optionsAsDict["max_bytes_for_level_base"]);
         _minWriteBufferToMerge = int.Parse(optionsAsDict["min_write_buffer_number_to_merge"]);
@@ -577,29 +588,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     };
 
 
-    public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
-    {
-        get
-        {
-            ThrowIfDisposing();
-            UpdateReadMetrics(keys.Length);
-
-            try
-            {
-                if (_columnFamily is null) return _db.MultiGet(keys);
-
-                IColumnFamilyHandle[] columnFamilies = new IColumnFamilyHandle[keys.Length];
-                Array.Fill(columnFamilies, _columnFamily);
-                return _db.MultiGet(keys, columnFamilies);
-            }
-            catch (RocksDbException e)
-            {
-                HandleFatalDbError(e);
-                throw;
-            }
-        }
-    }
-
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
@@ -629,8 +617,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     }
 
     /// <summary>
-    /// Starts one native asynchronous MultiGet for fixed-length keys so that their blocks are in the block cache
-    /// before the scalar reads that need them. The values are discarded.
+    /// Starts one native asynchronous prefetch for fixed-length keys so that their blocks are in the block cache
+    /// before the scalar reads that need them. No value is copied out.
     /// </summary>
     /// <remarks>
     /// The native batch overlaps its disk reads, which scalar reads on one thread cannot. A failed prefetch is only
@@ -642,15 +630,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (keyLength <= 0 || keys.Length < keyLength || !_prefetches.TryBegin()) return;
         bool pending = false;
         int count = keys.Length / keyLength;
-        IColumnFamilyHandle[]? families = null;
         try
         {
-            // The binding copies the keys and handles before it returns, so this thread's arrays serve the next batch.
-            byte[][] keyArrays = PrefetchBuffers.Keys(keyLength, count);
-            families = cf is null ? null : PrefetchBuffers.Families(count);
-            for (int i = 0; i < count; i++) keys.Slice(i * keyLength, keyLength).CopyTo(keyArrays[i]);
-            if (families is not null) Array.Fill(families, cf);
-            Task read = _db.MultiGetAsync(keyArrays, families, readOptions).AsTask();
+            // The binding copies the keys before it returns.
+            Task read = _db.PrefetchAsync(keys[..(count * keyLength)], keyLength, cf, readOptions);
             Db.Metrics.IncrementPrefetchedKeys(count);
             if (read.IsCompleted)
             {
@@ -669,8 +652,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         finally
         {
-            // A reused array must not keep a disposed database's column family reachable.
-            if (families is not null) Array.Clear(families);
             if (!pending) _prefetches.End();
         }
     }
@@ -688,66 +669,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     /// <summary>The prefetch reads that have started and not completed.</summary>
     internal int PrefetchesInFlight => _prefetches.Count;
-
-    /// <summary>
-    /// Per-thread key and column family arrays for <see cref="Prefetch"/>, one exact-length array per batch size, so
-    /// a batch allocates nothing on the caller side. Batches larger than <see cref="MaxReusedKeys"/> allocate.
-    /// </summary>
-    /// <remarks>Each array is made the first time a thread uses its batch size, so a thread keeps only the sizes it uses.</remarks>
-    private static class PrefetchBuffers
-    {
-        private const int MaxReusedKeys = 64;
-        private const int MaxReusedKeyLengths = 4;
-
-        [ThreadStatic] private static KeyArrays?[]? t_keys;
-        [ThreadStatic] private static IColumnFamilyHandle[]?[]? t_families;
-
-        public static byte[][] Keys(int keyLength, int count)
-        {
-            if (count > MaxReusedKeys) return NewKeys(keyLength, count);
-            KeyArrays?[] byLength = t_keys ??= new KeyArrays?[MaxReusedKeyLengths];
-            for (int i = 0; i < byLength.Length; i++)
-            {
-                KeyArrays? keys = byLength[i];
-                if (keys is null) return (byLength[i] = new KeyArrays(keyLength)).ForCount(count);
-                if (keys.KeyLength == keyLength) return keys.ForCount(count);
-            }
-
-            return NewKeys(keyLength, count);
-        }
-
-        public static IColumnFamilyHandle[] Families(int count)
-        {
-            if (count > MaxReusedKeys) return new IColumnFamilyHandle[count];
-            IColumnFamilyHandle[]?[] byCount = t_families ??= new IColumnFamilyHandle[MaxReusedKeys + 1][];
-            return byCount[count] ??= new IColumnFamilyHandle[count];
-        }
-
-        private static byte[][] NewKeys(int keyLength, int count)
-        {
-            byte[][] keys = new byte[count][];
-            for (int i = 0; i < keys.Length; i++) keys[i] = new byte[keyLength];
-            return keys;
-        }
-
-        /// <summary>One set of key buffers; the array for each batch size references the first buffers of the set.</summary>
-        private sealed class KeyArrays(int keyLength)
-        {
-            private readonly byte[]?[] _keys = new byte[MaxReusedKeys][];
-            private readonly byte[][]?[] _byCount = new byte[MaxReusedKeys + 1][][];
-
-            public int KeyLength { get; } = keyLength;
-
-            public byte[][] ForCount(int count) => _byCount[count] ?? CreateForCount(count);
-
-            private byte[][] CreateForCount(int count)
-            {
-                byte[][] keys = new byte[count][];
-                for (int i = 0; i < count; i++) keys[i] = _keys[i] ??= new byte[KeyLength];
-                return _byCount[count] = keys;
-            }
-        }
-    }
 
     /// <summary>
     /// Whether a read of <paramref name="key"/> is served from the memtables or block cache. The probe runs at the
@@ -771,6 +692,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             return true;
         }
     }
+
+    /// <inheritdoc/>
+    /// <remarks>Does nothing outside Linux: there the bindings read the keys before they return, so the caller would wait for them.</remarks>
+    void IReadPrefetcher.Prefetch(ReadOnlySpan<byte> keys, int keyLength)
+    {
+        if (OperatingSystem.IsLinux()) Prefetch(keys, keyLength, _columnFamily, _defaultReadOptions);
+    }
+
+    /// <inheritdoc/>
+    bool IReadPrefetcher.IsCached(ReadOnlySpan<byte> key) => IsCached(key, _columnFamily);
 
     internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
@@ -870,6 +801,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     /// <summary>How long <see cref="Dispose"/> waits for pinned slices before it leaves the native close to the last release.</summary>
     internal TimeSpan PinnedSliceDrainTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
+    internal void ReleaseSnapshotAfterReads(InFlightOperations reads, Action release)
+    {
+        if (_logger.IsWarn) _logger.Warn($"DB {_instance.Name} releases a snapshot when its {reads.Count} reads complete");
+        reads.RunWhenDrained(release);
+    }
 
     private void ReleasePinnedSlice()
     {
@@ -1379,7 +1316,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// <summary>Forcing the bottommost level is what makes a dead-weight compaction return space - the default
     /// moves tombstones down and leaves them there - and is exactly wrong for routine compactions, which would
     /// rewrite every already-settled file on every call.</summary>
-    internal void CompactOpenRange(IColumnFamilyHandle? cf, bool forceBottommost) =>
+    internal virtual void CompactOpenRange(IColumnFamilyHandle? cf, bool forceBottommost) =>
         _db.CompactRange(null, null, forceBottommost, cf);
 
     /// <inheritdoc/>
@@ -1392,8 +1329,148 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return true;
     }
 
+    // Age cutoff 1.0 lets the forced-bottommost rewrite relocate every live blob. Keep the force threshold at
+    // 1.0 to avoid scheduling redundant background GC compactions alongside the explicit rewrite.
+    private static readonly Dictionary<string, string> BlobGarbageCollectionOptions = new()
+    {
+        { "enable_blob_files", "true" },
+        { "enable_blob_garbage_collection", "true" },
+        { "blob_garbage_collection_age_cutoff", "1.0" },
+        { "blob_garbage_collection_force_threshold", "1.0" },
+        { "blob_compression_type", "kSnappyCompression" },
+    };
+
+    // RocksDB defaults for the options the blob-GC compaction overrides, used for any key the database's own
+    // configuration leaves unset so the restore never invents a value the node did not run with.
+    private static readonly Dictionary<string, string> BlobGarbageCollectionDefaults = new()
+    {
+        { "enable_blob_files", "false" },
+        { "enable_blob_garbage_collection", "false" },
+        { "blob_garbage_collection_age_cutoff", "0.25" },
+        { "blob_garbage_collection_force_threshold", "1.0" },
+        { "blob_compression_type", "kNoCompression" },
+    };
+
     /// <inheritdoc/>
-    public virtual void InterruptCompactions() => _db.DisableManualCompaction();
+    public virtual bool CompactReclaimingBlobFiles()
+    {
+        // This maintenance operation is limited to standalone stores such as the blocks database.
+        if (_columnFamily is not null || Volatile.Read(ref _compactionsInterrupted) != 0) return false;
+
+        // A store with no blob files has nothing for the rewrite to reclaim, so skip hours of pointless I/O - but
+        // still report it ran, so the one-shot caller marks it done rather than re-attempting it every start. When
+        // the property is unavailable the rewrite runs rather than silently skip the feature.
+        if (!HasBlobFiles())
+        {
+            if (_logger.IsInfo) _logger.Info($"Skipping blob-file compaction of {Name}: it holds no blob files to reclaim.");
+            return true;
+        }
+
+        if (!CanConfirmBlobCompaction()) return false;
+
+        if (_logger.IsInfo) _logger.Info($"Compacting {Name} with blob garbage collection to retire stale blob files. This runs until done and aborts cleanly on shutdown.");
+
+        lock (_tuneLock)
+        {
+            Dictionary<string, string> steadyState = SnapshotBlobGarbageCollectionOptions();
+            Dictionary<string, string> reclaimOptions = [with(BlobGarbageCollectionOptions)];
+            string compression = steadyState["blob_compression_type"];
+            if (compression != "kNoCompression") reclaimOptions["blob_compression_type"] = compression;
+            try
+            {
+                ApplyOptions(reclaimOptions);
+            }
+            catch
+            {
+                // SetOptions can change live options before failing to persist its OPTIONS file.
+                foreach ((string key, string value) in steadyState) _effectiveBlobGcOptions[key] = value;
+                RestoreOptionsAfterBlobGarbageCollection();
+                throw;
+            }
+
+            foreach ((string key, string value) in steadyState) _effectiveBlobGcOptions[key] = value;
+
+            _blobCompactionInProgress = true;
+        }
+
+        bool interrupted;
+        try
+        {
+            // Do not block runtime tuning for the duration of the rewrite.
+            CompactOpenRange(_columnFamily, forceBottommost: true);
+            // Read at once: InterruptCompactions sets the flag before it disables manual compaction, so a clear flag
+            // here proves the rewrite ran to the end, and a shutdown during the restore below does not undo that.
+            interrupted = Volatile.Read(ref _compactionsInterrupted) != 0;
+        }
+        finally
+        {
+            lock (_tuneLock)
+            {
+                _blobCompactionInProgress = false;
+                RestoreOptionsAfterBlobGarbageCollection();
+            }
+        }
+
+        return !interrupted && CanConfirmBlobCompaction();
+    }
+
+    private bool CanConfirmBlobCompaction()
+    {
+        // CompactRange's C API discards its status. Fail closed if RocksDB reports a background error,
+        // including one predating this attempt, rather than permanently consuming the one-shot.
+        if (_db.TryGetIntProperty("rocksdb.background-errors", out ulong errors) && errors == 0) return true;
+
+        if (_logger.IsError) _logger.Error($"Cannot confirm blob-file compaction of {Name}: RocksDB background errors are present or unavailable. Completion will not be recorded.");
+        return false;
+    }
+
+    private static bool IsBlobOption(string key) => key.Contains("blob", StringComparison.Ordinal);
+
+    private bool HasBlobFiles() => !_db.TryGetIntProperty("rocksdb.num-blob-files", out ulong count) || count > 0;
+
+    /// <summary>Seeds the tracked effective values of the blob-GC options from the database's own configuration,
+    /// falling back to the RocksDB defaults in <see cref="BlobGarbageCollectionDefaults"/> for any key the
+    /// configuration leaves unset, so the map starts out matching the options the database opens with.</summary>
+    private static Dictionary<string, string> BuildEffectiveBlobGcOptions(IDictionary<string, string> configured)
+    {
+        Dictionary<string, string> effective = [with(BlobGarbageCollectionDefaults.Count)];
+        foreach ((string key, string defaultValue) in BlobGarbageCollectionDefaults)
+        {
+            effective[key] = configured.TryGetValue(key, out string? configuredValue) ? configuredValue : defaultValue;
+        }
+
+        return effective;
+    }
+
+    /// <summary>Returns a copy of the tracked effective values of the blob-GC options - what the database actually
+    /// runs with - so the restore reproduces them rather than inferring from <see cref="_currentTune"/>, which the
+    /// runtime sync tuner can desync from the live options.</summary>
+    /// <remarks>Must be called with <see cref="_tuneLock"/> held.</remarks>
+    private Dictionary<string, string> SnapshotBlobGarbageCollectionOptions() => [with(_effectiveBlobGcOptions)];
+
+    /// <summary>Re-applies the blob-GC options the database should carry after the compaction, re-derived from the
+    /// tracked effective values so a <see cref="Tune"/> that ran during the unlocked compaction is honored. A
+    /// failing restore is logged, not thrown: the database stays usable, only its compaction options may differ
+    /// until the next restart.</summary>
+    /// <remarks>Must be called with <see cref="_tuneLock"/> held.</remarks>
+    private void RestoreOptionsAfterBlobGarbageCollection()
+    {
+        try
+        {
+            ApplyOptions(SnapshotBlobGarbageCollectionOptions());
+        }
+        catch (RocksDbException e)
+        {
+            if (_logger.IsError) _logger.Error($"Failed to restore {Name} options after blob-file compaction; the database stays usable but its compaction options may differ until restart.", e);
+        }
+    }
+
+    /// <inheritdoc/>
+    public virtual void InterruptCompactions()
+    {
+        Interlocked.Exchange(ref _compactionsInterrupted, 1);
+        _db.DisableManualCompaction();
+    }
 
     internal string? GatherProperty(string name) => _columnFamily is null ? _db.GetProperty(name) : _db.GetProperty(name, _columnFamily);
 
@@ -1543,8 +1620,17 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public void Tune(ITunableDb.TuneType type)
     {
-        if (_currentTune == type) return;
+        lock (_tuneLock)
+        {
+            if (_currentTune == type) return;
 
+            TuneUnderLock(type);
+            _currentTune = type;
+        }
+    }
+
+    private void TuneUnderLock(ITunableDb.TuneType type)
+    {
         // See https://github.com/EighteenZi/rocksdb_wiki/blob/master/RocksDB-Tuning-Guide.md
         switch (type)
         {
@@ -1620,8 +1706,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 ApplyOptions(GetStandardOptions());
                 break;
         }
-
-        _currentTune = type;
     }
 
     public void SetWriteBuffer(long sizeBytes) =>
@@ -1631,7 +1715,33 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             new("max_bytes_for_level_base", (sizeBytes * 4).ToString()),
         ]);
 
-    private void ApplyOptions(IEnumerable<KeyValuePair<string, string>> options)
+    internal virtual void ApplyOptions(IEnumerable<KeyValuePair<string, string>> options)
+    {
+        lock (_tuneLock)
+        {
+            List<KeyValuePair<string, string>>? liveOptions = _blobCompactionInProgress ? [] : null;
+            foreach ((string key, string value) in options)
+            {
+                // Withhold every blob option, not only the tracked ones: a live min_blob_size change would otherwise mix
+                // blob configurations within the one rewrite. A withheld key is tracked from then on, so the restore applies it.
+                if (_effectiveBlobGcOptions.ContainsKey(key) || (_blobCompactionInProgress && IsBlobOption(key)))
+                {
+                    _effectiveBlobGcOptions[key] = value;
+                    if (_blobCompactionInProgress) continue;
+                }
+
+                liveOptions?.Add(new(key, value));
+            }
+
+            if (liveOptions is null) SetLiveOptions(options);
+            else if (liveOptions.Count > 0) SetLiveOptions(liveOptions);
+        }
+    }
+
+    /// <summary>Pushes the options to the live RocksDB instance - to the column family when the store is bound to
+    /// one. The single sink for live option changes, kept separate so <see cref="ApplyOptions"/> can withhold the
+    /// blob-GC keys while a compaction runs.</summary>
+    internal virtual void SetLiveOptions(IEnumerable<KeyValuePair<string, string>> options)
     {
         if (_columnFamily is null) _db.SetOptions(options);
         else _db.SetOptions(_columnFamily, options);
@@ -2013,7 +2123,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             ReadOptions readOptions = CreateReadOptions();
             readOptions.SetSnapshot(snapshot);
             return readOptions;
-        }, _columnFamily, snapshot);
+        }, _columnFamily, snapshot)
+        {
+            Reads = new InFlightOperations()
+        };
     }
 
     public sealed class RocksDbSnapshot(
@@ -2038,6 +2151,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 return;
             }
 
+            if (DrainReads())
+            {
+                Release();
+            }
+            else
+            {
+                ReleaseAfterReads(Release);
+            }
+        }
+
+        private void Release()
+        {
             base.Dispose();
             snapshot.Dispose();
         }

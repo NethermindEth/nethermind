@@ -18,6 +18,8 @@ namespace Nethermind.JsonRpc.Modules
 
         public RpcEndpoint Availability { get; set; } = RpcEndpoint.All;
 
+        public bool RequiresAuthentication { get; set; }
+
         public string? ResponseDescription { get; set; }
 
         public string? ExampleResponse { get; set; }

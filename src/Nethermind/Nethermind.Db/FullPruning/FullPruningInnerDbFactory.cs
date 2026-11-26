@@ -4,6 +4,7 @@
 using System;
 using System.IO.Abstractions;
 using System.Linq;
+using Nethermind.Logging;
 
 namespace Nethermind.Db.FullPruning
 {
@@ -15,6 +16,7 @@ namespace Nethermind.Db.FullPruning
         private readonly IDbFactory _dbFactory;
         private readonly IFileSystem _fileSystem;
         private readonly string _path;
+        private readonly ILogger _logger;
         private int _index; // current index of the inner db
 
         /// <summary>
@@ -23,11 +25,14 @@ namespace Nethermind.Db.FullPruning
         /// <param name="dbFactory">Inner real db factory.</param>
         /// <param name="fileSystem">File system.</param>
         /// <param name="path">Main DB path.</param>
-        public FullPruningInnerDbFactory(IDbFactory dbFactory, IFileSystem fileSystem, string path)
+        /// <param name="logManager">Log manager.</param>
+        public FullPruningInnerDbFactory(IDbFactory dbFactory, IFileSystem fileSystem, string path, ILogManager logManager)
         {
             _dbFactory = dbFactory;
             _fileSystem = fileSystem;
             _path = path;
+            _logger = logManager.GetClassLogger<FullPruningInnerDbFactory>();
+            FinishInterruptedDeletes(path);
             _index = GetStartingIndex(path); // we need to read the current state of inner DB's
         }
 
@@ -38,8 +43,8 @@ namespace Nethermind.Db.FullPruning
         /// An interrupted full pruning leaves its half-written copy next to the live inner DB, and the next
         /// pruning clears it when it starts. A caller that is discarding the whole state has no next pruning,
         /// so it reclaims the copy here. The live DB is re-read from disk rather than taken from this factory's
-        /// index, which <see cref="CreateDb"/> and <see cref="GetFullDbPath"/> both advance, so what it deletes
-        /// does not depend on what was called before it and a repeated call deletes nothing more.
+        /// index, which <see cref="CreateDb"/> advances, so what it deletes does not depend on what was called
+        /// before it and a repeated call deletes nothing more.
         /// </remarks>
         /// <returns>The number of directories deleted.</returns>
         public int DeleteStaleInnerDbs()
@@ -48,7 +53,7 @@ namespace Nethermind.Db.FullPruning
             IDirectoryInfo directory = _fileSystem.DirectoryInfo.New(fullPath);
             if (!directory.Exists) return 0;
 
-            int currentIndex = GetStartingIndex(_path) + 1; // GetRocksDbSettings increments before it opens
+            int currentIndex = GetStartingIndex(_path) + 1; // CreateDb increments before it opens
             int deleted = 0;
             foreach (IDirectoryInfo subDirectory in directory.EnumerateDirectories())
             {
@@ -65,41 +70,86 @@ namespace Nethermind.Db.FullPruning
         /// <inheritdoc />
         public IDb CreateDb(DbSettings dbSettings)
         {
-            DbSettings settings = GetRocksDbSettings(dbSettings);
+            DbSettings settings = GetRocksDbSettings(dbSettings, ++_index);
             return _dbFactory.CreateDb(settings);
         }
 
         /// <inheritdoc />
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
         {
-            DbSettings settings = GetRocksDbSettings(dbSettings);
+            DbSettings settings = GetRocksDbSettings(dbSettings, ++_index);
             return _dbFactory.CreateColumnsDb<T>(settings);
         }
 
         /// <inheritdoc />
+        /// <remarks>The path of the DB that the next <see cref="CreateDb"/> opens; asking for it does not advance the index.</remarks>
         public string GetFullDbPath(DbSettings dbSettings)
         {
-            DbSettings settings = GetRocksDbSettings(dbSettings);
+            DbSettings settings = GetRocksDbSettings(dbSettings, _index + 1);
             return _dbFactory.GetFullDbPath(settings);
         }
 
         // When creating a new DB, we need to change its inner settings
-        private DbSettings GetRocksDbSettings(DbSettings originalSetting)
+        private DbSettings GetRocksDbSettings(DbSettings originalSetting, int index)
         {
-            _index++;
-
             // if its -1 then this is first db.
-            bool firstDb = _index == -1;
+            bool firstDb = index == -1;
 
             // if first DB, then we will put it into main directory and not use indexed subdirectory
-            string dbName = firstDb ? originalSetting.DbName : originalSetting.DbName + _index;
-            string dbPath = firstDb ? originalSetting.DbPath : _fileSystem.Path.Combine(originalSetting.DbPath, _index.ToString());
+            string dbName = firstDb ? originalSetting.DbName : originalSetting.DbName + index;
+            string dbPath = firstDb ? originalSetting.DbPath : _fileSystem.Path.Combine(originalSetting.DbPath, index.ToString());
             DbSettings dbSettings = originalSetting.Clone(dbName, dbPath);
             dbSettings.CanDeleteFolder = !firstDb; // we cannot delete main db folder, only indexed subfolders
             // Inner DBs are tracked via the FullPruningDb wrapper (registered with a stable name)
             // so we skip tracking these indexed sub-DBs to avoid stale references after pruning.
             dbSettings.SkipMetricsTracking = true;
             return dbSettings;
+        }
+
+        private void FinishInterruptedDeletes(string path)
+        {
+            string fullPath = _dbFactory.GetFullDbPath(new DbSettings(string.Empty, path));
+            IDirectoryInfo directory = _fileSystem.DirectoryInfo.New(fullPath);
+            if (!directory.Exists) return;
+
+            if (DeleteFilesIfMarked(directory))
+            {
+                foreach (IFileInfo marker in directory.EnumerateFiles(DbSettings.DeletingMarkerFileName))
+                {
+                    marker.Delete();
+                }
+
+                LogFinishedDelete(directory);
+            }
+
+            foreach (IDirectoryInfo subDirectory in directory.EnumerateDirectories())
+            {
+                if (int.TryParse(subDirectory.Name, out int index) && index >= 0 && DeleteFilesIfMarked(subDirectory))
+                {
+                    subDirectory.Delete(true);
+                    LogFinishedDelete(subDirectory);
+                }
+            }
+        }
+
+        private void LogFinishedDelete(IDirectoryInfo directory)
+        {
+            if (_logger.IsInfo) _logger.Info($"Deleted the rest of the database at {directory.FullName}. An earlier stop interrupted its deletion.");
+        }
+
+        private static bool DeleteFilesIfMarked(IDirectoryInfo directory)
+        {
+            if (!directory.EnumerateFiles(DbSettings.DeletingMarkerFileName).Any()) return false;
+
+            foreach (IFileInfo file in directory.EnumerateFiles())
+            {
+                if (file.Name != DbSettings.DeletingMarkerFileName)
+                {
+                    file.Delete();
+                }
+            }
+
+            return true;
         }
 
         /// <summary>

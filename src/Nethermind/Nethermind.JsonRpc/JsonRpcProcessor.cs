@@ -571,8 +571,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
                     if (_logger.IsDebug) DebugRequest(request, context);
 
-                    JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);
-                    await WriteSingleResponseAsync(request, singleResponse, sink, cancellationToken);
+                    JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context, cancellationToken);
+                    await WriteSingleResponseAsync(request, singleResponse, context, sink, cancellationToken);
                     break;
 
                 case JsonValueKind.Array:
@@ -600,8 +600,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (_logger.IsDebug) DebugRequest(request, context);
 
-            JsonRpcResult.Entry response = await HandleSingleRequest(request, context);
-            await WriteSingleResponseAsync(request, response, sink, cancellationToken);
+            JsonRpcResult.Entry response = await HandleSingleRequest(request, context, cancellationToken);
+            await WriteSingleResponseAsync(request, response, context, sink, cancellationToken);
         }
         finally
         {
@@ -611,11 +611,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void DebugRequest(JsonRpcRequest request, JsonRpcContext context) =>
-        _logger.Debug($"JSON RPC request {request.Method}{DescribeRemoteAddress(context)}");
+        _logger.Debug($"JSON RPC request {request.MethodForLogging}{DescribeRemoteAddress(context)}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void DebugBatchRequest(JsonRpcRequest request, JsonRpcContext context, int requestIndex, int requestCount) =>
-        _logger.Debug($"JSON RPC batch request {requestIndex}/{requestCount} {request.Method}{DescribeRemoteAddress(context)}");
+        _logger.Debug($"JSON RPC batch request {requestIndex}/{requestCount} {request.MethodForLogging}{DescribeRemoteAddress(context)}");
 
     /// <summary>Runs one JSON-RPC batch: size limit, then decode-dispatch-write per item, then close the array.</summary>
     /// <remarks>
@@ -645,7 +645,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         bool batchStarted = false;
         BatchRequestJsonLifetime batchRequestJsonLifetime = new();
         // Override calls rent from an environment pool of this size, which rejects rather than queues.
-        int concurrency = Math.Min(Math.Min(_jsonRpcConfig.BatchProcessingConcurrency, _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount), requestCount);
+        int concurrency = context.BatchLimits is null
+            ? Math.Min(Math.Min(_jsonRpcConfig.BatchProcessingConcurrency, _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount), requestCount)
+            : 1;
         BatchExecutionWindow? window = null;
 
         try
@@ -660,7 +662,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     && !isStopped
                     && concurrency > 1
                     && CanExecuteConcurrently(request, concurrency)
-                    && !(window ??= new BatchExecutionWindow(concurrency, this, context)).IsFull)
+                    && !(window ??= new BatchExecutionWindow(concurrency, this, context, cancellationToken)).IsFull)
                 {
                     if (_logger.IsDebug) DebugBatchRequest(request, context, requestIndex + window.Count + 1, requestCount);
                     window.Add(request);
@@ -669,10 +671,34 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 }
 
                 requestIndex++;
+                if (context.BatchLimits is not null && (request is null || !IsNotification(request, context))
+                    && sink.GetBatchLimitResponse(request) is { } limitResponse)
+                {
+                    await WriteBatchEntryAsync(new(limitResponse, RpcReport.Error), ref batchStarted, sink, cancellationToken);
+                    break;
+                }
+                if (context.BatchLimits is { } limits && requestIndex > limits.MaxEnvelopes)
+                {
+                    while (hasNext)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (request is null || !IsNotification(request, context))
+                        {
+                            JsonRpcId id = request is { Id.IsMissing: false } ? request.Id : JsonRpcId.Null;
+                            JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded,
+                                $"Batch exceeds {limits.MaxEnvelopes} envelopes; submit this and remaining requests separately.", in id);
+                            await WriteBatchEntryAsync(new(error, RpcReport.Error), ref batchStarted, sink, cancellationToken);
+                            break;
+                        }
+                        hasNext = source.TryGetNext(out request, out _);
+                        if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
+                    }
+                    break;
+                }
                 if (window?.Count > 0)
                 {
                     Task<JsonRpcResult.Entry>? execution = window.Take(out JsonRpcRequest executed);
-                    JsonRpcResult.Entry executedResponse = execution is null ? await HandleSingleRequest(executed, context) : await execution;
+                    JsonRpcResult.Entry executedResponse = execution is null ? await HandleSingleRequest(executed, context, cancellationToken) : await execution;
                     if (isStopped)
                     {
                         // Already executed alongside the item that stopped the batch, so it is answered as if it never ran.
@@ -680,7 +706,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         executedResponse = CreateBatchResponseLimitEntry(executed);
                     }
 
-                    await WriteBatchResponseAsync(executed, executedResponse, ref batchStarted, requestIndex, requestCount, sink, cancellationToken);
+                    await WriteBatchResponseAsync(executed, executedResponse, ref batchStarted, requestIndex, requestCount, context, sink, cancellationToken);
                     isStopped |= batchStarted && sink.StopRequested;
                     continue;
                 }
@@ -702,13 +728,19 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     response = CreateBatchResponseLimitEntry(request);
                 }
+                else if (context.BatchLimits is { } executionLimits && requestIndex > executionLimits.MaxExecutions)
+                {
+                    response = new(_jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded,
+                        $"A batch may execute at most {executionLimits.MaxExecutions} requests; submit remaining requests separately.",
+                        in request.IdRef, request.Method), RpcReport.Error);
+                }
                 else
                 {
                     if (_logger.IsDebug) DebugBatchRequest(request, context, requestIndex, requestCount);
-                    response = await HandleSingleRequest(request, context);
+                    response = await HandleSingleRequest(request, context, cancellationToken);
                 }
 
-                await WriteBatchResponseAsync(request, response, ref batchStarted, requestIndex, requestCount, sink, cancellationToken);
+                await WriteBatchResponseAsync(request, response, ref batchStarted, requestIndex, requestCount, context, sink, cancellationToken);
                 isStopped |= batchStarted && sink.StopRequested;
                 hasNext = source.TryGetNext(out request, out decodeException);
                 if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
@@ -740,8 +772,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         && _batchConcurrency.TryGetValue(method, out IBatchConcurrencyStrategy? strategy)
         && strategy.CanExecuteConcurrently(request, concurrency);
 
-    private Task<JsonRpcResult.Entry> ExecuteInBackground(JsonRpcRequest request, JsonRpcContext context) =>
-        Task.Run(() => HandleSingleRequest(request, context).AsTask());
+    private Task<JsonRpcResult.Entry> ExecuteInBackground(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken) =>
+        Task.Run(() => HandleSingleRequest(request, context, cancellationToken).AsTask());
 
     private ValueTask WriteBatchResponseAsync(
         JsonRpcRequest request,
@@ -749,6 +781,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         ref bool batchStarted,
         int requestIndex,
         int requestCount,
+        JsonRpcContext context,
         IJsonRpcResponseSink sink,
         CancellationToken cancellationToken)
     {
@@ -758,7 +791,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             _diagnostics.TraceResult(response);
         }
 
-        if (IsNotification(request))
+        if (IsNotification(request, context))
         {
             response.Dispose();
             return ValueTask.CompletedTask;
@@ -796,9 +829,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     }
 
     /// <summary>Writes the response to a single request, or drops it when the request is a notification.</summary>
-    private ValueTask WriteSingleResponseAsync(JsonRpcRequest request, JsonRpcResult.Entry response, IJsonRpcResponseSink sink, CancellationToken cancellationToken)
+    private ValueTask WriteSingleResponseAsync(JsonRpcRequest request, JsonRpcResult.Entry response, JsonRpcContext context, IJsonRpcResponseSink sink, CancellationToken cancellationToken)
     {
-        if (!IsNotification(request))
+        if (!IsNotification(request, context))
         {
             return WriteSingleEntryAsync(response, sink, cancellationToken);
         }
@@ -813,8 +846,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     /// not reply to it, also inside a batch. An explicit <c>"id": null</c> is a request, and an object without a
     /// method is not a valid Request object, so it is still answered with an Invalid Request error (section 5).
     /// </remarks>
-    private static bool IsNotification(JsonRpcRequest request) =>
-        request.Id.IsMissing && !string.IsNullOrWhiteSpace(request.Method);
+    private static bool IsNotification(JsonRpcRequest request, JsonRpcContext context) =>
+        request.Id.IsMissing && (context.StrictEnvelope
+            ? request.JsonRpc == "2.0" && request.Method is not null
+            : !string.IsNullOrWhiteSpace(request.Method));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void LogInvalidBatchItem(int requestIndex, int requestCount, JsonRpcContext context, Exception? exception) =>
@@ -859,10 +894,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private JsonRpcResult.Entry CreateBatchResponseLimitEntry(JsonRpcRequest jsonRpcRequest) =>
         new(
             _jsonRpcService.GetErrorResponse(
-                ErrorCodes.LimitExceeded,
-                jsonRpcRequest.Method,
-                in jsonRpcRequest.IdRef,
-                $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded"),
+                errorCode: ErrorCodes.LimitExceeded,
+                errorMessage: $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded",
+                id: in jsonRpcRequest.IdRef,
+                methodName: jsonRpcRequest.Method),
             RpcReport.Error);
 
     private ValueTask WriteSingleEntryAsync(JsonRpcResult.Entry entry, IJsonRpcResponseSink sink, CancellationToken cancellationToken) =>
@@ -923,6 +958,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         string error,
         Exception? exception = null)
     {
+        if (context.StrictEnvelope && exception is (InvalidOperationException or JsonException { InnerException: InvalidOperationException }))
+            return CreateInvalidRequestEntry(startTime);
         Metrics.JsonRpcRequestDeserializationFailures++;
 
         if (_logger.IsDebug)
@@ -946,29 +983,46 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return _diagnostics.RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
     }
 
-    private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
+    /// <remarks><paramref name="cancellationToken"/> is the transport's abort signal; a request it abandons in the module queue throws instead of answering.</remarks>
+    private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken)
     {
         Metrics.JsonRpcRequests++;
         long startTime = Stopwatch.GetTimestamp();
 
-        ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context);
+        ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context, cancellationToken);
         return responseTask.IsCompletedSuccessfully
             ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, context, startTime))
-            : AwaitAndCreateEntryAsync(responseTask, request, context, startTime);
+            : AwaitAndCreateEntryAsync(responseTask, request, context, startTime, cancellationToken);
 
         async ValueTask<JsonRpcResult.Entry> AwaitAndCreateEntryAsync(
             ValueTask<JsonRpcResponse> responseTask,
             JsonRpcRequest request,
             JsonRpcContext context,
-            long startTime)
+            long startTime,
+            CancellationToken cancellationToken)
         {
-            JsonRpcResponse response = await responseTask;
+            JsonRpcResponse response;
+            try
+            {
+                response = await responseTask;
+            }
+            catch (OperationCanceledException exception) when (IsTransportCancellation(exception, cancellationToken))
+            {
+                // Counted as requested but never answered, so it is neither a success nor an error.
+                Metrics.IncrementJsonRpcAbandonedRequests();
+                throw;
+            }
+
             return CreateSingleRequestEntry(request, response, context, startTime);
         }
     }
 
+    /// <summary>Whether <paramref name="exception"/> is the transport abandoning a queued request, the one cancellation <see cref="IJsonRpcService"/> lets escape.</summary>
+    private static bool IsTransportCancellation(OperationCanceledException exception, CancellationToken cancellationToken) =>
+        cancellationToken.IsCancellationRequested && exception.CancellationToken == cancellationToken;
+
     private static string DescribeErrorResponse(JsonRpcRequest request, Error responseError) =>
-        $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {(SensitiveLogMasking.Enabled ? "[redacted]" : responseError.Message)}";
+        $"Error response handling JsonRpc Id:{request.Id} Method:{request.MethodForLogging} | Code: {responseError.Code} Message: {(SensitiveLogMasking.Enabled ? "[redacted]" : JsonRpcRequest.EncodeLogText(responseError.Message))}";
 
     /// <remarks>Debug lines only: the forwarded header is caller-controlled, so it must not reach default-level output.</remarks>
     private static string DescribeRemoteAddress(JsonRpcContext context) =>
@@ -987,14 +1041,15 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     /// canonical consensus-client/execution-client version-mismatch signal and -32602 means the CL sent a payload
     /// this node could not bind, both of which are the operator's problem and have to stay visible at default level.
     /// <para>
-    /// Server-side codes (-32603, -32000, timeouts) keep WARN for every caller, and
-    /// <see cref="Error.OperatorActionable"/> overrides the code: -32601 also carries "namespace X is disabled for
-    /// this URL", which is a statement about this node's configuration.
+    /// Server-side codes (-32603, -32000, timeouts) keep WARN for every caller unless <see cref="Error.RequestError"/>
+    /// marks the error as the request's fault (a rejected transaction), and <see cref="Error.OperatorActionable"/>
+    /// overrides the code: -32601 also carries "namespace X is disabled for this URL", which is a statement about this
+    /// node's configuration.
     /// </para>
     /// </remarks>
     private static bool IsDemotableRequestError(Error responseError, JsonRpcContext context) =>
         !context.IsAuthenticated
-        && ErrorCodes.IsRequestError(responseError.Code)
+        && (ErrorCodes.IsRequestError(responseError.Code) || responseError.RequestError)
         && !responseError.OperatorActionable;
 
     private JsonRpcResult.Entry CreateSingleRequestEntry(JsonRpcRequest request, JsonRpcResponse response, JsonRpcContext context, long startTime)
@@ -1002,7 +1057,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         bool isSuccess = !response.TryGetError(out Error? responseError);
         if (isSuccess)
         {
-            if (_logger.IsTrace) _logger.Trace($"Responded to Id:{request.Id} Method:{request.Method} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (_logger.IsTrace) _logger.Trace($"Responded to Id:{request.Id} Method:{request.MethodForLogging} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             if (response.Streaming is { } streaming)
             {
                 streaming.ReportCompletion = true;
@@ -1097,7 +1152,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     /// <summary>The batch items executing in the background, in request order.</summary>
     /// <remarks>An item added to an empty window starts only once a second one joins it, so a run of one executes inline.</remarks>
-    private sealed class BatchExecutionWindow(int capacity, JsonRpcProcessor processor, JsonRpcContext context)
+    private sealed class BatchExecutionWindow(int capacity, JsonRpcProcessor processor, JsonRpcContext context, CancellationToken cancellationToken)
     {
         private readonly JsonRpcRequest[] _requests = new JsonRpcRequest[capacity];
         private readonly Task<JsonRpcResult.Entry>?[] _executions = new Task<JsonRpcResult.Entry>?[capacity];
@@ -1109,10 +1164,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
         public void Add(JsonRpcRequest request)
         {
-            if (Count == 1) _executions[_head] ??= processor.ExecuteInBackground(_requests[_head], context);
+            if (Count == 1) _executions[_head] ??= processor.ExecuteInBackground(_requests[_head], context, cancellationToken);
             int index = (_head + Count) % _requests.Length;
             _requests[index] = request;
-            _executions[index] = Count == 0 ? null : processor.ExecuteInBackground(request, context);
+            _executions[index] = Count == 0 ? null : processor.ExecuteInBackground(request, context, cancellationToken);
             Count++;
         }
 
@@ -1136,6 +1191,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     Task<JsonRpcResult.Entry>? execution = Take(out _);
                     if (execution is not null) (await execution).Dispose();
+                }
+                catch (OperationCanceledException exception) when (IsTransportCancellation(exception, cancellationToken))
+                {
+                    // Abandoned in the module queue along with its batch: cancelled, not failed.
                 }
                 catch (Exception exception)
                 {

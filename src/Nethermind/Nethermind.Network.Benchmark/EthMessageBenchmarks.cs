@@ -16,6 +16,8 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
+using Nethermind.Network.Rlpx;
+using Nethermind.Network.Test;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Eth62 = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -29,7 +31,7 @@ namespace Nethermind.Network.Benchmarks;
 
 /// <summary>
 /// Measures serializing eth messages into a packet the way the packet sender does, and
-/// deserializing them from a DotNetty buffer the way the eth protocol handlers do.
+/// deserializing them from a received packet the way the eth protocol handlers do.
 /// </summary>
 [MemoryDiagnoser]
 public class EthMessageBenchmarks
@@ -64,8 +66,8 @@ public class EthMessageBenchmarks
 
     private IContainer _container = null!;
     private Func<int> _serialize = null!;
-    private Func<IByteBuffer, P2PMessage> _deserialize = null!;
-    private IByteBuffer _body = null!;
+    private Func<ZeroPacket, P2PMessage> _deserialize = null!;
+    private NettyBufferPacket _body = null!;
 
     [ParamsAllValues]
     public Message Type { get; set; }
@@ -91,7 +93,7 @@ public class EthMessageBenchmarks
                 SetUp(service, new Eth66.GetBlockHeadersMessage(RequestId, new Eth62.GetBlockHeadersMessage { StartBlockHash = TestItem.KeccakA, MaxHeaders = 192 }));
                 break;
             case Message.BlockHeaders66:
-                ArrayPoolList<BlockHeader> headers = new(192);
+                ArrayPoolList<BlockHeader> headers = [with(192)];
                 for (int i = 0; i < 192; i++)
                     headers.Add(Build.A.BlockHeader.WithNumber(BlockNumber + (ulong)i).WithParentHash(TestItem.KeccakA).TestObject);
                 SetUp(service, new Eth66.BlockHeadersMessage(RequestId, new Eth62.BlockHeadersMessage(headers)));
@@ -118,7 +120,7 @@ public class EthMessageBenchmarks
                 SetUp(service, new Eth62.TransactionsMessage(Transactions(64, blobTransactions: 0)));
                 break;
             case Message.GetPooledTransactions66:
-                ArrayPoolList<ValueHash256> pooledHashes = new(256);
+                ArrayPoolList<ValueHash256> pooledHashes = [with(256)];
                 foreach (Hash256 hash in Hashes(256)) pooledHashes.Add(hash.ValueHash256);
                 SetUp(service, new Eth66.GetPooledTransactionsMessage(pooledHashes) { RequestId = RequestId });
                 break;
@@ -135,9 +137,9 @@ public class EthMessageBenchmarks
                 SetUp(service, new Eth66.NodeDataMessage(RequestId, new Eth63.NodeDataMessage(NodeData(16, 24 * 1024))));
                 break;
             case Message.NewPooledTransactionHashes68:
-                ArrayPoolList<byte> types = new(256);
-                ArrayPoolList<int> sizes = new(256);
-                ArrayPoolList<ValueHash256> announcedHashes = new(256);
+                ArrayPoolList<byte> types = [with(256)];
+                ArrayPoolList<int> sizes = [with(256)];
+                ArrayPoolList<ValueHash256> announcedHashes = [with(256)];
                 foreach (Hash256 hash in Hashes(256))
                 {
                     types.Add((byte)TxType.EIP1559);
@@ -188,7 +190,6 @@ public class EthMessageBenchmarks
     [Benchmark]
     public int Deserialize()
     {
-        _body.SetReaderIndex(0);
         using P2PMessage message = _deserialize(_body);
         ReturnTransactions(message);
         return message.PacketType;
@@ -225,7 +226,7 @@ public class EthMessageBenchmarks
 
         IByteBuffer packet = service.ZeroSerialize(message);
         packet.SkipBytes(Rlp.LengthOf(message.AdaptivePacketType));
-        _body = Unpooled.WrappedBuffer(packet.ReadAllBytesAsArray());
+        _body = new NettyBufferPacket(Unpooled.WrappedBuffer(packet.ReadAllBytesAsArray()));
         packet.Release();
     }
 
@@ -260,7 +261,7 @@ public class EthMessageBenchmarks
 
     private static ArrayPoolList<TxReceipt[]> Receipts()
     {
-        ArrayPoolList<TxReceipt[]> receipts = new(32);
+        ArrayPoolList<TxReceipt[]> receipts = [with(32)];
         for (int i = 0; i < 32; i++)
         {
             TxReceipt[] blockReceipts = new TxReceipt[50];
@@ -281,7 +282,7 @@ public class EthMessageBenchmarks
 
     private static ArrayPoolList<Transaction> Transactions(int count, int blobTransactions)
     {
-        ArrayPoolList<Transaction> transactions = new(count);
+        ArrayPoolList<Transaction> transactions = [with(count)];
         for (int i = 0; i < count; i++)
         {
             TransactionBuilder<Transaction> builder = Build.A.Transaction.WithNonce((ulong)i).WithData(new byte[512]);
@@ -307,7 +308,7 @@ public class EthMessageBenchmarks
 
     private static ByteArrayListAdapter NodeData(int count, int size)
     {
-        ArrayPoolList<byte[]> nodes = new(count);
+        ArrayPoolList<byte[]> nodes = [with(count)];
         for (int i = 0; i < count; i++)
         {
             byte[] node = new byte[size];

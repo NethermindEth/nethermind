@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +20,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
 using NUnit.Framework;
@@ -526,7 +528,9 @@ public class GethStyleTracerTests
             Substitute.For<IFileSystem>(),
             Substitute.For<IOverridableEnv<GethStyleTracer.BlockProcessingComponents>>(),
             NullPrefixStateSeedSource.Instance,
-            Substitute.For<IOverridableCodeInfoRepository>());
+            Substitute.For<IOverridableCodeInfoRepository>(),
+            LimboLogs.Instance,
+            NoPoS.Instance);
 
 #pragma warning disable CS0618
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
@@ -550,7 +554,7 @@ public class GethStyleTracerTests
         Assert.That(result is Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.GethLikeBlockJavaScriptTracer, Is.EqualTo(javascript));
     }
 
-    [TestCase("{ ) }", "could not be compiled")]
+    [TestCase("{ ) }", "SyntaxError: Unexpected token ')'")]
     public void Create_options_tracer_rejects_an_unusable_tracer(string tracer, string expectedMessage)
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
@@ -558,6 +562,6 @@ public class GethStyleTracerTests
 
         Assert.That(
             () => GethStyleTracer.CreateOptionsTracer(header, options, Substitute.For<IWorldState>(), Substitute.For<ISpecProvider>()),
-            Throws.ArgumentException.With.Message.Contains(expectedMessage));
+            Throws.TypeOf<InvalidDataException>().With.Message.EqualTo(expectedMessage));
     }
 }

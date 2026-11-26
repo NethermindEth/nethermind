@@ -182,8 +182,7 @@ public static partial class EvmInstructions
         }
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.IsTracingAccess, codeSource))
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, codeSource))
         {
             goto OutOfGasTraced;
         }
@@ -195,7 +194,7 @@ public static partial class EvmInstructions
 
         if (TSpec.UseHotAndColdStorage && delegated is not null)
         {
-            if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
+            if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, delegated))
                 goto OutOfGasTraced;
 
             // EIP-8279: the delegation target enters the block access list on the transaction's first touch.
@@ -232,8 +231,11 @@ public static partial class EvmInstructions
 
         if (TTracingInst.IsActive)
         {
+            // EIP-8037: as in Geth, the step's cost leaves out the new-account state gas spilled into gas_left.
             ulong stateSpill = TEip8037.IsActive ? (ulong)(TGasPolicy.GetStateGasSpill(in gas) - initialStateSpill) : 0;
-            vm.TraceOperationReady(initialGas - TGasPolicy.GetRemainingGas(in gas) - stateSpill);
+            ulong traceGasCost = initialGas - TGasPolicy.GetRemainingGas(in gas) - stateSpill;
+            if (TEip8037.IsActive) vm.TraceOperationGasCost(traceGasCost);
+            vm.TraceOperationReady(traceGasCost);
         }
 
         // Add call stipend if value is being transferred.
@@ -372,7 +374,7 @@ public static partial class EvmInstructions
 
         if (hasValueTransfer && !TGasPolicy.UpdateGas(ref gas, TSpec.IsEip8038Enabled ? Eip8038Constants.AccountWrite : GasCostOf.CallValue))
             goto OutOfGas;
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, target))
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, target))
             goto OutOfGas;
 
         // EIP-8279: meter the target's block access list entry.
@@ -610,7 +612,7 @@ public static partial class EvmInstructions
         if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero) state.SubtractFromBalance(caller, in callValue, vm.Spec);
 
         // Load call data from memory.
-        ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadAfterGas(in dataOffset, in dataLength);
+        ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadInputAfterGas(in dataOffset, in dataLength);
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             vm.EnvironmentCache,
@@ -731,7 +733,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
         }
 
-        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length), isRevert: false);
+        vm.StageReturnData(vm.VmState.Memory.LoadLaidOutSpanAfterGas(in position, in length), isRevert: false, EvmPooledMemory.IsSwizzled);
 
         return EvmExceptionType.Stop;
         // Jump forward to be unpredicted by the branch predictor.

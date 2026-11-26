@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync
@@ -459,5 +463,39 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.StateNodes);
 
+        /// <summary>
+        /// A snapshot that stays invalid after the recalculation fails the update and leaves the mode alone;
+        /// the loop in StartAsync logs the failure and tries again on the next tick.
+        /// </summary>
+        [Test]
+        public void Misaligned_snapshot_fails_the_update_and_keeps_the_mode([Values] bool fastSync)
+        {
+            ISyncProgressResolver resolver = Substitute.For<ISyncProgressResolver>();
+            ISyncPeer peer = Substitute.For<ISyncPeer>();
+            peer.HeadHash.Returns(Scenario.ChainHead.Hash);
+            peer.HeadNumber.Returns(Scenario.ChainHead.Number);
+            peer.TotalDifficulty.Returns(Scenario.ChainHead.TotalDifficulty);
+            peer.IsInitialized.Returns(true);
+            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+            pool.InitializedPeers.Returns([new PeerInfo(peer)]);
+            TestSyncConfig config = new() { FastSync = fastSync, NeedToWaitForHeader = _needToWaitForHeaders };
+            MultiSyncModeSelector selector = new(resolver, pool, config, No.BeaconSync, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance);
+            selector.Update();
+            SyncMode before = selector.Current;
+            int changed = 0;
+            selector.Changed += (_, _) => changed++;
+
+            // The best full block above the best header is a misaligned snapshot.
+            resolver.FindBestFullBlock().Returns(1UL);
+
+            Assert.That(before, Is.Not.EqualTo(SyncMode.Disconnected), "guard: the misalignment must not be mistaken for a switch to Disconnected");
+            Assert.That(() => selector.Update(), Throws.TypeOf<System.ComponentModel.InvalidAsynchronousStateException>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(selector.Current, Is.EqualTo(before));
+                Assert.That(changed, Is.Zero);
+            }
+            resolver.Received(1).RecalculateProgressPointers();
+        }
     }
 }

@@ -221,6 +221,8 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
         internal nint Bucket(nint mask) => (nint)ReadWord(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
 
+        // Inlined, the probe compares against the caller's key in place rather than a by-value copy of it.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Equals(NodeKey other)
         {
             ref byte left = ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash));

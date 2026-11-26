@@ -12,7 +12,7 @@ public class InvalidHeaderSealInterceptor(ISealValidator baseValidator, IInvalid
 {
     private readonly ISealValidator _baseValidator = baseValidator;
     private readonly IInvalidChainTracker _invalidChainTracker = invalidChainTracker;
-    private readonly ILogger _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
+    private readonly ILogger _logger = logManager.GetClassLogger<InvalidHeaderSealInterceptor>();
 
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
     {

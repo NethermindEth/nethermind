@@ -78,8 +78,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         }
     }
 
-    public bool MustInitialize { get => true; }
-
     public virtual IModule Module => new MergePluginModule();
 }
 

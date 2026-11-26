@@ -684,9 +684,9 @@ public class BlockCachePreWarmerTests
         using (_processingScope.Resolve<IWorldState>().BeginScope(parent))
         {
             // Disposing the session cancels its token, which lets a fan-out still held go in any case.
-            using IDisposable? session = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
-            Task completion = Task.Run(() => ((PrewarmingSession?)session)?.WaitForCompletion());
-            ended = completion.Wait(TimeSpan.FromSeconds(10));
+            using IDisposable? session = preWarmer.PreWarmCaches(block, parent, Osaka.Instance, testToken);
+            Task completion = Task.Run(() => ((PrewarmingSession?)session)?.WaitForCompletion(), testToken);
+            ended = completion.Wait(TimeSpan.FromSeconds(10), testToken);
         }
 
         Assert.That(ended, Is.True, "the session waited for its token to be cancelled");
@@ -1383,7 +1383,7 @@ public class BlockCachePreWarmerTests
         {
             speculativeToken = token;
             inPass.Set();
-            release.Wait();
+            release.Wait(CancellationToken.None);
             return null;
         }, idlePassDelayMs: 5, cancellation.Token);
         Assert.That(inPass.Wait(DiscoveryTimeout), Is.True, "precondition: the session must be in a pass");
@@ -1459,11 +1459,16 @@ public class BlockCachePreWarmerTests
     /// Stopping a speculative session must also clear another parent's entries when the incoming spec disables warming.
     /// An idle session may finish asynchronously, but it must be cancelled and run no further pass over the cleared caches.
     /// </summary>
+    /// <remarks>
+    /// Osaka runs as block processing does, under the main state's scope, and plants the sentinel once that scope is open:
+    /// opening it clears the caches itself, which would hide a skipped clear. Amsterdam disables warming only with parallel
+    /// execution on, and runs without that scope.
+    /// </remarks>
     [Test]
     public async Task PreWarmCaches_ForAnotherParent_StopsTheSessionAndClearsOtherHeadEntries([Values] bool specDisablesPreWarming)
     {
         PreBlockCaches caches = _processingScope.Resolve<PreBlockCaches>();
-        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: false);
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: specDisablesPreWarming, parallelExecutionBatchRead: false);
         BlockHeader head = BuildParentHeader();
         BlockHeader parent = BuildOtherStateHeader(head);
         using CancellationTokenSource cancellation = new();
@@ -1478,11 +1483,17 @@ public class BlockCachePreWarmerTests
         Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref passes) > 0 && !preWarmer.SpeculativePassActive, DiscoveryTimeout), Is.True,
             "precondition: the session must be waiting out its idle delay");
         AddressAsKey sentinel = TestItem.AddressD;
-        caches.StateCache.Set(in sentinel, new Account(123));
 
         // The block builds on another state, so the caches are cleared while the stopped session may not have ended yet.
-        IReleaseSpec spec = specDisablesPreWarming ? Amsterdam.Instance : Osaka.Instance;
-        await StartPrewarming(preWarmer, BuildChildBlock(parent), parent, spec);
+        if (specDisablesPreWarming)
+        {
+            PlantSentinel();
+            await StartPrewarming(preWarmer, BuildChildBlock(parent), parent, Amsterdam.Instance);
+        }
+        else
+        {
+            await RunPreWarmCaches(preWarmer, BuildChildBlock(parent), parent, Osaka.Instance, beforePrewarming: PlantSentinel);
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -1492,6 +1503,8 @@ public class BlockCachePreWarmerTests
         }
         await session.WaitAsync(DiscoveryTimeout);
         Assert.That(Volatile.Read(ref passes), Is.EqualTo(1), "the stopped session runs no further pass over the cleared caches");
+
+        void PlantSentinel() => caches.StateCache.Set(in sentinel, new Account(123));
     }
 
     [Test]
@@ -2113,15 +2126,22 @@ public class BlockCachePreWarmerTests
         ColdReadWatch.Arm(3, handler, 0, item);
         ColdReadWatch.Disarm();
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1_000; i++)
+        // The runtime can allocate on this thread while it tiers up the loop (OSR), so keep the best of a few rounds.
+        long allocated = long.MaxValue;
+        for (int round = 0; round < 5 && allocated != 0; round++)
         {
-            ColdReadWatch.Arm(3, handler, i, item);
-            ColdReadWatch.Read();
-            ColdReadWatch.Disarm();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1_000; i++)
+            {
+                ColdReadWatch.Arm(3, handler, i, item);
+                ColdReadWatch.Read();
+                ColdReadWatch.Disarm();
+            }
+
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero, "every warmed transaction arms the watch");
+        Assert.That(allocated, Is.Zero, "every warmed transaction arms the watch");
     }
 
     private sealed class CountingColdReadHandler : IColdReadHandler
@@ -3283,11 +3303,12 @@ public class BlockCachePreWarmerTests
     }
 
     // Sync on purpose — TrieStore's Lock-based BeginScope dispose must run on the same thread.
-    private Task RunPreWarmCaches(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec)
+    private Task RunPreWarmCaches(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec, Action? beforePrewarming = null)
     {
         IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
         using (mainWorldState.BeginScope(parent))
         {
+            beforePrewarming?.Invoke();
             // Prewarm before hinting, as block processing does: PreWarmCaches may clear the caches the hint fills.
             Task prewarmTask = StartPrewarming(preWarmer, block, parent, spec);
             Task? hintBalTask = block.BlockAccessList is not null && preWarmer.IsBalReadWarmingEnabled(spec)

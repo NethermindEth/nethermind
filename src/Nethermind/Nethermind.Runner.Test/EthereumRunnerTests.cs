@@ -3,6 +3,7 @@
 
 #nullable enable
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -14,6 +15,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,10 +28,12 @@ using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Blockchain.Receipts;
@@ -50,6 +54,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
 using Nethermind.EraE.Config;
@@ -61,8 +66,11 @@ using Nethermind.HealthChecks;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.TraceStore;
+using Nethermind.JsonRpc.TraceStore.Ots;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.GC;
@@ -75,6 +83,7 @@ using Nethermind.Network.Config;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
+using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -312,6 +321,116 @@ public class EthereumRunnerTests
         }
     }
 
+    [Test, NonParallelizable]
+    public async Task Startup_pipeline_warmup_preserves_active_position_sidecar()
+    {
+        const string switchName = "Nethermind.Experimental.OtsPositionSidecarP1";
+        AppContext.TryGetSwitch(switchName, out bool previous);
+        AppContext.SetSwitch(switchName, true);
+        try
+        {
+            using TempPath directory = TempPath.GetTempDirectory();
+            using CancellationTokenSource cancellation = new(RunnerTimeout);
+            ChainSpec spec = LoadWarmupChainSpec();
+            TraceStoreConfig traceConfig = new()
+            {
+                Enabled = true,
+                BlocksToKeep = 0,
+                AddressIndexEnabled = true,
+                AddressIndexFromBlock = 1,
+                AddressIndexLag = 0
+            };
+            ConfigProvider config = new(new InitConfig { BaseDbPath = directory.Path }, traceConfig,
+                new DbConfig { SharedBlockCacheSize = 16 * 1024 * 1024, EnableMetricsUpdater = false },
+                // Retain opened databases in the public DB tracker for inspecting persisted sidecar records.
+                new MetricsConfig { Enabled = true, EnableDbSizeMetrics = true });
+            ProcessExitSource exit = new(cancellation.Token);
+            EthereumJsonSerializer jsonSerializer = new();
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new NethermindRunnerModule(jsonSerializer, spec, config, exit,
+                    [new EthashPlugin(spec, config.GetConfig<IMiningConfig>()),
+                        new MergePlugin(spec, config.GetConfig<IMergeConfig>()), new TraceStorePlugin(traceConfig, config.GetConfig<IJsonRpcConfig>())],
+                    null, LimboLogs.Instance))
+                .Build();
+            IBlockTree tree = container.Resolve<IBlockTree>();
+            Block genesis = Nethermind.Core.Test.Builders.Build.A.Block.Genesis.TestObject;
+            tree.SuggestBlock(genesis);
+            tree.TryUpdateMainChain(genesis.Header, true, true, genesis);
+            IDb traces = container.ResolveKeyed<IDb>(TraceStorePlugin.DbName);
+            ITraceSerializer<ParityLikeTxTrace> serializer = container.Resolve<ITraceSerializer<ParityLikeTxTrace>>();
+            Block AddBlock(Block parent)
+            {
+                Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithNonce(parent.Number)
+                    .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+                Block block = Nethermind.Core.Test.Builders.Build.A.Block.WithParent(parent).WithTransactions(tx).TestObject;
+                traces.Set(block.Hash!, serializer.Serialize([new ParityLikeTxTrace
+                {
+                    BlockHash = block.Hash,
+                    BlockNumber = block.Number,
+                    TransactionHash = tx.Hash,
+                    TransactionPosition = 0,
+                    Action = new ParityTraceAction
+                    {
+                        Type = "call", CallType = "call", From = tx.SenderAddress, To = tx.To
+                    }
+                }]));
+                tree.SuggestBlock(block);
+                tree.TryUpdateMainChain(block.Header, true, true, block);
+                return block;
+            }
+            Block first = AddBlock(genesis);
+            StepInfo startIndex = container.Resolve<IEthereumStepsLoader>().ResolveStepsImplementations()
+                .Single(step => step.StepType.Assembly == typeof(TraceAddressIndex).Assembly);
+            await ((IStep)container.Resolve(startIndex.StepType)).Execute(cancellation.Token);
+            JsonSerializerOptions options = EthereumJsonSerializer.JsonOptions;
+            IColumnsDb<LogIndexColumns> database = (IColumnsDb<LogIndexColumns>)container.Resolve<DbMonitoringModule.DbTracker>()
+                .GetAllDbMeta().Single(entry => entry.Key == "TraceAddressIndex").Value;
+            IDb meta = database.GetColumnDb(LogIndexColumns.Meta);
+            byte[] sidecarPrefix = "ots-pos-p1/"u8.ToArray();
+            byte[] schemaKey = [.. sidecarPrefix, 0];
+            byte[] firstProofKey = [.. sidecarPrefix, 2, .. first.Hash!.Bytes];
+            async Task WaitForProof(byte[] key)
+            {
+                while (meta.Get(key) is null)
+                    await Task.Delay(10, cancellation.Token);
+            }
+            await WaitForProof(firstProofKey);
+            byte[] originalSchema = meta.Get(schemaKey)!;
+            byte[] originalProof = meta.Get(firstProofKey)!;
+            byte[] originalTrace = traces.Get(first.Hash!)!;
+            TxReceipt receipt = new() { StatusCode = 1, GasUsed = 21_000, GasUsedTotal = 21_000, Logs = [] };
+            string receiptJson = jsonSerializer.Serialize(receipt);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(options.GetConverter(typeof(TxReceipt)), Is.TypeOf<TxReceiptConverter>());
+                Assert.That(JsonNode.Parse(receiptJson)!["gasUsed"]!.GetValue<string>(), Is.EqualTo("0x5208"));
+                Assert.That(JsonNode.Parse(receiptJson)!["status"]!.GetValue<string>(), Is.EqualTo("0x1"));
+            }
+
+            await StartupPipelineWarmer.WarmupAsync(spec, config, false, cancellation.Token, liveBlockTree: tree);
+            Assert.That(EthereumJsonSerializer.JsonOptions, Is.SameAs(options), "The disposable warm node must not invalidate the live position sidecar's serializer contract.");
+
+            Block second = AddBlock(first);
+            byte[] progressKey = [.. sidecarPrefix, 1];
+            byte[] proofKey = [.. sidecarPrefix, 2, .. second.Hash!.Bytes];
+            await WaitForProof(proofKey);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(meta.Get(progressKey)!), Is.EqualTo(3));
+                Assert.That(meta.Get(proofKey), Is.Not.Null, "A transaction-bearing block after warmup must have a persisted position proof.");
+                Assert.That(meta.Get(schemaKey), Is.EqualTo(originalSchema));
+                Assert.That(meta.Get(firstProofKey), Is.EqualTo(originalProof));
+                Assert.That(traces.Get(first.Hash!), Is.EqualTo(originalTrace));
+                Assert.That(tree.FindBlockHash(1), Is.EqualTo(first.Hash));
+                Assert.That(jsonSerializer.Serialize(receipt), Is.EqualTo(receiptJson));
+            }
+        }
+        finally
+        {
+            AppContext.SetSwitch(switchName, previous);
+        }
+    }
+
     public enum WarmupTxPoolLimit { PendingPerSender, GasLimit, Size, MaxTxSize }
 
     [Test]
@@ -343,6 +462,23 @@ public class EthereumRunnerTests
                 Is.EqualTo((livePool.BlobsSupport, livePool.PersistentBroadcastEnabled, livePool.ProofsTranslationEnabled)));
         }
     }
+
+    [Test]
+    public async Task Startup_pipeline_warmup_builds_on_genesis_with_future_timestamp()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        ulong genesisTimestamp = (ulong)DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds();
+
+        // A fresh devnet starts its node before the genesis time is reached.
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec("amsterdam", genesisTimestamp), WarmupConfig(directory.Path), false, cancellation.Token);
+    }
+
+    [TestCase(100UL, 1_000UL, ExpectedResult = 1_000UL)]
+    [TestCase(1_000UL, 100UL, ExpectedResult = 1_002UL)]
+    [TestCase(ulong.MaxValue - 1, 100UL, ExpectedResult = ulong.MaxValue)]
+    public ulong Startup_pipeline_warmup_timestamp_follows_genesis(ulong genesisTimestamp, ulong now) =>
+        StartupPipelineWarmer.WarmupTimestamp(genesisTimestamp, now);
 
     [Test]
     public async Task Startup_pipeline_warmup_authenticates_after_slow_start()
@@ -659,14 +795,19 @@ public class EthereumRunnerTests
         return builder => builder.AddSingleton(configurer);
     }
 
-    private static ChainSpec LoadWarmupChainSpec(string chain = "foundation")
+    private static ChainSpec LoadWarmupChainSpec(string chain = "foundation", ulong? genesisTimestamp = null)
     {
         if (chain is "amsterdam" or "bogota")
         {
-            using Stream source = typeof(IConfig).Assembly.GetManifestResourceStream("Nethermind.Config.chainspec.hoodi.json")!;
+            using Stream source = typeof(ChainSpecFileLoader).Assembly.GetManifestResourceStream("Nethermind.Specs.chainspec.hoodi.json")!;
             JsonNode genesis = JsonNode.Parse(source)!;
-            genesis["config"]!["amsterdamTime"] = 0;
-            if (chain == "bogota") genesis["config"]!["bogotaTime"] = 0;
+            JsonObject config = genesis["config"]!.AsObject();
+            // Geth's fork order check rejects Amsterdam at genesis unless every earlier timestamp fork is there too.
+            foreach (string fork in config.Select(static entry => entry.Key).Where(static key => key.EndsWith("Time")).ToList())
+                config[fork] = 0;
+            config["amsterdamTime"] = 0;
+            if (chain == "bogota") config["bogotaTime"] = 0;
+            if (genesisTimestamp is not null) genesis["timestamp"] = $"0x{genesisTimestamp:x}";
             using MemoryStream modified = new(System.Text.Encoding.UTF8.GetBytes(genesis.ToJsonString()));
             return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), NullLogManager.Instance).Load(modified);
         }

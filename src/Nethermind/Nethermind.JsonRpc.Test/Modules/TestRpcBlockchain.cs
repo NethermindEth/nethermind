@@ -35,6 +35,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Container;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Filters;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
@@ -198,6 +199,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = static @this => new EthRpcModule(
             @this.RpcConfig,
             @this.Bridge,
+            @this.Container.Resolve<FilterStore>(),
+            @this.Container.Resolve<FilterManager>(),
             @this.BlockFinder,
             @this.BlockTree,
             @this.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
@@ -211,7 +214,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
             new StaticSelector(@this.SyncMode), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, @this.LogManager),
             @this.FeeHistoryOracle ??
-            new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
+            new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider, @this.RpcConfig),
             @this.ProtocolsManager,
             @this.ForkInfo,
             @this.BlocksConfig.SecondsPerSlot,
@@ -243,9 +246,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ITxSigner txSigner = new WalletTxSigner(TestWallet, SpecProvider.ChainId);
             TxSealer = new TxSealer(txSigner, Timestamper);
-            TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(SpecProvider.ChainId));
+            TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(SpecProvider.ChainId), ChainHeadInfoProvider.SpecProvider);
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
-            FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
+            FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider, RpcConfig);
 
             ProtocolsManager = new ProtocolsManager(
                 Substitute.For<ISyncPeerPool>(),
@@ -268,7 +271,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>
-            RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
+            RpcTest.TestSerializedRequest(EthRpcModule, RpcConfig.Timeout, method, parameters);
 
         private IBlockProcessingQueue? _currentBlockchainProcessor;
 
@@ -285,7 +288,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newProcessor = new(BlockTree, BranchProcessor,
-                BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>());
+                BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>(), Container.Resolve<BlockProcessingTracker>());
             _currentBlockchainProcessor = newProcessor;
             newProcessor.Start();
         }

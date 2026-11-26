@@ -84,6 +84,12 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         WriteFlags bodiesWriteFlags = WriteFlags.None) =>
         _overlayTree.Insert(block, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags);
 
+    public AddBlockResult Insert(BlockHeader header, ReadOnlySpan<byte> body,
+        BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+        BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
+        WriteFlags bodiesWriteFlags = WriteFlags.None) =>
+        _overlayTree.Insert(header, body, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags);
+
     public void UpdateHeadBlock(Hash256 blockHash) =>
         _overlayTree.UpdateHeadBlock(blockHash);
 
@@ -136,6 +142,9 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public void DeleteInvalidBlock(Block invalidBlock) =>
         _overlayTree.DeleteInvalidBlock(invalidBlock);
+
+    public void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot) =>
+        _overlayTree.DeleteBranchWithoutBadBlockReport(branchRoot);
 
     public void ReportBadBlock(Block badBlock) =>
         _overlayTree.ReportBadBlock(badBlock);
@@ -293,7 +302,6 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         get => _baseTree.SyncPivot;
         set => _baseTree.SyncPivot = value;
     }
-    public bool IsProcessingBlock { get => _baseTree.IsProcessingBlock; set => _baseTree.IsProcessingBlock = value; }
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
         _overlayTree.FindBlock(blockHash, options, blockNumber) ?? _baseTree.FindBlock(blockHash, options, blockNumber);

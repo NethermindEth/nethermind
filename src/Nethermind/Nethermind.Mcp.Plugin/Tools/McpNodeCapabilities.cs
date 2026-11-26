@@ -312,7 +312,7 @@ public sealed class McpNodeCapabilities(
             return null;
         }
 
-        List<string> skipped = new(2);
+        List<string> skipped = [with(2)];
         if (!syncConfig.DownloadBodiesInFastSync) skipped.Add("Sync.DownloadBodiesInFastSync=false");
         if (receipts && !syncConfig.DownloadReceiptsInFastSync) skipped.Add("Sync.DownloadReceiptsInFastSync=false");
         if (skipped.Count > 0)

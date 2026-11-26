@@ -19,6 +19,13 @@ namespace Nethermind.Consensus.Tracing
         /// <param name="tracer">Trace to act on block processing events.</param>
         void Trace(Block block, IBlockTracer tracer);
 
+        /// <summary>Replays a block and returns the receipts from its chain's block processor.</summary>
+        /// <remarks>
+        /// The chain's own receipts tracer keeps Optimism deposit fields and EIP-8116 per-transaction gas
+        /// in the receipts used to build a proof.
+        /// </remarks>
+        TxReceipt[] TraceReceipts(Block block);
+
         /// <summary>
         /// Allows to trace and verify arbitrary constructed block. Subtracts gas from sender account
         /// </summary>
