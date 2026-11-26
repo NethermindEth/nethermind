@@ -24,7 +24,7 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken _)
         {
-            if (blockProductionPolicy.ShouldStartBlockProduction())
+            if (blockProductionPolicy.ShouldStartBlockProduction() && blockProducerRunner.Value is not NoBlockProducerRunner)
             {
                 if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 

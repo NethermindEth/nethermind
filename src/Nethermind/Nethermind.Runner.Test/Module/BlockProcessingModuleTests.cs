@@ -17,13 +17,14 @@ namespace Nethermind.Runner.Test.Module;
 public class BlockProcessingModuleTests
 {
     [Test]
-    public void Runner_resolved_before_startup_obeys_the_production_policy([Values] bool enabled)
+    public void Runner_is_created_only_when_production_is_enabled_and_a_producer_exists([Values] bool enabled, [Values] bool hasProducer)
     {
+        bool producing = enabled && hasProducer;
         IBlockProducer producer = Substitute.For<IBlockProducer>();
         IBlockProducerRunner runner = Substitute.For<IBlockProducerRunner, IDisposable>();
         IBlockProducerFactory producerFactory = Substitute.For<IBlockProducerFactory>();
         IBlockProducerRunnerFactory runnerFactory = Substitute.For<IBlockProducerRunnerFactory>();
-        producerFactory.InitBlockProducer().Returns(producer);
+        producerFactory.InitBlockProducer().Returns(hasProducer ? producer : null);
         runnerFactory.InitBlockProducerRunner(producer).Returns(runner);
 
         using (IContainer container = new ContainerBuilder()
@@ -36,13 +37,13 @@ public class BlockProcessingModuleTests
             IBlockProducerRunner resolved = container.Resolve<IBlockProducerRunner>();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(resolved, enabled ? Is.SameAs(runner) : Is.TypeOf<NoBlockProducerRunner>());
+                Assert.That(resolved, producing ? Is.SameAs(runner) : Is.TypeOf<NoBlockProducerRunner>());
                 Assert.That(container.Resolve<IBlockProducerRunner>(), Is.SameAs(resolved));
                 producerFactory.Received(enabled ? 1 : 0).InitBlockProducer();
-                runnerFactory.Received(enabled ? 1 : 0).InitBlockProducerRunner(Arg.Any<IBlockProducer>());
+                runnerFactory.Received(producing ? 1 : 0).InitBlockProducerRunner(Arg.Any<IBlockProducer>());
             }
         }
 
-        ((IDisposable)runner).Received(enabled ? 1 : 0).Dispose();
+        ((IDisposable)runner).Received(producing ? 1 : 0).Dispose();
     }
 }

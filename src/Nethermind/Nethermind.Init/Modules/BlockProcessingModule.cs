@@ -151,7 +151,9 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 .Bind<IFrameTxWidthLedger, FrameTxWidthLedger>()
             .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
             .AddSingleton<IManualBlockProductionTrigger, BuildBlocksWhenRequested>()
-            .AddSingleton<IBlockProducer>(static ctx => ResolveBlockProductionFactory<IBlockProducerFactory>(ctx).InitBlockProducer())
+            .AddSingleton<InitializedBlockProducer>(static ctx => new(ResolveBlockProductionFactory<IBlockProducerFactory>(ctx).InitBlockProducer()))
+            .AddSingleton<IBlockProducer>(static ctx => ctx.Resolve<InitializedBlockProducer>().Producer
+                ?? throw new NotSupportedException($"Mining in {ctx.Resolve<ChainSpec>().SealEngineType} mode is not supported"))
             .AddSingleton<IBlockProducerRunner>(CreateBlockProducerRunner)
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
@@ -198,8 +200,12 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
     private static IBlockProducerRunner CreateBlockProducerRunner(IComponentContext ctx) =>
         ctx.Resolve<IBlockProductionPolicy>().ShouldStartBlockProduction()
-            ? ResolveBlockProductionFactory<IBlockProducerRunnerFactory>(ctx).InitBlockProducerRunner(ctx.Resolve<IBlockProducer>())
+        && ctx.Resolve<InitializedBlockProducer>().Producer is { } blockProducer
+            ? ResolveBlockProductionFactory<IBlockProducerRunnerFactory>(ctx).InitBlockProducerRunner(blockProducer)
             : new NoBlockProducerRunner();
+
+    // Autofac rejects null from a delegate registration, and a factory may return no producer (e.g. Ethash).
+    private sealed record InitializedBlockProducer(IBlockProducer? Producer);
 
     // An engine with no factory registered has no producer (e.g. Taiko).
     private static T ResolveBlockProductionFactory<T>(IComponentContext ctx) where T : class =>
