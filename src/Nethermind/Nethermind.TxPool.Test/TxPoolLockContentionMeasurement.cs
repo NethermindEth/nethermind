@@ -29,6 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.TxPool.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -137,6 +138,70 @@ public class TxPoolLockContentionMeasurement
              + $"filtered_p50_ms={Percentile(filteredMillis, 0.50):F3} "
              + $"unfiltered_min_ms={unfilteredMillis[0]:F3} "
              + $"unfiltered_p50_ms={Percentile(unfilteredMillis, 0.50):F3}");
+    }
+
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Production_snapshot_during_update(bool churn, bool refresh)
+    {
+        const int senders = 2048;
+        Transaction[] pending = new Transaction[senders];
+        for (int i = 0; i < pending.Length; i++)
+        {
+            Address sender = SenderAt(i);
+            _state.CreateAccount(sender, UInt256.MaxValue);
+            pending[i] = BuildFrameTx(sender, []);
+        }
+        TxDistinctSortedPool pool = FrameTxFilterTestPools.Pool(false, pending);
+        Transaction extra = BuildFrameTx(SenderAt(senders), []);
+        Assert.That(pool.Count, Is.EqualTo(senders));
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim reading = new();
+        List<double> readMicros = [];
+        List<double> refreshMicros = [];
+        long refreshBytes = 0;
+
+        for (int i = 0; i < 60; i++)
+        {
+            pool.GetProductionSnapshotAllowingPreUpdateMembership(out _);
+            if (churn) pool.TryInsert(extra.Hash!, extra);
+            long allocated = GC.GetAllocatedBytesForCurrentThread();
+            long started = Stopwatch.GetTimestamp();
+            if (refresh) pool.BeginHeadUpdate();
+            double refreshTime = Stopwatch.GetElapsedTime(started).TotalMicroseconds;
+            long bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+            entered.Reset();
+            reading.Reset();
+            Task writer = Task.Run(() => pool.UpdatePool(_state,
+                (in AccountStruct _, EnhancedSortedSet<Transaction> _, ref Transaction? _, TxDistinctSortedPool.UpdateTransactionDelegate _) =>
+                {
+                    if (entered.IsSet) return;
+                    entered.Set();
+                    if (!reading.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Snapshot reader did not start.");
+                }));
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True, "Pool update did not start.");
+            started = Stopwatch.GetTimestamp();
+            reading.Set();
+            int actual = pool.GetProductionSnapshotAllowingPreUpdateMembership(out _).Count;
+            double readTime = Stopwatch.GetElapsedTime(started).TotalMicroseconds;
+            writer.GetAwaiter().GetResult();
+            Assert.That(actual, Is.EqualTo(churn ? senders + 1 : senders));
+            if (churn) pool.TryRemove(extra.Hash!);
+            if (i >= 10)
+            {
+                readMicros.Add(readTime);
+                refreshMicros.Add(refreshTime);
+                refreshBytes += bytes;
+            }
+        }
+
+        readMicros.Sort();
+        refreshMicros.Sort();
+        Emit($"case=production_snapshot senders={senders} churn={churn} refresh={refresh} samples={readMicros.Count} "
+            + $"reader_p50_us={Percentile(readMicros, 0.50):F2} reader_p95_us={Percentile(readMicros, 0.95):F2} "
+            + $"refresh_p50_us={Percentile(refreshMicros, 0.50):F2} refresh_bytes={refreshBytes / readMicros.Count}");
     }
 
     // int.MaxValue is the carry before it was bounded: a backlog the per-head budget cannot clear is

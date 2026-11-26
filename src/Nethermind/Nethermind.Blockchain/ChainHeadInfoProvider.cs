@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -19,7 +20,7 @@ namespace Nethermind.Blockchain
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
         private readonly IBlockTree _blockTree;
-        private readonly Func<BlockHeader, IReadOnlyStateProvider> _stateAt;
+        private readonly Func<BlockHeader, IReadOnlyStateProvider>? _stateAt;
         private readonly IBlockBuildingTracker? _blockBuildingTracker;
         private readonly BlockProcessingTracker _blockProcessingTracker;
         // For testing
@@ -33,11 +34,11 @@ namespace Nethermind.Blockchain
         /// <remarks><paramref name="stateProvider"/> is used as given, so <see cref="TryGetHeadState"/> returns it
         /// unbound: binding the state to the head is the caller's concern.</remarks>
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, BlockProcessingTracker blockProcessingTracker, IBlockBuildingTracker? blockBuildingTracker = null)
-            : this(specProvider, blockTree, stateProvider, _ => stateProvider, blockBuildingTracker, blockProcessingTracker)
+            : this(specProvider, blockTree, stateProvider, null, blockBuildingTracker, blockProcessingTracker)
         {
         }
 
-        private ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, Func<BlockHeader, IReadOnlyStateProvider> stateAt, IBlockBuildingTracker? blockBuildingTracker, BlockProcessingTracker blockProcessingTracker)
+        private ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, Func<BlockHeader, IReadOnlyStateProvider>? stateAt, IBlockBuildingTracker? blockBuildingTracker, BlockProcessingTracker blockProcessingTracker)
         {
             _stateAt = stateAt;
             _blockBuildingTracker = blockBuildingTracker;
@@ -64,8 +65,20 @@ namespace Nethermind.Blockchain
         public bool TryGetHeadState([NotNullWhen(true)] out BlockHeader? head, [NotNullWhen(true)] out IReadOnlyStateProvider? state)
         {
             head = _blockTree.Head?.Header;
-            state = head is null ? null : _stateAt(head);
+            state = head is null ? null : _stateAt?.Invoke(head) ?? ReadOnlyStateProvider;
             return head is not null;
+        }
+
+        /// <inheritdoc/>
+        public IReadOnlyStateProvider? GetProductionParentState(BlockHeader target)
+        {
+            if (_stateAt is null || target.ParentHash is null || target.IsGenesis) return null;
+            BlockHeader? parent = _blockTree.Head?.Header;
+            if (parent?.Hash != target.ParentHash)
+            {
+                parent = _blockTree.FindParentHeader(target, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            }
+            return parent is null ? null : _stateAt(parent);
         }
 
         public ulong HeadNumber { get; private set; }

@@ -50,6 +50,7 @@ namespace Nethermind.TxPool.Collections
         private TValue[]? _snapshot;
         private volatile SnapshotDictionary<TGroupKey, TValue[]>? _productionSnapshot;
         private SnapshotDictionary<TGroupKey, TValue[]>? _productionSnapshotBeforeBulkUpdate;
+        private int _productionReadSinceHead;
 
         /// <summary>
         /// Constructor
@@ -155,7 +156,7 @@ namespace Nethermind.TxPool.Collections
         /// references and must not reorder a bucket without invalidating its snapshot.
         /// Unfiltered calls also cache the dictionary; filtered calls reuse only the bucket arrays.
         /// </remarks>
-        internal IDictionary<TGroupKey, TValue[]> GetProductionSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
+        internal SnapshotDictionary<TGroupKey, TValue[]> GetProductionSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
             if (where is null && _productionSnapshot is { } cachedSnapshot) return cachedSnapshot;
@@ -178,8 +179,22 @@ namespace Nethermind.TxPool.Collections
         }
 
         /// <summary>Reuses cached membership even if a bulk update is removing some of its transactions.</summary>
-        internal IDictionary<TGroupKey, TValue[]> GetProductionSnapshotAllowingPreUpdateMembership() =>
-            _productionSnapshot ?? Volatile.Read(ref _productionSnapshotBeforeBulkUpdate) ?? GetProductionSnapshot();
+        internal IDictionary<TGroupKey, TValue[]> GetProductionSnapshotAllowingPreUpdateMembership(out bool preUpdate)
+        {
+            Volatile.Write(ref _productionReadSinceHead, 1);
+            SnapshotDictionary<TGroupKey, TValue[]>? retained = Volatile.Read(ref _productionSnapshotBeforeBulkUpdate);
+            preUpdate = retained is not null;
+            return _productionSnapshot ?? retained ?? GetProductionSnapshot();
+        }
+
+        /// <summary>Retains pre-head membership, refreshing an invalidated snapshot only for an active producer.</summary>
+        internal void BeginHeadUpdate()
+        {
+            bool requested = Interlocked.Exchange(ref _productionReadSinceHead, 0) != 0;
+            SnapshotDictionary<TGroupKey, TValue[]>? snapshot = _productionSnapshot;
+            if (requested && snapshot is null) snapshot = GetProductionSnapshot();
+            Volatile.Write(ref _productionSnapshotBeforeBulkUpdate, snapshot);
+        }
 
         /// <summary>Keeps the cached production snapshot for <see cref="GetProductionSnapshotAllowingPreUpdateMembership"/>
         /// until the next <see cref="EndBulkUpdate"/>.</summary>

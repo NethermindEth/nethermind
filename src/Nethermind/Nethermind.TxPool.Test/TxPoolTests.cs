@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
@@ -5039,68 +5040,70 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        /// <summary>
-        /// A producer that reads the pool while a head update revalidates its buckets gets the snapshot cached
-        /// before that head without waiting, and without the entry the head spent.
-        /// </summary>
-        /// <remarks>The read is made from inside the bucket update, which holds the pool lock, so a read that
-        /// needs the lock cannot complete. The included transaction leaves the pool before the update starts,
-        /// so the cached snapshot must survive its removal.</remarks>
         [Test]
-        public async Task Production_read_during_a_head_update_uses_the_pre_head_snapshot_without_spent_entries()
+        public async Task Production_read_during_a_head_update_uses_the_pre_head_snapshot_without_spent_entries([Values] bool keyed)
         {
-            Address waitingSender = TestItem.AddressB;
-            BlockHeader parent = _blockTree.Head!.Header;
-            int armed = 0;
-            Task<PendingTransactionsView> concurrentRead = null;
-            bool readDuringUpdate = false;
-            AccountReadHook state = new(_stateProvider, address =>
-            {
-                if (address != waitingSender || Interlocked.Exchange(ref armed, 0) == 0) return;
-                concurrentRead = RunOnDedicatedThread(() => _txPool.GetPendingForProduction(parent, filterToReadyTx: true, UInt256.Zero));
-                readDuringUpdate = concurrentRead.Wait(TimeSpan.FromSeconds(5));
-            });
-            _txPool = CreatePool(chainHeadInfoProvider: new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(_specProvider, _blockTree), _blockTree, state, blockProcessingTracker: _blockProcessing));
-
-            Transaction included = Build.A.Transaction.WithNonce(0).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ISpecProvider spec = KeyedNonceSpecProvider();
+            Address sender = TestItem.AddressA;
+            Address otherSender = TestItem.AddressB;
+            Block previous = _blockTree.Head!;
+            Transaction included = keyed
+                ? BuildKeyedFrameTx(sender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei)
+                : Build.A.Transaction.WithNonce(0).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             Transaction successor = Build.A.Transaction.WithNonce(1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             Transaction other = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            Block head = Build.A.Block.WithParent(previous).WithGasLimit(FixtureHeadGasLimit).WithTransactions(included).TestObject;
+            BlockHeader target = Build.A.BlockHeader.WithParent(head.Header).TestObject;
+            BlockHeader otherTarget = Build.A.BlockHeader.WithParent(previous.Header).TestObject;
+            TxPoolTxSource source = null;
+            Transaction[] selected = null;
+            Transaction[] differentParent = null;
+            Exception unfilteredRead = null;
+            bool armed = false;
+            IStateReader state = Substitute.For<IStateReader>();
+            state.TryGetAccount(Arg.Any<BlockHeader>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(call =>
+            {
+                BlockHeader block = call.Arg<BlockHeader>();
+                Address address = call.Arg<Address>();
+                if (armed && address == otherSender)
+                {
+                    armed = false;
+                    // Reading on the updater thread makes any attempt to re-enter the standard pool lock fail immediately.
+                    selected = source.GetTransactions(head.Header, target, target.GasLimit, filterSource: true).ToArray();
+                    differentParent = _txPool.GetPendingForProduction(otherTarget, true, UInt256.Zero).Transactions[sender];
+                    try { _txPool.GetPendingForProduction(target, false, UInt256.Zero); }
+                    catch (InvalidOperationException e) { unfilteredRead = e; }
+                }
+                call[2] = new AccountStruct(address == sender && (keyed || block == head.Header) ? 1UL : 0UL, UInt256.MaxValue);
+                return true;
+            });
+            StorageCell slot = KeyedNonceManager.StorageSlot(sender, UInt256.One);
+            state.When(reader => reader.GetStorage(head.Header, slot.Address, slot.Index, out Arg.Any<UInt256>()))
+                .Do(call => call[3] = UInt256.One);
+            _txPool = CreatePool(specProvider: spec, chainHeadInfoProvider: new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(spec, _blockTree), _blockTree, state, blockProcessingTracker: _blockProcessing));
+            ITxFilterPipeline filters = Substitute.For<ITxFilterPipeline>();
+            filters.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(call => call.Arg<Transaction>() != included);
+            source = new TxPoolTxSource(_txPool, spec, new TransactionComparerProvider(spec, _blockTree), _logManager,
+                filters, new BlocksConfig(), new SpecChangeTxValidator(_specProvider.ChainId));
+
             foreach (Transaction tx in new[] { included, successor, other })
             {
-                EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
-                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             }
 
-            Assert.That(_txPool.GetPendingForProduction(parent, filterToReadyTx: false, UInt256.Zero).Transactions, Has.Count.EqualTo(2));
-            _stateProvider.IncrementNonce(TestItem.AddressA);
-            Volatile.Write(ref armed, 1);
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(parent.Number + 1).WithTransactions(included).TestObject);
+            Assert.That(_txPool.GetPendingForProduction(otherTarget, true, UInt256.Zero).Transactions, Has.Count.EqualTo(2));
+            armed = true;
+            await RaiseCanonicalHeadAndWait(head);
 
-            Assert.That(readDuringUpdate, Is.True, "the read waited for the bucket update");
-            IReadOnlyDictionary<AddressAsKey, Transaction[]> view = (await concurrentRead).Transactions;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(view[TestItem.AddressA], Is.EqualTo(new[] { successor }));
-                Assert.That(view[waitingSender], Is.EqualTo(new[] { other }));
+                Assert.That(selected, Is.EquivalentTo(new[] { successor, other }));
+                Assert.That(differentParent, Is.EqualTo(new[] { included, successor }));
+                Assert.That(unfilteredRead, Is.TypeOf<InvalidOperationException>());
+                Assert.That(source.GetTransactions(head.Header, target, target.GasLimit, filterSource: false),
+                    Is.EquivalentTo(new[] { successor, other }));
             }
-        }
-
-        private sealed class AccountReadHook(TestReadOnlyStateProvider state, Action<Address> onAccountRead) : IReadOnlyStateProvider
-        {
-            public bool TryGetAccount(Address address, out AccountStruct account)
-            {
-                onAccountRead(address);
-                return state.TryGetAccount(address, out account);
-            }
-
-            public Hash256 StateRoot => state.StateRoot;
-            public ReadOnlyMemory<byte> GetCode(Address address) => state.GetCode(address);
-            public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => state.GetCode(in codeHash);
-            public bool IsContract(Address address) => state.IsContract(address);
-            public bool AccountExists(Address address) => state.AccountExists(address);
-            public bool IsDeadAccount(Address address) => state.IsDeadAccount(address);
-            public void Get(in StorageCell storageCell, out UInt256 value) => state.Get(in storageCell, out value);
         }
 
         /// <summary>

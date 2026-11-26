@@ -498,7 +498,7 @@ namespace Nethermind.TxPool
             // concrete type rather than the IDictionary the caller returns is what holds us to that guarantee.
             foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
             {
-                if (bucket.Length == 0 || !HasReadyTransaction(bucket, _accounts.GetNonce(sender), baseFee)) bySender.Remove(sender);
+                if (bucket.Length == 0 || !HasReadyTransaction(bucket, _accounts.GetNonce(sender), baseFee, _headInfo.ReadOnlyStateProvider)) bySender.Remove(sender);
             }
 
             return bySender;
@@ -506,9 +506,9 @@ namespace Nethermind.TxPool
 
         /// <summary>Whether <paramref name="tx"/> carries the nonce its sender can consume in the next block.</summary>
         /// <remarks>An EIP-8250 keyed set does not use the account nonce, so readiness is per-key currency instead.</remarks>
-        private bool IsNonceReady(Transaction tx, ulong accountNonce) =>
+        private static bool IsNonceReady(Transaction tx, ulong accountNonce, IReadOnlyStateProvider state) =>
             KeyedNonceManager.UsesKeyedNonce(tx)
-                ? IsKeyedNonceCurrent(tx)
+                ? IsKeyedNonceCurrent(tx, state)
                 : tx.Nonce == accountNonce;
 
         /// <summary>Whether a sender's bucket holds anything includable in the next block.</summary>
@@ -519,14 +519,14 @@ namespace Nethermind.TxPool
         /// the way down. Judging one reads a NONCE_MANAGER slot per key it selects, so the whole scan is bounded by
         /// the pool's configured size times <see cref="Eip8250Constants.MaxNonceKeys"/>; a per-sender limit spreads
         /// that same total over more buckets rather than lowering it.</remarks>
-        private bool HasReadyTransaction(ReadOnlySpan<Transaction> bucket, ulong accountNonce, in UInt256 baseFee)
+        private static bool HasReadyTransaction(ReadOnlySpan<Transaction> bucket, ulong accountNonce, in UInt256 baseFee, IReadOnlyStateProvider state)
         {
             bool accountNonceBlocked = false;
             foreach (Transaction tx in bucket)
             {
                 bool keyed = KeyedNonceManager.UsesKeyedNonce(tx);
                 if (!keyed && accountNonceBlocked) continue;
-                if (tx.CanPayBaseFee(baseFee) && IsNonceReady(tx, accountNonce)) return true;
+                if (tx.CanPayBaseFee(baseFee) && IsNonceReady(tx, accountNonce, state)) return true;
 
                 // An entry under the account nonce is stale rather than blocking: it awaits a head change the
                 // pool has not processed yet, and the next entry may sit exactly at the nonce.
@@ -537,56 +537,52 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>Keeps only the senders with something includable in the next block, leaving the snapshot intact.</summary>
-        /// <remarks>Judged by the same <see cref="HasReadyTransaction"/> bucket scan as
-        /// <see cref="DropUnreadySenders"/>, because a single-entry test on the bucket's lowest transaction cannot
-        /// answer readiness once EIP-8250 keyed sequences share the ordering. Copies rather than removes in place,
-        /// which is why this is not <see cref="DropUnreadySenders"/> itself: a production snapshot is shared with
-        /// the pool's cache and with other callers, while that one owns the dictionary it filters.
-        /// The two agree only by both calling <see cref="HasReadyTransaction"/>, so a readiness rule added to one
-        /// must be added to the other; there is no longer a call between them to enforce it.
-        /// <para>Also drops spent account-nonce entries, which a snapshot taken before a head update still holds:
-        /// the producer ends a sender's chain at its first filtered-out entry, so a spent one could hide its
-        /// includable successor.</para></remarks>
+        /// <remarks>A retained snapshot can include an already spent entry before a ready one. The producer
+        /// ends the sender's chain at the first rejected candidate, so remove spent entries against the payload
+        /// parent's state before passing the bucket to the producer.</remarks>
         private IDictionary<AddressAsKey, Transaction[]> SelectReadySenders(
-            IDictionary<AddressAsKey, Transaction[]> bySender, bool filterToReadyTx, in UInt256 baseFee)
+            IDictionary<AddressAsKey, Transaction[]> bySender, in UInt256 baseFee, IReadOnlyStateProvider? parentState = null)
         {
-            if (!filterToReadyTx) return bySender;
-
+            IAccountStateProvider accounts = parentState ?? _accounts;
+            IReadOnlyStateProvider state = parentState ?? _headInfo.ReadOnlyStateProvider;
             Dictionary<AddressAsKey, Transaction[]> ready = [with(bySender.Count)];
             foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
             {
                 if (bucket.Length == 0) continue;
-                ulong accountNonce = _accounts.GetNonce(sender);
-                Transaction[] unspent = WithoutSpentAccountNonces(bucket, accountNonce);
-                if (HasReadyTransaction(unspent, accountNonce, baseFee)) ready.Add(sender, unspent);
+                ulong accountNonce = accounts.GetNonce(sender);
+                if (HasReadyTransaction(bucket, accountNonce, baseFee, state))
+                {
+                    ready.Add(sender, parentState is null ? bucket : WithoutSpentNonces(bucket, accountNonce, parentState));
+                }
             }
 
             return ready;
         }
 
-        /// <summary>Returns <paramref name="bucket"/>, or a copy of it without the account-nonce entries below
-        /// <paramref name="accountNonce"/>.</summary>
-        private static Transaction[] WithoutSpentAccountNonces(Transaction[] bucket, ulong accountNonce)
+        private static Transaction[] WithoutSpentNonces(Transaction[] bucket, ulong accountNonce, IReadOnlyStateProvider state)
         {
-            int spent = 0;
-            foreach (Transaction tx in bucket)
+            bool IsSpent(Transaction tx) => KeyedNonceManager.UsesKeyedNonce(tx)
+                ? IsKeyedNonceBehind(tx, state)
+                : tx.Nonce < accountNonce;
+
+            int first = 0;
+            while (first < bucket.Length && IsSpent(bucket[first])) first++;
+
+            // Keyed sequences can interleave spent entries with independently usable ones.
+            for (int i = first + 1; i < bucket.Length; i++)
             {
-                if (KeyedNonceManager.UsesKeyedNonce(tx)) continue;
-                // Account-nonce entries are in nonce order, so the first unspent one ends the spent run.
-                if (tx.Nonce >= accountNonce) break;
-                spent++;
+                if (!IsSpent(bucket[i])) continue;
+
+                using ArrayPoolListRef<Transaction> kept = new(bucket.Length - first - 1);
+                kept.AddRange(bucket.AsSpan(first, i - first));
+                for (int j = i + 1; j < bucket.Length; j++)
+                {
+                    if (!IsSpent(bucket[j])) kept.Add(bucket[j]);
+                }
+                return kept.ToArray();
             }
 
-            if (spent == 0) return bucket;
-
-            Transaction[] unspent = new Transaction[bucket.Length - spent];
-            int count = 0;
-            foreach (Transaction tx in bucket)
-            {
-                if (KeyedNonceManager.UsesKeyedNonce(tx) || tx.Nonce >= accountNonce) unspent[count++] = tx;
-            }
-
-            return unspent;
+            return first == 0 ? bucket : bucket[first..];
         }
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
@@ -910,11 +906,9 @@ namespace Nethermind.TxPool
                         // Read from the database before the lock, so submissions are not held up by it.
                         List<Block>? rewound = LoadCompletedRewind(args.Block);
                         _newHeadLock.EnterWriteLock();
-                        // Opened before included transactions leave the pool: their removal would otherwise drop
-                        // the cached snapshot and make production wait for the bucket update.
-                        _transactions.BeginBulkUpdate();
                         try
                         {
+                            _transactions.BeginHeadUpdate();
                             ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
                             // A reorg or a non-sequential block reports its own changes but not what the
                             // abandoned branch reverted, so the list does not describe everything that moved.
@@ -2216,9 +2210,9 @@ namespace Nethermind.TxPool
             }
         }
 
-        /// <summary>Whether every nonce key <paramref name="tx"/> selects still sits at its declared sequence in the head state; single-use sets must read 0.</summary>
-        private bool IsKeyedNonceCurrent(Transaction tx) =>
-            KeyedNonceManager.IsNonceSetValid(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, tx.NonceKeys!, tx.Nonce);
+        /// <summary>Whether every nonce key <paramref name="tx"/> selects still sits at its declared sequence in the supplied state; single-use sets must read 0.</summary>
+        private static bool IsKeyedNonceCurrent(Transaction tx, IReadOnlyStateProvider state) =>
+            KeyedNonceManager.IsNonceSetValid(state, tx.SenderAddress!, tx.NonceKeys!, tx.Nonce);
 
         /// <summary>Whether any nonce key <paramref name="tx"/> selects has advanced past its declared sequence in the head state.</summary>
         /// <remarks>A keyed sequence only ever advances, so a key already beyond the declared sequence has spent it for good on this fork.
@@ -2262,7 +2256,7 @@ namespace Nethermind.TxPool
             {
                 if (KeyedNonceManager.UsesKeyedNonce(tx))
                 {
-                    if (!IsKeyedNonceCurrent(tx))
+                    if (!IsKeyedNonceCurrent(tx, _headInfo.ReadOnlyStateProvider))
                     {
                         MarkForEviction(tx, allowLaterPoolReentrance: !IsKeyedNonceBehind(tx, _headInfo.ReadOnlyStateProvider));
                     }
@@ -2951,7 +2945,7 @@ namespace Nethermind.TxPool
             Transaction? tx = null;
             foreach (Transaction txn in transactions)
             {
-                if (KeyedNonceManager.UsesKeyedNonce(txn) ? IsKeyedNonceCurrent(txn) : txn.Nonce == currentNonce)
+                if (KeyedNonceManager.UsesKeyedNonce(txn) ? IsKeyedNonceCurrent(txn, _headInfo.ReadOnlyStateProvider) : txn.Nonce == currentNonce)
                 {
                     tx = txn;
                     break;
@@ -3100,11 +3094,28 @@ namespace Nethermind.TxPool
         public PendingTransactionsView GetPendingForProduction(BlockHeader targetBlock, bool filterToReadyTx, UInt256 baseFee)
         {
             long forkStateVersion = Volatile.Read(ref _forkStateVersion);
-            IDictionary<AddressAsKey, Transaction[]> transactions =
-                SelectReadySenders(_transactions.GetProductionSnapshotAllowingPreUpdateMembership(), filterToReadyTx, baseFee);
+            IDictionary<AddressAsKey, Transaction[]> transactions;
+            if (filterToReadyTx)
+            {
+                transactions = _transactions.GetProductionSnapshotAllowingPreUpdateMembership(out bool preUpdate);
+                if (!preUpdate)
+                {
+                    transactions = SelectReadySenders(transactions, baseFee);
+                }
+                else if (_headInfo.GetProductionParentState(targetBlock) is { } state)
+                {
+                    transactions = SelectReadySenders(transactions, baseFee, state);
+                }
+                // Without parent state, keep candidates for the producer to judge against its own state.
+            }
+            else
+            {
+                transactions = _transactions.GetProductionSnapshot();
+            }
+
             // Blob selection reserves slots before execution, so a stale candidate can displace an includable one.
-            IDictionary<AddressAsKey, Transaction[]> blobTransactions =
-                SelectReadySenders(_blobTransactions.GetProductionSnapshot(), filterToReadyTx, baseFee);
+            IDictionary<AddressAsKey, Transaction[]> blobTransactions = _blobTransactions.GetProductionSnapshot();
+            if (filterToReadyTx) blobTransactions = SelectReadySenders(blobTransactions, baseFee);
 
             return new(transactions, blobTransactions, IsRevalidatedFor(targetBlock, forkStateVersion));
         }
