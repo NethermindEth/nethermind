@@ -41,6 +41,78 @@ public static partial class Accelerators
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void AirbenderKeccakFInPlace(ulong* state) => airbender_keccak_f1600_in_place(state);
 
+    /// <summary>The division hints libairbender read after the trusted input: <paramref name="count"/> pairs of a
+    /// 32-byte quotient and a 32-byte remainder, little-endian, in 32-byte aligned memory.</summary>
+    public static unsafe void AirbenderDivisionHints(out byte* start, out uint count)
+    {
+        byte* s = null;
+        uint n = 0;
+        airbender_division_hints(&s, &n);
+        start = s;
+        count = n;
+    }
+
+    /// <summary>Whether libairbender's tries serve the <paramref name="count"/> witness nodes from
+    /// <paramref name="first"/> to <paramref name="last"/>: the ones it hashed while it read the trusted input.</summary>
+    public static unsafe bool AirbenderMptAttach(byte* first, byte* last, uint count) => airbender_mpt_attach(first, last, count) != 0;
+
+    /// <summary>Whether <paramref name="root"/>, 32 bytes, is the empty tree's root or the hash of a witness node.</summary>
+    public static unsafe bool AirbenderMptHasRoot(byte* root) => airbender_mpt_has_root(root) != 0;
+
+    /// <summary>Opens the trie whose root has the 32-byte hash at <paramref name="root"/>.</summary>
+    public static unsafe void* AirbenderMptOpen(byte* root) => airbender_mpt_open(root);
+
+    /// <summary>Empties <paramref name="trie"/>.</summary>
+    public static unsafe void AirbenderMptClear(void* trie) => airbender_mpt_clear(trie);
+
+    /// <summary>Writes the root hash of <paramref name="trie"/>; negative when a node it needs is missing or malformed.</summary>
+    public static unsafe int AirbenderMptRoot(void* trie, byte* output) => airbender_mpt_root(trie, output);
+
+    /// <summary>Sets the account to the <paramref name="length"/> bytes at <paramref name="value"/>, or removes it when
+    /// the length is 0.</summary>
+    public static unsafe int AirbenderMptSetAccount(void* trie, byte* address, byte* value, uint length) =>
+        airbender_mpt_set_account(trie, address, value, length);
+
+    /// <summary>Finds the account at the 20-byte <paramref name="address"/> and splits it into
+    /// <paramref name="fields"/>, 27 words: the nonce in two, the balance in eight, the storage root, the code hash,
+    /// and a word whose bit 0 says the storage is empty and bit 1 that the code is. 1 when absent; 2, with the
+    /// encoding where it lies, when it is not four such items; negative when a witness node is missing or
+    /// malformed.</summary>
+    public static unsafe int AirbenderMptGetAccountFields(void* trie, byte* address, uint* fields, byte** value, uint* length) =>
+        airbender_mpt_get_account_fields(trie, address, fields, value, length);
+
+    /// <summary>Sets the account from its nonce (two words), balance (eight words), 32-byte storage root and
+    /// 32-byte code hash.</summary>
+    public static unsafe int AirbenderMptSetAccountFields(void* trie, byte* address, uint* nonce, uint* balance, byte* storageRoot, byte* codeHash) =>
+        airbender_mpt_set_account_fields(trie, address, nonce, balance, storageRoot, codeHash);
+
+    /// <summary>Opens the storage trie of the account at <paramref name="address"/>, empty when there is none. Null
+    /// with a negative <paramref name="status"/> when a witness node is missing or malformed, or 2 when the account
+    /// is not encoded as usual.</summary>
+    public static unsafe void* AirbenderMptOpenStorage(void* trie, byte* address, int* status) =>
+        airbender_mpt_open_storage(trie, address, status);
+
+    /// <summary>Sets in the 256-byte <paramref name="bloom"/>, and in <paramref name="master"/> unless null, the
+    /// three bits the keccak of the 20 or 32 bytes at <paramref name="data"/> picks.</summary>
+    /// <remarks>A 20-byte address can be passed without padding.</remarks>
+    public static unsafe void AirbenderBloomSet(byte* bloom, byte* master, byte* data, uint length) =>
+        airbender_bloom_set(bloom, master, data, length);
+
+    /// <summary>The state nodes libairbender hashed while it read the trusted input and keeps the tries of: the data
+    /// of the first and of the last, and their count. <see langword="false"/> when it read none.</summary>
+    public static unsafe bool AirbenderMptNodes(byte** first, byte** last, uint* count) => airbender_mpt_nodes(first, last, count) != 0;
+
+    /// <summary>Reads a storage slot, index and value as eight little-endian words; zero when absent.</summary>
+    public static unsafe int AirbenderMptGetSlot(void* trie, uint* index, uint* value) => airbender_mpt_get_slot(trie, index, value);
+
+    /// <summary>Writes a storage slot, index and value as eight little-endian words; zero removes it.</summary>
+    public static unsafe int AirbenderMptSetSlot(void* trie, uint* index, uint* value) => airbender_mpt_set_slot(trie, index, value);
+
+    /// <summary>Writes the digest of the code at <paramref name="data"/> into <paramref name="output"/> if it is the
+    /// <paramref name="index"/>-th code libairbender hashed while it read the trusted input.</summary>
+    public static unsafe bool AirbenderPrehashedCode(byte* data, uint index, byte* output) =>
+        airbender_prehashed_code(data, index, output) != 0;
+
     /// <summary>Recovers a batch of secp256k1 public keys and reports each recovery's success.</summary>
     /// <param name="messages">The 32-byte message hashes.</param>
     /// <param name="signatures">The 64-byte r || s signatures, big-endian.</param>

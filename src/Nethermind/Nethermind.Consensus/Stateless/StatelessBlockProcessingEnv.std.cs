@@ -14,4 +14,9 @@ public partial class StatelessBlockProcessingEnv
         new StatelessExecutingWorldState(new WorldState(scopeProvider, logManager));
 
     private static partial ICodeCache CreateCodeCache() => new StaticCodeCache(CodeCacheCapacity);
+
+    private static partial IWorldStateScopeProvider CreateScopeProvider(Witness witness, ILogManager logManager) =>
+        new TrieStoreScopeProvider(
+            // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
+            WitnessNodeStorage.CreateTrieStore(witness.State), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager);
 }

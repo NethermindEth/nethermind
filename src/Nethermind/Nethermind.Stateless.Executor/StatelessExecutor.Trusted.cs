@@ -55,7 +55,6 @@ public static partial class StatelessExecutor
             Block block = payload.GetBlock();
             ISpecProvider specProvider = payload.SpecProvider;
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            InitializeKzg(spec);
             if (TrySetTrustedSenders(block.Transactions, payload, specProvider, spec))
             {
                 // The header's hash is the keccak of the RLP it was decoded from, so it needs no check; its body roots do.
