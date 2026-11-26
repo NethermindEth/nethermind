@@ -14,7 +14,6 @@ namespace Nethermind.State
     public partial class StorageTree
     {
         private const int LookupSize = 1024;
-        private const int Avx2HashBatchSize = 4;
         private const int MaxHashBatchSize = 8;
         private const int KeccakRate = 136;
         private const int VectorByteLength = 32;
@@ -36,19 +35,19 @@ namespace Nethermind.State
         private static ValueHash256[] CreateLookup()
         {
             ValueHash256[] lookup = new ValueHash256[LookupSize];
-            if (Avx2.IsSupported)
+            if (KeccakHash.MaxBatchWidth != 0)
             {
                 int rate = Avx512F.IsSupported ? Keccak.Size : KeccakRate;
                 LookupHashBuffer buffer = default;
                 Span<byte> blocks = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
                 Span<byte> hashes = MemoryMarshal.AsBytes(lookup.AsSpan());
-                int batchSize = Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
+                int batchSize = KeccakHash.MaxBatchWidth;
                 for (int lane = 0; !Avx512F.IsSupported && lane < batchSize; lane++)
                 {
                     blocks[lane * rate + Keccak.Size] = 1;
                     blocks[lane * rate + rate - 1] = 128;
                 }
-                // LookupSize is a multiple of both batch widths, so every output batch fits.
+                // LookupSize is a multiple of every batch width, so every output batch fits.
                 for (int i = 0; i < lookup.Length; i += batchSize)
                 {
                     for (int lane = 0; lane < batchSize; lane++)
@@ -56,7 +55,7 @@ namespace Nethermind.State
                     if (Avx512F.IsSupported)
                         KeccakHash.ComputeHash32Bytes8Avx512(ref blocks[0], ref hashes[i * Keccak.Size]);
                     else
-                        KeccakHash.ComputePaddedBlocks4Avx2(ref blocks[0], ref hashes[i * Keccak.Size]);
+                        KeccakHash.ComputePaddedBatch(ref blocks[0], KeccakRate, batchSize, ref hashes[i * Keccak.Size]);
                 }
             }
             else

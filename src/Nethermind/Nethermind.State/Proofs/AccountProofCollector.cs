@@ -142,7 +142,7 @@ namespace Nethermind.State.Proofs
             _hashedStorageKeys = new ValueHash256[storageKeys.Count];
             _storageProofItems = new List<byte[]>[storageKeys.Count];
 
-            if (Avx2.IsSupported && storageKeys.Count >= (Avx512F.IsSupported ? 2 : Avx2HashBatchSize))
+            if (KeccakHash.MaxBatchWidth != 0 && storageKeys.Count >= (Avx512F.IsSupported ? 2 : KeccakHash.MaxBatchWidth))
             {
                 InitializeBatchedStorageProofs(storageKeys);
                 return;
@@ -168,7 +168,6 @@ namespace Nethermind.State.Proofs
             };
         }
 
-        private const int Avx2HashBatchSize = 4;
         private const int MaxHashBatchSize = 8;
         private const int KeccakRate = 136;
         private const int VectorByteLength = 32;
@@ -184,7 +183,7 @@ namespace Nethermind.State.Proofs
         private void InitializeBatchedStorageProofs(IReadOnlyCollection<UInt256> storageKeys)
         {
             int rate = Avx512F.IsSupported ? Keccak.Size : KeccakRate;
-            int batchSize = Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
+            int batchSize = KeccakHash.MaxBatchWidth;
             Unsafe.SkipInit(out StorageHashBuffer buffer);
             Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
             Span<byte> blocks = storage[..(batchSize * rate)];
@@ -225,7 +224,7 @@ namespace Nethermind.State.Proofs
             if (Avx512F.IsSupported)
                 KeccakHash.ComputeHash32Bytes8Avx512(ref blocks[0], ref hashes[0]);
             else
-                KeccakHash.ComputePaddedBlocks4Avx2(ref blocks[0], ref hashes[0]);
+                KeccakHash.ComputePaddedBatch(ref blocks[0], KeccakRate, KeccakHash.MaxBatchWidth, ref hashes[0]);
             for (int i = 0; i < count; i++)
                 _hashedStorageKeys[start + i] = new ValueHash256(hashes.Slice(i * Keccak.Size, Keccak.Size));
         }

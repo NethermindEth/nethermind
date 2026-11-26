@@ -17,7 +17,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 
 using MemoryMarshal = System.Runtime.InteropServices.MemoryMarshal;
@@ -48,6 +47,8 @@ namespace Nethermind.Trie
 
         private partial class TrieNodeDecoder
         {
+            private static bool CanBatchChildPairs => Avx512F.VL.IsSupported || KeccakHash.ArmSha3BatchSupported;
+
             private const int HashPairSize = 2;
             private const int MinHashBatchSize = 3;
 
@@ -252,7 +253,7 @@ namespace Nethermind.Trie
                 using ParallelUnbalancedWork.WorkerScope? workers = useParallel
                     ? ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount)
                     : null;
-                if (useParallel || (Avx512F.VL.IsSupported && HasBatchableChildPair(item)))
+                if (useParallel || (CanBatchChildPairs && HasBatchableChildPair(item)))
                 {
                     contentLength = valueRlpLength + (useParallel
                         ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool, canBeParallel)
@@ -344,12 +345,17 @@ namespace Nethermind.Trie
 
             /// <summary>Hashes the children the walk deferred, grouping them by the kernel that fits.</summary>
             /// <remarks>
-            /// A saturated branch and a child short enough for one rate block need different kernels,
-            /// and a batch kernel takes one input length for every lane, so the two are dispatched
-            /// separately rather than mixed.
+            /// ARM SHA3 groups all candidates by padded length. On x64, saturated 532-byte branches
+            /// are dispatched separately so they can use the fixed-length kernels.
             /// </remarks>
             private static void HashPreparedBranches(TrieNode item, ushort candidateMask)
             {
+                if (KeccakHash.ArmSha3BatchSupported)
+                {
+                    HashPreparedPaddedBranches(item, candidateMask);
+                    return;
+                }
+
                 ushort fullMask = 0;
                 ushort paddedMask = 0;
                 ushort remaining = candidateMask;
@@ -382,16 +388,14 @@ namespace Nethermind.Trie
 
             /// <summary>Hashes deferred children in groups that share a padded length.</summary>
             /// <remarks>
-            /// This is the population the saturated-branch rule excluded: a branch is exactly 532 bytes
-            /// only when all sixteen children are resolved hashes, which measurement put at about one
-            /// percent of branches. A batch kernel takes one input length for every lane, so candidates
-            /// are grouped by the length they pad to and each group is dispatched on its own.
+            /// Each lane consumes the same number of rate blocks. On ARM SHA3, a saturated branch
+            /// can share a pair with any other candidate that pads to 544 bytes.
             /// </remarks>
             [SkipLocalsInit]
             [MethodImpl(MethodImplOptions.NoInlining)]
             private static void HashPreparedPaddedBranches(TrieNode item, ushort candidateMask)
             {
-                if (!Avx2.IsSupported || BitOperations.PopCount((uint)candidateMask) < MinimumBatchCount)
+                if (KeccakHash.MaxBatchWidth == 0 || BitOperations.PopCount((uint)candidateMask) < MinimumBatchCount)
                 {
                     ResolvePreparedKeys(item, candidateMask);
                     return;
@@ -399,7 +403,7 @@ namespace Nethermind.Trie
 
                 Unsafe.SkipInit(out PaddedHashBuffer buffer);
                 Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
-                int widestBatch = Avx512F.IsSupported ? HashBatchSize : Avx2HashBatchSize;
+                int widestBatch = KeccakHash.MaxBatchWidth;
                 while (BitOperations.PopCount((uint)candidateMask) >= MinimumBatchCount)
                 {
                     int paddedLength = PaddedLength(ChildRlpLength(item, BitOperations.TrailingZeroCount(candidateMask)));
@@ -424,7 +428,7 @@ namespace Nethermind.Trie
 
                     // The narrowest kernel that covers the group, so a small one does not permute
                     // eight lanes to hash two nodes.
-                    int batchSize = Avx512F.IsSupported && groupCount > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
+                    int batchSize = KeccakHash.GetBatchWidth(groupCount);
                     Span<byte> inputs = storage[..(batchSize * paddedLength)];
                     Span<byte> hashes = storage.Slice(batchSize * paddedLength, batchSize * Hash256.Size);
                     inputs.Clear();
@@ -448,7 +452,7 @@ namespace Nethermind.Trie
 
                     // The kernel always runs at its native width; lanes past groupCount stay cleared
                     // and their digests are dropped.
-                    KeccakBatch.ComputePadded(inputs, paddedLength, batchSize == HashBatchSize, ref hashes[0]);
+                    KeccakHash.ComputePaddedBatch(ref inputs[0], paddedLength, batchSize, ref hashes[0]);
 
                     ushort storeMask = groupMask;
                     for (int i = 0; i < groupCount; i++)
@@ -662,7 +666,7 @@ namespace Nethermind.Trie
                             TreePath path = state.rootPath;
                             path.AppendMut(i);
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
+                            if (CanBatchChildPairs && childNode is { Keccak: null })
                             {
                                 CappedArray<byte> rlp = childNode.PrepareRlp(state.tree, ref path, state.bufferPool, state.canBeParallel);
                                 if (IsBatchableBranchRlp(rlp.Length))
@@ -719,7 +723,7 @@ namespace Nethermind.Trie
                     {
                         path.AppendMut(i);
                         TrieNode childNode = Unsafe.As<TrieNode>(data);
-                        if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
+                        if (CanBatchChildPairs && childNode is { Keccak: null })
                         {
                             CappedArray<byte> rlp = childNode.PrepareRlp(tree, ref path, bufferPool, canBeParallel);
                             if (IsBatchableBranchRlp(rlp.Length))
@@ -780,7 +784,7 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
+                            if (CanBatchChildPairs && childNode is { Keccak: null })
                             {
                                 CappedArray<byte> rlp = childNode.PrepareRlp(state.tree, ref path, state.bufferPool, state.canBeParallel);
                                 if (IsBatchableBranchRlp(rlp.Length))
@@ -848,7 +852,7 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
+                            if (CanBatchChildPairs && childNode is { Keccak: null })
                             {
                                 CappedArray<byte> rlp = childNode.PrepareRlp(tree, ref path, bufferPool, canBeParallel);
                                 if (IsBatchableBranchRlp(rlp.Length))

@@ -397,6 +397,11 @@ namespace Ethereum.Test.Base
                 return new BlockchainTest { Name = name, Category = category, LoadFailure = testJson.LoadFailure };
             }
 
+            if (testJson.Pre is null && testJson.PreHash is null)
+            {
+                return new BlockchainTest { Name = name, Category = category, LoadFailure = "Missing pre-state: neither pre nor preHash is set." };
+            }
+
             BlockchainTest test = new()
             {
                 Name = name,
@@ -411,7 +416,9 @@ namespace Ethereum.Test.Base
                 GenesisBlockHeader = testJson.GenesisBlockHeader,
                 Blocks = testJson.Blocks,
                 EngineNewPayloads = testJson.EngineNewPayloads,
-                Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value)
+                Pre = testJson.Pre?.ToDictionary(p => p.Key, p => p.Value),
+                PreHash = testJson.PreHash,
+                PostStateDiff = testJson.PostStateDiff
             };
 
             HalfBlockchainTestJson half = testJson as HalfBlockchainTestJson;
