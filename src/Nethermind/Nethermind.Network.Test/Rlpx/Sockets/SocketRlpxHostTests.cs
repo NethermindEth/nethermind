@@ -291,7 +291,8 @@ public class SocketRlpxHostTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(host.ConnectionCount, Is.Zero);
-            Assert.That((await disconnected.Task.WaitAsync(timeout.Token)).DisconnectType, Is.EqualTo(DisconnectType.Remote));
+            // The closed connection or the final sweep of shutdown reports it, whichever comes first, as on RlpxHost.
+            Assert.That(await disconnected.Task.WaitAsync(timeout.Token), Is.Not.Null, "the session is reported disconnected");
             Assert.That(await ReceiveAsync(client, timeout.Token), Is.Zero, "the client sees the connection close");
         }
     }
