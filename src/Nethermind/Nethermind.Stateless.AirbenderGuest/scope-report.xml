@@ -1,0 +1,9 @@
+<!-- SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+     SPDX-License-Identifier: LGPL-3.0-only -->
+<linker>
+  <assembly fullname="Nethermind.Consensus">
+    <type fullname="Nethermind.Consensus.Stateless.StatelessBlockProcessingEnv">
+      <method signature="System.Boolean get_ReportScopeProvider()" body="stub" value="true" />
+    </type>
+  </assembly>
+</linker>
