@@ -126,7 +126,10 @@ namespace Nethermind.Core.Extensions
         /// Unlike <see cref="IFileSystemInfo.ResolveLinkTarget"/>, which resolves only the last component and removes
         /// ".." from the target text, this applies ".." to the target of the link before it. The root is never inspected.
         /// </remarks>
-        /// <exception cref="IOException">More than <see cref="MaxFollowedLinks"/> links are followed.</exception>
+        /// <exception cref="IOException">
+        /// A component cannot be found, for example a listed link removed since, or more than
+        /// <see cref="MaxFollowedLinks"/> links are followed.
+        /// </exception>
         private static string FollowLinks(IFileSystem fileSystem, string path)
         {
             Stack<string> names = new();
@@ -145,9 +148,14 @@ namespace Nethermind.Core.Extensions
                 }
 
                 string next = Path.Join(resolved, name);
-                string? target = fileSystem.DirectoryInfo.New(next).LinkTarget;
+                IDirectoryInfo directory = fileSystem.DirectoryInfo.New(next);
+                string? target = directory.LinkTarget;
                 if (target is null)
                 {
+                    // LinkTarget is also null when the lookup fails, which must not pass for a directory that is not a link
+                    if (!directory.Exists)
+                        throw new DirectoryNotFoundException($"Could not find a part of the path '{next}'.");
+
                     resolved = next;
                     continue;
                 }

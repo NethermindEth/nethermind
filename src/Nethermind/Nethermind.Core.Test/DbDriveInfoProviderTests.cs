@@ -41,9 +41,10 @@ public class DbDriveInfoProviderTests
     public void Lists_each_drive_once_with_the_top_level_drive_first()
     {
         IDriveInfo main = Drive(Main), other = Drive(Other);
-        string broken = Path.Combine(Db, "broken");
-        IDirectoryInfo brokenLink = Dir(broken, broken);
+        string broken = Path.Combine(Db, "broken"), removed = Path.Combine(Db, "removed");
+        IDirectoryInfo brokenLink = Dir(broken, broken), removedLink = Dir(removed, Path.Combine(Other, "removed"));
         brokenLink.ResolveLinkTarget(true).Throws(new IOException("Too many levels of symbolic links"));
+        removedLink.ResolveLinkTarget(true).Throws(new DirectoryNotFoundException("Could not find a part of the path"));
         IDirectoryInfo[] children =
         [
             Dir(Path.Combine(Db, "plain")),
@@ -51,8 +52,12 @@ public class DbDriveInfoProviderTests
             Dir(Path.Combine(Db, "b"), Path.Combine(Other, "b"), Path.Combine(Other, "b")),
             Dir(Path.Combine(Db, "back"), Path.Combine(Main, "back"), Path.Combine(Main, "back")),
             brokenLink,
+            removedLink,
         ];
         IFileSystem fileSystem = FileSystem(Dir(Db), children, other, Drive(Root), main);
+        // Listed as a link, then removed before it is resolved
+        IDirectoryInfo removedLater = Dir(removed, exists: false);
+        fileSystem.DirectoryInfo.New(removed).Returns(removedLater);
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
         ILogManager originalLogManager = Static.LogManager;
@@ -67,6 +72,7 @@ public class DbDriveInfoProviderTests
         }
 
         logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(broken)));
+        logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(removed)));
         fileSystem.DirectoryInfo.DidNotReceive().New(Root);
     }
 
@@ -146,7 +152,6 @@ public class DbDriveInfoProviderTests
 
     private static IFileSystem FileSystem(IDirectoryInfo top, IDirectoryInfo[] children, params IDriveInfo[] drives)
     {
-        top.Exists.Returns(true);
         top.EnumerateDirectories().Returns(children);
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IDirectoryInfo notLinked = Dir(Root);
@@ -160,11 +165,12 @@ public class DbDriveInfoProviderTests
         return fileSystem;
     }
 
-    private static IDirectoryInfo Dir(string fullName, string? linkTarget = null, string? target = null)
+    private static IDirectoryInfo Dir(string fullName, string? linkTarget = null, string? target = null, bool exists = true)
     {
         IFileSystemInfo? resolved = Info(target);
         IDirectoryInfo directory = Substitute.For<IDirectoryInfo>();
         directory.FullName.Returns(fullName);
+        directory.Exists.Returns(exists);
         directory.LinkTarget.Returns(linkTarget);
         directory.ResolveLinkTarget(Arg.Any<bool>()).Returns(resolved);
         return directory;
