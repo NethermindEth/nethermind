@@ -28,13 +28,16 @@ using NUnit.Framework;
 namespace Nethermind.Synchronization.Test.SnapSync;
 
 /// <summary>
-/// Flat trie-node healing over six generated roots, with two rounds abandoned part way, compared with a clean heal of
-/// the last root. Each seed builds the same kinds of change on a different trie: a storage emptied and filled again,
-/// an account deleted and recreated, a storage leaf found saved under a changed parent and then replaced, a free account
-/// changed deep in its storage, and one of four abandoned-round shapes chosen by the seed, which the last root undoes.
+/// Flat trie-node healing in six rounds over generated roots, the rounds at roots 3 and 4 abandoned part way and the one at
+/// the last root completed, compared with a clean heal fixed at the last root in a fresh database of the same layout.
+/// Each seed builds the same kinds of change on a different trie, through accounts with fixed roles: a storage emptied
+/// and filled again, an account deleted and recreated, a storage leaf found saved under a changed parent and then
+/// replaced, a storage branch turned into an extension, the deep account changed below a storage branch, and one of four
+/// abandoned-round shapes chosen by the seed, whose subtree the last root restores. Free accounts change at random.
 /// </summary>
 /// <remarks>
-/// A case is replayed by its seed and layout. <c>NM_FLAT_HEAL_SEED</c> and <c>NM_FLAT_HEAL_COUNT</c> add consecutive seeds
+/// A case is replayed by its seed and layout. <c>NM_FLAT_HEAL_SEED</c> and <c>NM_FLAT_HEAL_COUNT</c> (1 by default) add the
+/// consecutive seeds from the first, any <see cref="int"/>, up to <see cref="int.MaxValue"/>,
 /// to the fixed list, for a longer local run.
 /// </remarks>
 public partial class SnapProviderTests
@@ -54,8 +57,12 @@ public partial class SnapProviderTests
         if (int.TryParse(Environment.GetEnvironmentVariable("NM_FLAT_HEAL_SEED"), out int first))
         {
             int count = int.TryParse(Environment.GetEnvironmentVariable("NM_FLAT_HEAL_COUNT"), out int requested) && requested > 0 ? requested : 1;
-            for (int seed = first; seed < first + count; seed++)
+            long last = (long)first + count - 1;
+            if (last > int.MaxValue)
+                throw new InvalidOperationException($"NM_FLAT_HEAL_SEED={first} with NM_FLAT_HEAL_COUNT={count} ends at seed {last}, past the largest seed {int.MaxValue}");
+            for (long i = 0; i < count; i++)
             {
+                int seed = (int)(first + i);
                 if (!seeds.Contains(seed)) seeds.Add(seed);
             }
         }
@@ -78,9 +85,10 @@ public partial class SnapProviderTests
     }
 
     /// <summary>
-    /// Healing over the generated roots through a store that deletes only the slots of an emptied storage, as before
-    /// #16408, ends with storage trie nodes and slots a clean heal does not have, so the generated roots still exercise
-    /// the shape that change fixed.
+    /// Through a store that deletes only the slots of an emptied storage, as before #16408, the storage trie nodes of the
+    /// refill owner survive the round at root 1, which empties its storage; healing at root 2 finds them saved, so the
+    /// slots under them are missing at the last root, which a clean heal has. The generated roots still exercise the
+    /// shape that change fixed.
     /// </summary>
     [Test]
     public async Task Flat_healing_over_generated_roots_tells_a_store_keeping_the_nodes_of_an_emptied_storage_from_a_clean_heal()
@@ -110,7 +118,14 @@ public partial class SnapProviderTests
 
         using SnapshotableMemColumnsDb<FlatDbColumns> cleanDb = new();
         IPersistence cleanPersistence = CreateFlatPersistence(cleanDb, layout);
-        await HealWithTrieNodes(cleanPersistence, syncConfig, new HealingPivot(headers[^1], headers[^1]), roots.Store, maxRequestsPerRound: GeneratedRequestsPerRound);
+        try
+        {
+            await HealWithTrieNodes(cleanPersistence, syncConfig, new HealingPivot(headers[^1], headers[^1]), roots.Store, maxRequestsPerRound: GeneratedRequestsPerRound);
+        }
+        catch (Exception exception)
+        {
+            Assert.Fail($"the clean heal of the last root failed: {exception.Message} (it runs before the moving heal, so there is no cut trace){Environment.NewLine}{roots.Describe()}{Environment.NewLine}{exception}");
+        }
 
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         IPersistence persistence = CreateFlatPersistence(db, layout);
@@ -131,7 +146,7 @@ public partial class SnapProviderTests
         schedule.Finish();
         if (schedule.ScheduleErrors.Count > 0) Assert.Fail($"the schedule did not run as planned: {string.Join("; ", schedule.ScheduleErrors)}{Environment.NewLine}{result.Report}");
 
-        // A clean heal that does not verify points at the generator or a documented limit, not at moving pivots.
+        // A clean heal that does not verify or read back fails at the fixed last root already, with no pivot moving.
         string? cleanVerification = Verify(cleanPersistence, roots);
         if (cleanVerification is not null) Assert.Fail($"the clean heal of the last root does not verify: {cleanVerification}{Environment.NewLine}{result.Report}");
         string? cleanReads = ReadModel(cleanPersistence, roots);
@@ -185,9 +200,9 @@ public partial class SnapProviderTests
                 state?.Slots.TryGetValue(slot, out expected);
                 if (expected is null)
                 {
-                    if (found) wrong.Add($"{account.Name} slot {Short(slot)} absent, but read as {value}");
+                    if (found) wrong.Add($"{account.Name} slot {slot} absent, but read as {value}");
                 }
-                else if (!found || value != new UInt256(expected, isBigEndian: true)) wrong.Add($"{account.Name} slot {Short(slot)} {(found ? $"read as {value}" : "not read")}");
+                else if (!found || value != new UInt256(expected, isBigEndian: true)) wrong.Add($"{account.Name} slot {slot} {(found ? $"read as {value}" : "not read")}");
             }
         }
 
@@ -243,26 +258,30 @@ public partial class SnapProviderTests
     }
 
     /// <summary>
-    /// Six roots built from a seed. Every root changes what the schedule below needs, and one to three free accounts at
-    /// random; a counter account changes at every root, so no two roots are the same.
+    /// Six roots built from a seed. Root 0 sets up the accounts; every later root changes what the schedule below needs, and
+    /// applies one to three random changes to the ten free accounts; a counter account changes at every root, so no two
+    /// roots are the same.
     /// </summary>
     /// <remarks>
     /// <list type="table">
-    /// <item><term>0</term><description>The refill owner has two slots under one storage branch and one outside it.</description></item>
+    /// <item><term>0</term><description>All accounts are set up; the refill owner has two slots under one storage branch and one
+    /// outside it.</description></item>
     /// <item><term>1</term><description>The refill storage is emptied, its account kept; another account with storage is deleted;
     /// of two slots of the cache owner, one stays and the other changes, so healing finds the leaf of the first saved under
     /// a changed parent; a storage branch becomes an extension, with slots gone on both sides of it.</description></item>
     /// <item><term>2</term><description>The refill storage is back: all of it for an even seed, the subtree under its branch for an odd
     /// one. The deleted account comes back with another balance and some other slots. The leaf found saved changes.</description></item>
-    /// <item><term>3</term><description>A slot of an account changes below a storage branch, and the round moves on after its first,
-    /// second or third request, chosen by the seed, with one of its requests answered in part and out of order.</description></item>
-    /// <item><term>4</term><description>One of four shapes, by the seed modulo four, and the round moves on once healing handled its
+    /// <item><term>3</term><description>A slot of the deep account changes below a storage branch, and the round moves on after its
+    /// first, second or third request, chosen by the seed; its first request with more than one item, if one comes before
+    /// that, is shuffled and answered in part.</description></item>
+    /// <item><term>4</term><description>One of four shapes, by the two low bits of the seed, and the round moves on once healing handled its
     /// node, with what that node depends on still to come: 0, a leaf at storage path <c>ac</c> changed with a leaf under
     /// <c>ad</c>; 1, the storage node at <c>a</c> becoming an extension to <c>ace</c>, skipping the branch at <c>ac</c>;
     /// 2, the owner's state leaf moving up as its neighbor goes, with its storage changed; 3, the same, with its storage
     /// emptied and a code healing does not have.</description></item>
-    /// <item><term>5</term><description>The owner and neighbor of root 3 are back, and the leaf found saved has its value of root 0.
-    /// Healing completes here.</description></item>
+    /// <item><term>5</term><description>The owner and neighbor of root 3 are back, with a slot outside the target subtree changed for
+    /// shapes 0 and 1, and the leaf found saved has its value of root 0 under a parent that differs from root 0. The other
+    /// changes stay. Healing completes here.</description></item>
     /// </list>
     /// The nibbles above are placeholders the seed picks.
     /// </remarks>
@@ -298,7 +317,7 @@ public partial class SnapProviderTests
         public required List<string>[] Changes { get; init; }
 
         /// <summary>The node whose handling ends the round at root 4: its owner for a storage node, its path and its hash.</summary>
-        public (Hash256? Owner, TreePath Path, Hash256 Hash) Root4Target { get; private set; }
+        public (Hash256? Owner, TreePath Path, Hash256? Hash) Root4Target { get; private set; }
 
         public string Describe()
         {
@@ -307,14 +326,16 @@ public partial class SnapProviderTests
             for (int i = 0; i < Accounts.Length; i++) text.AppendLine($"  account {Accounts[i].Name} {Accounts[i].Path}");
             for (int round = 0; round < Headers.Length; round++)
                 text.AppendLine($"root {round} {Headers[round].StateRoot}: {string.Join("; ", Changes[round])}");
-            text.AppendLine($"root 4 target: {(Root4Target.Owner is null ? "state" : $"storage of {Root4Target.Owner}")} node at '{Root4Target.Path}' {Root4Target.Hash}");
+            text.AppendLine(Root4Target.Hash is null
+                ? "root 4 target: not found"
+                : $"root 4 target: {(Root4Target.Owner is null ? "state" : $"storage of {Root4Target.Owner}")} node at '{Root4Target.Path}' {Root4Target.Hash}");
             return text.ToString();
         }
 
         public static GeneratedRoots Generate(int seed)
         {
             Random random = new(seed);
-            int shape = seed % 4;
+            int shape = seed & 3;
             int neighborDepth = random.Next(2, 4);
             int[] top = Permutation(random);
             int[] nibble = Permutation(random);
@@ -419,8 +440,8 @@ public partial class SnapProviderTests
                         break;
                     case 2:
                         state[Refill] = states[0][Refill]!.Clone();
-                        if (seed % 2 == 1) ChangeSlot(random, state[Refill]!, all[Refill].Slots[2], wide: false);
-                        log.Add(seed % 2 == 0 ? "refill storage of root 0 back" : "refill storage of root 0 back, the slot outside its branch changed");
+                        if (IsOdd(seed)) ChangeSlot(random, state[Refill]!, all[Refill].Slots[2], wide: false);
+                        log.Add(IsOdd(seed) ? "refill storage of root 0 back, the slot outside its branch changed" : "refill storage of root 0 back");
                         GeneratedState recreated = states[0][Recreated]!.Clone();
                         recreated.Balance += 7;
                         recreated.Slots.Remove(all[Recreated].Slots[0]);
@@ -471,7 +492,7 @@ public partial class SnapProviderTests
                         if (shape <= 1) ChangeSlot(random, state[Owner]!, all[Owner].Slots[3], wide: false);
                         log.Add(shape <= 1 ? "owner storage of root 3 back, slot b changed" : "owner and neighbor of root 3 back");
                         state[Cache]!.Slots[all[Cache].Slots[0]] = states[0][Cache]!.Slots[all[Cache].Slots[0]];
-                        ChangeSlot(random, state[Cache]!, all[Cache].Slots[1], wide: false);
+                        ChangeSlot(random, state[Cache]!, all[Cache].Slots[1], wide: false, avoid: states[0][Cache]!.Slots[all[Cache].Slots[1]]);
                         log.Add("cache: first slot of root 0 back, second changed");
                         break;
                 }
@@ -509,62 +530,67 @@ public partial class SnapProviderTests
             };
             Hash256 targetRoot = targetOwner is null ? headers[4].StateRoot! : storageRoots[4][Owner];
             (Hash256 Hash, NodeType Type)? target = NodeAt(store, targetOwner, targetRoot, targetPath);
-            Assert.That(target, Is.Not.Null, $"seed {seed}: no node at '{targetPath}' at root 4 to end the round on");
+            if (target is null) Assert.Fail($"seed {seed}: no node at '{targetPath}' at root 4 to end the round on{Environment.NewLine}{roots.Describe()}");
             roots.Root4Target = (targetOwner, targetPath, target!.Value.Hash);
-            roots.CheckShapes(a, c, d, e, p, top[2]);
+            List<string> missingShapes = roots.MissingShapes(a, c, d, e, p, top[2]);
+            if (missingShapes.Count > 0)
+                Assert.Fail($"seed {seed}, shape {shape}: the generated roots lack {string.Join("; ", missingShapes)} (generation failed, so there is no healing trace){Environment.NewLine}{roots.Describe()}");
             return roots;
         }
 
-        /// <summary>Checks that the roots have the shapes the schedule relies on.</summary>
-        private void CheckShapes(int a, int c, int d, int e, int p, int ownerNibble)
+        /// <summary>The shapes the schedule relies on that the roots lack, described.</summary>
+        private List<string> MissingShapes(int a, int c, int d, int e, int p, int ownerNibble)
         {
-            string context = $"seed {Seed}, shape {Shape}";
+            List<string> missing = [];
             Hash256? StorageNode(int round, int account, params int[] path) =>
                 StorageRoots[round][account] == Keccak.EmptyTreeHash ? null : NodeAt(Store, Accounts[account].Path.ToCommitment(), StorageRoots[round][account], TreePath.FromNibble([.. path.Select(static n => (byte)n)]))?.Hash;
             NodeType? StorageNodeType(int round, int account, params int[] path) =>
-                NodeAt(Store, Accounts[account].Path.ToCommitment(), StorageRoots[round][account], TreePath.FromNibble([.. path.Select(static n => (byte)n)]))?.Type;
-
-            using (Assert.EnterMultipleScope())
+                StorageRoots[round][account] == Keccak.EmptyTreeHash ? null : NodeAt(Store, Accounts[account].Path.ToCommitment(), StorageRoots[round][account], TreePath.FromNibble([.. path.Select(static n => (byte)n)]))?.Type;
+            void Expect(bool holds, string shape)
             {
-                Assert.That(Headers.Select(static header => header.StateRoot).Distinct().Count(), Is.EqualTo(GeneratedRounds), $"{context}: distinct roots");
-                Assert.That(StorageRoots[1][Refill], Is.EqualTo(Keccak.EmptyTreeHash), $"{context}: refill storage empty at root 1");
-                Assert.That(States[1][Refill], Is.Not.Null, $"{context}: refill account kept at root 1");
-                if (Seed % 2 == 0) Assert.That(StorageRoots[2][Refill], Is.EqualTo(StorageRoots[0][Refill]), $"{context}: refill storage root of root 0 back");
-                else
-                {
-                    Assert.That(StorageRoots[2][Refill], Is.Not.EqualTo(StorageRoots[0][Refill]), $"{context}: refill storage root changed");
-                    Assert.That(StorageNode(2, Refill, a), Is.EqualTo(StorageNode(0, Refill, a)).And.Not.Null, $"{context}: refill branch of root 0 back");
-                }
-
-                Assert.That(States[1][Recreated], Is.Null, $"{context}: recreated deleted at root 1");
-                Assert.That(StorageRoots[1][Cache], Is.Not.EqualTo(StorageRoots[0][Cache]), $"{context}: cache storage changed at root 1");
-                Assert.That(StorageNode(1, Cache, a), Is.EqualTo(StorageNode(0, Cache, a)).And.Not.Null, $"{context}: cache leaf kept at root 1");
-                Assert.That(StorageNode(2, Cache, a), Is.Not.EqualTo(StorageNode(1, Cache, a)), $"{context}: cache leaf changed at root 2");
-                Assert.That(StorageNode(5, Cache, a), Is.EqualTo(StorageNode(0, Cache, a)), $"{context}: cache leaf of root 0 back at root 5");
-                Assert.That(StorageRoots[5][Cache], Is.Not.EqualTo(StorageRoots[0][Cache]), $"{context}: cache storage differs from root 0 at root 5");
-                Assert.That(StorageNode(3, Deep, e), Is.Not.EqualTo(StorageNode(2, Deep, e)), $"{context}: deep storage branch changed at root 3");
-                Assert.That(StorageNodeType(0, Collapse, p), Is.EqualTo(NodeType.Branch), $"{context}: collapse branch at p at root 0");
-                Assert.That(StorageNodeType(1, Collapse, p), Is.EqualTo(NodeType.Extension), $"{context}: collapse extension at p at root 1");
-                switch (Shape)
-                {
-                    case 0:
-                        Assert.That(StorageNode(4, Owner, a, c), Is.Not.EqualTo(StorageNode(3, Owner, a, c)), $"{context}: owner leaf ac changed at root 4");
-                        Assert.That(StorageNodeType(4, Owner, a, d), Is.EqualTo(NodeType.Branch), $"{context}: owner branch at ad at root 4");
-                        Assert.That(StorageNode(5, Owner, a), Is.EqualTo(StorageNode(3, Owner, a)), $"{context}: owner node at a of root 3 back");
-                        break;
-                    case 1:
-                        Assert.That(StorageNodeType(3, Owner, a, c), Is.EqualTo(NodeType.Branch), $"{context}: owner branch at ac at root 3");
-                        Assert.That(StorageNodeType(4, Owner, a), Is.EqualTo(NodeType.Extension), $"{context}: owner extension at a at root 4");
-                        Assert.That(StorageNode(5, Owner, a, c), Is.EqualTo(StorageNode(3, Owner, a, c)), $"{context}: owner node at ac of root 3 back");
-                        break;
-                    default:
-                        TreePath oldLeafPath = TreePath.FromPath(Accounts[Owner].Path.Bytes).Truncate(NeighborDepth);
-                        Assert.That(NodeAt(Store, null, Headers[3].StateRoot!, oldLeafPath)?.Type, Is.EqualTo(NodeType.Leaf), $"{context}: owner leaf at depth {NeighborDepth} at root 3");
-                        Assert.That(NodeAt(Store, null, Headers[4].StateRoot!, TreePath.FromNibble([(byte)ownerNibble]))?.Type, Is.EqualTo(NodeType.Leaf), $"{context}: owner leaf at depth 1 at root 4");
-                        Assert.That(NodeAt(Store, null, Headers[5].StateRoot!, oldLeafPath)?.Hash, Is.EqualTo(NodeAt(Store, null, Headers[3].StateRoot!, oldLeafPath)?.Hash), $"{context}: owner leaf of root 3 back");
-                        break;
-                }
+                if (!holds) missing.Add(shape);
             }
+
+            Expect(Headers.Select(static header => header.StateRoot).Distinct().Count() == GeneratedRounds, "distinct roots");
+            Expect(StorageRoots[1][Refill] == Keccak.EmptyTreeHash, "refill storage empty at root 1");
+            Expect(States[1][Refill] is not null, "refill account kept at root 1");
+            if (!IsOdd(Seed)) Expect(StorageRoots[2][Refill] == StorageRoots[0][Refill], "refill storage root of root 0 back at root 2");
+            else
+            {
+                Expect(StorageRoots[2][Refill] != StorageRoots[0][Refill], "refill storage root changed at root 2");
+                Expect(StorageNode(2, Refill, a) is { } branch && branch == StorageNode(0, Refill, a), "refill branch of root 0 back at root 2");
+            }
+
+            Expect(States[1][Recreated] is null, "recreated deleted at root 1");
+            Expect(StorageRoots[1][Cache] != StorageRoots[0][Cache], "cache storage changed at root 1");
+            Expect(StorageNode(1, Cache, a) is { } kept && kept == StorageNode(0, Cache, a), "cache leaf kept at root 1");
+            Expect(StorageNode(2, Cache, a) != StorageNode(1, Cache, a), "cache leaf changed at root 2");
+            Expect(StorageNode(5, Cache, a) == StorageNode(0, Cache, a), "cache leaf of root 0 back at root 5");
+            Expect(StorageRoots[5][Cache] != StorageRoots[0][Cache], "cache storage differs from root 0 at root 5");
+            Expect(StorageNode(3, Deep, e) != StorageNode(2, Deep, e), "deep storage branch changed at root 3");
+            Expect(StorageNodeType(0, Collapse, p) == NodeType.Branch, "collapse branch at p at root 0");
+            Expect(StorageNodeType(1, Collapse, p) == NodeType.Extension, "collapse extension at p at root 1");
+            switch (Shape)
+            {
+                case 0:
+                    Expect(StorageNode(4, Owner, a, c) != StorageNode(3, Owner, a, c), "owner leaf ac changed at root 4");
+                    Expect(StorageNodeType(4, Owner, a, d) == NodeType.Branch, "owner branch at ad at root 4");
+                    Expect(StorageNode(5, Owner, a) == StorageNode(3, Owner, a), "owner node at a of root 3 back at root 5");
+                    break;
+                case 1:
+                    Expect(StorageNodeType(3, Owner, a, c) == NodeType.Branch, "owner branch at ac at root 3");
+                    Expect(StorageNodeType(4, Owner, a) == NodeType.Extension, "owner extension at a at root 4");
+                    Expect(StorageNode(5, Owner, a, c) == StorageNode(3, Owner, a, c), "owner node at ac of root 3 back at root 5");
+                    break;
+                default:
+                    TreePath oldLeafPath = TreePath.FromPath(Accounts[Owner].Path.Bytes).Truncate(NeighborDepth);
+                    Expect(NodeAt(Store, null, Headers[3].StateRoot!, oldLeafPath)?.Type == NodeType.Leaf, $"owner leaf at depth {NeighborDepth} at root 3");
+                    Expect(NodeAt(Store, null, Headers[4].StateRoot!, TreePath.FromNibble([(byte)ownerNibble]))?.Type == NodeType.Leaf, "owner leaf at depth 1 at root 4");
+                    Expect(NodeAt(Store, null, Headers[5].StateRoot!, oldLeafPath)?.Hash == NodeAt(Store, null, Headers[3].StateRoot!, oldLeafPath)?.Hash, "owner leaf of root 3 back at root 5");
+                    break;
+            }
+
+            return missing;
         }
 
         private static BlockHeader Commit(TestRawTrieStore store, GeneratedAccount[] accounts, GeneratedState?[] states, ulong blockNumber, out Hash256[] storageRoots)
@@ -637,13 +663,17 @@ public partial class SnapProviderTests
             throw new InvalidOperationException("no change applied to a free account");
         }
 
-        private static void ChangeSlot(Random random, GeneratedState state, in ValueHash256 slot, bool wide)
+        /// <summary>Sets the slot to a value other than its current one and <paramref name="avoid"/>.</summary>
+        private static void ChangeSlot(Random random, GeneratedState state, in ValueHash256 slot, bool wide, byte[]? avoid = null)
         {
             byte[] value;
             do value = Value(random, wide);
-            while (state.Slots.TryGetValue(slot, out byte[]? current) && current.AsSpan().SequenceEqual(value));
+            while ((state.Slots.TryGetValue(slot, out byte[]? current) && current.AsSpan().SequenceEqual(value)) || (avoid is not null && avoid.AsSpan().SequenceEqual(value)));
             state.Slots[slot] = value;
         }
+
+        /// <summary>Whether the seed is odd, negative seeds included.</summary>
+        public static bool IsOdd(int seed) => (seed & 1) != 0;
 
         /// <summary>A slot value without leading zeros; a wide one makes the leaf of a shallow slot too long to inline.</summary>
         private static byte[] Value(Random random, bool wide)
@@ -739,8 +769,8 @@ public partial class SnapProviderTests
 
     /// <summary>
     /// Drives healing over the generated roots: it moves the pivot on from root 3 after a set number of requests, and from
-    /// root 4 once the node of its shape is handled, answers one request of root 3 in part and out of order, and records
-    /// what healing was asked for.
+    /// root 4 once the node of its shape is handled, shuffles the first request of root 3 with more than one item and
+    /// answers only a part of it, and records what healing was asked for.
     /// </summary>
     private sealed class GeneratedSchedule
     {
@@ -752,6 +782,8 @@ public partial class SnapProviderTests
         private int _round = -1;
         private int _roundRequests;
         private string? _partialAnswer;
+        private (int Request, int Items)? _firstMultiItemRoot3Request;
+        private int _firstMultiItemRoot3Answered;
         private string? _root3Cut;
         private string? _root4Cut;
 
@@ -784,6 +816,10 @@ public partial class SnapProviderTests
             if (items.FirstOrDefault(static item => item.NodeDataType == NodeDataType.Code) is { } code)
                 throw new InvalidOperationException($"request {request} at root {_round} asks for code {code.Hash}, which healing should not reach");
 
+            // Recorded apart from the partial answer, which Finish checks it got.
+            bool firstMultiItemRoot3Request = _round == 3 && _firstMultiItemRoot3Request is null && items.Count >= 2;
+            if (firstMultiItemRoot3Request) _firstMultiItemRoot3Request = (request, items.Count);
+
             int answered = items.Count;
             if (_round == 3 && _partialAnswer is null && items.Count >= 2)
             {
@@ -795,8 +831,10 @@ public partial class SnapProviderTests
 
                 int half = (items.Count + 1) / 2;
                 answered = half + _random.Next(items.Count - half);
-                _partialAnswer = $"request {request} answered {answered} of {items.Count}, reordered";
+                _partialAnswer = $"request {request} answered {answered} of {items.Count}, shuffled";
             }
+
+            if (firstMultiItemRoot3Request) _firstMultiItemRoot3Answered = answered;
 
             _recentRequests.Enqueue($"  request {request} at root {_round}, answered {answered} of {items.Count}: {string.Join(", ", items.Take(8).Select(Describe))}{(items.Count > 8 ? ", ..." : "")}");
             if (_recentRequests.Count > GeneratedRecentRequests) _recentRequests.Dequeue();
@@ -834,6 +872,8 @@ public partial class SnapProviderTests
             else _roundCompleted[_round] = HoldsRoot(_persistence, _roots.Headers[_round]);
             if (_root3Cut is null) ScheduleErrors.Add("round 3 never moved on");
             if (_root4Cut is null) ScheduleErrors.Add("round 4 never reached its target");
+            if (_firstMultiItemRoot3Request is { } partial && (_firstMultiItemRoot3Answered >= partial.Items || _firstMultiItemRoot3Answered < (partial.Items + 1) / 2))
+                ScheduleErrors.Add($"request {partial.Request}, the first of root 3 with more than one item, was answered {_firstMultiItemRoot3Answered} of {partial.Items}, not in part");
             for (int round = 0; round < GeneratedRounds; round++)
             {
                 bool expected = round is not (3 or 4);
@@ -847,7 +887,7 @@ public partial class SnapProviderTests
             text.AppendLine($"rounds completed: {string.Join(", ", _roundCompleted.Select((completed, round) => $"{round} {(completed ? "yes" : "no")}"))}");
             text.AppendLine($"round 3 planned to move on after request {Root3RequestsBeforeMovingOn} at that root: {_root3Cut ?? "did not"}");
             text.AppendLine($"round 4: {_root4Cut ?? "did not move on"}");
-            text.AppendLine($"partial answer: {_partialAnswer ?? "none"}");
+            text.AppendLine($"partial answer: {_partialAnswer ?? (_firstMultiItemRoot3Request is null ? "none, root 3 moved on before a request with more than one item" : "none")}");
             text.AppendLine("last requests:");
             foreach (string request in _recentRequests) text.AppendLine(request);
             return text.ToString();
