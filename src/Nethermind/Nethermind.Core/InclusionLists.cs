@@ -49,7 +49,7 @@ public static class InclusionLists
     {
         foreach (Transaction[] inclusionList in inclusionLists)
         {
-            List<Transaction> ordered = new(inclusionList.Length);
+            List<Transaction> ordered = [];
             HashSet<Hash256AsKey> seen = [];
             foreach (Transaction transaction in inclusionList)
             {
