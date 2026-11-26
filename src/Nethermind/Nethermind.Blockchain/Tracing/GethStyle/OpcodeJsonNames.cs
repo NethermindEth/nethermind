@@ -32,4 +32,15 @@ public static class OpcodeJsonNames
         }
         return table;
     }
+
+    /// <summary>Gets the name for an opcode that the active fork does not define.</summary>
+    /// <param name="opcode">Opcode byte.</param>
+    /// <returns>The unescaped opcode name.</returns>
+    /// <remarks>
+    /// The name comes from the fork's opcode set, as ethereum/execution-apis#986 proposes, so a byte a later fork
+    /// defines, such as PUSH0 before Shanghai, reads as undefined. INVALID is the designated invalid opcode on every fork.
+    /// </remarks>
+    internal static string GetUndefinedName(Instruction opcode) => opcode == Instruction.INVALID
+        ? GetName(opcode)
+        : $"opcode 0x{(byte)opcode:x} not defined";
 }

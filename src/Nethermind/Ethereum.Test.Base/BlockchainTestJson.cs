@@ -34,6 +34,9 @@ namespace Ethereum.Test.Base
 
         public Hash256? PostStateHash { get; set; }
 
+        public string? PreHash { get; set; }
+        public Dictionary<Address, AccountState?>? PostStateDiff { get; set; }
+
         public string? SealEngine { get; set; }
         public string? LoadFailure { get; set; }
     }
