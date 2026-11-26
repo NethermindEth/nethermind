@@ -124,10 +124,10 @@ jobs:
         working-directory: src/Nethermind/Nethermind.Stateless.AirbenderGuest
         run: make test-trusted-input GUEST_INPUT=Trusted
 
-      - name: Build the Airbender guest without native tries
+      - name: Build the Airbender guests that report their trie provider
         if: matrix.vm == 'airbender' && matrix.input == 'Trusted'
         working-directory: src/Nethermind/Nethermind.Stateless.AirbenderGuest
-        run: make build-witness-fallback
+        run: make build-scope-guests
 
       - name: Upload guest binary
         uses: actions/upload-artifact@v7
@@ -258,18 +258,20 @@ jobs:
               { echo "::error::Public values mismatch"; exit 1; }
           fi
 
-      - name: Verify the block on the managed witness nodes
+      - name: Verify the block on each trie provider
         if: matrix.vm == 'airbender' && matrix.input == 'Trusted'
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
           set -euo pipefail
-          make verify GUEST_NAME=nethermind-trusted-fallback INPUT="${{ steps.expected.outputs.input }}" GUEST_INPUT=Trusted EXPECTED_DIGEST="${{ steps.expected.outputs.digest }}" 2>&1 | tee "$RUNNER_TEMP/fallback.log"
-          grep -q "${{ steps.expected.outputs.output }}" "$RUNNER_TEMP/fallback.log" || \
-            { echo "::error::Output mismatch"; exit 1; }
-          # The native tries save cycles, so an equal count would mean both guests took the same path.
-          native=$(grep -m1 -oE 'Cycles: [0-9]+' "$RUNNER_TEMP/run.log" | cut -d' ' -f2)
-          fallback=$(grep -m1 -oE 'Cycles: [0-9]+' "$RUNNER_TEMP/fallback.log" | cut -d' ' -f2)
-          (( fallback > native )) || { echo "::error::The fallback guest ran $fallback cycles, the native one $native"; exit 1; }
+          for case in scope:native fallback:managed; do
+            guest="nethermind-trusted-${case%%:*}" scope="${case#*:}"
+            make verify GUEST_NAME="$guest" INPUT="${{ steps.expected.outputs.input }}" GUEST_INPUT=Trusted EXPECTED_DIGEST="${{ steps.expected.outputs.digest }}" 2>&1 | tee "$RUNNER_TEMP/$guest.log"
+            grep -q "${{ steps.expected.outputs.output }}" "$RUNNER_TEMP/$guest.log" || \
+              { echo "::error::$guest: output mismatch"; exit 1; }
+            grep -q "SCOPE: $scope" "$RUNNER_TEMP/$guest.log" || \
+              { echo "::error::$guest did not run on the $scope trie provider"; exit 1; }
+            echo "$guest ($scope): $(grep -m1 -oE 'Cycles: [0-9]+' "$RUNNER_TEMP/$guest.log")"
+          done
 
       - name: Verify malformed hints fall back to recovery
         if: matrix.vm == 'airbender' && matrix.input == 'Trusted'

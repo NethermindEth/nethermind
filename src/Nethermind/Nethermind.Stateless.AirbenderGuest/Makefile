@@ -91,11 +91,14 @@ $(GUEST_DIR)/bin/trusted-input-test.hex: $(MAKEFILE_DIR)/../../../scripts/ci/air
 	mkdir -p "$(@D)"
 	dotnet run --file "$<" -- "$@"
 
-# The trusted-input guest with libairbender's tries refused, so that a block runs on the managed witness nodes.
-.PHONY: build-witness-fallback
-build-witness-fallback: dotnet-build
+# Trusted-input guests that print the trie provider each block runs on: nethermind-trusted-scope as production
+# chooses it, and nethermind-trusted-fallback with libairbender's tries refused, so on the managed witness nodes.
+.PHONY: build-scope-guests
+build-scope-guests: dotnet-build
+	$(MAKE) -o dotnet-build build GUEST_INPUT=Trusted GUEST_NAME=nethermind-trusted-scope \
+		GUEST_SUBSTITUTIONS='$(GUEST_SUBSTITUTIONS) --substitution $(SRC_DIR)/scope-report.xml'
 	$(MAKE) -o dotnet-build build GUEST_INPUT=Trusted GUEST_NAME=nethermind-trusted-fallback \
-		GUEST_SUBSTITUTIONS='$(GUEST_SUBSTITUTIONS) --substitution $(SRC_DIR)/witness-fallback.xml'
+		GUEST_SUBSTITUTIONS='$(GUEST_SUBSTITUTIONS) --substitution $(SRC_DIR)/scope-report.xml --substitution $(SRC_DIR)/witness-fallback.xml'
 
 # Record and replay the same arithmetic build. INPUT is an unhinted framed .nti under bin/.
 .PHONY: record-division
