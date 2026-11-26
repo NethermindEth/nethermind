@@ -124,7 +124,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     /// step could not pay.
     /// </remarks>
     [TestCaseSource(nameof(OutOfGasOperations))]
-    public void Out_of_gas_operation_reports_its_full_cost(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    public void Out_of_gas_operation_reports_zero_cost_and_file_tracer_its_full_cost(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
     {
         using GethLikeTxTrace trace = ExecuteAndTrace(GasCostOf.Transaction + gasAfterIntrinsic, code);
         (string? fileError, ulong fileGasCost) = TraceLastFileStep(Activation, GasCostOf.Transaction + gasAfterIntrinsic, code);
@@ -967,6 +967,10 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     [TestCase("a2", 50000, "LOG2", "stack underflow (0 <=> 4)")]
     [TestCase("600160005d", 50000, "TSTORE", "write protection")]
     [TestCase("600160005d", 105, "TSTORE", "out of gas")]
+    // Geth sizes and prices a LOG's memory before it executes it, so an expansion no gas pays runs out of gas first.
+    [TestCase("63800000005fa0", 50000, "LOG0", "out of gas")]
+    [TestCase("64ffffffffff5fa0", 50000, "LOG0", "out of gas: gas uint64 overflow")]
+    [TestCase("600168010000000000000000a0", 50000, "LOG0", "gas uint64 overflow")]
     public void Static_context_write_step_error(string calleeCode, long calleeGas, string expectedOpcode, string expectedError)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
@@ -1001,8 +1005,22 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     [TestCase("e89d", "EXCHANGE", "stack underflow (0 <=> 2)")]
     [TestCase("5f5fe89d", "EXCHANGE", "stack underflow (2 <=> 4)")]
     [TestCase("5fe65b", "DUPN", "invalid opcode: DUPN (operand: 0x5b)")]
+    [TestCase("5f5fe89f", "EXCHANGE", "stack underflow (2 <=> 29)")]
+    [TestCase("5f5fe88f", "EXCHANGE", "stack underflow (2 <=> 30)")]
+    [TestCase("5f5fe852", "EXCHANGE", "invalid opcode: EXCHANGE (operand: 0x52)")]
+    // A missing immediate reads as zero.
+    [TestCase("5fe6", "DUPN", "stack underflow (1 <=> 145)")]
+    [TestCase("5f5fe7", "SWAPN", "stack underflow (2 <=> 146)")]
     public void Immediate_opcode_step_error(string code, string expectedOpcode, string expectedError) =>
         AssertFailedStep(TraceStructLogs(Bytes.FromHexString(code), MainnetSpecProvider.AmsterdamActivation), expectedOpcode, expectedError);
+
+    /// <remarks>Geth checks that DUPN has room for the item it pushes before it reads the immediate.</remarks>
+    [Test]
+    public void Dupn_on_full_stack_step_error([Values("e680", "e65b")] string dupn)
+    {
+        byte[] code = [.. Enumerable.Repeat((byte)Instruction.PUSH0, EvmStack.MaxStackSize - 1), .. Bytes.FromHexString(dupn)];
+        AssertFailedStep(TraceStructLogs(code, MainnetSpecProvider.AmsterdamActivation), "DUPN", "stack limit reached 1024 (1023)");
+    }
 
     /// <summary>Traces <paramref name="code"/> with the in-memory and the streaming struct logger.</summary>
     private (string Tracer, JsonElement[] Entries)[] TraceStructLogs(byte[] code, ForkActivation activation)

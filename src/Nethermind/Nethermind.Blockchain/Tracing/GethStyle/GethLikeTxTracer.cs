@@ -65,7 +65,7 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     /// <remarks>
     /// Geth validates the stack before charging constant gas, so a stack failure outranks running out of gas, which
     /// Nethermind checks first for some opcodes. Before executing DUPN, SWAPN and EXCHANGE, Geth requires one, two and
-    /// two items whatever their immediate selects.
+    /// two items whatever their immediate selects, and room for the item DUPN pushes.
     /// </remarks>
     protected static string? GetStackFailure(Instruction opcode, int stackHead, int stackInputs, int stackGrowth)
     {
@@ -75,6 +75,9 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
             Instruction.SWAPN or Instruction.EXCHANGE => 2,
             _ => 0
         });
+        // Geth also checks that DUPN has room for the item it pushes before executing it.
+        if (opcode == Instruction.DUPN)
+            stackGrowth = Math.Max(stackGrowth, 1);
         return stackHead < stackInputs ? $"stack underflow ({stackHead} <=> {stackInputs})"
             : stackGrowth > 0 && stackHead >= EvmStack.MaxStackSize - stackGrowth ? StackOverflowError
             : null;

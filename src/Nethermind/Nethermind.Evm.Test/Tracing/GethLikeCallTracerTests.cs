@@ -443,8 +443,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         yield return new("01", 0UL, "stack underflow (0 <=> 2)", 100000UL);
         yield return new("600156", 0UL, "invalid jump destination", 100000UL);
         yield return new("6001600060003e", 0UL, "return data out of bounds", 100000UL);
-        // REVERT is not an exceptional halt, so it has no error.
-        yield return new("60006000fd", 0UL, null, 100000UL);
+        // REVERT is not an exceptional halt, so it keeps its cost and has no error.
+        yield return new("60206000fd", 3UL, null, 100000UL);
         yield return new("fe", 0UL, "invalid opcode: INVALID", 21000UL);
         yield return new("fe", 0UL, "invalid opcode: INVALID", 21009UL);
         yield return new("600101", 0UL, "stack underflow (1 <=> 2)", 100000UL);
