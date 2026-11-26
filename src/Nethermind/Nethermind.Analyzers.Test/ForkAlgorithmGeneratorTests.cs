@@ -10,6 +10,7 @@ using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.Emit;
 using NUnit.Framework;
@@ -107,7 +108,8 @@ public class ForkAlgorithmGeneratorTests
             references: [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
-            generators: [new ForkAlgorithmGenerator().AsSourceGenerator()], additionalTexts: [new Template("BlockProcessing.forks.cs", template)]);
+            generators: [new ForkAlgorithmGenerator().AsSourceGenerator()], additionalTexts: [new Template("BlockProcessing.forks.cs", template)],
+            optionsProvider: new BuildProperties(DefaultForks));
         driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation generated, out ImmutableArray<Diagnostic> diagnostics);
         Assert.That(diagnostics, Is.Empty);
         using MemoryStream image = new();
@@ -135,6 +137,49 @@ public class ForkAlgorithmGeneratorTests
     }
 
     [Test]
+    public void Fork_list_from_the_build_property_specializes_each_fork_with_the_symbols_up_to_it()
+    {
+        const string template = """
+            public static partial class BlockProcessing
+            {
+                public static ForkState Run(ForkBody body)
+                {
+                    ForkSignatureSets.Verify();
+            #if GLOAS
+                    ForkEpochProcessing.ProcessEpoch();
+            #endif
+            #if HEZE
+                    return new ForkState { Slot = 3 };
+            #elif GLOAS
+                    return new ForkState { Slot = 2 };
+            #else
+                    return new ForkState { Slot = 1 };
+            #endif
+                }
+            }
+            """;
+        GeneratorDriverRunResult result = Run(new Template("BlockProcessing.forks.cs", template), "Fulu, Gloas,Heze");
+        Assert.That(result.Diagnostics, Is.Empty);
+        string[] expected =
+        [
+            "class BlockProcessing|BeaconStateFulu Run(BeaconBlockBody body)|SignatureSets.Verify|Slot = 1",
+            "class GloasBlockProcessing|BeaconStateGloas Run(BeaconBlockBodyGloas body)|GloasSignatureSets.Verify|GloasEpochProcessing.ProcessEpoch|Slot = 2",
+            "class HezeBlockProcessing|BeaconStateHeze Run(BeaconBlockBodyHeze body)|HezeSignatureSets.Verify|HezeEpochProcessing.ProcessEpoch|Slot = 3",
+        ];
+        GeneratedSourceResult[] sources = result.Results.Single().GeneratedSources.ToArray();
+        Assert.That(sources.Select(static source => source.HintName), Is.EqualTo(new[] { "BlockProcessing.forks.g.cs", "GloasBlockProcessing.forks.g.cs", "HezeBlockProcessing.forks.g.cs" }));
+        for (int i = 0; i < sources.Length; i++)
+        {
+            string text = sources[i].SourceText.ToString();
+            using IDisposable scope = Assert.EnterMultipleScope();
+            Assert.That(sources[i].SyntaxTree.GetDiagnostics(), Is.Empty);
+            foreach (string fragment in expected[i].Split('|'))
+                Assert.That(text, Does.Contain(fragment));
+            Assert.That(text.Split("Slot = ").Length, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
     public void Unrelated_additional_files_are_ignored() =>
         Assert.That(Run(new Template("other.cs", "invalid input")).Results.Single().GeneratedSources, Is.Empty);
 
@@ -143,12 +188,49 @@ public class ForkAlgorithmGeneratorTests
         Assert.That(Run(new Template("BlockProcessing.forks.cs", "class { }")).Diagnostics,
             Has.Some.Matches<Diagnostic>(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
 
-    private static GeneratorDriverRunResult Run(AdditionalText template)
+    [TestCase(null, "is not set")]
+    [TestCase(" ", "is not set")]
+    [TestCase(",", "lists no fork")]
+    [TestCase(" , ", "lists no fork")]
+    [TestCase("Fulu,Gloas,Gloas", "lists 'Gloas' more than once")]
+    [TestCase("Fulu,Gloas,gloas", "lists 'Gloas' more than once")]
+    public void Unusable_fork_list_is_reported_and_generates_nothing(string forks, string problem)
+    {
+        GeneratorDriverRunResult result = Run(new Template("BlockProcessing.forks.cs", "public static partial class BlockProcessing { }"), forks);
+        GeneratorRunResult run = result.Results.Single();
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(run.Exception, Is.Null);
+        Assert.That(run.GeneratedSources, Is.Empty);
+        Assert.That(result.Diagnostics.Select(static diagnostic => diagnostic.Id), Is.EqualTo(new[] { "NMFORK002" }));
+        Assert.That(result.Diagnostics.Single().Severity, Is.EqualTo(DiagnosticSeverity.Error));
+        Assert.That(result.Diagnostics.Single().GetMessage(), Does.Contain(problem));
+    }
+
+    private const string DefaultForks = "Fulu,Gloas";
+
+    private static GeneratorDriverRunResult Run(AdditionalText template, string forks = DefaultForks)
     {
         CSharpCompilation compilation = CSharpCompilation.Create("ForkGeneratorTests");
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
-            generators: [new ForkAlgorithmGenerator().AsSourceGenerator()], additionalTexts: [template]);
+            generators: [new ForkAlgorithmGenerator().AsSourceGenerator()], additionalTexts: [template],
+            optionsProvider: forks is null ? null : new BuildProperties(forks));
         return driver.RunGenerators(compilation).GetRunResult();
+    }
+
+    private sealed class BuildProperties(string forks) : AnalyzerConfigOptionsProvider
+    {
+        public override AnalyzerConfigOptions GlobalOptions { get; } = new Options(forks);
+        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => new Options(null);
+        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => new Options(null);
+
+        private sealed class Options(string forks) : AnalyzerConfigOptions
+        {
+            public override bool TryGetValue(string key, out string value)
+            {
+                value = key == "build_property.BeaconForkTemplates" ? forks : null;
+                return value is not null;
+            }
+        }
     }
 
     private sealed class Template(string path, string text) : AdditionalText
