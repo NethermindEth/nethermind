@@ -7,7 +7,6 @@ using System.Net;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
-using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
 
@@ -22,9 +21,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// CGNAT), so the limiter adds no filtering state of its own: <see cref="_counts"/> is bounded by routing-table
 /// membership and <see cref="_held"/> mirrors it per identity.
 /// <para>
-/// Only active entries are counted. Nodes whose ENR advertises an incompatible fork id are never admitted and
-/// never charged — unlike geth, which has no fork notion, this table carries no foreign-chain entries at all,
-/// so one node from another chain cannot hide a subnet. Identity exemptions (self, bootnodes, static, trusted)
+/// Only active entries are counted. Identity exemptions (self, bootnodes, static, trusted)
 /// are evaluated first and keep their slots.
 /// All state is guarded by a private lock; the lock order is routing-table lock,
 /// then this lock. <see cref="TryAdmit"/> and <see cref="Release"/> run under the routing-table lock, while
@@ -47,22 +44,16 @@ internal sealed class DiscoveryNodeLimiter : IRoutingTableNodeLimiter<Node>
     private readonly PublicKey _currentNodeId;
     private readonly INetworkConfig _networkConfig;
     private readonly IDiscoveryNodeExemptions? _exemptions;
-    private readonly IForkInfo _forkInfo;
-    private readonly ILogger _logger;
 
     public DiscoveryNodeLimiter(
         Node currentNode,
         IReadOnlyList<Node> bootNodes,
         INetworkConfig networkConfig,
-        IDiscoveryNodeExemptions? exemptions,
-        IForkInfo forkInfo,
-        ILogManager logManager)
+        IDiscoveryNodeExemptions? exemptions)
     {
         _currentNodeId = currentNode.Id;
         _networkConfig = networkConfig;
         _exemptions = exemptions;
-        _forkInfo = forkInfo;
-        _logger = logManager.GetClassLogger<DiscoveryNodeLimiter>();
 
         foreach (Node bootNode in bootNodes)
         {
@@ -84,17 +75,11 @@ internal sealed class DiscoveryNodeLimiter : IRoutingTableNodeLimiter<Node>
         if (!_networkConfig.FilterDiscoveryNodesByRecentIp) return true;
 
         // Exemptions are evaluated before any count: an exempt node never consumes a subnet slot.
-        // Identity exemptions come first, so an operator-configured node is never refused on fork grounds.
         if (IsExempt(node))
         {
             ReleaseLocked(node);
             return true;
         }
-
-        // Foreign-fork nodes are never admitted and never charged: the fork check runs before any
-        // count, so one node from another chain cannot hide a subnet. Rejection mutates nothing, so a
-        // refused address change keeps the old endpoint and charge.
-        if (IsForeignFork(node)) return false;
 
         if (GetKey(node) is not { } key) return true;
 
@@ -146,8 +131,6 @@ internal sealed class DiscoveryNodeLimiter : IRoutingTableNodeLimiter<Node>
         if (IsExempt(node)) return true;
 
         // Mirrors TryAdmitLocked: a candidate the table would reject must not reach the candidate stream.
-        if (IsForeignFork(node)) return false;
-
         if (GetKey(node) is not { } key) return true;
 
         if (_held.TryGetValue(node.Id, out NodeFilter.IpSubnetKey existingKey) && existingKey.Equals(key)) return true;
@@ -160,7 +143,7 @@ internal sealed class DiscoveryNodeLimiter : IRoutingTableNodeLimiter<Node>
         int count = 0;
         foreach (Node bucketNode in bucketNodes)
         {
-            // Identity first (cheapest), then the key, and the fork probe in IsExempt only on a key match.
+            // Identity first (cheapest), then the key, and the exemption check only on a key match.
             if (bucketNode.Id.Equals(identity)) continue;
             if (GetKey(bucketNode) is not { } bucketKey || !bucketKey.Equals(key)) continue;
             if (IsExempt(bucketNode)) continue;
@@ -202,7 +185,7 @@ internal sealed class DiscoveryNodeLimiter : IRoutingTableNodeLimiter<Node>
 
     /// <summary>
     /// Identity exemptions: self, bootnodes, and static/trusted nodes by flag or manager. Never consumes a
-    /// subnet slot. Evaluated before <see cref="IsForeignFork"/>, so operator configuration wins over fork data.
+    /// subnet slot.
     /// </summary>
     private bool IsExempt(Node node)
     {
@@ -211,19 +194,5 @@ internal sealed class DiscoveryNodeLimiter : IRoutingTableNodeLimiter<Node>
         if (node.IsStatic || node.IsTrusted) return true;
 
         return _exemptions?.IsExempt(id) is true;
-    }
-
-    private bool IsForeignFork(Node node)
-    {
-        try
-        {
-            return !_forkInfo.IsNodeRecordForkCompatible(node.Enr);
-        }
-        catch (Exception e)
-        {
-            // Mirror NodeSource: an unvalidatable record counts, and the table lock must never see a throw.
-            if (_logger.IsTrace) _logger.Trace($"Unable to validate fork id of discv4 node {node.ToString("s"):hide}: {e:hide}");
-            return false;
-        }
     }
 }

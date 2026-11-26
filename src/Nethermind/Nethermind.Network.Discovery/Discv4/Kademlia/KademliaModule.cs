@@ -5,7 +5,6 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
@@ -43,9 +42,7 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
                     config.NodeLimiter = networkConfig.FilterDiscoveryNodesByRecentIp
                         ? CreateNodeLimiter(
                             networkConfig,
-                            ctx.ResolveOptional<IDiscoveryNodeExemptions>(),
-                            ctx.Resolve<IForkInfo>(),
-                            ctx.Resolve<ILogManager>())
+                            ctx.ResolveOptional<IDiscoveryNodeExemptions>())
                         : null;
                     return config;
                 })

@@ -1,20 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
@@ -23,12 +18,8 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 
 public class DiscoveryNodeLimiterTests
 {
-    private const uint CompatibleForkHash = 0x11111111;
-    private const uint IncompatibleForkHash = 0x22222222;
-
     private NetworkConfig _networkConfig = null!;
     private IDiscoveryNodeExemptions _exemptions = null!;
-    private IForkInfo _forkInfo = null!;
     private Node _currentNode = null!;
     private Node _bootNode = null!;
 
@@ -38,9 +29,6 @@ public class DiscoveryNodeLimiterTests
         _networkConfig = new NetworkConfig();
         _exemptions = Substitute.For<IDiscoveryNodeExemptions>();
         _exemptions.IsExempt(Arg.Any<PublicKey>()).Returns(false);
-        _forkInfo = Substitute.For<IForkInfo>();
-        _forkInfo.IsForkIdCompatible(Arg.Any<ForkId>())
-            .Returns(static call => call.Arg<ForkId>().ForkHash == CompatibleForkHash);
 
         _currentNode = CreateNode(TestItem.PublicKeyA, "192.0.2.1");
         _bootNode = CreateNode(TestItem.PublicKeyB, "198.51.100.1");
@@ -266,40 +254,6 @@ public class DiscoveryNodeLimiterTests
     }
 
     [Test]
-    public void Missing_or_unverifiable_enr_counts_instead_of_throwing()
-    {
-        _forkInfo.IsForkIdCompatible(Arg.Any<ForkId>()).Throws(new InvalidOperationException("Fork info unavailable"));
-        DiscoveryNodeLimiter limiter = CreateLimiter();
-        AdmitNodes(limiter);
-
-        // No ENR short-circuits before the throwing probe; a record with an ENR hits it and still counts.
-        Node noEnr = CreateNode(TestItem.PrivateKeys[30].PublicKey, "192.0.2.200");
-        Assert.That(noEnr.Enr, Is.Null);
-        Assert.That(limiter.TryAdmit(noEnr, []), Is.False);
-
-        Node nodeWithEnr = CreateNodeWithForkId(TestItem.PrivateKeys[40], "192.0.2.150", CompatibleForkHash);
-        Assert.That(limiter.TryAdmit(nodeWithEnr, []), Is.False);
-    }
-
-    [Test]
-    public void Fork_incompatible_nodes_are_rejected_and_do_not_hide_a_subnet()
-    {
-        DiscoveryNodeLimiter limiter = CreateLimiter();
-        Node[] bucket = [];
-
-        Node foreign = CreateNodeWithForkId(TestItem.PrivateKeys[40], "192.0.2.150", IncompatibleForkHash);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(limiter.TryAdmit(foreign, bucket), Is.False);
-            Assert.That(limiter.WouldAdmit(foreign), Is.False);
-        }
-
-        // The rejected node holds no charge and no slot: ten ordinary nodes still fit.
-        AdmitNodes(limiter);
-        Assert.That(limiter.TryAdmit(CreateNode(TestItem.PrivateKeys[20].PublicKey, "192.0.2.200"), bucket), Is.False);
-    }
-
-    [Test]
     public void Revoked_exemption_recharges_on_next_refresh_when_there_is_room()
     {
         DiscoveryNodeLimiter limiter = CreateLimiter();
@@ -336,9 +290,7 @@ public class DiscoveryNodeLimiterTests
         _currentNode,
         [_bootNode],
         _networkConfig,
-        _exemptions,
-        _forkInfo,
-        NullLogManager.Instance);
+        _exemptions);
 
     private Node CreateExemptNode(Exemption exemption)
     {
@@ -358,13 +310,4 @@ public class DiscoveryNodeLimiterTests
     }
 
     private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303);
-
-    private static Node CreateNodeWithForkId(PrivateKey privateKey, string host, uint forkHash) =>
-        new(privateKey.PublicKey, host, 30303)
-        {
-            Enr = TestEnrBuilder.BuildSigned(
-                privateKey,
-                IPAddress.Parse(host),
-                configureExtras: enr => enr.SetEntry(new EthEntry(new ForkId(forkHash, 0).HashBytes, 0)))
-        };
 }
