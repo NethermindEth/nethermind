@@ -233,6 +233,55 @@ public class SpanToArrayAtCallSiteAnalyzerTests
         await Verify(source, ReferenceAssemblies.Net.Net90, expected);
     }
 
+    [TestCase("int", true)]
+    [TestCase("string", false)] // CS8377
+    public async Task Constrained_span_overload_in_field_initializer_reports_only_when_call_compiles(string typeArgument, bool reports)
+    {
+        string Arg(int location) => reports
+            ? $"{{|#{location}:default(ReadOnlySpan<{typeArgument}>).ToArray()|}}"
+            : $"default(ReadOnlySpan<{typeArgument}>).ToArray()";
+        string source = $$"""
+            #nullable enable
+            using System;
+            class R
+            {
+                public int Count<T>(T[] values) => values.Length;
+                public int Count<T>(ReadOnlySpan<T> values) where T : unmanaged => values.Length;
+            }
+            class C
+            {
+                static readonly R? Receiver = new();
+                static readonly int Plain = new R().Count<{{typeArgument}}>({{Arg(0)}});
+                static readonly int? Conditional = Receiver?.Count<{{typeArgument}}>({{Arg(1)}});
+                int? Property { get; } = Receiver?.Count<{{typeArgument}}>({{Arg(2)}});
+            }
+            """;
+        DiagnosticResult[] expected = reports
+            ? [.. Enumerable.Range(0, 3).Select(i => Diagnostic().WithLocation(i).WithArguments("Count", "ReadOnlySpan", typeArgument))]
+            : [];
+        await Verify(source, expected);
+    }
+
+    [Test]
+    public async Task Collection_initializer_add_with_constrained_span_overload_reports()
+    {
+        string source = """
+            using System;
+            using System.Collections;
+            class Bag : IEnumerable
+            {
+                public void Add<T>(T[] values) { }
+                public void Add<T>(ReadOnlySpan<T> values) where T : unmanaged { }
+                public IEnumerator GetEnumerator() => Array.Empty<int>().GetEnumerator();
+            }
+            class C
+            {
+                static Bag Use(ReadOnlySpan<int> s) => new Bag { {|#0:s.ToArray()|} };
+            }
+            """;
+        await Verify(source, Diagnostic().WithLocation(0).WithArguments("Add", "ReadOnlySpan", "int"));
+    }
+
     [Test]
     public async Task Inaccessible_span_overload_no_diagnostic()
     {

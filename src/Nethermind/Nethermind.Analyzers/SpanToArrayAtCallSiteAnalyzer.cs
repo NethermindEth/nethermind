@@ -224,6 +224,7 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         ISymbol withinAccessibility = containingSymbol?.ContainingType ?? containingSymbol ?? currentMethod.ContainingType;
         string? bestMatch = null;
         bool rebound = false;
+        bool bindable = false;
         IMethodSymbol? reboundMethod = null;
 
         foreach (IMethodSymbol candidate in overloads)
@@ -274,12 +275,13 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
                 // A matching signature is not enough: the compiler must accept the type arguments at this call.
                 if (!rebound)
                 {
-                    reboundMethod = BindSpanCall(context.Operation, toArrayCall);
+                    bindable = TryBindSpanCall(context.Operation, toArrayCall, out reboundMethod);
                     rebound = true;
                 }
 
-                if (reboundMethod is null
-                    || !SymbolEqualityComparer.Default.Equals((reboundMethod.ReducedFrom ?? reboundMethod).OriginalDefinition, candidate.OriginalDefinition))
+                // A call shape that cannot be bound speculatively keeps the structural match.
+                if (bindable && (reboundMethod is null
+                    || !SymbolEqualityComparer.Default.Equals((reboundMethod.ReducedFrom ?? reboundMethod).OriginalDefinition, candidate.OriginalDefinition)))
                     continue;
             }
 
@@ -310,12 +312,21 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         return false;
     }
 
-    private static IMethodSymbol? BindSpanCall(IOperation call, IInvocationOperation toArrayCall)
+    /// <summary>
+    /// Binds <paramref name="call"/> with <paramref name="toArrayCall"/> replaced by its span receiver.
+    /// </summary>
+    /// <returns>
+    /// <see langword="false"/> when the call shape cannot be bound speculatively, such as an implicit collection initializer
+    /// <c>Add</c>; otherwise <see langword="true"/>, with <paramref name="method"/> set to the method the compiler selects, if any.
+    /// </returns>
+    private static bool TryBindSpanCall(IOperation call, IInvocationOperation toArrayCall, out IMethodSymbol? method)
     {
-        if (call.SemanticModel is not { } model
+        method = null;
+        if (call.IsImplicit
+            || call.SemanticModel is not { } model
             || call.Syntax is not InvocationExpressionSyntax invocation
             || toArrayCall.Instance?.Syntax is not ExpressionSyntax span)
-            return null;
+            return false;
 
         InvocationExpressionSyntax rewritten = invocation.ReplaceNode(toArrayCall.Syntax, span);
         ConditionalAccessExpressionSyntax? conditional = null;
@@ -326,20 +337,30 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         }
 
         if (conditional is null)
-            return model.GetSpeculativeSymbolInfo(invocation.SpanStart, rewritten, SpeculativeBindingOption.BindAsExpression)
+        {
+            method = model.GetSpeculativeSymbolInfo(invocation.SpanStart, rewritten, SpeculativeBindingOption.BindAsExpression)
                 .Symbol as IMethodSymbol;
+            return true;
+        }
 
-        // A call after `?.` only binds inside its conditional access, so speculate on the whole access.
+        // A call after `?.` only binds inside its conditional access, so speculate on the whole access,
+        // as a statement in a body or as a field or property initializer.
         SyntaxAnnotation marker = new();
-        ExpressionStatementSyntax statement = SyntaxFactory.ExpressionStatement(
-            conditional.ReplaceNode(invocation, rewritten.WithAdditionalAnnotations(marker)));
-        if (!model.TryGetSpeculativeSemanticModel(conditional.SpanStart, statement, out SemanticModel? speculative))
-            return null;
+        ExpressionSyntax rewrittenAccess = conditional.ReplaceNode(invocation, rewritten.WithAdditionalAnnotations(marker));
+        ExpressionStatementSyntax statement = SyntaxFactory.ExpressionStatement(rewrittenAccess);
+        EqualsValueClauseSyntax initializer = SyntaxFactory.EqualsValueClause(rewrittenAccess);
+        SyntaxNode container;
+        if (model.TryGetSpeculativeSemanticModel(conditional.SpanStart, statement, out SemanticModel? speculative))
+            container = statement;
+        else if (model.TryGetSpeculativeSemanticModel(conditional.SpanStart, initializer, out speculative))
+            container = initializer;
+        else
+            return false;
 
-        foreach (SyntaxNode node in statement.GetAnnotatedNodes(marker))
-            return speculative.GetSymbolInfo(node).Symbol as IMethodSymbol;
+        foreach (SyntaxNode node in container.GetAnnotatedNodes(marker))
+            method = speculative.GetSymbolInfo(node).Symbol as IMethodSymbol;
 
-        return null;
+        return true;
     }
 
     private static string? MatchingSpanParamKind(
