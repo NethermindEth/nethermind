@@ -345,9 +345,8 @@ namespace Nethermind.Trie
 
             /// <summary>Hashes the children the walk deferred, grouping them by the kernel that fits.</summary>
             /// <remarks>
-            /// A saturated branch and a child short enough for one rate block need different kernels,
-            /// and a batch kernel takes one input length for every lane, so the two are dispatched
-            /// separately rather than mixed.
+            /// ARM SHA3 groups all candidates by padded length. On x64, saturated 532-byte branches
+            /// are dispatched separately so they can use the fixed-length kernels.
             /// </remarks>
             private static void HashPreparedBranches(TrieNode item, ushort candidateMask)
             {
@@ -389,10 +388,8 @@ namespace Nethermind.Trie
 
             /// <summary>Hashes deferred children in groups that share a padded length.</summary>
             /// <remarks>
-            /// This is the population the saturated-branch rule excluded: a branch is exactly 532 bytes
-            /// only when all sixteen children are resolved hashes, which measurement put at about one
-            /// percent of branches. A batch kernel takes one input length for every lane, so candidates
-            /// are grouped by the length they pad to and each group is dispatched on its own.
+            /// Each lane consumes the same number of rate blocks. On ARM SHA3, a saturated branch
+            /// can share a pair with any other candidate that pads to 544 bytes.
             /// </remarks>
             [SkipLocalsInit]
             [MethodImpl(MethodImplOptions.NoInlining)]

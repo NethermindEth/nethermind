@@ -291,6 +291,8 @@ namespace Nethermind.Core.Test
             const int hashLength = 32;
             byte[] input = new byte[inputLength * batchSize];
             byte[] output = new byte[hashLength * batchSize];
+            byte[] expected = new byte[hashLength];
+            Org.BouncyCastle.Crypto.Digests.KeccakDigest reference = new(hashLength * 8);
 
             Random random = new(42);
             for (int iteration = 0; iteration < 136 / batchSize; iteration++)
@@ -320,8 +322,9 @@ namespace Nethermind.Core.Test
                 for (int i = 0; i < batchSize; i++)
                 {
                     int length = padded ? inputLength - 136 + iteration * batchSize + i : inputLength;
-                    ValueHash256 expected = ValueKeccak.Compute(input.AsSpan(i * inputLength, length));
-                    Assert.That(output.AsSpan(i * hashLength, hashLength).SequenceEqual(expected.Bytes), Is.True,
+                    reference.BlockUpdate(input, i * inputLength, length);
+                    reference.DoFinal(expected, 0);
+                    Assert.That(output.AsSpan(i * hashLength, hashLength).SequenceEqual(expected), Is.True,
                         $"Hash mismatch at iteration {iteration}, batch index {i}.");
                 }
             }

@@ -90,14 +90,16 @@ internal static class KeccakBatch
         int lanes = KeccakHash.GetBatchWidth(group.Length);
         int paddedLength = paddedClass * KeccakHash.RateBlockLength;
         Span<byte> inputs = staging[..(lanes * paddedLength)];
-        inputs.Clear();
+        // ARM pairs are always full. Wider kernels can have unused lanes and favor a single bulk clear.
+        if (!KeccakHash.ArmSha3BatchSupported) inputs.Clear();
         for (int lane = 0; lane < group.Length; lane++)
         {
             (int start, int length) = messages[group[lane]];
             Span<byte> input = inputs.Slice(lane * paddedLength, paddedLength);
             buffer.Slice(start, length).CopyTo(input);
+            if (KeccakHash.ArmSha3BatchSupported) input[length..].Clear();
             // Both padding bytes land on the same byte when the message fills all but one byte of its blocks, so they merge.
-            input[length] |= 0x01;
+            input[length] = 0x01;
             input[^1] |= 0x80;
         }
 
