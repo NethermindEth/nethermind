@@ -1,8 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -19,10 +23,13 @@ namespace Nethermind.JsonRpc.TraceStore.Test;
 [Parallelizable(ParallelScope.All)]
 public class TraceStorePrunerTests
 {
-    [Test]
-    public async Task prunes_old_blocks()
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+
+    [TestCase(3UL, 5)]
+    [TestCase(7UL, 1)]
+    public async Task prunes_old_blocks(ulong blocksToKeep, int removed)
     {
-        IEnumerable<Hash256> GenerateTraces(MemDb db, BlockTree tree)
+        static IEnumerable<Hash256> GenerateTraces(MemDb db, BlockTree tree)
         {
             ParityLikeBlockTracer parityTracer = new(ParityTraceTypes.Trace);
             ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
@@ -41,30 +48,167 @@ public class TraceStorePrunerTests
             }
         }
 
-        void AddNewBlocks(BlockTree tree)
-        {
-            Block headPlus1 = Build.A.Block.WithParent(tree.Head!).TestObject;
-            Block headPlus2 = Build.A.Block.WithParent(headPlus1).TestObject;
-            Block headPlus3 = Build.A.Block.WithParent(headPlus2).TestObject;
-            tree.SuggestBlock(headPlus1);
-            tree.SuggestBlock(headPlus2);
-            tree.SuggestBlock(headPlus3);
-            Block[] blocks = { headPlus1, headPlus2, headPlus3 };
-            tree.TryUpdateMainChain(blocks[^1].Header, true, preloadedBlocks: blocks);
-        }
-
-        MemDb memDb = new();
-        BlockTree blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
-        TraceStorePruner tracePruner = new(blockTree, memDb, 3, LimboLogs.Instance);
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
+        BlockTree blockTree = builder.TestObject;
+        CheckpointObservingDb memDb = new();
         List<Hash256> keys = GenerateTraces(memDb, blockTree).ToList();
         Assert.That(keys.Select(k => memDb.Get(k)), Does.Not.Contain((byte[]?)null));
-        AddNewBlocks(blockTree);
-        await Task.Delay(100);
+        using TraceStorePruner tracePruner = CreatePruner(builder, memDb, blocksToKeep);
+        Block headPlus1 = Build.A.Block.WithParent(blockTree.Head!).TestObject;
+        Block headPlus2 = Build.A.Block.WithParent(headPlus1).TestObject;
+        AddToMain(blockTree, headPlus1, headPlus2, Build.A.Block.WithParent(headPlus2).TestObject);
+        bool drained = await memDb.WaitForCheckpoint(next => next >= 8 - blocksToKeep);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(keys.Skip(3).Select(k => memDb.Get(k)), Does.Not.Contain((byte[]?)null)); // too old were not removed
-            Assert.That(keys.Take(3).Select(k => memDb.Get(k)).All(b => b == null), Is.True); // those were removed
+            Assert.That(drained, Is.True, "checkpoint past the window");
+            Assert.That(keys.SkipLast(removed).Select(k => memDb.Get(k)), Does.Not.Contain((byte[]?)null), "within the window");
+            Assert.That(keys.TakeLast(removed).Select(k => memDb.Get(k)), Is.All.Null, "at or below head minus the window, including genesis");
+        }
+    }
+
+    [Test]
+    public async Task Lowered_window_removes_preexisting_traces_outside_it([Values] bool advanceHead)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(11);
+        BlockTree tree = builder.TestObject;
+        Block fork = Build.A.Block.WithParent(tree.FindBlock(6UL, BlockTreeLookupOptions.RequireCanonical)!).WithExtraData([1]).TestObject;
+        tree.SuggestBlock(fork);
+        List<Block> recorded = [.. Enumerable.Range(6, 5).Select(number => tree.FindBlock((ulong)number, BlockTreeLookupOptions.RequireCanonical)!), fork];
+        CheckpointObservingDb db = new();
+        foreach (Block block in recorded)
+            db[block.Hash!.Bytes] = [1];
+
+        using TraceStorePruner pruner = CreatePruner(builder, db, 3);
+        if (advanceHead)
+        {
+            Block next = Build.A.Block.WithParent(tree.Head!).TestObject;
+            db[next.Hash!.Bytes] = [1];
+            recorded.Add(next);
+            AddToMain(tree, next);
         }
 
+        ulong cutoff = advanceHead ? 8UL : 7UL;
+        bool drained = await db.WaitForCheckpoint(next => next > cutoff);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(drained, Is.True, "checkpoint past the window");
+            Assert.That(recorded.Where(block => block.Number <= cutoff && db.Get(block.Hash!) is not null).Select(block => block.Number), Is.Empty,
+                "levels outside the new retention window, fork included");
+            Assert.That(recorded.Where(block => block.Number > cutoff).Select(block => db.Get(block.Hash!)), Is.All.Not.Null);
+        }
+    }
+
+    [Test]
+    public async Task Reorganization_deeper_than_window_removes_replaced_levels()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(11);
+        BlockTree tree = builder.TestObject;
+        CheckpointObservingDb db = new();
+        using TraceStorePruner pruner = CreatePruner(builder, db, 3);
+
+        Block[] fork = new Block[7];
+        Block parent = tree.FindBlock(5UL, BlockTreeLookupOptions.RequireCanonical)!;
+        for (int i = 0; i < fork.Length; i++)
+        {
+            parent = fork[i] = Build.A.Block.WithParent(parent).WithExtraData([1]).TestObject;
+            db[parent.Hash!.Bytes] = [1];
+        }
+
+        AddToMain(tree, fork);
+        bool drained = await db.WaitForCheckpoint(next => next == 6) && await db.WaitForCheckpoint(next => next >= 10);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(drained, Is.True, "checkpoint moved back to the fork, then past the window");
+            Assert.That(fork.Where(block => block.Number <= 9 && db.Get(block.Hash!) is not null).Select(block => block.Number), Is.Empty);
+            Assert.That(fork.Where(block => block.Number > 9).Select(block => db.Get(block.Hash!)), Is.All.Not.Null);
+        }
+    }
+
+    [Test]
+    public async Task Stopping_keeps_progress_and_restart_resumes_from_checkpoint([Values] bool keptAllInBetween)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(300);
+        Hash256[] hashes = [.. Enumerable.Range(0, 300).Select(number => builder.TestObject.FindBlock((ulong)number, BlockTreeLookupOptions.RequireCanonical)!.Hash!)];
+        CheckpointObservingDb db = new(holdAt: 256);
+        foreach (Hash256 hash in hashes)
+            db[hash.Bytes] = [1];
+
+        using (TraceStorePruner interrupted = CreatePruner(builder, db, 1))
+        {
+            await db.Held.Task.WaitAsync(Timeout);
+            Task stopping = interrupted.StopAsync();
+            Assert.That(stopping.IsCompleted, Is.False, "stopping waits for the batch in progress");
+            db.Release();
+            await stopping.WaitAsync(Timeout);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Checkpoint, Is.EqualTo(256UL));
+            Assert.That(hashes.Take(256).Where(hash => db.Get(hash) is not null), Is.Empty);
+            Assert.That(hashes.Skip(256).Select(hash => db.Get(hash)), Is.All.Not.Null);
+        }
+
+        // Below the checkpoint, so only a recheck from genesis removes it.
+        db[hashes[0].Bytes] = [1];
+        if (keptAllInBetween)
+            CreatePruner(builder, db, 0).Dispose();
+
+        using TraceStorePruner resumed = CreatePruner(builder, db, 1);
+        bool drained = await db.WaitForCheckpoint(next => next >= 299);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(drained, Is.True, "checkpoint past the window");
+            Assert.That(db.Get(hashes[0]), keptAllInBetween ? Is.Null : Is.Not.Null);
+            Assert.That(hashes[1..299].Where(hash => db.Get(hash) is not null), Is.Empty);
+            Assert.That(db.Get(hashes[299]), Is.Not.Null);
+        }
+    }
+
+    private static TraceStorePruner CreatePruner(BlockTreeBuilder builder, IDb db, ulong blocksToKeep) =>
+        new(builder.TestObject, builder.ChainLevelInfoRepository, db, blocksToKeep, LimboLogs.Instance);
+
+    private static void AddToMain(BlockTree tree, params Block[] blocks)
+    {
+        foreach (Block block in blocks)
+            tree.SuggestBlock(block);
+        tree.TryUpdateMainChain(blocks[^1].Header, true, true, blocks);
+    }
+
+    /// <summary>Records every checkpoint the pruner writes; can hold the writer of one checkpoint until released.</summary>
+    private sealed class CheckpointObservingDb(ulong holdAt = ulong.MaxValue) : MemDb
+    {
+        private readonly Channel<ulong> _checkpoints = Channel.CreateUnbounded<ulong>();
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Held { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ulong? Checkpoint => Get(TraceStorePruner.CheckpointKey) is { } value ? BinaryPrimitives.ReadUInt64BigEndian(value) : null;
+
+        public void Release() => _release.TrySetResult();
+
+        public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            base.Set(key, value, flags);
+            if (value is null || !key.SequenceEqual(TraceStorePruner.CheckpointKey)) return;
+            ulong next = BinaryPrimitives.ReadUInt64BigEndian(value);
+            _checkpoints.Writer.TryWrite(next);
+            if (next == holdAt && Held.TrySetResult()) _release.Task.Wait(Timeout);
+        }
+
+        /// <summary>Waits for the first checkpoint, in write order after those already consumed, that satisfies <paramref name="reached"/>.</summary>
+        public async Task<bool> WaitForCheckpoint(Func<ulong, bool> reached)
+        {
+            using CancellationTokenSource timeout = new(Timeout);
+            try
+            {
+                while (!reached(await _checkpoints.Reader.ReadAsync(timeout.Token))) { }
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+        }
     }
 }
