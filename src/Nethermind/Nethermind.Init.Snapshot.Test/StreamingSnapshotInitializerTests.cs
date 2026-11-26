@@ -84,26 +84,6 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
-    public async Task InitializeAsync_ChecksumMismatch_StopsAndKeepsWhatItExtracted()
-    {
-        byte[] archive = TestArchive.BuildTarZst(TestArchive.BuildFiles());
-        _server.Content = archive;
-        _config.Checksum = Convert.ToHexString(SHA256.HashData([9, 9, 9]));
-        SnapshotCheckpoint checkpoint = CreateCheckpoint();
-
-        IOException exception = (await Assert.ThrowsAsync<IOException>(() => CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None),
-            "the node must not start on a database extracted from an unverified snapshot"))!;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(exception.Message, Does.Contain("empty the directory by hand"), "the error must say what to do");
-            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "what the stream extracted must stay for the operator");
-            Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay, so a later start stops too");
-            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when the checksum fails");
-        }
-    }
-
-    [Test]
     public async Task InitializeAsync_CorruptArchive_StopsAndKeepsTheMarker()
     {
         byte[] garbage = new byte[50_000];
@@ -283,20 +263,22 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
-    public async Task InitializeAsync_MarkerCannotBeWritten_ThrowsWithoutDeletingAnything()
+    public async Task InitializeAsync_MarkerCannotBeCreated_ThrowsAndKeepsWhatIsThere()
     {
         _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
         _config.Checksum = Convert.ToHexString(SHA256.HashData(_server.Content));
-        string existing = Path.Combine(_dbPath, "state", "000001.sst");
-        Directory.CreateDirectory(Path.GetDirectoryName(existing)!);
-        File.WriteAllBytes(existing, [1, 2, 3]);
-        // A directory in the marker's place makes the marker write fail.
-        Directory.CreateDirectory(Path.Combine(_dbPath, ".nethermind-snapshot-extracting"));
+        // Only an entry at the marker path, which the content check skips: the claim creates its marker anew, so it fails.
+        Directory.CreateDirectory(_dbPath);
+        File.WriteAllBytes(MarkerPath, [1, 2, 3]);
 
         await Assert.ThatAsync(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
-            Throws.InstanceOf<IOException>().Or.InstanceOf<UnauthorizedAccessException>());
+            Throws.InstanceOf<IOException>());
 
-        Assert.That(File.Exists(existing), Is.True, "a marker that cannot be written must stop the start before anything is deleted");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.ReadAllBytes(MarkerPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "the entry at the marker path must stay as it was");
+            Assert.That(Directory.EnumerateFileSystemEntries(_dbPath).Count(), Is.EqualTo(1), "nothing may be extracted when the marker cannot be created");
+        }
     }
 
     [Test]

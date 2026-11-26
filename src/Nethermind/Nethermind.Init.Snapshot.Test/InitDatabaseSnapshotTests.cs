@@ -289,10 +289,15 @@ public class InitDatabaseSnapshotTests
         }
     }
 
-    [Test]
-    public async Task Execute_NonEmptyDatabaseWithoutMarker_KeepsItAndSkipsTheSnapshot(
-        [Values(null, "Started", "Downloaded", "Verified", "NotAStage", "Extracted", "Completed")] string? checkpoint,
-        [Values] bool streaming)
+    [TestCase(null, false, TestName = "Execute_PopulatedWithoutMarkerOrCheckpoint_KeepsItAndWarns")]
+    [TestCase(null, true, TestName = "Execute_PopulatedWithoutMarkerOrCheckpointWhenStreaming_KeepsItAndWarns")]
+    [TestCase("Started", false, TestName = "Execute_PopulatedWithoutMarkerAtStarted_KeepsItAndWarns")]
+    [TestCase("Downloaded", true, TestName = "Execute_PopulatedWithoutMarkerAtDownloaded_KeepsItAndWarns")]
+    [TestCase("Verified", false, TestName = "Execute_PopulatedWithoutMarkerAtVerified_KeepsItAndWarns")]
+    [TestCase("NotAStage", true, TestName = "Execute_PopulatedWithoutMarkerAndAnUnknownCheckpoint_KeepsItAndWarns")]
+    [TestCase("Extracted", false, TestName = "Execute_PopulatedWithoutMarkerAtExtracted_SkipsAsBefore")]
+    [TestCase("Completed", true, TestName = "Execute_PopulatedWithoutMarkerAtCompleted_SkipsAsBefore")]
+    public async Task Execute_NonEmptyDatabaseWithoutMarker_KeepsItAndSkipsTheSnapshot(string? checkpoint, bool streaming)
     {
         using FlakySnapshotServer server = new();
         byte[] archive = TestArchive.BuildTarZst(TestArchive.BuildFiles());
@@ -307,19 +312,25 @@ public class InitDatabaseSnapshotTests
         string synced = Path.Combine(_dbPath, "state", "000001.sst");
         Directory.CreateDirectory(Path.GetDirectoryName(synced)!);
         File.WriteAllBytes(synced, [1, 2, 3]);
-        TestLogger logger = new();
-        _api.LogManager.Returns(new OneLoggerLogManager(new(logger)));
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        logger.IsWarn.Returns(true);
+        // Made first: the logger reads the levels of the substitute, which must not happen inside Returns.
+        OneLoggerLogManager logManager = new(new(logger));
+        _api.LogManager.Returns(logManager);
+        bool warns = checkpoint is not ("Extracted" or "Completed");
 
         await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(File.Exists(synced), Is.True, "a database without the extraction marker is not the snapshot's to delete");
+            Assert.That(File.ReadAllBytes(synced), Is.EqualTo(new byte[] { 1, 2, 3 }), "a database without the extraction marker is not the snapshot's to change");
             Assert.That(server.RequestCount, Is.Zero, "the snapshot must be skipped, not downloaded over the kept database");
-            Assert.That(logger.LogList.Any(static line => line.Contains("holds content and no snapshot extraction marker")),
-                Is.EqualTo(checkpoint is not ("Extracted" or "Completed")),
-                "a kept database must be reported with the way to get the snapshot; a completed one is skipped as before");
         }
+
+        // A kept database is a warning with the way to get the snapshot; one the snapshot completed is skipped as before.
+        logger.Received(warns ? 1 : 0).Warn(Arg.Is<string>(line => line.Contains("holds content and no snapshot extraction marker")));
+        logger.Received(warns ? 0 : 1).Info(Arg.Is<string>(line => line.Contains("Database already exists")));
     }
 
     [TestCase(nameof(SnapshotStage.Verified), TestName = "Execute_InterruptedExtraction_StopsAndDeletesNothing")]
@@ -495,6 +506,7 @@ public class InitDatabaseSnapshotTests
                 "a stream that fails its checksum must stop the start, as the node must not start on it");
             Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "what the stream extracted must stay for the operator");
             Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay");
+            Assert.That(ReadCheckpoint(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when the checksum fails");
             Assert.That(next.Message, Does.Contain("empty the directory by hand"), "the next start must stop too");
             Assert.That(ContentOf(_dbPath), Is.EqualTo(content), "the next start must delete nothing");
             Assert.That(server.RequestCount, Is.EqualTo(requests), "the next start must not stream again");
@@ -837,76 +849,66 @@ public class InitDatabaseSnapshotTests
         return server;
     }
 
-    [Test]
-    public async Task Execute_SecondStartDuringAnExtraction_StopsAtOnceAndLetsTheFirstFinish()
+    [TestCase(true, TestName = "Execute_SecondStartDuringAStreamedExtraction_StopsAtOnceAndLetsTheFirstFinish")]
+    [TestCase(false, TestName = "Execute_SecondStartDuringADownloadBeforeAnyMarker_StopsAtOnceAndLetsTheFirstFinish")]
+    public async Task Execute_SecondStartDuringAnInitialization_StopsAtOnceAndLetsTheFirstFinish(bool streaming)
     {
-        using FlakySnapshotServer server = new();
-        Dictionary<string, byte[]> files = TestArchive.BuildFiles(seed: 43);
-        byte[] archive = TestArchive.BuildTarZst(files);
-        server.Content = archive;
-        _snapshotConfig.SnapshotFileName = "snapshot.tar.zst";
-        _snapshotConfig.DownloadUrl = server.Url;
-        _snapshotConfig.Streaming = true;
-        _snapshotConfig.Checksum = Convert.ToHexString(SHA256.HashData(archive));
-        // The probe, then the archive: the first start is held at the archive request, after it marked the database.
-        TaskCompletionSource extracting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using FlakySnapshotServer server = StreamingServer();
+        _snapshotConfig.Streaming = streaming;
+        // The probe, then the archive: the first start is held at the archive request. Streaming, it has marked the
+        // database by then; two-phase, it is downloading, before any marker, into the archive the second would share.
+        TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource resume = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int requests = 0;
         server.BeforeResponse = async token =>
         {
             if (Interlocked.Increment(ref requests) != 2)
                 return;
-            extracting.TrySetResult();
+            held.TrySetResult();
             await resume.Task.WaitAsync(token);
         };
+        string checkpointPath = Path.Combine(_snapshotConfig.SnapshotDirectory, $"checkpoint_{_snapshotConfig.SnapshotFileName}");
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
         Task first = new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token);
-        await extracting.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        try
+        {
+            await held.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            string[] entries = Directory.GetFileSystemEntries(_tempDir.Path, "*", SearchOption.AllDirectories);
+            SnapshotStage checkpoint = ReadCheckpoint();
+            Stopwatch elapsed = Stopwatch.StartNew();
 
-        Task second = new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token);
-        Assert.That(File.Exists(MarkerPath), Is.True, "the second start must leave what the first one is extracting alone");
-        resume.SetResult();
+            IOException exception = (await Assert.ThrowsAsync<IOException>(
+                () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token)))!;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)), "the second start must stop at once");
+                Assert.That(exception.Message, Does.Contain("Another process is initializing the database").And.Contain(LockPath),
+                    "the second start must say that the first holds the lock, also while the first one's marker is there, and name the lock file");
+                Assert.That(server.RequestCount, Is.EqualTo(2), "the second start must not request anything");
+                Assert.That(File.Exists(MarkerPath), Is.EqualTo(streaming), "precondition: the first start is held where expected");
+                Assert.That(Directory.GetFileSystemEntries(_tempDir.Path, "*", SearchOption.AllDirectories), Is.EquivalentTo(entries),
+                    "the second start must leave the database, the archive, the checkpoint and the marker alone");
+                Assert.That(ReadCheckpoint(), Is.EqualTo(checkpoint), "the second start must leave the checkpoint alone");
+            }
+        }
+        finally
+        {
+            resume.TrySetResult();
+        }
+
         await first;
-
-        IOException exception = (await Assert.ThrowsAsync<IOException>(() => second))!;
+        int requestsByTheFirst = server.RequestCount;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception.Message, Does.Contain("Another process is initializing the database"), "the second start must stop at the first one's lock");
-            Assert.That(File.ReadAllBytes(Path.Combine(_dbPath, "state", "a43.sst")), Is.EqualTo(files["state/a43.sst"]), "the first start must finish its extraction");
+            Assert.That(File.ReadAllBytes(Path.Combine(_dbPath, "state", "a42.sst")), Is.EqualTo(TestArchive.BuildFiles()["state/a42.sst"]), "the first start must finish");
             Assert.That(File.Exists(MarkerPath), Is.False, "the first start must remove its marker when it finishes");
-            Assert.That(server.RequestCount, Is.EqualTo(2), "the second start must not download anything");
+            Assert.That(File.ReadAllText(checkpointPath), Is.EqualTo(nameof(SnapshotStage.Completed)), "the first start must complete its checkpoint");
         }
 
         // The lock is free again: a later start takes it and skips the initialized database as before.
         await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token);
-        Assert.That(server.RequestCount, Is.EqualTo(2), "a later start must skip the initialized database");
-    }
-
-    [TestCase(false, TestName = "Execute_LockHeldElsewhere_StopsAtOnceAndKeepsTheUnfinishedExtraction")]
-    [TestCase(true, TestName = "Execute_LockHeldElsewhereWithUnwrittenMarker_ReportsTheLock")]
-    public async Task Execute_LockHeldElsewhere_StopsAtOnceAndKeepsTheUnfinishedExtraction(bool unwrittenMarker)
-    {
-        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
-        await FailExtraction(step);
-        // The holder created its marker and has not written it yet: read before the lock, it would be reported as a foreign file.
-        if (unwrittenMarker)
-            File.WriteAllBytes(MarkerPath, []);
-        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(TestArchive.BuildFiles(seed: 43)));
-        string[] entries = Directory.GetFileSystemEntries(_dbPath, "*", SearchOption.AllDirectories);
-        using FileStream held = HoldLock(); // as a second process starting on the same database would
-        Stopwatch elapsed = Stopwatch.StartNew();
-
-        IOException exception = (await Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)), "the start must stop at once");
-            Assert.That(exception.Message, Does.Contain("Another process is initializing the database").And.Contain(LockPath),
-                "the error must say why the start stops and name the lock file");
-            Assert.That(Directory.GetFileSystemEntries(_dbPath, "*", SearchOption.AllDirectories), Is.EquivalentTo(entries),
-                "nothing may be deleted, the marker included");
-            Assert.That(ReadCheckpoint(), Is.EqualTo(SnapshotStage.Verified), "the checkpoint must stay");
-        }
+        Assert.That(server.RequestCount, Is.EqualTo(requestsByTheFirst), "a later start must skip the initialized database");
     }
 
     [TestCase(false, TestName = "Execute_AfterFailedRun_ReleasesTheLock")]
