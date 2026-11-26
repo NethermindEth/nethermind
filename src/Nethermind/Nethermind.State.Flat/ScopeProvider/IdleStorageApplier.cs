@@ -39,7 +39,8 @@ internal sealed partial class IdleStorageApplier
     private int _parked;
     private long _lastBlockCommit;
     private readonly BlockingCollection<IThreadPoolWorkItem> _helperWork = [];
-    private readonly int _helperCount = Math.Min(Environment.ProcessorCount - 1, MaxHelpers);
+    // About one per physical core: SCHED_IDLE does not keep a helper off the SMT sibling of a busy block thread.
+    private readonly int _helperCount = Math.Min(Environment.ProcessorCount / 2, MaxHelpers);
 
     private IdleStorageApplier(ILogManager logManager)
     {

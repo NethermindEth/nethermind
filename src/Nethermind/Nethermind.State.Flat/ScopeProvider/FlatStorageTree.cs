@@ -52,10 +52,11 @@ public sealed class FlatStorageTree(
     private ConcurrentQueue<(UInt256 Slot, UInt256 Value)>? _earlyWrites;
     // Owned by whoever holds _earlyState.
     private SnapshotBundle.BackgroundTrieSource? _earlySource;
+    // Owned by the pass in progress.
     private (ValueHash256 Hash, ulong Pointer) _earlyRoot;
-    // Guards _earlyRoot and _earlyApplied between a pass and the block end that claims them.
-    private readonly Lock _earlyLock = new();
     private Dictionary<UInt256, UInt256>? _earlyApplied;
+    // The last finished pass. A block end reads it without a lock, so it never waits for the idle-priority thread.
+    private EarlyPass? _earlyPass;
     private int _earlyState;
     private int _earlyQueued;
     private readonly int _earlyGeneration = scope.EarlyApplyGeneration;
@@ -175,16 +176,12 @@ public sealed class FlatStorageTree(
         {
             Dictionary<UInt256, UInt256> latest = [with(writes.Count)];
             while (writes.TryDequeue(out (UInt256 Slot, UInt256 Value) write)) latest[write.Slot] = write.Value;
+            if (Volatile.Read(ref _earlyState) != EarlyApplying) return;
             using ArrayPoolListRef<(UInt256 Slot, UInt256 Value)> changed = new(latest.Count);
-            lock (_earlyLock)
+            Dictionary<UInt256, UInt256>? applied = _earlyApplied;
+            foreach ((UInt256 slot, UInt256 value) in latest)
             {
-                // Read under the lock: a block end that claims this tree mid-pass takes the map.
-                if (Volatile.Read(ref _earlyState) != EarlyApplying) return;
-                Dictionary<UInt256, UInt256>? applied = _earlyApplied;
-                foreach ((UInt256 slot, UInt256 value) in latest)
-                {
-                    if (applied is null || !applied.TryGetValue(slot, out UInt256 current) || current != value) changed.Add((slot, value));
-                }
+                if (applied is null || !applied.TryGetValue(slot, out UInt256 current) || current != value) changed.Add((slot, value));
             }
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(changed.Count);
@@ -203,15 +200,13 @@ public sealed class FlatStorageTree(
                 // The parallel parts run on the applier's idle-priority helpers, not on the thread pool.
                 (ValueHash256 Hash, ulong Pointer) root = NodeRecordBulkSet.BulkSet(_earlySource!, AddressHash, _earlyRoot, entries, canParallelize: true);
                 _scope.CountEarlyApplied(entries.Count);
-                lock (_earlyLock)
+                if (Volatile.Read(ref _earlyState) == EarlyApplying)
                 {
-                    // A block end that claimed the tree meanwhile adopted the previous pass and must not see this one.
-                    if (Volatile.Read(ref _earlyState) == EarlyApplying)
-                    {
-                        Dictionary<UInt256, UInt256> applied = _earlyApplied ??= [];
-                        foreach ((UInt256 slot, UInt256 value) in changed) applied[slot] = value;
-                        _earlyRoot = root;
-                    }
+                    applied = _earlyApplied ??= [];
+                    foreach ((UInt256 slot, UInt256 value) in changed) applied[slot] = value;
+                    _earlyRoot = root;
+                    // The block end changes the map it adopts, so it gets a copy; the root and slots publish together.
+                    Volatile.Write(ref _earlyPass, new EarlyPass(root, [with(applied)]));
                 }
             }
         }
@@ -236,19 +231,13 @@ public sealed class FlatStorageTree(
 
     private Dictionary<UInt256, UInt256>? AdoptEarlyTrie(NodeRecordTrie trie)
     {
-        int previous;
-        Dictionary<UInt256, UInt256>? applied;
-        (ValueHash256 Hash, ulong Pointer) root;
-        lock (_earlyLock)
-        {
-            previous = ClaimEarlyTrie();
-            applied = _earlyApplied;
-            root = _earlyRoot;
-        }
+        int previous = ClaimEarlyTrie();
+        // Read after the claim: the root and slots of a pass are published together, so any pass read here is whole.
+        EarlyPass? pass = Volatile.Read(ref _earlyPass);
 
         if (previous == EarlyApplying)
         {
-            // The unfinished pass keeps its source and drops its result; the passes before it are kept.
+            // The unfinished pass keeps its source; the passes published before this point are kept.
             _scope.CountEarlyAbandoned();
         }
         else
@@ -257,10 +246,12 @@ public sealed class FlatStorageTree(
             Interlocked.Exchange(ref _earlySource, null)?.Dispose();
         }
 
-        if (applied is not { Count: > 0 }) return null;
-        trie.Adopt(root);
-        return applied;
+        if (pass is null || pass.Applied.Count == 0) return null;
+        trie.Adopt(pass.Root);
+        return pass.Applied;
     }
+
+    private sealed record EarlyPass((ValueHash256 Hash, ulong Pointer) Root, Dictionary<UInt256, UInt256> Applied);
 
     private void AbandonEarlyTrie()
     {
