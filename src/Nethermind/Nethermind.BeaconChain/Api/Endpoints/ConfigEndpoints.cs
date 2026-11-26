@@ -12,7 +12,7 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
 /// <summary><c>/eth/v1/config/*</c>: spec constants, fork schedule, deposit contract.</summary>
-internal sealed class ConfigEndpoints(BeaconApiContext ctx)
+internal sealed class ConfigEndpoints(BeaconChainSpec spec)
 {
     /// <summary>The network config's <c>DEPOSIT_CONTRACT_ADDRESS</c>, or <c>null</c> for a chain this driver has no network config for.</summary>
     /// <remarks>
@@ -32,13 +32,13 @@ internal sealed class ConfigEndpoints(BeaconApiContext ctx)
     [HttpGet("/eth/v1/config/deposit_contract"), Negotiated]
     public IResult DepositContract()
     {
-        if (DepositContractAddress(ctx.Spec.ChainId) is not { } address)
+        if (DepositContractAddress(spec.ChainId) is not { } address)
         {
             return ApiResults.Error(StatusCodes.Status500InternalServerError,
-                $"No deposit contract is configured for chain {ctx.Spec.ChainId}.");
+                $"No deposit contract is configured for chain {spec.ChainId}.");
         }
 
-        return ApiResults.Data(new DepositContractDto(ctx.Spec.ChainId.ToString(), address));
+        return ApiResults.Data(new DepositContractDto(spec.ChainId.ToString(), address));
     }
 
     /// <remarks>
@@ -51,7 +51,6 @@ internal sealed class ConfigEndpoints(BeaconApiContext ctx)
     [HttpGet("/eth/v1/config/spec"), Negotiated]
     public IResult Spec()
     {
-        BeaconChainSpec spec = ctx.Spec;
         Dictionary<string, object> data = [with(SpecValues.Mainnet.Count + SpecConstants.All.Count + 4)];
         foreach ((string key, string value) in SpecValues.Mainnet)
         {
@@ -156,7 +155,7 @@ internal sealed class ConfigEndpoints(BeaconApiContext ctx)
     [HttpGet("/eth/v1/config/fork_schedule"), Negotiated]
     public IResult ForkSchedule()
     {
-        ForkScheduleEntry[] forks = ctx.Spec.Forks;
+        ForkScheduleEntry[] forks = spec.Forks;
         ForkDto[] data = new ForkDto[forks.Length];
         for (int i = 0; i < forks.Length; i++)
         {

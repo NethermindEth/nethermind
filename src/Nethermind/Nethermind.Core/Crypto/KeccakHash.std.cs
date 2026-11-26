@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 
 using static System.Numerics.BitOperations;
@@ -14,7 +15,13 @@ namespace Nethermind.Core.Crypto;
 public sealed partial class KeccakHash
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial bool TryComputeHash256Into(ReadOnlySpan<byte> input, Span<byte> output) => false;
+    private static partial bool TryComputeHash256Into(ReadOnlySpan<byte> input, Span<byte> output)
+    {
+        if (!Sha3.IsSupported) return false;
+
+        ComputeHash256ArmSha3(input, output);
+        return true;
+    }
 
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
@@ -100,7 +107,9 @@ public sealed partial class KeccakHash
         Debug.Assert(st.Length == STATE_LANES);
 
         ref ulong state = ref MemoryMarshal.GetReference(st);
-        if (Avx512F.VL.IsSupported)
+        if (Sha3.IsSupported)
+            KeccakF1600ArmSha3(ref state);
+        else if (Avx512F.VL.IsSupported)
             KeccakF1600Avx512VL(ref state);
         else
             KeccakF1600Scalar(ref state);
