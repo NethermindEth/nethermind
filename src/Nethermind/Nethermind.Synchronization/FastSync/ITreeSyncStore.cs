@@ -41,6 +41,10 @@ public interface ITreeSyncStore
     /// Ensure all storage entries for the given address are deleted.
     /// Called when an account's storage root is EmptyTreeHash (e.g. after self-destruct).
     /// </summary>
+    /// <remarks>
+    /// A store keyed by path also deletes the account's storage trie nodes: a later root can bring any of them back,
+    /// and healing would then take that subtree as already saved.
+    /// </remarks>
     void EnsureStorageEmpty(in ValueHash256 address);
 
     /// <summary>

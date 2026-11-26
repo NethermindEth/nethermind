@@ -52,12 +52,14 @@ public class FlatTreeSyncStoreTests
 
     private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value)
     {
-        IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
-        ValueHash256 addrHash = ValueKeccak.Compute(address.Bytes);
         Span<byte> slotBytes = stackalloc byte[32];
         slot.ToBigEndian(slotBytes);
-        ValueHash256 slotHash = ValueKeccak.Compute(slotBytes);
+        WriteStorageDirectToDb(ValueKeccak.Compute(address.Bytes), ValueKeccak.Compute(slotBytes), value);
+    }
 
+    private void WriteStorageDirectToDb(in ValueHash256 addrHash, in ValueHash256 slotHash, byte[] value)
+    {
+        IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
         byte[] storageKey = new byte[52];
         addrHash.Bytes[..4].CopyTo(storageKey.AsSpan()[..4]);
         slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
@@ -95,6 +97,53 @@ public class FlatTreeSyncStoreTests
         store.EnsureStorageEmpty(Keccak.Compute(address.Bytes));
 
         Assert.That(HasStorageEntries(address), Is.False, "Storage entries should be deleted after EnsureStorageEmpty");
+    }
+
+    /// <summary>
+    /// Healing finds a storage trie node stored at a path with the hash it expects saved with its subtree, so the nodes
+    /// have to go with the slots, whether or not the root is among them, in both columns, and for that account only.
+    /// </summary>
+    [Test]
+    public void EnsureStorageEmpty_deletes_the_storage_trie_nodes_of_that_account_only([Values] bool withRootNode)
+    {
+        // The second account shares the first four bytes of the cleared one, which storage keys start with.
+        Hash256 cleared = new("0x1234567811111111111111111111111111111111111111111111111111111111");
+        Hash256 samePrefix = new("0x1234567822222222222222222222222222222222222222222222222222222222");
+        Hash256 other = TestItem.KeccakB;
+        Hash256[] accounts = [cleared, samePrefix, other];
+        ValueHash256 slot = TestItem.KeccakC;
+        // The deepest of these is past the paths the storage node column holds.
+        TreePath[] nodePaths = [TreePath.Empty, TreePath.FromHexString("1"), TreePath.FromHexString("f"), TreePath.FromHexString("fffffffffffffff"), TreePath.FromHexString("1111111111111111")];
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            foreach (Hash256 account in accounts)
+            {
+                foreach (TreePath nodePath in nodePaths)
+                {
+                    if (withRootNode || account != cleared || nodePath.Length > 0) batch.SetStorageTrieNode(account, nodePath, StorageNodeRlp);
+                }
+            }
+        }
+
+        foreach (Hash256 account in accounts) WriteStorageDirectToDb(account, slot, [0x01, 0x02]);
+
+        using FlatTestContainer container = CreateContainer(_persistence);
+        container.Resolve<FlatTreeSyncStore>().EnsureStorageEmpty(cleared);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Hash256 account in accounts)
+            {
+                bool kept = account != cleared;
+                UInt256 value = default;
+                Assert.That(reader.TryGetStorageRaw(account, slot, ref value), Is.EqualTo(kept), $"slot of {account}");
+                foreach (TreePath nodePath in nodePaths)
+                {
+                    Assert.That(reader.LoadStorageRlp(account, nodePath, ReadFlags.None), kept ? Is.EqualTo(StorageNodeRlp) : Is.Null, $"storage node {nodePath} of {account}");
+                }
+            }
+        }
     }
 
     [Test]
