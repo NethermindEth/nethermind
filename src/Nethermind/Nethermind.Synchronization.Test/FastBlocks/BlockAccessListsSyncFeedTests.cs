@@ -118,6 +118,33 @@ public class BlockAccessListsSyncFeedTests
             Arg.Is<string>(static message => message.Contains("invalid block access list")));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Stores_only_block_access_lists_in_an_encoding_newPayload_accepts(bool canonical)
+    {
+        // Either list matches the commitment of every header.
+        byte[] blockAccessList = canonical ? BlockAccessListEncodings.Canonical : BlockAccessListEncodings.LeadingZero;
+        SetUpThreeBlockFeed(blockAccessList);
+        using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
+        int requested = batch.Infos.OfType<BlockInfo>().Count();
+        PeerInfo peerInfo = CreateSession(TestItem.PublicKeyA);
+        batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(_ => blockAccessList).ToArray());
+        batch.ResponseSourcePeer = peerInfo;
+
+        SyncResponseHandlingResult result = _feed.HandleResponse(batch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requested, Is.EqualTo(3));
+            Assert.That(result, Is.EqualTo(canonical ? SyncResponseHandlingResult.OK : SyncResponseHandlingResult.NoProgress));
+            _blockAccessListStore.Received(canonical ? requested : 0).Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+            _syncPeerPool.Received(canonical ? 0 : 1).ReportBreachOfProtocol(
+                peerInfo,
+                DisconnectReason.InvalidTxOrUncle,
+                Arg.Is<string>(static message => message.Contains("error decoding block access list")));
+        }
+    }
+
     [Test]
     public async Task Treats_pivot_without_block_access_list_hash_as_temporarily_finished()
     {
@@ -685,9 +712,9 @@ public class BlockAccessListsSyncFeedTests
 
     private static readonly byte[] EmptyBlockAccessList = [0xc0];
 
-    private void SetUpThreeBlockFeed()
+    private void SetUpThreeBlockFeed(byte[]? blockAccessList = null)
     {
-        ISpecProvider specProvider = SetUpChainWithActivation(pivot: 3, activation: 1, timestampActivation: false, headersAvailable: true, []);
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot: 3, activation: 1, timestampActivation: false, headersAvailable: true, [], blockAccessList);
         _syncPeerPool
             .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<int?>(3));
@@ -697,10 +724,10 @@ public class BlockAccessListsSyncFeedTests
         _feed.Activate();
     }
 
-    private ISpecProvider SetUpChainWithActivation(ulong pivot, ulong activation, bool timestampActivation, bool headersAvailable, ConcurrentBag<ulong> lookups)
+    private ISpecProvider SetUpChainWithActivation(ulong pivot, ulong activation, bool timestampActivation, bool headersAvailable, ConcurrentBag<ulong> lookups, byte[]? blockAccessList = null)
     {
         const ulong secondsPerBlock = 12;
-        Hash256 blockAccessListHash = Keccak.Compute(EmptyBlockAccessList);
+        Hash256 blockAccessListHash = Keccak.Compute(blockAccessList ?? EmptyBlockAccessList);
         for (ulong number = 1; number <= pivot; number++)
         {
             ulong blockNumber = number;
