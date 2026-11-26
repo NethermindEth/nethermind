@@ -537,9 +537,12 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>Keeps only the senders with something includable in the next block, leaving the snapshot intact.</summary>
-        /// <remarks>A retained snapshot can include an already spent entry before a ready one. The producer
-        /// ends the sender's chain at the first rejected candidate, so remove spent entries against the payload
-        /// parent's state before passing the bucket to the producer.</remarks>
+        /// <remarks>Copies rather than removes in place, which is why this is not <see cref="DropUnreadySenders"/> itself:
+        /// a production snapshot is shared with the pool's cache and with other callers, while that one owns the
+        /// dictionary it filters. The two agree only by both calling <see cref="HasReadyTransaction"/>, so a readiness
+        /// rule added to one must be added to the other. Only this one trims spent entries, and only for production with
+        /// the payload parent's state: the snapshot can predate the parent's block and include an already spent entry
+        /// before a ready one, and the producer ends the sender's chain at the first rejected candidate.</remarks>
         private IDictionary<AddressAsKey, Transaction[]> SelectReadySenders(
             IDictionary<AddressAsKey, Transaction[]> bySender, in UInt256 baseFee, IReadOnlyStateProvider? parentState = null)
         {
@@ -3098,13 +3101,15 @@ namespace Nethermind.TxPool
             if (filterToReadyTx)
             {
                 transactions = _transactions.GetProductionSnapshotAllowingPreUpdateMembership(out bool preUpdate);
-                if (!preUpdate)
-                {
-                    transactions = SelectReadySenders(transactions, baseFee);
-                }
-                else if (_headInfo.GetProductionParentState(targetBlock) is { } state)
+                // The parent's block can become head before the pool starts its update, so any lock-free read
+                // can return membership that predates the parent.
+                if (_headInfo.GetProductionParentState(targetBlock) is { } state)
                 {
                     transactions = SelectReadySenders(transactions, baseFee, state);
+                }
+                else if (!preUpdate)
+                {
+                    transactions = SelectReadySenders(transactions, baseFee);
                 }
                 // Without parent state, keep candidates for the producer to judge against its own state.
             }

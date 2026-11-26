@@ -23,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -204,6 +205,52 @@ public class TxPoolLockContentionMeasurement
             + $"refresh_p50_us={Percentile(refreshMicros, 0.50):F2} refresh_bytes={refreshBytes / readMicros.Count}");
     }
 
+    /// <remarks>A writer inserts and removes one transaction in a loop, so most reads rebuild the snapshot.
+    /// With <paramref name="parentState"/> the selection reads every sender's nonce from the payload parent's state
+    /// rather than from the pool's account cache. That state is in memory here, so the figures are a floor.</remarks>
+    [Test]
+    public void Filtered_production_selection_under_churn([Values] bool parentState)
+    {
+        const int senders = 2048;
+        BuildPool(senders, keysPerTx: 1, ready: true, parentState);
+        Address churnSender = SenderAt(senders);
+        _state.CreateAccount(churnSender, UInt256.MaxValue);
+        Transaction extra = BuildFrameTx(churnSender, []);
+        BlockHeader target = Build.A.BlockHeader.WithParent(_blockTree.Head!.Header).TestObject;
+        List<double> micros = [];
+
+        using CancellationTokenSource stop = new();
+        Task churn = Task.Run(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                _txPool.SubmitTx(extra, TxHandlingOptions.None);
+                _txPool.RemoveTransaction(extra.Hash);
+            }
+        });
+
+        try
+        {
+            for (int i = 0; i < Warmup + Samples; i++)
+            {
+                long started = Stopwatch.GetTimestamp();
+                int selected = _txPool.GetPendingForProduction(target, true, UInt256.Zero).Transactions.Count;
+                double elapsed = Stopwatch.GetElapsedTime(started).TotalMicroseconds;
+                Assert.That(selected, Is.InRange(senders, senders + 1), "the selection lost a ready sender");
+                if (i >= Warmup) micros.Add(elapsed);
+            }
+        }
+        finally
+        {
+            stop.Cancel();
+            churn.GetAwaiter().GetResult();
+        }
+
+        micros.Sort();
+        Emit($"case=filtered_production_under_churn senders={senders} parent_state={parentState} samples={micros.Count} "
+            + $"min_us={micros[0]:F1} p50_us={Percentile(micros, 0.50):F1} p95_us={Percentile(micros, 0.95):F1}");
+    }
+
     // int.MaxValue is the carry before it was bounded: a backlog the per-head budget cannot clear is
     // re-simulated in full on every later head, all of it under the head write lock.
     [TestCase(200, 2)]
@@ -278,10 +325,10 @@ public class TxPoolLockContentionMeasurement
         await waitTask;
     }
 
-    private void BuildPool(int senders, int keysPerTx, bool ready)
+    private void BuildPool(int senders, int keysPerTx, bool ready, bool parentState = false)
     {
-        // The singleton [0] aliases the account nonce, so it is the ordinary, unkeyed shape.
-        UInt256[] nonceKeys = keysPerTx == 1 ? [UInt256.Zero] : BuildNonceKeys(keysPerTx);
+        // No nonce keys is the ordinary, unkeyed shape.
+        UInt256[] nonceKeys = keysPerTx == 1 ? [] : BuildNonceKeys(keysPerTx);
         List<Address> seeded = [with(senders)];
 
         for (int i = 0; i < senders; i++)
@@ -292,7 +339,7 @@ public class TxPoolLockContentionMeasurement
             SeedNonceKeys(sender, nonceKeys, KeyedSeq);
         }
 
-        _txPool = CreatePool();
+        _txPool = CreatePool(parentState);
 
         foreach (Address sender in seeded)
         {
@@ -363,12 +410,15 @@ public class TxPoolLockContentionMeasurement
             FrameTxRevalidationDeferralBudget = deferralBudget
         }, simulator);
 
-    private TxPool CreatePool() =>
-        CreatePool(new TxPoolConfig { Size = PoolSize, GasLimit = TxGasLimit, FrameTxMaxVerifyGas = 0 }, null);
+    private TxPool CreatePool(bool parentState = false) =>
+        CreatePool(new TxPoolConfig { Size = PoolSize, GasLimit = TxGasLimit, FrameTxMaxVerifyGas = 0 }, null, parentState);
 
-    private TxPool CreatePool(TxPoolConfig config, IFrameTxPrefixSimulator? simulator)
+    private TxPool CreatePool(TxPoolConfig config, IFrameTxPrefixSimulator? simulator, bool parentState = false)
     {
-        ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(_specProvider, _blockTree), _blockTree, _state, new());
+        ChainHeadSpecProvider specProvider = new(_specProvider, _blockTree);
+        ChainHeadInfoProvider headInfo = parentState
+            ? new ParentStateHeadInfoProvider(specProvider, _blockTree, _state)
+            : new ChainHeadInfoProvider(specProvider, _blockTree, _state, new());
 
         return new TxPool(
             new EthereumEcdsa(_specProvider.ChainId),
@@ -384,6 +434,13 @@ public class TxPoolLockContentionMeasurement
             incomingTxFilters: null,
             thereIsPriorityContract: false,
             simulator);
+    }
+
+    /// <summary>Gives production the head state as the payload parent's state, as a node with a state reader does.</summary>
+    private sealed class ParentStateHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider state)
+        : ChainHeadInfoProvider(specProvider, blockTree, state, new()), IChainHeadInfoProvider
+    {
+        public new IReadOnlyStateProvider GetProductionParentState(BlockHeader target) => ReadOnlyStateProvider;
     }
 
     private static double Percentile(List<double> sorted, double percentile)

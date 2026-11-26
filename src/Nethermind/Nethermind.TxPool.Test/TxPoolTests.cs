@@ -5040,17 +5040,29 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        public enum SpentEntry { AccountNonce, KeyedNonce, AccountNonceBehindKeyed }
+
+        /// <remarks>Without <paramref name="headUpdateStarted"/> the block tree has moved to the new head, but the pool
+        /// has not started to process it yet, so its membership still holds the included transaction.</remarks>
         [Test]
-        public async Task Production_read_during_a_head_update_uses_the_pre_head_snapshot_without_spent_entries([Values] bool keyed)
+        public async Task Production_read_after_a_new_head_uses_the_pre_head_snapshot_without_spent_entries(
+            [Values] SpentEntry spentEntry, [Values] bool headUpdateStarted)
         {
             ISpecProvider spec = KeyedNonceSpecProvider();
             Address sender = TestItem.AddressA;
             Address otherSender = TestItem.AddressB;
             Block previous = _blockTree.Head!;
+            bool keyed = spentEntry == SpentEntry.KeyedNonce;
+            bool behindKeyed = spentEntry == SpentEntry.AccountNonceBehindKeyed;
+            // A keyed sequence starts at 0, so account nonces from 1 put the spent entry behind a usable keyed one.
+            ulong firstNonce = behindKeyed ? 1UL : 0UL;
             Transaction included = keyed
                 ? BuildKeyedFrameTx(sender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei)
-                : Build.A.Transaction.WithNonce(0).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            Transaction successor = Build.A.Transaction.WithNonce(1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                : Build.A.Transaction.WithNonce(firstNonce).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction[] keyedAhead = behindKeyed
+                ? [BuildKeyedFrameTx(sender, nonceKey: 2, seq: 0, value: UInt256.Zero, maxFee: 1.GWei)]
+                : [];
+            Transaction successor = Build.A.Transaction.WithNonce(firstNonce + 1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             Transaction other = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
             Block head = Build.A.Block.WithParent(previous).WithGasLimit(FixtureHeadGasLimit).WithTransactions(included).TestObject;
             BlockHeader target = Build.A.BlockHeader.WithParent(head.Header).TestObject;
@@ -5069,12 +5081,10 @@ namespace Nethermind.TxPool.Test
                 {
                     armed = false;
                     // Reading on the updater thread makes any attempt to re-enter the standard pool lock fail immediately.
-                    selected = source.GetTransactions(head.Header, target, target.GasLimit, filterSource: true).ToArray();
-                    differentParent = _txPool.GetPendingForProduction(otherTarget, true, UInt256.Zero).Transactions[sender];
-                    try { _txPool.GetPendingForProduction(target, false, UInt256.Zero); }
-                    catch (InvalidOperationException e) { unfilteredRead = e; }
+                    ReadForProduction();
                 }
-                call[2] = new AccountStruct(address == sender && (keyed || block == head.Header) ? 1UL : 0UL, UInt256.MaxValue);
+                ulong nonce = address != sender ? 0UL : firstNonce + (keyed || block == head.Header ? 1UL : 0UL);
+                call[2] = new AccountStruct(nonce, UInt256.MaxValue);
                 return true;
             });
             StorageCell slot = KeyedNonceManager.StorageSlot(sender, UInt256.One);
@@ -5087,22 +5097,86 @@ namespace Nethermind.TxPool.Test
             source = new TxPoolTxSource(_txPool, spec, new TransactionComparerProvider(spec, _blockTree), _logManager,
                 filters, new BlocksConfig(), new SpecChangeTxValidator(_specProvider.ChainId));
 
-            foreach (Transaction tx in new[] { included, successor, other })
+            foreach (Transaction tx in new[] { included, successor, other }.Concat(keyedAhead))
             {
                 Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             }
 
             Assert.That(_txPool.GetPendingForProduction(otherTarget, true, UInt256.Zero).Transactions, Has.Count.EqualTo(2));
-            armed = true;
+            if (headUpdateStarted)
+            {
+                armed = true;
+            }
+            else
+            {
+                SetCanonicalHead(head);
+                ReadForProduction();
+            }
             await RaiseCanonicalHeadAndWait(head);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(selected, Is.EquivalentTo(new[] { successor, other }));
-                Assert.That(differentParent, Is.EqualTo(new[] { included, successor }));
-                Assert.That(unfilteredRead, Is.TypeOf<InvalidOperationException>());
+                Assert.That(selected, Is.EquivalentTo(keyedAhead.Concat([successor, other])));
+                Assert.That(differentParent, Is.EqualTo(keyedAhead.Concat([included, successor])));
+                Assert.That(unfilteredRead, headUpdateStarted ? Is.TypeOf<InvalidOperationException>() : Is.Null);
                 Assert.That(source.GetTransactions(head.Header, target, target.GasLimit, filterSource: false),
-                    Is.EquivalentTo(new[] { successor, other }));
+                    Is.EquivalentTo(keyedAhead.Concat([successor, other])));
+            }
+
+            void ReadForProduction()
+            {
+                selected = source.GetTransactions(head.Header, target, target.GasLimit, filterSource: true).ToArray();
+                differentParent = _txPool.GetPendingForProduction(otherTarget, true, UInt256.Zero).Transactions[sender];
+                try { _txPool.GetPendingForProduction(target, false, UInt256.Zero); }
+                catch (InvalidOperationException e) { unfilteredRead = e; }
+            }
+        }
+
+        /// <remarks>A fork head skips the bucket update, so the head loop is the only place that releases the
+        /// pre-head snapshot. The held fork revalidation runs outside the pool lock and has no bucket pass yet.</remarks>
+        [Test]
+        public async Task Production_read_after_a_head_without_a_bucket_update_sees_later_transactions()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider provider = new(Prague.Instance) { NextForkSpec = Osaka.Instance, ForkOnBlockNumber = head.Number + 1 };
+            Transaction pending = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction later = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            using ManualResetEventSlim revalidating = new();
+            using ManualResetEventSlim releaseRevalidation = new();
+            ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
+            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(call =>
+            {
+                if (ReferenceEquals(call.Arg<IReleaseSpec>(), Osaka.Instance) && call.Arg<Transaction>() == pending)
+                {
+                    revalidating.Set();
+                    releaseRevalidation.Wait(TimeSpan.FromSeconds(10));
+                }
+
+                return ValidationResult.Success;
+            });
+            _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(pending, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Block forkBlock = Build.A.Block.WithNumber(head.Number + 1).TestObject;
+            BlockHeader target = Build.A.BlockHeader.WithParent(forkBlock.Header).TestObject;
+            _txPool.GetPendingForProduction(target, true, UInt256.Zero);
+
+            try
+            {
+                _blockTree.BestSuggestedHeader = forkBlock.Header;
+                await RaiseBlockAddedToMainAndWaitForNewHead(forkBlock);
+                if (!revalidating.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Fork revalidation did not start.");
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
+                Assert.That(_txPool.SubmitTx(later, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
+
+                Assert.That(_txPool.GetPendingForProduction(target, true, UInt256.Zero).Transactions.ContainsKey(TestItem.AddressB), Is.True);
+            }
+            finally
+            {
+                releaseRevalidation.Set();
             }
         }
 
