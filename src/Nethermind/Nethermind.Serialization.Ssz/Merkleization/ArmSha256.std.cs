@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
+using System.Security.Cryptography;
 
 namespace Nethermind.Serialization.Ssz.Merkleization;
 
@@ -41,6 +42,22 @@ internal static class ArmSha256
         0xc39c91f2, 0x9eccabbd, 0xb5c9a0e6, 0x532fb63c, 0xd2c741c6, 0x07237ea3, 0xa4954b68, 0x4c191d76,
     ];
 
+    internal static bool TryHashData(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        if (destination.Length < SHA256.HashSizeInBytes)
+            return false;
+
+        ref byte output = ref MemoryMarshal.GetReference(destination);
+        if (source.Length == 64)
+            HashOne(ref MemoryMarshal.GetReference(source), ref output);
+        else if (source.Length <= 55)
+            HashShort(source, ref output);
+        else
+            return false;
+
+        return true;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static State CompressFirstBlock(ref byte input)
     {
@@ -60,7 +77,7 @@ internal static class ArmSha256
         return state;
     }
 
-    internal static void HashShort(ReadOnlySpan<byte> input, ref byte output)
+    private static void HashShort(ReadOnlySpan<byte> input, ref byte output)
     {
         Span<byte> block = stackalloc byte[64];
         block.Clear();
@@ -73,7 +90,7 @@ internal static class ArmSha256
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void HashOne(ref byte input, ref byte output)
+    private static void HashOne(ref byte input, ref byte output)
     {
         State state = CompressFirstBlock(ref input);
         state.Abcd += InitialAbcd;
