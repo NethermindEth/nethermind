@@ -61,22 +61,30 @@ internal static class TestArchive
         return zipBuffer.ToArray();
     }
 
-    /// <summary>A zip whose first entry is a directory entry, <paramref name="directory"/>, that holds data; then <paramref name="files"/>.</summary>
-    public static byte[] BuildZipWithDataInADirectoryEntry(string directory, IReadOnlyDictionary<string, byte[]> files)
+    /// <summary>
+    /// A zip with a directory entry, <paramref name="directory"/>, that holds data, and <paramref name="files"/>: the
+    /// directory entry first, or with <paramref name="directoryLast"/> after the files.
+    /// </summary>
+    public static byte[] BuildZipWithDataInADirectoryEntry(string directory, IReadOnlyDictionary<string, byte[]> files, bool directoryLast = false)
     {
         using MemoryStream zipBuffer = new();
         using (System.IO.Compression.ZipArchive zip = new(zipBuffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
         {
-            using (Stream entry = zip.CreateEntry($"{directory}/").Open())
-                entry.Write([1, 2, 3]);
+            if (!directoryLast)
+                WriteZipEntry(zip, $"{directory}/", [1, 2, 3]);
             foreach ((string name, byte[] data) in files)
-            {
-                using Stream entry = zip.CreateEntry(name).Open();
-                entry.Write(data);
-            }
+                WriteZipEntry(zip, name, data);
+            if (directoryLast)
+                WriteZipEntry(zip, $"{directory}/", [1, 2, 3]);
         }
 
         return zipBuffer.ToArray();
+    }
+
+    private static void WriteZipEntry(System.IO.Compression.ZipArchive zip, string name, byte[] data)
+    {
+        using Stream entry = zip.CreateEntry(name).Open();
+        entry.Write(data);
     }
 
     public static byte[] BuildTar(int payloadSize = 1000)

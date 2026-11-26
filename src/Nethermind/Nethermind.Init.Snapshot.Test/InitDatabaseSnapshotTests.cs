@@ -6,6 +6,7 @@ using System.IO.Abstractions;
 using System.Net;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
+using System.Text;
 using Nethermind.Api;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.IO;
@@ -19,6 +20,7 @@ namespace Nethermind.Init.Snapshot.Test;
 public class InitDatabaseSnapshotTests
 {
     private const int SnapshotPayloadSize = 100_000;
+    private const int LongPathLength = 4080;
 
     private TempPath _tempDir = null!;
     private string _dbPath = null!;
@@ -611,13 +613,7 @@ public class InitDatabaseSnapshotTests
     [Platform(Include = "Linux")] // the 4,096-byte path limit
     public async Task Execute_FileAtALongDatabasePath_KeepsItWithoutLookingBelowIt()
     {
-        // A legal 4,080-byte path to a file, whose lock file name still fits; a name below it, such as the marker's, would
-        // exceed the limit.
-        string parent = _tempDir.Path;
-        while (4080 - parent.Length - 1 > 220)
-            parent = Path.Combine(parent, new string('p', 200));
-        string dbPath = Path.Combine(parent, new string('d', 4080 - parent.Length - 1));
-        Directory.CreateDirectory(parent);
+        string dbPath = LongDatabasePath();
         File.WriteAllBytes(dbPath, [1, 2, 3]);
         _api.Config<IInitConfig>().Returns(new InitConfig { BaseDbPath = dbPath });
         WriteSnapshotTar();
@@ -627,10 +623,50 @@ public class InitDatabaseSnapshotTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(dbPath, Has.Length.EqualTo(4080), "precondition");
             Assert.That(File.ReadAllBytes(dbPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "a file at the database path counts as content, as on master");
             Assert.That(File.Exists(_snapshotPath), Is.True, "the snapshot must be skipped");
         }
+    }
+
+    [Test]
+    [Platform(Include = "Linux")] // the 4,096-byte path limit
+    public async Task Execute_LinkToAFileAtALongDatabasePath_StopsWhenTheMarkerCannotBeLookedUp()
+    {
+        // A link is looked up below, as a linked database directory is; here the marker's path exceeds the limit, so the
+        // lookup fails and the start stops instead of taking the link for content.
+        string target = Path.Combine(_tempDir.Path, "target");
+        File.WriteAllBytes(target, [1, 2, 3]);
+        string dbPath = LongDatabasePath();
+        File.CreateSymbolicLink(dbPath, target);
+        _api.Config<IInitConfig>().Returns(new InitConfig { BaseDbPath = dbPath });
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        byte[] archive = File.ReadAllBytes(_snapshotPath);
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("Could not check"), "the start must stop with the inspection error");
+            Assert.That(new FileInfo(dbPath).LinkTarget, Is.EqualTo(target), "the link must stay");
+            Assert.That(File.ReadAllBytes(target), Is.EqualTo(new byte[] { 1, 2, 3 }), "the link's target must stay as it was");
+            Assert.That(File.ReadAllBytes(_snapshotPath), Is.EqualTo(archive), "the staged archive must stay");
+        }
+    }
+
+    // A legal path of exactly 4,080 UTF-8 bytes below the temporary directory, whatever that directory's name: ASCII
+    // components of at most 200 bytes, so the lock file name next to it still fits a component and its path the limit,
+    // while a name below it, such as the marker's, would exceed the limit. Its parent directories are created.
+    private string LongDatabasePath()
+    {
+        string parent = _tempDir.Path;
+        while (LongPathLength - Encoding.UTF8.GetByteCount(parent) - 1 > 220)
+            parent = Path.Combine(parent, new string('p', 200));
+        string dbPath = Path.Combine(parent, new string('d', LongPathLength - Encoding.UTF8.GetByteCount(parent) - 1));
+        Directory.CreateDirectory(parent);
+        Assert.That(Encoding.UTF8.GetByteCount(dbPath), Is.EqualTo(LongPathLength), "precondition: the path has its length in bytes");
+        return dbPath;
     }
 
     [Test]
@@ -840,16 +876,18 @@ public class InitDatabaseSnapshotTests
         }
     }
 
-    [TestCase("state", TestName = "Execute_ZipDirectoryEntryThatHoldsData_StopsBeforeWritingAnything")]
-    [TestCase("lost+found", TestName = "Execute_ZipLostAndFoundEntryThatHoldsData_StopsBeforeWritingAnything")]
-    public async Task Execute_ZipDirectoryEntryThatHoldsData_StopsBeforeWritingAnything(string directory)
+    [TestCase("state", false, TestName = "Execute_ZipDirectoryEntryThatHoldsData_StopsBeforeWritingAnything")]
+    [TestCase("lost+found", false, TestName = "Execute_ZipLostAndFoundEntryThatHoldsData_StopsBeforeWritingAnything")]
+    [TestCase("state", true, TestName = "Execute_ZipDirectoryEntryThatHoldsDataAfterAGoodFile_StopsBeforeWritingAnything")]
+    public async Task Execute_ZipDirectoryEntryThatHoldsData_StopsBeforeWritingAnything(string directory, bool directoryLast)
     {
-        // Alone, or before a good file: the runtime refuses such an entry, and an extraction that skipped or created it
-        // would drop its bytes and could complete.
-        Dictionary<string, byte[]> files = directory == "state" ? [] : new() { ["state/a.sst"] = [1] };
+        // Alone, before a good file, or after one: the runtime refuses such an entry, and an extraction that skipped or
+        // created it would drop its bytes and could complete. After a good file, only a check of every entry before the
+        // first is written keeps that file out.
+        Dictionary<string, byte[]> files = directory == "state" && !directoryLast ? [] : new() { [directoryLast ? "headers/b.sst" : "state/a.sst"] = [1] };
         _snapshotConfig.SnapshotFileName = "snapshot.zip";
         _snapshotPath = Path.Combine(_snapshotConfig.SnapshotDirectory, _snapshotConfig.SnapshotFileName);
-        byte[] archive = TestArchive.BuildZipWithDataInADirectoryEntry(directory, files);
+        byte[] archive = TestArchive.BuildZipWithDataInADirectoryEntry(directory, files, directoryLast);
         File.WriteAllBytes(_snapshotPath, archive);
         AdvanceCheckpoint(SnapshotStage.Verified);
 
