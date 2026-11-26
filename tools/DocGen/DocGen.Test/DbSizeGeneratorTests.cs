@@ -7,9 +7,8 @@ namespace Nethermind.DocGen.Test;
 
 public class DbSizeGeneratorTests
 {
-    [TestCase("mainnet.txt")]
-    [TestCase("README.txt")]
-    public void Only_json_reports_generate_chain_tabs(string otherFile)
+    [Test]
+    public void Only_json_reports_generate_chain_tabs([Values("mainnet.txt", "README.txt")] string otherFile)
     {
         DirectoryInfo temp = Directory.CreateTempSubdirectory("nethermind-docgen-");
         try
@@ -27,9 +26,9 @@ public class DbSizeGeneratorTests
 
             DBSizeGenerator.Generate(temp.FullName, source);
 
-            using (Assert.EnterMultipleScope())
+            foreach (string page in new[] { current, versioned })
             {
-                foreach (string page in new[] { current, versioned })
+                using (Assert.EnterMultipleScope())
                 {
                     string[] tabs = [.. File.ReadLines(page).Where(line => line.StartsWith("<TabItem", StringComparison.Ordinal))];
                     Assert.That(tabs, Is.EqualTo(new[] { "<TabItem value=\"mainnet\" label=\"Mainnet\">" }), page);
