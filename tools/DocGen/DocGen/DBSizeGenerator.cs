@@ -46,6 +46,12 @@ internal static class DBSizeGenerator
             })
             .ToList();
 
+        if (chains.Count == 0)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]No JSON database size reports found in[/] {dbSizeSourcePath}");
+            return;
+        }
+
         GenerateFile(Path.Join(docsPath, "docs", "fundamentals"), dbSizeSourcePath, chains!);
         GenerateFile(Path.Join(docsPath, "versioned_docs", $"version-{GetLatestVersion(docsPath)}", "fundamentals"), dbSizeSourcePath, chains!);
     }

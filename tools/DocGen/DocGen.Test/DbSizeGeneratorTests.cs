@@ -41,4 +41,34 @@ public class DbSizeGeneratorTests
             temp.Delete(recursive: true);
         }
     }
+
+    [Test]
+    public void Reports_without_json_leave_pages_unchanged()
+    {
+        DirectoryInfo temp = Directory.CreateTempSubdirectory("nethermind-docgen-");
+        try
+        {
+            string source = temp.CreateSubdirectory("reports").FullName;
+            File.WriteAllText(Path.Combine(source, "README.txt"), "Size report notes");
+            File.WriteAllText(Path.Combine(temp.FullName, "versions.json"), """["2.3.0"]""");
+
+            string current = Path.Combine(temp.CreateSubdirectory("docs/fundamentals").FullName, "database.md");
+            string versioned = Path.Combine(temp.CreateSubdirectory("versioned_docs/version-2.3.0/fundamentals").FullName, "database.md");
+            const string template = "Intro\n<!--[start autogen]-->\nOld sizes\n<!--[end autogen]-->\n";
+            File.WriteAllText(current, template);
+            File.WriteAllText(versioned, template);
+
+            DBSizeGenerator.Generate(temp.FullName, source);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(File.ReadAllText(current), Is.EqualTo(template), current);
+                Assert.That(File.ReadAllText(versioned), Is.EqualTo(template), versioned);
+            }
+        }
+        finally
+        {
+            temp.Delete(recursive: true);
+        }
+    }
 }
