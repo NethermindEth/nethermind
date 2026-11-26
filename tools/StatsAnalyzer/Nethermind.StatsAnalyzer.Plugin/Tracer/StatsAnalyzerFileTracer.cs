@@ -57,18 +57,31 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
 
         ResetBufferAndTracer();
 
-        if (!skip)
+        // A disabled queue does no stats work, so it must not reach the write-frequency arithmetic.
+        if (!skip && _fileTracingQueueSize >= 1)
         {
             _pos = (_pos + 1) % _writeFreq;
             bool isWriteDue = _pos == 0;
             Enqueue(() =>
             {
                 Ct.ThrowIfCancellationRequested();
-                // BuildResult hands this block's buffer to the shared analyzer, so it runs for every recorded block;
-                // only the file write follows the write frequency.
-                TxTrace trace = tracer.BuildResult(initialBlockNumber, currentBlockNumber);
+                // Every recorded buffer feeds the shared analyzer exactly once; only due blocks also build,
+                // order and serialize the cumulative report.
                 if (isWriteDue)
-                    WriteTrace(trace, FileName, _fileSystem, _serializerOptions, Ct);
+                {
+                    WriteTrace(
+                        initialBlockNumber,
+                        currentBlockNumber,
+                        tracer,
+                        FileName,
+                        _fileSystem,
+                        _serializerOptions,
+                        Ct);
+                }
+                else
+                {
+                    ((IStatsAnalyzerIngest)tracer).Ingest();
+                }
             });
         }
 
@@ -77,8 +90,6 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
 
     private void Enqueue(Action work)
     {
-        if (_fileTracingQueueSize < 1) return;
-
         // Chain via ContinueWith so the runtime starts the task itself rather
         // than leaving it in Created state where Wait/WaitAll would race.
         Task previous = _lastTask;
@@ -164,12 +175,18 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
     protected override TxTrace OnEnd(TxTracer txTracer) => throw new NotImplementedException();
 
     private static void WriteTrace(
-        TxTrace trace,
+        ulong initialBlockNumber,
+        ulong currentBlockNumber,
+        IStatsAnalyzerTxTracer<TxTrace> tracer,
         string fileName,
         IFileSystem fileSystem,
         JsonSerializerOptions serializerOptions,
         CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
+        TxTrace trace = tracer.BuildResult(initialBlockNumber, currentBlockNumber);
+
         ct.ThrowIfCancellationRequested();
 
         using Stream file = fileSystem.File.Open(fileName, FileMode.Create, FileAccess.Write);
