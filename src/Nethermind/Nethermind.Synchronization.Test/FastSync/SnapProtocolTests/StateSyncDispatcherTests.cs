@@ -62,11 +62,12 @@ public class StateSyncDispatcherTests
     }
 
     [Test]
-    public async Task Eth66Peer_RunGetNodeData()
+    public async Task NodeDataPeer_RunGetNodeData([Values((byte)66, (byte)100)] byte protocolVersion)
     {
         ISyncPeer peer = Substitute.For<ISyncPeer>();
         peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)));
-        peer.ProtocolVersion.Returns((byte)66);
+        peer.ProtocolVersion.Returns(protocolVersion);
+        peer.CanGetNodeData.Returns(true);
         peer.IsInitialized.Returns(true);
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
         peer.HeadNumber.Returns(ChainLength - 1);

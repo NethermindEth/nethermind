@@ -11,6 +11,7 @@ using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
@@ -229,7 +230,7 @@ public class BlockTreeTests
         using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Number, block.Hash!);
         Assert.That(missingBal, Is.Null);
 
-        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList());
         block.GeneratedBlockAccessList = new GeneratedBlockAccessList();
         block.EncodedBlockAccessList = encodedBal;
         block.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
@@ -683,7 +684,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0);
 
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList());
         block1.EncodedBlockAccessList = encodedBal;
         block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
         if (bodyAlreadyStored)
@@ -715,7 +716,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0);
 
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList());
         block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
         blockTree.Insert(block1.Header);
         blockTree.SuggestBlock(block1); // the bodies feed lands first, carrying no access list
@@ -831,12 +832,12 @@ public class BlockTreeTests
         _headersDb = new TestMemDb();
         TestMemDb blocksInfosDb = new();
 
-        Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
+        byte[] chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
         blocksInfosDb.ReadFunc = (key) =>
         {
             if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.Bytes))
             {
-                return chainLevel.Bytes;
+                return chainLevel;
             }
 
             return null!;
@@ -969,6 +970,37 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeadersIfBloomMatches_finds_what_the_single_lookup_finds([Values] bool bloomMatches)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        Block branch = Build.A.Block.WithParent(blockTree.Head!).TestObject;
+        blockTree.SuggestBlock(branch, BlockTreeSuggestOptions.None);
+        builder.ChainLevelInfoRepository.PersistLevel(1, new ChainLevelInfo(true, new BlockInfo(Keccak.Zero, 1)));
+        builder.HeaderStore.Delete(blockTree.FindHash(2)!);
+        ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
+        ((IClearableCache)builder.HeaderStore).ClearCache();
+
+        BlockHeader?[] headers = new BlockHeader?[branch.Number + 2];
+        bool[] found = new bool[headers.Length];
+        blockTree.FindCanonicalHeadersIfBloomMatches(0, _ => bloomMatches, headers, found);
+
+        for (int i = 0; i < headers.Length; i++)
+        {
+            BlockHeader? expected = blockTree.FindCanonicalHeaderIfBloomMatches((ulong)i, _ => bloomMatches, out bool expectedFound);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found[i], Is.EqualTo(expectedFound), $"found {i}");
+                Assert.That(headers[i]?.Hash, Is.EqualTo(expected?.Hash), $"hash {i}");
+                Assert.That(headers[i]?.TotalDifficulty, Is.EqualTo(expected?.TotalDifficulty), $"total difficulty {i}");
+            }
+        }
+
+        Assert.That(found[1..3], Is.All.False, "a zero-hash level and a missing header are not found");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void FindCanonicalHeaderIfBloomMatches_does_not_cache_a_historical_level()
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
@@ -983,6 +1015,46 @@ public class BlockTreeTests
         }
 
         Assert.That(blockInfoDb.ReadsCount - readsBefore, Is.EqualTo(2));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeaderIfBloomMatches_rejects_a_historical_block_without_allocating()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().WithHeaderStore(new HeaderStore(new MemDb(), new MemDb()));
+        builder.BlockInfoDb = new MemDb();
+        builder.OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
+        Func<ReadOnlySpan<byte>, bool> rejectBloom = static _ => false;
+        blockTree.FindCanonicalHeaderIfBloomMatches(1, rejectBloom, out _);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        BlockHeader? header = blockTree.FindCanonicalHeaderIfBloomMatches(1, rejectBloom, out bool found);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(header, Is.Null);
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeaderIfBloomMatches_skips_a_historical_level_with_a_zero_hash()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        builder.ChainLevelInfoRepository.PersistLevel(1, new ChainLevelInfo(true, new BlockInfo(Keccak.Zero, 1)));
+        ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
+
+        BlockHeader? header = blockTree.FindCanonicalHeaderIfBloomMatches(1, static _ => true, out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(header, Is.Null);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1516,6 +1588,26 @@ public class BlockTreeTests
         AssertPersistedForkChoice(builder, expectedFinalized, expectedSafe);
     }
 
+    [TestCase(2UL, 3UL, 3UL, TestName = "ForkChoiceUpdated_raises_a_kept_safe_hash_below_the_new_finalized_one")]
+    [TestCase(4UL, 3UL, 4UL, TestName = "ForkChoiceUpdated_keeps_a_kept_safe_hash_above_the_new_finalized_one")]
+    public void ForkChoiceUpdated_keeps_the_safe_hash_at_or_above_the_finalized_one(ulong safe, ulong newFinalized, ulong expectedSafe)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
+        BlockTree blockTree = builder.TestObject;
+        Hash256 HashOf(ulong number) => blockTree.FindHeader(number, BlockTreeLookupOptions.None)!.Hash!;
+        blockTree.ForkChoiceUpdated(HashOf(1), HashOf(safe));
+
+        blockTree.ForkChoiceUpdated(HashOf(newFinalized), Keccak.Zero);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FinalizedHash, Is.EqualTo(HashOf(newFinalized)));
+            Assert.That(blockTree.SafeHash, Is.EqualTo(HashOf(expectedSafe)));
+        }
+
+        AssertPersistedForkChoice(builder, HashOf(newFinalized), HashOf(expectedSafe));
+    }
+
     private static IEnumerable<TestCaseData> ForkChoicePairs()
     {
         yield return new TestCaseData(TestItem.KeccakA, TestItem.KeccakB).SetArgDisplayNames("finalized", "safe");
@@ -1908,14 +2000,14 @@ public class BlockTreeTests
         blockStore.Insert(genesisBlock);
 
         TestMemDb headersDb = new();
-        headersDb.Set(genesisBlock.Hash!, Rlp.Encode(genesisBlock.Header).Bytes);
+        headersDb.Set(genesisBlock.Hash!, Rlp.Encode(genesisBlock.Header));
 
         TestMemDb blockInfosDb = new();
         blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash!.Bytes);
         ChainLevelInfo level = new(true, new BlockInfo(headBlock.Hash!, headBlock.Difficulty));
         level.BlockInfos[0].WasProcessed = true;
 
-        blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
+        blockInfosDb.Set(0, Rlp.Encode(level));
 
         BlockTree blockTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -2111,7 +2203,7 @@ public class BlockTreeTests
         tree.SuggestBlock(block0);
         foreach (Block block in new[] { block1, block2, block3 })
         {
-            block.EncodedBlockAccessList = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+            block.EncodedBlockAccessList = Rlp.Encode(new ReadOnlyBlockAccessList());
             tree.SuggestBlock(block);
         }
 
@@ -2555,7 +2647,7 @@ public class BlockTreeTests
     public void Loads_best_head_up_to_best_persisted_state()
     {
         MemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(51).Bytes);
+        metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(51));
 
         SyncConfig syncConfig = new()
         {
@@ -2717,6 +2809,26 @@ public class BlockTreeTests
         {
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis));
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
+            Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header, BlockBodyDecoder.Instance.Encode(genesis.Body)));
+        }
+    }
+
+    [Test]
+    public void Insert_of_encoded_body_stores_the_block_and_its_number([Values] bool saveHeader)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree tree = builder.TestObject;
+        Block block = Build.A.Block.WithParent(tree.Genesis!).WithTransactions(Build.A.Transaction.Signed().TestObjectNTimes(2)).TestObject;
+
+        AddBlockResult result = tree.Insert(block.Header, BlockBodyDecoder.Instance.Encode(block.Body),
+            saveHeader ? BlockTreeInsertBlockOptions.SaveHeader : BlockTreeInsertBlockOptions.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(tree.FindHeader(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null, Is.EqualTo(saveHeader));
+            Assert.That(builder.HeaderStore.GetBlockNumber(block.Hash!), Is.EqualTo(block.Number));
+            Assert.That(tree.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Transactions, Has.Length.EqualTo(2));
         }
     }
 
@@ -2848,6 +2960,35 @@ public class BlockTreeTests
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         ChainLevelInfo info = blockTree.FindLevel(1000)!;
         Assert.That(info, Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Level_range_updates_reach_past_one_level_read_chunk()
+    {
+        const ulong head = 1100;
+        const ulong kept = 40;
+        BlockTree tree = Build.A.BlockTree().OfHeadersOnly.OfChainLength((int)head + 1).TestObject;
+
+        tree.UpdateBeaconMainChain(BlockInfos(1, head), head);
+        tree.UpdateBeaconMainChain(BlockInfos(1, kept), head);
+        for (ulong number = 1; number <= head; number++)
+            Assert.That(tree.FindLevel(number)!.BlockInfos[0].IsBeaconMainChain, Is.EqualTo(number <= kept), $"beacon level {number}");
+
+        Assert.That(tree.DeleteChainSlice(kept + 1, head), Is.EqualTo((int)(head - kept)));
+        for (ulong number = 0; number <= head; number++)
+            Assert.That(tree.FindLevel(number), number <= kept ? Is.Not.Null : Is.Null, $"deleted level {number}");
+
+        List<BlockInfo> BlockInfos(ulong from, ulong to)
+        {
+            List<BlockInfo> infos = [];
+            for (ulong number = from; number <= to; number++)
+            {
+                BlockInfo info = tree.FindLevel(number)!.BlockInfos[0];
+                infos.Add(new BlockInfo(info.BlockHash, info.TotalDifficulty) { BlockNumber = number });
+            }
+
+            return infos;
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -3383,7 +3524,7 @@ public class BlockTreeTests
     }
 
     [Test]
-    public void On_restart_loads_already_processed_genesis_block([Values] bool wereProcessed)
+    public void On_restart_loads_genesis_only_if_processed([Values] bool wasProcessed)
     {
         TestMemDb blocksDb = new();
         TestMemDb headersDb = new();
@@ -3413,13 +3554,13 @@ public class BlockTreeTests
                 timestamp: 1695902100,
                 extraData: [])
             {
-                Hash = new Hash256("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = Keccak.EmptyTreeHash,
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 MixHash = Keccak.Zero
             });
+            genesis.Header.Hash = genesis.Header.CalculateHash();
 
             // Second block
             Block second = new(new(
@@ -3432,13 +3573,13 @@ public class BlockTreeTests
                 timestamp: genesis.Header.Timestamp + 100,
                 extraData: [])
             {
-                Hash = new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 MixHash = Keccak.Zero
             });
+            second.Header.Hash = second.Header.CalculateHash();
 
             // Third block
             Block third = new(new(
@@ -3451,18 +3592,18 @@ public class BlockTreeTests
                 timestamp: second.Header.Timestamp + 100,
                 extraData: [])
             {
-                Hash = new Hash256("0x2222222222222222222222222222222222222222222222222222222222222222"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 MixHash = Keccak.Zero
             });
+            third.Header.Hash = third.Header.CalculateHash();
 
             tree.SuggestBlock(genesis);
             Assert.That(tree.Genesis, Is.Not.Null);
 
-            tree.TryUpdateMainChain(genesis.Header, wereProcessed, preloadedBlocks: [genesis]);
+            tree.TryUpdateMainChain(genesis.Header, wasProcessed, preloadedBlocks: [genesis]);
 
             tree.SuggestBlock(second);
             tree.SuggestBlock(third);
@@ -3478,7 +3619,7 @@ public class BlockTreeTests
                 .WithoutSettingHead
                 .TestObject;
 
-            Assert.That(tree.Genesis, Is.Not.Null);
+            Assert.That(tree.Genesis, wasProcessed ? Is.Not.Null : Is.Null);
         }
     }
 

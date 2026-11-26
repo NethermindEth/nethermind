@@ -48,8 +48,9 @@ public static class ConsoleHelpers
             mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
             SetConsoleMode(handle, mode);
         }
-        catch
+        catch (Exception e)
         {
+            Console.Error.WriteLine($"Could not enable console colors: {e.Message}");
         }
     }
 

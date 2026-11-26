@@ -15,6 +15,13 @@ public interface IJsonRpcResponseSink
     /// <summary>Gets whether batch processing should stop after the last written item.</summary>
     bool StopRequested { get; }
 
+    /// <summary>Returns a final batch error if even an error for the next item cannot fit, or null to continue.</summary>
+    /// <remarks>
+    /// Used with <see cref="JsonRpcContext.BatchLimits"/>, which serializes admission and execution.
+    /// The processor writes and disposes a returned response without dispatching the next item.
+    /// </remarks>
+    JsonRpcErrorResponse? GetBatchLimitResponse(JsonRpcRequest? request) => null;
+
     /// <summary>Writes one non-batch JSON-RPC response.</summary>
     ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken);
 

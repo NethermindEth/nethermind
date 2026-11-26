@@ -104,6 +104,69 @@ public class KademliaAdapterTests
     }
 
     [Test]
+    public void AddressBurstLimiter_AllocatesFiltersAsBurstGrows()
+    {
+        const int filterSize = 8192;
+        const int burst = 16;
+        TimeSpan window = TimeSpan.FromHours(1);
+        IPAddress address = IPAddress.Parse("192.0.2.1");
+        _ = NodeFilter.CreateExact(filterSize, window).TryAccept(address);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        NodeFilter filter = NodeFilter.CreateExact(filterSize, window);
+        long filterBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        GC.KeepAlive(filter);
+
+        before = GC.GetAllocatedBytesForCurrentThread();
+        AddressBurstLimiter limiter = new(burst, filterSize, window);
+        long constructionBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.That(constructionBytes, Is.InRange(filterBytes, filterBytes * 2));
+
+        for (int i = 0; i < burst; i++)
+        {
+            before = GC.GetAllocatedBytesForCurrentThread();
+            bool accepted = limiter.TryAccept(address);
+            long acceptanceBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accepted, Is.True);
+                Assert.That(acceptanceBytes, i == 0 ? Is.LessThan(filterBytes) : Is.InRange(filterBytes, filterBytes * 2));
+            }
+        }
+
+        before = GC.GetAllocatedBytesForCurrentThread();
+        bool rejected = !limiter.TryAccept(address);
+        long rejectionBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected, Is.True);
+            Assert.That(rejectionBytes, Is.LessThan(filterBytes));
+        }
+    }
+
+    [Test]
+    public void AddressBurstLimiter_ConcurrentFirstUsePreservesBurstPerAddress([Values(1, 8, 16)] int burst)
+    {
+        AddressBurstLimiter limiter = new(burst, 8192, TimeSpan.FromHours(1));
+        IPAddress[] addresses = [IPAddress.Parse("192.0.2.1"), IPAddress.Parse("192.0.2.2")];
+        IPAddress[] mappedAddresses = [addresses[0].MapToIPv6(), addresses[1].MapToIPv6()];
+        int[] accepted = new int[addresses.Length];
+
+        Parallel.For(0, 256, i =>
+        {
+            int addressIndex = i % addresses.Length;
+            IPAddress address = i % 4 < 2 ? addresses[addressIndex] : mappedAddresses[addressIndex];
+            if (limiter.TryAccept(address))
+            {
+                Interlocked.Increment(ref accepted[addressIndex]);
+            }
+        });
+
+        Assert.That(accepted, Is.All.EqualTo(burst));
+    }
+
+    [Test]
     public void TryGetKnownNode_ShouldUseExactHashLookup()
     {
         Node target = CreateNode(TestItem.PublicKeyB, 2);
@@ -340,18 +403,30 @@ public class KademliaAdapterTests
     [TestCase("[::ffff:8.8.8.8]:30304", "8.8.8.8")]
     [TestCase("[fe80::1]:40404", null)]
     [TestCase("1.1.1.1:30304", null)]
-    public void TryGetAcceptableNode_RequiresRecordToAdvertiseSourceEndpoint(string source, string? expectedHost)
+    // A special-use source is not an acceptable endpoint, and the record's endpoint in the other family was never verified.
+    [TestCase("[2002:c000:204::1]:30304", null, "8.8.8.8", "2002:c000:204::1")]
+    [TestCase("[2001:0:4136:e378:8000:63bf:3fff:fdd2]:30304", null, "8.8.8.8", "2001:0:4136:e378:8000:63bf:3fff:fdd2")]
+    [TestCase("[64:ff9b::808:808]:30304", null, "8.8.8.8", "64:ff9b::808:808")]
+    [TestCase("198.18.0.1:30304", null, "198.18.0.1", "2606:4700:4700::1111")]
+    [TestCase("[::ffff:198.18.0.1]:30304", null, "198.18.0.1", "2606:4700:4700::1111")]
+    [TestCase("[2002:c000:204::1]:30304", null, "8.8.8.8", "2002:c000:204::1", false)]
+    public void TryGetAcceptableNode_RequiresRecordToAdvertiseSourceEndpoint(
+        string source,
+        string? expectedHost,
+        string recordIp = "8.8.8.8",
+        string recordIp6 = "fe80::1",
+        bool allowNonRoutable = true)
     {
         NodeRecord record = TestEnrBuilder.BuildSigned(
             TestItem.PrivateKeyB,
-            IPAddress.Parse("8.8.8.8"),
+            IPAddress.Parse(recordIp),
             tcpPort: 30303,
             udpPort: 30304,
-            configureExtras: enr => enr.SetEntry(new Ip6Entry(IPAddress.Parse("fe80::1"))));
+            configureExtras: enr => enr.SetEntry(new Ip6Entry(IPAddress.Parse(recordIp6))));
 
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
-            allowNonRoutable: true,
+            allowNonRoutable,
             localIp: IPAddress.IPv6Any,
             sourceEndpoint: IPEndPoint.Parse(source),
             node: out Node? node);

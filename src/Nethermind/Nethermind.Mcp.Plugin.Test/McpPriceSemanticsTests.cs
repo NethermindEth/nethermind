@@ -243,7 +243,7 @@ public class McpPriceSemanticsTests
         byte[] decimals = new byte[32];
         decimals[31] = 8;
         eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(),
-            Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>()).Returns(info =>
+            Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>()).Returns(info =>
                 ResultWrapper<HexBytes>.Success(new HexBytes(((LegacyTransactionForRpc)info.ArgAt<SignableTransactionForRpc>(0)).Input![0] == 0xfe ? round : decimals)));
         return eth;
     }

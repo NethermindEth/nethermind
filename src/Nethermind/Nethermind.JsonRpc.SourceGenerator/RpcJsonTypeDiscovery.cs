@@ -76,7 +76,7 @@ internal static class RpcJsonTypeDiscovery
 
     public static string[] GetSortedUniqueTypes(ImmutableArray<ImmutableArray<string>> typeGroups)
     {
-        HashSet<string> uniqueTypes = new(StringComparer.Ordinal);
+        HashSet<string> uniqueTypes = [with(StringComparer.Ordinal)];
         for (int i = 0; i < typeGroups.Length; i++)
         {
             ImmutableArray<string> group = typeGroups[i];
@@ -102,14 +102,15 @@ internal static class RpcJsonTypeDiscovery
             return ImmutableArray<ITypeSymbol>.Empty;
         }
 
+        INamedTypeSymbol? cancellationTokenType = semanticModel.Compilation.GetTypeByMetadataName(typeof(CancellationToken).FullName!);
         ImmutableArray<ITypeSymbol>.Builder types = ImmutableArray.CreateBuilder<ITypeSymbol>();
-        AddMethodTypes(type, types);
+        AddMethodTypes(type, cancellationTokenType, types);
         for (int i = 0; i < type.AllInterfaces.Length; i++)
         {
             INamedTypeSymbol interfaceType = type.AllInterfaces[i];
             if (IsRpcModule(interfaceType))
             {
-                AddMethodTypes(interfaceType, types);
+                AddMethodTypes(interfaceType, cancellationTokenType, types);
             }
         }
 
@@ -153,7 +154,7 @@ internal static class RpcJsonTypeDiscovery
         return IsNamedType(type, JsonRpcModulesNamespace, "IRpcModule");
     }
 
-    private static void AddMethodTypes(INamedTypeSymbol type, ImmutableArray<ITypeSymbol>.Builder types)
+    private static void AddMethodTypes(INamedTypeSymbol type, INamedTypeSymbol? cancellationTokenType, ImmutableArray<ITypeSymbol>.Builder types)
     {
         ImmutableArray<ISymbol> members = type.GetMembers();
         for (int i = 0; i < members.Length; i++)
@@ -166,6 +167,12 @@ internal static class RpcJsonTypeDiscovery
             AddReturnPayloadTypes(method.ReturnType, types);
             for (int j = 0; j < method.Parameters.Length; j++)
             {
+                // The dispatcher supplies a CancellationToken, so it is never read from JSON.
+                if (SymbolEqualityComparer.Default.Equals(method.Parameters[j].Type, cancellationTokenType))
+                {
+                    continue;
+                }
+
                 AddJsonType(method.Parameters[j].Type, types);
             }
         }

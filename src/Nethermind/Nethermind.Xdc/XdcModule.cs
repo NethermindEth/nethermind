@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -27,7 +28,6 @@ using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
@@ -60,6 +60,7 @@ public class XdcModule : Module
 
             .AddDecorator<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
+            .AddKeyedScoped<BlockProcessor, XdcTransactionTraceBlockProcessor>(TransactionTraceModule.BlockProcessorKey)
 
             .Add<StartXdcBlockProducer>()
             .AddSingleton<XdcBlockProducerFactory>()
@@ -115,10 +116,8 @@ public class XdcModule : Module
 
             // sync
             .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
-            .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
             .AddSingleton<IXdcStateSyncSnapshotManager, XdcStateSyncSnapshotManager>()
             .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
-            .AddSingleton<ISyncDownloader<StateSyncBatch>, XdcStateSyncDownloader>()
 
 
             //Network

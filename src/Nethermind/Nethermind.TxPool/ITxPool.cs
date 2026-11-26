@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Network.Contract.Messages;
@@ -68,6 +69,10 @@ namespace Nethermind.TxPool
             GetPendingLightBlobTransactionsBySender().TryGetValue(address, out Transaction[]? txs) ? txs : [];
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
+
+        /// <summary>Removes the gossip registration owned by this peer connection.</summary>
+        void RemovePeer(ITxPoolPeer peer);
+
         AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         /// <summary>
@@ -139,6 +144,26 @@ namespace Nethermind.TxPool
             transaction = default;
             return false;
         }
+
+        /// <summary>
+        /// Gets the cell availability mask of a pending blob transaction, as <see cref="TryGetPendingBlobCellMask"/> does,
+        /// and in the same lookup the network encoding of a type-3 transaction that holds every blob, read from
+        /// persistent storage without decoding it.
+        /// </summary>
+        /// <param name="hash">The transaction hash.</param>
+        /// <param name="availableMask">The cell availability mask.</param>
+        /// <param name="networkForm">
+        /// The encoding that <see cref="TryGetPendingTransaction"/> would give when encoded in the mempool form without
+        /// the typed envelope, or <see langword="null"/> when the transaction is not a full type-3 transaction or is held
+        /// in memory, so <see cref="TryGetPendingTransaction"/> is the cheaper read. The caller disposes it.
+        /// </param>
+        /// <returns><see langword="true"/> when the blob pool holds the transaction.</returns>
+        bool TryGetPendingBlobCellMaskAndNetworkForm(in ValueHash256 hash, out BlobCellMask availableMask, out IOwnedReadOnlyList<byte>? networkForm)
+        {
+            networkForm = null;
+            return TryGetPendingBlobCellMask(hash, out availableMask);
+        }
+
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
 
         /// <summary>
@@ -160,11 +185,8 @@ namespace Nethermind.TxPool
         bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof);
-        bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs);
         int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs);
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs);
         /// <summary>
         /// Gets the cell availability mask of a pending blob transaction without materializing blobs or cells.
         /// </summary>
@@ -231,21 +253,14 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>
-        /// Verifies and merges newly received cells into a pending sparse blob transaction.
-        /// </summary>
-        bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);
-
-        /// <summary>
         /// Verifies and merges newly received cells and reports why the merge was rejected.
         /// </summary>
         /// <returns>The outcome of the merge attempt.</returns>
         BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);
         ulong GetLatestPendingNonce(Address address);
-        event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
         event EventHandler<TxEventArgs> EvictedPending;
-        public bool AcceptTxWhenNotSynced { get; set; }
         bool SupportsBlobs { get; }
         long PendingTransactionsAdded { get; }
 

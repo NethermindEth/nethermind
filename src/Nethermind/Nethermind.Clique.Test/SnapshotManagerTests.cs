@@ -1,15 +1,23 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Trie;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -38,11 +46,11 @@ public class SnapshotManagerTests
     {
         // Import blocks
         _blockTree = Build.A.BlockTree().TestObject;
-        Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
-        Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
-        Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
-        Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
-        Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
+        Block block1 = Rlp.Decode<Block>(Bytes.FromHexString(Block1Rlp));
+        Block block2 = Rlp.Decode<Block>(Bytes.FromHexString(Block2Rlp));
+        Block block3 = Rlp.Decode<Block>(Bytes.FromHexString(Block3Rlp));
+        Block block4 = Rlp.Decode<Block>(Bytes.FromHexString(Block4Rlp));
+        Block block5 = Rlp.Decode<Block>(Bytes.FromHexString(Block5Rlp));
         Block genesisBlock = CliqueTests.GetGenesis();
         // Add blocks
         MineBlock(_blockTree, genesisBlock);
@@ -63,6 +71,41 @@ public class SnapshotManagerTests
         Block genesis = CliqueTests.GetGenesis();
         Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
         Assert.That(snapshot.Hash, Is.EqualTo(genesis.Hash));
+    }
+
+    [Test]
+    public void Does_not_create_snapshot_for_a_number_the_header_does_not_have()
+    {
+        using MemDb snapshotDb = new();
+        using IContainer container = BuildCliqueContainer(snapshotDb);
+        ISnapshotManager snapshotManager = container.Resolve<ISnapshotManager>();
+        Hash256 block4Hash = _blockTree.FindHeader(4, BlockTreeLookupOptions.None)!.Hash!;
+
+        Assert.Throws<InvalidOperationException>(() => snapshotManager.GetOrCreateSnapshot(CliqueConfig.Default.Epoch, block4Hash));
+        Assert.That(snapshotDb.Keys, Is.Empty);
+    }
+
+    [Test]
+    public void Header_validation_rejects_a_wrong_number_before_the_seal_creates_a_snapshot()
+    {
+        using MemDb snapshotDb = new();
+        using IContainer container = BuildCliqueContainer(snapshotDb);
+        ISnapshotManager snapshotManager = container.Resolve<ISnapshotManager>();
+        IHeaderValidator headerValidator = container.Resolve<IHeaderValidator>();
+        BlockHeader parent = _blockTree.FindHeader(4, BlockTreeLookupOptions.None)!;
+        BlockHeader header = Rlp.Decode<Block>(Bytes.FromHexString(Block5Rlp)).Header;
+        header.Number = CliqueConfig.Default.Epoch + 1;
+        header.Hash = header.CalculateHash();
+
+        bool valid = headerValidator.Validate(header, parent, false, out string error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidBlockNumber));
+            Assert.That(snapshotDb.Keys, Is.Empty);
+            Assert.That(() => snapshotManager.GetOrCreateSnapshot(CliqueConfig.Default.Epoch, parent.Hash!), Throws.InvalidOperationException);
+        }
     }
 
     [Test]
@@ -139,6 +182,15 @@ public class SnapshotManagerTests
             .TestObject;
         return header;
     }
+
+    private IContainer BuildCliqueContainer(IDb snapshotDb) => new ContainerBuilder()
+        .AddModule(new TestNethermindModule())
+        .AddModule(new CliqueModule())
+        .AddSingleton(new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod })
+        .AddSingleton<IBlockTree>(_blockTree)
+        .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(new ReleaseSpec { MaximumExtraDataSize = 1024 }))
+        .AddKeyedSingleton(DbNames.Blocks, snapshotDb)
+        .Build();
 
     private void MineBlock(BlockTree tree, Block block)
     {

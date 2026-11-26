@@ -248,7 +248,7 @@ public class TrieReassemblerTests
 
         // Step 4: patch flat account entry only (state trie leaves remain stale)
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
-            writer.SetAccountRaw(TestItem.KeccakA, new Account(0, 100, newStorageRoot, Keccak.OfAnEmptyString));
+            writer.SetAccountRaw(TestItem.KeccakA, new AccountStruct(0, 100, newStorageRoot, Keccak.OfAnEmptyString));
 
         // State trie branch is stale but exists — reassembler must ignore it and rebuild
         Hash256? reassembledRoot = _reassembler.TryReassemble([TestItem.KeccakA], CancellationToken.None);
@@ -337,9 +337,9 @@ public class TrieReassemblerTests
         using ArrayPoolListRef<BulkSetEntry> bulkSetEntries = new();
         foreach ((Hash256 path, Account account) in accounts)
         {
-            Rlp rlp = account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : AccountDecoder.Instance.Encode(account);
-            bulkSetEntries.Add(new BulkSetEntry(path, rlp.Bytes));
-            writeBatch.SetAccountRaw(path.ValueHash256, account);
+            byte[] rlp = account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : AccountDecoder.Instance.Encode(account);
+            bulkSetEntries.Add(new BulkSetEntry(path, rlp));
+            writeBatch.SetAccountRaw(path.ValueHash256, account.ToStruct());
         }
 
         tree.BulkSet(bulkSetEntries);
@@ -358,7 +358,7 @@ public class TrieReassemblerTests
         using ArrayPoolListRef<BulkSetEntry> bulkSetEntries = new();
         foreach ((Hash256 path, byte[] value) in slots)
         {
-            byte[] rlpValue = Rlp.Encode(value).Bytes;
+            byte[] rlpValue = Rlp.Encode(value);
             bulkSetEntries.Add(new BulkSetEntry(path, rlpValue));
             writeBatch.SetStorageRawEncoded(addressHash, path, rlpValue);
         }

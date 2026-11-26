@@ -237,13 +237,24 @@ public class SnapshotHttpStreamTests
             await Task.Delay(Timeout.InfiniteTimeSpan, shutdown).ContinueWith(static _ => { }, TaskScheduler.Default);
             handlerFailing.SetResult();
         });
-        using HttpClient client = new();
-        _ = client.GetAsync(server.Url);
-        await handlerStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        bool disposeAsserted = false;
+        try
+        {
+            using HttpClient client = new();
+            _ = client.GetAsync(server.Url);
+            await handlerStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.That(server.Dispose, Throws.Nothing,
-            "closing the listener races in-flight handlers, so their failures during shutdown must not fail the test");
-        await handlerFailing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            disposeAsserted = true;
+            Assert.That(server.Dispose, Throws.Nothing,
+                "closing the listener races in-flight handlers, so their failures during shutdown must not fail the test");
+            await handlerFailing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            // The assertion itself disposes the server; dispose here only when the test failed before reaching it.
+            if (!disposeAsserted)
+                server.Dispose();
+        }
     }
 
     [Test]
@@ -266,7 +277,7 @@ public class SnapshotHttpStreamTests
         SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(_server.Url, cancellationToken);
         await using SnapshotHttpStream stream = new(client, _server.Url, remoteInfo, settings, LimboLogs.Instance, cancellationToken);
         using MemoryStream delivered = new();
-        await Task.Run(() => stream.CopyTo(delivered));
+        await Task.Run(() => stream.CopyTo(delivered), cancellationToken);
         byte[] hash = (await stream.FinishAsync(cancellationToken))!;
         return (delivered.ToArray(), hash);
     }

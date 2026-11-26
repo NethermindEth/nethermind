@@ -42,7 +42,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
     [TestCaseSource(typeof(EthRpcSimulateTestsBase), nameof(EthRpcSimulateTestsBase.GasCapSimulateCases))]
     public async Task Test_debug_simulate_respects_gas_cap(ulong gasCap, ulong? requestGas, bool expectCapped)
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         chain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = chain.DebugRpcModule.debug_simulateV1(
@@ -86,7 +86,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
     public async Task TestTransferLogsAddress()
     {
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = chain.DebugRpcModule.debug_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Data.First().Traces.First().TxHash, Is.EqualTo(new Core.Crypto.Hash256("0xe690a6e09e13d163bc8b92c725202e9633770b14c8541a0ee48794ae014351f0")));
@@ -96,7 +96,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
     public async Task TestSerializationDebugSimulate()
     {
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_simulateV1", payload!, "latest");
         IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>>(response);
         Assert.That(data.First().Traces.First().TxHash, Is.EqualTo(new Core.Crypto.Hash256("0xe690a6e09e13d163bc8b92c725202e9633770b14c8541a0ee48794ae014351f0")));
@@ -106,7 +106,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
     public async Task TestSerializationDebugSimulate_ensure_have_traces_instead_of_calls()
     {
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         string serialized = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_simulateV1", payload!, "latest");
 
         Assert.That(serialized, Does.Contain("\"traces\":"));
@@ -115,7 +115,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
     [Test]
     public async Task Test_simulate_error_message_includes_block_number()
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         // Create a simple payload
         SimulatePayload<TransactionForRpc> payload = new()
@@ -152,7 +152,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
     [Test]
     public async Task Simulate_disposes_the_block_tracer_it_created([Values] bool tracerThrows)
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         IBlockTracer<GethLikeTxTrace> tracer = Substitute.For<IBlockTracer<GethLikeTxTrace>, IDisposable>();
         if (tracerThrows)
         {

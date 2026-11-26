@@ -111,7 +111,10 @@ public class RocksDbFactory : IDbFactory
         }
         else if (settings.DeleteOnStart)
         {
-            RocksDbInstance.Delete(fullPath, settings, _logger);
+            if (!RocksDbInstance.Delete(fullPath, settings, _fileSystem, _logger))
+            {
+                throw new IOException($"Could not delete the {name} database at {fullPath}.");
+            }
         }
 
         try
@@ -255,9 +258,10 @@ public class RocksDbFactory : IDbFactory
                 DateTime creationTime = File.GetCreationTimeUtc(fullPath);
                 fileMetadataEntries.Add((liveFileMetadata.FileMetadata, creationTime));
             }
-            catch (IOException)
+            catch (IOException e)
             {
                 // Maybe the file is gone or something. We ignore it.
+                if (_logger.IsDebug) _logger.Debug($"Skipping warmup of {fullPath}: {e.Message}");
             }
         }
 
@@ -280,32 +284,40 @@ public class RocksDbFactory : IDbFactory
             .ToList();
 
         long totalRead = 0;
-        Parallel.ForEach(fileMetadataEntries, (task) =>
+        Parallel.ForEach(fileMetadataEntries, static () => new byte[512.KiB], (task, _, buffer) =>
         {
             string fullPath = Path.Join(basePath, task.metadata.FileName);
             _logger.Info($"{(totalRead * 100 / (double)totalSize):00.00}% Warming up file {fullPath}");
 
             try
             {
-                byte[] buffer = new byte[512.KiB];
                 using FileStream stream = File.OpenRead(fullPath);
-                int readCount = buffer.Length;
-                while (readCount == buffer.Length)
-                {
-                    readCount = stream.Read(buffer);
-                    Interlocked.Add(ref totalRead, readCount);
-                }
+                Interlocked.Add(ref totalRead, ReadForWarmup(stream, buffer));
             }
             catch (FileNotFoundException)
             {
                 // Happens sometimes. We do nothing here.
+                if (_logger.IsDebug) _logger.Debug($"Skipping warmup of {fullPath}: the file no longer exists");
             }
             catch (IOException e)
             {
                 // Something unusual, but nothing noteworthy.
                 _logger.Warn($"Exception warming up {fullPath} {e}");
             }
-        });
+
+            return buffer;
+        }, static _ => { });
+    }
+
+    internal static long ReadForWarmup(Stream stream, byte[] buffer)
+    {
+        long bytesRead = 0;
+        int count;
+        while ((count = stream.Read(buffer)) != 0)
+        {
+            bytesRead += count;
+        }
+        return bytesRead;
     }
 
     private readonly struct FileMetadataByLevelThenNewestComparer : IComparer<(FileMetadata metadata, DateTime creationTime)>

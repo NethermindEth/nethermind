@@ -5,5 +5,8 @@ namespace Nethermind.Db.Rocks.Config;
 
 public interface IRocksDbConfigFactory
 {
-    IRocksDbConfig GetForDatabase(string databaseName, string? columnName);
+    /// <summary>Gets database options, including global defaults and resource adjustments.</summary>
+    /// <param name="databaseName">The database name, or <see langword="null"/> for global-only defaults without per-table options.</param>
+    /// <param name="columnName">The column name. Ignored when <paramref name="databaseName"/> is null.</param>
+    IRocksDbConfig GetForDatabase(string? databaseName, string? columnName);
 }

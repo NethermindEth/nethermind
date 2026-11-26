@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security;
+using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
@@ -137,6 +138,65 @@ public class WalletTests
         }
 
         Assert.That(ctx.Wallet.GetAccounts().Length, Is.EqualTo(count));
+    }
+
+    [TestCase(255)]
+    [TestCase(256)]
+    [TestCase(300)]
+    public void Dev_keys_are_the_big_endian_numbers_from_one(int devAccounts)
+    {
+        DevWallet wallet = new(new WalletConfig { DevAccounts = devAccounts }, LimboLogs.Instance);
+        Assert.That(wallet.GetAccounts(), Is.EquivalentTo(DevKeyAddresses(devAccounts)));
+    }
+
+    [Test, MaxTime(60_000)]
+    public async Task Dev_wallets_built_at_the_same_time_get_their_own_keys()
+    {
+        using ManualResetEventSlim firstStarted = new();
+        using ManualResetEventSlim secondBuilt = new();
+        int reads = 0;
+        IWalletConfig pausingConfig = Substitute.For<IWalletConfig>();
+        pausingConfig.DevAccounts.Returns(_ =>
+        {
+            // The constructor reads the count before its first key; hold it there while the other wallet is built.
+            if (Interlocked.Increment(ref reads) == 1)
+            {
+                firstStarted.Set();
+                secondBuilt.Wait(TimeSpan.FromSeconds(10));
+            }
+
+            return 3;
+        });
+
+        Task<DevWallet> first = Task.Run(() => new DevWallet(pausingConfig, LimboLogs.Instance));
+        DevWallet second;
+        try
+        {
+            Assert.That(firstStarted.Wait(TimeSpan.FromSeconds(10)), Is.True, "first wallet started");
+            second = new DevWallet(new WalletConfig { DevAccounts = 5 }, LimboLogs.Instance);
+        }
+        finally
+        {
+            secondBuilt.Set();
+        }
+
+        Address[] firstAccounts = (await first).GetAccounts();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstAccounts, Is.EquivalentTo(DevKeyAddresses(3)), "first");
+            Assert.That(second.GetAccounts(), Is.EquivalentTo(DevKeyAddresses(5)), "second");
+        }
+    }
+
+    private static IEnumerable<Address> DevKeyAddresses(int count)
+    {
+        for (int n = 1; n <= count; n++)
+        {
+            byte[] keyBytes = new byte[32];
+            keyBytes[30] = (byte)(n >> 8);
+            keyBytes[31] = (byte)n;
+            yield return new PrivateKey(keyBytes).Address;
+        }
     }
 
     [Test]

@@ -414,7 +414,7 @@ internal class MineModuleTests
 
     private static Task<XdcTestBlockchain> CreateChainWithClockSignal() =>
         XdcTestBlockchain.Create(useHotStuffModule: true, configurer: builder =>
-            builder.AddSingleton<ITimestamper>(ctx => new ClockQueryingTimestamper(ctx.Resolve<ManualTimestamper>())));
+            builder.AddSingleton<ITimestamper, ClockQueryingTimestamper>());
 
     /// <summary>
     /// Makes this node the leader for the current round and starts a round task, returning once the

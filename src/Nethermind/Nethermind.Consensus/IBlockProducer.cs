@@ -19,6 +19,15 @@ public interface IBlockProducer
         Flags flags = Flags.None,
         CancellationToken cancellationToken = default);
 
+    Task<Block?> BuildBlock(
+        BlockHeader? parentHeader,
+        IBlockTracer? blockTracer,
+        PayloadAttributes? payloadAttributes,
+        Flags flags,
+        CancellationToken cancellationToken,
+        CancellationToken abandonToken) =>
+        BuildBlock(parentHeader, blockTracer, payloadAttributes, flags, cancellationToken);
+
     [Flags]
     public enum Flags
     {

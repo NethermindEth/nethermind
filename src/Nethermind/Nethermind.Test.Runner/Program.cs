@@ -45,6 +45,9 @@ internal class Program
         public static Option<bool> EngineTest { get; } =
             new("--engineTest", "-e") { Description = "Run as engine test (blockchain_test_engine fixtures)." };
 
+        public static Option<bool> EngineReorgTest { get; } =
+            new("--engineReorgTest") { Description = "Run as engine reorg test (blockchain_test_engine_reorg fixtures: a payload DAG driven by a branching script of Engine API and JSON-RPC steps)." };
+
         public static Option<bool> TxTest { get; } =
             new("--txTest") { Description = "Run as transaction test (transaction_tests fixtures: raw tx decoding + validation)." };
 
@@ -121,6 +124,7 @@ internal class Program
             Options.StateTest,
             Options.BlockTest,
             Options.EngineTest,
+            Options.EngineReorgTest,
             Options.TxTest,
             Options.ZkEvmTest,
             Options.TraceAlways,
@@ -197,13 +201,14 @@ internal class Program
         bool isStateTest = parseResult.GetValue(Options.StateTest);
         bool isBlockTest = parseResult.GetValue(Options.BlockTest) || command == Options.BlockTest;
         bool isEngineTest = parseResult.GetValue(Options.EngineTest) || command == Options.EngineTest;
+        bool isEngineReorgTest = parseResult.GetValue(Options.EngineReorgTest);
         bool isTxTest = parseResult.GetValue(Options.TxTest);
         bool isZkEvmTest = parseResult.GetValue(Options.ZkEvmTest);
 
-        int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0) + (isTxTest ? 1 : 0) + (isZkEvmTest ? 1 : 0);
+        int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0) + (isEngineReorgTest ? 1 : 0) + (isTxTest ? 1 : 0) + (isZkEvmTest ? 1 : 0);
         if (testTypeCount != 1)
         {
-            Console.Error.WriteLine("Please specify one of: blocktest, enginetest, --stateTest, --blockTest, --engineTest, --txTest, or --zkevmTest");
+            Console.Error.WriteLine("Please specify one of: blocktest, enginetest, --stateTest, --blockTest, --engineTest, --engineReorgTest, --txTest, or --zkevmTest");
             return 1;
         }
 
@@ -252,7 +257,7 @@ internal class Program
         int exitCode = 0;
         while (inputs.Count > 0)
         {
-            List<string>? files = CollectFiles(inputs, chunk, failOnUnreadablePath: isBlockTest || isEngineTest);
+            List<string>? files = CollectFiles(inputs, chunk, failOnUnreadablePath: isBlockTest || isEngineTest || isEngineReorgTest);
             if (files is null)
             {
                 // Each stdin line is its own batch, so a bad path fails only its line and the session reads on.
@@ -261,7 +266,7 @@ internal class Program
                 files = [];
             }
 
-            if (isEngineTest || isBlockTest)
+            if (isEngineTest || isBlockTest || isEngineReorgTest)
             {
                 // Compiled once and shared by the per-file runner instances.
                 Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
@@ -279,7 +284,7 @@ internal class Program
                     MatchExpectedExceptions: parseResult.GetValue(Options.MatchExceptions),
                     PreWarming: preWarming,
                     BlockAccessListExecutionObserver: balReport && !trace ? new BlockAccessListExecutionReport(Console.Error) : null);
-                (List<EthereumTestResult> results, bool allFilesLoaded) = await RunBlockTestFiles(files, runnerOptions, workers);
+                (List<EthereumTestResult> results, bool allFilesLoaded) = await RunBlockTestFiles(files, runnerOptions, workers, isEngineReorgTest ? TestType.EngineReorg : TestType.Blockchain);
                 resultsOut.Write(_serializer.Serialize(results, true));
                 if (!allFilesLoaded) exitCode = IncompleteInputExitCode;
             }
@@ -394,10 +399,10 @@ internal class Program
         return result;
     }
 
-    /// <summary>Runs every file's block or engine tests.</summary>
+    /// <summary>Runs every file's block, engine or engine reorg tests.</summary>
     /// <returns>The results, and whether every file could be loaded; one that could not is reported on stderr instead.</returns>
     private static async Task<(List<EthereumTestResult> Results, bool AllFilesLoaded)> RunBlockTestFiles(
-        List<string> files, BlockchainTestsRunnerOptions baseOptions, int workers)
+        List<string> files, BlockchainTestsRunnerOptions baseOptions, int workers, TestType testType)
     {
         await KzgPolynomialCommitments.InitializeAsync();
         int effectiveWorkers = baseOptions.Trace ? 1 : workers;
@@ -437,7 +442,7 @@ internal class Program
             {
                 try
                 {
-                    TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), file);
+                    TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(testType), file);
                     BlockchainTestsRunner runner = new(source, runnerOptions);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     allResults.AddRange(results);
@@ -466,7 +471,7 @@ internal class Program
             {
                 try
                 {
-                    TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), item.file);
+                    TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(testType), item.file);
                     BlockchainTestsRunner runner = new(source, runnerOptions);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     resultsByFile[item.index] = results;

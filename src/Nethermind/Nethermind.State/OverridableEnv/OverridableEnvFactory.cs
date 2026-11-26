@@ -27,20 +27,10 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
             ? overridableScope.WorldState
             : new OverlaidScopeProvider(overridableScope.WorldState, readOverlay);
 
-        // eth_simulateV1 and the tracers share these envs and bring their own recorder, so only add one
-        // where a diff can actually be read.
-        IReleaseSpec finalSpec = specProvider.GetFinalSpec();
-        bool recordsTransactionDiffs = finalSpec.IsEip7906Enabled && finalSpec.BlockLevelAccessListsEnabled;
         ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder
-                .AddSingleton<IWorldStateScopeProvider>(scopeProvider);
-            if (recordsTransactionDiffs)
-            {
-                // At scope level so the tx processor and the code repository share one slice.
-                builder.AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false));
-            }
-            builder
+                .AddSingleton<IWorldStateScopeProvider>(scopeProvider)
                 .AddScoped<CodeOverrideStore>()
                 .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
                 .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) =>

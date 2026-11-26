@@ -65,7 +65,7 @@ public class BranchSpliceTests
 
     /// <remarks>A full branch is patched in place unless a child is deleted or embedded, which falls back to the splice.</remarks>
     [Test]
-    public void Splice_from_a_full_branch_matches_fresh_encoding([Values(0, 7, 15)] int index, [Values] Change change)
+    public void Splice_from_a_full_branch_matches_fresh_encoding([Range(0, 15)] int index, [Values] Change change)
     {
         byte[] previous = Encode(FullBranch());
         Assert.That(previous, Has.Length.EqualTo(532));

@@ -86,8 +86,9 @@ public class Program
         };
 
         // Create root command with options
-        RootCommand rootCommand = new("Nethermind Engine API Proxy")
-        {
+        RootCommand rootCommand =
+        [
+            with("Nethermind Engine API Proxy"),
             executionClientOption,
             consensusClientOption,
             portOption,
@@ -100,7 +101,7 @@ public class Program
             requestTimeoutOption,
             getPayloadMethodOption,
             newPayloadMethodOption,
-        };
+        ];
 
         rootCommand.SetAction(async (parseResult, ct) =>
         {
@@ -178,7 +179,7 @@ public class Program
 
                 // Create and start proxy
                 ProxyServer proxy = new(config, logManager);
-                await proxy.StartAsync();
+                await proxy.StartAsync(CancellationToken.None);
 
                 // Wait for Ctrl+C
                 CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -198,7 +199,7 @@ public class Program
                 }
 
                 // Stop proxy server gracefully
-                await proxy.StopAsync();
+                await proxy.StopAsync(CancellationToken.None);
                 return 0;
             }
             catch (Exception ex)

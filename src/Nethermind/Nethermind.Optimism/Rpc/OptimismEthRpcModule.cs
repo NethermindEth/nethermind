@@ -17,6 +17,7 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -39,6 +40,8 @@ namespace Nethermind.Optimism.Rpc;
 public class OptimismEthRpcModule(
     IJsonRpcConfig rpcConfig,
     IBlockchainBridge blockchainBridge,
+    FilterStore filterStore,
+    FilterManager filterManager,
     IBlockFinder blockFinder,
     IBlockTree blockTree,
     IReceiptFinder receiptFinder,
@@ -64,6 +67,8 @@ public class OptimismEthRpcModule(
     ForwardedNonceTracker nonceTracker)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
+        filterStore,
+        filterManager,
         blockFinder,
         blockTree,
         receiptFinder,
@@ -187,7 +192,7 @@ public class OptimismEthRpcModule(
             return (ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked), false);
 
         bool signedByNode = unsigned && tx.Signature is not null;
-        return (await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes), signedByNode);
+        return (await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping)), signedByNode);
     }
 
     public override async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
@@ -195,6 +200,12 @@ public class OptimismEthRpcModule(
         if (sequencerRpcClient is null)
         {
             return await base.eth_sendRawTransaction(transaction);
+        }
+
+        // Like op-geth, reject bytes that are not a transaction here instead of waiting on the sequencer for the answer.
+        if (DecodeRawTransaction(transaction) is null)
+        {
+            return InvalidRawTransaction();
         }
 
         string? response = await sequencerRpcClient.Post(nameof(eth_sendRawTransaction), transaction);
@@ -211,7 +222,8 @@ public class OptimismEthRpcModule(
             }
         }
 
-        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it.
+        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it. It keeps its WARN:
+        // a sequencer also answers -32000 for its own failures, so the code does not tell them apart from rejections.
         if (forwarded?.Error is { } error)
         {
             return ResultWrapper<Hash256>.Fail(error.Message ?? "Sequencer rejected the transaction", error.Code);
@@ -250,13 +262,13 @@ public class OptimismEthRpcModule(
         (TxReceipt? receipt, ulong blockTimestamp, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
-            return ResultWrapper<ReceiptForRpc?>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         SearchResult<Block> foundBlock = _blockFinder.SearchForBlock(new(receipt.BlockHash!));
         if (foundBlock.Object is null)
         {
-            return ResultWrapper<ReceiptForRpc?>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         Block block = foundBlock.Object;
@@ -330,6 +342,7 @@ public class OptimismEthRpcModule(
                 txIndex: (int)positionIndex,
                 blockTimestamp: block.Timestamp,
                 baseFee: block.BaseFeePerGas,
+                spec: _specProvider.GetSpec(block.Header),
                 receipt: receipt));
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
@@ -368,6 +381,7 @@ public class OptimismEthRpcModule(
                 TxReceipt[] receipts = _receiptFinder.Get(block);
                 Transaction[] transactions = block.Transactions;
                 TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = transactions[i];
@@ -381,6 +395,7 @@ public class OptimismEthRpcModule(
                             txIndex: i,
                             blockTimestamp: block.Timestamp,
                             baseFee: block.BaseFeePerGas,
+                            spec: spec,
                             receipt: receipt));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)

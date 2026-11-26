@@ -76,19 +76,7 @@ namespace Nethermind.EthStats.Clients
                 ReconnectTimeout = TimeSpan.FromMilliseconds(_reconnectionInterval * ReconnectTimeoutMultiplier)
             };
 
-            _client.MessageReceived.Subscribe(async message =>
-            {
-                if (_logger.IsDebug) _logger.Debug($"Received ETH stats message '{message}'");
-                if (string.IsNullOrWhiteSpace(message.Text))
-                {
-                    return;
-                }
-
-                if (message.Text.Contains(ServerPingMessage))
-                {
-                    await HandlePingAsync(message.Text);
-                }
-            });
+            _client.MessageReceived.Subscribe(message => _ = HandleMessageAsync(message));
 
             try
             {
@@ -122,6 +110,29 @@ namespace Nethermind.EthStats.Clients
         {
             if (_logger.IsError) _logger.Error("Incorrect ETH stats URL");
             throw new ArgumentException("Incorrect ETH stats URL");
+        }
+
+        /// <summary>Answers server pings; never throws.</summary>
+        /// <remarks>
+        /// Runs detached from the <see cref="IWebsocketClient.MessageReceived"/> subscription, where an escaping
+        /// exception would go unobserved, so failures are logged here instead.
+        /// </remarks>
+        private async Task HandleMessageAsync(ResponseMessage message)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Received ETH stats message '{message}'");
+            if (string.IsNullOrWhiteSpace(message.Text) || !message.Text.Contains(ServerPingMessage))
+            {
+                return;
+            }
+
+            try
+            {
+                await HandlePingAsync(message.Text);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Failed to answer ETH stats ping.", e);
+            }
         }
 
         private async Task HandlePingAsync(string message)

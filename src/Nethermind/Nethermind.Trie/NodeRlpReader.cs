@@ -1,0 +1,413 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
+
+namespace Nethermind.Trie;
+
+/// <summary>Reads the items of a trie node RLP at byte offsets.</summary>
+/// <remarks>
+/// Node RLP is found by its hash, so it is trusted: the reads skip the canonical-form checks, and a short item is not
+/// checked against the end of the data, as the slice that reads it checks that. A long prefix is checked, and a bad
+/// one throws <see cref="RlpReaderException"/>. A trie node keeps the offsets of its children, so the reads take an
+/// offset instead of keeping a cursor. The instance methods forward to static ones that take the data and the offset
+/// by value, so the offset of the caller can stay in a register.
+/// </remarks>
+public readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
+{
+    /// <summary>The prefix of a 32-byte string, such as a child hash.</summary>
+    public const byte KeccakRlpPrefix = 0xa0;
+
+    private const int ShortStringOffset = 0x80;
+    private const int ShortStringMaxPrefix = 0xb7;
+    private const int ListOffset = 0xc0;
+    private const int ShortListMaxPrefix = 0xf7;
+    private const int SmallPrefixBarrier = 56;
+    private const int LeafOrExtensionItemCount = 2;
+
+    // Sixteen children and a value.
+    private const int BranchItemCount = 17;
+
+    private readonly ReadOnlySpan<byte> _data = data;
+
+    /// <summary>The prefix length by the prefix byte: 0 for a single byte, 1 for a short form, 2-9 for a long form.</summary>
+    private static ReadOnlySpan<byte> PrefixLengthData =>
+    [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+    ];
+
+    /// <summary>The whole length of a short-form item by its prefix byte; zero for a long-form prefix.</summary>
+    private static ReadOnlySpan<byte> TotalRlpLengthData =>
+    [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+        33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+        49, 50, 51, 52, 53, 54, 55, 56, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+        33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+        49, 50, 51, 52, 53, 54, 55, 56, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+
+    /// <summary>The RLP being read.</summary>
+    public ReadOnlySpan<byte> Data => _data;
+
+    /// <summary>Gets the prefix and payload lengths of the item at <paramref name="position"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength(int position)
+        => PeekPrefixAndContentLength(_data, position);
+
+    /// <summary>Gets the length of the item at <paramref name="position"/>, with its prefix.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public int PeekNextRlpLength(int position) => PeekNextRlpLength(_data, position);
+
+    /// <summary>Moves <paramref name="position"/> past the prefix of the item there, without decoding its length.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SkipLength(scoped ref int position) => position += GetPrefixLength(_data[position]);
+
+    /// <summary>Whether the item at <paramref name="position"/> is a list.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool IsSequenceNext(int position) => _data[position] >= ListOffset;
+
+    /// <summary>Moves <paramref name="position"/> past the item there.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SkipItem(scoped ref int position) => position += PeekNextRlpLength(_data, position);
+
+    /// <summary>Moves <paramref name="position"/> past the <paramref name="count"/> items from there.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SkipItems(scoped ref int position, int count) => position = SkipItems(_data, position, count);
+
+    /// <summary>Moves <paramref name="position"/> past the prefix of the sequence there.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReadSequenceLength(scoped ref int position, out int contentLength)
+        => position = ReadSequenceLength(_data, position, out contentLength);
+
+    /// <summary>Reads the string at <paramref name="position"/> without copying it, and moves past it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecodeByteArraySpan(scoped ref int position, out ReadOnlySpan<byte> value)
+        => position = DecodeByteArraySpan(_data, position, out value);
+
+    /// <summary>Reads the 32-byte hash at <paramref name="position"/> as an interned <see cref="Hash256"/>, and moves past it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecodeKeccak(scoped ref int position, out Hash256 keccak)
+        => position = DecodeKeccak(_data, position, out keccak);
+
+    /// <summary>Reads the 32-byte hash at <paramref name="position"/>, and moves past it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecodeValueKeccakNonNull(scoped ref int position, out ValueHash256 keccak)
+        => position = DecodeValueKeccakNonNull(_data, position, out keccak);
+
+    /// <summary>Checks that the data is one trie node, for RLP not found by its hash.</summary>
+    /// <remarks>
+    /// The node must be one list whose items, the 17 of a branch or the 2 of a leaf or an extension, fill the data exactly: a short
+    /// item is otherwise checked only as it is sliced. The node reads below then stay within the data.
+    /// </remarks>
+    /// <exception cref="TrieException">The data is not a branch, an extension or a leaf.</exception>
+    /// <exception cref="RlpReaderException">An item has a malformed prefix.</exception>
+    public void ValidateNode()
+    {
+        int position = 0;
+        ReadSequenceLength(ref position, out int length);
+        int end = position + length;
+        int itemCount = 0;
+        for (; position < end && itemCount <= BranchItemCount; itemCount++) SkipItem(ref position);
+
+        if (position != end || end != _data.Length || itemCount is not (LeafOrExtensionItemCount or BranchItemCount)
+            || (itemCount == LeafOrExtensionItemCount && KeyHexPrefix.IsEmpty))
+        {
+            throw new TrieException("The RLP is neither a branch, an extension nor a leaf.");
+        }
+    }
+
+    /// <summary>Whether the node is a branch rather than a leaf or an extension.</summary>
+    /// <remarks>The node's items must fill the data, as they do for a node found by its hash or checked by <see cref="ValidateNode"/>.</remarks>
+    public bool IsBranch => SeekItem(LeafOrExtensionItemCount) < _data.Length;
+
+    /// <summary>Whether the node is a leaf.</summary>
+    /// <remarks>As for <see cref="IsBranch"/>, the node's items must fill the data.</remarks>
+    public bool IsLeaf => !IsBranch && HexPrefix.ReadHeader(KeyHexPrefix).IsLeaf;
+
+    /// <summary>Whether the node is an extension.</summary>
+    /// <remarks>As for <see cref="IsBranch"/>, the node's items must fill the data.</remarks>
+    public bool IsExtension => !IsBranch && !IsLeaf;
+
+    /// <summary>The key nibbles of a leaf or an extension; empty for a branch.</summary>
+    public byte[] Key => IsBranch ? [] : HexPrefix.FromBytes(KeyHexPrefix).key;
+
+    /// <summary>Gets the hash of the child that RLP item <paramref name="index"/> references, as <see cref="TrieNode.GetChildHashAsValueKeccak"/> does.</summary>
+    public bool GetChildHashAsValueKeccak(int index, out ValueHash256 keccak)
+    {
+        int position = SeekItem(index);
+        bool isHash = _data[position] == KeccakRlpPrefix || PeekPrefixAndContentLength(position).ContentLength == ValueHash256.MemorySize;
+        keccak = default;
+        if (isHash) DecodeValueKeccakNonNull(ref position, out keccak);
+        return isHash;
+    }
+
+    /// <summary>The RLP of the child embedded as RLP item <paramref name="index"/>; empty when it is not embedded.</summary>
+    public ReadOnlySpan<byte> GetInlineNodeRlp(int index)
+    {
+        int position = SeekItem(index);
+        return IsSequenceNext(position) ? _data.Slice(position, PeekNextRlpLength(position)) : default;
+    }
+
+    private ReadOnlySpan<byte> KeyHexPrefix
+    {
+        get
+        {
+            int position = SeekItem(0);
+            DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> hexPrefix);
+            return hexPrefix;
+        }
+    }
+
+    /// <summary>The offset of the node's RLP item <paramref name="index"/>.</summary>
+    private int SeekItem(int index)
+    {
+        int position = 0;
+        ReadSequenceLength(ref position, out _);
+        SkipItems(ref position, index);
+        return position;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetPrefixLength(int prefixByte)
+    {
+        Debug.Assert((uint)prefixByte <= byte.MaxValue);
+        return Unsafe.Add(ref MemoryMarshal.GetReference(PrefixLengthData), prefixByte);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte GetTotalRlpLength(int prefixByte)
+    {
+        Debug.Assert((uint)prefixByte <= byte.MaxValue);
+        return Unsafe.Add(ref MemoryMarshal.GetReference(TotalRlpLengthData), prefixByte);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (int PrefixLength, int ContentLength) PeekPrefixAndContentLength(ReadOnlySpan<byte> data, int position)
+    {
+        int prefix = data[position];
+        return prefix switch
+        {
+            < ShortStringOffset => (0, 1),
+            <= ShortStringMaxPrefix => (1, prefix - ShortStringOffset),
+            < ListOffset => PeekLongPrefixAndContentLength(data, position, prefix - ShortStringMaxPrefix),
+            <= ShortListMaxPrefix => (1, prefix - ListOffset),
+            _ => PeekLongPrefixAndContentLength(data, position, prefix - ShortListMaxPrefix)
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int PeekNextRlpLength(ReadOnlySpan<byte> data, int position)
+    {
+        int prefix = data[position];
+        int totalLength = GetTotalRlpLength(prefix);
+        if (totalLength == 0) totalLength = PeekLongRlpLength(data, position, prefix);
+        return totalLength;
+    }
+
+    private static int SkipItems(ReadOnlySpan<byte> data, int position, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            position += PeekNextRlpLength(data, position);
+        }
+
+        return position;
+    }
+
+    private static int ReadSequenceLength(ReadOnlySpan<byte> data, int position, out int contentLength)
+    {
+        int prefix = data[position++];
+        if (prefix < ListOffset)
+        {
+            ThrowUnexpectedPrefix(prefix);
+        }
+
+        if (prefix <= ShortListMaxPrefix)
+        {
+            contentLength = prefix - ListOffset;
+            return position;
+        }
+
+        int lengthOfLength = prefix - ShortListMaxPrefix;
+        if (lengthOfLength > sizeof(int))
+        {
+            ThrowInvalidLengthOfLength(lengthOfLength);
+        }
+
+        contentLength = DeserializeLengthRef(ref MemoryMarshal.GetReference(data.Slice(position, lengthOfLength)), lengthOfLength);
+        if (contentLength < SmallPrefixBarrier)
+        {
+            ThrowUnexpectedLength(contentLength);
+        }
+
+        return position + lengthOfLength;
+    }
+
+    private static int DecodeByteArraySpan(ReadOnlySpan<byte> data, int position, out ReadOnlySpan<byte> value)
+    {
+        int prefix = data[position];
+        if (prefix < ShortStringOffset)
+        {
+            value = data.Slice(position, 1);
+            return position + 1;
+        }
+
+        if (prefix <= ShortStringMaxPrefix)
+        {
+            int length = prefix - ShortStringOffset;
+            value = data.Slice(position + 1, length);
+            return position + 1 + length;
+        }
+
+        if (prefix >= ListOffset)
+        {
+            ThrowUnexpectedPrefix(prefix);
+        }
+
+        (int prefixLength, int contentLength) = PeekLongPrefixAndContentLength(data, position, prefix - ShortStringMaxPrefix);
+        value = data.Slice(position + prefixLength, contentLength);
+        return position + prefixLength + contentLength;
+    }
+
+    private static int DecodeKeccak(ReadOnlySpan<byte> data, int position, out Hash256 keccak)
+    {
+        int prefix = data[position++];
+        if (prefix != KeccakRlpPrefix)
+        {
+            ThrowKeccakDecode(prefix, position, data.Length);
+        }
+
+        keccak = RlpReaderExtensions.InternKeccak(data.Slice(position, Hash256.Size));
+        return position + Hash256.Size;
+    }
+
+    private static int DecodeValueKeccakNonNull(ReadOnlySpan<byte> data, int position, out ValueHash256 keccak)
+    {
+        int prefix = data[position++];
+        if (prefix != KeccakRlpPrefix)
+        {
+            ThrowKeccakDecode(prefix, position, data.Length);
+        }
+
+        keccak = new ValueHash256(data.Slice(position, Hash256.Size));
+        return position + Hash256.Size;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (int PrefixLength, int ContentLength) PeekLongPrefixAndContentLength(ReadOnlySpan<byte> data, int position, int lengthOfLength)
+    {
+        if ((uint)lengthOfLength > sizeof(int))
+        {
+            ThrowInvalid("Expected length of length less than or equal to 4");
+        }
+
+        if (lengthOfLength > data.Length - position - 1)
+        {
+            ThrowTruncated();
+        }
+
+        int contentLength = DeserializeLengthRef(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), position + 1), lengthOfLength);
+        if (contentLength < SmallPrefixBarrier)
+        {
+            ThrowUnexpectedLength(contentLength);
+        }
+
+        if (contentLength > data.Length - position - (1 + lengthOfLength))
+        {
+            ThrowTruncated();
+        }
+
+        return (1 + lengthOfLength, contentLength);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int PeekLongRlpLength(ReadOnlySpan<byte> data, int position, int prefix)
+    {
+        int lengthOfLength = prefix < ListOffset ? prefix - ShortStringMaxPrefix : prefix - ShortListMaxPrefix;
+        (int prefixLength, int contentLength) = PeekLongPrefixAndContentLength(data, position, lengthOfLength);
+        return prefixLength + contentLength;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int DeserializeLengthRef(ref byte firstElement, int lengthOfLength)
+    {
+        int result = firstElement;
+        if (result == 0)
+        {
+            ThrowInvalid("Length starts with 0");
+        }
+
+        if (lengthOfLength == 1)
+        {
+            // Already read above
+        }
+        else if (lengthOfLength == 2)
+        {
+            result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref firstElement));
+        }
+        else if (lengthOfLength == 3)
+        {
+            result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1)))
+                | (result << 16);
+        }
+        else
+        {
+            result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref firstElement));
+        }
+
+        return result;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalid(string message) => throw new RlpReaderException(message);
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowTruncated() => ThrowInvalid("RLP data is truncated: not enough bytes for the declared length prefix");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowUnexpectedPrefix(int prefix) => ThrowInvalid($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidLengthOfLength(int lengthOfLength) => ThrowInvalid($"Invalid length of length = {lengthOfLength}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowUnexpectedLength(int length) => ThrowInvalid($"Expected length greater than or equal to 56 and was {length}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowKeccakDecode(int prefix, int position, int dataLength) =>
+        ThrowInvalid($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {position} in the message of length {dataLength}.");
+}

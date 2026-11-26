@@ -39,9 +39,9 @@ internal sealed class McpTokenTally
 }
 
 /// <summary>Lets <see cref="McpTxTokens.LookUp"/> read token metadata on a separate module, so it can stop waiting for a slow read.</summary>
-/// <param name="Rent">Rents an eth module and the lease that returns it; a <see langword="null"/> module means none is available.</param>
+/// <param name="Rent">Rents an eth module and the lease that returns it; a <see langword="null"/> module means none is available. The token is cancelled when the caller abandons the work, so a rental that still waits gives up.</param>
 /// <param name="Track">Tracks work abandoned while still running, so the calling tool keeps its concurrency slot until it finishes.</param>
-internal sealed record McpDetachedEth(Func<Task<(IEthRpcModule? Module, IDisposable? Lease)>> Rent, Action<Task> Track);
+internal sealed record McpDetachedEth(Func<CancellationToken, Task<(IEthRpcModule? Module, IDisposable? Lease)>> Rent, Action<Task> Track);
 
 /// <summary>An ABI array value cut to its first entries for display; <see cref="Total"/> is its full length.</summary>
 internal sealed class McpTruncatedList(int capacity, int total) : List<string>(capacity)
@@ -354,7 +354,7 @@ internal static class McpTxTokens
                     token = pending[_next];
                 }
 
-                if (Spent() || !metadata.TryGet(eth, token, block, Spent, out McpTokenInfo? info))
+                if (Spent() || !metadata.TryGet(eth, token, block, Spent, out McpTokenInfo? info, cancellationToken))
                 {
                     return;
                 }
@@ -372,9 +372,11 @@ internal static class McpTxTokens
         // Returns false if the worker was abandoned (it is then tracked until it finishes).
         public bool RunDetached(IEthRpcModule eth, McpDetachedEth detached)
         {
+            using CancellationTokenSource abandon = new();
+            CancellationToken abandonToken = abandon.Token;
             Task work = Task.Run(async () =>
             {
-                (IEthRpcModule? module, IDisposable? lease) = await detached.Rent();
+                (IEthRpcModule? module, IDisposable? lease) = await detached.Rent(abandonToken);
                 using (lease)
                 {
                     if (module is not null) Run(module);
@@ -387,6 +389,7 @@ internal static class McpTxTokens
                 if (Spent())
                 {
                     lock (_lock) _abandoned = true;
+                    abandon.Cancel();
                     detached.Track(work);
                     return false;
                 }

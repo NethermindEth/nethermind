@@ -14,7 +14,7 @@ namespace Nethermind.Logging
     {
         private readonly LogLevel _logLevel;
         private readonly string? _prefix;
-        private readonly BlockingCollection<string> _queuedEntries = new(new ConcurrentQueue<string>());
+        private readonly BlockingCollection<string> _queuedEntries = [with(new ConcurrentQueue<string>())];
 
         public void Flush()
         {
@@ -35,11 +35,6 @@ namespace Nethermind.Logging
                         foreach (string logEntry in _queuedEntries.GetConsumingEnumerable())
                         {
                             Console.Error.WriteLine(logEntry);
-
-                            if (_queuedEntries.IsAddingCompleted)
-                            {
-                                break;
-                            }
                         }
                     }
                     catch (Exception e)
