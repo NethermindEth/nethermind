@@ -26,6 +26,7 @@ using Nethermind.Network;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Arkiv;
 
@@ -64,6 +65,15 @@ public sealed class ArkivModule(ChainSpec chainSpec) : Module
 
         builder
             .AddDatabase(DbName)
+            .AddDecorator<ISyncConfig>((ctx, sync) =>
+            {
+                if (!ctx.Resolve<IArkivConfig>().AllowUnverifiedStateSync)
+                {
+                    sync.FastSync = false;
+                    sync.SnapSync = false;
+                }
+                return sync;
+            })
             .AddSingleton<ArkivChain>(static ctx =>
             {
                 IFlatDbConfig flat = ctx.Resolve<IFlatDbConfig>();

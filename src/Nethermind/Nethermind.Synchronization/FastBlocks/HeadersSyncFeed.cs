@@ -216,7 +216,16 @@ namespace Nethermind.Synchronization.FastBlocks
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
-            if (lowestInserted is not null && lowestInserted.Number < _pivotNumber)
+            if (lowestInserted is not null && lowestInserted.Number == _pivotNumber && lowestInserted.Hash != nextHeaderHash)
+            {
+                // A lowest inserted header at the pivot height that is not the pivot does not belong to this sync,
+                // so start from the pivot again.
+                _blockTree.LowestInsertedHeader = null;
+                lowestInserted = null;
+            }
+
+            // `<=`: when only the pivot is inserted, resume from its parent rather than requesting the pivot again.
+            if (lowestInserted is not null && lowestInserted.Number <= _pivotNumber)
             {
                 if (lowestInserted.TotalDifficulty is null)
                 {
@@ -373,16 +382,33 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
+        public override async Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {
+            HeadersSyncBatch? batch = PrepareRequest(null, cancellationToken, out bool needsRequestSize);
+            if (!needsRequestSize) return batch;
+
+            int requestSize = await _syncPeerPool.EstimateRequestLimit(RequestType.Headers, _approximateAllocationStrategy,
+                AllocationContexts.Headers, cancellationToken) ?? GethSyncLimits.MaxHeaderFetch;
+            return PrepareRequest(requestSize, cancellationToken, out _);
+        }
+
+        protected virtual HeadersSyncBatch? PrepareRequest(int? requestSize, CancellationToken cancellationToken, out bool needsRequestSize)
+        {
+            needsRequestSize = false;
             _resetLock.EnterReadLock();
             try
             {
-                if (!_blockTree.CanAcceptNewBlocks) return Task.FromResult<HeadersSyncBatch?>(null);
-                do
+                if (!_blockTree.CanAcceptNewBlocks) return null;
+                if (requestSize is null)
                 {
-                    HandleDependentBatches(cancellationToken);
-                } while (PendingIsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
+                    do
+                    {
+                        ulong? lowestBefore = LowestInsertedBlockHeader?.Number;
+                        HandleDependentBatches(cancellationToken);
+                        // A stalled dependency must not keep the reset read lock busy.
+                        if (LowestInsertedBlockHeader?.Number == lowestBefore) break;
+                    } while (PendingIsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
+                }
 
                 HeadersSyncBatch? batch;
                 bool retryPending;
@@ -410,7 +436,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         catch (BlockTreeNotReadyException)
                         {
                             RetainResponse(batch);
-                            return Task.FromResult<HeadersSyncBatch?>(null);
+                            return null;
                         }
                         catch (OperationCanceledException)
                         {
@@ -421,7 +447,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         {
                             RequeueAsNewBatch(batch);
                             if (_logger.IsError) _logger.Error($"Failed to insert retained batch {batch}", e);
-                            return Task.FromResult<HeadersSyncBatch?>(null);
+                            return null;
                         }
                         finally
                         {
@@ -429,17 +455,17 @@ namespace Nethermind.Synchronization.FastBlocks
                         }
                     }
                     if (++retainedBatchesProcessed >= maxRetainedBatchesToProcess)
-                        return Task.FromResult<HeadersSyncBatch?>(null);
+                        return null;
                 }
                 if (batch is null && ShouldBuildANewBatch())
                 {
-                    // Set the request size depending on the approximate allocation strategy.
-                    // NOTE: Cannot await because of the lock.
-                    int requestSize =
-                        _syncPeerPool.EstimateRequestLimit(RequestType.Headers, _approximateAllocationStrategy, AllocationContexts.Headers, cancellationToken).Result
-                        ?? GethSyncLimits.MaxHeaderFetch;
+                    if (requestSize is null)
+                    {
+                        needsRequestSize = true;
+                        return null;
+                    }
 
-                    batch = ProcessPersistedHeadersOrBuildNewBatch(requestSize, cancellationToken, out retryPending);
+                    batch = ProcessPersistedHeadersOrBuildNewBatch(requestSize.Value, cancellationToken, out retryPending);
                     if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
@@ -448,7 +474,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (!_blockTree.CanAcceptNewBlocks || batch.Response is not null)
                     {
                         EnqueuePending(batch);
-                        return Task.FromResult<HeadersSyncBatch?>(null);
+                        return null;
                     }
                     if (retryPending)
                     {
@@ -464,12 +490,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     LogStateOnPrepare();
                 }
 
-                return Task.FromResult(batch);
-            }
-            catch (Exception ex)
-            {
-                // Explicitly wrap exception in Task
-                return Task.FromException<HeadersSyncBatch?>(ex);
+                return batch;
             }
             finally
             {
@@ -846,7 +867,13 @@ namespace Nethermind.Synchronization.FastBlocks
                 bool isFirst = i == response.Length - 1 - skippedAtTheEnd;
                 if (isFirst)
                 {
-                    if (!ValidateFirstHeader(header, i)) break;
+                    if (!ValidateFirstHeader(header, i, out bool isStored)) break;
+                    if (isStored)
+                    {
+                        // The next header is then validated as the first one.
+                        skippedAtTheEnd++;
+                        continue;
+                    }
                 }
                 else
                 {
@@ -955,8 +982,9 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
 
             // Well, its the last in the batch, but first processed.
-            bool ValidateFirstHeader(BlockHeader header, int headerIndex)
+            bool ValidateFirstHeader(BlockHeader header, int headerIndex, out bool isStored)
             {
+                isStored = false;
                 BlockHeader lowestInserted = LowestInsertedBlockHeader;
                 // response does not carry expected data
                 if (header.Number == lowestInserted?.Number && header.Hash != lowestInserted?.Hash)
@@ -970,7 +998,8 @@ namespace Nethermind.Synchronization.FastBlocks
                             "first hash inconsistent with request");
                     }
 
-                    return true;
+                    // Nothing from this response is inserted; the range is requested again.
+                    return false;
                 }
 
                 // response needs to be cached until predecessors arrive
@@ -996,18 +1025,15 @@ namespace Nethermind.Synchronization.FastBlocks
                         return false;
                     }
 
-                    if (header.Number == LowestInsertedBlockHeader?.Number)
+                    // The lowest inserted header itself, as a different hash is rejected above. It is already stored, so count
+                    // it and validate the rest of the response from its parent. This must stay after the expected hash check:
+                    // a header that is expected next is inserted as usual.
+                    if (header.Number == lowestInserted?.Number)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
-                        if (batch.ResponseSourcePeer is not null)
-                        {
-                            _syncPeerPool.ReportBreachOfProtocol(
-                                batch.ResponseSourcePeer,
-                                DisconnectReason.HeaderBatchOnDifferentBranch,
-                                "headers - different branch");
-                        }
-
-                        return false;
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - ends at the lowest inserted header {header.Number}, already stored");
+                        addedEarliest = addedLast = header.Number;
+                        isStored = true;
+                        return true;
                     }
 
                     if (_dependencies.ContainsKey(header.Number))

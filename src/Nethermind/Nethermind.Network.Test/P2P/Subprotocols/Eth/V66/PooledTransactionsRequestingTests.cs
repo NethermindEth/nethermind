@@ -74,7 +74,7 @@ public class PooledTransactionsRequestingTests
             new EthereumEcdsa(specProvider.ChainId),
             new BlobTxStorage(),
             new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(specProvider, blockTree), blockTree, TestWorldStateFactory.CreateForTestWithStateReader(TestMemDbProvider.Init(), LimboLogs.Instance).Item2),
+                new ChainHeadSpecProvider(specProvider, blockTree), blockTree, TestWorldStateFactory.CreateForTestWithStateReader(TestMemDbProvider.Init(), LimboLogs.Instance).Item2, new()),
             new TxPoolConfig() { AcceptTxWhenNotSynced = true },
             new TxValidator(specProvider.ChainId),
             new SpecChangeTxValidator(specProvider.ChainId),

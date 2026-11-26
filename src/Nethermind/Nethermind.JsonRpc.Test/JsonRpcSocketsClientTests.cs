@@ -656,6 +656,34 @@ public class JsonRpcSocketsClientTests
         }
     }
 
+    [Test]
+    public void Request_that_is_not_queued_returns_its_buffer()
+    {
+        // Rents land in ArrayPool<byte>.Shared's 1 KiB bucket; on one thread, the last array returned there is the next one rented.
+        const int size = 1000;
+        using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
+            "test",
+            new WebSocketMessageStream(Substitute.For<WebSocket>(), LimboLogs.Instance),
+            RpcEndpoint.Ws,
+            Substitute.For<IJsonRpcProcessor>(),
+            Substitute.For<IJsonRpcLocalStats>(),
+            new EthereumJsonSerializer());
+        using CancellationTokenSource cancelled = new();
+        cancelled.Cancel();
+        byte[] pooled = ArrayPool<byte>.Shared.Rent(size);
+        ArrayPool<byte>.Shared.Return(pooled);
+
+        Task processing = client.ProcessAsync(new ArraySegment<byte>(new byte[size]), cancelled.Token);
+        byte[] next = ArrayPool<byte>.Shared.Rent(size);
+        ArrayPool<byte>.Shared.Return(next);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processing.IsCanceled, Is.True);
+            Assert.That(next, Is.SameAs(pooled), "the request buffer was not returned to the pool");
+        }
+    }
+
     /// <summary>The filter <c>JsonRpcIpcRunner</c> uses to log a client reset as a disconnect.</summary>
     private static void AssertMatchesIpcDisconnectFilter(Exception? exception) =>
         Assert.That(exception is IOException { InnerException: SocketException { SocketErrorCode: SocketError.ConnectionReset } }, Is.True);

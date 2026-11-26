@@ -143,18 +143,24 @@ Command CreateConvertCommand()
         DefaultValueFactory = r => Environment.CurrentDirectory
     };
 
+    Option<bool> noHintsOption = new("--no-hints")
+    {
+        Description = "Omit sender and recovery hints for guests that recover signatures directly."
+    };
     Command command = new("convert")
     {
         Description = "Converts stateless inputs to trusted inputs, printing for each the result a trusted guest reports and its keccak."
     };
     command.Options.Add(sourceOption);
     command.Options.Add(noZiskOption);
+    command.Options.Add(noHintsOption);
     command.Options.Add(outputOption);
 
     command.SetAction((parseResult, cancellationToken) => RunCommand(() => InputConverter.Convert(
         parseResult.GetValue(sourceOption)!,
         parseResult.GetValue(outputOption)!,
         !parseResult.GetValue(noZiskOption),
+        !parseResult.GetValue(noHintsOption),
         cancellationToken
     )));
 

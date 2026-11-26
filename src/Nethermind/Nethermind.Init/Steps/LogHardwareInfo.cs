@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
@@ -28,8 +29,10 @@ public class LogHardwareInfo(ILogManager logManager) : IStep
                 _logger.Info($"CPU: {cpu.ProcessorName} ({cpu.PhysicalCoreCount}C{cpu.LogicalCoreCount}T)");
             }
         }
-        catch
-        { }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Cannot read the CPU info: {e.Message}");
+        }
 
         return Task.CompletedTask;
     }

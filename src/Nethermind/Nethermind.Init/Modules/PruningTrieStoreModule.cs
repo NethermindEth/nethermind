@@ -19,6 +19,7 @@ using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Healing;
+using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -30,22 +31,35 @@ namespace Nethermind.Init.Modules;
 
 public class PruningTrieStoreModule : Module
 {
+    // Read when the container is built, as DbModule reads it: a decorator can still change the config before the state DB is resolved.
+    // Null when no init config was given: the mode is then read from the container when the state DB is created.
+    private readonly bool? _memDbMode;
+
+    public PruningTrieStoreModule()
+    {
+    }
+
+    public PruningTrieStoreModule(IInitConfig initConfig) => _memDbMode = initConfig.DiagnosticMode == DiagnosticMode.MemDb;
+
     protected override void Load(ContainerBuilder builder) =>
         builder
 
             // Special case for state db with pruning trie state.
             .AddKeyedSingleton<IDb>(DbNames.State, (ctx) =>
             {
+                // Without an init config, only the factory type decides.
+                bool memDbMode = _memDbMode ?? (ctx.ResolveOptional<IInitConfig>()?.DiagnosticMode == DiagnosticMode.MemDb);
                 IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
                 IDbFactory dbFactory = ctx.Resolve<IDbFactory>();
-                DbSettings stateDbSettings = new(GetTitleDbName(DbNames.State), DbNames.State);
+                DbSettings stateDbSettings = new(GetTitleDbName(DbNames.State), DbNames.State) { SkipMetricsTracking = memDbMode };
                 stateDbSettings.DeleteOnStart = ShouldDropPruningTrieState(
                     ctx.ResolveOptional<IFlatDbConfig>(), ctx.Resolve<IColumnsDb<FlatDbColumns>>, ctx.Resolve<ILogManager>,
                     () => HasSstFiles(fileSystem, dbFactory.GetFullDbPath(stateDbSettings)));
                 IDbFactory innerDbFactory = dbFactory;
-                if (dbFactory is not MemDbFactory)
+                // DbMonitoringModule decorates IDbFactory, so its type alone does not show the MemDb diagnostic mode.
+                if (!memDbMode && dbFactory is not MemDbFactory)
                 {
-                    FullPruningInnerDbFactory fullPruningInnerDbFactory = new(dbFactory, fileSystem, stateDbSettings.DbPath);
+                    FullPruningInnerDbFactory fullPruningInnerDbFactory = new(dbFactory, fileSystem, stateDbSettings.DbPath, ctx.Resolve<ILogManager>());
                     // DeleteOnStart reaches only the inner DB that gets opened. A copy left by an interrupted
                     // full pruning would otherwise stay on disk for good: only the next pruning clears it,
                     // and a flat node never runs one.
@@ -61,8 +75,8 @@ public class PruningTrieStoreModule : Module
                 // inner DB, even across full-pruning cycles. The inner DBs are not tracked:
                 // - via FullPruningInnerDbFactory they get SkipMetricsTracking = true so the
                 //   DbFactoryInterceptor skips registration.
-                // - via the MemDbFactory branch they're MemDbs created outside any interceptor and
-                //   therefore never reach the tracker either.
+                // - in the MemDb diagnostic mode they inherit SkipMetricsTracking = true from the
+                //   state DB settings; a bare MemDbFactory has no interceptor at all.
                 ctx.ResolveOptional<DbMonitoringModule.DbTracker>()?.AddDb(stateDbSettings.DbName, db);
                 return db;
             })
@@ -225,12 +239,14 @@ public class PruningTrieStoreModule : Module
     {
         public IWorldStateManager WorldStateManager { get; }
         public IPruningTrieStateAdminRpcModule AdminRpcModule { get; }
+        public ISnapStateServer SnapStateServer { get; }
 
         public PruningTrieStateFactoryOutput(PruningTrieStateFactory factory)
         {
-            (IWorldStateManager worldStateManager, IPruningTrieStateAdminRpcModule adminRpc) = factory.Build();
+            (IWorldStateManager worldStateManager, IPruningTrieStateAdminRpcModule adminRpc, ISnapStateServer snapStateServer) = factory.Build();
             WorldStateManager = worldStateManager;
             AdminRpcModule = adminRpc;
+            SnapStateServer = snapStateServer;
         }
     }
 }

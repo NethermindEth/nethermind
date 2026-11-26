@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
@@ -317,6 +318,28 @@ public class BlockAccessListValidationIndexTests
                 slices[index] = slice;
             }
             return slice;
+        }
+    }
+
+    [Test]
+    public void Account_bitmap_does_not_inherit_bits_from_a_previously_pooled_array()
+    {
+        // Leave the shared pool holding dirty arrays, as any earlier user of a ulong[] may.
+        ulong[][] dirty = new ulong[8][];
+        for (int i = 0; i < dirty.Length; i++)
+        {
+            dirty[i] = SafeArrayPool<ulong>.Shared.Rent(1);
+            dirty[i].AsSpan().Fill(ulong.MaxValue);
+        }
+        foreach (ulong[] array in dirty) SafeArrayPool<ulong>.Shared.Return(array);
+
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(
+            Bal(Account(TestItem.AddressA, balance: new BalanceChange(1, 5))), Header, txCount: 1, _addressIndex);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(suggestedIndex.MarkedAccountCount, Is.EqualTo(1));
+            Assert.That(suggestedIndex.EnumerateMarkedOrdinals(), Is.EqualTo(new[] { 0 }));
         }
     }
 

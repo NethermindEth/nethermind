@@ -203,6 +203,9 @@ sealed partial class Lifecycle(Func<string, string[], string?, CancellationToken
                 if (online)
                 {
                     Console.WriteLine($"runner {Env("RUNNER_LABEL")} is online");
+                    // Any container on the VM can read instance metadata, and the runner has already consumed its credentials.
+                    var scrub = await Cloud(["compute", "instances", "remove-metadata", Name, Project, $"--zone={chosen}", "--keys=runner-jit-config"], token);
+                    if (scrub.Code != 0) throw new InvalidOperationException($"could not remove the JIT config from the instance metadata: {scrub.Error.Trim()}");
                     success = true;
                     return 0;
                 }

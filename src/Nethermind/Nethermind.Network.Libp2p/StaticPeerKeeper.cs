@@ -51,12 +51,14 @@ public sealed class StaticPeerKeeper : IDisposable
         foreach (string entry in entries)
         {
             Multiaddress? address = null;
+            string? decodeError = null;
             try
             {
                 address = Multiaddress.Decode(entry);
             }
             catch (Exception e) when (e is not OutOfMemoryException)
             {
+                decodeError = $" It does not decode as a multiaddress: {e.Message}";
             }
 
             if (address?.Protocols is [IP4 or IP6 or DNS or DNS4 or DNS6, TCP, P2P] or [DnsAddr, P2P])
@@ -65,7 +67,7 @@ public sealed class StaticPeerKeeper : IDisposable
             }
             else if (logger.IsError)
             {
-                logger.Error($"{setting} entry '{entry}' is skipped: no dial can reach it. It must be /ip4, /ip6, /dns, /dns4 or /dns6, then /tcp/<port> and /p2p/<peer-id>, or /dnsaddr/<name>/p2p/<peer-id>.");
+                logger.Error($"{setting} entry '{entry}' is skipped: no dial can reach it. It must be /ip4, /ip6, /dns, /dns4 or /dns6, then /tcp/<port> and /p2p/<peer-id>, or /dnsaddr/<name>/p2p/<peer-id>.{decodeError}");
             }
         }
 

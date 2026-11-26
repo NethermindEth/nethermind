@@ -28,8 +28,14 @@ public interface IArkivConfig : IConfig
     [ConfigItem(Description = "Commit a block to the GolemDB store only once a block builds on it (or this node builds on it). A competing block at the same height then executes over the same parent, so a one-block reorg at the tip costs nothing; committed first, the block could only be replaced by restoring a store copy, as GolemDB has no rewind. Until then `arkiv_*` reads and `eth_call` see the block before the head.", DefaultValue = "true")]
     bool HoldHeadBlock { get; set; }
 
-    [ConfigItem(Description = "Serve a copy of the GolemDB store to peers that state-sync (`arkiv/1`). The copy is made at the head when a peer asks and the last one is stale.", DefaultValue = "true")]
+    [ConfigItem(Description = "Serve a copy of the GolemDB store to peers that state-sync (`arkiv/1`). The copy is made at the head when a peer asks and the last one is stale.", DefaultValue = "false")]
     bool ServeState { get; set; }
+
+    [ConfigItem(Description = "Allow state sync from peer-supplied native database files whose records are not verified against the state root. Enable only with trusted peers; otherwise the chain syncs from genesis.", DefaultValue = "false")]
+    bool AllowUnverifiedStateSync { get; set; }
+
+    [ConfigItem(Description = "Maximum total size in bytes accepted in a peer's state-sync manifest.", DefaultValue = "68719476736")]
+    long MaxStateSyncBytes { get; set; }
 
     [ConfigItem(Description = "The fewest blocks between two store copies served to peers that state-sync (a copy is several GB). A new one is made, at the head, when a peer needs a newer copy than the last.", DefaultValue = "64")]
     ulong ServedCopyAge { get; set; }
@@ -44,6 +50,8 @@ public class ArkivConfig : IArkivConfig
     public bool EntityHistory { get; set; } = true;
     public ulong CheckpointInterval { get; set; }
     public bool HoldHeadBlock { get; set; } = true;
-    public bool ServeState { get; set; } = true;
+    public bool ServeState { get; set; }
     public ulong ServedCopyAge { get; set; } = 64;
+    public bool AllowUnverifiedStateSync { get; set; }
+    public long MaxStateSyncBytes { get; set; } = 64L * 1024 * 1024 * 1024;
 }

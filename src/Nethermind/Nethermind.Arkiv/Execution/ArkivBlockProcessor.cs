@@ -131,9 +131,9 @@ public class ArkivBlockProcessor(
         BlockHeader header = block.Header;
         if (header.StateRoot is { } trieRoot)
         {
-            chain.MapRoot(result.StateRoot, trieRoot);
             header.StateRoot = result.StateRoot;
             header.Hash = header.CalculateHash();
+            chain.MapRoot(header.Hash, trieRoot);
         }
         return receipts;
     }

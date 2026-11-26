@@ -5,6 +5,7 @@
 //! The session lives on its own thread: reth's block executor borrows its state for the whole block, and the host
 //! applies transactions across separate calls.
 
+use std::collections::BinaryHeap;
 use std::sync::{Arc, mpsc};
 use std::thread;
 
@@ -39,28 +40,27 @@ impl Node {
         let expired = Query::Lte { key: AnnotKey::BuiltIn(BuiltIn::ExpiresAt), value: AnnotVal::U64(block) };
         // Read in ascending expiry, as arkiv-reth's index (`ORDER BY expires_at, entity_id`) is. The store breaks
         // expiry ties in creation order, not by key, so once `MAX_PURGE_KEYS` are in hand the rest of the last
-        // expiry is read too, then all of it is put in (expiry, key) order: the cost is the purge's size plus one
-        // expiry's ties, not the backlog.
+        // expiry is read too, only the first keys are kept in (expiry, key) order. Memory is bounded by MAX_PURGE_KEYS;
+        // work still includes every entity tied at the final expiry, which can be large.
         let order = Sort::from(&OrderBy { key: AnnotKey::BuiltIn(BuiltIn::ExpiresAt), attr_type: AttributeType::U64, direction: Direction::Ascending });
-        let mut candidates: Vec<(u64, B256, usize)> = Vec::new();
+        let mut candidates: BinaryHeap<(u64, B256, usize)> = BinaryHeap::new();
         let mut offset = 0;
         'pages: loop {
             let page = arkiv_reth_rpc::store_reads::query(&*self.store, at, &expired, Some(&order), offset, PAGE, false)
                 .map_err(|e| (Status::Internal, format!("expired entities: {e}")))?;
             let read = page.entities.len() as u64;
             for entity in page.entities {
-                if candidates.len() >= MAX_PURGE_KEYS && entity.expires_at > candidates[MAX_PURGE_KEYS - 1].0 {
+                if candidates.len() >= MAX_PURGE_KEYS && entity.expires_at > candidates.peek().expect("nonempty candidates").0 {
                     break 'pages;
                 }
-                candidates.push((entity.expires_at, B256::from(entity.key), entity.indexed_attribute_count()));
+                retain_purge_candidate(&mut candidates, (entity.expires_at, B256::from(entity.key), entity.indexed_attribute_count()));
             }
             offset += read;
             if read < PAGE {
                 break;
             }
         }
-        candidates.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
-        candidates.truncate(MAX_PURGE_KEYS);
+        let candidates = candidates.into_sorted_vec();
         let mut keys = Vec::new();
         let mut gas = 0u64;
         for (_, key, indexed) in candidates {
@@ -200,6 +200,34 @@ impl Drop for BuildSession {
             let (closed, _) = mpsc::channel();
             self.commands = closed;
             let _ = worker.join();
+        }
+    }
+}
+
+fn retain_purge_candidate(candidates: &mut BinaryHeap<(u64, B256, usize)>, candidate: (u64, B256, usize)) {
+    candidates.push(candidate);
+    if candidates.len() > MAX_PURGE_KEYS {
+        candidates.pop();
+    }
+}
+
+#[cfg(test)]
+mod purge_candidate_tests {
+    use super::*;
+
+    #[test]
+    fn a_large_expiry_tie_retains_only_the_first_keys_and_their_costs() {
+        let mut candidates = BinaryHeap::new();
+        for key in (0..10_000u64).rev() {
+            let mut bytes = [0u8; 32];
+            bytes[24..].copy_from_slice(&key.to_be_bytes());
+            retain_purge_candidate(&mut candidates, (1, B256::from(bytes), key as usize));
+            assert!(candidates.len() <= MAX_PURGE_KEYS);
+        }
+        let kept = candidates.into_sorted_vec();
+        assert_eq!(kept.len(), MAX_PURGE_KEYS);
+        for (key, (_, _, cost)) in kept.iter().enumerate() {
+            assert_eq!(*cost, key);
         }
     }
 }

@@ -39,7 +39,7 @@ public static class GloasSignatureSets
 
         Hash256 domain = state.GetDomain(DomainType.BeaconAttester, attestation.Data!.Target!.Epoch);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(attestation.Data), domain);
-        return BlockSignatureBatch.Verify(aggregate.PublicKey, attestation.Signature, signingRoot, deferral);
+        return BlockSignatureBatch.Verify(pubkeys.SignatureVerifier, aggregate.PublicKey, attestation.Signature, signingRoot, deferral);
     }
 
     /// <summary>
@@ -68,7 +68,7 @@ public static class GloasSignatureSets
 
         Hash256 domain = state.GetDomain(DomainType.PtcAttester, BeaconStateAccessors.ComputeEpochAtSlot(attestation.Data!.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(attestation.Data), domain);
-        return BlockSignatureBatch.Verify(aggregate.PublicKey, attestation.Signature, signingRoot, deferral);
+        return BlockSignatureBatch.Verify(pubkeys.SignatureVerifier, aggregate.PublicKey, attestation.Signature, signingRoot, deferral);
     }
 
     /// <summary>Verifies a signed block header against its claimed proposer (used by proposer slashings).</summary>
@@ -77,7 +77,7 @@ public static class GloasSignatureSets
         BeaconBlockHeader header = signedHeader.Message!;
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(header.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(header), domain);
-        return SignatureSets.TryGetValidatorKey(pubkeys, state.ReadOnlyValidators, header.ProposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedHeader.Signature, signingRoot, deferral);
+        return SignatureSets.TryGetValidatorKey(pubkeys, state.ReadOnlyValidators, header.ProposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(pubkeys.SignatureVerifier, key, signedHeader.Signature, signingRoot, deferral);
     }
 
     /// <summary>Verifies a voluntary exit signature over the EIP-7044 fork-agnostic Capella domain.</summary>
@@ -86,7 +86,7 @@ public static class GloasSignatureSets
         VoluntaryExit exit = signedExit.Message!;
         Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, (spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!)).CapellaForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
-        return SignatureSets.TryGetValidatorKey(pubkeys, state.ReadOnlyValidators, exit.ValidatorIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedExit.Signature, signingRoot, deferral);
+        return SignatureSets.TryGetValidatorKey(pubkeys, state.ReadOnlyValidators, exit.ValidatorIndex, out G1Affine key) && BlockSignatureBatch.Verify(pubkeys.SignatureVerifier, key, signedExit.Signature, signingRoot, deferral);
     }
 
     /// <summary>
@@ -97,10 +97,11 @@ public static class GloasSignatureSets
     public static bool VerifyBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, BlockSignatureBatch.Deferral? deferral = null, BeaconChainSpec? spec = null)
     {
         BlsToExecutionChange change = signedChange.Message!;
-        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, (spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!)).GenesisForkVersion, state.GenesisValidatorsRoot!);
+        BeaconChainSpec signingSpec = spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!);
+        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, signingSpec.GenesisForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
-        return BlsSignatureSet.TryKeyValidate(change.FromBlsPubkey.Bytes, pubkey) && BlockSignatureBatch.Verify(pubkey, signedChange.Signature, signingRoot, deferral);
+        return BlsSignatureSet.TryKeyValidate(change.FromBlsPubkey.Bytes, pubkey) && BlockSignatureBatch.Verify(signingSpec.SignatureVerifier, pubkey, signedChange.Signature, signingRoot, deferral);
     }
 }

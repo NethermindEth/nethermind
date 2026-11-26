@@ -27,7 +27,7 @@ public sealed class ArkivRoots(ArkivChain chain)
     public BlockHeader? Translate(BlockHeader? header)
     {
         if (header?.StateRoot is not { } root) return header;
-        Hash256? trieRoot = chain.TrieRootOf(root);
+        Hash256? trieRoot = chain.TrieRootOf(header.Hash);
         if (trieRoot is null || trieRoot == root) return header;
         BlockHeader translated = header.Clone();
         translated.StateRoot = trieRoot;

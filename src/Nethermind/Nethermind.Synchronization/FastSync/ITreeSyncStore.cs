@@ -21,6 +21,14 @@ public interface ITreeSyncStore
     bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash);
 
     /// <summary>
+    /// Remove the trie node stored at the path when it is not the node with the hash, leaving its subtree in place.
+    /// </summary>
+    /// <remarks>
+    /// For a store keyed by path only, which keeps the node of an earlier root at the path until another is saved there.
+    /// </remarks>
+    void RemoveMismatchedNode(Hash256? address, in TreePath path, in ValueHash256 hash);
+
+    /// <summary>
     /// Save a trie node to storage.
     /// </summary>
     /// <param name="address">Storage address for storage tries, null for state trie.</param>
@@ -33,6 +41,10 @@ public interface ITreeSyncStore
     /// Ensure all storage entries for the given address are deleted.
     /// Called when an account's storage root is EmptyTreeHash (e.g. after self-destruct).
     /// </summary>
+    /// <remarks>
+    /// A store keyed by path also deletes the account's storage trie nodes: a later root can bring any of them back,
+    /// and healing would then take that subtree as already saved.
+    /// </remarks>
     void EnsureStorageEmpty(in ValueHash256 address);
 
     /// <summary>

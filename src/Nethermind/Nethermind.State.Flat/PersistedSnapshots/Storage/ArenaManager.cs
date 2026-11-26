@@ -573,7 +573,6 @@ public sealed class ArenaManager : IArenaManager
             try { _wake.Release(); } catch (ObjectDisposedException) { /* concurrent dispose */ }
             try { _drainTask.GetAwaiter().GetResult(); }
             catch (OperationCanceledException) { /* expected on shutdown */ }
-            catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException)) { /* expected */ }
 
             // Drain any leftovers synchronously; the syscalls are cheap enough that we'd rather
             // pay the cost than leave kernel pages cached for a process about to exit.

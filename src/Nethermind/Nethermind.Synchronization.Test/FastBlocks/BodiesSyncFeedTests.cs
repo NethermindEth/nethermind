@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -141,6 +142,127 @@ public class BodiesSyncFeedTests
         await HandleAndPrepareNextRequest();
         Assert.That(_blocksDb.FlushCount, Is.EqualTo(3));
         req.Dispose();
+    }
+
+    [Test]
+    public async Task Saves_body_progress_only_after_flushing_bodies_when_skipping_existing_blocks()
+    {
+        const ulong chainLength = 7_600;
+        const ulong presentBodies = 7_400;
+        using FullFlushDb blocksDb = new();
+        FlushTrackingSyncPointers syncPointers = new(blocksDb);
+        using BodiesSyncFeed feed = CreateFeedWithPresentBodies(blocksDb, syncPointers, chainLength, presentBodies);
+
+        using BodiesSyncBatch? batch = await feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(syncPointers.LowestInsertedBodyNumber, Is.LessThan(chainLength - 1 - presentBodies / 2));
+            Assert.That(syncPointers.SavedWithoutFlush, Is.False);
+        }
+    }
+
+    [Test]
+    public void Keeps_body_progress_when_flushing_bodies_fails()
+    {
+        const ulong chainLength = 7_600;
+        const ulong presentBodies = 7_400;
+        using FullFlushDb blocksDb = new();
+        FlushTrackingSyncPointers syncPointers = new(blocksDb);
+        using BodiesSyncFeed feed = CreateFeedWithPresentBodies(blocksDb, syncPointers, chainLength, presentBodies);
+        blocksDb.FailFlush = true;
+
+        Assert.That(() => feed.PrepareRequest(), Throws.InstanceOf<IOException>());
+        Assert.That(syncPointers.LowestInsertedBodyNumber, Is.EqualTo(chainLength - 1));
+    }
+
+    private BodiesSyncFeed CreateFeedWithPresentBodies(FullFlushDb blocksDb, FlushTrackingSyncPointers syncPointers, ulong chainLength, ulong presentBodies)
+    {
+        BlockTree syncingFrom = Build.A.BlockTree().OfChainLength(chainLength).TestObject;
+        Block pivot = syncingFrom.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
+
+        IBlockTree syncingTo = Build.A.BlockTree().WithBlocksDb(blocksDb).TestObject;
+        for (ulong i = 1; i < chainLength; i++)
+        {
+            Block block = syncingFrom.FindBlock(i, BlockTreeLookupOptions.None)!;
+            syncingTo.Insert(block.Header);
+            if (i > pivot.Number - presentBodies)
+            {
+                syncingTo.Insert(block);
+            }
+        }
+
+        syncingTo.SyncPivot = (pivot.Number, pivot.Hash!);
+        TestSyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotHash = pivot.Hash!.ToString(),
+            PivotNumber = pivot.Number,
+            AncientBodiesBarrier = 0,
+            DownloadBodiesInFastSync = true,
+        };
+        blocksDb.Flush(false);
+        syncPointers.LowestInsertedBodyNumber = pivot.Number;
+
+        BodiesSyncFeed feed = new(
+            MainnetSpecProvider.Instance,
+            syncingTo,
+            CreateBlockValidator(),
+            syncPointers,
+            _syncPeerPool,
+            syncConfig,
+            new NullSyncReport(),
+            _historyPruner,
+            blocksDb,
+            _metadataDb,
+            LimboLogs.Instance);
+        feed.InitializeFeed();
+        return feed;
+    }
+
+    private sealed class FullFlushDb : TestMemDb, IDbMeta
+    {
+        public int FullFlushCount { get; private set; }
+        public bool FailFlush { get; set; }
+
+        public override void Flush(bool onlyWal)
+        {
+            if (FailFlush) return;
+            base.Flush(onlyWal);
+            FullFlushCount += onlyWal ? 0 : 1;
+        }
+
+        void IDbMeta.FlushOrThrow()
+        {
+            if (FailFlush) throw new IOException("Flush failed");
+            Flush(false);
+        }
+    }
+
+    private sealed class FlushTrackingSyncPointers(FullFlushDb blocksDb) : ISyncPointers
+    {
+        private ulong? _lowestInsertedBodyNumber;
+        private int _flushCountAtLastSave = blocksDb.FullFlushCount;
+
+        public bool SavedWithoutFlush { get; private set; }
+
+        public ulong? LowestInsertedBodyNumber
+        {
+            get => _lowestInsertedBodyNumber;
+            set
+            {
+                if (value != _lowestInsertedBodyNumber)
+                {
+                    SavedWithoutFlush |= blocksDb.FullFlushCount == _flushCountAtLastSave;
+                    _flushCountAtLastSave = blocksDb.FullFlushCount;
+                }
+
+                _lowestInsertedBodyNumber = value;
+            }
+        }
+
+        public ulong? LowestInsertedReceiptBlockNumber { get; set; }
+        public ulong? LowestInsertedBlockAccessListBlockNumber { get; set; }
     }
 
     [Test]
@@ -327,6 +449,23 @@ public class BodiesSyncFeedTests
         Assert.That(_feed.IsFinished, Is.EqualTo(shouldFinish));
     }
 
+    // The history pruner reads this record to recognise a finished descent. The barrier is 10.
+    [TestCase(null, null, 10UL)] // no descent yet: records the barrier
+    [TestCase(null, 7UL, 10UL)] // no descent yet: replaces an older record
+    [TestCase(50UL, null, 10UL)] // a descent without a record: records the barrier
+    [TestCase(50UL, 7UL, 7UL)] // a descent with a record: keeps it
+    public void Records_the_barrier_the_descent_started_with(ulong? lowestInsertedBody, ulong? recorded, ulong expected)
+    {
+        _syncConfig.AncientBodiesBarrier = 10;
+        _syncPointers.LowestInsertedBodyNumber = lowestInsertedBody;
+        if (recorded is not null)
+            _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, recorded.Value.ToBigEndianByteArrayWithoutLeadingZeros());
+
+        _feed.InitializeFeed();
+
+        Assert.That(_metadataDb.Get(MetadataDbKeys.BodiesBarrierWhenStarted)?.ToULongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+    }
+
     [Test]
     public async Task When_AncientBodiesBarrier_exceeds_SyncPivot_then_finishes_immediately()
     {
@@ -383,6 +522,43 @@ public class BodiesSyncFeedTests
             Assert.That(progress.TargetValue, Is.EqualTo(_pivotBlock.Number - barrier));
             Assert.That(progress.CurrentValue, Is.EqualTo(progress.TargetValue));
         }
+    }
+
+    [Test]
+    public async Task Does_not_finish_before_the_barrier_body_is_inserted()
+    {
+        const ulong barrier = 60;
+        _syncConfig.AncientBodiesBarrier = barrier;
+        _feed.InitializeFeed();
+
+        using BodiesSyncBatch first = (await _feed.PrepareRequest())!;
+        BlockInfo[] requested = [.. first.Infos.Where(static i => i is not null)!];
+        Assert.That(requested[^1].BlockNumber, Is.EqualTo(barrier), "the first batch must reach the barrier for this to assert anything");
+        first.Response = new OwnedBlockBodies([.. requested.SkipLast(1).Select(BodyOf)]);
+        _feed.HandleResponse(first);
+
+        using BodiesSyncBatch retry = (await _feed.PrepareRequest())!;
+        Assert.That(retry.Infos[0]!.BlockNumber, Is.EqualTo(barrier));
+        using BodiesSyncBatch? _ = await _feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.IsFinished, Is.False);
+            Assert.That(_syncPointers.LowestInsertedBodyNumber, Is.GreaterThan(barrier));
+        }
+
+        retry.Response = new OwnedBlockBodies([BodyOf(retry.Infos[0]!)]);
+        _feed.HandleResponse(retry);
+        using BodiesSyncBatch? __ = await _feed.PrepareRequest();
+        using BodiesSyncBatch? ___ = await _feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.IsFinished, Is.True);
+            Assert.That(_syncingToBlockTree.FindBlock(barrier, BlockTreeLookupOptions.None)?.Body, Is.Not.Null);
+        }
+
+        BlockBody BodyOf(BlockInfo info) => _syncingFromBlockTree.FindBlock(info.BlockNumber, BlockTreeLookupOptions.None)!.Body;
     }
 
     [Test]

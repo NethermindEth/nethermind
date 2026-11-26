@@ -81,8 +81,12 @@ public class StartingSyncPivotUpdater(
                 await Task.Delay(retryDelay, token);
             }
         }
-        catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException)
+        catch (OperationCanceledException)
         {
+        }
+        catch (ObjectDisposedException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Starting sync pivot updates stopped: {e.Message}");
         }
         catch (Exception e)
         {

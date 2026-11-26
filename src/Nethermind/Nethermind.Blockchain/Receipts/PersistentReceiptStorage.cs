@@ -27,7 +27,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
+    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore, IReceiptPruner
     {
         /// <summary>
         /// Key of the lowest-inserted-receipt-block pointer kept in <see cref="ReceiptsColumns.Default"/>. That column
@@ -820,16 +820,25 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             Span<byte> receiptsData = GetOwnedReceiptData(blockNumber, blockHash);
-            IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
-            if (_defaultReceiptsRecovery is not null && ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
+            try
             {
-                IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
-                    new RecoveryBlockSource(this, blockNumber, blockHash));
-                iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context, blockHash, blockNumber);
+                IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
+                if (_defaultReceiptsRecovery is not null && ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
+                {
+                    IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
+                        new RecoveryBlockSource(this, blockNumber, blockHash));
+                    iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context, blockHash, blockNumber);
+                    return true;
+                }
+                iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);
                 return true;
             }
-            iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);
-            return true;
+            catch
+            {
+                // No iterator took the value, so nothing else will release it; a malformed one throws here.
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+                throw;
+            }
         }
 
         private ReceiptsIterator CreateRecoveryIterator(Span<byte> receiptsData, ulong blockNumber, Hash256 blockHash, IReceiptRefDecoder refDecoder)
@@ -1385,9 +1394,6 @@ namespace Nethermind.Blockchain.Receipts
                 if (fromInclusive < toExclusive) _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
             }
         }
-
-        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed) =>
-            SweepTransactionIndex(retainedFromBlock, resumeFrom, maxEntries, isHeightRetained: null, cancellationToken, out removed);
 
         [SkipLocalsInit]
         public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, Func<ulong, bool>? isHeightRetained, CancellationToken cancellationToken, out int removed)

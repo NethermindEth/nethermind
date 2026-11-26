@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Security.Cryptography;
 using CkzgLib;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Collections;
@@ -100,7 +99,7 @@ internal static class LocalBlobColumns
             {
                 roots[2 * i].ToLittleEndian(pair[..32]);
                 roots[2 * i + 1].ToLittleEndian(pair[32..]);
-                roots[i] = new UInt256(SHA256.HashData(pair));
+                roots[i] = new UInt256(ThreadSha256.HashData(pair));
             }
         }
         return proof;

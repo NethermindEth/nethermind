@@ -99,6 +99,20 @@ public class ColumnGossipRouterFuluHeaderTests
     }
 
     [Test]
+    public void A_verifier_that_rejects_every_signature_rejects_a_validly_signed_header()
+    {
+        PubkeyCache keys = new() { SignatureVerifier = new RejectingSignatureVerifier() };
+        keys.Build(KeyedValidators());
+        (ColumnGossipRouter router, _, _) = Create(Ancestry.DescendsFromFinalized, parentInSnapshot: true, keys: keys);
+
+        MessageValidity verdict = router.Handle(Column, gloasTopic: false, Message(Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0)));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdict, Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(router.KzgBatchCount, Is.Zero);
+    }
+
+    [Test]
     public void A_proposer_signing_more_headers_for_one_slot_than_the_limit_runs_no_KZG_under_the_extra_ones()
     {
         (ColumnGossipRouter router, _, _) = Create(Ancestry.DescendsFromFinalized, parentInSnapshot: true);

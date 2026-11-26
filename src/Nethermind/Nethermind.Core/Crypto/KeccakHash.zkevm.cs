@@ -1085,7 +1085,9 @@ public sealed partial class KeccakHash
 
     /// <remarks>On ZisK a direct DMA call: the struct copy the JIT emits reaches the same precompile through a wrapper
     /// and corelib's copy routine, which spill registers around it. The refs are not pinned: the guest is single-threaded
-    /// and collects only when it allocates, so no GC can run between taking their addresses and the call returning.</remarks>
+    /// and collects only when it allocates, so no GC can run between taking their addresses and the call returning.
+    /// Without DMA, as on OpenVM, that copy is a call into corelib's <c>Memmove</c> and then the guest's <c>memmove</c>
+    /// and <c>memcpy</c>, dearer than the twenty-five loads and stores written out.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void CopyState(ref ulong lane, ref ulong source)
     {
@@ -1095,7 +1097,30 @@ public sealed partial class KeccakHash
             return;
         }
 
-        Unsafe.As<ulong, KeccakState>(ref lane) = Unsafe.As<ulong, KeccakState>(ref source);
+        CopyRate(ref lane, ref source);
+        CopyCapacity(ref lane, ref source);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CopyRate(ref ulong lane, ref ulong source)
+    {
+        Unsafe.Add(ref lane, 0) = Unsafe.Add(ref source, 0);
+        Unsafe.Add(ref lane, 1) = Unsafe.Add(ref source, 1);
+        Unsafe.Add(ref lane, 2) = Unsafe.Add(ref source, 2);
+        Unsafe.Add(ref lane, 3) = Unsafe.Add(ref source, 3);
+        Unsafe.Add(ref lane, 4) = Unsafe.Add(ref source, 4);
+        Unsafe.Add(ref lane, 5) = Unsafe.Add(ref source, 5);
+        Unsafe.Add(ref lane, 6) = Unsafe.Add(ref source, 6);
+        Unsafe.Add(ref lane, 7) = Unsafe.Add(ref source, 7);
+        Unsafe.Add(ref lane, 8) = Unsafe.Add(ref source, 8);
+        Unsafe.Add(ref lane, 9) = Unsafe.Add(ref source, 9);
+        Unsafe.Add(ref lane, 10) = Unsafe.Add(ref source, 10);
+        Unsafe.Add(ref lane, 11) = Unsafe.Add(ref source, 11);
+        Unsafe.Add(ref lane, 12) = Unsafe.Add(ref source, 12);
+        Unsafe.Add(ref lane, 13) = Unsafe.Add(ref source, 13);
+        Unsafe.Add(ref lane, 14) = Unsafe.Add(ref source, 14);
+        Unsafe.Add(ref lane, 15) = Unsafe.Add(ref source, 15);
+        Unsafe.Add(ref lane, 16) = Unsafe.Add(ref source, 16);
     }
 
     /// <summary>Absorbs the first <paramref name="count"/> whole lanes of <paramref name="data"/>, at most sixteen.</summary>

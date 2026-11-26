@@ -330,22 +330,22 @@ public sealed class ArkivChain : IDisposable
 
     // ---- state root map -------------------------------------------------------------------------------------------
 
-    /// <summary>Records that the block whose header carries GolemDB root <paramref name="arkivRoot"/> has local account trie root <paramref name="trieRoot"/>.</summary>
-    public void MapRoot(Hash256 arkivRoot, Hash256 trieRoot)
+    /// <summary>Records that block <paramref name="blockHash"/> has local account trie root <paramref name="trieRoot"/>.</summary>
+    public void MapRoot(Hash256 blockHash, Hash256 trieRoot)
     {
-        _roots.Set(arkivRoot, trieRoot);
-        _db.PutSpan(Key(RootPrefix, arkivRoot.Bytes), trieRoot.Bytes);
+        _roots.Set(blockHash, trieRoot);
+        _db.PutSpan(Key(RootPrefix, blockHash.Bytes), trieRoot.Bytes);
     }
 
     /// <summary>The local account trie root for a header's GolemDB root, if this node processed that block.</summary>
-    public Hash256? TrieRootOf(Hash256? arkivRoot)
+    public Hash256? TrieRootOf(Hash256? blockHash)
     {
-        if (arkivRoot is null) return null;
-        if (_roots.TryGet(arkivRoot, out Hash256? cached)) return cached;
-        byte[]? stored = _db.Get(Key(RootPrefix, arkivRoot.Bytes));
+        if (blockHash is null) return null;
+        if (_roots.TryGet(blockHash, out Hash256? cached)) return cached;
+        byte[]? stored = _db.Get(Key(RootPrefix, blockHash.Bytes));
         if (stored is null) return null;
         Hash256 root = new(stored);
-        _roots.Set(arkivRoot, root);
+        _roots.Set(blockHash, root);
         return root;
     }
 
@@ -359,11 +359,14 @@ public sealed class ArkivChain : IDisposable
         {
             byte[] indexKey = Key(EntityIndexPrefix, entity.Key.Bytes);
             byte[] index = _db.Get(indexKey) ?? [];
-            if (index.Length < 8 || !index.AsSpan(index.Length - 8).SequenceEqual(numberBytes))
+            int position = EntityHistoryUpperBound(index, number);
+            if (position == 0 || BinaryPrimitives.ReadUInt64BigEndian(index.AsSpan((position - 1) * 8)) != number)
             {
                 byte[] grown = new byte[index.Length + 8];
-                index.CopyTo(grown, 0);
-                numberBytes.CopyTo(grown.AsSpan(index.Length));
+                int offset = position * 8;
+                index.AsSpan(0, offset).CopyTo(grown);
+                numberBytes.CopyTo(grown.AsSpan(offset));
+                index.AsSpan(offset).CopyTo(grown.AsSpan(offset + 8));
                 batch.Set(indexKey, grown);
             }
             batch.Set(EntityKey(entity.Key, number), entity.Json ?? Tombstone);
@@ -378,15 +381,7 @@ public sealed class ArkivChain : IDisposable
     {
         byte[]? index = _db.Get(Key(EntityIndexPrefix, key.Bytes));
         if (index is null) return (false, null);
-        int count = index.Length / 8;
-        int lo = 0, hi = count - 1, found = -1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) / 2;
-            ulong at = BinaryPrimitives.ReadUInt64BigEndian(index.AsSpan(mid * 8));
-            if (at <= number) { found = mid; lo = mid + 1; }
-            else hi = mid - 1;
-        }
+        int found = EntityHistoryUpperBound(index, number) - 1;
         if (found < 0) return (false, null);
         ulong touched = BinaryPrimitives.ReadUInt64BigEndian(index.AsSpan(found * 8));
         byte[]? json = _db.Get(EntityKey(key, touched));
@@ -683,7 +678,36 @@ public sealed class ArkivChain : IDisposable
 
     // ---- keys -----------------------------------------------------------------------------------------------------
 
-    private void WriteHead(ulong number, Hash256 hash) => _db.Set(HeadKey, HeadValue(number, hash));
+    private void WriteHead(ulong number, Hash256 hash)
+    {
+        using IWriteBatch batch = _db.StartWriteBatch();
+        if (number < Head.Number)
+        {
+            foreach (KeyValuePair<byte[], byte[]> entry in _db.GetAll())
+            {
+                if (entry.Key.Length != 1 + Hash256.Size || entry.Key[0] != EntityIndexPrefix) continue;
+                int keep = EntityHistoryUpperBound(entry.Value, number);
+                if (keep * 8 == entry.Value.Length) continue;
+                Hash256 entity = new(entry.Key.AsSpan(1));
+                for (int offset = keep * 8; offset < entry.Value.Length; offset += 8)
+                    batch.Set(EntityKey(entity, BinaryPrimitives.ReadUInt64BigEndian(entry.Value.AsSpan(offset))), null);
+                batch.Set(entry.Key, keep == 0 ? null : entry.Value.AsSpan(0, keep * 8));
+            }
+        }
+        batch.Set(HeadKey, HeadValue(number, hash));
+    }
+
+    private static int EntityHistoryUpperBound(ReadOnlySpan<byte> index, ulong number)
+    {
+        int lo = 0, hi = index.Length / 8;
+        while (lo < hi)
+        {
+            int mid = lo + (hi - lo) / 2;
+            if (BinaryPrimitives.ReadUInt64BigEndian(index[(mid * 8)..]) <= number) lo = mid + 1;
+            else hi = mid;
+        }
+        return lo;
+    }
 
     private static byte[] HeadValue(ulong number, Hash256 hash)
     {

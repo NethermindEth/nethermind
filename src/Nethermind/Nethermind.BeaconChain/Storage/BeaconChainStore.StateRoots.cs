@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -10,7 +11,7 @@ public partial class BeaconChainStore
 {
     private const byte StateRootKeyPrefix = 4;
     private const byte BlockStateKeyPrefix = 3;
-    private const int StateRootOffset = ParentRootOffset + Hash256.Size;
+    private const int StateRootOffset = SignedBeaconBlockCodec.StateRootOffset;
 
     internal bool TryGetBlockRootByStateRoot(Hash256 stateRoot, out Hash256? blockRoot)
     {

@@ -35,6 +35,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Container;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Filters;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
@@ -198,6 +199,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = static @this => new EthRpcModule(
             @this.RpcConfig,
             @this.Bridge,
+            @this.Container.Resolve<FilterStore>(),
+            @this.Container.Resolve<FilterManager>(),
             @this.BlockFinder,
             @this.BlockTree,
             @this.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
@@ -268,7 +271,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>
-            RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
+            RpcTest.TestSerializedRequest(EthRpcModule, RpcConfig.Timeout, method, parameters);
 
         private IBlockProcessingQueue? _currentBlockchainProcessor;
 
@@ -285,7 +288,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newProcessor = new(BlockTree, BranchProcessor,
-                BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>());
+                BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>(), Container.Resolve<BlockProcessingTracker>());
             _currentBlockchainProcessor = newProcessor;
             newProcessor.Start();
         }

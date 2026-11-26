@@ -9,8 +9,16 @@ concurrency:
 
 on:
   pull_request:
+    paths: &arkiv-paths
+      - 'src/native/arkiv-ffi/**'
+      - 'src/Nethermind/**'
+      - 'Directory.*'
+      - 'global.json'
+      - '.github/workflows/arkiv-tests.yml'
+      - '.github/actions/setup-dotnet/**'
   push:
     branches: [master]
+    paths: *arkiv-paths
   workflow_dispatch:
 
 env:

@@ -87,7 +87,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             RecreateHandler();
         }
 
-        private void RecreateHandler(INodeStatsManager? stats = null, IBackgroundTaskScheduler? scheduler = null, bool init = true)
+        private void RecreateHandler(INodeStatsManager? stats = null, IBackgroundTaskScheduler? scheduler = null)
         {
             _handler?.Dispose();
             _handler = new Eth62ProtocolHandler(
@@ -100,7 +100,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _gossipPolicy,
                 LimboLogs.Instance,
                 _txGossipPolicy);
-            if (init) _handler.Init();
+            _handler.Init();
         }
 
         [TearDown]
@@ -133,16 +133,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             _syncManager.Head.Returns((BlockHeader)null);
             Assert.Throws<InvalidOperationException>(() => _handler.Init());
-        }
-
-        [Test]
-        public void Should_stop_notifying_about_new_blocks_and_new_block_hashes_if_in_PoS()
-        {
-            _gossipPolicy.CanGossipBlocks.Returns(false);
-
-            RecreateHandler(init: false);
-
-            _syncManager.Received().StopNotifyingPeersAboutNewBlocks();
         }
 
         [Test]
@@ -1017,6 +1007,35 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             await getTask;
 
             Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(4));
+        }
+
+        [Test]
+        public async Task Rejects_more_block_bodies_than_the_hashes_sent([Values] bool moreThanSent)
+        {
+            using BlockBodiesMessage reply = new(Build.A.Block.TestObjectNTimes(moreThanSent ? 5 : 4));
+            List<Hash256> requests = Enumerable.Repeat(Keccak.Zero, 1000).ToList();
+            GetBlockBodiesMessage? sent = null;
+
+            NodeStatsLight nodeStats = new(_session.Node, timeProvider: new ManualTimeProvider());
+            INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+            nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(nodeStats);
+            RecreateHandler(stats: nodeStatsManager);
+            _session
+                .When(session => session.DeliverMessage(Arg.Any<GetBlockBodiesMessage>()))
+                .Do(info => sent = (GetBlockBodiesMessage)info[0]);
+
+            HandleIncomingStatusMessage();
+            Task<OwnedBlockBodies> getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None);
+            HandleZeroMessage(reply, Eth62MessageCode.BlockBodies);
+            using OwnedBlockBodies bodies = await getTask;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sent!.BlockHashes.Count, Is.EqualTo(4));
+                Assert.That(bodies.Count, Is.EqualTo(moreThanSent ? 0 : 4));
+            }
+
+            _session.Received(moreThanSent ? 1 : 0).InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
         }
 
         [Test]

@@ -88,7 +88,7 @@ peers, and syncs from genesis: every block is executed, nothing is restored from
 | `EntityHistory` | `true` | Keep every entity after every block, so `arkiv_getEntity` answers at past blocks. |
 | `CheckpointInterval` | `0` | Copy the GolemDB store every N blocks; a reorg below the store's head replays from the newest copy on the new branch. Both Rabdi configs set 50 000. |
 | `HoldHeadBlock` | `true` | Commit a block only once a block builds on it, so a competing block at the tip (a late block replaced, a producer restart) executes over the same parent with no store copy ([arkiv#287](https://github.com/Arkiv-Network/arkiv/issues/287) stalls arkiv-reth there). `arkiv_*` reads and `eth_call` see the block before the head until the next block arrives. |
-| `ServeState` | `true` | Serve a copy of the GolemDB store to peers that state-sync (`arkiv/1`). |
+| `ServeState` | `false` | Serve a copy of the GolemDB store to peers that state-sync (`arkiv/1`). |
 | `ServedCopyAge` | `64` | The fewest blocks between two served copies; a new one is made, at the head, when a peer needs a newer copy than the last. |
 
 Two Rabdi configurations, both with `FlatDb.Enabled=false` (the plugin needs the patricia backend) and the watchers as
@@ -96,17 +96,26 @@ static peers:
 
 | `--config` | Sync | History |
 | --- | --- | --- |
-| `rabdi` | state sync (`arkiv/1`, below), then follows the head; Nethermind's default pruning | from the sync point on |
+| `rabdi` | sync from genesis, then follows the head; Nethermind's default pruning | from genesis on |
 | `rabdi_archive` | every block from genesis | everything: accounts at every block (`Pruning.Mode=None`), every entity after every block (`EntityHistory`), the full transaction index |
+
+### Prototype limits
+
+Native RPC reads share the execution lock because a commit invalidates their native views. An expensive query can delay block import; use a separate RPC node for public queries. A safe timeout needs native query cancellation or independent snapshots and is still outstanding.
+
+`CheckpointInterval=0` disables recovery below the committed store head; the bundled Rabdi configurations set 50,000. Operators must choose a checkpoint interval appropriate to their reorg and disk-copy budget.
+
+Local account-trie roots are now indexed by block hash rather than by GolemDB root. Existing experimental plugin databases need replay or resync to rebuild historical local-root mappings.
 
 ### Joining by state sync
 
-`--config rabdi` (`Sync.FastSync` and `Sync.SnapSync` on) fetches headers, and in place of snap's state phase fetches a
+Peer-supplied native database files are not verified record by record against the state root. State sync is therefore disabled by default; enable `Arkiv.AllowUnverifiedStateSync=true` only with trusted peers. Otherwise the plugin disables fast/snap sync and executes from genesis. Serving a copy also requires `Arkiv.ServeState=true`. `Arkiv.MaxStateSyncBytes` bounds the total accepted manifest size (64 GiB by default), and downloads require enough free disk space.
+
+With trusted peers, `--config rabdi --Arkiv.AllowUnverifiedStateSync=true` (`Sync.FastSync` and `Sync.SnapSync` on) fetches headers, and in place of snap's state phase fetches a
 GolemDB store copy from a peer running this plugin, over the `arkiv/1` devp2p capability. It checks the copy's head against the header of its
 block (block hash and GolemDB root) and builds its local account trie from the store's accounts. Then it executes blocks
 from there on, as after any state sync. History before the sync point is not available on such a node. arkiv-reth
-watchers do not speak `arkiv/1`, so at least one peer must run Nethermind with this plugin; any synced node serves
-(`ServeState`), and the node uses whichever of its peers does.
+watchers do not speak `arkiv/1`, so at least one peer must run Nethermind with this plugin; a synced node serves only when `Arkiv.ServeState=true`, and the node uses whichever of its peers does.
 
 Finding such a peer: Rabdi's own nodes run with discovery off and are reached through the enodes the network publishes
 (the configs' static peers), so there is no discovery network to find a Nethermind node through yet. Until Nethermind

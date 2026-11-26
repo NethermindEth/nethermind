@@ -71,6 +71,7 @@ public static class RabdiFixture
             StoreDirectory = Path.Combine(baseDbPath, "store"),
             CheckpointInterval = checkpointInterval,
             HoldHeadBlock = holdHeadBlock,
+            ServeState = true,
         };
         return new ArkivChain(config, new InitConfig { BaseDbPath = baseDbPath }, db, new Lazy<IBlockTree>(blockTree), new EthereumEcdsa(ChainId), LimboLogs.Instance);
     }

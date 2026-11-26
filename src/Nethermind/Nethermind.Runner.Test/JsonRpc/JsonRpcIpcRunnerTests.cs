@@ -66,6 +66,86 @@ public class JsonRpcIpcRunnerTests
         }
     }
 
+    [Test]
+    public async Task Queued_start_after_disposal_leaves_the_socket_path_alone()
+    {
+        IFileSystem files = Substitute.For<IFileSystem>();
+        JsonRpcIpcRunner runner = CreateRunner(files);
+        runner.Dispose();
+
+        using TempPath socketPath = TempPath.GetTempFile();
+        string path = socketPath.Path;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        await runner.StartServer(path, timeout.Token);
+        files.File.DidNotReceive().Exists(path);
+    }
+
+    [Test]
+    public async Task Dispose_during_startup_waits_for_the_listener_and_then_closes_it()
+    {
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        IFileSystem files = Substitute.For<IFileSystem>();
+        JsonRpcIpcRunner runner = CreateRunner(files);
+
+        using TempPath socketPath = TempPath.GetTempFile();
+        string path = socketPath.Path;
+        files.File.Exists(path).Returns(_ =>
+        {
+            entered.Set();
+            release.Wait(TimeSpan.FromSeconds(10));
+            return false;
+        });
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+
+        Task start = Task.Run(() => runner.StartServer(path, timeout.Token));
+        entered.Wait(TimeSpan.FromSeconds(10));
+        Task dispose = Task.Run(runner.Dispose);
+        bool disposedDuringStartup = dispose.Wait(TimeSpan.FromMilliseconds(500));
+        release.Set();
+        await dispose;
+        Task first = await Task.WhenAny(start, Task.Delay(TimeSpan.FromSeconds(5)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disposedDuringStartup, Is.False, "dispose must wait for the listener startup to finish");
+            Assert.That(first, Is.SameAs(start), "the accept loop must stop on the listener closed by dispose");
+        }
+    }
+
+    private static JsonRpcIpcRunner CreateRunner(IFileSystem files)
+    {
+        IConfigProvider config = Substitute.For<IConfigProvider>();
+        config.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig());
+        return new(Substitute.For<IJsonRpcProcessor>(), config, LimboLogs.Instance,
+            Substitute.For<IJsonRpcLocalStats>(), new EthereumJsonSerializer(), files);
+    }
+
+    [Test]
+    [Platform(Include = "Linux")]
+    public void CreateListener_queues_connections_opened_before_the_first_accept()
+    {
+        const int clients = 8;
+        using TempPath path = TempPath.GetTempFile();
+        UnixDomainSocketEndPoint endPoint = new(path.Path);
+        using Socket listener = JsonRpcIpcRunner.CreateListener(path.Path);
+        Socket[] connections = new Socket[clients];
+        try
+        {
+            for (int i = 0; i < clients; i++)
+            {
+                // Non-blocking, as async clients connect: a full backlog fails the connect instead of delaying it
+                connections[i] = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified) { Blocking = false };
+                Socket connection = connections[i];
+                Assert.That(() => connection.Connect(endPoint), Throws.Nothing, $"connection {i + 1} opened while none is accepted yet");
+            }
+        }
+        finally
+        {
+            foreach (Socket? connection in connections) connection?.Dispose();
+        }
+    }
+
     private static readonly TestCaseData[] ShutdownAcceptErrors =
     [
         new TestCaseData(new SocketException((int)SocketError.OperationAborted)).SetName("listener disposed while accepting"),

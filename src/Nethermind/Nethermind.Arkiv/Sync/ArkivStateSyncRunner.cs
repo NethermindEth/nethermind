@@ -36,6 +36,7 @@ namespace Nethermind.Arkiv.Sync;
 /// </remarks>
 public sealed class ArkivStateSyncRunner(
     ArkivChain chain,
+    IArkivConfig config,
     ISyncModeSelector syncModeSelector,
     ISyncProgressResolver syncProgressResolver,
     ISyncPeerPool syncPeerPool,
@@ -56,6 +57,7 @@ public sealed class ArkivStateSyncRunner(
     {
         try
         {
+            if (!config.AllowUnverifiedStateSync) return;
             if (syncProgressResolver.FindBestFullState() != 0)
             {
                 if (_logger.IsInfo) _logger.Info("Arkiv state sync unnecessary - already have state.");
@@ -130,7 +132,7 @@ public sealed class ArkivStateSyncRunner(
                 Stopwatch install = Stopwatch.StartNew();
                 IReadOnlyList<(Address Address, UInt256 Balance, ulong Nonce)> accounts = chain.InstallStore(incoming, header);
                 Hash256 trieRoot = BuildAccountTrie(accounts);
-                chain.MapRoot(header.StateRoot!, trieRoot);
+                chain.MapRoot(header.Hash!, trieRoot);
                 treeSyncStore.FinalizeSync(header);
                 if (_logger.IsInfo) _logger.Info($"Arkiv state sync finished at block {header.ToString(BlockHeader.Format.Short)}: GolemDB root {header.StateRoot} verified, {accounts.Count} accounts in the local trie (root {trieRoot}), installed in {install.Elapsed.TotalSeconds:N1} s");
                 return true;
@@ -150,7 +152,9 @@ public sealed class ArkivStateSyncRunner(
     /// <returns>False when the peer stopped serving the copy part-way (a newer one replaced it): ask again.</returns>
     private async Task<bool> Download(IArkivSyncPeer peer, StoreManifestMessage manifest, string directory, CancellationToken token)
     {
-        long total = manifest.Files.Sum(f => f.Size);
+        long total = ValidateManifest(manifest, config.MaxStateSyncBytes);
+        long available = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(directory))!).AvailableFreeSpace;
+        if (total > available) throw new InvalidDataException($"the store copy needs {total} bytes, but only {available} are available");
         if (_logger.IsInfo) _logger.Info($"Arkiv state sync: fetching the store copy at block {manifest.Number} ({manifest.Hash}), {manifest.Files.Count} files, {total / (1024 * 1024)} MiB");
         Stopwatch elapsed = Stopwatch.StartNew();
         long fetched = 0;
@@ -169,15 +173,15 @@ public sealed class ArkivStateSyncRunner(
             await using FileStream stream = new(target, FileMode.Create, FileAccess.Write, FileShare.None);
             stream.SetLength(size);
 
-            Queue<long> offsets = new();
-            for (long offset = 0; offset < size; offset += ChunkSize) offsets.Enqueue(offset);
+            long nextOffset = 0;
             List<Task<(long Offset, byte[] Data)>> inFlight = [];
-            while (offsets.Count > 0 || inFlight.Count > 0)
+            while (nextOffset < size || inFlight.Count > 0)
             {
-                while (offsets.Count > 0 && inFlight.Count < ChunksInFlight)
+                while (nextOffset < size && inFlight.Count < ChunksInFlight)
                 {
-                    long offset = offsets.Dequeue();
+                    long offset = nextOffset;
                     int length = (int)Math.Min(ChunkSize, size - offset);
+                    nextOffset += length;
                     int index = file;
                     inFlight.Add(Task.Run(async () => (offset, await peer.GetStoreChunk(manifest.Hash, index, offset, length, token)), token));
                 }
@@ -204,13 +208,27 @@ public sealed class ArkivStateSyncRunner(
         return true;
     }
 
+    internal static long ValidateManifest(StoreManifestMessage manifest, long maximumBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumBytes);
+        long total = 0;
+        HashSet<string> paths = [with(StringComparer.Ordinal)];
+        foreach ((string path, long size) in manifest.Files)
+        {
+            if (size < 0 || size > maximumBytes - total || !paths.Add(path))
+                throw new InvalidDataException("the state-sync manifest exceeds the size limit or repeats a file");
+            total += size;
+        }
+        return total;
+    }
+
     /// <summary>
     /// The local account trie at the synced block: the genesis trie (whose predeploys keep their code and storage) with
     /// every account's balance and nonce as GolemDB holds them, written straight to the node store.
     /// </summary>
     private Hash256 BuildAccountTrie(IReadOnlyList<(Address Address, UInt256 Balance, ulong Nonce)> accounts)
     {
-        Hash256 genesisTrie = chain.TrieRootOf(chain.GenesisRoot) ?? throw new InvalidOperationException("Arkiv: the genesis account trie's root is not recorded");
+        Hash256 genesisTrie = chain.TrieRootOf(chain.GenesisHash) ?? throw new InvalidOperationException("Arkiv: the genesis account trie's root is not recorded");
         StateTree tree = new(new RawScopedTrieStore(nodeStorage), _logManager) { RootHash = genesisTrie };
         foreach ((Address address, UInt256 balance, ulong nonce) in accounts)
         {

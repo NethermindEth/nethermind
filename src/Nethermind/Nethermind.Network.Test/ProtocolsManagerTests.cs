@@ -109,6 +109,7 @@ public class ProtocolsManagerTests
         IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
         ISession session = Substitute.For<ISession>();
         session.BestStateReached.Returns(SessionState.Initialized);
+        session.RemoteNodeId.Returns(TestItem.PublicKeyA);
         session.Node.Returns(new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303));
         _ = new ProtocolsManager(
             Substitute.For<ISyncPeerPool>(),
@@ -214,6 +215,7 @@ public class ProtocolsManagerTests
         private readonly int _remotePort = 30000;
         private readonly string _remoteHost = "35.0.0.1";
         private ISession _currentSession;
+        private IRlpxConnection _connection;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IRlpxHost _rlpxHost;
         private readonly ProtocolsManager _manager;
@@ -234,7 +236,7 @@ public class ProtocolsManagerTests
         private readonly IForkInfo _forkInfo;
         private readonly string[] _satelliteProtocols;
 
-        public Context(ILogManager? logManager = null, string[]? satelliteProtocols = null)
+        public Context(ILogManager? logManager = null, IRlpxHost? rlpxHost = null, IPeerManager? peerManager = null, string? clientIdMatcher = null, string[]? satelliteProtocols = null)
         {
             _satelliteProtocols = satelliteProtocols ?? [];
             _packetSender = Substitute.For<IPacketSender>();
@@ -251,8 +253,7 @@ public class ProtocolsManagerTests
                 SerializerInfo.Create(new DisconnectMessageSerializer())
                 );
 
-            _rlpxHost = Substitute.For<IRlpxHost>();
-            _rlpxHost.LocalPort.Returns(_localPort);
+            _rlpxHost = rlpxHost ?? Substitute.For<IRlpxHost>();
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _blockTree = Substitute.For<IBlockTree>();
@@ -260,8 +261,8 @@ public class ProtocolsManagerTests
             _blockTree.ChainId.Returns(TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
             _forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
-            _peerManager = Substitute.For<IPeerManager>();
-            _networkConfig = new NetworkConfig();
+            _peerManager = peerManager ?? Substitute.For<IPeerManager>();
+            _networkConfig = new NetworkConfig { ClientIdMatcher = clientIdMatcher };
             _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _forkInfo, _networkConfig, LimboLogs.Instance);
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
@@ -320,8 +321,8 @@ public class ProtocolsManagerTests
 
         public Context CreateIncomingSession()
         {
-            IRlpxConnection connection = Substitute.For<IRlpxConnection>();
-            _currentSession = new Session(_localPort, connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            _connection = Substitute.For<IRlpxConnection>();
+            _currentSession = new Session(_localPort, _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             _rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
             return this;
         }
@@ -331,8 +332,8 @@ public class ProtocolsManagerTests
 
         public Context CreateOutgoingSession(Node node)
         {
-            IRlpxConnection connection = Substitute.For<IRlpxConnection>();
-            _currentSession = new Session(_localPort, node, connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            _connection = Substitute.For<IRlpxConnection>();
+            _currentSession = new Session(_localPort, node, _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             _rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
             return this;
         }
@@ -382,6 +383,13 @@ public class ProtocolsManagerTests
         public Context VerifyInitialized()
         {
             Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
+            return this;
+        }
+
+        public Context VerifySnappyEnabled(bool enabled)
+        {
+            Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
+            _connection.Received(enabled ? 1 : 0).EnableSnappy();
             return this;
         }
 
@@ -457,9 +465,22 @@ public class ProtocolsManagerTests
 
         public Context VerifySyncPeersRemoved()
         {
-            _txPool.Received().RemovePeer(Arg.Any<PublicKey>());
+            _txPool.Received().RemovePeer(Arg.Is<ITxPoolPeer>(peer => peer.Id == _currentSession.RemoteNodeId));
             _syncPeerPool.Received().RemovePeer(Arg.Any<ISyncPeer>());
             return this;
+        }
+
+        public void VerifyNoGossipPeerRemoved()
+        {
+            _txPool.Received().AddPeer(Arg.Is<ITxPoolPeer>(peer => peer.Id == _currentSession.RemoteNodeId));
+            _txPool.DidNotReceive().RemovePeer(Arg.Any<PublicKey>());
+            _txPool.DidNotReceive().RemovePeer(Arg.Any<ITxPoolPeer>());
+        }
+
+        public Context ReceiveHello(Session session)
+        {
+            _currentSession = session;
+            return ReceiveHello();
         }
 
         private Context ReceiveHello(HelloMessage msg)
@@ -565,6 +586,16 @@ public class ProtocolsManagerTests
             .ReceiveHello()
             .VerifyPingSenderSet();
 
+    [TestCase((byte)5, true)]
+    [TestCase((byte)4, false)]
+    public void Enables_snappy_once_for_admitted_v5_hello(byte p2pVersion, bool snappy) => When
+            .CreateIncomingSession()
+            .ActivateChannel()
+            .Handshake()
+            .Init()
+            .ReceiveHello(p2pVersion)
+            .VerifySnappyEnabled(snappy);
+
     [Test]
     public void Disconnects_on_p2p_before_version_4() => When
             .CreateIncomingSession()
@@ -583,6 +614,12 @@ public class ProtocolsManagerTests
             .ReceiveHello()
             .ReceiveDisconnect()
             .VerifyDisconnected();
+
+    [Test]
+    public void Disconnect_before_hello_preserves_the_registered_gossip_peer() => When
+        .CreateOutgoingSession().ActivateChannel().Handshake().Init().ReceiveHello().ReceiveStatus()
+        .CreateIncomingSession().ActivateChannel().Handshake().Init().Disconnect()
+        .VerifyNoGossipPeerRemoved();
 
     [Test]
     public void Runs_ok_when_initializing_protocol_on_a_closing_session() => When
@@ -785,6 +822,8 @@ public class ProtocolsManagerTests
         public SessionState State => SessionState.Disconnected;
         public SessionState BestStateReached => SessionState.Disconnected;
         public bool IsClosing => true;
+        public bool IsChannelClosed => false;
+        public bool IsOutboundBufferFull => false;
         public PublicKey RemoteNodeId => null!;
         public PublicKey ObsoleteRemoteNodeId => null!;
         public string RemoteHost { get; set; } = string.Empty;
@@ -830,6 +869,5 @@ public class ProtocolsManagerTests
         public void InitiateDisconnect(DisconnectReason disconnectReason, string details) => throw new NotSupportedException();
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details) => throw new NotSupportedException();
         public void Handshake(PublicKey handshakeRemoteNodeId) => throw new NotSupportedException();
-        public void StartTrackingSession() => throw new NotSupportedException();
     }
 }

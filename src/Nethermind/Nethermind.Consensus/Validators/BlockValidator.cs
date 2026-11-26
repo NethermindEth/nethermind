@@ -313,12 +313,6 @@ public class BlockValidator(
         return error;
     }
 
-    public bool ValidateWithdrawals(Block block, out string? error)
-    {
-        error = null;
-        return ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), true, ref error);
-    }
-
     /// <remarks>
     /// The EIP-4895 presence rules run regardless of <paramref name="validateHashes"/>: a verified header hash says
     /// nothing about whether the body carries the withdrawals the fork requires, only that the root field is the one

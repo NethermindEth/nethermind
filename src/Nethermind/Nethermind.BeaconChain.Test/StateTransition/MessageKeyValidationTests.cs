@@ -35,7 +35,7 @@ public class MessageKeyValidationTests
         bid.Signature = SignatureFor(kind, bid.Signature);
         AssertPairingHolds(kind, key, bid.Signature, Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(bid.Message!), state.GetDomain(DomainType.BeaconBuilder)));
 
-        BlockSignatureBatch? batch = batched ? new BlockSignatureBatch() : null;
+        BlockSignatureBatch? batch = batched ? new BlockSignatureBatch(BlsSignatureVerifier.Instance) : null;
         Action process = () =>
         {
             GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: true, batch);
@@ -101,7 +101,7 @@ public class MessageKeyValidationTests
         SignedBlsToExecutionChange signed = new() { Message = change, Signature = SignatureFor(kind, Sign(sk, signingRoot)) };
         AssertPairingHolds(kind, key, signed.Signature, signingRoot);
 
-        BlockSignatureBatch? batch = batched ? new BlockSignatureBatch() : null;
+        BlockSignatureBatch? batch = batched ? new BlockSignatureBatch(BlsSignatureVerifier.Instance) : null;
         Action process = () =>
         {
             if (gloas)
@@ -112,6 +112,47 @@ public class MessageKeyValidationTests
         };
 
         AssertVerdict(kind, process, "Invalid BLS to execution change signature");
+    }
+
+    [Test]
+    public void Envelope_signature_check_uses_the_injected_verifier([Values] bool rejecting, [Values] bool selfBuild)
+    {
+        BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
+        InstallRealValidatorKeys(state);
+        SignedExecutionPayloadBid bid = selfBuild
+            ? SelfBuildBid(state, state.LatestBlockHash!, Hash(0x88))
+            : ValidBuilderBid(state, builderSk, builderIndex: 0, value: 3 * Gwei);
+        GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: false);
+        SignedExecutionPayloadEnvelope envelope = selfBuild
+            ? ValidEnvelope(state, bid.Message!, ValidatorKey((int)state.LatestBlockHeader!.ProposerIndex), Presets.BuilderIndexSelfBuild)
+            : ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
+        PubkeyCache pubkeys = rejecting ? new PubkeyCache { SignatureVerifier = new RejectingSignatureVerifier() } : new PubkeyCache();
+
+        Action verify = () => GloasBlockProcessing.VerifyExecutionPayloadEnvelope(new BlockStates().Add(state), envelope, new AcceptingNotifier(), pubkeys);
+
+        if (rejecting)
+            Assert.That(verify, Throws.TypeOf<BeaconStateException>().With.Message.EqualTo("Invalid execution payload envelope signature"));
+        else
+            Assert.That(verify, Throws.Nothing);
+    }
+
+    [Test]
+    public void Builder_deposit_signature_check_uses_the_injected_verifier([Values] bool rejecting)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        BeaconChainSpec spec = BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!);
+        if (rejecting)
+            spec = spec with { SignatureVerifier = new RejectingSignatureVerifier() };
+        Bls.SecretKey sk = DeriveKey(311);
+        BlsPublicKey key = KeyOf(KeyKind.Valid, sk);
+        Hash256 credentials = BuilderWithdrawalCredentials(0xC2);
+        const ulong amount = 10 * Gwei;
+        BlsSignature signature = Sign(sk, BuilderDepositSigningRoot(spec, key, credentials, amount));
+        int buildersBefore = state.Builders!.Length;
+
+        GloasBlockProcessing.ProcessBuilderDepositRequest(state, new BuilderDepositRequest { Pubkey = key, WithdrawalCredentials = credentials, Amount = amount, Signature = signature }, spec);
+
+        Assert.That(state.Builders!.Length, Is.EqualTo(rejecting ? buildersBefore : buildersBefore + 1));
     }
 
     private static BlsPublicKey SetBuilderKey(BeaconStateGloas state, KeyKind kind, Bls.SecretKey builderSk) =>

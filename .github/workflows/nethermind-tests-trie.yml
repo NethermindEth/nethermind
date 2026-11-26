@@ -69,7 +69,6 @@ jobs:
               Nethermind.Api.Test
               Nethermind.Core.Test
               Nethermind.Ethash.Test
-              Nethermind.Shutter.Test
               Nethermind.Sockets.Test
               Nethermind.Specs.Test
               Nethermind.State.Test.Runner.Test

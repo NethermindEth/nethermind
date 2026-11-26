@@ -38,5 +38,9 @@ public class VersionToMetricsTests
     [TestCase("0.2.3-prerelease", 2003)]
     [TestCase("0.0.3-prerelease", 3)]
     [TestCase("0.0.0-prerelease", 0)]
+    [TestCase("21474.83.647", int.MaxValue)]
+    [TestCase("21474.83.648", 0)] // overflows in the addition
+    [TestCase("21475.0.0", 0)] // overflows in the major multiplication
+    [TestCase("0.2147484.0", 0)] // overflows in the minor multiplication
     public void Converts_all_formats(string versionString, int versionNumber) => Assert.That(VersionToMetrics.ConvertToNumber(versionString), Is.EqualTo(versionNumber));
 }

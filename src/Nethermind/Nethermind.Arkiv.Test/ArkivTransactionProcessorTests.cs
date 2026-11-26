@@ -144,14 +144,17 @@ public class ArkivTransactionProcessorTests
     {
         ArkivRoots roots = new(_chain);
         Hash256 arkivRoot = TestItem.KeccakA, trieRoot = TestItem.KeccakB;
-        _chain.MapRoot(arkivRoot, trieRoot);
         BlockHeader header = Build.A.BlockHeader.WithStateRoot(arkivRoot).TestObject;
+        _chain.MapRoot(header.Hash!, trieRoot);
+        BlockHeader repeated = Build.A.BlockHeader.WithStateRoot(arkivRoot).WithNumber(2).TestObject;
+        _chain.MapRoot(repeated.Hash!, TestItem.KeccakC);
 
         BlockHeader translated = roots.Translate(header);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(translated.StateRoot, Is.EqualTo(trieRoot));
+            Assert.That(roots.Translate(repeated).StateRoot, Is.EqualTo(TestItem.KeccakC), "a repeated GolemDB root does not overwrite another block's local state");
             Assert.That(translated.Hash, Is.EqualTo(header.Hash));
             Assert.That(header.StateRoot, Is.EqualTo(arkivRoot), "the header itself is left alone");
         }

@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
@@ -15,45 +14,25 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// ISnapTree adapter for flat snap sync (state).
 /// Owns reader (for IsPersisted) and writeBatch (for commits), disposing them on Dispose.
 /// </summary>
-public class FlatSnapStateTree : ISnapTree<PathWithAccount>
+public class FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, bool enableDoubleWriteCheck) : ISnapTree<PathWithAccount>
 {
-    private readonly IPersistence.IPersistenceReader _reader;
-    private readonly IPersistence.IWriteBatch _writeBatch;
-    private readonly bool _enableDoubleWriteCheck;
-    private readonly SnapUpperBoundAdapter _adapter;
-    private readonly StateTree _tree;
+    private readonly SnapNodeRecordStore _store = new(reader, writeBatch, address: null, enableDoubleWriteCheck);
     private IReadOnlyList<PathWithAccount>? _pendingEntries;
 
-    public FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch writeBatch, bool enableDoubleWriteCheck, ILogManager logManager)
-    {
-        _reader = reader;
-        _writeBatch = writeBatch;
-        _enableDoubleWriteCheck = enableDoubleWriteCheck;
-        _adapter = new SnapUpperBoundAdapter(new PersistenceTrieStoreAdapter(reader, writeBatch, enableDoubleWriteCheck));
-        _tree = new StateTree(_adapter, logManager);
-    }
+    public Hash256 RootHash => _store.RootHash;
 
-    public Hash256 RootHash => _tree.RootHash;
+    public void SetRootFromProof(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes) => _store.SetRootFromProof(proofs, nodes);
 
-    public void SetRootFromProof(TrieNode root) => _tree.RootRef = root;
-
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
-    {
-        ValueHash256 computedHash = default;
-        return _reader.TryLoadStateRlp(path, ReadFlags.None, static (rlp, result) => result[0] = ValueKeccak.Compute(rlp), new Span<ValueHash256>(ref computedHash))
-            && computedHash == keccak;
-    }
+    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => _store.IsPersisted(path, keccak);
 
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries)
     {
         _pendingEntries = entries;
-        ISnapTree<PathWithAccount>.DoBulkSetAndUpdateRootHash(_tree, entries);
+        _store.BulkSet(entries);
     }
 
-    public void Commit(ValueHash256 upperBound)
+    public bool Commit(ValueHash256 lowerBound, ValueHash256 upperBound)
     {
-        _adapter.UpperBound = upperBound;
-
         if (_pendingEntries is not null)
         {
             for (int i = 0; i < _pendingEntries.Count; i++)
@@ -61,21 +40,22 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
                 PathWithAccount account = _pendingEntries[i];
                 if (account.Path <= upperBound)
                 {
-                    if (_enableDoubleWriteCheck && _reader.GetAccountRaw(account.Path) is not null)
+                    if (enableDoubleWriteCheck && reader.GetAccountRaw(account.Path) is not null)
                         throw new Exception($"Double account flat write. {account.Path}");
                     if (account.Account.IsNull)
                         throw new InvalidOperationException("A SNAP account entry must contain an account value.");
-                    _writeBatch.SetAccountRaw(account.Path, account.Account);
+                    writeBatch.SetAccountRaw(account.Path, account.Account);
                 }
             }
         }
 
-        _tree.Commit(true, WriteFlags.DisableWAL);
+        return _store.Commit(lowerBound, upperBound, skipRoot: true);
     }
 
     public void Dispose()
     {
-        _writeBatch.Dispose();
-        _reader.Dispose();
+        _store.Dispose();
+        writeBatch.Dispose();
+        reader.Dispose();
     }
 }

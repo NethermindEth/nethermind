@@ -11,7 +11,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -96,6 +95,8 @@ namespace Nethermind.Network
             session.Initialized -= _onSessionInitialized;
             _sessions.TryRemove(session.SessionId, out _);
 
+            if (session.RemoteNodeId is null) return;
+
             if (_logger.IsTrace && session.BestStateReached == SessionState.Initialized)
             {
                 TraceSessionDisconnected(session, e);
@@ -111,21 +112,10 @@ namespace Nethermind.Network
                 }
             }
 
-            PublicKey? handlerKey = null;
             if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
             {
                 _syncPool.RemovePeer(removed);
-                if (removed.Node?.Id is not null)
-                {
-                    handlerKey = removed.Node.Id;
-                    _txPool.RemovePeer(handlerKey);
-                }
-            }
-
-            PublicKey sessionKey = session.Node?.Id;
-            if (sessionKey is not null && sessionKey != handlerKey)
-            {
-                _txPool.RemovePeer(session.Node.Id);
+                if (removed.IncludeInTxPool) _txPool.RemovePeer(removed);
             }
         }
 
@@ -250,16 +240,6 @@ namespace Nethermind.Network
         private void OnP2PProtocolInitialized(ISession session, P2PProtocolHandler handler, P2PProtocolInitializedEventArgs args)
         {
             if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
-
-            if (handler.ProtocolVersion >= 5)
-            {
-                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session:hide} - enabling snappy");
-                session.EnableSnappy();
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session:hide} - disabling snappy");
-            }
 
             _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
             {

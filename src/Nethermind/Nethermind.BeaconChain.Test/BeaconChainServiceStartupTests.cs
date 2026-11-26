@@ -849,7 +849,7 @@ public class BeaconChainServiceStartupTests
             ObservedCancellation = cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
             if (ObservedCancellation)
                 _cancelled.TrySetResult();
-            Release.Wait(TimeSpan.FromSeconds(30));
+            Release.Wait(TimeSpan.FromSeconds(30), CancellationToken.None);
             _ended = true;
             cancellationToken.ThrowIfCancellationRequested();
         }

@@ -79,6 +79,38 @@ public class ArkivStateSyncTests
     }
 
     [Test]
+    public void Peer_database_exchange_requires_operator_opt_in()
+    {
+        ArkivConfig config = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.AllowUnverifiedStateSync, Is.False);
+            Assert.That(config.ServeState, Is.False);
+        }
+    }
+
+    [TestCase(-1L)]
+    [TestCase(long.MaxValue)]
+    [TestCase(1025L)]
+    public void Manifest_rejects_unbounded_file_size(long size) =>
+        Assert.Throws<InvalidDataException>(() => ArkivStateSyncRunner.ValidateManifest(
+            new StoreManifestMessage { Files = [("data", size)] }, 1024));
+
+    [Test]
+    public void Manifest_limits_the_total_and_rejects_repeated_paths()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<InvalidDataException>(() => ArkivStateSyncRunner.ValidateManifest(
+                new StoreManifestMessage { Files = [("a", 600), ("b", 600)] }, 1024));
+            Assert.Throws<InvalidDataException>(() => ArkivStateSyncRunner.ValidateManifest(
+                new StoreManifestMessage { Files = [("a", 1), ("a", 1)] }, 1024));
+            Assert.That(ArkivStateSyncRunner.ValidateManifest(
+                new StoreManifestMessage { Files = [("a", 512), ("b", 512)] }, 1024), Is.EqualTo(1024));
+        }
+    }
+
+    [Test]
     public void A_served_copy_installs_on_a_fresh_node_and_the_chain_continues_from_it()
     {
         using ArkivChain server = Open("server");

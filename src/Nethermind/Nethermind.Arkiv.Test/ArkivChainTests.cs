@@ -205,6 +205,45 @@ public class ArkivChainTests
     }
 
     [Test]
+    public void Restoring_a_checkpoint_removes_abandoned_entity_history_and_replays_in_order()
+    {
+        using ArkivChain chain = Open(checkpointInterval: 100);
+        Dictionary<Hash256, (ulong Number, string? Json)> touched = [];
+        for (int n = 1; n <= 500; n++)
+        {
+            ArkivBlockResult result = chain.Execute(B(n), commit: true);
+            foreach (ArkivEntitySnapshot entity in result.Entities)
+                if (n > 400) touched[entity.Key] = ((ulong)n, entity.Json is null ? null : System.Text.Encoding.UTF8.GetString(entity.Json));
+        }
+        Assert.That(touched, Is.Not.Empty);
+        Dictionary<Hash256, (bool Found, string? Json)> at401 = touched.Keys.ToDictionary(key => key, key =>
+        {
+            (bool found, JsonElement? entity) = chain.EntityAt(key, 401);
+            return (found, entity?.GetRawText());
+        });
+
+        Block fork401 = RabdiFixture.Sibling(B(401));
+        _tree[fork401.Hash!] = fork401;
+        chain.Execute(fork401, commit: true);
+        foreach (Hash256 key in touched.Keys)
+        {
+            (bool found, JsonElement? entity) = chain.EntityAt(key, 500);
+            Assert.That((found, entity?.GetRawText()), Is.EqualTo(at401[key]));
+        }
+
+        chain.Execute(B(501), commit: true);
+        foreach (KeyValuePair<Hash256, (ulong Number, string? Json)> entry in touched)
+        {
+            (bool found, JsonElement? entity) = chain.EntityAt(entry.Key, entry.Value.Number);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.True);
+                Assert.That(entity?.GetRawText(), Is.EqualTo(entry.Value.Json));
+            }
+        }
+    }
+
+    [Test]
     public void Held_blocks_commit_as_their_children_arrive_and_reach_every_headers_root()
     {
         using ArkivChain chain = Open(holdHeadBlock: true);

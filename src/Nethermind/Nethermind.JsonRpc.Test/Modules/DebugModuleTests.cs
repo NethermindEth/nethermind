@@ -250,6 +250,17 @@ public class DebugModuleTests
         RpcTest.AssertSuccess<byte[]>(response);
     }
 
+    [TestCase("debug_traceBlockFromFile", "file")]
+    [TestCase("debug_dumpBlock", "latest")]
+    [TestCase("debug_gcStats")]
+    [TestCase("debug_memStats", "latest")]
+    [TestCase("debug_seedHash", "latest")]
+    public async Task Unimplemented_debug_methods_are_not_available(string method, params object[] parameters)
+    {
+        using JsonRpcResponse response = await Request(method, parameters);
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.MethodNotFound));
+    }
+
     [TestCase("0x1")]
     public async Task DebugGetChainLevel_WhenLevelExists_ReturnsChainLevel(object parameter)
     {
@@ -1094,6 +1105,29 @@ public class DebugModuleTests
         _debugBridge.Received(1).GetTransactionBlockHash(TestItem.KeccakA);
         _debugBridge.Received(1).GetTransactionTrace(header.Hash!, TestItem.KeccakA, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
             Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+    }
+
+    [Test]
+    public async Task DebugTraceTransaction_buffered_trace_runs_on_the_dispatcher_token()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _debugBridge.GetTransactionBlockHash(TestItem.KeccakA).Returns(header.Hash);
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+
+        try
+        {
+            await SerializedRequest("debug_traceTransaction", TestItem.KeccakA, new { tracer = "noopTracer" });
+            _debugBridge.Received(1).GetTransactionTrace(header.Hash!, TestItem.KeccakA, timeout.Token, Arg.Any<GethTraceOptions>(),
+                Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
     }
 
     [Test]

@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.StateSync
             Task<IByteArrayList>? task = null;
             HashList? hashList = null;
             GetTrieNodesRequest? getTrieNodesRequest = null;
-            if (ProtocolSupportsNodeData(peer))
+            if (peer.CanGetNodeData)
             {
                 if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer:hide}");
                 hashList = HashList.Rent(batch.RequestedNodes);
@@ -77,8 +77,6 @@ namespace Nethermind.Synchronization.StateSync
                 getTrieNodesRequest?.Dispose();
             }
         }
-
-        protected virtual bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < EthVersions.Eth67;
 
         protected virtual bool ProtocolSupportsTrieNodes(ISnapSyncPeer peer) => peer.CanGetTrieNodes();
 

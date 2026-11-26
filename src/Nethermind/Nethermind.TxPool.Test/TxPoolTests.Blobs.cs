@@ -380,7 +380,7 @@ namespace Nethermind.TxPool.Test
 #pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 #pragma warning restore NUnit2045
-            Assert.That(_txPool.TryMergeBlobCells(transaction.Hash!, updateMask, updateCells), Is.True);
+            Assert.That(_txPool.MergeBlobCells(transaction.Hash!, updateMask, updateCells), Is.EqualTo(BlobCellMergeResult.Accepted));
 
             Transaction cacheEvictor = CreateBlobTx(TestItem.PrivateKeyB, releaseSpec: Osaka.Instance);
             Assert.That(_txPool.SubmitTx(cacheEvictor, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -695,7 +695,7 @@ namespace Nethermind.TxPool.Test
                 return true;
             });
             state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? Array.Empty<byte>() : throw MissingHeadState());
-            ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(GetBogotaSpecProvider(), _blockTree), _blockTree, state);
+            ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(GetBogotaSpecProvider(), _blockTree), _blockTree, state, _blockProcessing);
 
             Assert.DoesNotThrow(() => _txPool = CreatePool(
                 new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 10 },
@@ -751,7 +751,7 @@ namespace Nethermind.TxPool.Test
         {
             IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
             state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(tryGetAccount);
-            return new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state);
+            return new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state, _blockProcessing);
         }
 
         private TxPool CreatePoolWithPersistentBlobs(ChainHeadInfoProvider headInfo, IBlobTxStorage storage) => CreatePool(
@@ -911,7 +911,7 @@ namespace Nethermind.TxPool.Test
 #pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 #pragma warning restore NUnit2045
-            Assert.That(_txPool.TryMergeBlobCells(transaction.Hash!, updateMask, updateCells), Is.True);
+            Assert.That(_txPool.MergeBlobCells(transaction.Hash!, updateMask, updateCells), Is.EqualTo(BlobCellMergeResult.Accepted));
 
             await AddEmptyBlock();
 
@@ -955,8 +955,8 @@ namespace Nethermind.TxPool.Test
             ConvertToSparseBlobTransaction(transaction, initialMask);
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            Task<bool> update = RunOnDedicatedThread(() =>
-                _txPool.TryMergeBlobCells(transaction.Hash!, updateMask, updateCells));
+            Task<BlobCellMergeResult> update = RunOnDedicatedThread(() =>
+                _txPool.MergeBlobCells(transaction.Hash!, updateMask, updateCells));
             Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
             try
             {
@@ -975,7 +975,7 @@ namespace Nethermind.TxPool.Test
                 storage.ReleaseFirstUpdate();
             }
 
-            Assert.That(await update.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(await update.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(BlobCellMergeResult.Accepted));
             Assert.That(
                 () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
                 Is.Not.Null.After(Timeout, 10));
@@ -1321,7 +1321,8 @@ namespace Nethermind.TxPool.Test
         [TestCase(1, 0ul, true)]
         [TestCase(1_000_000_000, 0ul, true)]
         [TestCase(1, 10ul, false)]
-        public void should_allow_to_add_blob_tx_with_MaxPriorityFeePerGas_lower_than_1GWei(int maxPriorityFeePerGas, ulong? configuredMinPriorityFee, bool expectedResult)
+        [TestCase(1, 10ul, false, TxHandlingOptions.PersistentBroadcast)]
+        public void should_allow_to_add_blob_tx_with_MaxPriorityFeePerGas_lower_than_1GWei(int maxPriorityFeePerGas, ulong? configuredMinPriorityFee, bool expectedResult, TxHandlingOptions options = TxHandlingOptions.None)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 };
 
@@ -1339,16 +1340,22 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(expectedResult
-                ? AcceptTxResult.Accepted
-                : AcceptTxResult.FeeTooLow));
+            AcceptTxResult result = _txPool.SubmitTx(tx, options);
+            Assert.That(result, Is.EqualTo(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow));
+            if (!expectedResult)
+            {
+                string expected = options == TxHandlingOptions.None
+                    ? AcceptTxResult.FeeTooLow.ToString()
+                    : $"{AcceptTxResult.FeeTooLow}, MaxPriorityFeePerGas for blob transaction needs to be at least {configuredMinPriorityFee}, is {maxPriorityFeePerGas}.";
+                Assert.That(result.ToString(), Is.EqualTo(expected));
+            }
         }
 
         [Test]
         public void should_not_allow_to_add_blob_tx_with_MaxFeePerBlobGas_lower_than_CurrentFeePerBlobGas([Values(true, false)] bool isMaxFeePerBlobGasHighEnough, [Values(true, false)] bool isRequirementEnabled)
         {
             ISpecProvider specProvider = GetCancunSpecProvider();
-            ChainHeadInfoProvider chainHeadInfoProvider = new(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, _stateProvider);
+            ChainHeadInfoProvider chainHeadInfoProvider = new(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, _stateProvider, _blockProcessing);
 
             TxPoolConfig txPoolConfig = new()
             {
@@ -1641,7 +1648,7 @@ namespace Nethermind.TxPool.Test
             IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
             specProvider.GetCurrentHeadSpec().Returns(releaseSpec);
 
-            ChainHeadInfoProvider chainHeadInfoProvider = new(specProvider, _blockTree, _stateProvider);
+            ChainHeadInfoProvider chainHeadInfoProvider = new(specProvider, _blockTree, _stateProvider, _blockProcessing);
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 },
                 specProvider: specProvider, chainHeadInfoProvider: chainHeadInfoProvider);
 
@@ -3453,7 +3460,7 @@ namespace Nethermind.TxPool.Test
 
             byte[] requestedHash = txWithSparseCells.BlobVersionedHashes[0];
 #pragma warning disable NUnit2045 // Keep output variables in the enclosing scope for subsequent checks and actions.
-            Assert.That(_txPool.TryGetBlobAndProofV1(requestedHash, out byte[] fullBlob, out ReadOnlyMemory<byte> fullProofs), Is.True);
+            Assert.That(TryGetBlobAndProofV1(requestedHash, out byte[] fullBlob, out ReadOnlyMemory<byte> fullProofs), Is.True);
 #pragma warning restore NUnit2045
             Assert.That(fullBlob, Is.EqualTo(((ShardBlobNetworkWrapper)txWithFullBlob.NetworkWrapper!).Blobs[0]));
             Assert.That(fullProofs.Length, Is.EqualTo(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof));
@@ -3739,6 +3746,195 @@ namespace Nethermind.TxPool.Test
 #pragma warning restore NUnit2045
             Assert.That(_txPool.ForgetInvalidBlobProofs(rejected.Hash!), Is.False);
             Assert.That(_txPool.SubmitTx(rejected, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+        }
+
+        [Test]
+        public void should_request_blob_tx_announced_after_a_copy_failed_its_sidecar_checks()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction valid = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction invalid = WithInvalidProof(valid);
+            IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+
+            AcceptTxResult rejected = _txPool.SubmitTx(invalid, TxHandlingOptions.None);
+            bool known = _txPool.IsKnown(valid.Hash!);
+            AnnounceResult announced = _txPool.NotifyAboutTx(valid.Hash!, peer);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+                Assert.That(known, Is.False);
+                Assert.That(announced, Is.EqualTo(AnnounceResult.RequestRequired));
+            }
+        }
+
+        [Test]
+        public void should_accept_local_blob_tx_after_a_copy_failed_its_sidecar_checks()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction valid = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction invalid = WithInvalidProof(valid);
+
+            AcceptTxResult rejected = _txPool.SubmitTx(invalid, TxHandlingOptions.None);
+            AcceptTxResult local = _txPool.SubmitTx(valid, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+                Assert.That(local, Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
+        [Test]
+        public void should_accept_blob_tx_with_nonce_gap_after_the_gap_is_filled()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction first = BlobTx(0);
+            Transaction second = BlobTx(1);
+
+            AcceptTxResult early = _txPool.SubmitTx(second, TxHandlingOptions.None);
+            AcceptTxResult filled = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            AcceptTxResult again = _txPool.SubmitTx(second, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(filled, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(again, Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Transaction BlobTx(ulong nonce) => Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce(nonce)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        }
+
+        [Test]
+        public void should_accept_blob_tx_with_nonce_gap_after_a_blob_frame_tx_fills_the_gap([Values] bool gappedIsFrame)
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction first = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            Transaction second = gappedIsFrame
+                ? BuildBlobFrameTx(nonce: 1, blobCount: 1, withSidecar: true)
+                : Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                    .WithNonce(1UL)
+                    .WithMaxFeePerGas(1.GWei)
+                    .WithMaxPriorityFeePerGas(1.GWei)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            AcceptTxResult early = _txPool.SubmitTx(second, TxHandlingOptions.None);
+            AcceptTxResult filled = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            AcceptTxResult again = _txPool.SubmitTx(second, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(filled, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(again, Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
+        [Test]
+        public void should_not_request_blob_tx_with_nonce_gap_again_while_the_gap_is_open()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction gapped = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce(1UL)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            IMessageHandler<PooledTransactionRequestMessage> firstPeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            IMessageHandler<PooledTransactionRequestMessage> secondPeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+
+            AcceptTxResult rejected = _txPool.SubmitTx(gapped, TxHandlingOptions.None);
+            bool known = _txPool.IsKnown(gapped.Hash!);
+            AnnounceResult first = _txPool.NotifyAboutTx(gapped.Hash!, firstPeer);
+            AnnounceResult second = _txPool.NotifyAboutTx(gapped.Hash!, secondPeer);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(known, Is.True);
+                Assert.That(first, Is.Not.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(second, Is.Not.EqualTo(AnnounceResult.RequestRequired));
+            }
+        }
+
+        [Test]
+        public void A_blob_nonce_gap_is_released_when_the_predecessor_arrives_during_rejection()
+        {
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsTrace.Returns(true);
+            _logManager = new OneLoggerLogManager(new ILogger(logger));
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction predecessor = OrdinaryBlobTx(TestItem.PrivateKeyA, 0);
+            Transaction gapped = OrdinaryBlobTx(TestItem.PrivateKeyA, 1);
+            List<AcceptTxResult> predecessorResults = [];
+            logger.When(l => l.Trace(Arg.Is<string>(line => line.Contains("nonce in future", StringComparison.Ordinal))))
+                .Do(_ => predecessorResults.Add(_txPool.SubmitTx(predecessor, TxHandlingOptions.None)));
+
+            AcceptTxResult early = _txPool.SubmitTx(gapped, TxHandlingOptions.None);
+            bool stillKnown = _txPool.IsKnown(gapped.Hash!);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(predecessorResults, Is.EqualTo(new[] { AcceptTxResult.Accepted }));
+                Assert.That(stillKnown, Is.False);
+            }
+        }
+
+        [Test]
+        public void A_keyed_blob_frame_does_not_release_an_account_nonce_gap()
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, KeyedNonceSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction gapped = OrdinaryBlobTx(TestItem.PrivateKeyA, 1);
+            Transaction keyed = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [0xbeef]);
+
+            AcceptTxResult early = _txPool.SubmitTx(gapped, TxHandlingOptions.None);
+            AcceptTxResult keyedResult = _txPool.SubmitTx(keyed, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(keyedResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.IsKnown(gapped.Hash!), Is.True);
+            }
+        }
+
+        private static Transaction WithInvalidProof(Transaction valid)
+        {
+            Transaction invalid = CloneFullBlobTransactionWithSameSidecar(valid, 0);
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)valid.NetworkWrapper!;
+            invalid.NetworkWrapper = wrapper with { Proofs = [(byte)(wrapper.Proofs[0] ^ 1), .. wrapper.Proofs[1..]] };
+            return invalid;
         }
 
         [Test]
@@ -4136,7 +4332,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             // Access tx1 via single lookup — this re-populates tx1 in cache, evicting tx2
-            Assert.That(_txPool.TryGetBlobAndProofV1(tx1.BlobVersionedHashes![0]!, out byte[] _, out ReadOnlyMemory<byte> _), Is.True);
+            Assert.That(_txPool.TryGetPendingBlobTransaction(tx1.Hash!, out _), Is.True);
 
             // Now batch lookup: tx1 from cache (just accessed), tx2 from DB
             byte[][] requestedHashes = [tx1.BlobVersionedHashes![0]!, tx2.BlobVersionedHashes![0]!];
@@ -4382,7 +4578,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction reconstructedTx), Is.True);
 
             ShardBlobNetworkWrapper reconstructed = (ShardBlobNetworkWrapper)reconstructedTx.NetworkWrapper!;
-            Assert.That(_txPool.TryGetBlobAndProofV1(sparseBlobTx.BlobVersionedHashes![0], out byte[] blob, out ReadOnlyMemory<byte> proofs), Is.True);
+            Assert.That(TryGetBlobAndProofV1(sparseBlobTx.BlobVersionedHashes![0], out byte[] blob, out ReadOnlyMemory<byte> proofs), Is.True);
             IBlobProofsBuilder verifier = IBlobProofsManager.For(ProofVersion.V1);
             ShardBlobNetworkWrapper recomputed = verifier.AllocateWrapper(reconstructed.Blobs);
             verifier.ComputeProofsAndCommitments(recomputed);
@@ -5453,6 +5649,16 @@ namespace Nethermind.TxPool.Test
         private static Task<TResult> RunOnDedicatedThread<TResult>(Func<TResult> action) =>
             Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
+        private bool TryGetBlobAndProofV1(byte[] blobVersionedHash, out byte[] blob, out ReadOnlyMemory<byte> proofs)
+        {
+            byte[][] blobs = new byte[1][];
+            ReadOnlyMemory<byte>[] proofsByBlob = new ReadOnlyMemory<byte>[1];
+            bool found = _txPool.TryGetBlobsAndProofsV1([blobVersionedHash], blobs, proofsByBlob) == 1;
+            blob = blobs[0];
+            proofs = proofsByBlob[0];
+            return found;
+        }
+
         private (BlockingReadBlobTxStorage Storage, PersistentBlobTxDistinctSortedPool Pool, Transaction Target)
             CreatePersistentBlobPoolWithBlockingReadStorage()
         {
@@ -6219,7 +6425,7 @@ namespace Nethermind.TxPool.Test
         public void Blob_carrying_frame_tx_below_current_blob_base_fee_is_rejected()
         {
             ISpecProvider specProvider = GetBogotaSpecProvider();
-            ChainHeadInfoProvider chainHeadInfoProvider = new(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, _stateProvider)
+            ChainHeadInfoProvider chainHeadInfoProvider = new(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, _stateProvider, _blockProcessing)
             {
                 CurrentFeePerBlobGas = 100
             };
