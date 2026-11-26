@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 
@@ -20,4 +21,6 @@ public partial class Bloom
     /// Its <see cref="BloomStructRef"/> has no bytes, so struct-ref callers check <see cref="Bytes"/> for emptiness first.
     /// </remarks>
     public static readonly Bloom ZeroLength = CreateZeroLength();
+
+    private partial bool TrySetNatively(ReadOnlySpan<byte> sequence, Bloom? masterBloom) => false;
 }

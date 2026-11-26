@@ -10,4 +10,7 @@ public static partial class AirbenderRuntime
     [LibraryImport("__Internal")]
     [SuppressGCTransition]
     private static partial void airbender_set_zero_jump_target(nint target);
+
+    [LibraryImport("__Internal")]
+    private static unsafe partial void airbender_read_prehashed_input(byte** buf_ptr, out nuint buf_size);
 }

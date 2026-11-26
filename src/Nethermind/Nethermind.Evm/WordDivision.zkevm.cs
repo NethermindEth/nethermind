@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm;
 
@@ -24,10 +28,85 @@ internal static unsafe class WordDivision
     public static void DivRem(in UInt256 dividend, in UInt256 divisor, out UInt256 quotient, out UInt256 remainder)
     {
         Debug.Assert(!divisor.IsZero);
+        if (TryHinted(in dividend, in divisor, out quotient, out remainder))
+        {
+            if (TraceDivisionHints) IO.PrintLine("DIV-HIT");
+            return;
+        }
         quotient = default;
         remainder = default;
         fixed (UInt256* u = &dividend, v = &divisor, q = &quotient, r = &remainder)
             DivRem((uint*)u, SignificantDigits((uint*)u), (uint*)v, (uint*)q, (uint*)r);
+        if (TraceDivisionHints) TraceDivision(in quotient, in remainder);
+    }
+
+    // Enabled only in the recording build. Production guests contain neither UART call.
+    private static bool TraceDivisionHints => false;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceDivision(in UInt256 quotient, in UInt256 remainder)
+    {
+        Span<char> line = stackalloc char[4 + 128];
+        "DIV:".CopyTo(line);
+        Convert.TryToHexString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in quotient, 1)), line[4..68], out _);
+        Convert.TryToHexString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in remainder, 1)), line[68..], out _);
+        IO.PrintLine(line);
+    }
+
+    /// <summary>The division hints of the input, one for each call of <see cref="TryHinted"/> in the order of the calls.</summary>
+    /// <remarks>A class of its own, with no initializer, so each access is a plain load or store.</remarks>
+    private static class Hints
+    {
+        public static byte* Next;
+        public static byte* End;
+        /// <summary>Four 32-byte aligned words for the operands and scratch.</summary>
+        public static UInt256* Scratch;
+        public static bool Loaded;
+    }
+
+    private const uint Add = 1, Subtract = 2, MultiplyLow = 8, Equal = 32, Copy = 128;
+
+    /// <summary>Takes the quotient and remainder from the next hint if they are those of the division.</summary>
+    /// <remarks>
+    /// A division is some six hundred instructions; checking one is a dozen 256-bit operations of Airbender's
+    /// delegation: q * divisor has no high half, plus r it is the dividend with no carry, and r is below the divisor.
+    /// Those hold for one pair only, so a hint that passes is the result, and one that fails is computed instead: a
+    /// wrong hint costs time and changes nothing.
+    /// </remarks>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static bool TryHinted(in UInt256 dividend, in UInt256 divisor, out UInt256 quotient, out UInt256 remainder)
+    {
+        Unsafe.SkipInit(out quotient);
+        Unsafe.SkipInit(out remainder);
+        if (!AirbenderFlag.IsActive) return false;
+        if (!Hints.Loaded) LoadHints();
+        byte* hint = Hints.Next;
+        if (hint == Hints.End) return false;
+        Hints.Next = hint + 64;
+        UInt256* scratch = Hints.Scratch;
+        scratch[0] = dividend;
+        scratch[1] = divisor;
+        void* q = hint, r = hint + 32;
+        Accelerators.AirbenderUInt256Op(scratch + 2, q, Copy);
+        if (Accelerators.AirbenderUInt256Op(scratch + 2, scratch + 1, MultiplyLow) != 0) return false;
+        if (Accelerators.AirbenderUInt256Op(scratch + 2, r, Add) != 0) return false;
+        if (Accelerators.AirbenderUInt256Op(scratch + 2, scratch, Equal) == 0) return false;
+        Accelerators.AirbenderUInt256Op(scratch + 3, r, Copy);
+        if (Accelerators.AirbenderUInt256Op(scratch + 3, scratch + 1, Subtract) == 0) return false;
+        quotient = *(UInt256*)q;
+        remainder = *(UInt256*)r;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void LoadHints()
+    {
+        Accelerators.AirbenderDivisionHints(out byte* start, out uint count);
+        Hints.Next = start;
+        Hints.End = start + 64 * (nuint)count;
+        if (count != 0) Hints.Scratch = (UInt256*)NativeMemory.AlignedAlloc(4 * 32, 32);
+        Hints.Loaded = true;
     }
 
     /// <summary>The remainder of the 512-bit <paramref name="dividend"/>, sixteen digits, by <paramref name="divisor"/>, which is not zero.</summary>
