@@ -191,22 +191,18 @@ public class EthereumRunnerTests
         Assert.That(StartRpc.GetPipelineWarmupSkipReason(api), Is.EqualTo(expectedReason));
     }
 
-    [TestCase("foundation", false, false)]
-    [TestCase("foundation", true, false)]
-    [TestCase("hoodi", false, false)]
-    [TestCase("hoodi", true, false)]
-    [TestCase("sepolia", false, false)]
-    [TestCase("sepolia", true, false)]
-    [TestCase("foundation", false, true)]
-    [TestCase("foundation", false, true, WarmupSecretChange.Removed)]
-    [TestCase("foundation", false, true, WarmupSecretChange.Replaced)]
-    [TestCase("amsterdam", false, false)]
-    [TestCase("amsterdam", true, false)]
-    [TestCase("bogota", false, false)]
-    [TestCase("foundation", false, false, WarmupSecretChange.None, 10_000_000_000UL)]
-    [TestCase("foundation", false, true, WarmupSecretChange.None, 0UL, true)]
-    [TestCase("amsterdam", false, true, WarmupSecretChange.None, 0UL, true)]
-    public async Task Startup_pipeline_warmup_processes_payload(string chain, bool flatState, bool authenticated,
+    [TestCase("foundation", false)]
+    [TestCase("hoodi", false)]
+    [TestCase("sepolia", false)]
+    [TestCase("foundation", true)]
+    [TestCase("foundation", true, WarmupSecretChange.Removed)]
+    [TestCase("foundation", true, WarmupSecretChange.Replaced)]
+    [TestCase("amsterdam", false)]
+    [TestCase("bogota", false)]
+    [TestCase("foundation", false, WarmupSecretChange.None, 10_000_000_000UL)]
+    [TestCase("foundation", true, WarmupSecretChange.None, 0UL, true)]
+    [TestCase("amsterdam", true, WarmupSecretChange.None, 0UL, true)]
+    public async Task Startup_pipeline_warmup_processes_payload(string chain, bool authenticated,
         WarmupSecretChange secretChange = WarmupSecretChange.None, ulong minGasPrice = 0, bool throughStartRpc = false)
     {
         ChainSpec spec = LoadWarmupChainSpec(chain);
@@ -249,7 +245,7 @@ public class EthereumRunnerTests
         int outerPort = 0;
         SuccessCountingRpcStats? warmRpcStats = null;
         using NodeInfoScope? nodeInfo = throughStartRpc ? new NodeInfoScope() : null;
-        await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, flatState, cancellation.Token, authentication,
+        await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, cancellation.Token, authentication,
             configureContainer: builder =>
             {
                 if (chain == "bogota")
@@ -408,7 +404,7 @@ public class EthereumRunnerTests
                 Assert.That(JsonNode.Parse(receiptJson)!["status"]!.GetValue<string>(), Is.EqualTo("0x1"));
             }
 
-            await StartupPipelineWarmer.WarmupAsync(spec, config, false, cancellation.Token, liveBlockTree: tree);
+            await StartupPipelineWarmer.WarmupAsync(spec, config, cancellation.Token, liveBlockTree: tree);
             Assert.That(EthereumJsonSerializer.JsonOptions, Is.SameAs(options), "The disposable warm node must not invalidate the live position sidecar's serializer contract.");
 
             Block second = AddBlock(first);
@@ -453,7 +449,7 @@ public class EthereumRunnerTests
         ConfigProvider config = new(new InitConfig { BaseDbPath = directory.Path }, livePool);
         ITxPoolConfig? warmPool = null;
 
-        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), config, false, cancellation.Token,
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), config, cancellation.Token,
             configureContainer: builder => builder.RegisterBuildCallback(container => warmPool = container.Resolve<ITxPoolConfig>()));
 
         using (Assert.EnterMultipleScope())
@@ -472,7 +468,7 @@ public class EthereumRunnerTests
         ulong genesisTimestamp = (ulong)DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds();
 
         // A fresh devnet starts its node before the genesis time is reached.
-        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec("amsterdam", genesisTimestamp), WarmupConfig(directory.Path), false, cancellation.Token);
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec("amsterdam", genesisTimestamp), WarmupConfig(directory.Path), cancellation.Token);
     }
 
     [TestCase(100UL, 1_000UL, ExpectedResult = 1_000UL)]
@@ -490,7 +486,7 @@ public class EthereumRunnerTests
         IRpcAuthentication authentication = JwtAuthentication.FromSecret(new string('a', 64), Timestamper.Default, NullLogger.Instance);
 
         // Outlasts the 60-second token lifetime before the first Engine API request.
-        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), new ConfigProvider(new InitConfig { BaseDbPath = directory.Path }), false,
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), new ConfigProvider(new InitConfig { BaseDbPath = directory.Path }),
             cancellation.Token, authentication, timestamper: timestamper,
             configureContainer: builder => builder.RegisterBuildCallback(_ => timestamper.Add(TimeSpan.FromMinutes(2))));
     }
@@ -549,7 +545,7 @@ public class EthereumRunnerTests
         using CancellationTokenSource cancellation = new(RunnerTimeout);
 
         // The live chain advances before the warm blocks publish, as a restarted node does while it replays to its head.
-        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(dataDirectory.Path), false, cancellation.Token,
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(dataDirectory.Path), cancellation.Token,
             configureContainer: OnWarmRpcStart(() => live.AddBlock().GetAwaiter().GetResult()), liveBlockTree: live.BlockTree);
 
         ulong liveHead = live.BlockTree.Head!.Number;
@@ -660,20 +656,20 @@ public class EthereumRunnerTests
         using TempPath dataDirectory = TempPath.GetTempDirectory();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(new ChainSpec(),
-            WarmupConfig(dataDirectory.Path), false, new CancellationToken(canceled: true)));
+            WarmupConfig(dataDirectory.Path), new CancellationToken(canceled: true)));
 
         Assert.That(Directory.Exists(dataDirectory.Path), Is.False);
     }
 
     [Test]
-    public async Task Startup_pipeline_warmup_cleans_up_after_rpc_start_cancellation([Values] bool flatState)
+    public async Task Startup_pipeline_warmup_cleans_up_after_rpc_start_cancellation()
     {
         ChainSpec spec = LoadWarmupChainSpec();
         using TempPath dataDirectory = TempPath.GetTempDirectory();
         using CancellationTokenSource cancellation = new(RunnerTimeout);
 
         await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(spec,
-            WarmupConfig(dataDirectory.Path), flatState, cancellation.Token, configureContainer: CancelWhenRpcStarts(cancellation)));
+            WarmupConfig(dataDirectory.Path), cancellation.Token, configureContainer: CancelWhenRpcStarts(cancellation)));
 
         Assert.That(Directory.EnumerateDirectories(Path.Combine(dataDirectory.Path, "startup-warmup")), Is.Empty);
     }
@@ -687,7 +683,7 @@ public class EthereumRunnerTests
         try
         {
             await Assert.CatchAsync<System.IO.IOException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
-                WarmupConfig(directory.Path), false, cancellation.Token, configureContainer: builder =>
+                WarmupConfig(directory.Path), cancellation.Token, configureContainer: builder =>
                 {
                     IJsonRpcConfig? config = null;
                     builder.RegisterBuildCallback(container => config = container.Resolve<IJsonRpcConfig>());
@@ -725,7 +721,7 @@ public class EthereumRunnerTests
         ILogger slowBlocks = new(slowLogger);
         logs.GetLogger("SlowBlocks").Returns(slowBlocks);
         logs.GetClassLogger<ProcessingStats>().Returns(LimboLogs.Instance.GetClassLogger<ProcessingStats>());
-        Task warmup = StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(directory.Path), false,
+        Task warmup = StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(directory.Path),
             cancellation.Token, configureContainer: builder =>
             {
                 builder.RegisterBuildCallback(container => container.CurrentScopeEnding += (_, _) => disposing.TrySetResult());
@@ -829,7 +825,7 @@ public class EthereumRunnerTests
         {
             // Inject before node initialization so cleanup does not depend on startup speed.
             OperationCanceledException? actualCancellation = await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
-                WarmupConfig(dataDirectory.Path), false, cancellation.Token, logger: new ILogger(logger),
+                WarmupConfig(dataDirectory.Path), cancellation.Token, logger: new ILogger(logger),
                 configureContainer: _ =>
                 {
                     string directory = Directory.GetDirectories(Path.Combine(dataDirectory.Path, "startup-warmup"))[0];

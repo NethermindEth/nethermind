@@ -40,7 +40,7 @@ public class McpNodeCapabilitiesTests
     [Test]
     public void Archive_node_serves_old_state_and_reports_genesis_floor()
     {
-        NodeFixture node = new() { Pruning = { Mode = PruningMode.None } };
+        NodeFixture node = new() { Flat = { HistoryEnabled = true } };
         node.StateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
         McpNodeCapabilities capabilities = node.Create();
 
@@ -52,14 +52,14 @@ public class McpNodeCapabilitiesTests
             Assert.That(availability.HeadNumber, Is.EqualTo((long)Head));
             Assert.That(availability.OldestStateBlock, Is.Zero);
             Assert.That(availability.StateRetentionBlocks, Is.Null);
-            Assert.That(availability.Storage, Is.EqualTo(new McpStateStorage("HalfPath", true, "archive, HalfPath")));
+            Assert.That(availability.Storage, Is.EqualTo(new McpStateStorage("Flat", true, "archive, Flat history")));
         }
     }
 
     [Test]
     public void Pruned_node_names_the_state_window_when_old_state_is_missing()
     {
-        NodeFixture node = new() { Pruning = { Mode = PruningMode.Hybrid, PruningBoundary = 128 } };
+        NodeFixture node = new();
         node.StateBoundary.RetentionWindowBlocks.Returns(128UL);
         node.StateReader.HasStateForBlock(Arg.Is<BlockHeader?>(h => h != null && h.Number >= Head - 128)).Returns(true);
         McpNodeCapabilities capabilities = node.Create();
@@ -70,7 +70,7 @@ public class McpNodeCapabilitiesTests
         {
             Assert.That(message, Does.StartWith("State for block 123 is not available on this node"));
             Assert.That(message, Does.Contain("keeps state for blocks 20000000..20000128"));
-            Assert.That(message, Does.Contain("pruned, HalfPath"));
+            Assert.That(message, Does.Contain("pruned, Flat"));
             Assert.That(message, Does.Contain("archive node"));
             Assert.That(capabilities.CheckState((long)Head - 5), Is.Null, "recent state is available");
             Assert.That(capabilities.GetAvailability().StateRetentionBlocks, Is.EqualTo(128));
@@ -87,15 +87,15 @@ public class McpNodeCapabilitiesTests
     }
 
     [Test]
-    public void Hash_scheme_is_reported_from_the_detected_key_scheme()
+    public void Recent_state_uses_the_flat_backend()
     {
-        NodeFixture node = new() { Init = { StateDbKeyScheme = INodeStorage.KeyScheme.Hash }, Pruning = { Mode = PruningMode.Memory } };
+        NodeFixture node = new();
 
         McpStateStorage? storage = node.Create().GetStateStorage();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage?.Backend, Is.EqualTo("Hash"));
+            Assert.That(storage?.Backend, Is.EqualTo("Flat"));
             Assert.That(storage?.Archive, Is.False);
         }
     }
@@ -333,9 +333,9 @@ public class McpNodeCapabilitiesTests
     }
 
     [Test]
-    public void Memory_pruned_state_summary_names_the_actual_retention_window()
+    public void Recent_state_summary_names_the_actual_retention_window()
     {
-        NodeFixture node = new() { Pruning = { Mode = PruningMode.Hybrid, PruningBoundary = 128 } };
+        NodeFixture node = new();
         node.StateBoundary.RetentionWindowBlocks.Returns(64UL);
 
         McpDataAvailability availability = node.Create().GetAvailability();
@@ -343,7 +343,7 @@ public class McpNodeCapabilitiesTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(availability.StateRetentionBlocks, Is.EqualTo(64));
-            Assert.That(availability.Storage?.Summary, Is.EqualTo("pruned, HalfPath: about the last 64 blocks"));
+            Assert.That(availability.Storage?.Summary, Is.EqualTo("pruned, Flat: about the last 64 blocks"));
         }
     }
 

@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;
+using Nethermind.State.SnapServer;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;

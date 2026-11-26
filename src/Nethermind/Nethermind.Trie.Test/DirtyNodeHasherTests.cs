@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -125,9 +126,9 @@ public class DirtyNodeHasherTests
             Assert.That(tree.RootRef!.Keccak, Is.Null, "the root is the caller's to hash");
         }
         // Below the minimum a level order is not worth it; above it, discarding the collection would
-        // leave a bulk commit paying for the walk and getting no batching. Without AVX2 there is no level order.
+        // leave a bulk commit paying for the walk and getting no batching.
         int hashed = CountHashedBelow(tree.RootRef!);
-        if (budget < 4 || !Avx2.IsSupported) Assert.That(hashed, Is.Zero, "nothing is hashed below the minimum or without AVX2");
+        if (budget < 4 || !(Avx2.IsSupported || Sha3.IsSupported)) Assert.That(hashed, Is.Zero, "nothing is hashed below the minimum or without a batch kernel");
         else Assert.That(hashed, Is.GreaterThanOrEqualTo(budget), "the collected nodes must be hashed, not thrown away");
 
         // Stopping part way is only safe if the ordinary walk still produces the same trie.

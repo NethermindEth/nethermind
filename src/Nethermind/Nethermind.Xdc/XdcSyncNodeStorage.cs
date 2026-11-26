@@ -21,9 +21,10 @@ internal sealed class XdcSyncNodeStorage(IPersistence.IPersistenceReader reader)
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
             return EmptyTreeNode;
 
-        byte[]? rlp = address is null
-            ? reader.TryLoadStateRlp(path, readFlags)
-            : reader.TryLoadStorageRlp(address, path, readFlags);
+        byte[]? rlp = null;
+        _ = address is null
+            ? reader.TryLoadStateRlp(path, readFlags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp))
+            : reader.TryLoadStorageRlp(address, path, readFlags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
 
         // The path-keyed sync view may contain a node from a different root at this path.
         return rlp is not null && ValueKeccak.Compute(rlp) == keccak ? rlp : null;

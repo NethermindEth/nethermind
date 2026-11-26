@@ -41,9 +41,9 @@ public sealed record McpDataAvailability(long HeadNumber, bool IsSyncing, long? 
 }
 
 /// <summary>How the node stores world state.</summary>
-/// <param name="Backend"><c>Flat</c>, <c>HalfPath</c> or <c>Hash</c>.</param>
+/// <param name="Backend">The Flat state backend.</param>
 /// <param name="Archive">Whether state of every block since the node's start of history is kept.</param>
-/// <param name="Summary">A short human-readable description, such as <c>pruned, HalfPath</c>.</param>
+/// <param name="Summary">A short human-readable description, such as <c>pruned, Flat</c>.</param>
 public sealed record McpStateStorage(string Backend, bool Archive, string Summary);
 
 /// <summary>Reports which blocks this node can serve so tools can fail with errors that name the available range.</summary>
@@ -62,27 +62,22 @@ public sealed record McpStateStorage(string Backend, bool Archive, string Summar
 /// old history, and the sync pivot moves with every pivot update although the stored range does not. State ranges come
 /// from <see cref="IEthCapabilitiesProvider"/> (<c>eth_capabilities</c>: state floor, trie pruning window), adjusted for
 /// flat-state history. Ranges are informational:
-/// state availability is not monotonic (a HalfPath
-/// node may still hold an old checkpoint root, a flat node serves only its persisted block plus the in-memory snapshots above
-/// it), so the range is never used to reject a query on its own.
+/// state availability is not monotonic (a flat node serves its persisted block and the in-memory snapshots above
+/// it, with older coverage supplied by configured history), so the range never rejects a query on its own.
 /// </para>
 /// </remarks>
 public sealed class McpNodeCapabilities(
     IBlockTree blockTree,
     ISyncConfig syncConfig,
     IReceiptConfig receiptConfig,
-    IPruningConfig pruningConfig,
     IFlatDbConfig flatDbConfig,
-    IInitConfig initConfig,
     ILogManager logManager,
     IEthCapabilitiesProvider? capabilitiesProvider = null,
     IStateReader? stateReader = null,
     IReceiptStorage? receiptStorage = null,
     IEthSyncingInfo? syncingInfo = null,
     IHistoryPruner? historyPruner = null,
-    Lazy<INodeStorageFactory>? nodeStorageFactory = null,
-    IHistoryConfig? historyConfig = null,
-    FlatStateActivationPolicy? flatStateActivationPolicy = null)
+    IHistoryConfig? historyConfig = null)
 {
     // Availability is read on every failing check and by node_status; a short cache keeps bursts cheap while staying fresh.
     private const long CacheMilliseconds = 1000;
@@ -357,10 +352,9 @@ public sealed class McpNodeCapabilities(
             : floors.Receipt ?? Oldest(capabilities?.Receipts);
         long? stateRetention = capabilities?.State.DeleteStrategy is { } stateWindow ? ToLong(stateWindow.RetentionBlocks) : null;
 
-        // The detected summary names the configured boundary; the window actually kept is what eth_capabilities reports.
-        if (storage is { Archive: false } && storage.Backend != FlatBackend && pruningConfig.Mode.IsMemory() && stateRetention is { } retention)
+        if (storage is { Archive: false } && !flatDbConfig.HistoryEnabled && stateRetention is { } retention)
         {
-            storage = storage with { Summary = $"pruned, {storage.Backend}: about the last {retention} blocks" };
+            storage = storage with { Summary = $"pruned, Flat: about the last {retention} blocks" };
         }
 
         return new McpDataAvailability(headNumber, isSyncing, oldestState, oldestBody, oldestReceipt)
@@ -485,31 +479,17 @@ public sealed class McpNodeCapabilities(
 
     private McpStateStorage DetectStorage()
     {
-        if (flatStateActivationPolicy?.ShouldTurnOnFlatDb() == true)
+        if (!flatDbConfig.HistoryEnabled)
         {
-            if (!flatDbConfig.HistoryEnabled)
-            {
-                return new McpStateStorage(FlatBackend, false, "pruned, Flat: recent blocks only");
-            }
-
-            return flatDbConfig.HistoryRetention switch
-            {
-                HistoryRetentionMode.Rolling => new McpStateStorage(FlatBackend, false, $"Flat with a {flatDbConfig.HistoryRetentionBlocks}-block history window"),
-                HistoryRetentionMode.SinceBlock => new McpStateStorage(FlatBackend, false, $"Flat with history since block {flatDbConfig.HistoryRetentionSinceBlock}"),
-                _ => new McpStateStorage(FlatBackend, true, "archive, Flat history")
-            };
+            return new McpStateStorage(FlatBackend, false, "pruned, Flat: recent blocks only");
         }
 
-        INodeStorage.KeyScheme preferred = initConfig.StateDbKeyScheme;
-        INodeStorage.KeyScheme scheme = TryValue<INodeStorage.KeyScheme>(() => nodeStorageFactory?.Value.CurrentKeyScheme)
-            ?? (preferred == INodeStorage.KeyScheme.Current ? INodeStorage.KeyScheme.HalfPath : preferred);
-        string backend = scheme == INodeStorage.KeyScheme.Hash ? "Hash" : "HalfPath";
-        PruningMode mode = pruningConfig.Mode;
-        return mode == PruningMode.None
-            ? new McpStateStorage(backend, true, $"archive, {backend}")
-            : new McpStateStorage(backend, false, mode.IsMemory()
-                ? $"pruned, {backend}: about the last {pruningConfig.PruningBoundary} blocks"
-                : $"pruned, {backend}: full pruning");
+        return flatDbConfig.HistoryRetention switch
+        {
+            HistoryRetentionMode.Rolling => new McpStateStorage(FlatBackend, false, $"Flat with a {flatDbConfig.HistoryRetentionBlocks}-block history window"),
+            HistoryRetentionMode.SinceBlock => new McpStateStorage(FlatBackend, false, $"Flat with history since block {flatDbConfig.HistoryRetentionSinceBlock}"),
+            _ => new McpStateStorage(FlatBackend, true, "archive, Flat history")
+        };
     }
 
     private BlockHeader? FindCanonicalHeader(ulong blockNumber) =>

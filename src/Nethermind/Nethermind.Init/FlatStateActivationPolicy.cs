@@ -34,7 +34,7 @@ public sealed class FlatStateActivationPolicy
         "Complete migration to FlatDB using a Nethermind version that supports --FlatDb.ImportFromPruningTrieState=true before upgrading, or start with a fresh FlatDB database. " +
         "See https://docs.nethermind.io/next/fundamentals/configuration/#flatdbimportfrompruningtriestate.";
 
-    private static readonly long LowMemoryLayoutThreshold = 16.GiB;
+    internal static readonly long LowMemoryLayoutThreshold = 16.GiB;
 
     public FlatStateActivationPolicy(
         IFlatDbConfig flatDbConfig,
@@ -160,6 +160,18 @@ public sealed class FlatStateActivationPolicy
         }
 
         if (wipe) WipeForResync(db, flatDbConfig, logger);
+    }
+
+    internal static bool HasSstFile(IFileSystem fileSystem, string directory)
+    {
+        try
+        {
+            return fileSystem.Directory.EnumerateFiles(directory, "*.sst").Any();
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return false;
+        }
     }
 
     internal static bool ContainsLegacyState(IFileSystem fileSystem, string statePath)

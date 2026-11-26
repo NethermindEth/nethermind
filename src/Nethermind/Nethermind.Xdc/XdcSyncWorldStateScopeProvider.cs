@@ -114,9 +114,11 @@ internal sealed class XdcSyncWorldStateScopeProvider(
 
         public void UpdateRootHash() => inner.UpdateRootHash();
 
-        public void HintWarmAccount(in ValueAddress address) => inner.HintWarmAccount(in address);
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default) => inner.ApplyBal(bal, cancellationToken);
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => inner.HintWarmSlot(in address, in index);
+        public void HintWarmAccount(Address address) => inner.HintWarmAccount(address);
+
+        public void HintWarmSlot(Address address, in UInt256 index) => inner.HintWarmSlot(address, in index);
 
         public Account? Get(Address address) => inner.Get(address);
 

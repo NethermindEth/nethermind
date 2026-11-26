@@ -24,6 +24,8 @@ public sealed class SnapServer(
     IHeaderStore headerStore,
     IBlockAccessListStore blockAccessListStore) : ISnapServer
 {
+    public bool CanServe => stateServer.CanServe;
+
     private const long HardResponseByteLimit = ISnapStateServer.HardResponseByteLimit;
     private const int CodeReadChunkSize = 64;
     private const int AccessListReadChunkSize = 16;

@@ -19,6 +19,8 @@ using Nethermind.Core.Container;
 using Nethermind.Logging;
 using Nethermind.Api;
 using Nethermind.State.Flat;
+using Nethermind.State.Healing;
+using Nethermind.Synchronization.Trie;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
@@ -92,6 +94,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatSnapTrieFactory>()
             .AddSingleton<TrieReassembler>()
             .AddSingleton<FlatBalHealing>()
+            .AddSingleton<ICodeRecovery, CodeRecovery>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))

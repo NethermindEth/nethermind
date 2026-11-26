@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.Intrinsics.X86;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -424,7 +423,7 @@ public partial class TrieStoreScopeProvider(
             }
             else
             {
-                if (Avx2.IsSupported)
+                if (KeccakHash.MaxBatchWidth != 0)
                 {
                     if (!StorageTree.TryGetCachedKey(index, out _keyBuff, out ValueHash256 preimage))
                     {

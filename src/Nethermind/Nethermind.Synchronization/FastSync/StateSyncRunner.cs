@@ -34,6 +34,7 @@ public class StateSyncRunner(
     ISyncProgressResolver syncProgressResolver,
     IBeaconSyncStrategy beaconSyncStrategy,
     ISyncPeerPool syncPeerPool,
+    ITimestamper timestamper,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
     ILogManager logManager,
     IVerifyTrieStarter? verifyTrieStarter = null) : IStateSyncRunner

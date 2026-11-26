@@ -28,6 +28,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
     public class Snap1ProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer, IStaticProtocolInfo
     {
         protected ISnapServer SyncServer { get; }
+        private bool CanServe { get; }
+        private const string DisconnectMessage = "Serving snap data is not implemented in this node.";
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -67,6 +69,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
             _getByteCodesRequests = new(this);
             _getTrieNodesRequests = new(this);
             SyncServer = snapServer;
+            CanServe = snapServer.CanServe;
             SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(syncConfig.SnapServingMaxPathsPerGroup, nameof(PathGroup.Group));
         }
 

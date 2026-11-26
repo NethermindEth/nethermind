@@ -55,6 +55,7 @@ namespace Nethermind.Synchronization
         private readonly IBlockAccessListStore _blockAccessListStore;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
+        private readonly IReadOnlyKeyValueStore? _stateDb;
         private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
@@ -80,6 +81,7 @@ namespace Nethermind.Synchronization
         private const int HeaderRlpLengthEstimate = 720;
 
         public SyncServer(
+            IWorldStateManager worldStateManager,
             [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
             IBlockStore blockStore,
@@ -108,6 +110,7 @@ namespace Nethermind.Synchronization
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
+            _stateDb = worldStateManager.HashServer;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
@@ -630,7 +633,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken)
+        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State)
         {
             using DeferredRlpItemList.Builder builder = new(keys.Count);
             DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();

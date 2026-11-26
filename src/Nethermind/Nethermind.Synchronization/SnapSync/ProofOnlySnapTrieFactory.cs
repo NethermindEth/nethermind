@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -29,14 +30,15 @@ internal sealed class ProofOnlySnapTrieFactory(ILogManager logManager) : ISnapTr
 
         public Hash256 RootHash => _tree.RootHash;
 
-        public void SetRootFromProof(TrieNode root) => _tree.RootRef = root;
+        public void SetRootFromProof(IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes) =>
+            PatriciaSnapProof.SetRoot(_tree, proofs, nodes);
 
         public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => false;
 
         public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries) =>
             ISnapTree<PathWithAccount>.DoBulkSetAndUpdateRootHash(_tree, entries);
 
-        public void Commit(ValueHash256 upperBound) { }
+        public bool Commit(ValueHash256 lowerBound, ValueHash256 upperBound) => false;
 
         public void Dispose() { }
     }

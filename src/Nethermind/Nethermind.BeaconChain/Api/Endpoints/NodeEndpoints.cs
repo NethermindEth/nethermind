@@ -7,7 +7,10 @@ using Microsoft.AspNetCore.Mvc;
 using Multiformats.Base;
 using Multiformats.Hash;
 using Nethermind.BeaconChain.Api.Common;
+using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core;
@@ -15,7 +18,7 @@ using Nethermind.Libp2p.Core;
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
 /// <summary><c>/eth/v1/node/*</c>: health, identity, version, syncing, and peer accounting.</summary>
-internal sealed class NodeEndpoints(BeaconApiContext ctx)
+internal sealed class NodeEndpoints(BeaconApiHead view, SlotClock slotClock, IEngineDriver engine, LocalMetadataSource metadataSource, BeaconP2P? p2p = null, PeerManager? peerManager = null, BeaconDiscovery? discovery = null)
 {
     /// <summary>Slots the head may lag the wall clock by and still count as caught up (health 200, is_syncing=false).</summary>
     private const long ReadySyncDistance = 1;
@@ -28,15 +31,15 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
             return ApiResults.Error(StatusCodes.Status400BadRequest, "Invalid syncing status code.");
         }
 
-        StatusMessageV2 status = ctx.StatusSource.CurrentStatus;
+        StatusMessageV2 status = view.StatusSource.CurrentStatus;
         if (status.HeadRoot == Hash256.Zero)
         {
             // Nothing has been observed yet: neither "ready" nor "syncing" is true, only "not initialized".
             return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         }
 
-        long distance = (long)ctx.SlotClock.CurrentSlot - (long)status.HeadSlot;
-        return Results.StatusCode(distance > ReadySyncDistance || !ctx.StatusSource.ExecutionInSync || !ctx.Engine.IsAvailable
+        long distance = (long)slotClock.CurrentSlot - (long)status.HeadSlot;
+        return Results.StatusCode(distance > ReadySyncDistance || !view.StatusSource.ExecutionInSync || !engine.IsAvailable
             ? syncingStatus ?? StatusCodes.Status206PartialContent : StatusCodes.Status200OK);
     }
 
@@ -46,28 +49,28 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
     [HttpGet("/eth/v1/node/identity"), Negotiated]
     public IResult Identity()
     {
-        if (ctx.P2P?.LocalPeerId is not { } peerId)
+        if (p2p?.LocalPeerId is not { } peerId)
         {
             return ApiResults.Error(StatusCodes.Status503ServiceUnavailable,
                 "The P2P host has not started yet; no peer id is assigned.");
         }
 
         string peerIdString = peerId.ToString()!;
-        string[] p2pAddresses = new string[ctx.P2P.ListenAddresses.Count];
+        string[] p2pAddresses = new string[p2p.ListenAddresses.Count];
         for (int i = 0; i < p2pAddresses.Length; i++)
         {
-            p2pAddresses[i] = $"{ctx.P2P.ListenAddresses[i]}/p2p/{peerIdString}";
+            p2pAddresses[i] = $"{p2p.ListenAddresses[i]}/p2p/{peerIdString}";
         }
 
         MetadataDto metadata = new(
-            ctx.MetadataSource.Current.SeqNumber.ToString(),
-            HexConvert.BitVectorToHex(ctx.MetadataSource.Current.Attnets!),
-            HexConvert.BitVectorToHex(ctx.MetadataSource.Current.Syncnets!),
-            ctx.MetadataSource.Current.CustodyGroupCount.ToString());
+            metadataSource.Current.SeqNumber.ToString(),
+            HexConvert.BitVectorToHex(metadataSource.Current.Attnets!),
+            HexConvert.BitVectorToHex(metadataSource.Current.Syncnets!),
+            metadataSource.Current.CustodyGroupCount.ToString());
 
         IdentityDto dto = new(
             peerIdString,
-            ctx.Discovery?.LocalNodeRecord.ToString(),
+            discovery?.LocalNodeRecord.ToString(),
             p2pAddresses,
             // Not independently derivable: this host does not compute a separate discovery-only
             // multiaddr set (see the report for why), so it is left honestly empty rather than
@@ -81,8 +84,8 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
     [HttpGet("/eth/v1/node/syncing"), Negotiated]
     public IResult Syncing()
     {
-        StatusMessageV2 status = ctx.StatusSource.CurrentStatus;
-        ulong wallSlot = ctx.SlotClock.CurrentSlot;
+        StatusMessageV2 status = view.StatusSource.CurrentStatus;
+        ulong wallSlot = slotClock.CurrentSlot;
         long distance = (long)wallSlot - (long)status.HeadSlot;
         if (distance < 0) distance = 0;
 
@@ -90,8 +93,8 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
             status.HeadSlot.ToString(),
             distance.ToString(),
             distance > ReadySyncDistance,
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            !ctx.Engine.IsAvailable);
+            ResponseEnvelope.ExecutionOptimistic(view.StatusSource),
+            !engine.IsAvailable);
 
         return ApiResults.Data(dto);
     }
@@ -100,7 +103,7 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
     public IResult PeerCount()
     {
         int disconnected = 0, connecting = 0, connected = 0, disconnecting = 0;
-        foreach (PeerRecord peer in ctx.PeerManager?.Peers ?? [])
+        foreach (PeerRecord peer in peerManager?.Peers ?? [])
         {
             switch (peer.State)
             {
@@ -146,7 +149,7 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
             directions.Add(direction);
         }
 
-        IReadOnlyList<PeerRecord> peers = ctx.PeerManager?.Peers ?? [];
+        IReadOnlyList<PeerRecord> peers = peerManager?.Peers ?? [];
         List<PeerDto> filtered = [with(peers.Count)];
         foreach (PeerRecord peer in peers)
         {
@@ -180,7 +183,7 @@ internal sealed class NodeEndpoints(BeaconApiContext ctx)
             return ApiResults.Error(StatusCodes.Status400BadRequest, $"Invalid peer ID: {peerId}");
         }
 
-        if (ctx.PeerManager is null || !ctx.PeerManager.TryGetPeer(peerId, out PeerRecord peer))
+        if (peerManager is null || !peerManager.TryGetPeer(peerId, out PeerRecord peer))
         {
             return ApiResults.Error(StatusCodes.Status404NotFound, $"No known peer '{peerId}'.");
         }

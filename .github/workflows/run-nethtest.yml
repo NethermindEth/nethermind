@@ -13,7 +13,7 @@ on:
   workflow_call:
     inputs:
       test_types:
-        description: Comma-separated test types to run (engineTest, blockTest, stateTest, syncTest, engineReorgTest, txTest)
+        description: Comma-separated test types to run (engineTest, engineXTest, blockTest, stateTest, syncTest, engineReorgTest, txTest)
         required: false
         default: engineTest
         type: string
@@ -65,7 +65,7 @@ on:
         default: ''
         type: string
       test_types:
-        description: Comma-separated test types (engineTest, blockTest, stateTest, syncTest, engineReorgTest, txTest)
+        description: Comma-separated test types (engineTest, engineXTest, blockTest, stateTest, syncTest, engineReorgTest, txTest)
         required: false
         default: engineTest
         type: string
@@ -275,6 +275,17 @@ jobs:
                   fi
                 fi
                 ;;
+              engineXTest)
+                # Each pre-allocation group runs on one client, which reorgs back to genesis for every test, so
+                # the BAL toggles add nothing over the engine lanes; only the state layout is varied. Chunks split
+                # by file, so a group a chunk splits runs its share of tests on a client of its own.
+                if run_sequential; then
+                  emit "$type" sequential full '' false false 4 6
+                fi
+                if run_flat; then
+                  emit "$type" flat_sequential full 1 false false 4 6
+                fi
+                ;;
               stateTest)
                 # State tests execute a single tx via the tx processor - the block-level
                 # parallel/batch-read toggles do not apply, only the state layout does.
@@ -480,6 +491,8 @@ jobs:
           # extracted and cached: the full v21 archive unpacks to about 15 GB.
           case "$TEST_TYPE" in
             engineTest) FIXTURE_NAME=blockchain_tests_engine; RUNNER_FLAG=--engineTest ;;
+            # Engine fixtures grouped by pre-allocation, whose tests run in turn on one client per group.
+            engineXTest) FIXTURE_NAME=blockchain_tests_engine_x; RUNNER_FLAG=--engineXTest ;;
             blockTest)  FIXTURE_NAME=blockchain_tests;        RUNNER_FLAG=--blockTest ;;
             stateTest)  FIXTURE_NAME=state_tests;             RUNNER_FLAG=--stateTest ;;
             # Sync fixtures use the engine-payload format; run them through the engine harness.
@@ -677,7 +690,7 @@ jobs:
             SETUP_ARGS="$SETUP_ARGS --batchRead $BATCHREAD"
           fi
           # These lanes read only .pass, so they keep nethtest's check of the reason a payload was rejected for.
-          if [ "$RUNNER_FLAG" = "--engineTest" ]; then
+          if [ "$RUNNER_FLAG" = "--engineTest" ] || [ "$RUNNER_FLAG" = "--engineXTest" ]; then
             SETUP_ARGS="$SETUP_ARGS --match-exceptions"
           fi
 

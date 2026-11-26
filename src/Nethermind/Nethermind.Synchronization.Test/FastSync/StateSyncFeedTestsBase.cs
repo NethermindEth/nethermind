@@ -389,6 +389,7 @@ public abstract class StateSyncFeedTestsBase(
     /// </summary>
     private sealed class RawTrieSnapStateServer(ITrieStore store, ILogManager logManager) : ISnapStateServer
     {
+        public bool CanServe => true;
         private readonly ITrieStore _store = store;
         private readonly AccountDecoder _decoder = new();
 

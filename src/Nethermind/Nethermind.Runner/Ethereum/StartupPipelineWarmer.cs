@@ -69,7 +69,7 @@ internal static class StartupPipelineWarmer
     /// Uses production component types so any tiered compilation observes RocksDB rather than a substitute database.
     /// The workload is deliberately bounded; it does not force a JIT tier or prevent runtime promotion.
     /// </remarks>
-    internal static async Task WarmupAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, CancellationToken cancellationToken,
+    internal static async Task WarmupAsync(ChainSpec source, IConfigProvider liveConfig, CancellationToken cancellationToken,
         IRpcAuthentication? authentication = null, ILogger logger = default, Action<ContainerBuilder>? configureContainer = null,
         IBlockTree? liveBlockTree = null, ITimestamper? timestamper = null)
     {
@@ -85,7 +85,7 @@ internal static class StartupPipelineWarmer
             IRpcAuthentication warmAuthentication = authentication is JwtAuthentication
                 ? JwtAuthentication.FromSecret(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)), timestamper ?? Timestamper.Default, logger)
                 : NoAuthentication.Instance;
-            await RunAsync(source, liveConfig, flatState, directory.FullName, warmAuthentication, keys, configureContainer, warmMetrics, cancellationToken);
+            await RunAsync(source, liveConfig, directory.FullName, warmAuthentication, keys, configureContainer, warmMetrics, cancellationToken);
         }
         finally
         {
@@ -104,12 +104,12 @@ internal static class StartupPipelineWarmer
         }
     }
 
-    private static async Task RunAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, string directory, IRpcAuthentication authentication,
+    private static async Task RunAsync(ChainSpec source, IConfigProvider liveConfig, string directory, IRpcAuthentication authentication,
         PrivateKey[] keys, Action<ContainerBuilder>? configureContainer, WarmMetrics warmMetrics, CancellationToken cancellationToken)
     {
         ulong timestamp = WarmupTimestamp(source.Genesis!.Header.Timestamp, (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         ChainSpec chainSpec = CreateChainSpec(source, liveConfig.GetConfig<IBlocksConfig>().MinGasPrice, keys);
-        ConfigProvider config = CreateConfig(liveConfig, flatState, directory, authentication is JwtAuthentication, keys[0]);
+        ConfigProvider config = CreateConfig(liveConfig, directory, authentication is JwtAuthentication, keys[0]);
         // A separate root prevents a fallback registration from reaching the live database or world state.
         ProcessExitSource exitSource = new(cancellationToken);
         ContainerBuilder builder = new ContainerBuilder()
@@ -191,7 +191,7 @@ internal static class StartupPipelineWarmer
         return chainSpec;
     }
 
-    private static ConfigProvider CreateConfig(IConfigProvider liveConfig, bool flatState, string directory, bool authenticated, PrivateKey nodeKey)
+    private static ConfigProvider CreateConfig(IConfigProvider liveConfig, string directory, bool authenticated, PrivateKey nodeKey)
     {
         IJsonRpcConfig liveRpcConfig = liveConfig.GetConfig<IJsonRpcConfig>();
         int port = GetFreeLoopbackPort();
@@ -235,13 +235,11 @@ internal static class StartupPipelineWarmer
             new DbConfig { SharedBlockCacheSize = 16 * 1024 * 1024, EnableMetricsUpdater = false },
             new FlatDbConfig
             {
-                Enabled = flatState,
                 Layout = liveConfig.GetConfig<IFlatDbConfig>().Layout,
                 BlockCacheSizeBudget = 16 * 1024 * 1024,
                 PersistedSnapshotArenaPageCacheBytes = 16 * 1024 * 1024,
                 ArenaFileSizeBytes = 16 * 1024 * 1024
             },
-            new PruningConfig { CacheMb = 8, DirtyCacheMb = 4, DirtyNodeShardBit = 1 },
             new SyncConfig { FastSync = false, SnapSync = false },
             new MergeConfig
             {

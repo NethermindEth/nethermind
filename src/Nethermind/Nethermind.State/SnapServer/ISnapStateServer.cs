@@ -19,6 +19,8 @@ public interface ISnapStateServer
     /// </summary>
     const int MaxTrieNodeLookups = 4096;
 
+    bool CanServe { get; }
+
     IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken) =>
         GetTrieNodes(pathSet, rootHash, long.MaxValue, cancellationToken);
 

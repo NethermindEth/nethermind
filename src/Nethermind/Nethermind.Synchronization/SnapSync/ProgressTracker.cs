@@ -81,6 +81,7 @@ namespace Nethermind.Synchronization.SnapSync
         internal int AccountsToRefreshCount => AccountsToRefresh.Count;
 
         private readonly FastSync.IStateSyncPivot _pivot;
+        private readonly ISnapTrieFactory _snapTrieFactory;
         private readonly bool _enableStorageRangeSplit;
         private readonly ulong _stateMinDistanceFromHead;
 
@@ -114,6 +115,7 @@ namespace Nethermind.Synchronization.SnapSync
             _logger = logManager?.GetClassLogger<ProgressTracker>() ?? throw new ArgumentNullException(nameof(logManager));
 
             _pivot = pivot;
+            _snapTrieFactory = snapTrieFactory;
             _checkpointInterval = syncConfig.SnapResume && snapTrieFactory.SupportsCheckpoints ? checkpointInterval ?? DefaultCheckpointInterval : null;
             _endResponse = new EndResponse(_responseLock);
 
