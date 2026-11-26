@@ -277,12 +277,12 @@ namespace Nethermind.Core.Test
             => AssertBatchedHashMatchesIndividualHashes(inputLength, 8);
 
         [Test]
-        public void Four_way_padded_hash_matches_individual_hashes([Values(136, 272, 408, 544, 1088, 2176)] int inputLength)
-            => AssertBatchedHashMatchesIndividualHashes(inputLength, 4);
+        public void Padded_hash_matches_individual_hashes([Values(136, 272, 408, 544, 1088, 2176)] int inputLength, [Values(2, 4)] int batchSize)
+            => AssertBatchedHashMatchesIndividualHashes(inputLength, batchSize);
 
         private static void AssertBatchedHashMatchesIndividualHashes(int inputLength, int batchSize)
         {
-            if (batchSize == 8 ? !Avx512F.IsSupported : !Avx2.IsSupported)
+            if (batchSize switch { 2 => !Sha3.IsSupported, 4 => !Avx2.IsSupported, _ => !Avx512F.IsSupported })
             {
                 Assert.Ignore("The required batch intrinsics are not supported on this machine.");
             }
@@ -306,14 +306,7 @@ namespace Nethermind.Core.Test
                         block[length] = 0x01;
                         block[^1] |= 0x80;
                     }
-                    if (inputLength > 136 && batchSize == 8)
-                        KeccakHash.ComputePaddedMultiBlocks8Avx512(ref input[0], inputLength, ref output[0]);
-                    else if (batchSize == 8)
-                        KeccakHash.ComputePaddedBlocks8Avx512(ref input[0], ref output[0]);
-                    else if (inputLength > 136)
-                        KeccakHash.ComputePaddedMultiBlocks4Avx2(ref input[0], inputLength, ref output[0]);
-                    else
-                        KeccakHash.ComputePaddedBlocks4Avx2(ref input[0], ref output[0]);
+                    KeccakHash.ComputePaddedBatch(ref input[0], inputLength, batchSize, ref output[0]);
                 }
                 else if (inputLength == 32)
                 {

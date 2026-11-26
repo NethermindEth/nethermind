@@ -32,42 +32,53 @@ public sealed partial class KeccakHash
         ref ulong source = ref Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(input));
         ref ulong firstBlock = ref (tailOffset == 0 ? ref padded[0] : ref source);
         ref ulong destination = ref Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(output));
-        PermuteArmSha3<OnFlag>(ref firstBlock, ref destination, tailOffset, ref padded[0]);
+        PermuteArmSha3<OnFlag, OffFlag>(ref firstBlock, ref destination, tailOffset, ref padded[0]);
     }
 
     /// <summary>Permutes the 25 lanes starting at <paramref name="state"/> in place.</summary>
     internal static void KeccakF1600ArmSha3(ref ulong state) =>
-        PermuteArmSha3<OffFlag>(ref state, ref state, 0, ref Unsafe.NullRef<ulong>());
+        PermuteArmSha3<OffFlag, OffFlag>(ref state, ref state, 0, ref Unsafe.NullRef<ulong>());
+
+    private static void ComputePaddedPairArmSha3(ref byte inputs, int paddedLength, ref byte output)
+    {
+        ref ulong state = ref Unsafe.As<byte, ulong>(ref inputs);
+        int lastBlockOffset = paddedLength - HASH_DATA_AREA;
+        PermuteArmSha3<OnFlag, OnFlag>(ref state, ref Unsafe.As<byte, ulong>(ref output), lastBlockOffset,
+            ref Unsafe.NullRef<ulong>(), (nuint)paddedLength);
+    }
 
     // In sponge mode the first 17 lanes come from the message, the capacity starts at zero,
     // and only four digest lanes are written. A standalone permutation reads and writes all 25.
     [SkipLocalsInit]
-    private static void PermuteArmSha3<TAbsorbMessage>(ref ulong state, ref ulong destination, int paddedBlockOffset, ref ulong padded)
+    private static void PermuteArmSha3<TAbsorbMessage, TPair>(ref ulong state, ref ulong destination, int paddedBlockOffset, ref ulong padded, nuint pairStrideBytes = 0)
         where TAbsorbMessage : struct, IFlag
+        where TPair : struct, IFlag
     {
         Debug.Assert(Sha3.IsSupported);
         // Resolve the static table before loading the lanes. A class-init helper with the lanes
         // live makes the ARM64 JIT spill them throughout the round loop.
         ref ulong constants = ref MemoryMarshal.GetArrayDataReference(RoundConstants);
 
-        // Each SHA3 instruction operates independently on both halves. Only the low halves hold the state.
-        Vector128<ulong> a0 = LoadLane(ref state, 0);
-        Vector128<ulong> a1 = LoadLane(ref state, 1);
-        Vector128<ulong> a2 = LoadLane(ref state, 2);
-        Vector128<ulong> a3 = LoadLane(ref state, 3);
-        Vector128<ulong> a4 = LoadLane(ref state, 4);
-        Vector128<ulong> a5 = LoadLane(ref state, 5);
-        Vector128<ulong> a6 = LoadLane(ref state, 6);
-        Vector128<ulong> a7 = LoadLane(ref state, 7);
-        Vector128<ulong> a8 = LoadLane(ref state, 8);
-        Vector128<ulong> a9 = LoadLane(ref state, 9);
-        Vector128<ulong> a10 = LoadLane(ref state, 10);
-        Vector128<ulong> a11 = LoadLane(ref state, 11);
-        Vector128<ulong> a12 = LoadLane(ref state, 12);
-        Vector128<ulong> a13 = LoadLane(ref state, 13);
-        Vector128<ulong> a14 = LoadLane(ref state, 14);
-        Vector128<ulong> a15 = LoadLane(ref state, 15);
-        Vector128<ulong> a16 = LoadLane(ref state, 16);
+        ref ulong secondState = ref Unsafe.AddByteOffset(ref state, pairStrideBytes);
+
+        // Each SHA3 instruction operates independently on both halves. A pair holds one message in each half.
+        Vector128<ulong> a0 = LoadMessageLane<TPair>(ref state, ref secondState, 0);
+        Vector128<ulong> a1 = LoadMessageLane<TPair>(ref state, ref secondState, 1);
+        Vector128<ulong> a2 = LoadMessageLane<TPair>(ref state, ref secondState, 2);
+        Vector128<ulong> a3 = LoadMessageLane<TPair>(ref state, ref secondState, 3);
+        Vector128<ulong> a4 = LoadMessageLane<TPair>(ref state, ref secondState, 4);
+        Vector128<ulong> a5 = LoadMessageLane<TPair>(ref state, ref secondState, 5);
+        Vector128<ulong> a6 = LoadMessageLane<TPair>(ref state, ref secondState, 6);
+        Vector128<ulong> a7 = LoadMessageLane<TPair>(ref state, ref secondState, 7);
+        Vector128<ulong> a8 = LoadMessageLane<TPair>(ref state, ref secondState, 8);
+        Vector128<ulong> a9 = LoadMessageLane<TPair>(ref state, ref secondState, 9);
+        Vector128<ulong> a10 = LoadMessageLane<TPair>(ref state, ref secondState, 10);
+        Vector128<ulong> a11 = LoadMessageLane<TPair>(ref state, ref secondState, 11);
+        Vector128<ulong> a12 = LoadMessageLane<TPair>(ref state, ref secondState, 12);
+        Vector128<ulong> a13 = LoadMessageLane<TPair>(ref state, ref secondState, 13);
+        Vector128<ulong> a14 = LoadMessageLane<TPair>(ref state, ref secondState, 14);
+        Vector128<ulong> a15 = LoadMessageLane<TPair>(ref state, ref secondState, 15);
+        Vector128<ulong> a16 = LoadMessageLane<TPair>(ref state, ref secondState, 16);
         Vector128<ulong> a17 = TAbsorbMessage.IsActive ? Vector128<ulong>.Zero : LoadLane(ref state, 17);
         Vector128<ulong> a18 = TAbsorbMessage.IsActive ? Vector128<ulong>.Zero : LoadLane(ref state, 18);
         Vector128<ulong> a19 = TAbsorbMessage.IsActive ? Vector128<ulong>.Zero : LoadLane(ref state, 19);
@@ -90,31 +101,32 @@ public sealed partial class KeccakHash
                     ref a10, ref a11, ref a12, ref a13, ref a14,
                     ref a15, ref a16, ref a17, ref a18, ref a19,
                     ref a20, ref a21, ref a22, ref a23, ref a24,
-                    LoadLane(ref constants, round));
+                    LoadRoundConstant<TPair>(ref constants, round));
             }
 
             if (!TAbsorbMessage.IsActive || offset == paddedBlockOffset)
                 break;
 
             offset += HASH_DATA_AREA;
-            ref ulong block = ref (offset == paddedBlockOffset ? ref padded : ref Unsafe.AddByteOffset(ref state, (nuint)offset));
-            a0 ^= LoadLane(ref block, 0);
-            a1 ^= LoadLane(ref block, 1);
-            a2 ^= LoadLane(ref block, 2);
-            a3 ^= LoadLane(ref block, 3);
-            a4 ^= LoadLane(ref block, 4);
-            a5 ^= LoadLane(ref block, 5);
-            a6 ^= LoadLane(ref block, 6);
-            a7 ^= LoadLane(ref block, 7);
-            a8 ^= LoadLane(ref block, 8);
-            a9 ^= LoadLane(ref block, 9);
-            a10 ^= LoadLane(ref block, 10);
-            a11 ^= LoadLane(ref block, 11);
-            a12 ^= LoadLane(ref block, 12);
-            a13 ^= LoadLane(ref block, 13);
-            a14 ^= LoadLane(ref block, 14);
-            a15 ^= LoadLane(ref block, 15);
-            a16 ^= LoadLane(ref block, 16);
+            ref ulong block = ref (!TPair.IsActive && offset == paddedBlockOffset ? ref padded : ref Unsafe.AddByteOffset(ref state, (nuint)offset));
+            ref ulong secondBlock = ref Unsafe.AddByteOffset(ref secondState, (nuint)offset);
+            a0 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 0);
+            a1 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 1);
+            a2 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 2);
+            a3 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 3);
+            a4 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 4);
+            a5 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 5);
+            a6 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 6);
+            a7 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 7);
+            a8 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 8);
+            a9 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 9);
+            a10 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 10);
+            a11 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 11);
+            a12 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 12);
+            a13 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 13);
+            a14 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 14);
+            a15 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 15);
+            a16 ^= LoadMessageLane<TPair>(ref block, ref secondBlock, 16);
         }
 
         if (TAbsorbMessage.IsActive)
@@ -125,7 +137,16 @@ public sealed partial class KeccakHash
                 ref a10, ref a11, ref a12, ref a13, ref a14,
                 ref a15, ref a16, ref a17, ref a18, ref a19,
                 ref a20, ref a21, ref a22, ref a23, ref a24,
-                LoadLane(ref constants, ROUNDS - 1));
+                LoadRoundConstant<TPair>(ref constants, ROUNDS - 1));
+        }
+
+        if (TPair.IsActive)
+        {
+            AdvSimd.Arm64.ZipLow(a0, a1).StoreUnsafe(ref destination);
+            AdvSimd.Arm64.ZipLow(a2, a3).StoreUnsafe(ref destination, 2);
+            AdvSimd.Arm64.ZipHigh(a0, a1).StoreUnsafe(ref destination, 4);
+            AdvSimd.Arm64.ZipHigh(a2, a3).StoreUnsafe(ref destination, 6);
+            return;
         }
 
         a0.GetLower().StoreUnsafe(ref destination);
@@ -157,6 +178,16 @@ public sealed partial class KeccakHash
         a23.GetLower().StoreUnsafe(ref destination, 23);
         a24.GetLower().StoreUnsafe(ref destination, 24);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector128<ulong> LoadMessageLane<TPair>(ref ulong first, ref ulong second, nuint lane) where TPair : struct, IFlag =>
+        TPair.IsActive
+            ? Vector128.Create(Vector64.LoadUnsafe(ref first, lane), Vector64.LoadUnsafe(ref second, lane))
+            : LoadLane(ref first, lane);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector128<ulong> LoadRoundConstant<TPair>(ref ulong constants, nuint round) where TPair : struct, IFlag =>
+        TPair.IsActive ? Vector128.Create(Unsafe.Add(ref constants, round)) : LoadLane(ref constants, round);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector128<ulong> LoadLane(ref ulong source, nuint lane) =>

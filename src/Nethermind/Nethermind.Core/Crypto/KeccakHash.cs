@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -22,6 +23,50 @@ public sealed partial class KeccakHash
 
     /// <summary>Largest padded length the batch kernels are used with, four rate blocks.</summary>
     internal const int MaxBatchablePaddedLength = 4 * RateBlockLength;
+
+    internal static bool ArmSha3BatchSupported =>
+#if ZK_EVM
+        false;
+#else
+        System.Runtime.Intrinsics.Arm.Sha3.IsSupported;
+#endif
+
+    internal static int MaxBatchWidth => GetBatchWidth(8);
+
+    /// <summary>Returns the narrowest available kernel for the group, capped at the hardware width. Zero indicates scalar hashing.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static int GetBatchWidth(int count)
+    {
+        if (Avx512F.IsSupported && count > 4) return 8;
+        if (Avx2.IsSupported) return 4;
+        return ArmSha3BatchSupported ? 2 : 0;
+    }
+
+    /// <summary>Hashes consecutive, pre-padded messages of equal length into consecutive 32-byte digests.</summary>
+    /// <remarks>The caller supplies a supported kernel width, that many complete inputs, and 32 output bytes per lane.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void ComputePaddedBatch(ref byte inputs, int paddedLength, int width, ref byte output)
+    {
+        Debug.Assert(width is 2 or 4 or 8 && width == GetBatchWidth(width));
+        Debug.Assert(paddedLength > 0 && paddedLength % RateBlockLength == 0);
+#if !ZK_EVM
+        if (ArmSha3BatchSupported)
+        {
+            ComputePaddedPairArmSha3(ref inputs, paddedLength, ref output);
+            return;
+        }
+#endif
+        if (width == 8)
+        {
+            if (paddedLength == RateBlockLength) ComputePaddedBlocks8Avx512(ref inputs, ref output);
+            else ComputePaddedMultiBlocks8Avx512(ref inputs, paddedLength, ref output);
+        }
+        else
+        {
+            if (paddedLength == RateBlockLength) ComputePaddedBlocks4Avx2(ref inputs, ref output);
+            else ComputePaddedMultiBlocks4Avx2(ref inputs, paddedLength, ref output);
+        }
+    }
 
     private const int HASH_SIZE = 32;
     private const int STATE_SIZE = 200;
