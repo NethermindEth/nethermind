@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -36,9 +37,10 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 /// abandoned-round shapes chosen by the seed, whose subtree the last root restores. Free accounts change at random.
 /// </summary>
 /// <remarks>
-/// A case is replayed by its seed and layout. <c>NM_FLAT_HEAL_SEED</c> and <c>NM_FLAT_HEAL_COUNT</c> (1 by default) add the
-/// consecutive seeds from the first, any <see cref="int"/>, up to <see cref="int.MaxValue"/>,
-/// to the fixed list, for a longer local run.
+/// A case is replayed by its seed and layout. <c>NM_FLAT_HEAL_SEED</c>, any <see cref="int"/>, and <c>NM_FLAT_HEAL_COUNT</c>,
+/// a positive <see cref="int"/> and 1 when not set, add the consecutive seeds from the first to the fixed list, for a longer
+/// local run. A malformed value, a count without a seed, or a range past <see cref="int.MaxValue"/> fails the discovery of
+/// the cases, naming the values.
 /// </remarks>
 public partial class SnapProviderTests
 {
@@ -54,9 +56,20 @@ public partial class SnapProviderTests
     private static IEnumerable<TestCaseData> GeneratedHealingCases()
     {
         List<int> seeds = [.. GeneratedSeeds];
-        if (int.TryParse(Environment.GetEnvironmentVariable("NM_FLAT_HEAL_SEED"), out int first))
+        string? firstText = Environment.GetEnvironmentVariable("NM_FLAT_HEAL_SEED");
+        string? countText = Environment.GetEnvironmentVariable("NM_FLAT_HEAL_COUNT");
+        if (firstText is null)
         {
-            int count = int.TryParse(Environment.GetEnvironmentVariable("NM_FLAT_HEAL_COUNT"), out int requested) && requested > 0 ? requested : 1;
+            if (countText is not null) throw new InvalidOperationException($"NM_FLAT_HEAL_COUNT={countText} needs NM_FLAT_HEAL_SEED");
+        }
+        else
+        {
+            if (!int.TryParse(firstText, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int first))
+                throw new InvalidOperationException($"NM_FLAT_HEAL_SEED={firstText} is not an Int32 seed");
+            // One seed when no count is given; a given count has to be a positive Int32.
+            int count = 1;
+            if (countText is not null && (!int.TryParse(countText, NumberStyles.None, CultureInfo.InvariantCulture, out count) || count <= 0))
+                throw new InvalidOperationException($"NM_FLAT_HEAL_SEED={firstText} with NM_FLAT_HEAL_COUNT={countText}: the count must be a positive Int32");
             long last = (long)first + count - 1;
             if (last > int.MaxValue)
                 throw new InvalidOperationException($"NM_FLAT_HEAL_SEED={first} with NM_FLAT_HEAL_COUNT={count} ends at seed {last}, past the largest seed {int.MaxValue}");
@@ -136,7 +149,7 @@ public partial class SnapProviderTests
         try
         {
             await HealWithTrieNodes(persistence, syncConfig, pivot, roots.Store, schedule.AfterRequest, schedule.AnsweredCount,
-                decorateStore is null ? null : store => decorateStore(persistence, store), GeneratedRequestsPerRound);
+                decorateStore is null ? null : store => decorateStore(persistence, store), GeneratedRequestsPerRound, schedule.BeforeHandle);
         }
         catch (Exception exception)
         {
@@ -147,16 +160,28 @@ public partial class SnapProviderTests
         if (schedule.ScheduleErrors.Count > 0) Assert.Fail($"the schedule did not run as planned: {string.Join("; ", schedule.ScheduleErrors)}{Environment.NewLine}{result.Report}");
 
         // A clean heal that does not verify or read back fails at the fixed last root already, with no pivot moving.
-        string? cleanVerification = Verify(cleanPersistence, roots);
-        if (cleanVerification is not null) Assert.Fail($"the clean heal of the last root does not verify: {cleanVerification}{Environment.NewLine}{result.Report}");
-        string? cleanReads = ReadModel(cleanPersistence, roots);
-        if (cleanReads is not null) Assert.Fail($"the clean heal of the last root does not hold the generated state: {cleanReads}{Environment.NewLine}{result.Report}");
+        string? cleanVerification = null;
+        string? cleanReads = null;
+        try
+        {
+            cleanVerification = Verify(cleanPersistence, roots);
+            cleanReads = cleanVerification is null ? ReadModel(cleanPersistence, roots) : null;
+            if (cleanVerification is null && cleanReads is null)
+            {
+                result.ColumnDifferences = DescribeColumnDifferences(ReadColumns(cleanDb), ReadColumns(db));
+                if (result.ColumnDifferences is not null) result.Failures.Add($"columns differ from a clean heal of the last root:{Environment.NewLine}{result.ColumnDifferences}");
+                if (!GeneratedSchedule.HoldsRoot(persistence, headers[^1])) result.Failures.Add("the state root stored does not hash to the last root");
+                if (Verify(persistence, roots) is { } verification) result.Failures.Add($"flat against trie: {verification}");
+                if (ReadModel(persistence, roots) is { } reads) result.Failures.Add($"reads of the generated state: {reads}");
+            }
+        }
+        catch (Exception exception)
+        {
+            Assert.Fail($"checking the heals failed: {exception.Message}{Environment.NewLine}{result.Report}{Environment.NewLine}{exception}");
+        }
 
-        result.ColumnDifferences = DescribeColumnDifferences(ReadColumns(cleanDb), ReadColumns(db));
-        if (result.ColumnDifferences is not null) result.Failures.Add($"columns differ from a clean heal of the last root:{Environment.NewLine}{result.ColumnDifferences}");
-        if (!GeneratedSchedule.HoldsRoot(persistence, headers[^1])) result.Failures.Add("the state root stored does not hash to the last root");
-        if (Verify(persistence, roots) is { } verification) result.Failures.Add($"flat against trie: {verification}");
-        if (ReadModel(persistence, roots) is { } reads) result.Failures.Add($"reads of the generated state: {reads}");
+        if (cleanVerification is not null) Assert.Fail($"the clean heal of the last root does not verify: {cleanVerification}{Environment.NewLine}{result.Report}");
+        if (cleanReads is not null) Assert.Fail($"the clean heal of the last root does not hold the generated state: {cleanReads}{Environment.NewLine}{result.Report}");
         return result;
     }
 
@@ -530,7 +555,7 @@ public partial class SnapProviderTests
             };
             Hash256 targetRoot = targetOwner is null ? headers[4].StateRoot! : storageRoots[4][Owner];
             (Hash256 Hash, NodeType Type)? target = NodeAt(store, targetOwner, targetRoot, targetPath);
-            if (target is null) Assert.Fail($"seed {seed}: no node at '{targetPath}' at root 4 to end the round on{Environment.NewLine}{roots.Describe()}");
+            if (target is null) Assert.Fail($"seed {seed}: no node at '{targetPath}' at root 4 to end the round on (generation failed, so there is no healing trace){Environment.NewLine}{roots.Describe()}");
             roots.Root4Target = (targetOwner, targetPath, target!.Value.Hash);
             List<string> missingShapes = roots.MissingShapes(a, c, d, e, p, top[2]);
             if (missingShapes.Count > 0)
@@ -562,6 +587,11 @@ public partial class SnapProviderTests
             }
 
             Expect(States[1][Recreated] is null, "recreated deleted at root 1");
+            ValueHash256 droppedSlot = Accounts[Recreated].Slots[0];
+            Expect(States[0][Recreated]?.Slots.ContainsKey(droppedSlot) == true, "recreated slot a at root 0");
+            Expect(States[2][Recreated] is not null, "recreated back at root 2");
+            Expect(States[2][Recreated]?.Slots.ContainsKey(droppedSlot) == false, "recreated slot a gone at root 2");
+            Expect(States[5][Recreated]?.Slots.ContainsKey(droppedSlot) == false, "recreated slot a gone at root 5");
             Expect(StorageRoots[1][Cache] != StorageRoots[0][Cache], "cache storage changed at root 1");
             Expect(StorageNode(1, Cache, a) is { } kept && kept == StorageNode(0, Cache, a), "cache leaf kept at root 1");
             Expect(StorageNode(2, Cache, a) != StorageNode(1, Cache, a), "cache leaf changed at root 2");
@@ -782,8 +812,7 @@ public partial class SnapProviderTests
         private int _round = -1;
         private int _roundRequests;
         private string? _partialAnswer;
-        private (int Request, int Items)? _firstMultiItemRoot3Request;
-        private int _firstMultiItemRoot3Answered;
+        private (int Request, int Requested, int Answered)? _firstMultiItemRoot3Response;
         private string? _root3Cut;
         private string? _root4Cut;
 
@@ -816,10 +845,6 @@ public partial class SnapProviderTests
             if (items.FirstOrDefault(static item => item.NodeDataType == NodeDataType.Code) is { } code)
                 throw new InvalidOperationException($"request {request} at root {_round} asks for code {code.Hash}, which healing should not reach");
 
-            // Recorded apart from the partial answer, which Finish checks it got.
-            bool firstMultiItemRoot3Request = _round == 3 && _firstMultiItemRoot3Request is null && items.Count >= 2;
-            if (firstMultiItemRoot3Request) _firstMultiItemRoot3Request = (request, items.Count);
-
             int answered = items.Count;
             if (_round == 3 && _partialAnswer is null && items.Count >= 2)
             {
@@ -834,11 +859,16 @@ public partial class SnapProviderTests
                 _partialAnswer = $"request {request} answered {answered} of {items.Count}, shuffled";
             }
 
-            if (firstMultiItemRoot3Request) _firstMultiItemRoot3Answered = answered;
-
             _recentRequests.Enqueue($"  request {request} at root {_round}, answered {answered} of {items.Count}: {string.Join(", ", items.Take(8).Select(Describe))}{(items.Count > 8 ? ", ..." : "")}");
             if (_recentRequests.Count > GeneratedRecentRequests) _recentRequests.Dequeue();
             return answered;
+        }
+
+        /// <summary>Records the first request of root 3 with more than one item as healing receives it, with its responses.</summary>
+        public void BeforeHandle(int request, StateSyncBatch batch)
+        {
+            if (_round == 3 && _firstMultiItemRoot3Response is null && batch.RequestedNodes!.Count >= 2)
+                _firstMultiItemRoot3Response = (request, batch.RequestedNodes.Count, batch.Responses?.Count ?? 0);
         }
 
         public void AfterRequest(int request, StateSyncBatch batch)
@@ -872,8 +902,8 @@ public partial class SnapProviderTests
             else _roundCompleted[_round] = HoldsRoot(_persistence, _roots.Headers[_round]);
             if (_root3Cut is null) ScheduleErrors.Add("round 3 never moved on");
             if (_root4Cut is null) ScheduleErrors.Add("round 4 never reached its target");
-            if (_firstMultiItemRoot3Request is { } partial && (_firstMultiItemRoot3Answered >= partial.Items || _firstMultiItemRoot3Answered < (partial.Items + 1) / 2))
-                ScheduleErrors.Add($"request {partial.Request}, the first of root 3 with more than one item, was answered {_firstMultiItemRoot3Answered} of {partial.Items}, not in part");
+            if (_firstMultiItemRoot3Response is { } partial && (partial.Answered >= partial.Requested || partial.Answered < (partial.Requested + 1) / 2))
+                ScheduleErrors.Add($"request {partial.Request}, the first of root 3 with more than one item, reached healing with {partial.Answered} responses to {partial.Requested} items, not with at least half and fewer than all");
             for (int round = 0; round < GeneratedRounds; round++)
             {
                 bool expected = round is not (3 or 4);
@@ -887,7 +917,7 @@ public partial class SnapProviderTests
             text.AppendLine($"rounds completed: {string.Join(", ", _roundCompleted.Select((completed, round) => $"{round} {(completed ? "yes" : "no")}"))}");
             text.AppendLine($"round 3 planned to move on after request {Root3RequestsBeforeMovingOn} at that root: {_root3Cut ?? "did not"}");
             text.AppendLine($"round 4: {_root4Cut ?? "did not move on"}");
-            text.AppendLine($"partial answer: {_partialAnswer ?? (_firstMultiItemRoot3Request is null ? "none, root 3 moved on before a request with more than one item" : "none")}");
+            text.AppendLine($"partial answer: {_partialAnswer ?? (_firstMultiItemRoot3Response is null ? "none, root 3 moved on before a request with more than one item" : "none")}");
             text.AppendLine("last requests:");
             foreach (string request in _recentRequests) text.AppendLine(request);
             return text.ToString();

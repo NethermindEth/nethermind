@@ -1347,7 +1347,7 @@ public partial class SnapProviderTests
 
         using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
         await RunSnapSync(CreateFlatSnapTrieFactory(atLastRootDb, syncConfig), syncConfig, new HealingPivot(withoutFirstSlots, withoutFirstSlots), server);
-        // The same lifecycle at the last root only, so the snap progress rows match too.
+        // Heal the fixed-pivot reference at its final root before comparing the state columns.
         await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(withoutFirstSlots, withoutFirstSlots), sourceStore);
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
@@ -1744,8 +1744,10 @@ public partial class SnapProviderTests
     /// </param>
     /// <param name="decorateStore">Wraps the store healing writes through.</param>
     /// <param name="maxRequestsPerRound">Fails a round that has not finished after this many requests.</param>
+    /// <param name="beforeHandle">Called with the number of each request, and the request with its responses, just before healing handles them.</param>
     private static async Task HealWithTrieNodes(IPersistence persistence, ISyncConfig syncConfig, IStateSyncPivot pivot, TestRawTrieStore source, Action<int, StateSyncBatch>? afterRequest = null,
-        Func<int, StateSyncBatch, int>? answeredCount = null, Func<ITreeSyncStore, ITreeSyncStore>? decorateStore = null, int maxRequestsPerRound = int.MaxValue)
+        Func<int, StateSyncBatch, int>? answeredCount = null, Func<ITreeSyncStore, ITreeSyncStore>? decorateStore = null, int maxRequestsPerRound = int.MaxValue,
+        Action<int, StateSyncBatch>? beforeHandle = null)
     {
         ITreeSyncStore store = new FlatTreeSyncStore(persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
         TreeSync treeSync = new(new MemDb(), decorateStore?.Invoke(store) ?? store, Substitute.For<IBlockTree>(), pivot, syncConfig, LimboLogs.Instance);
@@ -1771,6 +1773,7 @@ public partial class SnapProviderTests
                 }
 
                 batch!.Responses = new ByteArrayListAdapter(responses);
+                beforeHandle?.Invoke(request, batch);
                 Assert.That(treeSync.HandleResponse(batch, peer), Is.EqualTo(SyncResponseHandlingResult.OK));
                 afterRequest?.Invoke(request++, batch);
             }
