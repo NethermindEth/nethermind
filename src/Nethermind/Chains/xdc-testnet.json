@@ -49,6 +49,22 @@
             "MinimumMinerBlockPerEpoch": 5,
             "LimitPenaltyEpoch": 5,
             "MinimumSigningTx": 30
+          },
+          {
+            "MaxMasternodes": 108,
+            "MaxProtectorNodes": 432,
+            "MaxObserverNodes": 99999,
+            "SwitchRound": 27400500,
+            "CertificateThreshold": 0.667,
+            "TimeoutSyncThreshold": 3,
+            "TimeoutPeriod": 10,
+            "MinePeriod": 2,
+            "MasternodeReward": 63.4196,
+            "ProtectorReward": 50.7357,
+            "ObserverReward": 25.3678,
+            "MinimumMinerBlockPerEpoch": 5,
+            "LimitPenaltyEpoch": 5,
+            "MinimumSigningTx": 30
           }
         ],
 
