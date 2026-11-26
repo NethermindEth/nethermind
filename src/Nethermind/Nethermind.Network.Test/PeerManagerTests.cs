@@ -603,6 +603,10 @@ namespace Nethermind.Network.Test
 
             if (genuineDirection == ConnectionDirection.In)
             {
+                // The IN session adds its peer to the pool before it makes the peer active, so the update loop
+                // can dial the peer in that window. Spend the address's filter entry to keep that OUT session out.
+                ctx.RlpxPeer.UseRecentIpFilter();
+                ctx.RlpxPeer.ShouldContact(IPAddress.Parse(template.RemoteHost));
                 ctx.RlpxPeer.CreateIncoming(template);
             }
             else
