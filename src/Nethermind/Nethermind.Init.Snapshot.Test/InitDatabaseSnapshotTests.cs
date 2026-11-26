@@ -513,6 +513,93 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [TestCase(false, TestName = "Execute_MarkerAppearsDuringTheDownload_TheClaimReportsTheOtherExtraction")]
+    [TestCase(true, TestName = "Execute_MarkerAndDataAppearDuringTheDownload_TheClaimReportsTheOtherExtraction")]
+    public async Task Execute_ExtractionAppearsDuringTheDownload_TheClaimReportsIt(bool withData)
+    {
+        using FlakySnapshotServer server = StreamingServer();
+        _snapshotConfig.Streaming = false;
+        _snapshotPath = Path.Combine(_snapshotConfig.SnapshotDirectory, _snapshotConfig.SnapshotFileName);
+        string data = Path.Combine(_dbPath, "state", "000001.sst");
+        // The probe, then the download: while it runs, an extraction the lock does not keep out marks the database directory.
+        int requests = 0;
+        server.BeforeResponse = _ =>
+        {
+            if (Interlocked.Increment(ref requests) == 2)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(data)!);
+                File.WriteAllBytes(MarkerPath, [4, 5, 6]);
+                if (withData)
+                    File.WriteAllBytes(data, [1, 2, 3]);
+            }
+
+            return Task.CompletedTask;
+        };
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("was not completed, or is still running in another process").And.Contain("empty the directory by hand"),
+                "the claim must say that another extraction marked the directory");
+            Assert.That(File.ReadAllBytes(MarkerPath), Is.EqualTo(new byte[] { 4, 5, 6 }), "the other extraction's marker must stay as it was");
+            if (withData)
+                Assert.That(File.ReadAllBytes(data), Is.EqualTo(new byte[] { 1, 2, 3 }), "the other extraction's file must stay as it was");
+            Assert.That(Directory.GetFileSystemEntries(_dbPath, "*", SearchOption.AllDirectories).Length, Is.EqualTo(withData ? 3 : 2), "nothing may be extracted");
+        }
+    }
+
+    [Test]
+    [Platform(Include = "Linux")] // Unix permissions
+    [SupportedOSPlatform("linux")]
+    public async Task Execute_DatabaseDirectoryThatCannotBeSearched_StopsWithoutTakingItForADatabase()
+    {
+        // As another user than root the marker cannot be looked up; as root it is found. Either way the start must stop.
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        string data = Path.Combine(_dbPath, "000001.sst");
+        Directory.CreateDirectory(_dbPath);
+        File.WriteAllBytes(MarkerPath, []);
+        File.WriteAllBytes(data, [1, 2, 3]);
+        UnixFileMode mode = File.GetUnixFileMode(_dbPath);
+        File.SetUnixFileMode(_dbPath, UnixFileMode.None);
+        IOException exception;
+        try
+        {
+            exception = (await Assert.ThrowsAsync<IOException>(
+                () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None)))!;
+        }
+        finally
+        {
+            File.SetUnixFileMode(_dbPath, mode);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain(".nethermind-snapshot-extracting").And.Contain(_dbPath), "the error must name the directory and what could not be checked");
+            Assert.That(File.ReadAllBytes(data), Is.EqualTo(new byte[] { 1, 2, 3 }), "nothing may be changed");
+            Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay");
+            Assert.That(File.Exists(_snapshotPath), Is.True, "nothing may be extracted");
+        }
+    }
+
+    [Test]
+    public async Task Execute_FileAtTheDatabasePath_KeepsItAndSkipsTheSnapshot()
+    {
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        File.WriteAllBytes(_dbPath, [1, 2, 3]);
+
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.ReadAllBytes(_dbPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "a file at the database path counts as content, as on master");
+            Assert.That(File.Exists(_snapshotPath), Is.True, "the snapshot must be skipped");
+        }
+    }
+
     [TestCase(false, TestName = "Execute_EmptyLinkedSubdirectoryWithoutMarker_KeepsItAndSkipsTheSnapshot")]
     [TestCase(true, TestName = "Execute_ContentOnlyInLinkedSubdirectoryWithoutMarker_KeepsItAndSkipsTheSnapshot")]
     [Platform(Include = "Linux")] // creating links needs a privilege on Windows

@@ -271,33 +271,42 @@ public class StreamingSnapshotInitializerTests
         Directory.CreateDirectory(_dbPath);
         File.WriteAllBytes(MarkerPath, [1, 2, 3]);
 
-        await Assert.ThatAsync(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
-            Throws.InstanceOf<IOException>());
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None)))!;
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(exception.Message, Does.Contain("was not completed, or is still running in another process").And.Contain("empty the directory by hand"),
+                "a marker created after admission is another extraction's, and the start must say so");
             Assert.That(File.ReadAllBytes(MarkerPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "the entry at the marker path must stay as it was");
             Assert.That(Directory.EnumerateFileSystemEntries(_dbPath).Count(), Is.EqualTo(1), "nothing may be extracted when the marker cannot be created");
         }
     }
 
-    [Test]
-    public async Task InitializeAsync_DatabaseThatHoldsContent_ThrowsWithoutWritingIntoIt()
+    [TestCase(false, TestName = "InitializeAsync_DatabaseThatHoldsContent_ThrowsWithoutWritingIntoIt")]
+    [TestCase(true, TestName = "InitializeAsync_DatabaseThatHoldsAnotherExtraction_ReportsItWithoutWritingIntoIt")]
+    public async Task InitializeAsync_DatabaseThatHoldsContent_ThrowsWithoutWritingIntoIt(bool marked)
     {
         _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
         _config.Checksum = Convert.ToHexString(SHA256.HashData(_server.Content));
-        // Content that appeared after the step looked at the database, at the path of a file in the archive.
+        // Content that appeared after the step looked at the database, at the path of a file in the archive: a node that
+        // synced, or another extraction that has marked the directory and written its first file.
         string synced = Path.Combine(_dbPath, "state", "a42.sst");
         Directory.CreateDirectory(Path.GetDirectoryName(synced)!);
+        if (marked)
+            File.WriteAllBytes(MarkerPath, [4, 5, 6]);
         File.WriteAllBytes(synced, [1, 2, 3]);
 
-        await Assert.ThatAsync(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
-            Throws.InstanceOf<IOException>().With.Message.Contains("holds content"));
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None)))!;
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(exception.Message, marked ? Does.Contain("was not completed, or is still running in another process") : Does.Contain("holds content"),
+                "the start must report what it found, another extraction before content");
             Assert.That(File.ReadAllBytes(synced), Is.EqualTo(new byte[] { 1, 2, 3 }), "nothing may be extracted over the content");
-            Assert.That(File.Exists(MarkerPath), Is.False, "a database that holds content must not be marked");
+            if (marked)
+                Assert.That(File.ReadAllBytes(MarkerPath), Is.EqualTo(new byte[] { 4, 5, 6 }), "the other extraction's marker must stay as it was");
+            else
+                Assert.That(File.Exists(MarkerPath), Is.False, "a database that holds content must not be marked");
         }
     }
 

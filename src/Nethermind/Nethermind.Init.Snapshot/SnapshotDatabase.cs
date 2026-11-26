@@ -43,17 +43,35 @@ internal static class SnapshotDatabase
     /// Marks the database directory before an extraction writes anything to it, so that a later start finds the extraction
     /// unfinished instead of taking it for a database.
     /// </summary>
-    /// <exception cref="IOException">The database holds content, or the marker could not be created.</exception>
+    /// <exception cref="IOException">
+    /// The database holds content or another extraction's marker, or the marker could not be created or written.
+    /// </exception>
     public static void BeginExtraction(string dbPath)
     {
-        // Checked here too: content can appear during a long download, and the extraction would write over it.
+        // Checked here too: content or another extraction can appear during a long download, and the extraction would write
+        // over it. As at admission, the content is read before the marker: an extraction creates its marker first.
         if (Exists(dbPath))
-            throw new IOException($"The database at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} holds content when the snapshot extraction would begin, so nothing was extracted. Make sure no other node is using it. To initialize from the snapshot, empty the database directory, then restart.");
+            throw new IOException(HasUnfinishedExtraction(dbPath)
+                ? UnfinishedExtraction(dbPath)
+                : $"The database at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} holds content when the snapshot extraction would begin, so nothing was extracted. Make sure no other node is using it. To initialize from the snapshot, empty the database directory, then restart.");
 
         Directory.CreateDirectory(dbPath);
-        using FileStream marker = new(MarkerPath(dbPath), FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 0, FileOptions.WriteThrough);
-        marker.Write(ExtractionMarkerContent);
-        marker.Flush(flushToDisk: true);
+        FileStream marker;
+        try
+        {
+            marker = new(MarkerPath(dbPath), FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 0, FileOptions.WriteThrough);
+        }
+        catch (IOException e) when (HasUnfinishedExtraction(dbPath))
+        {
+            // Another extraction created its marker after the content check. Other failures stay as they are.
+            throw new IOException(UnfinishedExtraction(dbPath), SensitiveLogMasking.Enabled ? null : e);
+        }
+
+        using (marker)
+        {
+            marker.Write(ExtractionMarkerContent);
+            marker.Flush(flushToDisk: true);
+        }
     }
 
     /// <summary>
@@ -63,11 +81,30 @@ internal static class SnapshotDatabase
     public static void CompleteExtraction(string dbPath) => File.Delete(MarkerPath(dbPath));
 
     /// <summary>Whether anything is at the marker's path: an extraction began in the database directory and did not finish.</summary>
-    /// <remarks>Whatever is there is neither opened nor read.</remarks>
+    /// <remarks>Only the metadata of whatever is there is read; it is not opened.</remarks>
+    /// <exception cref="IOException">The marker's path could not be looked up, so whether it holds anything is unknown.</exception>
     public static bool HasUnfinishedExtraction(string dbPath)
     {
-        string markerPath = MarkerPath(dbPath);
-        return File.Exists(markerPath) || Directory.Exists(markerPath);
+        // A file at the database path, which counts as content, holds no marker.
+        if (File.Exists(dbPath))
+            return false;
+
+        try
+        {
+            _ = File.GetAttributes(MarkerPath(dbPath));
+            return true;
+        }
+        catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return false;
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or IOException)
+        {
+            // Such as a database directory the node may not search: a marker in it would go unseen.
+            throw new IOException(
+                $"Could not check the database directory {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} for the snapshot extraction marker {ExtractionMarker}, so the snapshot initialization stops. Make sure the node may read the directory, then restart. Error: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)}",
+                SensitiveLogMasking.Enabled ? null : e);
+        }
     }
 
     /// <summary>What the marker shows and what the operator does about it; the step leaves the directory as it is.</summary>
