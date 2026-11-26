@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
-using DotNetty.Codecs;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using System;
@@ -11,42 +9,40 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Network.Rlpx
 {
-    internal class FrameHeaderReader
+    internal static class FrameHeaderReader
     {
         private const int HeaderBodyOffset = 3;
         private const int HeaderBodyLength = Frame.HeaderSize - HeaderBodyOffset;
         private const byte ShortListMaxPrefix = 0xf7;
 
-        public byte[] HeaderBytes { get; } = new byte[Frame.HeaderSize];
-
-        public FrameInfo ReadFrameHeader(IByteBuffer input)
+        /// <summary>Reads a decrypted frame header.</summary>
+        /// <exception cref="InvalidFrameException">The header is not well formed, or its sizes are out of range.</exception>
+        public static FrameInfo ReadFrameHeader(ReadOnlySpan<byte> header)
         {
-            input.ReadBytes(HeaderBytes);
-            int frameSize = HeaderBytes[0] & 0xFF;
-            frameSize = (frameSize << 8) + (HeaderBytes[1] & 0xFF);
-            frameSize = (frameSize << 8) + (HeaderBytes[2] & 0xFF);
+            int frameSize = header[0] & 0xFF;
+            frameSize = (frameSize << 8) + (header[1] & 0xFF);
+            frameSize = (frameSize << 8) + (header[2] & 0xFF);
 
-            ReadHeaderBody(out int? contextId, out int? totalPacketSize);
+            ReadHeaderBody(header.Slice(HeaderBodyOffset, HeaderBodyLength), out int? contextId, out int? totalPacketSize);
 
             ValidateTotalPacketSize(frameSize, totalPacketSize);
             return new FrameInfo(frameSize, contextId, totalPacketSize);
         }
 
-        /// <summary>Decodes the RLP header body of the frame header just read into <see cref="HeaderBytes"/>.</summary>
+        /// <summary>Decodes the RLP header body of a frame header.</summary>
         /// <remarks>
         /// Kept separate from <see cref="ReadFrameHeader"/> so that the exception handling region covers the RLP
         /// decoding only, rather than also spanning the frame size read and <see cref="ValidateTotalPacketSize"/>.
         /// </remarks>
-        /// <exception cref="CorruptedFrameException">The header body is not a well formed RLP sequence.</exception>
-        private void ReadHeaderBody(out int? contextId, out int? totalPacketSize)
+        /// <exception cref="InvalidFrameException">The header body is not a well formed RLP sequence.</exception>
+        private static void ReadHeaderBody(ReadOnlySpan<byte> body, out int? contextId, out int? totalPacketSize)
         {
             try
             {
-                ReadOnlySpan<byte> body = HeaderBytes.AsSpan(HeaderBodyOffset, HeaderBodyLength);
                 // The header body is shorter than 56 bytes, so its sequence prefix holds the length.
                 if (body[0] is >= Rlp.EmptyListByte and <= ShortListMaxPrefix && body[0] - Rlp.EmptyListByte > body.Length - 1)
                 {
-                    throw new CorruptedFrameException($"Invalid Rlpx header lengths, header body RLP length {body[0] - Rlp.EmptyListByte} exceeds the {body.Length - 1} bytes left in the header");
+                    throw new InvalidFrameException($"Invalid Rlpx header lengths, header body RLP length {body[0] - Rlp.EmptyListByte} exceeds the {body.Length - 1} bytes left in the header");
                 }
 
                 RlpReader headerBody = new(body);
@@ -59,7 +55,7 @@ namespace Nethermind.Network.Rlpx
             }
             catch (Exception exception) when (exception is RlpReaderException or ArgumentOutOfRangeException or IndexOutOfRangeException)
             {
-                throw new CorruptedFrameException(exception);
+                throw new InvalidFrameException(exception);
             }
         }
 
@@ -69,17 +65,17 @@ namespace Nethermind.Network.Rlpx
             {
                 if (totalPacketSize <= 0 || totalPacketSize > SnappyParameters.MaxSnappyLength)
                 {
-                    ThrowCorruptedFrameException(frameSize, totalPacketSize.Value);
+                    ThrowInvalidFrameException(frameSize, totalPacketSize.Value);
                 }
 
                 if (frameSize > totalPacketSize)
                 {
-                    ThrowCorruptedFrameException(frameSize, totalPacketSize.Value);
+                    ThrowInvalidFrameException(frameSize, totalPacketSize.Value);
                 }
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowCorruptedFrameException(int frameSize, int totalPacketSize) => throw new CorruptedFrameException($"Invalid Rlpx header lengths, packet size {totalPacketSize}, frame size {frameSize}");
+            static void ThrowInvalidFrameException(int frameSize, int totalPacketSize) => throw new InvalidFrameException($"Invalid Rlpx header lengths, packet size {totalPacketSize}, frame size {frameSize}");
         }
 
         internal readonly struct FrameInfo(int size, int? contextId, int? totalPacketSize)

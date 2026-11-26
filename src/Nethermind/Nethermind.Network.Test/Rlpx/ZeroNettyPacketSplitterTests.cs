@@ -184,7 +184,7 @@ namespace Nethermind.Network.Test.Rlpx
         public void Output_buffer_is_allocated_once_with_room_for_the_encoded_packet(bool snappy, int packetSize)
         {
             (EncryptionSecrets secrets, _) = NetTestVectors.GetSecretsPair();
-            using FrameMacProcessor macProcessor = new(TestItem.IgnoredPublicKey, secrets);
+            using FrameMacProcessor macProcessor = new(secrets);
             ZeroPacketSplitter splitter = new(new FrameCipher(secrets.AesSecret), macProcessor);
             if (snappy) splitter.EnableSnappy(LimboLogs.Instance);
 
