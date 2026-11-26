@@ -85,10 +85,7 @@ internal static class SnapshotDatabase
     /// <exception cref="IOException">The marker's path could not be looked up, so whether it holds anything is unknown.</exception>
     public static bool HasUnfinishedExtraction(string dbPath)
     {
-        // A file at the database path, which counts as content, holds no marker.
-        if (File.Exists(dbPath))
-            return false;
-
+        // Below a file at the database path, which counts as content, the lookup fails as not found.
         try
         {
             _ = File.GetAttributes(MarkerPath(dbPath));
