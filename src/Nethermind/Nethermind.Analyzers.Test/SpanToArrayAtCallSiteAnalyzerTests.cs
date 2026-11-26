@@ -262,24 +262,79 @@ public class SpanToArrayAtCallSiteAnalyzerTests
         await Verify(source, expected);
     }
 
-    [Test]
-    public async Task Collection_initializer_add_with_constrained_span_overload_reports()
+    [TestCase("int", true)]
+    [TestCase("string", false)] // CS8377
+    public async Task Collection_initializer_add_with_constrained_span_overload_reports_only_when_call_compiles(string typeArgument, bool reports)
     {
-        string source = """
+        string Arg(int location) => reports ? $"{{|#{location}:s.ToArray()|}}" : "s.ToArray()";
+        string source = $$"""
+            #nullable enable
             using System;
             using System.Collections;
             class Bag : IEnumerable
             {
                 public void Add<T>(T[] values) { }
                 public void Add<T>(ReadOnlySpan<T> values) where T : unmanaged { }
+                public void Add<T>(int key, T[] values) { }
+                public void Add<T>(int key, ReadOnlySpan<T> values) where T : unmanaged { }
                 public IEnumerator GetEnumerator() => Array.Empty<int>().GetEnumerator();
+            }
+            class Sack : IEnumerable
+            {
+                public IEnumerator GetEnumerator() => Array.Empty<int>().GetEnumerator();
+            }
+            static class E
+            {
+                public static void Add<T>(this Sack sack, T[] values) { }
+                public static void Add<T>(this Sack sack, ReadOnlySpan<T> values) where T : unmanaged { }
+            }
+            class Holder
+            {
+                public Bag Items { get; } = new();
+                public int Take(Bag bag) => 0;
             }
             class C
             {
-                static Bag Use(ReadOnlySpan<int> s) => new Bag { {|#0:s.ToArray()|} };
+                static Bag Single(ReadOnlySpan<{{typeArgument}}> s) => new Bag { {{Arg(0)}} };
+                static Bag Keyed(ReadOnlySpan<{{typeArgument}}> s) => new Bag { { 1, {{Arg(1)}} } };
+                static Bag TargetTyped(ReadOnlySpan<{{typeArgument}}> s)
+                {
+                    Bag bag = new() { {{Arg(2)}} };
+                    return bag;
+                }
+                static Holder Member(ReadOnlySpan<{{typeArgument}}> s) => new Holder { Items = { {{Arg(3)}} } };
+                static Sack Extension(ReadOnlySpan<{{typeArgument}}> s) => new Sack { {{Arg(4)}} };
+                static int? Conditional(Holder? h, ReadOnlySpan<{{typeArgument}}> s) => h?.Take(new Bag { {{Arg(5)}} });
             }
             """;
-        await Verify(source, Diagnostic().WithLocation(0).WithArguments("Add", "ReadOnlySpan", "int"));
+        DiagnosticResult[] expected = reports
+            ? [.. Enumerable.Range(0, 6).Select(i => Diagnostic().WithLocation(i).WithArguments("Add", "ReadOnlySpan", typeArgument))]
+            : [];
+        await Verify(source, expected);
+    }
+
+    [Test]
+    public async Task Implicit_call_that_cannot_be_bound_with_constrained_span_overload_no_diagnostic()
+    {
+        // The rewritten AppendFormatted<string>(ReadOnlySpan<string>) call is CS8377.
+        string source = """
+            using System;
+            using System.Runtime.CompilerServices;
+            [InterpolatedStringHandler]
+            ref struct Handler
+            {
+                public Handler(int literalLength, int formattedCount) { }
+                public void AppendLiteral(string value) { }
+                public void AppendFormatted<T>(T[] values) { }
+                public void AppendFormatted<T>(ReadOnlySpan<T> values) where T : unmanaged { }
+            }
+            class C
+            {
+                static void Log(Handler handler) { }
+                static void Use(ReadOnlySpan<string> s) => Log($"{s.ToArray()}");
+            }
+            """;
+        await Verify(source);
     }
 
     [Test]
