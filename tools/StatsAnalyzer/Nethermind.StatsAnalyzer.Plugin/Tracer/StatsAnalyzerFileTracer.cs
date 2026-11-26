@@ -57,18 +57,15 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
 
         ResetBufferAndTracer();
 
-        // A disabled queue does no stats work, so it must not reach the write-frequency arithmetic.
+        // A disabled queue bypasses cadence, ingestion and file writes, so it must not reach the modulo.
         if (!skip && _fileTracingQueueSize >= 1)
         {
             _pos = (_pos + 1) % _writeFreq;
-            bool isWriteDue = _pos == 0;
-            Enqueue(() =>
+            if (_pos == 0)
             {
-                Ct.ThrowIfCancellationRequested();
-                // Every recorded buffer feeds the shared analyzer exactly once; only due blocks also build,
-                // order and serialize the cumulative report.
-                if (isWriteDue)
+                Enqueue(() =>
                 {
+                    Ct.ThrowIfCancellationRequested();
                     WriteTrace(
                         initialBlockNumber,
                         currentBlockNumber,
@@ -77,12 +74,18 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
                         _fileSystem,
                         _serializerOptions,
                         Ct);
-                }
-                else
+                });
+            }
+            else if (tracer is IStatsAnalyzerIngest ingest)
+            {
+                // The built-in tracers feed every recorded buffer into the shared analyzer exactly once;
+                // only due blocks build and serialize the report. Other tracers keep the due-only path.
+                Enqueue(() =>
                 {
-                    ((IStatsAnalyzerIngest)tracer).Ingest();
-                }
-            });
+                    Ct.ThrowIfCancellationRequested();
+                    ingest.Ingest();
+                });
+            }
         }
 
         base.EndBlockTrace();

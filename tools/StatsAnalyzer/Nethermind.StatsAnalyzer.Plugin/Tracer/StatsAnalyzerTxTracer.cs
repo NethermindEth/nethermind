@@ -27,7 +27,12 @@ public abstract class StatsAnalyzerTxTracer<TData, TStat, TTrace>(
 
     public abstract TTrace BuildResult(ulong fromBlock = 0UL, ulong toBlock = 0UL);
 
-    void IStatsAnalyzerIngest.Ingest() => Build();
+    // The file tracer retires this tracer before ingesting it, so no replacement queue is needed.
+    void IStatsAnalyzerIngest.Ingest()
+    {
+        Queue?.Dispose();
+        Queue = null;
+    }
 
     protected void Build()
     {
