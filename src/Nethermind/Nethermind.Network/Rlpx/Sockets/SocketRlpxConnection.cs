@@ -34,7 +34,7 @@ namespace Nethermind.Network.Rlpx.Sockets;
 /// </para>
 /// <para>
 /// The processing thread runs what <c>ZeroNettyP2PHandler</c> runs on DotNetty's executor: the size limit, Snappy and
-/// <see cref="Session.ReceiveMessage"/>, and the error handling, in the order the frame loop queued them.
+/// <see cref="ISession.ReceiveMessage"/>, and the error handling, in the order the frame loop queued them.
 /// </para>
 /// </remarks>
 /// <param name="socket">The connected socket.</param>
@@ -45,6 +45,7 @@ namespace Nethermind.Network.Rlpx.Sockets;
 /// <param name="logManager">The log manager.</param>
 /// <param name="sendLatency">The simulated latency of every packet sent, for tests and benchmarks.</param>
 /// <param name="maxInboundFrameSize">The largest frame payload accepted.</param>
+/// <param name="pool">The pool of the connection's buffers; the shared one unless a test counts rentals.</param>
 internal sealed class SocketRlpxConnection(
     IRlpxSocket socket,
     HandshakeRole role,
@@ -53,23 +54,22 @@ internal sealed class SocketRlpxConnection(
     RlpxProcessingThreads.ProcessingThread processingThread,
     ILogManager logManager,
     TimeSpan sendLatency,
-    int maxInboundFrameSize) : IRlpxConnection, IPacketSender
+    int maxInboundFrameSize,
+    ArrayPool<byte>? pool = null) : IRlpxConnection, IPacketSender
 {
-    /// <summary>The outbound bytes at which the connection stops taking packets: the watermark <see cref="RlpxHost"/> gives DotNetty.</summary>
-    internal const long WriteBufferHighWaterMark = 3_000_000;
-
-    /// <summary>The outbound bytes at which a connection that stopped taking packets takes them again.</summary>
-    internal const long WriteBufferLowWaterMark = 1_000_000;
-
     /// <summary>The largest handshake message, with its 2-byte size prefix, as DotNetty's length field decoder allows.</summary>
     internal const int MaxHandshakeLength = ushort.MaxValue;
 
-    internal static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
+    /// <summary>The time without receiving anything after which the connection closes, as DotNetty's <c>ReadTimeoutHandler</c>.</summary>
+    internal static readonly TimeSpan DefaultReadTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>The largest packet encoded into the shared send batch; a larger one gets its own buffer.</summary>
+    internal const int SendBatchSize = 64 * 1024;
 
     private const int ReceiveSegmentSize = 16 * 1024;
-    private const int SendBatchSize = 64 * 1024;
     private const int MaxRetainedSnappyOutputCapacity = 64 * 1024;
 
+    private readonly ArrayPool<byte> _pool = pool ?? ArrayPool<byte>.Shared;
     private readonly IRlpxSocket _socket = socket;
     private readonly HandshakeRole _role = role;
     private readonly IHandshakeService _handshakeService = handshakeService;
@@ -86,9 +86,11 @@ internal sealed class SocketRlpxConnection(
     private readonly CancellationTokenSource _receiveCancellation = new();
     private readonly CancellationTokenSource _sendCancellation = new();
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private Session _session = null!;
+    private ISession _session = null!;
     private Task _completion = Task.CompletedTask;
     private volatile bool _isClosed;
+    private FrameMacProcessor? _ingressMac;
+    private FrameMacProcessor? _egressMac;
 
     // Receive loop
     private Exception? _terminalCause;
@@ -121,8 +123,7 @@ internal sealed class SocketRlpxConnection(
     private bool _sendLoopWaiting;
     private FrameEncoder? _encoder;
     private FrameEncoder.EncodingMode _encodingMode = FrameEncoder.EncodingMode.Framed;
-    private long _pendingBytes;
-    private volatile bool _writable = true;
+    private readonly OutboundBytes _outboundBytes = new();
 
     /// <summary>Completes when the connection has closed, before the frames already received are handled.</summary>
     public Task Closed => _closed.Task;
@@ -130,16 +131,36 @@ internal sealed class SocketRlpxConnection(
     /// <summary>Completes when the connection's loops have finished.</summary>
     public Task Completion => _completion;
 
-    public bool IsWritable => _writable;
+    public bool IsWritable => _outboundBytes.IsWritable;
+
+    /// <summary>Gets or sets the time without receiving anything after which the connection closes.</summary>
+    internal TimeSpan ReadTimeout { get; init; } = DefaultReadTimeout;
+
+    /// <summary>Runs before each batch of received bytes is decoded; a test holds it to hold the frame loop.</summary>
+    internal Func<ValueTask>? BeforeDecoding { get; init; }
 
     /// <summary>Starts the handshake and the loops of a connection whose session has been created.</summary>
-    public void Start(Session session)
+    public void Start(ISession session)
     {
         _session = session;
-        _completion = Task.WhenAll(
-            Task.Run(SendLoopAsync),
-            Task.Run(ReceiveLoopAsync),
-            Task.Run(FrameLoopAsync));
+        _completion = RunAsync();
+    }
+
+    private async Task RunAsync()
+    {
+        try
+        {
+            await Task.WhenAll(
+                Task.Run(SendLoopAsync),
+                Task.Run(ReceiveLoopAsync),
+                Task.Run(FrameLoopAsync));
+        }
+        finally
+        {
+            // Returns the MAC processors' hash copies to their pool, as DotNetty's handshake handler does.
+            _ingressMac?.Dispose();
+            _egressMac?.Dispose();
+        }
     }
 
     public void EnableSnappy()
@@ -169,10 +190,10 @@ internal sealed class SocketRlpxConnection(
             }
 
             _isClosed = true;
-            _writable = false;
+            _outboundBytes.Close();
             while (_sendQueue.TryDequeue(out OutboundItem item))
             {
-                ArrayPool<byte>.Shared.Return(item.Buffer);
+                _pool.Return(item.Buffer);
             }
         }
 
@@ -353,8 +374,8 @@ internal sealed class SocketRlpxConnection(
             // Each direction gets its own instances, so the frame and send loops share no crypto state. Each MAC processor
             // copies both directions' hashes when constructed, so both are built before either loop uses them.
             EncryptionSecrets secrets = handshake.Secrets;
-            FrameMacProcessor ingressMac = new(secrets);
-            FrameMacProcessor egressMac = new(secrets);
+            FrameMacProcessor ingressMac = _ingressMac = new(secrets);
+            FrameMacProcessor egressMac = _egressMac = new(secrets);
             _decoder = new FrameDecoder(new FrameCipher(secrets.AesSecret), ingressMac, _maxInboundFrameSize);
             lock (_sendLock)
             {
@@ -440,6 +461,11 @@ internal sealed class SocketRlpxConnection(
         while (true)
         {
             ReadResult result = await reader.ReadAsync();
+            if (BeforeDecoding is { } beforeDecoding)
+            {
+                await beforeDecoding();
+            }
+
             ReadOnlySequence<byte> buffer = result.Buffer;
             SequencePosition consumed = _discarding ? buffer.End : DecodeFrames(buffer);
             reader.AdvanceTo(consumed, buffer.End);
@@ -476,7 +502,7 @@ internal sealed class SocketRlpxConnection(
                         }
 
                         _frameSize = frameSize;
-                        _frame = ArrayPool<byte>.Shared.Rent(Frame.HeaderSize + frameSize);
+                        _frame = _pool.Rent(Frame.HeaderSize + frameSize);
                         plaintext.CopyTo(_frame);
                         _frameFilled = Frame.HeaderSize;
 
@@ -608,7 +634,7 @@ internal sealed class SocketRlpxConnection(
         catch (InvalidFrameException e)
         {
             // Authenticated frames stay in step, so decoding continues, as it does on DotNetty.
-            ArrayPool<byte>.Shared.Return(frame);
+            _pool.Return(frame);
             ReleaseChunkedPacket();
             QueueError(e);
             return;
@@ -617,14 +643,14 @@ internal sealed class SocketRlpxConnection(
         switch (merged.Kind)
         {
             case MergedFrameKind.SinglePacket:
-                Dispatch(new PooledPacket(frame, merged.ContentOffset, merged.ContentLength) { PacketType = merged.PacketType });
+                Dispatch(new PooledPacket(_pool, frame, merged.ContentOffset, merged.ContentLength) { PacketType = merged.PacketType });
                 return;
             case MergedFrameKind.FirstChunk:
                 {
                     // Grows from the first chunk up to the declared total, as ZeroFrameMerger's buffer does.
-                    byte[] buffer = ArrayPool<byte>.Shared.Rent(merged.ContentLength);
+                    byte[] buffer = _pool.Rent(merged.ContentLength);
                     frame.AsSpan(merged.ContentOffset, merged.ContentLength).CopyTo(buffer);
-                    _chunkedPacket = new PooledPacket(buffer, 0, merged.ContentLength) { PacketType = merged.PacketType };
+                    _chunkedPacket = new PooledPacket(_pool, buffer, 0, merged.ContentLength) { PacketType = merged.PacketType };
                     _chunkedPacketTotal = merged.TotalContentLength;
                     break;
                 }
@@ -644,7 +670,7 @@ internal sealed class SocketRlpxConnection(
                 }
         }
 
-        ArrayPool<byte>.Shared.Return(frame);
+        _pool.Return(frame);
         if (merged.IsComplete)
         {
             PooledPacket packet = _chunkedPacket!;
@@ -668,7 +694,7 @@ internal sealed class SocketRlpxConnection(
         if (_frame is { } frame)
         {
             _frame = null;
-            ArrayPool<byte>.Shared.Return(frame);
+            _pool.Return(frame);
         }
 
         _frameState = FrameState.Header;
@@ -803,7 +829,7 @@ internal sealed class SocketRlpxConnection(
             packet.Release();
         }
 
-        return new PooledPacket(ArrayPool<byte>.Shared.Rent(length), 0, 0);
+        return new PooledPacket(_pool, _pool.Rent(length), 0, 0);
     }
 
     private void StopProcessing()
@@ -833,19 +859,19 @@ internal sealed class SocketRlpxConnection(
 
     public int Enqueue<T>(T message) where T : P2PMessage
     {
-        if (!_writable)
+        if (!_outboundBytes.IsWritable)
         {
             return 0;
         }
 
-        (byte[] buffer, int length) = Serialize(_serializationService, message);
+        (byte[] buffer, int length) = Serialize(_serializationService, message, _pool);
         TryAdmit(buffer, length, raw: false);
         return length;
     }
 
     private void QueueRaw(byte[] data)
     {
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(data.Length);
+        byte[] buffer = _pool.Rent(data.Length);
         data.CopyTo(buffer, 0);
         TryAdmit(buffer, data.Length, raw: true);
     }
@@ -856,18 +882,19 @@ internal sealed class SocketRlpxConnection(
     /// </summary>
     private void TryAdmit(byte[] buffer, int length, bool raw)
     {
-        long sendAfter = _sendLatencyMs == 0 ? 0 : Environment.TickCount64 + _sendLatencyMs;
+        // The handshake messages are not delayed: DotNetty writes them without going through PacketSender.
+        long sendAfter = raw || _sendLatencyMs == 0 ? 0 : Environment.TickCount64 + _sendLatencyMs;
         bool wake;
         lock (_sendLock)
         {
             if (_isClosed)
             {
-                ArrayPool<byte>.Shared.Return(buffer);
+                _pool.Return(buffer);
                 return;
             }
 
             _sendQueue.Enqueue(new OutboundItem(buffer, length, raw, _encodingMode, sendAfter));
-            ChargeUnderLock(length);
+            _outboundBytes.Add(length);
             wake = _sendLoopWaiting;
             _sendLoopWaiting = false;
         }
@@ -878,30 +905,17 @@ internal sealed class SocketRlpxConnection(
         }
     }
 
-    private void ChargeUnderLock(long bytes)
-    {
-        _pendingBytes += bytes;
-        if (_writable && _pendingBytes >= WriteBufferHighWaterMark)
-        {
-            _writable = false;
-        }
-        else if (!_writable && !_isClosed && _pendingBytes <= WriteBufferLowWaterMark)
-        {
-            _writable = true;
-        }
-    }
-
     private void Charge(long bytes)
     {
         lock (_sendLock)
         {
-            ChargeUnderLock(bytes);
+            _outboundBytes.Add(bytes);
         }
     }
 
     private async Task SendLoopAsync()
     {
-        byte[] batch = ArrayPool<byte>.Shared.Rent(SendBatchSize);
+        byte[] batch = _pool.Rent(SendBatchSize);
         // The end of each packet in the batch and its charge, which is released once its last byte is sent.
         List<(int End, int Charge)> batchPackets = [];
         int used = 0;
@@ -969,7 +983,7 @@ internal sealed class SocketRlpxConnection(
                     if (bound > batch.Length)
                     {
                         // A packet larger than the batch gets its own buffer, since the encoder needs it contiguous.
-                        byte[] own = ArrayPool<byte>.Shared.Rent(bound);
+                        byte[] own = _pool.Rent(bound);
                         try
                         {
                             if (TryEncode(item, encoder, own, out int written))
@@ -980,7 +994,7 @@ internal sealed class SocketRlpxConnection(
                         }
                         finally
                         {
-                            ArrayPool<byte>.Shared.Return(own);
+                            _pool.Return(own);
                         }
                     }
                     else if (TryEncode(item, encoder, batch.AsSpan(used), out int written))
@@ -991,7 +1005,7 @@ internal sealed class SocketRlpxConnection(
                 }
                 finally
                 {
-                    ArrayPool<byte>.Shared.Return(item.Buffer);
+                    _pool.Return(item.Buffer);
                 }
             }
         }
@@ -1005,7 +1019,7 @@ internal sealed class SocketRlpxConnection(
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(batch);
+            _pool.Return(batch);
         }
     }
 
@@ -1078,11 +1092,11 @@ internal sealed class SocketRlpxConnection(
     private static PacketWriter? t_writer;
 
     /// <summary>Serializes a message into a rented buffer as its packet type followed by its content.</summary>
-    internal static (byte[] Buffer, int Length) Serialize<T>(IMessageSerializationService serializationService, T message)
+    internal static (byte[] Buffer, int Length) Serialize<T>(IMessageSerializationService serializationService, T message, ArrayPool<byte> pool)
         where T : P2PMessage
     {
         PacketWriter writer = t_writer ??= new();
-        writer.Start(message.AdaptivePacketType);
+        writer.Start(pool, message.AdaptivePacketType);
         try
         {
             serializationService.Serialize(message, writer);
@@ -1094,7 +1108,7 @@ internal sealed class SocketRlpxConnection(
         {
             if (writer.Buffer is { } buffer)
             {
-                ArrayPool<byte>.Shared.Return(buffer);
+                pool.Return(buffer);
             }
 
             throw;
@@ -1109,6 +1123,7 @@ internal sealed class SocketRlpxConnection(
     /// <remarks>Rents the buffer on the one <see cref="GetSpan"/> call for the content, as <see cref="PacketSender"/>'s writer does.</remarks>
     private sealed class PacketWriter : IBufferWriter<byte>
     {
+        private ArrayPool<byte>? _pool;
         private int _packetType;
         private int _packetTypeLength;
 
@@ -1116,11 +1131,16 @@ internal sealed class SocketRlpxConnection(
 
         public int Length { get; private set; }
 
-        public void Start(int packetType) => _packetType = packetType;
+        public void Start(ArrayPool<byte> pool, int packetType)
+        {
+            _pool = pool;
+            _packetType = packetType;
+        }
 
-        // Keeps an idle thread's writer from holding on to the last buffer.
+        // Keeps an idle thread's writer from holding on to the last buffer and pool.
         public void Clear()
         {
+            _pool = null;
             Buffer = null;
             Length = 0;
         }
@@ -1133,7 +1153,7 @@ internal sealed class SocketRlpxConnection(
             int packetTypeLength = _packetTypeLength = Rlp.LengthOf(_packetType);
             // IBufferWriter requires a non-empty span when no size is requested.
             int length = packetTypeLength + Math.Max(sizeHint, 1);
-            byte[] buffer = Buffer = ArrayPool<byte>.Shared.Rent(length);
+            byte[] buffer = Buffer = _pool!.Rent(length);
             Span<byte> packet = buffer.AsSpan(0, length);
             RlpWriter writer = RlpWriter.ContentWriter(packet);
             writer.Encode(_packetType);

@@ -12,8 +12,8 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -23,6 +23,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Rlpx.Sockets;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -78,6 +79,41 @@ public class RlpxTransportInteropTests
             {
                 Assert.That(disconnect.DisconnectType, Is.EqualTo(DisconnectType.Remote));
                 Assert.That(disconnect.Details, Is.EqualTo("message"), "the peer's Disconnect message must arrive before the connection closes");
+            }
+        }
+        finally
+        {
+            foreach (IContainer node in (IContainer[])[client, server])
+            {
+                await node.Resolve<IRlpxHost>().Shutdown();
+                await node.DisposeAsync();
+            }
+        }
+    }
+
+    [Test]
+    public async Task Socket_host_stops_with_the_node()
+    {
+        using CancellationTokenSource cancellation = new(Timeout);
+        IContainer server = CreateNode(TestItem.PrivateKeyA, RlpxTransport.Sockets);
+        IContainer client = CreateNode(TestItem.PrivateKeyB, RlpxTransport.Sockets);
+        try
+        {
+            await StartNetwork(server);
+            await StartNetwork(client);
+            TaskCompletionSource<DisconnectEventArgs> clientDisconnected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.Resolve<IRlpxHost>().SessionDisconnected += (_, _, args) => clientDisconnected.TrySetResult(args);
+            IEnode serverEnode = server.Resolve<IEnode>();
+            Assert.That(await client.Resolve<IRlpxHost>().ConnectAsync(new Node(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port)), cancellation.Token), Is.True);
+            await WaitForPeer(client.Resolve<ISyncPeerPool>(), cancellation.Token);
+
+            // The node's shutdown finds the host as a stoppable service, as it finds RlpxHost.
+            await server.Resolve<IServiceStopper>().StopAllServices().WaitAsync(cancellation.Token);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(((SocketRlpxHost)server.Resolve<IRlpxHost>()).ConnectionCount, Is.Zero);
+                Assert.That(await clientDisconnected.Task.WaitAsync(cancellation.Token), Is.Not.Null, "the peer sees the node leave");
             }
         }
         finally

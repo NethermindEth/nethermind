@@ -9,17 +9,17 @@ using System.Threading;
 namespace Nethermind.Network.Rlpx.Sockets;
 
 /// <summary>
-/// A received packet over an array rented from <see cref="ArrayPool{T}.Shared"/>, which goes back to the pool when the
-/// last reference is released.
+/// A received packet over a rented array, which goes back to its pool when the last reference is released.
 /// </summary>
 /// <remarks>
 /// The transport holds one reference and releases it once the session has handled the packet. Each
 /// <see cref="LeaseContent"/> adds a reference, so a serializer that keeps the content needs no copy.
 /// </remarks>
+/// <param name="pool">The pool the buffer was rented from.</param>
 /// <param name="buffer">A rented array, which the packet now owns.</param>
 /// <param name="offset">Where the content starts.</param>
 /// <param name="length">The length of the content.</param>
-internal sealed class PooledPacket(byte[] buffer, int offset, int length) : ZeroPacket
+internal sealed class PooledPacket(ArrayPool<byte> pool, byte[] buffer, int offset, int length) : ZeroPacket
 {
     private byte[] _buffer = buffer;
     private int _offset = offset;
@@ -52,9 +52,9 @@ internal sealed class PooledPacket(byte[] buffer, int offset, int length) : Zero
     public void Grow(int capacity)
     {
         Debug.Assert(IsExclusive, "Only an unshared packet can be rewritten.");
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(capacity);
+        byte[] buffer = pool.Rent(capacity);
         _buffer.AsSpan(_offset, _length).CopyTo(buffer);
-        ArrayPool<byte>.Shared.Return(_buffer);
+        pool.Return(_buffer);
         _buffer = buffer;
         _offset = 0;
     }
@@ -66,7 +66,7 @@ internal sealed class PooledPacket(byte[] buffer, int offset, int length) : Zero
         Debug.Assert(references >= 0, "A packet was released more times than it was referenced.");
         if (references == 0)
         {
-            ArrayPool<byte>.Shared.Return(_buffer);
+            pool.Return(_buffer);
             _buffer = [];
         }
     }

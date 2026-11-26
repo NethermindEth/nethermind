@@ -31,6 +31,7 @@ namespace Nethermind.Network.Rlpx.Sockets;
 public sealed class SocketRlpxHost : IRlpxHost, IStoppableService
 {
     private const int ListenBacklog = 100;
+    private static readonly TimeSpan AcceptRetryDelay = TimeSpan.FromMilliseconds(100);
 
     // DotNetty starts no connect timer for a zero timeout, which leaves RlpxHost's 2-second watchdog.
     private static readonly TimeSpan ZeroConnectTimeoutDeadline = TimeSpan.FromSeconds(2);
@@ -203,6 +204,12 @@ public sealed class SocketRlpxHost : IRlpxHost, IStoppableService
                 catch (SocketException e)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Failed to accept an RLPx connection: {e.Message}");
+                    // A peer resetting before it is accepted is routine; other errors may persist, so they don't spin the loop.
+                    if (e.SocketErrorCode != SocketError.ConnectionReset && !await PauseAcceptingAsync())
+                    {
+                        return;
+                    }
+
                     continue;
                 }
 
@@ -212,6 +219,20 @@ public sealed class SocketRlpxHost : IRlpxHost, IStoppableService
         finally
         {
             _listenerClosed.TrySetResult();
+        }
+    }
+
+    /// <returns><see langword="false"/> if the host shut down meanwhile.</returns>
+    private async Task<bool> PauseAcceptingAsync()
+    {
+        try
+        {
+            await Task.Delay(AcceptRetryDelay, _shutdown.Token);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
         }
     }
 
