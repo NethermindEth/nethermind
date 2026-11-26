@@ -368,6 +368,23 @@ public class SocketRlpxConnectionTests
     }
 
     [Test]
+    public async Task Releases_the_packets_still_queued_when_the_connection_closes()
+    {
+        TaskCompletionSource sending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using ConnectionUnderTest test = await ConnectionUnderTest.StartAsync();
+        test.Socket.SendGate = sending.Task;
+
+        for (int i = 0; i < 5; i++)
+        {
+            test.Enqueue(Content(100, i));
+        }
+
+        await test.Connection.DisconnectAsync();
+        sending.SetResult();
+        await test.StopAndAssertBuffersReturnedAsync();
+    }
+
+    [Test]
     public async Task Releases_a_packet_serialized_while_the_connection_closes()
     {
         await using ConnectionUnderTest test = await ConnectionUnderTest.StartAsync();
