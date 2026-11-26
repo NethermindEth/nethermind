@@ -9,7 +9,6 @@ using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
 using Nethermind.Serialization.Rlp;
@@ -39,7 +38,7 @@ public class ZeroNettyFrameDecoderTests
         (EncryptionSecrets _, EncryptionSecrets B) = NetTestVectors.GetSecretsPair();
 
         _frameCipher = new FrameCipher(B.AesSecret);
-        _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, B);
+        _macProcessor = new FrameMacProcessor(B);
 
         _frame = new byte[16 + 16 + LongFrameSize + 16]; //  header | header MAC | packet type | data | padding | frame MAC
         _frame[2] = LongFrameSize - 15; // size (total - padding)
@@ -149,8 +148,8 @@ public class ZeroNettyFrameDecoderTests
     {
         using PooledBufferLeakDetector detector = new();
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
-        using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor outboundMac = new(a);
+        using FrameMacProcessor inboundMac = new(b);
         int length = ZeroFrameDecoder.DefaultMaxInboundFrameSize + delta;
         byte[] header = new byte[Frame.HeaderSize + Frame.MacSize];
         header[0] = (byte)(length >> 16);
@@ -158,8 +157,8 @@ public class ZeroNettyFrameDecoderTests
         header[2] = (byte)length;
         header[3] = 0xc2;
         header[4] = header[5] = 0x80;
-        new FrameCipher(a.AesSecret).Encrypt(header, 0, Frame.HeaderSize, header, 0);
-        outboundMac.AddMac(header, 0, Frame.HeaderSize, header, Frame.HeaderSize, true);
+        new FrameCipher(a.AesSecret).Encrypt(header.AsSpan(0, Frame.HeaderSize), header.AsSpan(0, Frame.HeaderSize));
+        outboundMac.AddMac(header.AsSpan(0, Frame.HeaderSize), header.AsSpan(Frame.HeaderSize, Frame.MacSize), true);
         EmbeddedChannel channel = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac));
         channel.Configuration.Allocator = detector.Allocator;
         try
@@ -182,8 +181,8 @@ public class ZeroNettyFrameDecoderTests
     public void Rejects_zero_size_frame()
     {
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor encoderMac = new(TestItem.IgnoredPublicKey, a);
-        using FrameMacProcessor decoderMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor encoderMac = new(a);
+        using FrameMacProcessor decoderMac = new(b);
         ZeroFrameEncoderTestWrapper encoder = new(new FrameCipher(a.AesSecret), encoderMac);
         ZeroFrameDecoderTestWrapper decoder = new(new FrameCipher(b.AesSecret), decoderMac);
 
@@ -245,8 +244,8 @@ public class ZeroNettyFrameDecoderTests
     private static void AssertSplitFramesDecode(IByteBufferAllocator inbound, IByteBufferAllocator channel)
     {
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
-        using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor outboundMac = new(a);
+        using FrameMacProcessor inboundMac = new(b);
         EmbeddedChannel encoder = new(new ZeroPacketSplitter(new FrameCipher(a.AesSecret), outboundMac));
         EmbeddedChannel decoder = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac));
         decoder.Configuration.Allocator = channel;
@@ -281,8 +280,8 @@ public class ZeroNettyFrameDecoderTests
     {
         using PooledBufferLeakDetector detector = new();
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
-        using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor outboundMac = new(a);
+        using FrameMacProcessor inboundMac = new(b);
         EmbeddedChannel encoder = new(new ZeroPacketSplitter(new FrameCipher(a.AesSecret), outboundMac));
         EmbeddedChannel decoder = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac));
         decoder.Configuration.Allocator = detector.Allocator;
@@ -322,7 +321,7 @@ public class ZeroNettyFrameDecoderTests
         // Both the cipher and the MAC processor carry per-connection state, so each decode
         // needs its own pair rather than the ones built in SetUp.
         (EncryptionSecrets _, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor decoderMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor decoderMac = new(b);
         ZeroFrameDecoderTestWrapper decoder = new(new FrameCipher(b.AesSecret), decoderMac);
 
         byte[] frame = Bytes.FromHexString(BigNewBlockSingleFrame);
