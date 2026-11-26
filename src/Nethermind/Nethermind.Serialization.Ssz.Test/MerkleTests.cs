@@ -28,6 +28,19 @@ public static class UInt256Extensions
 public class MerkleTests
 {
     [Test]
+    public void Hash_parent_matches_sha256_with_overlapping_destination([Values(0, 1, 16, 32, 64)] int destinationOffset)
+    {
+        byte[] buffer = new byte[96];
+        new Random(157).NextBytes(buffer);
+        byte[] expected = (byte[])buffer.Clone();
+        SHA256.HashData(buffer.AsSpan(0, 64)).CopyTo(expected, destinationOffset);
+
+        ThreadSha256.HashData(buffer.AsSpan(0, 64), buffer.AsSpan(destinationOffset, 32));
+
+        Assert.That(buffer, Is.EqualTo(expected));
+    }
+
+    [Test]
     public void Merkleize_matches_padded_binary_tree(
         [Values(0, 1, 2, 3, 4, 7, 8, 9, 31, 32, 33, 64, 65, 100)] int count, [Values(1, 256)] int minimumWidth, [Values] bool zeroChunks)
     {
