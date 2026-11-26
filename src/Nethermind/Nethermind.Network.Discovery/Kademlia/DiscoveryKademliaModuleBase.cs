@@ -10,6 +10,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Logging.Microsoft;
+using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Kademlia;
@@ -24,8 +26,7 @@ public abstract class DiscoveryKademliaModuleBase(Node currentNode, IReadOnlyLis
             .AddModule(new KademliaModule<PublicKey, Node, ValueHash256>())
             .AddSingleton<ILoggerFactory, ILogManager>(static logManager => new NethermindLoggerFactory(logManager))
             .AddSingleton<IKademliaDistance<ValueHash256>>(ValueHash256KademliaDistance.Instance)
-            .AddSingleton<IKeyOperator<PublicKey, Node, ValueHash256>, PublicKeyKeyOperator>()
-            .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => DiscoveryKademliaConfigFactory.Create(currentNode, bootNodes, discoveryConfig));
+            .AddSingleton<IKeyOperator<PublicKey, Node, ValueHash256>, PublicKeyKeyOperator>();
 
         builder.RegisterType<DiscoveryPersistenceManager>()
             .AsSelf()
@@ -35,4 +36,17 @@ public abstract class DiscoveryKademliaModuleBase(Node currentNode, IReadOnlyLis
     }
 
     protected abstract void RegisterProtocolServices(ContainerBuilder builder);
+
+    /// <summary>Creates the routing-table configuration for this protocol; a subclass may attach protocol-specific policy.</summary>
+    protected KademliaConfig<Node> CreateKademliaConfig(IDiscoveryConfig discoveryConfig)
+        => DiscoveryKademliaConfigFactory.Create(currentNode, bootNodes, discoveryConfig);
+
+    /// <summary>Creates the subnet limiter bound to this protocol's current node and bootnodes.</summary>
+    protected IRoutingTableNodeLimiter<Node> CreateNodeLimiter(
+        INetworkConfig networkConfig,
+        IStaticNodesManager staticNodesManager,
+        ITrustedNodesManager trustedNodesManager,
+        IForkInfo forkInfo,
+        ILogManager logManager)
+        => new DiscoveryNodeLimiter(currentNode, bootNodes, networkConfig, staticNodesManager, trustedNodesManager, forkInfo, logManager);
 }

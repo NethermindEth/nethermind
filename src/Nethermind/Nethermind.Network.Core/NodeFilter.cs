@@ -141,7 +141,7 @@ public sealed class NodeFilter
     /// Allocation-free key for an IP address or a masked subnet prefix, suitable for hash lookups and prefix checks.
     /// </summary>
     [StructLayout(LayoutKind.Explicit)]
-    private readonly struct IpSubnetKey : IEquatable<IpSubnetKey>
+    internal readonly struct IpSubnetKey : IEquatable<IpSubnetKey>
     {
         // For IPv6: _hi/_lo are the masked 128-bit network prefix (big-endian).
         // For IPv4: _hi holds the masked v4 in the low 32 bits (big-endian), _lo is 0.

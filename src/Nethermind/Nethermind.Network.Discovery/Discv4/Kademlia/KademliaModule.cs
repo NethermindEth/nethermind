@@ -5,6 +5,9 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
+using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 
@@ -28,5 +31,18 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
             .Bind<IDiscoveryMsgListener, IKademliaAdapter>()
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()
             .AddSingleton<DiscoveryHandler>()
+
+            // The limiter instance is registered even when filtering is disabled so that `NodeSource` can inject it;
+            // the config leaves `NodeLimiter` null in that case, which keeps the routing table unguarded.
+            .AddSingleton<IRoutingTableNodeLimiter<Node>, INetworkConfig, IStaticNodesManager, ITrustedNodesManager, IForkInfo, ILogManager>(
+                (networkConfig, staticNodesManager, trustedNodesManager, forkInfo, logManager) =>
+                    CreateNodeLimiter(networkConfig, staticNodesManager, trustedNodesManager, forkInfo, logManager))
+            .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig, INetworkConfig, IRoutingTableNodeLimiter<Node>>(
+                (discoveryConfig, networkConfig, nodeLimiter) =>
+                {
+                    KademliaConfig<Node> config = CreateKademliaConfig(discoveryConfig);
+                    config.NodeLimiter = networkConfig.FilterDiscoveryNodesByRecentIp ? nodeLimiter : null;
+                    return config;
+                })
             ;
 }
