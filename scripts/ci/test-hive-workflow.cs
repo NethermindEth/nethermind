@@ -231,6 +231,8 @@ tests.Case("empty suites allowed only under a limit with a test part", () =>
         ("^[^/]+$", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
         ("^(eth|snap|a/b)$", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
         (@"eth\/x", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
+        // An escaped ] does not close a class.
+        (@"^[^\]/]+$", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
         // Classes and groups nest: the / sits inside the outer one after the inner one closes.
         ("^[[:alpha:]/]+$", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
         ("^((eth|snap)/x|eth|snap)$", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
