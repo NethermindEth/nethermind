@@ -39,6 +39,9 @@ public abstract class NodesManager(string path, ILogger logger)
     /// <summary>Returns <see langword="true"/> when any managed node is reachable at <paramref name="ip"/>.</summary>
     public bool ContainsIp(IPAddress ip) => _ipCounts.ContainsKey(ip);
 
+    /// <summary>Returns <see langword="true"/> when a managed node has <paramref name="publicKey"/> as its identity.</summary>
+    public bool ContainsNode(PublicKey publicKey) => _nodes.ContainsKey(publicKey);
+
     // Nodes explicitly persisted (loaded from the file or added with updateFile=true). The file mirrors this set,
     // so transient (updateFile=false) changes to _nodes never leak into it and a failed load cannot be amplified.
     private ConcurrentDictionary<PublicKey, NetworkNode> _persistedNodes = [];
