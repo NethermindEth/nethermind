@@ -275,10 +275,10 @@ jobs:
         run: |
           rm -f ../hive/workspace/logs/hive.json
           options=(--hive-exit-code "$HIVE_STATUS")
-          # Hive splits a limit into a suite and a test pattern at its first / outside [...] and (...) and not escaped by
-          # a backslash (splitRegexp in hivesim/testmatch.go, mirrored below). With a test pattern (/<test>, eth/<test>),
-          # Hive still starts every suite that matches, also those where no test matches. Without one (eth, eth/,
-          # ^[^/]+$ or no limit), every suite it starts runs all its tests.
+          # Hive splits a limit into a suite and a test pattern at the first unescaped / at which its bracket and
+          # parenthesis counters are both zero (splitRegexp in hivesim/testmatch.go, mirrored below). With a test
+          # pattern (/<test>, eth/<test>), Hive still starts every suite that matches, also those where no test
+          # matches. Without one (eth, eth/, ^[^/]+$ or no limit), every suite it starts runs all its tests.
           has_test_part() {
             local s=$1 i cs=0 cp=0
             for (( i = 0; i < ${#s}; i++ )); do

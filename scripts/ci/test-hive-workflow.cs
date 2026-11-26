@@ -199,8 +199,8 @@ foreach (var hive in new HiveRun[]
 
 // Only a limit with a test part lets suites without cases pass: Hive then starts every suite that the suite part
 // selects, also those where no test matches. Without a test part, every started suite runs all its tests, so a suite
-// without cases stays a problem. The test part is the text after the first / outside [...] and (...) and not escaped
-// by a backslash, as in Hive's splitRegexp.
+// without cases stays a problem. The test part is the text after the first unescaped / at which Hive's bracket and
+// parenthesis counters are both zero, as in Hive's splitRegexp.
 const string withEmptySuite = """{"name":"graphql","testCases":{"1":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
 const string ethHeaders = """{"name":"eth","testCases":{"1":{"name":"GetBlockHeaders","summaryResult":{"pass":true}},"2":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
 const string snapWrapperOnly = """{"name":"snap","testCases":{"1":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
@@ -242,6 +242,18 @@ tests.Case("empty suites allowed only under a limit with a test part", () =>
         ("[(]/Status", "1", [listedFailure, withEmptySuite], 0, null),
         // Hive rejoins the fields after the first split, so the test pattern of eth// is /, not empty.
         ("eth//", "0", [ethHeaders, ethWrapperOnly], 0, null),
+        // Escaped or class-member brackets and parentheses and a backslash pair leave a later / as the split.
+        (@"^(eth|snap|old/[)])/(G)", "0", [ethHeaders, snapWrapperOnly], 0, null),
+        (@"^(eth|snap|\[|\()/[G]", "0", [ethHeaders, snapWrapperOnly], 0, null),
+        (@"^([^\[]+|v2\))/\w", "0", [ethHeaders, snapWrapperOnly], 0, null),
+        (@"eth|snap|path\/v2\\/.*", "0", [ethHeaders, snapWrapperOnly], 0, null),
+        // Hive's counters, not regexp syntax, decide: no / here has both counters at zero and a non-empty rest.
+        (@"eth|snap|][^/]+/", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
+        (@"eth|snap|\Q)\E[^/]+/v2", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
+        (@"eth|snap|[[]/x", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
+        (@"eth|snap|[])]/v2", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
+        // A line feed alone is a non-empty test pattern.
+        ("engine-cancun/\n", "0", [reExecute.Replace("Re-Execute Payload", @"Re-Execute\nPayload"), cancunEmpty], 0, null),
         // Under a test part the selected suites must still run a case between them.
         ("^(eth|snap)$/^GetBlockHeaders$", "0", [withEmptySuite, snapWrapperOnly], 1, "Hive ran no test cases."),
     })
