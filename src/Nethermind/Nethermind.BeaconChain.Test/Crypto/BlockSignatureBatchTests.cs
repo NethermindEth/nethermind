@@ -40,12 +40,12 @@ public class BlockSignatureBatchTests
         BlsSignature valid = SignedBy(3, Message);
         BlsSignature wrongSigner = SignedBy(4, Message);
         bool? acceptedLater = null;
-        Assert.That(() => BlockSignatureBatch.Run(batch =>
+        Assert.That(() => BlockSignatureBatch.Run(BlsSignatureVerifier.Instance, batch =>
         {
             batch.Predecode(4, i => i == 0 ? wrongSigner : valid);
-            if (!BlockSignatureBatch.Verify(PublicKey(3), wrongSigner, Message, batch.Defer("first pairing")))
+            if (!BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, PublicKey(3), wrongSigner, Message, batch.Defer("first pairing")))
                 throw new AssertionException("The pairing should be deferred.");
-            acceptedLater = BlockSignatureBatch.Verify(PublicKey(3), default, Message, batch.Defer("later encoding"));
+            acceptedLater = BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, PublicKey(3), default, Message, batch.Defer("later encoding"));
             if (acceptedLater == false)
                 throw new BeaconStateException("later encoding");
             throw new AssertionException("The substituted encoding should be refused immediately.");
@@ -90,8 +90,8 @@ public class BlockSignatureBatchTests
         }
         bool decodedAccepted = BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), Message.Bytes);
 
-        BlockSignatureBatch batch = new();
-        bool accepted = BlockSignatureBatch.Verify(publicKey, signature, Message, deferred ? batch.Defer("outside G2") : null);
+        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
+        bool accepted = BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, publicKey, signature, Message, deferred ? batch.Defer("outside G2") : null);
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(decodedAccepted, Is.False);
@@ -111,7 +111,7 @@ public class BlockSignatureBatchTests
         int decodedAccepted = 0;
         int serialAccepted = 0;
         int deferredAccepted = 0;
-        BlockSignatureBatch batch = new();
+        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
         foreach (byte[] encoded in torsion)
         {
             Bls.P2Affine t = new(new long[Bls.P2Affine.Sz]);
@@ -122,8 +122,8 @@ public class BlockSignatureBatchTests
             Assert.That(point.ToAffine().InGroup(), Is.False);
             BlsSignature signature = new(point.Compress());
             if (BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), Message.Bytes)) decodedAccepted++;
-            if (BlockSignatureBatch.Verify(publicKey, signature, Message, null)) serialAccepted++;
-            if (BlockSignatureBatch.Verify(publicKey, signature, Message, batch.Defer("outside G2"))) deferredAccepted++;
+            if (BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, publicKey, signature, Message, null)) serialAccepted++;
+            if (BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, publicKey, signature, Message, batch.Defer("outside G2"))) deferredAccepted++;
         }
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -149,11 +149,11 @@ public class BlockSignatureBatchTests
     {
         G1Affine publicKey = DecodePublicKey(compressedPublicKey);
         BlsSignature blsSignature = new(signature);
-        BlockSignatureBatch batch = new();
+        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
 
         batch.Predecode(4, _ => blsSignature);
-        bool serial = BlockSignatureBatch.Verify(publicKey, blsSignature, Message, deferral: null);
-        bool deferred = BlockSignatureBatch.Verify(publicKey, blsSignature, Message, batch.Defer("outside"));
+        bool serial = BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, publicKey, blsSignature, Message, deferral: null);
+        bool deferred = BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, publicKey, blsSignature, Message, batch.Defer("outside"));
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(serial, Is.EqualTo(serialVerdict), "fixture bug: the serial verdict this case pins");
@@ -165,11 +165,11 @@ public class BlockSignatureBatchTests
     [Test]
     public void Valid_signatures_are_deferred_and_verify()
     {
-        BlockSignatureBatch batch = new();
+        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
         for (int i = 0; i < 4; i++)
         {
             Hash256 message = Hash((byte)(0x60 + i));
-            Assert.That(BlockSignatureBatch.Verify(PublicKey(i), SignedBy(i, message), message, batch.Defer($"set {i}")), Is.True);
+            Assert.That(BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, PublicKey(i), SignedBy(i, message), message, batch.Defer($"set {i}")), Is.True);
         }
 
         Assert.That(batch.Count, Is.EqualTo(4));
@@ -196,13 +196,13 @@ public class BlockSignatureBatchTests
 
     private static BlockSignatureBatch BatchWithInvalidAt(int count, int invalid, int alsoInvalid)
     {
-        BlockSignatureBatch batch = new();
+        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
         for (int i = 0; i < count; i++)
         {
             Hash256 message = Hash((byte)(0x70 + i));
             // Signed by another key: decodes and subgroup-checks, invalid only by the pairing.
             int signer = i == invalid || i == alsoInvalid ? i + 100 : i;
-            Assert.That(BlockSignatureBatch.Verify(PublicKey(i), SignedBy(signer, message), message, batch.Defer($"set {i}")), Is.True, "every set must be deferred");
+            Assert.That(BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, PublicKey(i), SignedBy(signer, message), message, batch.Defer($"set {i}")), Is.True, "every set must be deferred");
         }
 
         return batch;

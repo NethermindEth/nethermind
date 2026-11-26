@@ -189,7 +189,6 @@ public class Eth71BlockAccessListsServingBenchmarks
         public bool TryAppendReceipts(Hash256 blockHash, IRlpDecoder<TxReceipt> decoder, bool withBloom, ArrayPoolList<byte> destination) => throw new NotSupportedException();
         public void HintBlock(Hash256 hash, ulong number, ISyncPeer receivedFrom) { }
         public void AddNewBlock(Block block, ISyncPeer node) { }
-        public void StopNotifyingPeersAboutNewBlocks() { }
         public MemoryManager<byte> FindBlockRlp(Hash256 hash) => null;
         public BlockHeader FindHeader(Hash256 hash) => null;
         public Hash256 FindHash(ulong number) => null;

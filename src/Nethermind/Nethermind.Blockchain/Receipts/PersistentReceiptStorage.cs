@@ -27,7 +27,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
+    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore, IReceiptPruner
     {
         /// <summary>
         /// Key of the lowest-inserted-receipt-block pointer kept in <see cref="ReceiptsColumns.Default"/>. That column
@@ -544,7 +544,8 @@ namespace Nethermind.Blockchain.Receipts
                     | (_eip7668EverEnabled && _specProvider.GetSpec(header).IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
                 IRlpDecoder<TxReceipt> decoder = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Storage)
                     ?? CompactReceiptStorageDecoder.Instance;
-                if (decoder is not IReceiptRefDecoder refDecoder) return false;
+                IReceiptRefDecoder refDecoder = decoder as IReceiptRefDecoder
+                    ?? throw new RlpReaderException($"The registered compact receipt decoder must implement {nameof(IReceiptRefDecoder)}.");
                 TxReceipt? found = null;
                 ulong gasUsedBefore = 0;
                 int logsBefore = 0;
@@ -1396,9 +1397,6 @@ namespace Nethermind.Blockchain.Receipts
                 if (fromInclusive < toExclusive) _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
             }
         }
-
-        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed) =>
-            SweepTransactionIndex(retainedFromBlock, resumeFrom, maxEntries, isHeightRetained: null, cancellationToken, out removed);
 
         [SkipLocalsInit]
         public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, Func<ulong, bool>? isHeightRetained, CancellationToken cancellationToken, out int removed)

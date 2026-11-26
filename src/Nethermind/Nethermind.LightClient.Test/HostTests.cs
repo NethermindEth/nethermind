@@ -322,6 +322,7 @@ public class HostTests
             "--depsfile", Path.Combine(application, "Nethermind.LightClient.deps.json"), assembly,
             "--checkpoint-url", $"https://127.0.0.1:{port}", "--urls", "http://0.0.0.0:0", "--data-dir", directory,
         }) start.ArgumentList.Add(argument);
+        using Process interrupter = await StartInterruptSenderAsync(token);
         using Process client = Process.Start(start)!;
         try
         {
@@ -358,7 +359,7 @@ public class HostTests
             using HttpResponseMessage rpcResponse = await rpc.SendAsync(rpcRequest, token);
             using CancellationTokenSource shutdownDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             shutdownDeadline.CancelAfter(TimeSpan.FromSeconds(15));
-            await SendInterruptAsync(client.Id, shutdownDeadline.Token);
+            await SendInterruptAsync(interrupter, client.Id, shutdownDeadline.Token);
             try { await client.WaitForExitAsync(shutdownDeadline.Token); }
             catch (OperationCanceledException) when (shutdownDeadline.IsCancellationRequested)
             {
@@ -376,6 +377,8 @@ public class HostTests
         {
             if (!client.HasExited) client.Kill(entireProcessTree: true);
             await client.WaitForExitAsync(CancellationToken.None);
+            if (!interrupter.HasExited) interrupter.Kill(entireProcessTree: true);
+            await interrupter.WaitForExitAsync(CancellationToken.None);
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     }
@@ -530,6 +533,101 @@ public class HostTests
             Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
             Assert.That(response.GetProperty("result").GetString(), Is.EqualTo("0x1"));
             Assert.That(calls, Is.EqualTo(1));
+        }
+    }
+
+    [TestCase("wallet", StatusCodes.Status200OK)]
+    [TestCase("ordinary", StatusCodes.Status413PayloadTooLarge)]
+    [TestCase("submission", StatusCodes.Status413PayloadTooLarge)]
+    [TestCase("limit", StatusCodes.Status200OK)]
+    [TestCase("boundary", StatusCodes.Status200OK)]
+    [TestCase("oversized_tail", StatusCodes.Status413PayloadTooLarge)]
+    public async Task Large_http_batches_admit_evm_calls_within_the_ordinary_body_budget(string batch, int expectedStatus)
+    {
+        string callData = "0x" + new string('0', 42_000);
+        string oversizedData = "0x" + new string('0', RpcTestDriver.StandardRequestBodySize);
+        object call = new { jsonrpc = "2.0", id = 1, method = "eth_call", @params = new[] { new { data = callData } } };
+        object estimate = new { jsonrpc = "2.0", id = 2, method = "eth_estimateGas", @params = new[] { new { data = callData } } };
+        object oversizedCall = new { jsonrpc = "2.0", id = 3, method = "eth_call", @params = new[] { new { data = oversizedData } } };
+        IEnumerable<object> notifications = Enumerable.Repeat<object>(new { jsonrpc = "2.0", method = "eth_chainId" },
+            RpcTestDriver.MaxBatchEnvelopes - 2);
+        object[] requests = batch switch
+        {
+            "wallet" => [call, estimate, new { jsonrpc = "2.0", id = 3, method = "eth_chainId" }],
+            "ordinary" => [call, new { jsonrpc = "2.0", id = 2, method = "eth_chainId", @params = new[] { oversizedData } }],
+            "submission" => [call, new { jsonrpc = "2.0", id = 2, method = "eth_sendRawTransaction", @params = new[] { oversizedData } }],
+            "limit" => [call, estimate, .. notifications],
+            "boundary" => [call, estimate, .. notifications.Skip(1), oversizedCall],
+            _ => [call, estimate, .. notifications, oversizedCall],
+        };
+        List<string> methods = [];
+
+        (int status, JsonElement response) = await InvokeHttpAsync(JsonSerializer.SerializeToUtf8Bytes(requests),
+            (method, _, _) =>
+            {
+                methods.Add(method);
+                return Task.FromResult<object>("0x1");
+            });
+
+        Assert.That(status, Is.EqualTo(expectedStatus));
+        if (expectedStatus == StatusCodes.Status200OK)
+        {
+            bool atExecutionLimit = batch is "limit" or "boundary";
+            Assert.That(response.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(methods, Is.EqualTo(new[] { "eth_call", "eth_estimateGas" }
+                    .Concat(Enumerable.Repeat("eth_chainId", atExecutionLimit ? RpcTestDriver.MaxBatchCount - 2 : 1))));
+                Assert.That(response.EnumerateArray().Select(item => item.GetProperty("id").GetInt32()),
+                    Is.EqualTo(batch == "limit" ? new[] { 1, 2 } : new[] { 1, 2, 3 }));
+            }
+
+            if (batch == "boundary")
+            {
+                JsonElement error = response[2].GetProperty("error");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+                    Assert.That(error.GetProperty("message").GetString(),
+                        Does.StartWith($"A batch may execute at most {RpcTestDriver.MaxBatchCount} requests"));
+                }
+            }
+        }
+        else
+        {
+            Assert.That(methods, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Http_batches_above_the_envelope_cap_keep_their_limit_response([Values] bool large)
+    {
+        string data = "0x" + new string('0', large ? RpcTestDriver.StandardRequestBodySize : 2);
+        int envelopeLimit = RpcTestDriver.MaxBatchEnvelopes;
+        object[] requests =
+        [
+            new { jsonrpc = "2.0", id = 0, method = "eth_call", @params = new[] { new { data } } },
+            .. Enumerable.Range(1, envelopeLimit + 1).Select(id => new { jsonrpc = "2.0", id, method = "eth_chainId" }),
+        ];
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(requests);
+        Assert.That(payload.Length > RpcTestDriver.StandardRequestBodySize, Is.EqualTo(large));
+        int calls = 0;
+
+        (int status, JsonElement response) = await InvokeHttpAsync(payload, (_, _, _) =>
+        {
+            calls++;
+            return Task.FromResult<object>("0x1");
+        });
+
+        Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(RpcTestDriver.MaxBatchCount));
+            Assert.That(response.EnumerateArray().Select(item => item.GetProperty("id").GetInt32()),
+                Is.EqualTo(Enumerable.Range(0, envelopeLimit + 1)));
+            JsonElement error = response[envelopeLimit].GetProperty("error");
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+            Assert.That(error.GetProperty("message").GetString(), Does.StartWith($"Batch exceeds {envelopeLimit} envelopes"));
         }
     }
 
@@ -1128,47 +1226,67 @@ public class HostTests
         return builder.Build();
     }
 
-    private static async Task SendInterruptAsync(int clientId, CancellationToken cancellationToken)
+    /// <summary>Starts a process that sends the console interrupt to the child whose id is written to its standard input.</summary>
+    /// <remarks>
+    /// Returns once the sender is ready, so callers can start it before the child: its startup, including the
+    /// Windows interop compilation, must not delay the interrupt past the child's 10-second checkpoint request timeout.
+    /// </remarks>
+    private static async Task<Process> StartInterruptSenderAsync(CancellationToken cancellationToken)
     {
-        ProcessStartInfo start = new(OperatingSystem.IsWindows() ? "powershell.exe" : "kill")
+        ProcessStartInfo start = new(OperatingSystem.IsWindows() ? "powershell.exe" : "sh")
         {
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
         };
         if (OperatingSystem.IsWindows())
         {
             start.ArgumentList.Add("-NoProfile");
             start.ArgumentList.Add("-Command");
-            start.ArgumentList.Add($$"""
+            start.ArgumentList.Add("""
                 $ErrorActionPreference = 'Stop'
                 Add-Type -Name ConsoleSignal -Namespace LightClientTests -MemberDefinition @'
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool FreeConsole();
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool AttachConsole(uint pid);
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool GenerateConsoleCtrlEvent(uint signal, uint group);
                 '@
+                [Console]::Out.WriteLine('ready')
+                $clientId = [uint32][Console]::In.ReadLine()
                 [LightClientTests.ConsoleSignal]::FreeConsole() | Out-Null
-                if (![LightClientTests.ConsoleSignal]::AttachConsole({{clientId}})) { throw 'Cannot attach to the test child console.' }
+                if (![LightClientTests.ConsoleSignal]::AttachConsole($clientId)) { throw 'Cannot attach to the test child console.' }
                 try {
-                    if (![LightClientTests.ConsoleSignal]::GenerateConsoleCtrlEvent(1, {{clientId}})) { throw 'Cannot send Ctrl+Break to the child process group.' }
+                    if (![LightClientTests.ConsoleSignal]::GenerateConsoleCtrlEvent(1, $clientId)) { throw 'Cannot send Ctrl+Break to the child process group.' }
                 } finally { [LightClientTests.ConsoleSignal]::FreeConsole() | Out-Null }
                 """);
         }
         else
         {
-            start.ArgumentList.Add("-TERM");
-            start.ArgumentList.Add(clientId.ToString());
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("echo ready && read -r id && exec kill -TERM \"$id\"");
         }
-        using Process sender = Process.Start(start)!;
+        Process sender = Process.Start(start)!;
         try
         {
-            await sender.WaitForExitAsync(cancellationToken);
-            Assert.That(sender.ExitCode, Is.Zero, "The interrupt must reach only the owned child process.");
+            string? line;
+            do line = await sender.StandardOutput.ReadLineAsync(cancellationToken);
+            while (line is not null and not "ready");
+            Assert.That(line, Is.EqualTo("ready"), "The interrupt sender must start before the child.");
+            return sender;
         }
-        finally
+        catch
         {
             if (!sender.HasExited) sender.Kill(entireProcessTree: true);
-            await sender.WaitForExitAsync(CancellationToken.None);
+            sender.Dispose();
+            throw;
         }
+    }
+
+    private static async Task SendInterruptAsync(Process sender, int clientId, CancellationToken cancellationToken)
+    {
+        await sender.StandardInput.WriteLineAsync(clientId.ToString(CultureInfo.InvariantCulture).AsMemory(), cancellationToken);
+        await sender.WaitForExitAsync(cancellationToken);
+        Assert.That(sender.ExitCode, Is.Zero, "The interrupt must reach only the owned child process.");
     }
 }
 

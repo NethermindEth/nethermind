@@ -103,7 +103,17 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         data.AsSpan().CopyTo(memoryOwner.Memory.Span);
         Memory<byte> memory = memoryOwner.Memory[..data.Count];
 
-        await _processChannel.Writer.WriteAsync(new ProcessRequest(memory, memoryOwner), cancellationToken);
+        ProcessRequest request = new(memory, memoryOwner);
+        try
+        {
+            await _processChannel.Writer.WriteAsync(request, cancellationToken);
+        }
+        catch
+        {
+            // Not handed off to a worker (e.g. cancelled while the channel is full), so return the rental here.
+            await request.DisposeAsync();
+            throw;
+        }
     }
 
     public override async Task ReceiveLoopAsync(CancellationToken cancellationToken)

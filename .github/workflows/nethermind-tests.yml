@@ -108,7 +108,6 @@ jobs:
               Nethermind.OpcodeTracing.Plugin.Test
               Nethermind.Serialization.FluentRlp.Test
               Nethermind.Serialization.JsonGenerator.Test
-              Nethermind.Shutter.Test
               Nethermind.State.Flat.Test
               Nethermind.TrustedInput.Test
           - name: Nethermind tests 6

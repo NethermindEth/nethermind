@@ -95,7 +95,7 @@ public class BlockSignatureBatchThroughputTests
                     long start = Stopwatch.GetTimestamp();
                     foreach (BlsSignature[] block in blocks)
                     {
-                        BlockSignatureBatch batch = new();
+                        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
                         bool predecode = parallel && Environment.ProcessorCount >= 4 && block.Length >= 4;
                         if (predecode)
                             batch.Predecode(block.Length, i => stage == "verify" ? validChecks[i].Signature : block[i]);
@@ -106,7 +106,7 @@ public class BlockSignatureBatchThroughputTests
                             {
                                 G1Affine publicKey = new(stage == "verify" ? validChecks[i].PublicKey : key);
                                 Hash256 message = stage == "verify" ? validChecks[i].Message : Hash256.Zero;
-                                if (!BlockSignatureBatch.Verify(publicKey, signature, message, batch.Defer("corpus")))
+                                if (!BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, publicKey, signature, message, batch.Defer("corpus")))
                                     throw new InvalidOperationException("Invalid signature encoding in the recorded input.");
                             }
                             else if (!predecode)
@@ -139,17 +139,17 @@ public class BlockSignatureBatchThroughputTests
     {
         foreach (SignatureCheck check in checks)
         {
-            if (!BlockSignatureBatch.Verify(new G1Affine(check.PublicKey), check.Signature, check.Message, deferral: null))
+            if (!BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, new G1Affine(check.PublicKey), check.Signature, check.Message, deferral: null))
                 throw new InvalidOperationException("fixture bug: a serial check failed");
         }
     }
 
     private static void VerifyBatched(SignatureCheck[] checks)
     {
-        BlockSignatureBatch batch = new();
+        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
         foreach (SignatureCheck check in checks)
         {
-            if (!BlockSignatureBatch.Verify(new G1Affine(check.PublicKey), check.Signature, check.Message, batch.Defer("timing")))
+            if (!BlockSignatureBatch.Verify(BlsSignatureVerifier.Instance, new G1Affine(check.PublicKey), check.Signature, check.Message, batch.Defer("timing")))
                 throw new InvalidOperationException("fixture bug: a check was refused on the spot");
         }
 

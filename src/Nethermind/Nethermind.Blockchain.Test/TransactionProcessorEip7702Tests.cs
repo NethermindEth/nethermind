@@ -69,24 +69,32 @@ internal class TransactionProcessorEip7702Tests
 
     public static IEnumerable<TestCaseData> Eip8037AuthChargeCases()
     {
-        yield return new TestCaseData(AuthorityPreState.Nonexistent, false, 0UL, GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
+        yield return new TestCaseData(AuthorityPreState.Nonexistent, new[] { false }, 0UL, GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
             .SetName("Nonexistent authority set - charges new account and auth-base state gas");
-        yield return new TestCaseData(AuthorityPreState.Nonexistent, true, 0UL, GasCostOf.NewAccountState)
+        yield return new TestCaseData(AuthorityPreState.Nonexistent, new[] { true }, 0UL, GasCostOf.NewAccountState)
             .SetName("Nonexistent authority clear - charges new account state gas");
-        yield return new TestCaseData(AuthorityPreState.ExistingLeaf, false, 0UL, GasCostOf.PerAuthBaseState)
+        yield return new TestCaseData(AuthorityPreState.ExistingLeaf, new[] { false }, 0UL, GasCostOf.PerAuthBaseState)
             .SetName("Existing authority leaf set - charges auth-base state gas");
-        yield return new TestCaseData(AuthorityPreState.ExistingLeaf, true, 0UL, 0L)
+        yield return new TestCaseData(AuthorityPreState.ExistingLeaf, new[] { true }, 0UL, 0L)
             .SetName("Existing authority leaf clear - charges no state gas");
-        yield return new TestCaseData(AuthorityPreState.ExistingDelegation, false, 1UL, 0L)
+        yield return new TestCaseData(AuthorityPreState.ExistingDelegation, new[] { false }, 1UL, 0L)
             .SetName("Existing delegation overwrite - charges no state gas");
-        yield return new TestCaseData(AuthorityPreState.ExistingDelegation, true, 1UL, 0L)
+        yield return new TestCaseData(AuthorityPreState.ExistingDelegation, new[] { true }, 1UL, 0L)
             .SetName("Existing delegation clear - charges no state gas");
+        yield return new TestCaseData(AuthorityPreState.ExistingLeaf, new[] { true, false }, 0UL, GasCostOf.PerAuthBaseState)
+            .SetName("Existing authority leaf clear then set - charges auth-base state gas");
+        yield return new TestCaseData(AuthorityPreState.ExistingDelegation, new[] { true, false }, 1UL, 0L)
+            .SetName("Existing delegation clear then set - charges no state gas");
+        yield return new TestCaseData(AuthorityPreState.ExistingLeaf, new[] { false, true, false }, 0UL, GasCostOf.PerAuthBaseState)
+            .SetName("Existing authority leaf set, clear, set - charges auth-base state gas once");
+        yield return new TestCaseData(AuthorityPreState.ExistingDelegation, new[] { false, true, false }, 1UL, 0L)
+            .SetName("Existing delegation set, clear, set - charges no state gas");
     }
 
     [TestCaseSource(nameof(Eip8037AuthChargeCases))]
     public void Execute_Eip8037AuthCharges_UpdateReceiptAndBlockGas(
         AuthorityPreState authorityPreState,
-        bool clearDelegation,
+        bool[] clearDelegations,
         ulong authorityNonce,
         long expectedTopFrameStateGas)
     {
@@ -96,7 +104,6 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey sender = TestItem.PrivateKeyB;
         Address previousDelegation = TestItem.AddressC;
         Address newDelegation = TestItem.AddressD;
-        Address authTarget = clearDelegation ? Address.Zero : newDelegation;
 
         _stateProvider.CreateAccount(sender.Address, 1.Ether);
         DeployCode(previousDelegation, Prepare.EvmCode.Op(Instruction.STOP).Done);
@@ -119,7 +126,9 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(newDelegation)
             .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + reservoir)
-            .WithAuthorizationCode(_ethereumEcdsa.Sign(authority, _specProvider.ChainId, authTarget, authorityNonce))
+            .WithAuthorizationCode(clearDelegations
+                .Select((clear, i) => _ethereumEcdsa.Sign(authority, _specProvider.ChainId, clear ? Address.Zero : newDelegation, authorityNonce + (ulong)i))
+                .ToArray())
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(ulong.MaxValue)
@@ -146,7 +155,7 @@ internal class TransactionProcessorEip7702Tests
         // Applying a valid authorization writes the authority leaf once; state charges are direct
         // top-frame charges and are not refunded.
         ulong intrinsicExecutionGas = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess
-            + GasCostOf.TxValueCostEip2780 + Eip8038Constants.PerAuthBaseExecution;
+            + GasCostOf.TxValueCostEip2780 + Eip8038Constants.PerAuthBaseExecution * (ulong)clearDelegations.Length;
         ulong topFrameExecutionGas = Eip8038Constants.AccountWrite;
         ulong topFrameStateGas = (ulong)expectedTopFrameStateGas;
         ulong expectedSpentGas = intrinsicExecutionGas + topFrameExecutionGas + topFrameStateGas;
@@ -155,10 +164,10 @@ internal class TransactionProcessorEip7702Tests
             Assert.That(tx.SpentGas, Is.EqualTo(expectedSpentGas));
             Assert.That(receiptsTracer.LastReceipt.GasUsedTotal, Is.EqualTo(expectedSpentGas));
             Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(intrinsicExecutionGas + topFrameExecutionGas, topFrameStateGas)));
-            Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo(authorityNonce + 1));
+            Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo(authorityNonce + (ulong)clearDelegations.Length));
         }
 
-        byte[] expectedCode = clearDelegation
+        byte[] expectedCode = clearDelegations[^1]
             ? []
             : [.. Eip7702Constants.DelegationHeader, .. newDelegation.Bytes];
         Assert.That(_stateProvider.GetCode(authority.Address), Is.SequenceEqualTo(expectedCode));

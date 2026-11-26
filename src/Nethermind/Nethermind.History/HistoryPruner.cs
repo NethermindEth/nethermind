@@ -48,7 +48,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
 
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
-    private readonly IReceiptStorage _receiptStorage;
+    private readonly IReceiptPruner _receiptPruner;
     private readonly IBlockAccessListStore _blockAccessListStore;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IHeaderStore _headerStore;
@@ -120,7 +120,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
 
     public HistoryPruner(
         IBlockTree blockTree,
-        IReceiptStorage receiptStorage,
+        IReceiptPruner receiptPruner,
         IBlockAccessListStore blockAccessListStore,
         ISpecProvider specProvider,
         IChainLevelInfoRepository chainLevelInfoRepository,
@@ -139,7 +139,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
     {
         _logger = logManager.GetClassLogger<HistoryPruner>();
         _blockTree = blockTree;
-        _receiptStorage = receiptStorage;
+        _receiptPruner = receiptPruner;
         _blockAccessListStore = blockAccessListStore;
         _chainLevelInfoRepository = chainLevelInfoRepository;
         _headerStore = headerStore;
@@ -1023,7 +1023,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
 
                 if (unreachable.Count != 0)
                 {
-                    _receiptStorage.RemoveReceiptsRanges(unreachable);
+                    _receiptPruner.RemoveReceiptsRanges(unreachable);
                     _blockTree.DeleteOldBlockRanges(unreachable);
                 }
 
@@ -1044,7 +1044,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
             if (gapStart < toExclusive) gaps.Add((gapStart, toExclusive));
             if (gaps.Count == 0) return;
 
-            _receiptStorage.RemoveReceiptsRanges(gaps);
+            _receiptPruner.RemoveReceiptsRanges(gaps);
             _blockTree.DeleteOldBlockRanges(gaps);
         }
         finally
@@ -1055,7 +1055,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
 
     private void ReclaimBoth(ulong fromInclusive, ulong toExclusive)
     {
-        _receiptStorage.RemoveReceiptsRange(fromInclusive, toExclusive);
+        _receiptPruner.RemoveReceiptsRange(fromInclusive, toExclusive);
         _blockTree.DeleteOldBlockRange(fromInclusive, toExclusive);
     }
 
@@ -1068,7 +1068,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
 
         foreach (BlockInfo info in level.BlockInfos)
         {
-            _receiptStorage.RemoveReceipts(number, info.BlockHash);
+            _receiptPruner.RemoveReceipts(number, info.BlockHash);
             _blockTree.DeleteOldBlock(number, info.BlockHash);
         }
 
@@ -1134,7 +1134,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
     private void VerifyReclaimSupported()
     {
         _blockTree.DeleteOldBlockRange(0, 0);
-        _receiptStorage.RemoveReceiptsRange(0, 0);
+        _receiptPruner.RemoveReceiptsRange(0, 0);
         _blockAccessListStore.DeleteRange(0, 0);
     }
 
@@ -1177,7 +1177,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
         int removed;
         try
         {
-            next = _receiptStorage.SweepTransactionIndex(
+            next = _receiptPruner.SweepTransactionIndex(
                 _blocksDeletePointer, _txIndexSweepCursor, TxIndexSweepEntriesPerPass, SweepRetentionLookup(), cancellationToken, out removed);
         }
         catch (Exception e) when (e is not OperationCanceledException)

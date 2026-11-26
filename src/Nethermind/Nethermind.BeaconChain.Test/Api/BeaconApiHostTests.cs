@@ -8,7 +8,13 @@ using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Autofac;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http.Metadata;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
@@ -29,6 +35,69 @@ public class BeaconApiHostTests : BeaconApiFixture
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
     private NoOpEngineDriver _engine = null!;
+
+    private static readonly string[] Routes =
+    [
+        "GET /eth/v1/beacon/blobs/{blockId} ssz+json",
+        "GET /eth/v1/beacon/blocks/{blockId}/root json",
+        "GET /eth/v1/beacon/execution_payload_envelopes/{blockId} ssz+json",
+        "GET /eth/v1/beacon/genesis json",
+        "GET /eth/v1/beacon/headers json",
+        "GET /eth/v1/beacon/headers/{blockId} json",
+        "GET /eth/v1/beacon/states/{stateId}/committees json",
+        "GET /eth/v1/beacon/states/{stateId}/finality_checkpoints json",
+        "GET /eth/v1/beacon/states/{stateId}/fork json",
+        "GET /eth/v1/beacon/states/{stateId}/pending_consolidations ssz+json",
+        "GET /eth/v1/beacon/states/{stateId}/pending_deposits ssz+json",
+        "GET /eth/v1/beacon/states/{stateId}/pending_partial_withdrawals ssz+json",
+        "GET /eth/v1/beacon/states/{stateId}/proposer_lookahead ssz+json",
+        "GET /eth/v1/beacon/states/{stateId}/randao json",
+        "GET /eth/v1/beacon/states/{stateId}/root json",
+        "GET /eth/v1/beacon/states/{stateId}/sync_committees json",
+        "GET /eth/v1/beacon/states/{stateId}/validator_balances json",
+        "GET /eth/v1/beacon/states/{stateId}/validators json",
+        "GET /eth/v1/beacon/states/{stateId}/validators/{validatorId} json",
+        "GET /eth/v1/config/deposit_contract json",
+        "GET /eth/v1/config/fork_schedule json",
+        "GET /eth/v1/config/spec json",
+        "GET /eth/v1/debug/beacon/fork_choice json",
+        "GET /eth/v1/debug/fork_choice json",
+        "GET /eth/v1/events none",
+        "GET /eth/v1/node/health none",
+        "GET /eth/v1/node/identity json",
+        "GET /eth/v1/node/peer_count json",
+        "GET /eth/v1/node/peers json",
+        "GET /eth/v1/node/peers/{peerId} json",
+        "GET /eth/v1/node/syncing json",
+        "GET /eth/v1/node/version json",
+        "GET /eth/v1/validator/{**path} none",
+        "GET /eth/v2/beacon/blocks/{blockId} ssz+json",
+        "GET /eth/v2/beacon/blocks/{blockId}/attestations json",
+        "GET /eth/v2/debug/beacon/states/{stateId} ssz+json",
+        "POST /eth/v1/beacon/states/{stateId}/validator_balances json body:*/*",
+        "POST /eth/v1/beacon/states/{stateId}/validator_identities ssz+json body:*/*",
+        "POST /eth/v1/beacon/states/{stateId}/validators json body:*/*",
+        "POST /eth/v1/validator/{**path} none",
+    ];
+
+    /// <summary>A handler that is not public, lacks its attribute or whose service is not mapped is otherwise only a 404.</summary>
+    [Test]
+    public async Task Every_handler_is_mapped_with_the_formats_and_body_it_declares()
+    {
+        WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
+        builder.WebHost.UseKestrelCore();
+        builder.Services.AddRoutingCore();
+        await using WebApplication app = builder.Build();
+        BeaconApiHost.MapRoutes(app);
+
+        IEnumerable<string> mapped =
+            from endpoint in ((IEndpointRouteBuilder)app).DataSources.SelectMany(static source => source.Endpoints).Cast<RouteEndpoint>()
+            let formats = endpoint.Metadata.GetMetadata<NegotiatedAttribute>() switch { null => "none", { Ssz: true } => "ssz+json", _ => "json" }
+            let body = endpoint.Metadata.GetMetadata<IAcceptsMetadata>() is { } accepts ? $" body:{string.Join(',', accepts.ContentTypes)}" : ""
+            from method in endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods ?? []
+            select $"{method} {endpoint.RoutePattern.RawText} {formats}{body}";
+        Assert.That(mapped, Is.EquivalentTo(Routes));
+    }
 
     [TestCase("Host", "attacker.example", HttpStatusCode.BadRequest)]
     [TestCase("Origin", "https://attacker.example", HttpStatusCode.Forbidden)]
@@ -419,7 +488,7 @@ public class BeaconApiHostTests : BeaconApiFixture
     private async Task<WeakReference> StartAndDisposeHostAsync(NoOpProcessExitSource exitSource)
     {
         BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
-        BeaconApiHost host = new(apiConfig, new BeaconChainConfig(), Spec, _host.StatusHolder, _host.Clock, _host.Store,
+        BeaconApiHost host = new(apiConfig, Spec, _host.StatusHolder, _host.Clock, _host.Store,
             new LocalMetadataSource(), _engine, exitSource, LimboLogs.Instance);
 
         await host.StartAsync(CancellationToken.None);

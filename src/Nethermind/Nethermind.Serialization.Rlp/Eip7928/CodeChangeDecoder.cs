@@ -32,6 +32,18 @@ public sealed class CodeChangeDecoder : IndexedChangeDecoder<CodeChange>, IIndex
         return CodeChange.Adopted(index, fields.DecodeValueKeccakNonNull());
     }
 
+    static uint IIndexedChangeReader<CodeChange>.ValidateFields(ref RlpReader fields)
+    {
+        uint index = fields.DecodeUInt();
+        bool isCodeEmpty = fields.DecodeByteArraySpan(_codeLimit).IsEmpty;
+        if (fields.HasNext)
+        {
+            if (!isCodeEmpty) ThrowAdoptedCodeNotEmpty();
+            fields.DecodeValueKeccakNonNull();
+        }
+        return index;
+    }
+
     protected override void EncodeValue(ref RlpWriter writer, CodeChange item)
     {
         if (item.IsAdopted)

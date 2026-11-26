@@ -37,9 +37,11 @@ public sealed class BlockStateCallConverter<T> : JsonConverter<BlockStateCall<T>
 {
     private static readonly OverrideFields BlockOverrideFields = OverrideFields.Of<BlockOverride>();
 
+    public override bool HandleNull => true;
+
     public override BlockStateCall<T>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Null) return null;
+        if (reader.TokenType == JsonTokenType.Null) return new BlockStateCall<T>();
         if (reader.TokenType != JsonTokenType.StartObject)
         {
             throw new JsonException($"Expected an object for a block state call, got {reader.TokenType}.");
@@ -63,6 +65,17 @@ public sealed class BlockStateCallConverter<T> : JsonConverter<BlockStateCall<T>
             {
                 reader.Read();
                 result.Calls = TypeInfoJsonSerializer.Deserialize<T[]>(ref reader, options);
+                if (result.Calls is { } calls)
+                {
+                    for (int i = 0; i < calls.Length; i++)
+                    {
+                        if (calls[i] is not null) continue;
+                        Utf8JsonReader emptyCall = new("{}"u8);
+                        emptyCall.Read();
+                        calls[i] = TypeInfoJsonSerializer.Deserialize<T>(ref emptyCall, options)
+                            ?? throw new JsonException("Could not decode an empty call.");
+                    }
+                }
             }
             else
             {
@@ -76,6 +89,12 @@ public sealed class BlockStateCallConverter<T> : JsonConverter<BlockStateCall<T>
 
     public override void Write(Utf8JsonWriter writer, BlockStateCall<T> value, JsonSerializerOptions options)
     {
+        if (value is null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
         bool skipNull = options.DefaultIgnoreCondition == JsonIgnoreCondition.WhenWritingNull;
         writer.WriteStartObject();
         WriteProperty(writer, nameof(BlockStateCall<T>.BlockOverrides), value.BlockOverrides, skipNull, options);

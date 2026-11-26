@@ -1775,6 +1775,54 @@ public class PersistenceManagerTests
         _persistence.Received(2).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
     }
 
+    // A single base wider than CompactSize — the state a bulk import commits in one step on top of the persisted
+    // base — is the only edge out of it. It cannot be split, so it must be persistable; skipping it
+    // wedges persistence for good while snapshots pile up behind it.
+    [Test]
+    public void FlushToPersistence_WhenTheOnlyEdgeFromThePersistedBaseIsAWideBase_PersistsIt()
+    {
+        StateId imported = CreateStateId(1000);
+        CreateSnapshot(Block0, imported);
+        StateId previous = imported;
+        for (ulong block = 1001; block <= 1003; block++)
+        {
+            StateId next = CreateStateId(block);
+            CreateSnapshot(previous, next);
+            previous = next;
+        }
+        _snapshotRepository.SetLastCommittedStateId(previous);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(previous), "the wide base and the chain after it must be drained");
+        _persistence.Received().CreateWriteBatch(Block0, imported);
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_BackstopExceeded_PersistsAWideBaseFromThePersistedState()
+    {
+        // The backstop engages past LongFinalityMaxReorgDepth of depth; a single bulk-imported base can span it.
+        StateId imported = CreateStateId(_config.LongFinalityMaxReorgDepth);
+        using Snapshot wide = CreateSnapshot(Block0, imported);
+        StateId previous = imported;
+        for (ulong block = imported.BlockNumber + 1; block <= imported.BlockNumber + 3; block++)
+        {
+            StateId next = CreateStateId(block);
+            CreateSnapshot(previous, next).Dispose();
+            previous = next;
+        }
+
+        (PersistedSnapshot? persisted, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(previous);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persisted, Is.Null);
+            Assert.That(toPersist?.To, Is.EqualTo(imported), "a wide base is a persistable unit, not a skip pointer");
+        }
+        toPersist?.Dispose();
+    }
+
     [Test]
     public void FlushToPersistence_WhenBacklogIsPersistedOnly_DrainsConvertedChunks()
     {
@@ -1854,6 +1902,9 @@ public class PersistenceManagerTests
         StateId head = CreateStateId(64);
         CreateSnapshot(Block0, head);
         _snapshotRepository.SetLastCommittedStateId(head);
+        // A head that finality contradicts: the backstop may not persist it, so it has no candidate.
+        _finalizedStateProvider.SetFinalizedBlockNumber(head.BlockNumber);
+        _finalizedStateProvider.SetFinalizedStateRootAt(head.BlockNumber, new Hash256(CreateStateId(head.BlockNumber, rootByte: 1).StateRoot));
 
         (PersistedSnapshot? persisted, Snapshot? inMemory, PersistenceManager.ConversionCandidate? conversion) =
             manager.DetermineSnapshotAction(head);

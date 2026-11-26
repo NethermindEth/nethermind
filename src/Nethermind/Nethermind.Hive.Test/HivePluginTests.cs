@@ -65,7 +65,7 @@ namespace Nethermind.Hive.Test
         }
 
         [Test]
-        public void Enables_blob_proof_translation_for_hive_devp2p()
+        public void Configures_tx_pool_for_hive()
         {
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider: new ConfigProvider(new TxPoolConfig())))
@@ -74,7 +74,11 @@ namespace Nethermind.Hive.Test
 
             ITxPoolConfig txPoolConfig = container.Resolve<ITxPoolConfig>();
 
-            Assert.That(txPoolConfig.ProofsTranslationEnabled, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(txPoolConfig.ProofsTranslationEnabled, Is.True);
+                Assert.That(txPoolConfig.AcceptTxWhenNotSynced, Is.True);
+            }
         }
 
         [Test]

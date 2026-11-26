@@ -22,20 +22,20 @@ public class StateSyncAllocationStrategyTests
 {
     private static readonly IPeerAllocationStrategy _strategy = new StateSyncAllocationStrategyFactory.AllocationStrategy(new NoopAllocationStrategy());
 
-    [TestCase(EthVersions.Eth67, SnapVersions.Snap1, ExpectedResult = true)]
-    [TestCase(EthVersions.Eth66, null, ExpectedResult = true)]
-    [TestCase(EthVersions.Eth67, null, ExpectedResult = false)]
-    [TestCase(EthVersions.Eth67, SnapVersions.Snap2, ExpectedResult = false)]
-    [TestCase(EthVersions.Eth66, SnapVersions.Snap2, ExpectedResult = true)]
-    public bool Can_allocate_node(byte ethVersion, byte? snapVersion) =>
-        IsNodeAllocated(ethVersion, snapVersion);
+    [TestCase(false, SnapVersions.Snap1, ExpectedResult = true)]
+    [TestCase(true, null, ExpectedResult = true)]
+    [TestCase(false, null, ExpectedResult = false)]
+    [TestCase(false, SnapVersions.Snap2, ExpectedResult = false)]
+    [TestCase(true, SnapVersions.Snap2, ExpectedResult = true)]
+    public bool Can_allocate_node(bool canGetNodeData, byte? snapVersion) =>
+        IsNodeAllocated(canGetNodeData, snapVersion);
 
-    private bool IsNodeAllocated(byte version, byte? snapVersion)
+    private bool IsNodeAllocated(bool canGetNodeData, byte? snapVersion)
     {
         Node node = new(TestItem.PublicKeyA, new IPEndPoint(0, 0));
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.Node.Returns(node);
-        syncPeer.ProtocolVersion.Returns(version);
+        syncPeer.CanGetNodeData.Returns(canGetNodeData);
         syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer>()).Returns(
             x =>
             {

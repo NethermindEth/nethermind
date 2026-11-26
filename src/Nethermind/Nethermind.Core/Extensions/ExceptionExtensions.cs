@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.ObjectModel;
 using System.Text;
 
 namespace Nethermind.Core.Extensions;
@@ -27,5 +28,33 @@ public static class ExceptionExtensions
 
         if (current is not null) text.Append(" ---> ...");
         return text.ToString();
+    }
+
+    /// <summary>Returns whether <paramref name="exception"/> is a <typeparamref name="T"/> or wraps one.</summary>
+    /// <remarks>
+    /// Follows <see cref="Exception.InnerException"/> to any depth and, through an <see cref="AggregateException"/>, each of
+    /// its <see cref="AggregateException.InnerExceptions"/>, of which <see cref="Exception.InnerException"/> gives only the first.
+    /// </remarks>
+    public static bool IsOrWraps<T>(this Exception exception) where T : Exception
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is T)
+                return true;
+
+            if (current is AggregateException aggregate)
+            {
+                ReadOnlyCollection<Exception> inner = aggregate.InnerExceptions;
+                for (int i = 0; i < inner.Count; i++)
+                {
+                    if (inner[i].IsOrWraps<T>())
+                        return true;
+                }
+
+                return false;
+            }
+        }
+
+        return false;
     }
 }

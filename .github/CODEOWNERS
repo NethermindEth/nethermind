@@ -27,6 +27,7 @@
 /src/Nethermind/Nethermind.JsonRpc @LukaszRozmej @benaadams @smartprogrammer93 @svlachakis
 /src/Nethermind/Nethermind.Merge.Plugin @LukaszRozmej @MarekM25 @flcl42 @benaadams @Marchhill
 /src/Nethermind/Nethermind.Merkleization @ak88 @Marchhill @smartprogrammer93 @flcl42
+/src/Nethermind/Nethermind.Network.Core @LukaszRozmej @flcl42 @asdacap @marcindsobczak
 /src/Nethermind/Nethermind.Network.Discovery @LukaszRozmej @flcl42 @asdacap
 /src/Nethermind/Nethermind.Network @LukaszRozmej @flcl42 @asdacap @marcindsobczak
 /src/Nethermind/Nethermind.Runner @LukaszRozmej @flcl42 @rubo
@@ -34,7 +35,6 @@
 /src/Nethermind/Nethermind.Serialization.Rlp @LukaszRozmej @Marchhill
 /src/Nethermind/Nethermind.Serialization.Ssz @flcl42 @ak88 @Marchhill
 /src/Nethermind/Nethermind.Serialization.SszGenerator @flcl42 @ak88 @Marchhill
-/src/Nethermind/Nethermind.Shutter @Marchhill
 /src/Nethermind/Nethermind.Sockets @LukaszRozmej @benaadams
 /src/Nethermind/Nethermind.Specs* @smartprogrammer93 @Marchhill @LukaszRozmej @benaadams @flcl42 @AnkushinDaniil
 /src/Nethermind/Nethermind.State @LukaszRozmej @benaadams @asdacap @flcl42 @damian-orzechowski

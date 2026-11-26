@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
             catch (KeyNotFoundException)
             {
-                return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+                return ResultWrapper<string>.Fail($"no \"{subscriptionName}\" subscription in eth namespace", ErrorCodes.MethodNotFound);
             }
             catch (LimitExceededException e)
             {

@@ -18,6 +18,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Healing;
+using Nethermind.State.SnapServer;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -42,7 +43,7 @@ public class PruningTrieStateFactory(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PruningTrieStateFactory>();
 
-    public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
+    public (IWorldStateManager, IPruningTrieStateAdminRpcModule, ISnapStateServer) Build()
     {
         IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
 
@@ -76,8 +77,11 @@ public class PruningTrieStateFactory(
             dbProvider,
             boundaryStore,
             stateHeaderProvider,
-            logManager,
-            new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
+            logManager);
+
+        ISnapStateServer snapStateServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
+            ? NoopSnapServer.Instance
+            : new SnapStateServer(stateManager.CreateReadOnlyTrieStore(), logManager, new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
 
         disposeStack.Push(mainWorldTrieStore);
 
@@ -92,7 +96,7 @@ public class PruningTrieStateFactory(
         disposeStack.Push(compositePruningTrigger);
         PruningTrieStateAdminRpcModule adminRpcModule = new(pruningTrigger);
 
-        return (stateManager, adminRpcModule);
+        return (stateManager, adminRpcModule, snapStateServer);
     }
 }
 

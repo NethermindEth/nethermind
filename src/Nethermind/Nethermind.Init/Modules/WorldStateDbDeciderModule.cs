@@ -14,6 +14,7 @@ using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
@@ -64,6 +65,12 @@ internal class WorldStateDbDeciderModule : Module
                     policy.ShouldTurnOnFlatDb()
                         ? flatFactory()
                         : patriciaFactory().AdminRpcModule)
+
+            .AddSingleton<ISnapStateServer, FlatStateActivationPolicy, Func<SnapFlatStateServer>, Func<PruningTrieStoreModule.PruningTrieStateFactoryOutput>>(
+                (policy, flatFactory, patriciaFactory) =>
+                    policy.ShouldTurnOnFlatDb()
+                        ? flatFactory()
+                        : patriciaFactory().SnapStateServer)
 
             .AddSingleton<ISnapTrieFactory, FlatStateActivationPolicy, Func<FlatSnapTrieFactory>, Func<PatriciaSnapTrieFactory>>(
                 (policy, flatFactory, patriciaFactory) =>

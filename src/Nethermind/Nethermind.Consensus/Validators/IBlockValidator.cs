@@ -6,7 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Consensus.Validators;
 
-public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
+public interface IBlockValidator : IHeaderValidator
 {
     bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error);
     /// <param name="validateHashes">

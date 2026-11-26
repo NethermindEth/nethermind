@@ -24,7 +24,7 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
 
     protected BeaconChainSpec Spec { get; } = spec;
     /// <summary>The context bytes of a block chunk: the fork digest of the block's slot epoch.</summary>
-    protected byte[] ContextBytesFor(ForkedSignedBeaconBlock block) => ForkDigest.Compute(Spec, Spec.GetEpoch(block.Slot));
+    protected byte[] ContextBytesFor(ulong slot) => ForkDigest.Compute(Spec, Spec.GetEpoch(slot));
 
     /// <summary>Reads block chunks, each decoded as the SSZ shape of the fork its context bytes name.</summary>
     /// <param name="overallTimeout">Overrides <see cref="MaxBlocksResponseDuration"/>; test-only seam, production call sites omit it.</param>
@@ -68,7 +68,7 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
                 }
 
                 // The shape was chosen by slot, so requiring digest(epoch(slot)) accepts exactly what decoding by the context fork would.
-                if (!chunk.ContextBytes.AsSpan().SequenceEqual(ContextBytesFor(block)))
+                if (!chunk.ContextBytes.AsSpan().SequenceEqual(ContextBytesFor(block.Slot)))
                 {
                     failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
@@ -95,9 +95,9 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
         return blocks;
     }
 
-    protected Task WriteBlockChunkAsync(Stream stream, ForkedSignedBeaconBlock block, CancellationTokenSource cts)
+    protected Task WriteBlockChunkAsync(Stream stream, ulong slot, ReadOnlySpan<byte> ssz, CancellationTokenSource cts)
     {
         cts.CancelAfter(RespTimeout);
-        return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, ContextBytesFor(block), SignedBeaconBlockCodec.Encode(block, Spec), cts.Token);
+        return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, ContextBytesFor(slot), ssz, cts.Token);
     }
 }

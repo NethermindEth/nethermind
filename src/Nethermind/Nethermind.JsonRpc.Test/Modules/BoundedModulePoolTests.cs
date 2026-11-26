@@ -17,6 +17,9 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Facade;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core.Timers;
+using Nethermind.Facade.Filters;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -44,6 +47,7 @@ public class BoundedModulePoolTests
     public Task Initialize()
     {
         ITxPool txPool = NullTxPool.Instance;
+        FilterStore filterStore = new(Substitute.For<ITimerFactory>());
 
         BlockTree blockTree = Build.A
             .BlockTree()
@@ -58,6 +62,9 @@ public class BoundedModulePoolTests
             LimboLogs.Instance,
             Substitute.For<IStateReader>(),
             Substitute.For<IBlockchainBridgeFactory>(),
+            filterStore,
+            new FilterManager(filterStore, Substitute.For<IMainProcessingContext>(), txPool, Substitute.For<IReceiptMonitor>(),
+                LimboLogs.Instance, Substitute.For<ISpecProvider>(), blockTree, new ReceiptConfig()),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<IGasPriceOracle>(),

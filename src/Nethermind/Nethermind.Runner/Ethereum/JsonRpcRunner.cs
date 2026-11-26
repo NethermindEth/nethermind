@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging;
 using Nethermind.Api.Extensions;
@@ -33,7 +35,7 @@ using WebHost = Nethermind.JsonRpc.Hosting.WebHost;
 namespace Nethermind.Runner.Ethereum
 {
     public class JsonRpcRunner(
-        JsonRpcProcessor jsonRpcProcessor,
+        IJsonRpcProcessor jsonRpcProcessor,
         IJsonRpcUrlCollection jsonRpcUrlCollection,
         IWebSocketsManager webSocketsManager,
         IConfigProvider configurationProvider,
@@ -51,7 +53,7 @@ namespace Nethermind.Runner.Ethereum
         private readonly IConfigProvider _configurationProvider = configurationProvider;
         private readonly IRpcAuthentication _rpcAuthentication = rpcAuthentication;
         private readonly ILogManager _logManager = logManager;
-        private readonly JsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
+        private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
         private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection = jsonRpcUrlCollection;
         private readonly IWebSocketsManager _webSocketsManager = webSocketsManager;
         private WebHost? _webApp;
@@ -104,6 +106,8 @@ namespace Nethermind.Runner.Ethereum
                 configurer.Configure(services);
             }
             services.AddSingleton<ApplicationLifetime>();
+            // WebHost drives only this lifetime, so services that resolve the interface (e.g. the WebSocket pipeline) see shutdown.
+            services.Replace(ServiceDescriptor.Singleton<IHostApplicationLifetime>(static provider => provider.GetRequiredService<ApplicationLifetime>()));
             startup.ConfigureServices(services);
             builder.WebHost
                 .UseUrls(listenUrls)

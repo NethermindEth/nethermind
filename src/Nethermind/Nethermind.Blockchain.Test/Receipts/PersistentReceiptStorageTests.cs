@@ -81,17 +81,6 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [TearDown]
     public void TearDown() => _receiptsDb.Dispose();
 
-    private static IReceiptStorage[] NonPersistentImplementations() =>
-    [
-        NullReceiptStorage.Instance,
-        new InMemoryReceiptStorage()
-    ];
-
-    [TestCaseSource(nameof(NonPersistentImplementations))]
-    public void RemoveReceiptsRange_IsImplemented(IReceiptStorage storage) =>
-        Assert.That(() => storage.RemoveReceiptsRange(1, 1000), Throws.Nothing,
-            $"{storage.GetType().Name} inherits the throwing default, so a pruning node configured with it would fail every pass");
-
     [Test]
     public void InMemoryReceiptStorage_RemoveReceiptsByHash_TakesOnlyThatBlock()
     {
@@ -1630,6 +1619,31 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         (Block block, TxReceipt[] _) = InsertBlock();
 
         Assert.That(ReadStoredReceipts(block)[0], Is.EqualTo(marker));
+    }
+
+    [Test, NonParallelizable]
+    public void Compact_receipt_read_paths_reject_a_registered_decoder_without_ref_support()
+    {
+        Assume.That(useCompactReceipts);
+        (Block block, _) = InsertBlock();
+        _storage.ClearCache();
+        RlpDecoderKey key = new(typeof(TxReceipt), RlpDecoderKey.Storage);
+        IRlpDecoder<TxReceipt> original = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Storage)!;
+        try
+        {
+            Rlp.RegisterDecoder(key, Substitute.For<IRlpDecoder<TxReceipt>>());
+            Assert.Throws<RlpReaderException>(() =>
+                _storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[0].Hash!, out _, out _, out _));
+            Assert.Throws<RlpReaderException>(() =>
+            {
+                _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator);
+                iterator.Dispose();
+            });
+        }
+        finally
+        {
+            Rlp.RegisterDecoder(key, original);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

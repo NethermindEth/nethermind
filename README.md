@@ -17,7 +17,7 @@ Runs on Linux, Windows, and macOS.
 
 ### Supported networks
 
-**Ethereum** · **Gnosis** · **Taiko** · **Linea** · **Energy Web**
+**Ethereum** · **Gnosis** · **Optimism** · **Taiko** · **World Chain** · **Linea** · **Energy Web**
 
 ### Documentation
 
@@ -33,7 +33,7 @@ Nethermind connects operators to the Ethereum network via JSON-RPC over HTTP, We
 
 - **Client diversity:** The Ethereum protocol becomes more resilient when no single node implementation dominates. A bug in any one implementation cannot cause the network to finalize a bad block if multiple independent clients are running.
 
-- **L2 and rollup native:** Each supported L2 network is implemented as a plugin, so the core stays untouched.
+- **L2 and rollup native:** Each supported L2 network is implemented as a plugin, so the core stays untouched. For OP Stack operators, a rollup node is built directly into the client, fully replacing the separate `op-node` and cutting services from two down to one.
 
 - **ZK-readiness:** ZK proving is being built directly into the production execution client. Execution witness capture, stateless block replay, and a minimal EVM binary are complete. See the [ZK roadmap](https://www.nethermind.io/blog/road-to-zk-implementation-nethermind-clients-path-to-proofs) for current status.
 
@@ -138,13 +138,9 @@ dotnet test --solution EthereumTests.slnx -c release
 
 For more info, see [Building standalone binaries](https://docs.nethermind.io/developers/building-from-source#building-standalone-binaries).
 
-Pull-request opcode benchmark comparisons use the immutable merge revision, keeping
-the workflow's helper scripts and measured code on the same revision. The comparison
-job installs the latest serviced .NET 10 SDK for its file-based helper dependencies.
-
 ## Plugin development
 
-Nethermind's plugin system lets teams extend the client without touching the core. This is the same system used internally for L2 network support, health checks, Shutter, and more. Plugins are loaded on startup and can provide:
+Nethermind's plugin system lets teams extend the client without touching the core. This is the same system used internally for L2 network support, health checks, and more. Plugins are loaded on startup and can provide:
 
 - New consensus engines
 - Custom transaction types and RLP decoders
@@ -152,38 +148,6 @@ Nethermind's plugin system lets teams extend the client without touching the cor
 - Additional JSON-RPC namespaces
 
 See the [plugin development guide](https://docs.nethermind.io/developers/plugins) for a full lifecycle walkthrough, configuration auto-mapping, and working examples. Join the [plugin development channel](https://discord.gg/K8MdZT3keK) on Discord.
-
-Runner startup, cancellation and dependency-resolution smoke tests apply
-`Plugin.PluginOrder` through the same loader ordering used by the production runner.
-External plugins with dependent modules therefore use their configured order rather
-than filesystem assembly-discovery order; built-in core config coverage is retained.
-
-Read-only execution environments use geth's precompile override behavior by default:
-any account override replaces the native precompile with the account's code.
-An extension can register `PrecompileOverridePolicy(disableOnAccountOverride: false)`
-from `Nethermind.State.OverridableEnv` to retain native dispatch while still applying
-storage, balance, nonce and code changes to the overridden state. Native dispatch
-and the plain bytecode/delegation view share the overridden bytes and are cached
-once per override. Code introspection sees those bytes; calling the native address
-does not follow an overridden EIP-7702 designator, while an ordinary account
-delegating to it executes its visible code without following delegation twice.
-Explicit precompile moves remain separate. Ordinary VM outcomes marked `ShouldRevert` preserve their
-original revert bytes through `eth_call` and `eth_estimateGas`, even when an
-extension does not also set the redundant `Revert` exception marker.
-
-RPC tests exercise both the default and a container-registered `PrecompileOverridePolicy` with empty,
-balance, nonce, code, state and state-diff account overrides.
-
-A chain can give `eth_call` fee semantics of its own by registering a
-`Nethermind.Facade.ICallTransactionProcessorDecorator`. The bridge passes the call's transaction processor
-through it for `eth_call` only (the call and its diagnostic rerun); estimates, access lists, traces, simulated
-blocks and consensus execution never see it. The chain's transaction processor implements the rule by overriding
-the fee steps `BuyGas`, `TryCalculatePremiumPerGas`, `PayRefund` and `PayFees`, switched on by the decorator for
-the duration of the call. Without a registered decorator `eth_call` behaves as on Ethereum.
-
-### Gas policy at exceptional exits
-
-`EthereumGasPolicy.UnspentGasBeforeHalt` records the execution gas remaining immediately before an exceptional halt. Traced and untraced execution must preserve the same value on the frame's policy. Fixed-gas dispatch bodies use a temporary policy for their fast path; on failure they copy the recorded halt gas back before returning. Plugins consuming child-frame completion therefore observe the same halt accounting with instruction tracing enabled or disabled.
 
 ## Getting help
 

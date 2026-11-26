@@ -15,7 +15,6 @@ public interface INethermindPlugin
 
     void InitTxTypesAndRlpDecoders(INethermindApi api) { }
 
-    bool MustInitialize => false;
     bool Enabled { get; }
     IModule? Module => null;
 }

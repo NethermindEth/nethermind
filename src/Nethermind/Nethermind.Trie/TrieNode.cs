@@ -822,13 +822,6 @@ namespace Nethermind.Trie
             set { SetChild(i, value); }
         }
 
-        public TreePath GetChildPath(in TreePath currentPath, int childIndex)
-        {
-            TreePath copy = currentPath;
-            AppendChildPath(ref copy, childIndex);
-            return copy;
-        }
-
         public int AppendChildPath(ref TreePath currentPath, int childIndex)
         {
             int previousLength = currentPath.Length;
@@ -901,16 +894,6 @@ namespace Nethermind.Trie
             }
         }
 
-        public void ReplaceChildRef(int i, TrieNode child)
-        {
-            if (child is null)
-            {
-                throw new InvalidOperationException();
-            }
-
-            SetItem(i, child);
-        }
-
         [MethodImpl(SetChildInlining)]
         public void SetChild(int i, TrieNode? node)
         {
@@ -951,14 +934,6 @@ namespace Nethermind.Trie
                 trieNode.InitClonedRlp(rlp, this);
             }
 
-            return trieNode;
-        }
-
-        public TrieNode CloneWithChangedKeyAndValue(byte[] key, CappedArray<byte> changedValue)
-        {
-            TrieNode trieNode = Clone();
-            trieNode.Key = key;
-            trieNode.Value = changedValue;
             return trieNode;
         }
 

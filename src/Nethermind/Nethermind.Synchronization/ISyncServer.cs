@@ -18,7 +18,6 @@ namespace Nethermind.Synchronization
     {
         void HintBlock(Hash256 hash, ulong number, ISyncPeer receivedFrom);
         void AddNewBlock(Block block, ISyncPeer node);
-        void StopNotifyingPeersAboutNewBlocks();
         TxReceipt[]? GetReceipts(Hash256 blockHashes);
         /// <summary>Adds the receipts of the block with <paramref name="blockHash"/> as a receipts message carries them.</summary>
         /// <remarks>

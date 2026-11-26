@@ -384,6 +384,46 @@ public class AdminModuleTests
     }
 
     [Test]
+    public async Task AdminPeerMethods_ReturnTimeoutSourceToPool(
+        [Values("admin_addPeer", "admin_removePeer", "admin_addTrustedPeer", "admin_removeTrustedPeer")] string method)
+    {
+        TaskCompletionSource<bool> write = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
+        staticNodesManager.AddAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        staticNodesManager.RemoveAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        trustedNodesManager.RemoveAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(staticNodesManager, trustedNodesManager);
+
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        try
+        {
+            Task<ResultWrapper<bool>> call = method switch
+            {
+                "admin_addPeer" => adminRpcModule.admin_addPeer(_enodeString),
+                "admin_removePeer" => adminRpcModule.admin_removePeer(_enodeString),
+                "admin_addTrustedPeer" => adminRpcModule.admin_addTrustedPeer(_enodeString),
+                _ => adminRpcModule.admin_removeTrustedPeer(_enodeString),
+            };
+
+            Assert.That(TimeoutTestHelper.WasReturned(timeout), Is.False, "the pending write still holds the token");
+            write.SetResult(true);
+            await call;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(timeout.DisposeCount, Is.Zero);
+                Assert.That(TimeoutTestHelper.WasReturned(timeout), Is.True);
+            }
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
     public async Task AdminUnsubscribe_AfterSubscribe_ReturnsTrue()
     {
         string serializedSub = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "peerEvents");
@@ -403,6 +443,15 @@ public class AdminModuleTests
 
         string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"missing value for required argument 0\"},\"id\":67}";
         Assert.That(expectedResult, Is.EqualTo(serialized), "missing required argument is a JSON-RPC InvalidParams error");
+    }
+
+    [Test]
+    public async Task AdminSubscribe_WithUnknownName_ReturnsMethodNotFound()
+    {
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "bogusType");
+
+        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32601,\"message\":\"no \\\"bogusType\\\" subscription in admin namespace\"},\"id\":67}";
+        Assert.That(serialized, Is.EqualTo(expectedResult));
     }
 
     [Test]

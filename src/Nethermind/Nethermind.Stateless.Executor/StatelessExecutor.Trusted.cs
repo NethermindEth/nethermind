@@ -32,7 +32,7 @@ public static partial class StatelessExecutor
         {
             payload = TrustedInput.Read(data);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsOutOfMemory(ex))
         {
             Debug.WriteLine(ex.Message);
             return output;
@@ -62,7 +62,7 @@ public static partial class StatelessExecutor
                 success = Execute(block, witness, specProvider, validateHashes: true);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsOutOfMemory(ex))
         {
             Debug.WriteLine(ex.Message);
         }
