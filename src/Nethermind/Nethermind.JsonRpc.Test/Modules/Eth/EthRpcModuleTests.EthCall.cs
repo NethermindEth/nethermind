@@ -1286,10 +1286,6 @@ public partial class EthRpcModuleTests
         public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
         /// <inheritdoc />
         public void SetTxExecutionContext(in TxExecutionContext context) => inner.SetTxExecutionContext(in context);
-        /// <inheritdoc />
-        public int OpCodeCount => inner.OpCodeCount;
-        /// <inheritdoc />
-        public void FlushMetricsCounters() => inner.FlushMetricsCounters();
     }
 
     [TestCase(
