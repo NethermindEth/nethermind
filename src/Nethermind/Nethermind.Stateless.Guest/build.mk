@@ -61,6 +61,8 @@ TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 # Objects a guest links besides the managed closure and its bindings library, each
 # assembled from the .S of the same name in the guest's directory.
 GUEST_OBJECTS ?=
+# The target clang assembles them for.
+GUEST_ASFLAGS ?= --target=riscv64-unknown-elf -march=rv64im -mabi=lp64
 
 # What a guest whose toolchain is not the default image overrides: the target
 # architecture, its bindings and the docker arguments that bring
@@ -195,7 +197,7 @@ $(GUEST_DIR)/%.o: $(GUEST_DIR)/%.S
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
 		--entrypoint clang \
 		$(BFLAT_IMAGE) \
-		--target=riscv64-unknown-elf -march=rv64im -mabi=lp64 -mno-relax -c $*.S -o $*.o
+		$(GUEST_ASFLAGS) -mno-relax -c $*.S -o $*.o
 
 # SP1 and OpenVM take the SSZ payload as-is; the shared fixtures are framed for
 # ZisK (8-byte little-endian length, payload, padding to 8), so the frame is

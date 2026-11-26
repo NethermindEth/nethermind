@@ -254,20 +254,20 @@ internal static unsafe class GuestWord
     /// <remarks>
     /// Where <see cref="StrictAlignmentFlag"/> is on and <paramref name="source"/> is on a word or a half-word boundary,
     /// the limbs are loaded in words or halves and byte-swapped: one alignment test for the word instead of a byte gather
-    /// per limb. Call data arguments follow a 4-byte selector, so words on a half-word boundary are common.
-    /// OpenVM takes a misaligned load at the cost of an aligned one, so where <see cref="OpenVmFlag"/> is on the limbs
-    /// are loaded in words at any address.
+    /// per limb. Call data arguments follow a 4-byte selector, so words on a half-word boundary are common. OpenVM's
+    /// RV32 line, which also needs aligned words, takes the same path. The RV64 line takes a misaligned load at the cost
+    /// of an aligned one, so where <see cref="OpenVmFlag"/> alone is on the limbs are loaded in words at any address.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void LoadBigEndian(ref ulong slot, ref byte source)
     {
-        if (OpenVmFlag.IsActive)
+        if (OpenVmFlag.IsActive && !OpenVm32Flag.IsActive)
         {
             LoadAlignedBigEndian(ref slot, (ulong*)Unsafe.AsPointer(ref source));
             return;
         }
 
-        if (StrictAlignmentFlag.IsActive)
+        if (StrictAlignmentFlag.IsActive || OpenVm32Flag.IsActive)
         {
             nuint misalignment = Misalignment(ref source);
             if (misalignment == 0)
@@ -300,13 +300,13 @@ internal static unsafe class GuestWord
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void StoreBigEndian(ref byte destination, ref ulong end)
     {
-        if (OpenVmFlag.IsActive)
+        if (OpenVmFlag.IsActive && !OpenVm32Flag.IsActive)
         {
             StoreAlignedBigEndian((ulong*)Unsafe.AsPointer(ref destination), ref end);
             return;
         }
 
-        if (StrictAlignmentFlag.IsActive)
+        if (StrictAlignmentFlag.IsActive || OpenVm32Flag.IsActive)
         {
             nuint misalignment = Misalignment(ref destination);
             if (misalignment == 0)

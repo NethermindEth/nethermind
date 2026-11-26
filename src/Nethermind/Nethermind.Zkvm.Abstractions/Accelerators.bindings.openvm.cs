@@ -14,6 +14,34 @@ public static partial class Accelerators
 
     [LibraryImport("__Internal")]
     [SuppressGCTransition]
+    private static unsafe partial void zkvm_u256_add(ulong* result, ulong* a, ulong* b);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static unsafe partial void zkvm_u256_sub(ulong* result, ulong* a, ulong* b);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static unsafe partial void zkvm_u256_sll(ulong* result, ulong* a, ulong* b);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static unsafe partial void zkvm_u256_srl(ulong* result, ulong* a, ulong* b);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static unsafe partial void zkvm_u256_sra(ulong* result, ulong* a, ulong* b);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static unsafe partial void zkvm_u256_slt(ulong* result, ulong* a, ulong* b);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static unsafe partial void zkvm_u256_sltu(ulong* result, ulong* a, ulong* b);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
     private static unsafe partial void zkvm_keccak_xorin(ulong* buffer, byte* input, nuint len);
 
     // Same symbol as SP1's, with OpenVM's arguments.

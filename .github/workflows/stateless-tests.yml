@@ -72,7 +72,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vm: [zisk, sp1, openvm, airbender]
+        vm: [zisk, sp1, openvm, openvm32, airbender]
         # The input the guest takes: Ssz, the spec StatelessInput, or Trusted, the trusted-input format.
         input: [Ssz, Trusted]
         include:
@@ -82,6 +82,8 @@ jobs:
             project: Nethermind.Stateless.Sp1Guest
           - vm: openvm
             project: Nethermind.Stateless.OpenVMGuest
+          - vm: openvm32
+            project: Nethermind.Stateless.OpenVM32Guest
           - vm: airbender
             project: Nethermind.Stateless.AirbenderGuest
     steps:
@@ -113,7 +115,7 @@ jobs:
           username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
 
       # One bflat image compiles the ZisK, SP1 and OpenVM guests, and its
-      # riscv32 image the Airbender guest; the layout, entry point and exit
+      # riscv32 image the Airbender and OpenVM RV32 guests; the layout, entry point and exit
       # protocol differ per target and come from the guest's Makefile.
       - name: Build Nethermind
         working-directory: src/Nethermind/${{ matrix.project }}
@@ -139,7 +141,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vm: [zisk, sp1, openvm, airbender]
+        vm: [zisk, sp1, openvm, openvm32, airbender]
         input: [Ssz, Trusted]
         block: ${{ fromJSON(needs.blocks.outputs.blocks) }}
         include:
@@ -161,6 +163,9 @@ jobs:
             minutes: 30
           - vm: openvm
             project: Nethermind.Stateless.OpenVMGuest
+            minutes: 15
+          - vm: openvm32
+            project: Nethermind.Stateless.OpenVM32Guest
             minutes: 15
           - vm: airbender
             project: Nethermind.Stateless.AirbenderGuest
@@ -236,14 +241,14 @@ jobs:
           set -euo pipefail
           # make verify on Airbender also checks the digest it publishes in
           # x10-x17, which is what gets proven there.
-          make ${{ matrix.vm == 'airbender' && 'verify' || 'run' }} INPUT="${{ steps.expected.outputs.input }}" GUEST_INPUT=${{ matrix.input }} EXPECTED_DIGEST="${{ steps.expected.outputs.digest }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          make ${{ matrix.vm == 'airbender' && 'verify' || 'run' }} INPUT="${{ steps.expected.outputs.input }}" GUEST_INPUT=${{ matrix.input }} EXPECTED_DIGEST="${{ steps.expected.outputs.digest }}" OPENVM_ARGS="${{ matrix.vm == 'openvm32' && '--execute-only' || '' }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
           grep -q "${{ steps.expected.outputs.output }}" "$RUNNER_TEMP/run.log" || \
             { echo "::error::Output mismatch"; exit 1; }
           # The line above is a debug print on OpenVM. What gets proven is the
           # digest in the 32-byte public-values window, so assert that too - a
           # mis-sized window write or an accelerator returning zeros would pass
           # the print check untouched.
-          if [ "${{ matrix.vm }}" = openvm ]; then
+          if [ "${{ matrix.vm }}" = openvm ] || [ "${{ matrix.vm }}" = openvm32 ]; then
             grep -q "public_values=${{ steps.expected.outputs.digest }}" "$RUNNER_TEMP/run.log" || \
               { echo "::error::Public values mismatch"; exit 1; }
           fi
