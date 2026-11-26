@@ -172,8 +172,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     public override void ReportOperationRemainingGas(ulong gas)
     {
         if (_gasCostAlreadySet || !_hasPendingOpcode) return;
-        _pendingGasCost = _pendingGas - gas;
-        _pendingRefund = CurrentRefund;
+        _pendingGasCost = GetGasCost(_pendingGas, gas, _calculatedGasCost);
         _gasCostAlreadySet = true;
     }
 
@@ -221,12 +220,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
             _pendingError = "out of gas: write protection";
         if (error == EvmExceptionType.OutOfGas) _pendingError ??= _stackFailure;
         if (!IsExecutionFault(error)) _pendingError ??= GetErrorDescription(error);
-    }
-
-    /// <inheritdoc/>
-    public override void ReportStorageRefund(long refund)
-    {
-        if (_hasPendingOpcode) _pendingRefund = CurrentRefund + refund;
     }
 
     public override void SetOperationMemorySize(ulong newSize)

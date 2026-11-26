@@ -20,7 +20,7 @@ namespace Nethermind.Evm.State;
 /// guarded <see cref="GeneratingBlockAccessList"/>, so a missed setup in block processing fails fast with
 /// an <see cref="InvalidOperationException"/> naming it instead of emitting an empty BAL.
 /// </remarks>
-public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
+public partial class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
@@ -202,11 +202,18 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
             return;
         }
 
+        RecordStorageWrite(_generatingBlockAccessList, in storageCell, in currentValue, in newValue);
+        State.Set(in storageCell, in newValue, in currentValue);
+    }
+
+    /// <summary>Records a storage write in the block access list, seeding the slot's value from before a clear in the transaction.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void RecordStorageWrite(BlockAccessListAtIndex generatingBlockAccessList, in StorageCell storageCell, in UInt256 currentValue, in UInt256 newValue)
+    {
         AssertCurrentStorageValue(in storageCell, in currentValue);
         if (State.TryGetStorageBeforeClear(in storageCell, out UInt256 beforeClear))
-            _generatingBlockAccessList.RecordReadAndGet(storageCell.Address).SeedPreTxStorage(in storageCell.Index, in beforeClear);
-        _generatingBlockAccessList.AddStorageChange(in storageCell, in currentValue, in newValue);
-        State.Set(in storageCell, in newValue, in currentValue);
+            generatingBlockAccessList.RecordReadAndGet(storageCell.Address).SeedPreTxStorage(in storageCell.Index, in beforeClear);
+        generatingBlockAccessList.AddStorageChange(in storageCell, in currentValue, in newValue);
     }
 
     [Conditional("DEBUG")]

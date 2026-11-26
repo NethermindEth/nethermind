@@ -17,6 +17,5 @@ public class StateDiffsWriterPlugin(IStateDiffsWriterConfig config) : INethermin
     public string Author => "Nethermind";
 
     public bool Enabled => config.Enabled;
-    public bool MustInitialize => true;
     public IModule Module => new StateDiffsWriterModule();
 }

@@ -21,8 +21,6 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Steps;
-using Nethermind.Shutter;
-using Nethermind.Shutter.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.Taiko;
@@ -60,7 +58,6 @@ public class EthereumStepsLoaderTests
         CheckPlugin(new TaikoPlugin(new ChainSpec()));
         CheckPlugin(new AuRaMergePlugin(new ChainSpec(), new MergeConfig()));
         CheckPlugin(new SnapshotPlugin(new SnapshotConfig()));
-        CheckPlugin(new ShutterPlugin(new ShutterConfig(), new MergeConfig(), new ChainSpec()));
     }
 
     [Test]

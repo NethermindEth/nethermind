@@ -53,7 +53,7 @@ using Nethermind.Core.Collections;
 
 namespace Ethereum.Test.Base;
 
-public abstract class BlockchainTestBase
+public abstract partial class BlockchainTestBase
 {
     private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
@@ -307,59 +307,10 @@ public abstract class BlockchainTestBase
 
         try
         {
-            BlockHeader parentHeader;
             string lastPayloadStatus = "";
             string? lastValidationError = null;
             string? asyncBlockError = null;
-            // Genesis processing
-            using (stateProvider.BeginScope(null))
-            {
-                InitializeTestState(test, stateProvider, specProvider);
-
-                stopwatch?.Start();
-
-                test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
-
-                RlpReader genesisReader = new(test.GenesisRlp);
-                Block genesisBlock = blockDecoder.DecodeComplete(ref genesisReader);
-                Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
-
-                using ManualResetEvent genesisProcessed = new(false);
-                EventHandler<BlockEventArgs> onNewHeadBlock = (_, args) =>
-                {
-                    if (args.Block.Number == 0)
-                    {
-                        Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
-                        genesisProcessed.Set();
-                    }
-                };
-                EventHandler<BlockRemovedEventArgs> onGenesisBlockRemoved = (_, args) =>
-                {
-                    if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
-                    {
-                        Assert.Fail($"Failed to process genesis block: {args.Message ?? args.Exception?.ToString()}");
-                        genesisProcessed.Set();
-                    }
-                };
-
-                blockTree.NewHeadBlock += onNewHeadBlock;
-                blockchainProcessor.BlockRemoved += onGenesisBlockRemoved;
-
-                try
-                {
-                    blockTree.SuggestBlock(genesisBlock);
-                    Assert.That(genesisProcessed.WaitOne(_genesisProcessingTimeoutMs), Is.True,
-                        "Timed out waiting for genesis block processing.");
-                    parentHeader = genesisBlock.Header;
-                }
-                finally
-                {
-                    blockTree.NewHeadBlock -= onNewHeadBlock;
-                    blockchainProcessor.BlockRemoved -= onGenesisBlockRemoved;
-                }
-
-                genesisBlock.DisposeAccountChanges();
-            }
+            BlockHeader parentHeader = ProcessGenesis(test, stateProvider, specProvider, blockDecoder, blockTree, blockchainProcessor, stopwatch);
 
             List<string> engineWitnessDifferences = [];
             if (test.Blocks is not null)
@@ -453,6 +404,62 @@ public abstract class BlockchainTestBase
         {
             await blockchainProcessingQueue.StopAsync(true);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Sets up the test's pre-state, then suggests its genesis block and waits until the block is the head.
+    /// </summary>
+    /// <returns>The genesis block header.</returns>
+    private static BlockHeader ProcessGenesis(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider, BlockDecoder blockDecoder, IBlockTree blockTree, BlockchainProcessor blockchainProcessor, Stopwatch? stopwatch)
+    {
+        using (stateProvider.BeginScope(null))
+        {
+            InitializeTestState(test, stateProvider, specProvider);
+
+            stopwatch?.Start();
+
+            test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
+
+            RlpReader genesisReader = new(test.GenesisRlp);
+            Block genesisBlock = blockDecoder.DecodeComplete(ref genesisReader);
+            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+
+            using ManualResetEvent genesisProcessed = new(false);
+            EventHandler<BlockEventArgs> onNewHeadBlock = (_, args) =>
+            {
+                if (args.Block.Number == 0)
+                {
+                    Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
+                    genesisProcessed.Set();
+                }
+            };
+            EventHandler<BlockRemovedEventArgs> onGenesisBlockRemoved = (_, args) =>
+            {
+                if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
+                {
+                    Assert.Fail($"Failed to process genesis block: {args.Message ?? args.Exception?.ToString()}");
+                    genesisProcessed.Set();
+                }
+            };
+
+            blockTree.NewHeadBlock += onNewHeadBlock;
+            blockchainProcessor.BlockRemoved += onGenesisBlockRemoved;
+
+            try
+            {
+                blockTree.SuggestBlock(genesisBlock);
+                Assert.That(genesisProcessed.WaitOne(_genesisProcessingTimeoutMs), Is.True,
+                    "Timed out waiting for genesis block processing.");
+            }
+            finally
+            {
+                blockTree.NewHeadBlock -= onNewHeadBlock;
+                blockchainProcessor.BlockRemoved -= onGenesisBlockRemoved;
+            }
+
+            genesisBlock.DisposeAccountChanges();
+            return genesisBlock.Header;
         }
     }
 

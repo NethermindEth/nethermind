@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -79,6 +80,34 @@ public class ConfigProvider_FindIncorrectSettings_Tests
             Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:XYZ"));
         }
     }
+
+    [Test]
+    public void Unread_settings_without_a_category_are_reported_as_deprecated()
+    {
+        _env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() {
+            { "NETHERMIND_CLISWITCHLOCAL", "http://localhost:80" },
+            { "NETHERMIND_MONITORINGJOB", "job" },
+            { "NETHERMIND_MONITORINGGROUP", "group" }
+        });
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new EnvConfigSource(_env));
+
+        Assert.That(configProvider.GetObsoleteSettingWarnings(), Is.EquivalentTo(new[]
+        {
+            "CliSwitchLocal is deprecated: Has no effect.",
+            "MonitoringJob is deprecated: Has no effect. Set Metrics.MonitoringJob.",
+            "MonitoringGroup is deprecated: Has no effect. Set Metrics.MonitoringGroup."
+        }));
+    }
+
+    // The members are named by strings, so the test itself does not use them.
+    [TestCase(typeof(ConfigItemAttribute), "EnvironmentVariable")]
+    [TestCase(typeof(INoCategoryConfig), "CliSwitchLocal")]
+    [TestCase(typeof(NoCategoryConfig), "CliSwitchLocal")]
+    [TestCase(typeof(NoCategoryConfig), "MonitoringJob")]
+    [TestCase(typeof(NoCategoryConfig), "MonitoringGroup")]
+    public void Unread_members_are_deprecated_but_kept(Type type, string member) =>
+        Assert.That(type.GetProperty(member)?.GetCustomAttribute<ObsoleteAttribute>(), Is.Not.Null.And.Property(nameof(ObsoleteAttribute.IsError)).False);
 
     [Test]
     public void SettingWithTypos()

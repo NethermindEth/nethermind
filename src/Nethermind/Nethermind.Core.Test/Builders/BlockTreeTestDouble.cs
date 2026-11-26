@@ -23,7 +23,6 @@ public class BlockTreeTestDouble : IBlockTree
     private BlockHeader? _lowestInsertedHeader;
     private BlockHeader? _lowestInsertedBeaconHeader;
     private (ulong BlockNumber, Hash256 BlockHash) _syncPivot;
-    private bool _isProcessingBlock;
 
     protected IBlockTree? Inner { get; }
 
@@ -165,15 +164,6 @@ public class BlockTreeTestDouble : IBlockTree
     {
         get => Inner?.SyncPivot ?? _syncPivot;
         set => _syncPivot = value;
-    }
-    public virtual bool IsProcessingBlock
-    {
-        get => Inner?.IsProcessingBlock ?? _isProcessingBlock;
-        set
-        {
-            if (Inner is not null) Inner.IsProcessingBlock = value;
-            _isProcessingBlock = value;
-        }
     }
 
     public virtual AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>

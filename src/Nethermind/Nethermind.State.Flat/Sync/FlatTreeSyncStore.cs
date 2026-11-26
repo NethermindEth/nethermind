@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -25,18 +26,40 @@ public class FlatTreeSyncStore(
     // For flat, one cannot continue syncing after finalization as it will corrupt existing state.
     private bool _wasFinalized = false;
 
+    // The state leaves that RemoveMismatchedNode took out, by path, which SaveNode compares a new node at the path with.
+    // Without one, SaveNode deletes the whole range of the new node, which for a leaf reads all storage of its account.
+    private readonly ConcurrentDictionary<TreePath, TrieNode> _removedLeaves = new();
+
     internal readonly record struct DeletionRange(ValueHash256 From, ValueHash256 To);
 
-    public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
+    public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) => HashStoredNode(address, path) == hash;
+
+    public void RemoveMismatchedNode(Hash256? address, in TreePath path, in ValueHash256 hash)
+    {
+        if (_wasFinalized) throw new InvalidOperationException("Db was finalized");
+        if (HashStoredNode(address, path) is not { } storedHash || storedHash == hash) return;
+
+        using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        // A null span deletes the key.
+        if (address is null)
+        {
+            using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
+            if (ReadExistingNode(reader, null, path) is { IsLeaf: true } leaf) _removedLeaves[path] = leaf;
+            writeBatch.SetStateTrieNode(path, default);
+        }
+        else writeBatch.SetStorageTrieNode(address, path, default);
+    }
+
+    /// <summary>Rehashes the node stored at the path, if any.</summary>
+    private ValueHash256? HashStoredNode(Hash256? address, in TreePath path)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
 
-        // Rehash and verify
         ValueHash256 computedHash = default;
         bool found = address is null
             ? reader.TryLoadStateRlp(path, ReadFlags.None, static (data, result) => result[0] = ValueKeccak.Compute(data), new Span<ValueHash256>(ref computedHash))
             : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (data, result) => result[0] = ValueKeccak.Compute(data), new Span<ValueHash256>(ref computedHash));
-        return found && computedHash == hash;
+        return found ? computedHash : null;
     }
 
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data)
@@ -53,6 +76,10 @@ public class FlatTreeSyncStore(
 
         if (address is null)
         {
+            if (_removedLeaves.TryRemove(path, out TrieNode? removedLeaf)) existingNode ??= removedLeaf;
+            // A leaf writes its account at its full path, which can be under a removed leaf below the node.
+            TreePath written = node.IsLeaf ? path.Append(node.Key) : path;
+            ForgetRemovedLeavesAbove(written, savedNodeLength: path.Length, writtenAccount: node.IsLeaf ? written.Path : null);
             RequestStateDeletion(writeBatch, path, node, existingNode);
 
             writeBatch.SetStateTrieNode(path, data);
@@ -60,10 +87,31 @@ public class FlatTreeSyncStore(
         }
         else
         {
+            ForgetRemovedLeavesAbove(new TreePath(address.ValueHash256, 64), savedNodeLength: 0, writtenAccount: address.ValueHash256);
             RequestStorageDeletion(writeBatch, address, path, node, existingNode);
 
             writeBatch.SetStorageTrieNode(address, path, data);
             FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
+        }
+    }
+
+    /// <summary>
+    /// Forgets the removed leaves above <paramref name="written"/> that a state node or another account is written
+    /// under: a round that moved on to another root can save those there before the leaf is saved again, so the leaf no
+    /// longer stands for all the path holds. The storage of the leaf account is saved before the leaf, and kept by it.
+    /// </summary>
+    /// <param name="written">The full path of the account for a leaf or a storage node, else the path of the node.</param>
+    /// <param name="savedNodeLength">The length of the path of the state node saved, or 0 for a storage node.</param>
+    /// <param name="writtenAccount">The account written, if any.</param>
+    private void ForgetRemovedLeavesAbove(in TreePath written, int savedNodeLength, ValueHash256? writtenAccount)
+    {
+        if (_removedLeaves.IsEmpty) return;
+        for (int length = 0; length < written.Length; length++)
+        {
+            TreePath ancestor = written.Truncate(length);
+            if (_removedLeaves.TryGetValue(ancestor, out TrieNode? leaf)
+                && (length < savedNodeLength || ancestor.Append(leaf.Key).ToLowerBoundPath() != writtenAccount))
+                _removedLeaves.TryRemove(ancestor, out _);
         }
     }
 
@@ -232,17 +280,19 @@ public class FlatTreeSyncStore(
 
     public void EnsureStorageEmpty(in ValueHash256 address)
     {
-        // Only need to clean flat storage entries. Orphaned storage trie nodes are not a problem
-        // because the trie is always traversed from the account's storage root hash — when the
-        // account has EmptyTreeHash or the account no longer exists, no storage trie nodes will
-        // ever be reached.
+        // The storage trie nodes go with the slots. Healing takes a node stored at a path with the hash it expects as
+        // saved with all its subtree, so a node left here would make a later storage root that has it again skip that
+        // subtree, and the slots under it, deleted here, would never be written back. Any node can come back, not only
+        // the root, so all of them go.
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         writeBatch.DeleteStorageRange(address, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        writeBatch.DeleteStorageTrieNodeRange(address, ValueKeccak.Zero, ValueKeccak.MaxValue);
     }
 
     public void FinalizeSync(BlockHeader pivotHeader)
     {
         if (Interlocked.CompareExchange(ref _wasFinalized, true, false)) throw new InvalidOperationException("Db was finalized");
+        _removedLeaves.Clear();
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         StateId from = reader.CurrentState;

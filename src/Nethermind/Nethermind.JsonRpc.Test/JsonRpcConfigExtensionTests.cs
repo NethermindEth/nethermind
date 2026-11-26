@@ -35,6 +35,8 @@ public class JsonRpcConfigExtensionTests
         {
             TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
         }
+
+        Assert.That(timeout.DisposeCount, Is.EqualTo(1));
     }
 
     [Test]

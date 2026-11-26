@@ -1641,6 +1641,22 @@ public class JsonRpcServiceTests
         pool.DidNotReceive().ReturnModule(Arg.Any<INetRpcModule>());
     }
 
+    // Plugins compiled against Fail(string, int, bool) bind to that exact signature, and a positional bool means
+    // isTemporary rather than the error data of a ResultWrapper<bool>.
+    [Test]
+    public void Fail_with_temporary_flag_keeps_its_three_parameter_overload()
+    {
+        MethodInfo? fail = typeof(ResultWrapper<string>).GetMethod(nameof(ResultWrapper<string>.Fail), [typeof(string), typeof(int), typeof(bool)]);
+        ResultWrapper<bool> wrapper = ResultWrapper<bool>.Fail("busy", ErrorCodes.ResourceUnavailable, true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fail?.ReturnType, Is.EqualTo(typeof(ResultWrapper<string>)));
+            Assert.That(wrapper.IsTemporary, Is.True);
+            Assert.That(wrapper.HasErrorData, Is.False);
+        }
+    }
+
     [Test]
     public void NetVersionTest()
     {

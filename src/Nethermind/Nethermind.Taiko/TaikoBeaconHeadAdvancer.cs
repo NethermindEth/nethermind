@@ -45,7 +45,7 @@ public sealed class TaikoBeaconHeadAdvancer : IDisposable
     /// <see cref="IBlockProcessingQueue"/> is owned by <c>MainProcessingContext</c>, which
     /// constructs the entire main-processing graph (including <c>BlockInvalidTxExecutor</c>'s
     /// <c>ITxPool</c>) eagerly. Resolving it from this constructor triggers that graph build
-    /// before <c>TaikoNethermindApi.TxPool</c> has been wired up by <c>InitializeBlockchainTaiko</c>,
+    /// before <c>INethermindApi.TxPool</c> has been wired up by <c>InitializeBlockchainTaiko</c>,
     /// which throws. Use <see cref="Lazy{T}"/> so resolution happens after the main scope has
     /// finished initialization.
     /// </remarks>

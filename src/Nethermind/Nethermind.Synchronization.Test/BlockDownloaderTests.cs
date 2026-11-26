@@ -1729,6 +1729,7 @@ public partial class BlockDownloaderTests
         public Node Node { get; } = null!;
         public string ClientId { get; } = null!;
         public byte ProtocolVersion { get; } = default;
+        public bool CanGetNodeData => true;
         public string ProtocolCode { get; } = null!;
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;

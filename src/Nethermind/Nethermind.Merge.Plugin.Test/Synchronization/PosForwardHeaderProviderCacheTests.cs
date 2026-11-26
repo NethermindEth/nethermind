@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -21,6 +22,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
@@ -83,7 +85,28 @@ public class PosForwardHeaderProviderCacheTests
     }
 
     [TearDown]
-    public void TearDown() => _provider.UnsubscribeForTest();
+    public void TearDown() => _provider.Dispose();
+
+    [Test]
+    public void Disposing_the_container_unsubscribes_the_forward_header_provider()
+    {
+        using (IContainer container = new ContainerBuilder()
+            .AddModule(new MergeSynchronizerModule())
+            .AddSingleton(_chainLevelHelper)
+            .AddSingleton(Substitute.For<IPoSSwitcher>())
+            .AddSingleton(_beaconPivot)
+            .AddSingleton(_sealValidator)
+            .AddSingleton(_blockTree)
+            .AddSingleton(Substitute.For<ISyncPeerPool>())
+            .AddSingleton<ISyncReport>(new NullSyncReport())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .Build())
+        {
+            container.Resolve<IForwardHeaderProvider>();
+        }
+
+        _blockTree.Received(1).OnUpdateMainChain -= Arg.Any<EventHandler<OnUpdateMainChainArgs>>();
+    }
 
     private Task<IOwnedReadOnlyList<BlockHeader?>?> Get(ulong skip = 0, ulong max = Requested) =>
         _provider.GetBlockHeaders(skip, max, CancellationToken.None);
@@ -163,7 +186,7 @@ public class PosForwardHeaderProviderCacheTests
         // TTD 9_500 is crossed at block 9: blocks 0-8 are below it, block 9 is the terminal PoW block and the
         // zero-difficulty blocks after it are post-merge. No terminal block is recorded or finalized yet.
         PoSSwitcher poSSwitcher = new(new MergeConfig { TerminalTotalDifficulty = "9500" }, new SyncConfig(), new MemDb(), _blockTree, new TestSpecProvider(London.Instance), new ChainSpec(), LimboLogs.Instance);
-        _provider.UnsubscribeForTest();
+        _provider.Dispose();
         _provider = CreateProvider(poSSwitcher);
         BlockHeader[] batch = BuildSequentialHeaders(start: 0, count: CachedBatchSize);
         UInt256 totalDifficulty = 0;

@@ -60,8 +60,8 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <summary>Layout version of every column; bump it whenever a change needs an existing database migrated or refused.</summary>
     public const uint CurrentSchemaVersion = 7;
 
-    /// <summary>Offset of <c>parent_root</c> in a serialized <c>SignedBeaconBlock</c>: the message offset and signature precede the message, whose slot and proposer index precede the root; the same in every fork.</summary>
-    private const int ParentRootOffset = sizeof(uint) + BlsSignature.Length + sizeof(ulong) + sizeof(ulong);
+    /// <inheritdoc cref="SignedBeaconBlockCodec.ParentRootOffset"/>
+    private const int ParentRootOffset = SignedBeaconBlockCodec.ParentRootOffset;
 
     private const int StateChunkSize = 4 * 1024 * 1024;
     private const int StateManifestLength = sizeof(uint) + sizeof(ulong);
@@ -486,15 +486,35 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return TryDecodeForkedBlock(compressed, out block);
     }
 
+    /// <summary>Reads a block's SSZ without decoding it, in the shape of the fork its slot belongs to.</summary>
+    /// <exception cref="BeaconStateException">The stored record is not a well-formed signed beacon block prefix.</exception>
+    internal bool TryGetStoredBlock(Hash256 root, out StoredBlock block)
+    {
+        if (_blocks.Get(root.Bytes) is not { } compressed || !TryDecompressBlock(compressed, out byte[]? ssz))
+        {
+            block = default;
+            return false;
+        }
+
+        ulong slot = SignedBeaconBlockCodec.ReadSlot(ssz);
+        block = new StoredBlock(ssz, slot, spec is not null && SignedBeaconBlockCodec.IsGloasSlot(slot, spec));
+        return true;
+    }
+
+    private static bool TryDecompressBlock(byte[] compressed, [NotNullWhen(true)] out byte[]? ssz)
+    {
+        ssz = Snappy.GetUncompressedLength(compressed) > ReqRespFraming.MaxPayloadSize ? null : Snappy.DecompressToArray(compressed);
+        return ssz is not null;
+    }
+
     private bool TryDecodeForkedBlock(byte[] compressed, [NotNullWhen(true)] out ForkedSignedBeaconBlock? block)
     {
-        if (Snappy.GetUncompressedLength(compressed) > ReqRespFraming.MaxPayloadSize)
+        if (!TryDecompressBlock(compressed, out byte[]? ssz))
         {
             block = null;
             return false;
         }
 
-        byte[] ssz = Snappy.DecompressToArray(compressed);
         if (spec is not null)
         {
             block = SignedBeaconBlockCodec.Decode(ssz, spec);
@@ -507,19 +527,8 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     }
 
     /// <summary>Resolves a retained block's slot from its summary, falling back to the block for older records.</summary>
-    internal bool TryGetRetainedBlockSlot(Hash256 root, out ulong slot)
-    {
-        if (TryReadSummarySlot(ReadBlockSummary(root), out slot)) return HasBlock(root);
-
-        if (TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block))
-        {
-            slot = block.Slot;
-            return true;
-        }
-
-        slot = 0;
-        return false;
-    }
+    internal bool TryGetRetainedBlockSlot(Hash256 root, out ulong slot) =>
+        TryReadSummarySlot(ReadBlockSummary(root), out slot) ? HasBlock(root) : TryGetBlockSlot(root, out slot);
 
     /// <summary>Reads a stored block's slot from its SSZ prefix, decompressing only that prefix.</summary>
     /// <returns><c>false</c> when no block is stored under <paramref name="root"/>.</returns>
@@ -1757,8 +1766,8 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             UInt128 stored = GetStoredDataColumns(slot, root);
             if (stored == UInt128.Zero)
             {
-                return !TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block) ? DataColumnShortfall.BlockMissing
-                    : BlobCommitmentCount(block) == 0 ? DataColumnShortfall.None
+                return !TryGetStoredBlock(root, out StoredBlock block) ? DataColumnShortfall.BlockMissing
+                    : block.BlobCommitmentCount == 0 ? DataColumnShortfall.None
                     : DataColumnShortfall.NoColumns;
             }
 
@@ -1788,13 +1797,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             return DataColumnShortfall.ReadFailed;
         }
     }
-
-    private static int BlobCommitmentCount(ForkedSignedBeaconBlock block) => block switch
-    {
-        ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message?.Body?.BlobKzgCommitments?.Length ?? 0,
-        ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Message?.Body?.SignedExecutionPayloadBid?.Message?.BlobKzgCommitments?.Length ?? 0,
-        _ => throw new NotSupportedException($"Unhandled block {block.GetType().Name}"),
-    };
 
     /// <summary>The slot from which the store holds every data column sidecar it was given, as last recorded; <c>false</c> before the first.</summary>
     public bool TryGetDataColumnFloor(out ulong slot)
