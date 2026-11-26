@@ -7,22 +7,22 @@ using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork),
         typeof(LoadGenesisBlock))]
     public class InitializeBlockProducer(
-        IServiceStopper serviceStopper,
         IBlockProductionPolicy blockProductionPolicy,
         Lazy<IBlockProducerRunner> blockProducerRunner) : IStep
     {
-        public Task Execute(CancellationToken _)
+        public Task Execute(CancellationToken cancellationToken)
         {
+            // Builds the producer at this point of the startup order. The container adds the runner to the
+            // service stopper when it activates it.
             if (blockProductionPolicy.ShouldStartBlockProduction())
             {
-                serviceStopper.AddStoppable(blockProducerRunner.Value);
+                _ = blockProducerRunner.Value;
             }
 
             return Task.CompletedTask;

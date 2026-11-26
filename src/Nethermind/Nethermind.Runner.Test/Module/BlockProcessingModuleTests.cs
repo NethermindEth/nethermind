@@ -48,7 +48,7 @@ public class BlockProcessingModuleTests
     }
 
     [Test]
-    public void Runner_uses_the_registered_producer_and_the_container_disposes_it_once([Values] bool overridden)
+    public void Runner_uses_the_registered_producer_and_each_producer_is_disposed_once([Values] bool overridden)
     {
         IBlockProducer factoryProducer = Substitute.For<IBlockProducer, IDisposable>();
         IBlockProducer overrideProducer = Substitute.For<IBlockProducer, IDisposable>();
@@ -70,6 +70,10 @@ public class BlockProcessingModuleTests
             runnerFactory.Received(1).InitBlockProducerRunner(expected);
         }
 
-        ((IDisposable)expected).Received(1).Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            ((IDisposable)factoryProducer).Received(1).Dispose();
+            ((IDisposable)overrideProducer).Received(overridden ? 1 : 0).Dispose();
+        }
     }
 }
