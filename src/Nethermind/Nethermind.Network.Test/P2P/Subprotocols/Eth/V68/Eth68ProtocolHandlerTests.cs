@@ -209,6 +209,7 @@ public class Eth68ProtocolHandlerTests
     public void Should_accept_full_blob_tx_with_announced_network_size()
     {
         RecreateHandlerWithBlobSupport();
+        HandleIncomingStatusMessage();
         Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)tx.Type },
@@ -216,7 +217,6 @@ public class Eth68ProtocolHandlerTests
             new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
         using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
         txsMsg.RequestId = LastPooledRequestId();
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
@@ -229,6 +229,7 @@ public class Eth68ProtocolHandlerTests
     public void Should_accept_geth_blob_size_estimate()
     {
         RecreateHandlerWithBlobSupport();
+        HandleIncomingStatusMessage();
         Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
         int sidecarContentLength = Rlp.LengthOf(wrapper.Blobs)
@@ -242,7 +243,6 @@ public class Eth68ProtocolHandlerTests
             new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
         using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
         txsMsg.RequestId = LastPooledRequestId();
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
@@ -370,6 +370,7 @@ public class Eth68ProtocolHandlerTests
         ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
         txPoolConfig.MaxTxSize.Returns(128 * MemorySizes.KiB);
         ReplaceHandler(txPoolConfig);
+        HandleIncomingStatusMessage();
 
         Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved()
             .WithData(new byte[200_000]).WithHash(TestItem.KeccakC).TestObject;
@@ -1200,6 +1201,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void Should_validate_retained_shape_for_unrequestable_type([Values] bool correlated)
     {
+        HandleIncomingStatusMessage();
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).SignedAndResolved().WithHash(TestItem.KeccakA).TestObject;
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)TxType.Blob },
@@ -1392,7 +1394,6 @@ public class Eth68ProtocolHandlerTests
 
     private void AssertResponseForUnrequestableAnnouncement(Transaction tx, NewPooledTransactionHashesMessage68 announcement, bool correlated)
     {
-        HandleIncomingStatusMessage();
         HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
 
@@ -1431,11 +1432,9 @@ public class Eth68ProtocolHandlerTests
 
     private void RecreateHandlerWithBlobSupport()
     {
-        _handler.Dispose();
         ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
         txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.InMemory);
-        _handler = CreateHandler(txPoolConfig);
-        _handler.Init();
+        ReplaceHandler(txPoolConfig);
     }
 
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<ValueHash256> hashes)

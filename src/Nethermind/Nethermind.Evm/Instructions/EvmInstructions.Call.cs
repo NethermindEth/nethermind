@@ -250,8 +250,11 @@ public static partial class EvmInstructions
 
         if (TTracingInst.IsActive)
         {
+            // EIP-8037: as in Geth, the step's cost leaves out the new-account state gas spilled into gas_left.
             ulong stateSpill = TEip8037.IsActive ? (ulong)(TGasPolicy.GetStateGasSpill(in gas) - initialStateSpill) : 0;
-            vm.TraceOperationReady(initialGas - TGasPolicy.GetRemainingGas(in gas) - stateSpill);
+            ulong traceGasCost = initialGas - TGasPolicy.GetRemainingGas(in gas) - stateSpill;
+            if (TEip8037.IsActive) vm.TraceOperationGasCost(traceGasCost);
+            vm.TraceOperationReady(traceGasCost);
         }
 
         // Add call stipend if value is being transferred.

@@ -2216,8 +2216,6 @@ namespace Nethermind.Blockchain
 
         private Task WaitForReadinessToAcceptNewBlock => _taskCompletionSource?.Task ?? Task.CompletedTask;
 
-        public bool IsProcessingBlock { get; set; }
-
         /// <inheritdoc/>
         /// <remarks>
         /// AuRa finalization, era import and XDC can call this concurrently. Deciding whether finality advanced,

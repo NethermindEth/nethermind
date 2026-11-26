@@ -173,16 +173,6 @@ public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAcc
         return idx >= 0 ? span[idx] : null;
     }
 
-    public GeneratedSlotChanges GetOrAddSlotChanges(UInt256 key)
-    {
-        if (!_storageChanges.TryGetValue(key, out GeneratedSlotChanges? existing))
-        {
-            existing = new GeneratedSlotChanges(key);
-            _storageChanges.Add(key, existing);
-        }
-        return existing;
-    }
-
     public void AddStorageRead(UInt256 key)
     {
         if (!_storageChanges.ContainsKey(key))
@@ -211,9 +201,14 @@ public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAcc
 
         foreach (KeyValuePair<UInt256, StorageChange> kv in other.StorageChanges)
         {
-            GeneratedSlotChanges slotChanges = GetOrAddSlotChanges(kv.Key);
-            slotChanges.Changes.Add(kv.Value);
-            _storageReads.Remove(kv.Key);
+            ref GeneratedSlotChanges? slotChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageChanges, kv.Key, out bool exists);
+            if (!exists)
+            {
+                // A read enters _storageReads only while its slot has no changes, so only a new slot can drop one.
+                slotChanges = new GeneratedSlotChanges(kv.Key);
+                _storageReads.Remove(kv.Key);
+            }
+            slotChanges!.Changes.Add(kv.Value);
         }
 
         foreach (UInt256 read in other.StorageReads)

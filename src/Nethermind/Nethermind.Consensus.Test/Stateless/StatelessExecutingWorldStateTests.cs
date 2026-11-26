@@ -103,16 +103,49 @@ public class StatelessExecutingWorldStateTests
     public void Witness_of_a_code_read_at_a_precompile_address_without_code_proves_the_account(
         [Values] bool copy, [Values] bool accountExists, [Values] bool precompileCache, [Values] bool guest)
     {
-        IReleaseSpec spec = Prague.Instance;
-        TestSpecProvider specProvider = new(spec);
         Address target = PrecompiledAddresses.Identity;
-        Address caller = TestItem.AddressC;
         // The copy goes over a filled word, so its zeros show; EXTCODESIZE followed by PUSH1 does not fuse.
         byte[] callerCode = (copy
                 ? Prepare.EvmCode.PushData(UInt256.MaxValue).PushData(0).Op(Instruction.MSTORE)
                     .PushData(32).PushData(0).PushData(0).PushData(target).Op(Instruction.EXTCODECOPY)
                 : Prepare.EvmCode.PushData(target).Op(Instruction.EXTCODESIZE).PushData(0).Op(Instruction.MSTORE))
             .Return(32, 0).Done;
+
+        AssertWitnessProvesPrecompileAccount(callerCode, new byte[32], accountExists, precompileCache, guest);
+    }
+
+    /// <summary>
+    /// DELEGATECALL and CALLCODE to a precompile look its code up but run in the caller's account, so nothing else
+    /// touches the precompile's account; the witness must still prove it, also when block processing captures it
+    /// through its precompile cache.
+    /// </summary>
+    [Test]
+    public void Witness_of_a_delegated_call_to_a_precompile_proves_the_account(
+        [Values(Instruction.DELEGATECALL, Instruction.CALLCODE)] Instruction call, [Values] bool precompileCache)
+    {
+        Address target = PrecompiledAddresses.Identity;
+        Prepare code = call == Instruction.DELEGATECALL
+            ? Prepare.EvmCode.DelegateCall(target, 50_000)
+            : Prepare.EvmCode.CallCode(target, 50_000);
+        // Returns the call's status word, so a failed call cannot pass for a recorded one.
+        byte[] callerCode = code.PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done;
+        byte[] success = new byte[32];
+        success[^1] = 1;
+
+        AssertWitnessProvesPrecompileAccount(callerCode, success, accountExists: true, precompileCache, guest: false);
+    }
+
+    /// <summary>
+    /// Captures the witness of a transaction to a contract running <paramref name="callerCode"/> against the Identity
+    /// precompile's address, then checks the witness proves that account and stateless execution of it returns
+    /// <paramref name="expectedResult"/> again.
+    /// </summary>
+    private static void AssertWitnessProvesPrecompileAccount(byte[] callerCode, byte[] expectedResult, bool accountExists, bool precompileCache, bool guest)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        TestSpecProvider specProvider = new(spec);
+        Address target = PrecompiledAddresses.Identity;
+        Address caller = TestItem.AddressC;
 
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -151,7 +184,7 @@ public class StatelessExecutingWorldStateTests
         Witness witness;
         using (capturing.BeginScope(parent))
         {
-            Assert.That(Run(processing, capturing), Is.EqualTo(new byte[32]), "result while capturing");
+            Assert.That(Run(processing, capturing, precompileCache), Is.EqualTo(expectedResult), "result while capturing");
             capturing.Commit(spec);
             witness = capturing.GetWitness(parent);
         }
@@ -166,18 +199,21 @@ public class StatelessExecutingWorldStateTests
             using (Assert.EnterMultipleScope())
             {
                 // Read through the witness alone, so a node missing from the account's path throws.
+                Assert.That(stateless.AccountExists(target), Is.EqualTo(accountExists), "account existence proved");
                 Assert.That(stateless.GetCodeHash(target), Is.EqualTo(Keccak.OfAnEmptyString.ValueHash256), "account proved");
                 // Without the precompile cache, as the stateless env executes.
-                Assert.That(Run(container, stateless), Is.EqualTo(new byte[32]), "result in stateless execution");
+                Assert.That(Run(container, stateless, cachedRepository: false), Is.EqualTo(expectedResult), "result in stateless execution");
             }
         }
 
-        byte[] Run(ILifetimeScope parentScope, IWorldState state)
+        byte[] Run(ILifetimeScope parentScope, IWorldState state, bool cachedRepository)
         {
             // The world state registered by instance and every code lookup sent to it, as the witness envs do.
             using ILifetimeScope execution = parentScope.BeginLifetimeScope(builder => builder
                 .AddScoped<IWorldState>(state)
                 .AddScoped<ICodeCache>(NoopCodeCache.Instance));
+            // The precompile cache arm must reach the decorator, and the other arm must not.
+            Assert.That(execution.Resolve<ICodeInfoRepository>() is PrecompileCachedCodeInfoRepository, Is.EqualTo(cachedRepository), "precompile cache decorator");
             CallOutputTracer tracer = new();
             execution.Resolve<ITransactionProcessor>().Execute(tx, new BlockExecutionContext(header, spec), tracer);
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), tracer.Error);

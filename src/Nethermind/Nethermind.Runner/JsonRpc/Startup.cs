@@ -57,7 +57,7 @@ public class Startup : IStartup
     // stack must not be re-advertised through an error this endpoint serves unauthenticated.
     private const string RequestBodyTimeoutMessage = "Request body read timed out.";
 
-    private JsonRpcProcessor _jsonRpcProcessor = null!;
+    private IJsonRpcProcessor _jsonRpcProcessor = null!;
     private IJsonRpcService _jsonRpcService = null!;
     private IJsonRpcLocalStats _jsonRpcLocalStats = null!;
     private EthereumJsonSerializer _jsonSerializer = null!;
@@ -71,7 +71,7 @@ public class Startup : IStartup
     public Startup() { }
 
     internal Startup(
-        JsonRpcProcessor jsonRpcProcessor,
+        IJsonRpcProcessor jsonRpcProcessor,
         IJsonRpcService jsonRpcService,
         IJsonRpcLocalStats jsonRpcLocalStats,
         EthereumJsonSerializer jsonSerializer,
@@ -161,14 +161,14 @@ public class Startup : IStartup
         Configure(
             app,
             services.GetRequiredService<IWebHostEnvironment>(),
-            services.GetRequiredService<JsonRpcProcessor>(),
+            services.GetRequiredService<IJsonRpcProcessor>(),
             services.GetRequiredService<IJsonRpcService>(),
             services.GetRequiredService<IJsonRpcLocalStats>(),
             services.GetRequiredService<EthereumJsonSerializer>(),
             services.GetRequiredService<ApplicationLifetime>());
     }
 
-    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
 
         EthereumJsonSerializer.WarmupSerializer(
@@ -314,7 +314,7 @@ public class Startup : IStartup
             jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out jsonRpcUrl) &&
             jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http) &&
             StringValues.IsNullOrEmpty(ctx.Request.Headers.Origin) &&
-            IsTrustedSource(ctx, additionalTrustedNetworks) &&
+            IsTrustedSource(ctx.Connection.RemoteIpAddress, additionalTrustedNetworks) &&
             IsJsonContentType(ctx.Request.ContentType))
         {
             return true;
@@ -364,19 +364,6 @@ public class Startup : IStartup
         (contentType.Length == ApplicationJsonContentType.Length ||
          contentType[ApplicationJsonContentType.Length] == ';');
 
-    internal static bool IsTrustedSource(HttpContext ctx, TrustedCidr[] additionalTrustedNetworks)
-    {
-        TrustedSourceFeature? trustedSourceFeature = ctx.Features.Get<TrustedSourceFeature>();
-        if (trustedSourceFeature is not null)
-        {
-            return trustedSourceFeature.IsTrusted;
-        }
-
-        bool isTrusted = IsTrustedSource(ctx.Connection.RemoteIpAddress, additionalTrustedNetworks);
-        ctx.Features.Set(new TrustedSourceFeature(isTrusted));
-        return isTrusted;
-    }
-
     internal static bool IsTrustedSource(IPAddress? remoteIp, TrustedCidr[] additionalTrustedNetworks)
     {
         if (remoteIp is null) return false;
@@ -422,8 +409,6 @@ public class Startup : IStartup
 
         return parsed.ToArray();
     }
-
-    private sealed class TrustedSourceFeature(bool isTrusted) { public bool IsTrusted { get; } = isTrusted; }
 
     internal readonly struct TrustedCidr
     {

@@ -847,7 +847,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     }
 
     /// <remarks>
-    /// Serves the receipts the iterator cannot read, such as those below <see cref="IReceiptStorage.MigratedBlockNumber"/>
+    /// Serves the receipts the iterator cannot read, such as those below <see cref="IReceiptMigrationStore.MigratedBlockNumber"/>
     /// that are stored only under the legacy key. Decoding without recovery does not fill the receipts cache.
     /// </remarks>
     private bool TryDecodeLogs(ulong blockNumber, Hash256 blockHash, out BlockReceipts blockReceipts)

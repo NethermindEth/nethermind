@@ -207,6 +207,25 @@ public class SyncServerTests
     }
 
     [Test]
+    public void Stops_block_gossip_subscriptions_on_new_head_when_policy_forbids_block_gossip()
+    {
+        Context ctx = new(Policy.NoBlockGossip);
+        BlockEventArgs newHead = new(Build.A.Block.WithNumber(1).TestObject);
+
+        ctx.BlockTree.NewHeadBlock += Raise.EventWith(newHead);
+
+        using (Assert.EnterMultipleScope())
+        {
+            ctx.BlockTree.Received(1).NewHeadBlock -= Arg.Any<EventHandler<BlockEventArgs>>();
+            ctx.PeerPool.Received(1).NotifyPeerBlock -= Arg.Any<EventHandler<PeerBlockNotificationEventArgs>>();
+            _ = ctx.BlockTree.DidNotReceive().BestSuggestedHeader;
+        }
+
+        ctx.SyncServer.Dispose();
+        ctx.PeerPool.Received(1).NotifyPeerBlock -= Arg.Any<EventHandler<PeerBlockNotificationEventArgs>>();
+    }
+
+    [Test]
     public void Finds_stored_block_rlp_by_its_block_number([Values] bool headerKnown)
     {
         Context ctx = new();
@@ -1447,7 +1466,7 @@ public class SyncServerTests
 
     private class Context
     {
-        public Context()
+        public Context(IGossipPolicy? gossipPolicy = null)
         {
             NodeWhoSentTheBlock = Substitute.For<ISyncPeer>();
             NodeWhoSentTheBlock.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
@@ -1475,7 +1494,7 @@ public class SyncServerTests
                 PeerPool,
                 selector,
                 new TestSyncConfig(),
-                Policy.FullGossip,
+                gossipPolicy ?? Policy.FullGossip,
                 HistoryPruner,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance,

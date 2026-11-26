@@ -81,17 +81,6 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [TearDown]
     public void TearDown() => _receiptsDb.Dispose();
 
-    private static IReceiptStorage[] NonPersistentImplementations() =>
-    [
-        NullReceiptStorage.Instance,
-        new InMemoryReceiptStorage()
-    ];
-
-    [TestCaseSource(nameof(NonPersistentImplementations))]
-    public void RemoveReceiptsRange_IsImplemented(IReceiptStorage storage) =>
-        Assert.That(() => storage.RemoveReceiptsRange(1, 1000), Throws.Nothing,
-            $"{storage.GetType().Name} inherits the throwing default, so a pruning node configured with it would fail every pass");
-
     [Test]
     public void InMemoryReceiptStorage_RemoveReceiptsByHash_TakesOnlyThatBlock()
     {

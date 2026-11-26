@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.IO;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Test.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -184,6 +185,22 @@ public class CheckpointSyncTests
         else
             Assert.That((await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!.Message, Does.Contain("proposer signature"));
         Assert.That(store.TryGetForkedBlock(blockRoot, out _), Is.EqualTo(correctSigner));
+    }
+
+    [Test]
+    public async Task A_correctly_signed_anchor_is_accepted_only_by_a_verifier_that_accepts_it([Values] bool rejectEverySignature)
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        BeaconChainSpec spec = rejectEverySignature ? GloasCheckpointFiles.Spec with { SignatureVerifier = new RejectingSignatureVerifier() } : GloasCheckpointFiles.Spec;
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(chain.First.PostState, new ForkedSignedBeaconBlock.OfGloas(chain.First.Block));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, spec, store, LimboLogs.Instance);
+
+        if (rejectEverySignature)
+            Assert.That((await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!.Message, Does.Contain("proposer signature"));
+        else
+            Assert.That((await sync.RunAsync(CancellationToken.None)).BlockRoot, Is.EqualTo(chain.First.Root));
+        Assert.That(store.TryGetForkedBlock(chain.First.Root, out _), Is.EqualTo(!rejectEverySignature));
     }
 
     [Test]

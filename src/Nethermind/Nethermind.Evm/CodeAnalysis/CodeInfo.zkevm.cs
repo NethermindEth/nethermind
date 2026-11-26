@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.CodeAnalysis;
@@ -28,6 +29,96 @@ public sealed partial class CodeInfo
             : OpenVmFlag.IsActive && ExecutableCodeMemory.TryGetInputBuffer(code, out byte[]? inputBuffer) ? inputBuffer.AsMemory(0, code.Length)
             : (FirstTouchMemoryFlag.IsActive || AirbenderFlag.IsActive) && ExecutableCodeMemory.IsPlaced(code) ? code
             : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
+
+    /// <summary>The buffers that the creation frames at each call depth run their init code from.</summary>
+    private static InitCodeBuffers[]? _initCodeBuffers;
+
+    /// <summary>A bitmap to clear and take as <see cref="IncrementalJumpBitmap"/> instead of allocating one, or <see langword="null"/>.</summary>
+    private readonly long[]? _jumpBitmapBuffer;
+
+    /// <summary>Wraps the first <paramref name="codeLength"/> bytes of <paramref name="executionBuffer"/>, followed by the execution padding, as code to run in place.</summary>
+    private CodeInfo(byte[] executionBuffer, int codeLength, long[] jumpBitmapBuffer)
+    {
+        _code = executionBuffer.AsMemory(0, codeLength);
+        _jumpBitmapBuffer = jumpBitmapBuffer;
+        _analyzer = new JumpDestinationAnalyzer(this);
+    }
+
+    /// <remarks>
+    /// The guest never frees memory, and a block can run thousands of creations of large init code for little gas: a copy
+    /// of each and of its jump bitmap took the whole heap in the benchmark blocks of tests-zkevm-benchmark v21.0.7. Each
+    /// call depth runs one frame at a time, and nothing reads the code of a creation frame once it returns, so a creation
+    /// takes over the buffers of the last one at its depth. Their capacities are powers of two, so the code buffers a depth
+    /// allocates add up to less than twice the largest capacity, which is less than four times the largest init code run
+    /// at that depth. Each buffer also holds the execution padding and comes with a bitmap of a bit per byte of its capacity.
+    /// </remarks>
+    internal static partial CodeInfo ForInitCode(ReadOnlyMemory<byte> initCode, int callDepth)
+    {
+        int length = initCode.Length;
+        if (length == 0) return new CodeInfo(initCode);
+
+        ref InitCodeBuffers buffers = ref GetInitCodeBuffers(callDepth, length);
+        byte[] code = buffers.Code!;
+        ReadOnlySpan<byte> source = initCode.Span;
+        // Where memory is swizzled, TryLoadInitCode has loaded the init code into the buffer already.
+        if (!EvmPooledMemory.IsSwizzled || !Unsafe.AreSame(ref MemoryMarshal.GetReference(source), ref MemoryMarshal.GetArrayDataReference(code)))
+            source.CopyTo(code);
+
+        // Longer init code that ran before at this depth may have left its bytes there.
+        code.AsSpan(length, ExecutionPadding).Clear();
+        return new CodeInfo(code, length, buffers.JumpBitmap!);
+    }
+
+    /// <remarks>
+    /// The guest never frees memory, so the init code is copied once, into the buffer <see cref="ForInitCode"/> runs it
+    /// from. Memory in natural byte order is borrowed: nothing writes the creating frame's memory before
+    /// <see cref="ForInitCode"/> copies it, and the guest's only action tracer keeps none of it. Swizzled memory is read
+    /// into that buffer in natural order here instead, rather than into a copy of its own.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static partial bool TryLoadInitCode(ref EvmPooledMemory memory, in UInt256 location, in UInt256 length, int callDepth, out ReadOnlyMemory<byte> initCode)
+    {
+        if (!EvmPooledMemory.IsSwizzled) return memory.TryLoad(in location, in length, out initCode);
+
+        initCode = LoadSwizzledInitCode(ref memory, in location, in length, callDepth);
+        return true;
+    }
+
+    /// <summary>Reads the init code from swizzled memory into the code buffer of <paramref name="callDepth"/>, in natural byte order.</summary>
+    /// <remarks>Out of line, as the creation handler it would otherwise be inlined into has an instance per fork.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ReadOnlyMemory<byte> LoadSwizzledInitCode(ref EvmPooledMemory memory, in UInt256 location, in UInt256 length, int callDepth)
+    {
+        // Charging the expansion has checked the range.
+        Span<byte> laidOut = memory.LoadLaidOutSpanAfterGas(in location, in length);
+        if (laidOut.IsEmpty) return default;
+
+        byte[] code = GetInitCodeBuffers(callDepth, laidOut.Length).Code!;
+        SwizzledMemory.Read(ref MemoryMarshal.GetReference(laidOut), code.AsSpan(0, laidOut.Length));
+        return code.AsMemory(0, laidOut.Length);
+    }
+
+    /// <summary>The buffers of the creation frames at <paramref name="callDepth"/>, grown to hold <paramref name="length"/> bytes of code.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ref InitCodeBuffers GetInitCodeBuffers(int callDepth, int length)
+    {
+        ref InitCodeBuffers buffers = ref (_initCodeBuffers ??= new InitCodeBuffers[VirtualMachineStatics.MaxCallDepth + 1])[callDepth];
+        byte[]? code = buffers.Code;
+        if (code is null || code.Length - ExecutionPadding < length)
+        {
+            int capacity = length > 1 << 30 ? length : (int)BitOperations.RoundUpToPowerOf2((uint)length);
+            buffers.Code = CreateExecutionBuffer(capacity);
+            buffers.JumpBitmap = JumpDestinationAnalyzer.CreateBitmap(capacity);
+        }
+
+        return ref buffers;
+    }
+
+    private struct InitCodeBuffers
+    {
+        public byte[]? Code;
+        public long[]? JumpBitmap;
+    }
 
     public partial ReadOnlyMemory<byte> Code => _code;
 
@@ -112,7 +203,17 @@ public sealed partial class CodeInfo
 
     private long[] CreateJumpBitmap()
     {
-        long[] bitmap = JumpDestinationAnalyzer.CreateBitmap(CodeLength);
+        long[]? bitmap = _jumpBitmapBuffer;
+        if (bitmap is null)
+        {
+            bitmap = JumpDestinationAnalyzer.CreateBitmap(CodeLength);
+        }
+        else
+        {
+            // The buffer still holds the destinations of the init code that ran before at its call depth.
+            Array.Clear(bitmap, 0, JumpDestinationAnalyzer.GetInt64ArrayLengthFromBitLength(CodeLength));
+        }
+
         // STOP-first code halts before any jump, so it is not worth analyzing.
         if (ZiskFlag.IsActive && CodeLength != 0 && _code.Span[0] != (byte)Instruction.STOP) AnalyzeWithPrecompile(bitmap);
         return bitmap;

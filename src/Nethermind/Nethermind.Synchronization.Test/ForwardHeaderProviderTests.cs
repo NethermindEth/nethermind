@@ -861,6 +861,7 @@ public partial class ForwardHeaderProviderTests
         public Node Node { get; } = null!;
         public string ProtocolCode { get; } = null!;
         public byte ProtocolVersion { get; } = default;
+        public bool CanGetNodeData => true;
         public Hash256 HeadHash { get; set; } = headHash ?? Keccak.Zero;
         public ulong HeadNumber { get; set; } = number;
         public UInt256? TotalDifficulty { get; set; } = totalDiff ?? UInt256.MaxValue;
@@ -1149,6 +1150,7 @@ public partial class ForwardHeaderProviderTests
         public Node Node { get; } = null!;
         public string ClientId { get; } = null!;
         public byte ProtocolVersion { get; } = default;
+        public bool CanGetNodeData => true;
         public string ProtocolCode { get; } = null!;
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;

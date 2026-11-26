@@ -25,6 +25,7 @@ sealed class LifecycleFixture : IDisposable
     internal string Operations = "compute.instances.preempted";
     internal string InsertTime = "";
     internal int DeleteStatus { get; set; }
+    internal int RemoveMetadataStatus { get; set; }
     internal string DeleteError = "";
     internal readonly Queue<string> RunnerResponses = [];
     internal string OnlineStatus = "online";
@@ -70,6 +71,7 @@ sealed class LifecycleFixture : IDisposable
             return Task.FromResult(new CommandResult(0, HttpStatus.ToString()));
         }
         if (arguments.Contains("instances") && arguments.Contains("list")) return Task.FromResult(new CommandResult(LookupStatus, InstanceZone));
+        if (arguments.Contains("remove-metadata")) return Task.FromResult(new CommandResult(RemoveMetadataStatus, Error: RemoveMetadataStatus == 0 ? "" : "PERMISSION_DENIED"));
         if (arguments.Contains("delete")) return Task.FromResult(new CommandResult(DeleteStatus, Error: DeleteError));
         if (arguments.Contains("operations")) return Task.FromResult(new CommandResult(0, arguments.Contains("--format=value(insertTime)") ? InsertTime : Operations));
         if (!arguments.Contains("create")) return Task.FromResult(new CommandResult(0));

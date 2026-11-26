@@ -54,6 +54,7 @@ public class SyncPeerPoolTests
 
         public Hash256 HeadHash { get; set; } = null!;
         public byte ProtocolVersion { get; set; }
+        public bool CanGetNodeData => ProtocolVersion < EthVersions.Eth67;
         public string ProtocolCode { get; } = null!;
         public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);
         public string ClientId { get; } = description;
@@ -329,7 +330,7 @@ public class SyncPeerPoolTests
         Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(0));
     }
 
-    [Test]
+    [Test, NonParallelizable]
     public async Task Should_increment_PriorityPeerCount_when_called_SetPriorityPeer()
     {
         const int peersMaxCount = 1;
@@ -343,8 +344,38 @@ public class SyncPeerPoolTests
         await WaitForPeersInitialization(ctx);
         Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(0));
 
-        ctx.Pool.SetPeerPriority(peer.Id);
-        Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+        Metrics.PriorityPeers = 0;
+        Parallel.For(0, 20, _ => ctx.Pool.SetPeerPriority(peer.Id));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+            Assert.That(Metrics.PriorityPeers, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Removing_a_duplicate_session_preserves_the_registered_priority_peer()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+        SimpleSyncPeerMock registered = peers[0];
+        SimpleSyncPeerMock duplicate = new(registered.Id);
+        ctx.Pool.AddPeer(duplicate);
+        ctx.Pool.SetPeerPriority(registered.Id);
+
+        ctx.Pool.RemovePeer(duplicate);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PeerCount, Is.EqualTo(1));
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+        }
+
+        ctx.Pool.RemovePeer(registered);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PeerCount, Is.Zero);
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.Zero);
+        }
     }
 
     [Test]
@@ -845,6 +876,17 @@ public class SyncPeerPoolTests
     }
 
     [Test]
+    public async Task Allocate_after_disposal_rejects_even_an_available_peer()
+    {
+        Context ctx = new();
+        await SetupPeers(ctx, 1);
+        await ctx.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 0));
+    }
+
+    [Test]
     public async Task Dispose_while_waiting_does_not_hang()
     {
         Context ctx = new();
@@ -1087,6 +1129,23 @@ public class SyncPeerPoolTests
         BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
 
         Assert.That(result, Is.SameAs(requested));
+    }
+
+    [Test, NonParallelizable]
+    public async Task Failed_refresh_releases_its_timeout_timer()
+    {
+        await using Context ctx = new();
+        ctx.Pool.Start();
+        SimpleSyncPeerMock[] peers = Enumerable.Range(0, 20).Select(static i => new SimpleSyncPeerMock(TestItem.PublicKeys[i])).ToArray();
+        foreach (SimpleSyncPeerMock peer in peers)
+            peer.SetHeaderFailure(new InvalidOperationException("Refresh failed"));
+
+        long before = Timer.ActiveCount;
+        foreach (SimpleSyncPeerMock peer in peers)
+            ctx.Pool.AddPeer(peer);
+
+        Assert.That(() => peers.All(static peer => peer.DisconnectRequested), Is.True.After(10_000, 10));
+        Assert.That(() => Timer.ActiveCount - before, Is.LessThan(peers.Length / 2).After(2_000, 20));
     }
 
     private async Task<SimpleSyncPeerMock[]> SetupPeers(Context ctx, int count)

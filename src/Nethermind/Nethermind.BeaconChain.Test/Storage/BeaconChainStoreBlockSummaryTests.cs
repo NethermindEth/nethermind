@@ -423,6 +423,49 @@ public class BeaconChainStoreBlockSummaryTests
         Assert.That(_store.TryGetRetainedBlockSlot(GloasRoot, out _), Is.False);
     }
 
+    [Test]
+    public void A_stored_block_reads_the_fields_of_its_fork_without_decoding([Values] bool gloas)
+    {
+        Hash256 parentRoot = Keccak.Compute("parent");
+        BlsSignature signature = new(Enumerable.Repeat((byte)0x5a, BlsSignature.Length).ToArray());
+        SignedBeaconBlockGloas gloasBlock = BlockWithBlobs();
+        ExecutionPayloadBid bid = gloasBlock.Message!.Body!.SignedExecutionPayloadBid!.Message!;
+        bid.ParentBlockHash = Keccak.Compute("parent hash");
+        bid.BlockHash = Keccak.Compute("block hash");
+        bid.ExecutionRequestsRoot = Keccak.Compute("requests");
+        bid.BuilderIndex = 17;
+        gloasBlock.Message.ParentRoot = parentRoot;
+        gloasBlock.Signature = signature;
+        SignedBeaconBlock fuluBlock = CreateMinimalBlock(FirstGloasSlot - 1);
+        fuluBlock.Message!.Body!.BlobKzgCommitments = DataColumnSidecarGloasTestFixture.Commitments();
+        fuluBlock.Message.ParentRoot = parentRoot;
+        fuluBlock.Signature = signature;
+        ForkedSignedBeaconBlock block = gloas ? new ForkedSignedBeaconBlock.OfGloas(gloasBlock) : new ForkedSignedBeaconBlock.OfFulu(fuluBlock);
+        _store.PutForkedBlock(GloasRoot, block);
+
+        bool found = _store.TryGetStoredBlock(GloasRoot, out StoredBlock stored);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(found, Is.True);
+        Assert.That(_store.TryGetStoredBlock(FuluRoot, out _), Is.False, "a root that is not stored");
+        Assert.That(stored.Ssz.ToArray(), Is.EqualTo(SignedBeaconBlockCodec.Encode(block, Sepolia)));
+        Assert.That((stored.Slot, stored.IsGloas), Is.EqualTo((block.Slot, gloas)));
+        Assert.That(stored.ParentRoot, Is.EqualTo(parentRoot));
+        Assert.That(stored.Signature, Is.EqualTo(signature));
+        Assert.That(stored.BlobCommitmentCount, Is.EqualTo(bid.BlobKzgCommitments!.Length).And.Not.Zero);
+        if (gloas)
+        {
+            Assert.That(stored.Bid.ParentBlockHash, Is.EqualTo(bid.ParentBlockHash.ValueHash256));
+            Assert.That(stored.Bid.BlockHash, Is.EqualTo(bid.BlockHash.ValueHash256));
+            Assert.That(stored.Bid.ExecutionRequestsRoot, Is.EqualTo(bid.ExecutionRequestsRoot.ValueHash256));
+            Assert.That(stored.Bid.BuilderIndex, Is.EqualTo(bid.BuilderIndex));
+        }
+        else
+        {
+            Assert.That(() => stored.Bid.BuilderIndex, Throws.InvalidOperationException);
+        }
+    }
+
     private static byte[] SummaryKey() => new[] { BeaconChainStore.BlockSummaryKeyPrefix }.Concat(GloasRoot.Bytes.ToArray()).ToArray();
 
     private static SignedBeaconBlockGloas BlockWithBlobs()

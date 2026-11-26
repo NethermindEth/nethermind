@@ -26,6 +26,7 @@ namespace Nethermind.Runner.JsonRpc
         IFileSystem fileSystem) : IDisposable
     {
         private const int OperationCancelledError = 125;
+        private const int ListenBacklog = 128;
         private static readonly TimeSpan AcceptRetryDelay = TimeSpan.FromMilliseconds(100);
         private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcIpcRunner>();
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats = jsonRpcLocalStats;
@@ -34,6 +35,8 @@ namespace Nethermind.Runner.JsonRpc
         private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
         private readonly IJsonRpcConfig _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
 
+        private readonly Lock _lifecycle = new();
+        private bool _disposed;
         private string _path;
         private Socket _server;
 
@@ -43,22 +46,23 @@ namespace Nethermind.Runner.JsonRpc
 
             if (!string.IsNullOrEmpty(_path))
             {
-                if (_logger.IsInfo) _logger.Info($"Starting the JSON-RPC over an IPC service: {_path:hide}");
-
-                Task.Factory.StartNew(_ => StartServer(_path, cancellationToken), cancellationToken, TaskCreationOptions.LongRunning);
+                _ = Task.Run(() => StartServer(_path, cancellationToken), cancellationToken);
             }
         }
 
-        private async Task StartServer(string path, CancellationToken cancellationToken)
+        internal async Task StartServer(string path, CancellationToken cancellationToken)
         {
             try
             {
-                DeleteSocketFileIfExists(path);
+                lock (_lifecycle)
+                {
+                    if (_disposed || cancellationToken.IsCancellationRequested) return;
+                    if (_logger.IsInfo) _logger.Info($"Starting the JSON-RPC over an IPC service: {path:hide}");
 
-                _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-                _server.Bind(new UnixDomainSocketEndPoint(path));
-                TryRestrictSocketPermissions(path);
-                _server.Listen(0);
+                    DeleteSocketFileIfExists(path);
+
+                    _server = CreateListener(path, TryRestrictSocketPermissions);
+                }
             }
             catch (Exception ex)
             {
@@ -72,7 +76,7 @@ namespace Nethermind.Runner.JsonRpc
             }
             catch (Exception ex)
             {
-                // The task from Task.Factory.StartNew is discarded, so this is the only place the failure surfaces
+                // The task from Task.Run is discarded, so this is the only place the failure surfaces
                 if (_logger.IsError) _logger.Error("IPC server stopped accepting connections.", ex);
             }
 
@@ -81,7 +85,34 @@ namespace Nethermind.Runner.JsonRpc
                 socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
                 socket.SendTimeout = _jsonRpcConfig.Timeout;
 
-                _ = Task.Run(async () => await HandleIpcConnection(socket, cancellationToken), CancellationToken.None);
+                _ = Task.Run(() => HandleIpcConnection(socket, cancellationToken), CancellationToken.None);
+            }
+        }
+
+        /// <summary>
+        /// Binds the IPC socket and starts listening on it.
+        /// </summary>
+        /// <param name="path">The Unix domain socket path.</param>
+        /// <param name="onBound">Invoked after the socket file exists and before any client can connect.</param>
+        /// <remarks>
+        /// A Unix domain socket refuses a connection (<c>EAGAIN</c> for a non-blocking client) as soon as more than
+        /// <c>backlog</c> connections wait to be accepted, so the backlog must cover clients that open several
+        /// connections at once, e.g. a consensus client using separate eth and engine connections.
+        /// </remarks>
+        internal static Socket CreateListener(string path, Action<string>? onBound = null)
+        {
+            Socket server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            try
+            {
+                server.Bind(new UnixDomainSocketEndPoint(path));
+                onBound?.Invoke(path);
+                server.Listen(ListenBacklog);
+                return server;
+            }
+            catch
+            {
+                server.Dispose();
+                throw;
             }
         }
 
@@ -232,8 +263,13 @@ namespace Nethermind.Runner.JsonRpc
 
         public void Dispose()
         {
-            _server?.Dispose();
-            DeleteSocketFileIfExists(_path);
+            lock (_lifecycle)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _server?.Dispose();
+                DeleteSocketFileIfExists(_path);
+            }
             if (_logger.IsInfo) _logger.Info("IPC JSON RPC service stopped");
         }
     }

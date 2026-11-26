@@ -34,11 +34,6 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig? config = null) : INetherm
     public bool Enabled => _config?.Enabled ?? false;
 
     /// <summary>
-    /// Gets a value indicating whether the plugin must initialize.
-    /// </summary>
-    public bool MustInitialize => false;
-
-    /// <summary>
     /// Gets the Autofac module for dependency injection.
     /// </summary>
     public IModule Module => new OpcodeTracingModule(_config!);

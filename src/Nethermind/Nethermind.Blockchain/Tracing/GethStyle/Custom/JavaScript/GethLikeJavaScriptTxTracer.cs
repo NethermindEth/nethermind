@@ -500,6 +500,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         base.SetOperationStack(stack);
         _operationStack = stack;
         _log.stack.Items = stack;
+        _log.stack.Salt = _log.op?.Value is Instruction.CREATE2 or Instruction.TCREATE && stack.Count > Log.Stack.SaltIndex
+            ? stack.PeekUInt256(Log.Stack.SaltIndex)
+            : null;
 
         if (!_pendingStep || _failedBeforeExecution)
             InvokeStep();

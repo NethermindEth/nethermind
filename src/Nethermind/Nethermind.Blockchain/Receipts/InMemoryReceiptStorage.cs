@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,7 +11,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class InMemoryReceiptStorage : IReceiptMigrationStore
+    public class InMemoryReceiptStorage : IReceiptMigrationStore, IReceiptPruner
     {
         private readonly bool _allowReceiptIterator;
         private readonly IBlockTree? _blockTree;
@@ -142,6 +143,12 @@ namespace Nethermind.Blockchain.Receipts
                     }
                 }
             }
+        }
+
+        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, Func<ulong, bool>? isHeightRetained, CancellationToken cancellationToken, out int removed)
+        {
+            removed = 0;
+            return null;
         }
 
         public ulong MigratedBlockNumber { get; set; }

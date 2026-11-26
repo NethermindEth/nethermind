@@ -328,9 +328,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.EXCHANGE] = OpcodeHandler<ExchangeOpcode<TTracingInst>, TTracingInst, TCancelable>();
         }
 
+#if !ZK_EVM
         if (opcodeHooks)
             ConfigureCallAndCreateOpcodes<TTracingInst, TCancelable, OnFlag>(lookup, spec);
         else
+#endif
             ConfigureCallAndCreateOpcodes<TTracingInst, TCancelable, OffFlag>(lookup, spec);
         lookup[(int)Instruction.RETURN] = TerminatingOpcodeHandler<ReturnOpcode<TTracingInst>, TTracingInst, TCancelable>();
         if (spec.RevertOpcodeEnabled)
@@ -715,9 +717,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.SSTORE] = SpecFlags.Eip8360(spec)
             ? SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929, Eip8279, OnFlag>(spec)
             : SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929, Eip8279, OffFlag>(spec);
-        lookup[(int)Instruction.SELFDESTRUCT] = opcodeHooks
-            ? GetSelfDestructHandler<TTracingInst, TCancelable, OnFlag, EvmInstructions.AccessSpec<Eip2929, Eip8038, Eip8279>, Eip8038>(spec)
-            : GetSelfDestructHandler<TTracingInst, TCancelable, OffFlag, EvmInstructions.AccessSpec<Eip2929, Eip8038, Eip8279>, Eip8038>(spec);
+        lookup[(int)Instruction.SELFDESTRUCT] =
+#if !ZK_EVM
+            opcodeHooks
+                ? GetSelfDestructHandler<TTracingInst, TCancelable, OnFlag, EvmInstructions.AccessSpec<Eip2929, Eip8038, Eip8279>, Eip8038>(spec)
+                :
+#endif
+            GetSelfDestructHandler<TTracingInst, TCancelable, OffFlag, EvmInstructions.AccessSpec<Eip2929, Eip8038, Eip8279>, Eip8038>(spec);
         if (spec.IsEip8298Enabled)
             lookup[(int)Instruction.SETCODEFROM] = OpcodeHandler<SetCodeFromOpcode<TTracingInst, EvmInstructions.AccessSpec<Eip2929, Eip8038, Eip8279>>, TTracingInst, TCancelable>();
     }

@@ -1558,6 +1558,168 @@ public class SnapProviderTests
     }
 
     /// <summary>
+    /// An account has a storage at the first root, none at the second, and at the last either the same storage again or
+    /// one that keeps the subtree at storage path <c>1</c> of the first. Healing at the second root deletes the slots of
+    /// the account; the flat store keeps the storage trie nodes by path, so healing at the last root would find the nodes
+    /// it has again saved, and never write the slots under them back, unless those nodes went with the slots. Another
+    /// account keeps its storage throughout.
+    /// </summary>
+    [Test]
+    public async Task Flat_healing_over_roots_emptying_a_storage_and_filling_it_again_heals_to_the_last_root([Values] bool sameStorageAgain)
+    {
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        Hash256 owner = TestItem.KeccakA;
+        Hash256 witness = TestItem.KeccakB;
+        Hash256 counter = TestItem.KeccakC;
+        StorageTree storage = new(sourceStore.GetTrieStore(owner), LimboLogs.Instance);
+        StorageTree witnessStorage = new(sourceStore.GetTrieStore(witness), LimboLogs.Instance);
+        witnessStorage.Set(new ValueHash256("0x1000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        witnessStorage.Set(new ValueHash256("0x2000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        // The storage root is a branch {1 = branch {1c, 1d}, 2}, all of them over leaves.
+        ValueHash256[] slots =
+        [
+            new("0x1c00000000000000000000000000000000000000000000000000000000000000"),
+            new("0x1d00000000000000000000000000000000000000000000000000000000000000"),
+            new("0x2000000000000000000000000000000000000000000000000000000000000000"),
+        ];
+        BlockHeader[] headers =
+        [
+            CommitSource(1, 1, 1, 1),
+            CommitSource(2, 0, 0, 0),
+            CommitSource(3, 1, 1, sameStorageAgain ? (byte)1 : (byte)2),
+        ];
+
+        TestSyncConfig syncConfig = new() { SnapSync = true };
+        using SnapshotableMemColumnsDb<FlatDbColumns> atEmptyStorageDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atEmptyStorageDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[1], headers[1]), sourceStore);
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[^1], headers[^1]), sourceStore);
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        SortedDictionary<string, string>? slotsAtEmptyStorage = null;
+        SortedDictionary<string, string>? nodesAtEmptyStorage = null;
+        HealingPivot pivot = new(headers[0], headers)
+        {
+            CanFinalizeAt = header => header == headers[^1],
+            OnUpdate = round =>
+            {
+                // Before the round at the last root, once the one at the second root has saved its root.
+                if (round != 2) return;
+                slotsAtEmptyStorage = ReadColumn(db, FlatDbColumns.Storage);
+                nodesAtEmptyStorage = ReadColumn(db, FlatDbColumns.StorageNodes);
+            }
+        };
+        await HealWithTrieNodes(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, pivot, sourceStore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slotsAtEmptyStorage, Is.EqualTo(ReadColumn(atEmptyStorageDb, FlatDbColumns.Storage)), "storage column at the second root");
+            Assert.That(nodesAtEmptyStorage, Is.EqualTo(ReadColumn(atEmptyStorageDb, FlatDbColumns.StorageNodes)), "storage trie nodes at the second root");
+            Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+        }
+
+        BlockHeader CommitSource(ulong blockNumber, params byte[] values)
+        {
+            for (int i = 0; i < slots.Length; i++) storage.Set(slots[i], [values[i]]);
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                witnessStorage.Commit();
+                sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
+                sourceTree.Set(witness, Build.An.Account.WithBalance(1).WithStorageRoot(witnessStorage.RootHash).TestObject);
+                sourceTree.Set(counter, Build.An.Account.WithBalance(blockNumber).TestObject);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+    }
+
+    /// <summary>
+    /// The first root has the leaf of the owner <paramref name="oldLeafDepth"/> nibbles deep, next to an account sharing the
+    /// first <c>oldLeafDepth - 1</c> nibbles with the owner. The second root has that account gone and the owner at state
+    /// path <c>1</c> as a leaf, with no storage and a code healing does not have. Its round deletes the storage of the
+    /// owner, and the pivot moves on while the leaf waits for its code, so it is not saved in that round. Without the prefix
+    /// cleanup, the earlier leaf of the owner would survive. The last root has the subtree at <c>1</c> of the first root
+    /// back; healing at it has to go down to the storage of the owner rather than stop at the earlier leaf as found saved,
+    /// leaving the storage empty. Another account keeps its storage throughout.
+    /// </summary>
+    [Test]
+    public async Task Flat_healing_after_a_round_abandoned_while_a_shallower_state_leaf_without_storage_waits_for_its_code_heals_to_the_last_root([Values(2, 3, 32)] int oldLeafDepth)
+    {
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        ValueHash256 owner = new("0x1c00000000000000000000000000000000000000000000000000000000000000");
+        // The owner with the nibble at index oldLeafDepth - 1 flipped.
+        ValueHash256 neighbor = owner;
+        neighbor.BytesAsSpan[(oldLeafDepth - 1) / 2] ^= (byte)(oldLeafDepth % 2 == 0 ? 0x01 : 0x10);
+        ValueHash256 counter = new("0x2000000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 witness = new("0x3000000000000000000000000000000000000000000000000000000000000000");
+        StorageTree storage = new(sourceStore.GetTrieStore(owner.ToCommitment()), LimboLogs.Instance);
+        StorageTree witnessStorage = new(sourceStore.GetTrieStore(witness.ToCommitment()), LimboLogs.Instance);
+        witnessStorage.Set(new ValueHash256("0x1000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        witnessStorage.Set(new ValueHash256("0x2000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        ValueHash256[] slots =
+        [
+            new("0x1000000000000000000000000000000000000000000000000000000000000000"),
+            new("0x2000000000000000000000000000000000000000000000000000000000000000"),
+        ];
+        // 1 = the subtree of the owner and its neighbor, with a branch where they part; then 1 = leaf of the owner, with
+        // code and no storage; then 1 as at first.
+        BlockHeader[] headers =
+        [
+            CommitSource(1, slotValue: 1, withNeighbor: true),
+            CommitSource(2, slotValue: 0, withNeighbor: false),
+            CommitSource(3, slotValue: 1, withNeighbor: true),
+        ];
+        TreePath shallowerLeafPath = TreePath.FromHexString("1");
+
+        TestSyncConfig syncConfig = new() { SnapSync = true };
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        HealingPivot pivot = new(headers[0], headers) { CanFinalizeAt = header => header == headers[^1] };
+        bool movedOnWithTheLeafWaiting = false;
+        await HealWithTrieNodes(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, pivot, sourceStore, afterRequest: (_, batch) =>
+        {
+            // The code is queued once the leaf is handled, so the round moves on before it is requested.
+            if (pivot.Header != headers[1] || !batch.RequestedNodes!.Any(item => item.Address is null && item.Path == shallowerLeafPath)) return;
+            pivot.Header = headers[^1];
+            movedOnWithTheLeafWaiting = true;
+        });
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[^1], headers[^1]), sourceStore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(movedOnWithTheLeafWaiting, Is.True, "the round at the second root moved on with the leaf at 1 waiting");
+            Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+        }
+
+        BlockHeader CommitSource(ulong blockNumber, byte slotValue, bool withNeighbor)
+        {
+            foreach (ValueHash256 slot in slots) storage.Set(slot, [slotValue]);
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                witnessStorage.Commit();
+                // Healing has no code, so a leaf with code waits for it.
+                sourceTree.Set(owner, slotValue == 0
+                    ? Build.An.Account.WithBalance(1).WithCode([0x60, 0x00]).TestObject
+                    : Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
+                sourceTree.Set(neighbor, withNeighbor ? Build.An.Account.WithBalance(1).TestObject : null);
+                sourceTree.Set(counter, Build.An.Account.WithBalance(blockNumber).TestObject);
+                sourceTree.Set(witness, Build.An.Account.WithBalance(1).WithStorageRoot(witnessStorage.RootHash).TestObject);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+    }
+
+    /// <summary>
     /// Heals the state at the pivot with trie nodes, answering each request from <paramref name="source"/>, a round at
     /// each pivot until one can finalize.
     /// </summary>

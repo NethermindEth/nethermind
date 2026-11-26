@@ -89,6 +89,37 @@ public class DepositSignatureVerifierTests
         }
     }
 
+    [Test]
+    public void A_verifier_that_rejects_every_signature_refuses_a_valid_deposit()
+    {
+        (BlsPublicKey pubkey, Hash256 credentials, BlsSignature signature) = SignedDeposit(11);
+        BeaconChainSpec rejecting = BeaconChainSpec.Mainnet with { SignatureVerifier = new RejectingSignatureVerifier() };
+
+        Assert.That(DepositSignatureVerifier.IsValid(rejecting, pubkey, credentials, Amount, signature), Is.False);
+    }
+
+    [Test]
+    public void A_deposit_verdict_is_cached_per_verifier()
+    {
+        (BlsPublicKey pubkey, Hash256 credentials, BlsSignature signature) = SignedDeposit(13);
+        BeaconChainSpec rejecting = BeaconChainSpec.Mainnet with { SignatureVerifier = new RejectingSignatureVerifier() };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(DepositSignatureVerifier.IsValid(BeaconChainSpec.Mainnet, pubkey, credentials, Amount, signature), Is.True);
+            Assert.That(DepositSignatureVerifier.IsValid(rejecting, pubkey, credentials, Amount, signature), Is.False);
+            Assert.That(DepositSignatureVerifier.IsValid(BeaconChainSpec.Mainnet, pubkey, credentials, Amount, signature), Is.True);
+        }
+    }
+
+    private static (BlsPublicKey Pubkey, Hash256 Credentials, BlsSignature Signature) SignedDeposit(int keyIndex)
+    {
+        Bls.SecretKey key = GloasTestFixtures.DeriveKey(keyIndex);
+        BlsPublicKey pubkey = new(new Bls.P1(key).Compress());
+        Hash256 credentials = GloasTestFixtures.EthWithdrawalCredentials(0xEE);
+        return (pubkey, credentials, GloasTestFixtures.Sign(key, SigningRoot(pubkey, credentials)));
+    }
+
     private static Hash256 SigningRoot(BlsPublicKey pubkey, Hash256 credentials)
     {
         DepositMessage.Merkleize(new DepositMessage { Pubkey = pubkey, WithdrawalCredentials = credentials, Amount = Amount }, out UInt256 root);

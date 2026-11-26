@@ -62,6 +62,10 @@ namespace Nethermind.Blockchain.Synchronization
         /// <param name="token">Cancels the request.</param>
         Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token) =>
             GetReceipts(blockHashes, token);
+
+        /// <summary>Whether the peer serves <see cref="GetNodeData"/>.</summary>
+        bool CanGetNodeData { get; }
+
         Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
         Task<IOwnedReadOnlyList<byte[]?>> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
             Task.FromResult(IOwnedReadOnlyList<byte[]?>.Empty);
