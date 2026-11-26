@@ -34,7 +34,7 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 [Parallelizable(ParallelScope.Self)]
 public class KademliaModuleTests
 {
-    private const int FillerCount = 8;
+    private const int FillerCount = 51;
     private const int TargetCount = 10;
     private const int TargetBucketLimit = 2;
 
@@ -44,7 +44,7 @@ public class KademliaModuleTests
     [CancelAfter(30000)]
     public async Task Two_per_bucket_and_ten_per_table_reach_the_table_and_the_candidate_stream(CancellationToken token)
     {
-        (List<PublicKey> fillers, List<PublicKey> targets, PublicKey rejected) = SelectPeers();
+        (List<PublicKey> fillers, List<PublicKey> targets, PublicKey rejected, PublicKey afterRejected) = SelectPeers();
         Dictionary<PublicKey, IPEndPoint> endpoints = [];
 
         await using IContainer container = BuildContainer();
@@ -61,6 +61,7 @@ public class KademliaModuleTests
         await BondAndInject(adapter, fillers, i => new IPEndPoint(IPAddress.Parse($"203.0.{i + 1}.1"), 30303), endpoints, idsByEndpoint);
         await BondAndInject(adapter, targets, i => new IPEndPoint(IPAddress.Parse($"192.0.2.{i + 1}"), 30303), endpoints, idsByEndpoint);
         await BondAndInject(adapter, [rejected], _ => new IPEndPoint(IPAddress.Parse("192.0.2.250"), 30303), endpoints, idsByEndpoint);
+        await BondAndInject(adapter, [afterRejected], _ => new IPEndPoint(IPAddress.Parse("198.51.100.1"), 30303), endpoints, idsByEndpoint);
 
         Node[] tableNodes = [.. table.IterateBuckets().SelectMany(static bucket => bucket.Nodes)];
         PublicKey[] targetIds = [.. targets];
@@ -71,7 +72,7 @@ public class KademliaModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tableTargets, Has.Length.EqualTo(TargetCount));
-            Assert.That(tableTargets.Any(node => node.Id == rejected), Is.False);
+            Assert.That(tableNodes.Any(node => node.Id == rejected), Is.False);
             Assert.That(
                 table.IterateBuckets().Max(bucket => bucket.Nodes.Count(node => targetIds.Contains(node.Id))),
                 Is.LessThanOrEqualTo(TargetBucketLimit));
@@ -80,7 +81,7 @@ public class KademliaModuleTests
         using CancellationTokenSource readCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         readCts.CancelAfter(TimeSpan.FromSeconds(5));
         List<Node> candidates = await nodeSource.DiscoverNodes(readCts.Token)
-            .Take(FillerCount + TargetCount)
+            .Take(FillerCount + TargetCount + 1)
             .ToListAsync(readCts.Token);
 
         using (Assert.EnterMultipleScope())
@@ -88,6 +89,7 @@ public class KademliaModuleTests
             Assert.That(candidates.Where(node => targetIds.Contains(node.Id)).Select(static node => node.Id).ToHashSet(),
                 Is.EquivalentTo(targetIds));
             Assert.That(candidates.Any(node => node.Id == rejected), Is.False);
+            Assert.That(candidates.Any(node => node.Id == afterRejected), Is.True);
         }
 
         sender.Sent.Clear();
@@ -131,29 +133,41 @@ public class KademliaModuleTests
         }
     }
 
-    private static (List<PublicKey> Fillers, List<PublicKey> Targets, PublicKey Rejected) SelectPeers()
+    private static (List<PublicKey> Fillers, List<PublicKey> Targets, PublicKey Rejected, PublicKey AfterRejected) SelectPeers()
     {
-        // Bucket placement follows the Keccak hash, so pick keys that share few top bits: fillers seed every
-        // three-bit prefix and the targets fill the table two per bucket in five of them.
+        // Bucket placement follows the key hash bits, so pick keys by their top bits. The fillers arrive first
+        // and share top bits to fill each branch and split the tree down to six leaves; the targets follow two
+        // per leaf across five of them, so every same-subnet target fits the limiter's bucket cap.
         Dictionary<int, List<PublicKey>> byPrefix = Enumerable.Range(1, TestItem.PrivateKeys.Length - 1)
             .Select(index => TestItem.PrivateKeys[index].PublicKey)
             .GroupBy(TopThreeBits)
             .ToDictionary(group => group.Key, group => group.ToList());
 
+        // Fillers per three-bit prefix: seventeen keys sharing each top bit fill the branch and split it,
+        // for six leaves in total, while the sixty-three bonded nodes stay within the peer-candidate
+        // channel capacity. Targets take the next two keys in five of those prefixes.
+        int[] fillerTakes = [9, 8, 9, 8, 5, 4, 4, 4];
+
         List<PublicKey> fillers = [];
-        for (int prefix = 0; prefix < FillerCount; prefix++)
+        for (int prefix = 0; prefix < fillerTakes.Length; prefix++)
         {
-            fillers.Add(byPrefix[prefix][0]);
+            fillers.AddRange(byPrefix[prefix].Take(fillerTakes[prefix]));
         }
 
         List<PublicKey> targets = [];
         for (int prefix = 0; prefix < TargetCount / TargetBucketLimit; prefix++)
         {
-            targets.AddRange(byPrefix[prefix].Skip(1).Take(TargetBucketLimit));
+            targets.AddRange(byPrefix[prefix].Skip(fillerTakes[prefix]).Take(TargetBucketLimit));
         }
 
-        PublicKey rejected = byPrefix[TargetCount / TargetBucketLimit].Skip(1).First();
-        return (fillers, targets, rejected);
+        HashSet<PublicKey> used = [.. fillers, .. targets];
+        PublicKey rejected = byPrefix[5].Skip(fillerTakes[5]).First(key => !used.Contains(key));
+        used.Add(rejected);
+        PublicKey afterRejected = TestItem.PrivateKeys
+            .Skip(1)
+            .Select(static key => key.PublicKey)
+            .First(key => !used.Contains(key));
+        return (fillers, targets, rejected, afterRejected);
     }
 
     private static int TopThreeBits(PublicKey key) => key.Hash.ValueHash256.Bytes[0] >> 5;
@@ -169,7 +183,7 @@ public class KademliaModuleTests
         };
         DiscoveryConfig discoveryConfig = new()
         {
-            BucketSize = 2,
+            BucketSize = 16,
             BitsPerHop = 32,
             ConcurrentDiscoveryJob = 1,
             UseDefaultDiscv5Bootnodes = false
