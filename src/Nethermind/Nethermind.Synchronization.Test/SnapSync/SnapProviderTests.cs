@@ -1775,7 +1775,8 @@ public partial class SnapProviderTests
                 batch!.Responses = new ByteArrayListAdapter(responses);
                 beforeHandle?.Invoke(request, batch);
                 Assert.That(treeSync.HandleResponse(batch, peer), Is.EqualTo(SyncResponseHandlingResult.OK));
-                afterRequest?.Invoke(request++, batch);
+                afterRequest?.Invoke(request, batch);
+                request++;
             }
         }
         while (!treeSync.CanFinalize(roundPivot!));

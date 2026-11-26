@@ -64,11 +64,11 @@ public partial class SnapProviderTests
         }
         else
         {
-            if (!int.TryParse(firstText, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int first))
+            if (!int.TryParse(firstText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int first))
                 throw new InvalidOperationException($"NM_FLAT_HEAL_SEED={firstText} is not an Int32 seed");
             // One seed when no count is given; a given count has to be a positive Int32.
             int count = 1;
-            if (countText is not null && (!int.TryParse(countText, NumberStyles.None, CultureInfo.InvariantCulture, out count) || count <= 0))
+            if (countText is not null && (!int.TryParse(countText, NumberStyles.Integer, CultureInfo.InvariantCulture, out count) || count <= 0))
                 throw new InvalidOperationException($"NM_FLAT_HEAL_SEED={firstText} with NM_FLAT_HEAL_COUNT={countText}: the count must be a positive Int32");
             long last = (long)first + count - 1;
             if (last > int.MaxValue)
@@ -150,13 +150,13 @@ public partial class SnapProviderTests
         {
             await HealWithTrieNodes(persistence, syncConfig, pivot, roots.Store, schedule.AfterRequest, schedule.AnsweredCount,
                 decorateStore is null ? null : store => decorateStore(persistence, store), GeneratedRequestsPerRound, schedule.BeforeHandle);
+            schedule.Finish();
         }
         catch (Exception exception)
         {
             Assert.Fail($"healing over the generated roots failed: {exception.Message}{Environment.NewLine}{result.Report}{Environment.NewLine}{exception}");
         }
 
-        schedule.Finish();
         if (schedule.ScheduleErrors.Count > 0) Assert.Fail($"the schedule did not run as planned: {string.Join("; ", schedule.ScheduleErrors)}{Environment.NewLine}{result.Report}");
 
         // A clean heal that does not verify or read back fails at the fixed last root already, with no pivot moving.
@@ -554,10 +554,23 @@ public partial class SnapProviderTests
                 _ => ((Hash256?)null, TreePath.FromNibble([(byte)top[2]])),
             };
             Hash256 targetRoot = targetOwner is null ? headers[4].StateRoot! : storageRoots[4][Owner];
-            (Hash256 Hash, NodeType Type)? target = NodeAt(store, targetOwner, targetRoot, targetPath);
+            (Hash256 Hash, NodeType Type)? target = null;
+            List<string> missingShapes = [];
+            try
+            {
+                target = NodeAt(store, targetOwner, targetRoot, targetPath);
+                if (target is not null)
+                {
+                    roots.Root4Target = (targetOwner, targetPath, target.Value.Hash);
+                    missingShapes = roots.MissingShapes(a, c, d, e, p, top[2]);
+                }
+            }
+            catch (Exception exception)
+            {
+                Assert.Fail($"seed {seed}, shape {shape}: inspecting the generated roots failed: {exception.Message} (generation failed, so there is no healing trace){Environment.NewLine}{roots.Describe()}{Environment.NewLine}{exception}");
+            }
+
             if (target is null) Assert.Fail($"seed {seed}: no node at '{targetPath}' at root 4 to end the round on (generation failed, so there is no healing trace){Environment.NewLine}{roots.Describe()}");
-            roots.Root4Target = (targetOwner, targetPath, target!.Value.Hash);
-            List<string> missingShapes = roots.MissingShapes(a, c, d, e, p, top[2]);
             if (missingShapes.Count > 0)
                 Assert.Fail($"seed {seed}, shape {shape}: the generated roots lack {string.Join("; ", missingShapes)} (generation failed, so there is no healing trace){Environment.NewLine}{roots.Describe()}");
             return roots;
@@ -856,10 +869,10 @@ public partial class SnapProviderTests
 
                 int half = (items.Count + 1) / 2;
                 answered = half + _random.Next(items.Count - half);
-                _partialAnswer = $"request {request} answered {answered} of {items.Count}, shuffled";
+                _partialAnswer = $"request {request} selected {answered} of {items.Count}, shuffled";
             }
 
-            _recentRequests.Enqueue($"  request {request} at root {_round}, answered {answered} of {items.Count}: {string.Join(", ", items.Take(8).Select(Describe))}{(items.Count > 8 ? ", ..." : "")}");
+            _recentRequests.Enqueue($"  request {request} at root {_round}, selected {answered} of {items.Count}: {string.Join(", ", items.Take(8).Select(Describe))}{(items.Count > 8 ? ", ..." : "")}");
             if (_recentRequests.Count > GeneratedRecentRequests) _recentRequests.Dequeue();
             return answered;
         }
@@ -917,7 +930,10 @@ public partial class SnapProviderTests
             text.AppendLine($"rounds completed: {string.Join(", ", _roundCompleted.Select((completed, round) => $"{round} {(completed ? "yes" : "no")}"))}");
             text.AppendLine($"round 3 planned to move on after request {Root3RequestsBeforeMovingOn} at that root: {_root3Cut ?? "did not"}");
             text.AppendLine($"round 4: {_root4Cut ?? "did not move on"}");
-            text.AppendLine($"partial answer: {_partialAnswer ?? (_firstMultiItemRoot3Response is null ? "none, root 3 moved on before a request with more than one item" : "none")}");
+            text.AppendLine($"planned partial answer: {_partialAnswer ?? "none"}");
+            text.AppendLine(_firstMultiItemRoot3Response is { } delivered
+                ? $"delivered: request {delivered.Request} reached healing with {delivered.Answered} responses to {delivered.Requested} items"
+                : "delivered: no request of root 3 with more than one item reached healing before it moved on");
             text.AppendLine("last requests:");
             foreach (string request in _recentRequests) text.AppendLine(request);
             return text.ToString();
