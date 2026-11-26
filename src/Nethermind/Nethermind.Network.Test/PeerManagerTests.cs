@@ -606,8 +606,12 @@ namespace Nethermind.Network.Test
                 // The IN session adds its peer to the pool before it makes the peer active, so the update loop
                 // can dial the peer in that window. Spend the address's filter entry to keep that OUT session out.
                 ctx.RlpxPeer.UseRecentIpFilter();
-                ctx.RlpxPeer.ShouldContact(IPAddress.Parse(template.RemoteHost));
+                Assert.That(ctx.RlpxPeer.ShouldContact(IPAddress.Parse(template.RemoteHost)), Is.True);
+                int callsOnThread = RlpxMock.ShouldContactCallsOnThread;
                 ctx.RlpxPeer.CreateIncoming(template);
+                // The spend also refuses the pool-add dial, which runs on this thread, so check that dial is not tried at all.
+                Assert.That(RlpxMock.ShouldContactCallsOnThread, Is.EqualTo(callsOnThread),
+                    "the pool-add handler tried to dial the peer that is connecting in");
             }
             else
             {
@@ -1771,9 +1775,15 @@ namespace Nethermind.Network.Test
             /// <summary>Replaces the accept-everything default with the production recent-IP filter.</summary>
             public void UseRecentIpFilter() => _nodeFilter = NodeFilter.CreateExact(size: 256, timeout: TimeSpan.FromMinutes(5));
 
+            [ThreadStatic] private static int _shouldContactCallsOnThread;
+
+            /// <summary><see cref="ShouldContact"/> calls made on the current thread, by any mock instance.</summary>
+            public static int ShouldContactCallsOnThread => _shouldContactCallsOnThread;
+
             public bool ShouldContact(IPAddress ip, bool exactOnly = false)
             {
                 Interlocked.Increment(ref _shouldContactCallsCount);
+                _shouldContactCallsOnThread++;
                 if (!_nodeFilter.TryAccept(ip, exactOnly)) return false;
 
                 ContactedIps.Add(ip);
