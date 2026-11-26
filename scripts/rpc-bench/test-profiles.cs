@@ -26,6 +26,13 @@ tests.Case("inclusive totals deduplicate recursion", () =>
     var (counts, total) = Profiles.Aggregate(path, true);
     RpcScriptTests.Assert(total == 7 && counts["recursive"] == 5 && counts["leaf"] == 7, "recursion double counted");
 });
+tests.Case("aggregation counts samples without a stack", () =>
+{
+    var path = tests.Write("stackless.folded", "root;Hot Path 5\n 5\n");
+    var (counts, total) = Profiles.Aggregate(path, false);
+    RpcScriptTests.Assert(total == 10 && counts.GetValueOrDefault("Hot Path") == 5 &&
+        counts.GetValueOrDefault("") == 5, "stackless sample was not included in the frame counts and total");
+});
 tests.Case("total label and truncation preserve method tail", () =>
 {
     var path = tests.Write("long.folded", $"root;{new string('x', 150)}::MethodNameTailForDiscrimination(int32) 5\n");
