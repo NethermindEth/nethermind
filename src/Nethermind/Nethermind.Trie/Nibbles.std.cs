@@ -118,8 +118,8 @@ namespace Nethermind.Trie
                     : Vector128.Create(Unsafe.ReadUnaligned<ulong>(ref bytes), Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, last))).AsByte();
                 Vector128<byte> high = Vector128.ShiftRightLogical(value, 4);
                 Vector128<byte> low = value & Vector128.Create((byte)0x0F);
-                InterleaveLower(high, low).StoreUnsafe(ref nibbles);
-                InterleaveUpper(high, low).StoreUnsafe(ref nibbles, last * 2);
+                Vector128.ZipLower(high, low).StoreUnsafe(ref nibbles);
+                Vector128.ZipUpper(high, low).StoreUnsafe(ref nibbles, last * 2);
             }
             else
             {
@@ -133,14 +133,14 @@ namespace Nethermind.Trie
                         Vector64.CreateScalarUnsafe(Unsafe.ReadUnaligned<float>(ref Unsafe.Add(ref bytes, last)))).AsByte();
                     Vector128<byte> high = Vector128.ShiftRightLogical(value, 4);
                     Vector128<byte> low = value & Vector128.Create((byte)0x0F);
-                    AdvSimd.Arm64.ZipLow(high, low).GetLower().StoreUnsafe(ref nibbles);
-                    AdvSimd.Arm64.ZipHigh(high, low).GetLower().StoreUnsafe(ref nibbles, last * 2);
+                    Vector128.ZipLower(high, low).GetLower().StoreUnsafe(ref nibbles);
+                    Vector128.ZipUpper(high, low).GetLower().StoreUnsafe(ref nibbles, last * 2);
                 }
                 else
                 {
                     Vector128<byte> value = Vector128.CreateScalarUnsafe(Unsafe.ReadUnaligned<uint>(ref bytes))
                         .WithElement(1, Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes, last))).AsByte();
-                    Vector128<ulong> expanded = InterleaveLower(Vector128.ShiftRightLogical(value, 4), value & Vector128.Create((byte)0x0F)).AsUInt64();
+                    Vector128<ulong> expanded = Vector128.ZipLower(Vector128.ShiftRightLogical(value, 4), value & Vector128.Create((byte)0x0F)).AsUInt64();
                     Unsafe.WriteUnaligned(ref nibbles, expanded.ToScalar());
                     Unsafe.WriteUnaligned(ref Unsafe.Add(ref nibbles, last * 2), expanded.GetElement(1));
                 }
@@ -252,17 +252,9 @@ namespace Nethermind.Trie
             Vector128<byte> high = Vector128.ShiftRightLogical(value, 4);
             Vector128<byte> low = value & Vector128.Create((byte)0x0F);
             ref byte destination = ref Unsafe.Add(ref nibbles, index * 2);
-            InterleaveLower(high, low).StoreUnsafe(ref destination);
-            InterleaveUpper(high, low).StoreUnsafe(ref destination, (nuint)Vector128<byte>.Count);
+            Vector128.ZipLower(high, low).StoreUnsafe(ref destination);
+            Vector128.ZipUpper(high, low).StoreUnsafe(ref destination, (nuint)Vector128<byte>.Count);
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Vector128<byte> InterleaveLower(Vector128<byte> high, Vector128<byte> low) =>
-            Sse2.IsSupported ? Sse2.UnpackLow(high, low) : AdvSimd.Arm64.ZipLow(high, low);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Vector128<byte> InterleaveUpper(Vector128<byte> high, Vector128<byte> low) =>
-            Sse2.IsSupported ? Sse2.UnpackHigh(high, low) : AdvSimd.Arm64.ZipHigh(high, low);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Pack256(ref byte nibbles, ref byte bytes, nuint index)
