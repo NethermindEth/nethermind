@@ -162,7 +162,7 @@ public class SnapshotBundleWarmerTests
 
         bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
         if (warmUp) bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
-        else Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, action, nodes)), Is.EqualTo(persisted[TreePath.Empty]));
+        else Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, root.Hash, action, nodes)), Is.EqualTo(persisted[TreePath.Empty]));
 
         Assert.That(reader.Reads, Is.EqualTo(1));
     }
@@ -251,7 +251,7 @@ public class SnapshotBundleWarmerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.Reads, Is.EqualTo(2), "retirement no longer promotes warmed nodes into a shared cache");
-            Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, action, nodes)), Is.Not.Null);
+            Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, root.Hash, action, nodes)), Is.Not.Null);
             Assert.That(reader.Reads, Is.EqualTo(2), "the replacement transient still reuses its own warmed records");
         }
     }
@@ -293,34 +293,6 @@ public class SnapshotBundleWarmerTests
             if (!ownerReleased) retired?.ReleaseLease();
             probe?.ReleaseLease();
             recycled?.ReleaseLease();
-        }
-    }
-
-    // Persisted RLP is trusted to be the requested node, but bytes that are not a trie node are never warmed.
-    [Test]
-    public void Warm_up_does_not_warm_an_invalid_node([Values] bool storage, [Values("c28001", "f8")] string persistedRlpHex)
-    {
-        Hash256? address = storage ? TestItem.KeccakC : null;
-        byte[] persistedRlp = Bytes.FromHexString(persistedRlpHex);
-        (ValueHash256 Hash, ulong Pointer) root = (ValueKeccak.Compute(persistedRlp), 0);
-        NodeReader reader = new(new Dictionary<TreePath, byte[]> { [TreePath.Empty] = persistedRlp });
-        using SnapshotBundle bundle = NewBundle(reader);
-
-        bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
-
-        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
-        try
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(reader.Reads, Is.EqualTo(1));
-                Assert.That(retired!.WarmedNodeBuffer.Count, Is.Zero);
-            }
-        }
-        finally
-        {
-            snapshot?.Dispose();
-            retired?.ReleaseLease();
         }
     }
 
@@ -616,7 +588,6 @@ public class SnapshotBundleWarmerTests
             Assert.That(firstWarmUp, concurrent ? Is.GreaterThanOrEqualTo(persisted.Count) : Is.EqualTo(persisted.Count));
             Assert.That(secondWarmUp, Is.Zero, "the position index reuses every warmed record");
             Assert.That(reader.Reads, Is.EqualTo(readsBeforeBulkSet));
-            Assert.That(reader.OwnedReads, Is.Zero, "warming and demand loading must use the borrowed-span API");
             Assert.That(trie.RootHash, Is.EqualTo(expected.RootHash));
         }
 
@@ -678,25 +649,19 @@ public class SnapshotBundleWarmerTests
         ManualResetEventSlim? release = null) : NoopPersistenceReader, IPersistence.IPersistenceReader
     {
         private int _reads;
-        private int _ownedReads;
 
         public int Reads => Volatile.Read(ref _reads);
-        public int OwnedReads => Volatile.Read(ref _ownedReads);
-
-        byte[]? IPersistence.IPersistenceReader.TryLoadStateRlp(in TreePath path, ReadFlags flags) => LoadOwned(path);
-
-        byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => LoadOwned(path);
-
-        private byte[]? LoadOwned(in TreePath path)
-        {
-            Interlocked.Increment(ref _ownedReads);
-            return Load(path);
-        }
 
         bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
             Load(path, action, arg);
 
         bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+            Load(path, action, arg);
+
+        bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+            Load(path, action, arg);
+
+        bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
             Load(path, action, arg);
 
         private bool Load<TArg>(in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct

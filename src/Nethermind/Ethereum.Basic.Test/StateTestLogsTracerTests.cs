@@ -31,7 +31,7 @@ public class StateTestLogsTracerTests
         StateTestLogsTracer logsTracer = new();
         logsTracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21_000, 21_000), [], logs);
 
-        Assert.That(logsTracer.LogsHash, Is.EqualTo(Keccak.Compute(LogEntryDecoder.Instance.Encode(logs).Bytes)));
+        Assert.That(logsTracer.LogsHash, Is.EqualTo(Keccak.Compute(LogEntryDecoder.Instance.Encode(logs))));
     }
 
     /// <remarks>
@@ -73,7 +73,7 @@ public class StateTestLogsTracerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receiptLogs, Is.EqualTo(new[] { PrefixLog }));
-            Assert.That(logsTracer.LogsHash, Is.EqualTo(Keccak.Compute(LogEntryDecoder.Instance.Encode(receiptLogs).Bytes)));
+            Assert.That(logsTracer.LogsHash, Is.EqualTo(Keccak.Compute(LogEntryDecoder.Instance.Encode(receiptLogs))));
             Assert.That(caller.Events, Is.EqualTo(callerTraces ? new[] { "receipt 3", "failed" } : System.Array.Empty<string>()));
         }
     }

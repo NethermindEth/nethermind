@@ -53,7 +53,7 @@ internal static class JsonRpcGenerator
     private const string _blockTags = "`earliest`, `finalized`, `latest`, `pending`, or `safe`";
     private const string _blockNumberIfNotStrict = "_integer_ (block number, if `JsonRpc.StrictHexFormat` is `false`)";
     private const string _txPoolSenders = "_object_ with `pending` and `queued`, each a map of sender address to a map of nonce (decimal, or hash for an EIP-8250 keyed transaction) to ";
-    private static readonly SortedSet<string> _guessedTypeNames = new(StringComparer.Ordinal);
+    private static readonly SortedSet<string> _guessedTypeNames = [with(StringComparer.Ordinal)];
     private static readonly NullabilityInfoContext _nullabilityContext = new();
     private static readonly Dictionary<Type, string> _knownTypeNames = new()
     {
@@ -413,9 +413,16 @@ internal static class JsonRpcGenerator
         AnsiConsole.MarkupLine($"[green]Generated[/] {fileName}");
     }
 
-    private static void WriteParameters(StreamWriter file, MethodInfo method)
+    // The dispatcher supplies the trailing CancellationToken, so clients never send it.
+    private static ParameterInfo[] GetJsonParameters(MethodInfo method)
     {
         ParameterInfo[] parameters = method.GetParameters();
+        return parameters is [.., { ParameterType: var lastType }] && lastType == typeof(CancellationToken) ? parameters[..^1] : parameters;
+    }
+
+    private static void WriteParameters(StreamWriter file, MethodInfo method)
+    {
+        ParameterInfo[] parameters = GetJsonParameters(method);
 
         if (parameters.Length == 0)
             return;
@@ -446,7 +453,7 @@ internal static class JsonRpcGenerator
 
     private static void WriteRequest(StreamWriter file, MethodInfo method)
     {
-        string parameters = string.Join(", ", method.GetParameters().Select(p => p.Name));
+        string parameters = string.Join(", ", GetJsonParameters(method).Select(p => p.Name));
 
         file.WriteLine($$"""
             <TabItem value="request" label="Request" default>

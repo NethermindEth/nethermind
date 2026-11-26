@@ -44,10 +44,18 @@ public class EraWriter : IDisposable
         _e2StoreWriter = e2StoreWriter;
         _accumulatorCalculator = new();
         _specProvider = specProvider;
-        _entryIndexes = new(MaxEra1Size);
+        _entryIndexes = [with(MaxEra1Size)];
     }
 
     public async Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
+    {
+        using ArrayPoolSpan<byte> bodyBytes = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body);
+        await Add(block, bodyBytes.AsMemory(), receipts, cancellation);
+    }
+
+    /// <summary>Adds <paramref name="block"/> with its body already encoded, so its transactions are not encoded again.</summary>
+    /// <param name="encodedBody">The encoded body of <paramref name="block"/> with its sequence prefix.</param>
+    public async Task Add(Block block, Memory<byte> encodedBody, TxReceipt[] receipts, CancellationToken cancellation = default)
     {
         if (_finalized)
             throw new EraException($"Finalized() has been called on this {nameof(EraWriter)}, and no more blocks can be added. ");
@@ -60,6 +68,11 @@ public class EraWriter : IDisposable
         if (_entryIndexes.Count >= MaxEra1Size)
             throw new ArgumentException($"Era file should not contain more than {MaxEra1Size} blocks");
 
+        if (block.TotalDifficulty is not { } totalDifficulty)
+            throw new ArgumentException("The block must have a total difficulty.", nameof(block));
+        if (totalDifficulty < block.Difficulty)
+            throw new ArgumentOutOfRangeException(nameof(block.TotalDifficulty), $"Cannot be less than the block difficulty.");
+
         if (_firstBlock)
         {
             _startNumber = block.Number;
@@ -67,30 +80,28 @@ public class EraWriter : IDisposable
             _firstBlock = false;
         }
 
-        if (block.TotalDifficulty < block.Difficulty)
-            throw new ArgumentOutOfRangeException(nameof(block.TotalDifficulty), $"Cannot be less than the block difficulty.");
-
         _entryIndexes.Add(_totalWritten);
-        _accumulatorCalculator.Add(block.Hash, block.TotalDifficulty!.Value);
+        _accumulatorCalculator.Add(block.Hash, totalDifficulty);
 
         RlpBehaviors behaviors = _specProvider.GetSpec(block.Header).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
         using ArrayPoolSpan<byte> headerBytes = _headerDecoder.EncodeToArrayPoolSpan(block.Header, behaviors);
         _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, headerBytes.AsMemory(), cancellation);
 
-        using ArrayPoolSpan<byte> bodyBytes = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, behaviors);
-        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, bodyBytes.AsMemory(), cancellation);
+        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, encodedBody, cancellation);
 
         using ArrayPoolSpan<byte> receiptBytes = _receiptDecoder.EncodeToArrayPoolSpan(receipts.AsSpan(), behaviors);
         _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptBytes.AsMemory(), cancellation);
 
-        _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, block.TotalDifficulty!.Value.ToLittleEndian(), cancellation);
+        _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, totalDifficulty.ToLittleEndian(), cancellation);
     }
 
     public async Task<(ValueHash256, ValueHash256)> Finalize(CancellationToken cancellation = default)
     {
         if (_firstBlock)
             throw new EraException("Finalize was called, but no blocks have been added yet.");
+        if (_finalized)
+            throw new EraException("Finalize has already been called.");
 
         ValueHash256 root = _accumulatorCalculator.ComputeRoot();
         _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.Accumulator, root.ToByteArray(), cancellation);

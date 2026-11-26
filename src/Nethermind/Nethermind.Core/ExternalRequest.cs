@@ -47,7 +47,7 @@ public static class ExternalRequest
     }
 
     /// <summary>A request entered with <see cref="Enter"/>, until disposed.</summary>
-    public readonly struct Scope : IDisposable
+    public readonly ref struct Scope : IDisposable
     {
         private readonly long _outer;
 

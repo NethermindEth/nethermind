@@ -94,7 +94,7 @@ public partial class DebugRpcModuleTests
             TxHash = filtered ? block.Transactions[2].Hash : null
         };
         ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> Trace() => raw
-            ? chain.DebugRpcModule.debug_traceBlock(Nethermind.Serialization.Rlp.Rlp.Encode(block).Bytes, options)
+            ? chain.DebugRpcModule.debug_traceBlock(Nethermind.Serialization.Rlp.Rlp.Encode(block), options)
             : byHash ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
             : chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
         // Keep parallel routing enabled but serialize execution so fake-clock advancement is deterministic.
@@ -177,7 +177,7 @@ public partial class DebugRpcModuleTests
         object selector = method switch
         {
             "debug_traceBlockByNumber" => block.Number,
-            "debug_traceBlock" => Rlp.Encode(block).ToString(),
+            "debug_traceBlock" => Rlp.Encode(block).ToHexString(true),
             _ => block.Hash!
         };
         bool named = method is "debug_traceBlockByNumber" or "debug_traceBlockByHash";
@@ -260,9 +260,12 @@ public partial class DebugRpcModuleTests
         {
             if (!clock.Enabled) return inner.Execute(transaction, tracer);
             clock.Calls++;
-            if (clock.Expiry != "after") clock.Advance(transaction.Nonce);
+            ulong position = clock.UseExecutionIndex ? (ulong)(clock.Calls - 1) : transaction.Nonce;
+            if (clock.Expiry != "after") clock.Advance(position);
+            if (clock.UseExecutionIndex && clock.Calls == 1) clock.PrefixCancelled = tracer.IsCancelled;
+            if (position == clock.Target) clock.TargetCancelled = tracer.IsCancelled;
             TransactionResult result = inner.Execute(transaction, tracer);
-            if (clock.Expiry == "after") clock.Advance(transaction.Nonce);
+            if (clock.Expiry == "after") clock.Advance(position);
             return result;
         }
         public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
@@ -289,6 +292,9 @@ public partial class DebugRpcModuleTests
         internal string Expiry = "reset";
         internal Action? Cancel;
         internal int Calls;
+        internal bool? TargetCancelled;
+        internal bool? PrefixCancelled;
+        internal bool UseExecutionIndex;
         internal List<ExecutionTimer> Timers { get; } = [];
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
         public override long GetTimestamp() => _timestamp;
@@ -350,7 +356,7 @@ public partial class DebugRpcModuleTests
             {
                 "debug_traceBlockByHash" => block.Hash!,
                 "debug_traceBlockByNumber" => "latest",
-                "debug_traceBlock" => Nethermind.Serialization.Rlp.Rlp.Encode(block).ToString(),
+                "debug_traceBlock" => Nethermind.Serialization.Rlp.Rlp.Encode(block).ToHexString(true),
                 _ => throw new AssertionException($"Unexpected block tracing method: {method}")
             };
             return RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter,
@@ -475,7 +481,10 @@ public partial class DebugRpcModuleTests
             new { timeout = "bad", streamMode = true });
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid argument 2\"},\"id\":67}"));
+            string expected = method == "debug_traceCall"
+                ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"time: invalid duration \"bad\""},"id":67}"""
+                : """{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 2"},"id":67}""";
+            Assert.That(response, Is.EqualTo(expected));
             Assert.That(counter.Calls, Is.Zero);
         }
     }
@@ -517,7 +526,7 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That(parsed["result"], Is.Null);
                 Assert.That(parsed["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000));
-                Assert.That(parsed["error"]?["message"]?.Value<string>(), Does.Contain("Cannot parse 'bad'"));
+                Assert.That(parsed["error"]?["message"]?.Value<string>(), Does.Contain("time: invalid duration \"bad\""));
             }
             else
             {
@@ -610,7 +619,7 @@ public partial class DebugRpcModuleTests
         }
 
         Task<string[]> RunBoth() => Task.WhenAll(
-            Task.Run(() => RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, new { tracer = "callTracer" })),
+            Task.Run(() => RpcTest.TestSerializedRequest(chain.DebugRpcModule, rpc.Timeout, "debug_traceBlockByHash", block.Hash, new { tracer = "callTracer" })),
             Task.Run(() => RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_block", block.Hash)));
     }
 

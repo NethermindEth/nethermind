@@ -56,8 +56,9 @@ internal sealed class PortfolioViewerStartupFilter : IStartupFilter
 
 /// <summary>Serves the embedded portfolio viewer page and its detection/IPFS/sibling-proxy endpoints under
 /// <c>/portfolio*</c>, so the multi-chain view works through a single JSON-RPC port.</summary>
-public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner, IPinnedCidStore pins)
+public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner, IPinnedCidStore pins, IPortfolioViewerConfig config, ILogManager logManager)
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<PortfolioViewerMiddleware>();
     private static readonly PathString NodesPath = new("/portfolio-nodes");
     private static readonly PathString ProxyPathPrefix = new("/portfolio-rpc");
     private static readonly PathString DetectProxyPathPrefix = new("/portfolio-detect-rpc");
@@ -75,11 +76,12 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
     // Media types the gateway response may keep; anything else is served as an opaque download so a hostile
     // HTML/SVG/XML CID can't be treated as an active document under this origin. SVG is allowed but neutralised
     // by the CSP sandbox + nosniff set on every response (it renders in <img> but can't script).
-    private static readonly HashSet<string> SafeIpfsMediaTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> SafeIpfsMediaTypes =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/apng", "image/bmp", "image/svg+xml",
         "video/mp4", "video/webm", "video/ogg", "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "application/json",
-    };
+    ];
 
     private static readonly JsonSerializerOptions JsonOpts =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true, TypeInfoResolver = PortfolioViewerJsonContext.Default };
@@ -115,6 +117,12 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
 
         // Not served on authenticated (Engine API) ports.
         if (!jsonRpcUrlCollection.TryGetValue(context.Connection.LocalPort, out JsonRpcUrl? url) || url.IsAuthenticated)
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return Task.CompletedTask;
+        }
+
+        if ((isIpfs || isPin || isUnpinAll) && !config.IpfsEnabled)
         {
             context.Response.StatusCode = StatusCodes.Status404NotFound;
             return Task.CompletedTask;
@@ -199,7 +207,7 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
     private async Task ServeNodesAsync(HttpContext context)
     {
         IReadOnlyList<SiblingNode> nodes = await siblings.GetSiblingsAsync(context.RequestAborted);
-        List<NodeInfo> payload = new(nodes.Count);
+        List<NodeInfo> payload = [with(nodes.Count)];
         foreach (SiblingNode node in nodes) payload.Add(new NodeInfo(node.Port, node.ChainId));
         context.Response.ContentType = "application/json";
         await TypeInfoJsonSerializer.SerializeAsync(context.Response.Body, payload, JsonOpts, context.RequestAborted);
@@ -282,7 +290,11 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
             if (resp.IsSuccessStatusCode) pins.Add(cid);
         }
         // best-effort: no local Kubo RPC (5001), or the content couldn't be retrieved
-        catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
+        catch (OperationCanceledException) { }
+        catch (HttpRequestException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Could not pin {cid} on the local IPFS node: {e.Message}");
+        }
     }
 
     // Unpins only the CIDs this plugin pinned (never the user's other pins) and reclaims the space. Issued when
@@ -309,11 +321,19 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
                 if (resp.IsSuccessStatusCode) { pins.Remove(cid); unpinnedAny = true; }
             }
             // best-effort per pin: no local Kubo RPC (5001), or already unpinned
-            catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
+            catch (OperationCanceledException) { }
+            catch (HttpRequestException e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Could not unpin {cid} on the local IPFS node: {e.Message}");
+            }
         }
         if (!unpinnedAny) return;
         try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/repo/gc", content: null); }
-        catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
+        catch (OperationCanceledException) { }
+        catch (HttpRequestException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Could not garbage-collect the local IPFS node: {e.Message}");
+        }
     }
 
     private async Task ProxyAsync(HttpContext context)

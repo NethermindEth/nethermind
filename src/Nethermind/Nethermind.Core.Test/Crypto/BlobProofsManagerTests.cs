@@ -10,13 +10,22 @@ namespace Nethermind.Core.Test.Crypto;
 public class BlobProofsManagerTests
 {
     [Test]
+    public void Rejects_missing_versioned_hash([Values] ProofVersion version)
+    {
+        IBlobProofsManager manager = IBlobProofsManager.For(version);
+        ShardBlobNetworkWrapper wrapper = manager.AllocateWrapper(new byte[Ckzg.BytesPerBlob]);
+
+        Assert.That(manager.ValidateHashes(wrapper, [null!]), Is.False);
+    }
+
+    [Test]
     public void Empty_bundle_has_valid_proofs_only_without_stray_commitments_or_proofs(
         [Values] ProofVersion version,
         [Values] bool hasCommitment,
         [Values] bool hasProof)
     {
         byte[][] commitments = hasCommitment ? [new byte[Ckzg.BytesPerCommitment]] : [];
-        byte[][] proofs = hasProof ? [new byte[Ckzg.BytesPerProof]] : [];
+        byte[] proofs = hasProof ? new byte[Ckzg.BytesPerProof] : [];
 
         ShardBlobNetworkWrapper wrapper = new([], commitments, proofs, version);
 
@@ -36,7 +45,7 @@ public class BlobProofsManagerTests
         bool expected)
     {
         byte[][] commitments = hasCommitment ? [new byte[Ckzg.BytesPerCommitment]] : [];
-        byte[][] proofs = hasProof ? [new byte[Ckzg.BytesPerProof]] : [];
+        byte[] proofs = hasProof ? new byte[Ckzg.BytesPerProof] : [];
 
         ShardBlobNetworkWrapper wrapper = new([], commitments, proofs, version);
 

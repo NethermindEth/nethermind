@@ -55,6 +55,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private bool _gasCostAlreadySet;
     private bool _gasCostReported;
     private ulong? _calculatedGasCost;
+    private string? _stackFailure;
     private bool _pendingStorageTouched;
 
     private UInt256[]? _stackBuffer;
@@ -66,7 +67,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private byte[]? _returnDataBuffer;
     private int _returnDataByteCount;
 
-    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = new(InitialStorageMapCapacity);
+    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = [with(InitialStorageMapCapacity)];
     private readonly Stack<PooledDictionary<UInt256, UInt256>> _storageMapPool = new();
     private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
@@ -118,6 +119,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _gasCostAlreadySet = false;
         _gasCostReported = false;
         _calculatedGasCost = null;
+        _stackFailure = null;
         _pendingStorageTouched = false;
         ResetRefund();
         _stackCount = 0;
@@ -159,6 +161,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _gasCostAlreadySet = false;
         _gasCostReported = false;
         _calculatedGasCost = null;
+        _stackFailure = null;
         _pendingStorageTouched = false;
         _pendingStorageMap = null;
         _stackCount = 0;
@@ -169,8 +172,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     public override void ReportOperationRemainingGas(ulong gas)
     {
         if (_gasCostAlreadySet || !_hasPendingOpcode) return;
-        _pendingGasCost = _pendingGas - gas;
-        _pendingRefund = CurrentRefund;
+        _pendingGasCost = GetGasCost(_pendingGas, gas, _calculatedGasCost);
         _gasCostAlreadySet = true;
     }
 
@@ -186,7 +188,11 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     }
 
     /// <inheritdoc/>
-    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth) => _calculatedGasCost = gasCost;
+    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth)
+    {
+        _calculatedGasCost = gasCost;
+        _stackFailure = GetStackFailure(stackHead, stackInputs, stackGrowth);
+    }
 
     /// <inheritdoc/>
     public void ReportOperationReady(ulong gasCost, string? error) => _calculatedGasCost = gasCost;
@@ -200,7 +206,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
 
     public override void ReportOperationError(EvmExceptionType error)
     {
-        if (!_hasPendingOpcode) return;
+        if (!_hasPendingOpcode || IsRejectedActionPrecheck(error)) return;
         if (_pendingOpcode == Instruction.INVALID)
         {
             _pendingGasCost = 0;
@@ -212,13 +218,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
             _pendingGasCost = gasCost;
         if (error == EvmExceptionType.StaticCallViolation && _pendingOpcode == Instruction.SSTORE)
             _pendingError = "out of gas: write protection";
+        if (error == EvmExceptionType.OutOfGas) _pendingError ??= _stackFailure;
         if (!IsExecutionFault(error)) _pendingError ??= GetErrorDescription(error);
-    }
-
-    /// <inheritdoc/>
-    public override void ReportStorageRefund(long refund)
-    {
-        if (_hasPendingOpcode) _pendingRefund = CurrentRefund + refund;
     }
 
     public override void SetOperationMemorySize(ulong newSize)
@@ -271,7 +272,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         {
             contractStorage = _storageMapPool.TryPop(out PooledDictionary<UInt256, UInt256>? pooled)
                 ? pooled
-                : new PooledDictionary<UInt256, UInt256>(InitialStorageMapCapacity);
+                : [with(InitialStorageMapCapacity)];
             _storageByAddress[address] = contractStorage;
         }
         contractStorage[storageIndex] = new UInt256(value, isBigEndian: true);

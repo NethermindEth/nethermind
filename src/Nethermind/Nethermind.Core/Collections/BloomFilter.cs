@@ -149,8 +149,7 @@ public sealed unsafe partial class BloomFilter : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public long Add(ulong key)
     {
-        if (Volatile.Read(ref _disposed) != 0)
-            throw new ObjectDisposedException(nameof(BloomFilter));
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         GetLineAndHashState(key, NumBlocks, out long lineIndex, out uint h);
 
@@ -250,8 +249,7 @@ public sealed unsafe partial class BloomFilter : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool MightContain(ulong key)
     {
-        if (Volatile.Read(ref _disposed) != 0)
-            throw new ObjectDisposedException(nameof(BloomFilter));
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         GetLineAndHashState(key, NumBlocks, out long lineIndex, out uint h);
 
@@ -282,8 +280,7 @@ public sealed unsafe partial class BloomFilter : IDisposable
     /// <summary>Zero the bloom bits and reset count to 0.</summary>
     public void Clear()
     {
-        if (Volatile.Read(ref _disposed) != 0)
-            throw new ObjectDisposedException(nameof(BloomFilter));
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         long totalBytes = DataBytes;
         long off = 0;

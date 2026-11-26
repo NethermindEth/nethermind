@@ -17,7 +17,7 @@ public partial class ReceiptsRecovery
     {
         private LogRecoveryContext? _context;
 
-        public Hash256 RecoverReceiptData(ref TxReceiptStructRef receipt, int transactionIndex) =>
+        public ValueHash256 RecoverReceiptData(ref TxReceiptStructRef receipt, int transactionIndex) =>
             GetContext().RecoverReceiptData(ref receipt, transactionIndex);
 
         public void RecoverReceiptData(ref TxReceiptStructRef receipt) => GetContext().RecoverReceiptData(ref receipt);

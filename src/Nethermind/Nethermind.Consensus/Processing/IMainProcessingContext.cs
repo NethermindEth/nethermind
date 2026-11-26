@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -25,6 +26,9 @@ public interface IMainProcessingContext : IStoppableService
     IBlockProcessingQueue BlockProcessingQueue { get; }
     IWorldState WorldState { get; }
     IGenesisLoader GenesisLoader { get; }
+
+    /// <summary>The scope the pipeline's components live in, which a graph that shares its registrations is built from.</summary>
+    ILifetimeScope LifetimeScope { get; }
 
     /// <summary>
     /// Fired after a transaction has been processed (even if inside the block).

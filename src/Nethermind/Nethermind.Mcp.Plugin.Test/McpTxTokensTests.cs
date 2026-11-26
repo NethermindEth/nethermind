@@ -162,7 +162,7 @@ public class McpTxTokensTests
         IEthRpcModule eth = SlowToken(out _);
         int calls = 0;
         bool expired = false;
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 calls++;
@@ -190,7 +190,7 @@ public class McpTxTokensTests
         Address[] cached = [TestItem.AddressB, TestItem.AddressC, TestItem.AddressD];
         foreach (Address address in cached) Assert.That(metadata.Get(eth, address, BlockParameter.Latest), Is.Not.Null);
         bool spent = !interrupted;
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ => { spent = true; return ResultWrapper<HexBytes>.Success(new HexBytes(TestContracts.AbiString("MISS"))); });
         eth.ClearReceivedCalls();
 
@@ -210,7 +210,7 @@ public class McpTxTokensTests
     {
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(info =>
             {
                 LegacyTransactionForRpc tx = (LegacyTransactionForRpc)info.ArgAt<SignableTransactionForRpc>(0);
@@ -244,7 +244,7 @@ public class McpTxTokensTests
         blockFinder.Head.Returns(_ => new Block(head));
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(info =>
             {
                 LegacyTransactionForRpc tx = (LegacyTransactionForRpc)info.ArgAt<SignableTransactionForRpc>(0);
@@ -282,7 +282,7 @@ public class McpTxTokensTests
         if (!spent)
         {
             IEthRpcModule missing = SlowToken(out _);
-            missing.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+            missing.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
                 .Returns(_ => ResultWrapper<HexBytes>.Success(new HexBytes([])));
             Assert.That(metadata.Get(missing, weth, BlockParameter.Latest), Is.Not.Null);
         }
@@ -324,7 +324,7 @@ public class McpTxTokensTests
         await McpPriceIsolationTests.Deposit(node);
         IEthRpcModule eth = SlowToken(out _);
         eth.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(ResultWrapper<UInt256?>.Success(UInt256.Zero));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 LegacyTransactionForRpc tx = (LegacyTransactionForRpc)call.ArgAt<SignableTransactionForRpc>(0);
@@ -346,7 +346,7 @@ public class McpTxTokensTests
     public void Token_metadata_treats_missing_trie_node_as_a_transient_failure()
     {
         IEthRpcModule eth = SlowToken(out _);
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(ResultWrapper<HexBytes>.Fail("missing trie node 0xab", ErrorCodes.Default));
         bool transient = false;
 
@@ -419,7 +419,7 @@ public class McpTxTokensTests
         byte[] decimals = new byte[32];
         WriteWord(decimals, 0, (ulong)feedDecimals);
         eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(),
-            Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+            Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(info => ResultWrapper<HexBytes>.Success(new HexBytes(
                 ((LegacyTransactionForRpc)info.ArgAt<SignableTransactionForRpc>(0)).Input![0] == 0xfe ? round : decimals)));
         McpChainProfile profile = _node.Chain.Container.Resolve<McpChainProfile>();
@@ -620,7 +620,7 @@ public class McpTxTokensTests
         TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(),
-            Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+            Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 entered.TrySetResult();
@@ -669,7 +669,7 @@ public class McpTxTokensTests
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_chainId().Returns(ResultWrapper<ulong>.Success(1));
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 string current = symbol;
@@ -790,7 +790,7 @@ public class McpTxTokensTests
         });
         IDisposable lease = Substitute.For<IDisposable>();
         List<Task> tracked = [];
-        McpDetachedEth detached = new(() => Task.FromResult<(IEthRpcModule?, IDisposable?)>((slow, lease)), tracked.Add);
+        McpDetachedEth detached = new(_ => Task.FromResult<(IEthRpcModule?, IDisposable?)>((slow, lease)), tracked.Add);
 
         (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(
             new McpTokenMetadata(), caller, [TestItem.AddressA, TestItem.AddressB], BlockParameter.Latest, 10, CancellationToken.None,
@@ -816,10 +816,42 @@ public class McpTxTokensTests
     }
 
     [Test]
+    public void Abandoned_token_lookup_cancels_a_rental_that_still_waits()
+    {
+        using ManualResetEventSlim renting = new();
+        IEthRpcModule caller = Substitute.For<IEthRpcModule>();
+        List<Task> tracked = [];
+        McpDetachedEth detached = new(async abandoned =>
+        {
+            renting.Set();
+            await Task.Delay(Timeout.Infinite, abandoned);
+            return (null, null);
+        }, tracked.Add);
+
+        (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(
+            new McpTokenMetadata(), caller, [TestItem.AddressA, TestItem.AddressB], BlockParameter.Latest, 10, CancellationToken.None,
+            () => renting.IsSet, detached);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.Empty);
+            Assert.That(skipped, Is.EqualTo(2));
+            Assert.That(tracked, Has.Count.EqualTo(1), "the abandoned rental is tracked");
+        }
+
+        bool stopped = tracked[0].ContinueWith(static _ => { }).Wait(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stopped, Is.True, "the abandoned rental stops waiting");
+            Assert.That(tracked[0].IsCanceled, Is.True);
+        }
+    }
+
+    [Test]
     public void Detached_token_lookup_finishes_normally_and_falls_back_to_the_callers_module()
     {
         IEthRpcModule fast = SlowToken(out _);
-        McpDetachedEth unavailable = new(() => Task.FromResult<(IEthRpcModule?, IDisposable?)>((null, null)), static _ => Assert.Fail("nothing is abandoned"));
+        McpDetachedEth unavailable = new(_ => Task.FromResult<(IEthRpcModule?, IDisposable?)>((null, null)), static _ => Assert.Fail("nothing is abandoned"));
 
         (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(
             new McpTokenMetadata(), fast, [TestItem.AddressA, TestItem.AddressB], BlockParameter.Latest, 10, CancellationToken.None,
@@ -841,7 +873,7 @@ public class McpTxTokensTests
         IEthRpcModule worker = SlowToken(out _, () => seen.Add(ExternalRequest.Current));
         McpDetachedEth detached;
         using (ExternalRequest.Enter(request))
-            detached = new(() => Task.FromResult<(IEthRpcModule?, IDisposable?)>((worker, null)), static _ => Assert.Fail("nothing is abandoned"));
+            detached = new(_ => Task.FromResult<(IEthRpcModule?, IDisposable?)>((worker, null)), static _ => Assert.Fail("nothing is abandoned"));
 
         McpTxTokens.LookUp(new McpTokenMetadata(), Substitute.For<IEthRpcModule>(), [TestItem.AddressA, TestItem.AddressB], BlockParameter.Latest, 10,
             CancellationToken.None, static () => false, detached);
@@ -856,7 +888,7 @@ public class McpTxTokensTests
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_chainId().Returns(ResultWrapper<ulong>.Success(1));
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 Interlocked.Increment(ref count);

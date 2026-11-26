@@ -210,18 +210,17 @@ public static class Utils
     public static async Task<string> GetCleanStdoutAsync(this IContainer container)
     {
         (string stdout, string _) = await container.GetLogsAsync();
-
-        // Strip ANSI escape codes that Nethermind uses for colored output
-        return Regex.Replace(stdout, @"\e\[[0-9;]*m", string.Empty);
+        return StripAnsi(stdout);
     }
 
     public static async Task<string> GetCleanStderrAsync(this IContainer container)
     {
         (string _, string stderr) = await container.GetLogsAsync();
-
-        // Strip ANSI escape codes that Nethermind uses for colored output
-        return Regex.Replace(stderr, @"\e\[[0-9;]*m", string.Empty);
+        return StripAnsi(stderr);
     }
+
+    /// <summary>Removes the ANSI colour escape codes that Nethermind's console target writes.</summary>
+    private static string StripAnsi(string text) => Regex.Replace(text, @"\e\[[0-9;]*m", string.Empty);
 
     public static string CreateJwtToken(string jwtSecretHex)
     {
@@ -278,8 +277,8 @@ public static class Utils
         EthereumEcdsa ecdsa = new(chainId);
         ecdsa.Sign(signer, tx, isEip155Enabled: true);
 
-        Rlp rlp = TxDecoder.Instance.Encode(tx);
-        string raw = "0x" + rlp.Bytes.ToHexString();
+        byte[] rlp = TxDecoder.Instance.Encode(tx);
+        string raw = "0x" + rlp.ToHexString();
 
         JsonNode result = await SendJsonRpcRequestAsync(httpClient, "eth_sendRawTransaction", raw);
         return result.GetValue<string>();
@@ -343,7 +342,10 @@ public static class Utils
             }
             catch (Exception retryException)
             {
-                ReportResponseEnded($"{failure} retry=failed: {retryException.Message}");
+                string detail = retryException is HttpRequestException { HttpRequestError: var error } ? $" [{error}]" : string.Empty;
+                Exception root = retryException.GetBaseException();
+                string inner = ReferenceEquals(root, retryException) ? string.Empty : $" ({root.Message})";
+                ReportResponseEnded($"{failure} retry=failed{detail}: {retryException.Message}{inner}");
                 throw;
             }
         }
@@ -420,7 +422,9 @@ public static class Utils
         {
             string header = $"{name} container {container.Id} at {DateTime.UtcNow:O}: {await DescribeStateAsync(container)}";
             using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
-            (string stdout, string stderr) = await container.GetLogsAsync(timestampsEnabled: true, ct: timeout.Token);
+            (string rawStdout, string rawStderr) = await container.GetLogsAsync(timestampsEnabled: true, ct: timeout.Token);
+            string stdout = StripAnsi(rawStdout);
+            string stderr = StripAnsi(rawStderr);
             if (failed)
             {
                 TestContext.Out.WriteLine($"=== {header} ===");
@@ -916,8 +920,8 @@ public static class Utils
 
         // eth_sendRawTransaction expects the EIP-4844 network ("mempool") form: the typed payload
         // followed by the blobs/commitments/proofs wrapper, un-wrapped from a byte string.
-        Rlp rlp = TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
-        string raw = "0x" + rlp.Bytes.ToHexString();
+        byte[] rlp = TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
+        string raw = "0x" + rlp.ToHexString();
 
         JsonNode result = await SendJsonRpcRequestAsync(httpClient, "eth_sendRawTransaction", raw);
         return result.GetValue<string>();

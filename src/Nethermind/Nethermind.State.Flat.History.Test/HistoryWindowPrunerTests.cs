@@ -798,7 +798,6 @@ public class HistoryWindowPrunerTests
         public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => ((IRangeRemovableKeyValueStore)inner).RemoveRange(firstKeyInclusive, lastKeyExclusive);
         public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => ((IRangeRemovableKeyValueStore)inner).ReclaimRange(firstKeyInclusive, lastKeyExclusive);
         public string Name => inner.Name;
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);

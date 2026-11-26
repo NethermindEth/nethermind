@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Tracer_access_mode_controls_gas_charging(
+        public void Tracer_access_mode_does_not_change_gas_charging(
             [Values(Instruction.SLOAD, Instruction.BALANCE)] Instruction instruction, [Values] bool traceAccess)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether);
@@ -57,8 +57,7 @@ namespace Nethermind.Evm.Test
                 Assert.That(tracer.AccessReportCount, Is.EqualTo(traceAccess ? 1 : 0));
                 Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
                 AssertGas(tracer, GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.Base
-                    + (traceAccess ? GasCostOf.WarmStateRead
-                        : instruction == Instruction.SLOAD ? GasCostOf.ColdSLoad : GasCostOf.ColdAccountAccess));
+                    + (instruction == Instruction.SLOAD ? GasCostOf.ColdSLoad : GasCostOf.ColdAccountAccess));
             }
         }
 
@@ -150,7 +149,7 @@ namespace Nethermind.Evm.Test
                 {
                     Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
                     Assert.That(tracer.StorageReads, Is.EqualTo(traceStorage ? 2 : 0));
-                    Assert.That(tracer.GasSpent, Is.EqualTo(traceAccess ? 21210UL : 23210UL));
+                    Assert.That(tracer.GasSpent, Is.EqualTo(23210UL));
                 }
             }
         }

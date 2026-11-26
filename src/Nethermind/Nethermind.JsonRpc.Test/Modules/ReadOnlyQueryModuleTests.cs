@@ -152,7 +152,7 @@ public class ReadOnlyQueryModuleTests
             "debug_traceTransactionByBlockAndIndex" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, "latest", 1, GethOptions(tracer)),
             "debug_traceBlockByNumber" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, "latest", GethOptions(tracer)),
             "debug_traceBlockByHash" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, block.Hash!, GethOptions(tracer)),
-            "debug_traceBlock" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, Rlp.Encode(block).ToString(), GethOptions(tracer)),
+            "debug_traceBlock" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, Rlp.Encode(block).ToHexString(true), GethOptions(tracer)),
             "trace_call" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, CallTo(Target), types, "latest"),
             "trace_callMany" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, new[] { new[] { CallTo(Target), types } }, "latest"),
             "trace_rawTransaction" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, Encoded(SignedCallTo(chain, Target)), types),
@@ -173,7 +173,7 @@ public class ReadOnlyQueryModuleTests
     }
 
     /// <summary><paramref name="transaction"/> encoded for trace_rawTransaction.</summary>
-    private static byte[] Encoded(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+    private static byte[] Encoded(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
 
     /// <summary>Runs <paramref name="method"/> with one call to <see cref="Target"/> in one simulated block.</summary>
     private static Task<string> Simulate(TestRpcBlockchain chain, string method)

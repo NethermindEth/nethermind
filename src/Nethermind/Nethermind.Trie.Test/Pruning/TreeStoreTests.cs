@@ -198,6 +198,72 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void Committed_node_replacing_a_cached_persisted_node_is_counted_in_its_place()
+        {
+            using TrieStore trieStore = CreateTrieStore();
+            TreePath emptyPath = TreePath.Empty;
+            // Reading through the cache adds a persisted Unknown node.
+            trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA);
+
+            TrieNode leaf = new(NodeType.Leaf, TestItem.KeccakA);
+            using (ICommitter committer = trieStore.BeginStateBlockCommit(1, null))
+            {
+                AssertOnlyLeafIsCounted(committer.CommitNode(ref emptyPath, leaf));
+            }
+
+            // The committed leaf is now the cached dirty node, so another node with the same hash changes nothing.
+            using (ICommitter committer = trieStore.BeginStateBlockCommit(2, null))
+            {
+                AssertOnlyLeafIsCounted(committer.CommitNode(ref emptyPath, new TrieNode(NodeType.Leaf, TestItem.KeccakA)));
+            }
+
+            void AssertOnlyLeafIsCounted(TrieNode cached)
+            {
+                long leafMemory = leaf.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(cached, Is.SameAs(leaf));
+                    Assert.That(trieStore.CachedNodesCount, Is.EqualTo(1));
+                    Assert.That(trieStore.DirtyCachedNodesCount, Is.EqualTo(1));
+                    Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(leafMemory));
+                    Assert.That(trieStore.DirtyMemoryUsedByDirtyCache, Is.EqualTo(leafMemory));
+                    Assert.That(trieStore.PersistedMemoryUsedByDirtyCache, Is.Zero);
+                }
+            }
+        }
+
+        [Test]
+        public void Restoring_a_persisted_state_keeps_the_cached_node_count()
+        {
+            using TrieStore trieStore = CreateTrieStore(pruningConfig: new PruningConfig { PruningBoundary = 0, TrackPastKeys = false });
+            PatriciaTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+            for (int i = 0; i < 64; i++)
+            {
+                tree.Set(Keccak.Compute(i.ToBigEndianByteArray()).Bytes, Keccak.Compute(i.ToBigEndianByteArray()).BytesToArray());
+            }
+
+            trieStore.CommitPatriciaTrie(1, tree);
+            Hash256 persistedRoot = tree.RootHash;
+            // Persists block 1; its nodes stay in the cache as persisted nodes.
+            trieStore.PersistAndPruneDirtyCache();
+
+            byte[] key = Keccak.Compute(0.ToBigEndianByteArray()).BytesToArray();
+            tree.Set(key, TestItem.KeccakA.BytesToArray());
+            trieStore.CommitPatriciaTrie(2, tree);
+            long cachedNodesCount = trieStore.CachedNodesCount;
+
+            // Restoring the value commits new nodes with the hashes and paths of the persisted nodes of block 1.
+            tree.Set(key, key);
+            trieStore.CommitPatriciaTrie(3, tree);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tree.RootHash, Is.EqualTo(persistedRoot));
+                Assert.That(trieStore.CachedNodesCount, Is.EqualTo(cachedNodesCount));
+            }
+        }
+
+        [Test]
         public void Memory_with_two_nodes_is_correct()
         {
             TrieNode trieNode1 = new(NodeType.Leaf, TestItem.KeccakA);
@@ -598,7 +664,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = Rlp.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account);
             a.Key = Nibbles.BytesToNibbleBytes(TestItem.KeccakA.BytesToArray());
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -656,7 +722,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = Rlp.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account);
             a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -720,7 +786,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
-            a.Value = Rlp.Encode(account).Bytes;
+            a.Value = Rlp.Encode(account);
             a.Key = storage1Nib[1..];
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -729,7 +795,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieNode b = new(NodeType.Leaf);
             Account accountB = new(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
-            b.Value = Rlp.Encode(accountB).Bytes;
+            b.Value = Rlp.Encode(accountB);
             b.Key = storage2Nib[1..];
             b.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
@@ -1852,6 +1918,58 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void Dirty_node_cache_reports_only_a_persisted_node_that_a_dirty_node_replaced([Values] bool storeByHash)
+        {
+            using TrieStore trieStore = new(
+                new NodeStorage(new TestMemDb(), INodeStorage.KeyScheme.HalfPath, requirePath: true),
+                No.Pruning,
+                No.Persistence,
+                new TestFinalizedStateProvider(0),
+                new PruningConfig { TrackPastKeys = false },
+                LimboLogs.Instance);
+            TrieStoreDirtyNodesCache cache = new(trieStore, storeByHash, keepRoot: false, LimboLogs.Instance.GetClassLogger<TrieStoreDirtyNodesCache>());
+
+            // Key absent: the candidate is added.
+            TrieNode added = CreateNode(TestItem.KeccakA, isPersisted: false);
+            AssertGetOrAdd(added, lastCommit: 1, expectedNode: added, expectedReplaced: null);
+
+            // Dirty cached node, dirty candidate with a later commit: the cached node stays, only the last commit moves.
+            AssertGetOrAdd(CreateNode(TestItem.KeccakA, isPersisted: false), lastCommit: 2, expectedNode: added, expectedReplaced: null);
+
+            // Persisted cached node, dirty candidate: the candidate takes its place.
+            TrieNode persisted = CreateNode(TestItem.KeccakB, isPersisted: true);
+            cache.GetOrAdd(Key(TestItem.KeccakB), CreateRecord(persisted, 1));
+            TrieNode dirty = CreateNode(TestItem.KeccakB, isPersisted: false);
+            AssertGetOrAdd(dirty, lastCommit: 2, expectedNode: dirty, expectedReplaced: persisted);
+
+            // Persisted cached node, persisted candidate: the cached node stays.
+            TrieNode persistedToKeep = CreateNode(TestItem.KeccakC, isPersisted: true);
+            cache.GetOrAdd(Key(TestItem.KeccakC), CreateRecord(persistedToKeep, 1));
+            AssertGetOrAdd(CreateNode(TestItem.KeccakC, isPersisted: true), lastCommit: 2, expectedNode: persistedToKeep, expectedReplaced: null);
+
+            // Neither overload counts nodes: the caller that saves a committed node does.
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Count, Is.Zero);
+                Assert.That(cache.TotalMemory, Is.Zero);
+                Assert.That(trieStore.MemoryUsedByDirtyCache, Is.Zero);
+            }
+
+            void AssertGetOrAdd(TrieNode candidate, ulong lastCommit, TrieNode expectedNode, TrieNode? expectedReplaced)
+            {
+                TrieStoreDirtyNodesCache.NodeRecord result = cache.GetOrAdd(Key(candidate.Keccak!), CreateRecord(candidate, lastCommit), out TrieNode? replaced);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result.Node, Is.SameAs(expectedNode));
+                    Assert.That(result.LastCommit, Is.EqualTo(lastCommit));
+                    Assert.That(replaced, expectedReplaced is null ? Is.Null : Is.SameAs(expectedReplaced));
+                }
+            }
+
+            static TrieStoreDirtyNodesCache.Key Key(Hash256 keccak) => new(null, TreePath.Empty, keccak);
+        }
+
+        [Test]
         public void Persisted_hash_recorder_handles_revisited_keys([Values] bool deleteOldNodes)
         {
             ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes = new();
@@ -1931,7 +2049,7 @@ namespace Nethermind.Trie.Test.Pruning
                             storageTree.Set(secondKey, [1]);
                             storageTree.Commit();
                             Account account = new(1, 1, storageTree.RootHash, Keccak.OfAnEmptyString);
-                            stateTree.Set(storageAddress.BytesToArray(), Rlp.Encode(account).Bytes);
+                            stateTree.Set(storageAddress.BytesToArray(), Rlp.Encode(account));
                         }
 
                         stateTree.Commit();
@@ -1975,8 +2093,10 @@ namespace Nethermind.Trie.Test.Pruning
             Assert.That(warnCount, Is.EqualTo(1), "rate-limited warning must fire at most once per cooldown window");
         }
 
-        private static TrieNode CreateNode(bool isPersisted) =>
-            new(NodeType.Unknown, TestItem.KeccakA) { IsPersisted = isPersisted };
+        private static TrieNode CreateNode(bool isPersisted) => CreateNode(TestItem.KeccakA, isPersisted);
+
+        private static TrieNode CreateNode(Hash256 keccak, bool isPersisted) =>
+            new(NodeType.Unknown, keccak) { IsPersisted = isPersisted };
 
         private static TrieStoreDirtyNodesCache.NodeRecord CreateRecord(TrieNode node, ulong lastCommit) => new(node, lastCommit);
     }

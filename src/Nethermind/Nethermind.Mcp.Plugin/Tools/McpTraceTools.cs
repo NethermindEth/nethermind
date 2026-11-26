@@ -142,7 +142,7 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
             // The rental below can yield, after which the trace no longer runs inside the tool call's request.
             long request = ExternalRequest.Current;
             ulong blockNumber;
-            using (ModuleLease<IEthRpcModule> eth = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_getTransactionByHash)))
+            using (ModuleLease<IEthRpcModule> eth = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_getTransactionByHash), token))
             {
                 if (eth.Module is null)
                 {
@@ -182,8 +182,9 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
             using (ExternalRequest.Enter(request))
             {
                 (payload, failure) = McpTxCallTree.Run(debug, txHash, _timeout,
-                    root => BuildTrace(txHash, blockNumber, root, depthLimit, frameLimit, includeInput), onlyTopCall: depthLimit == 0);
+                    root => BuildTrace(txHash, blockNumber, root, depthLimit, frameLimit, includeInput), onlyTopCall: depthLimit == 0, cancellationToken: token);
             }
+
 
             if (failure is not null)
             {

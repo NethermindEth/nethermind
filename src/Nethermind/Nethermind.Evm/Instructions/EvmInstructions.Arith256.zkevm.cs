@@ -22,7 +22,8 @@ public static unsafe partial class EvmInstructions
     {
         if (!ZiskFlag.IsActive)
         {
-            UInt256.AddMod(in a, in b, in m, out result);
+            if (!OpenVmModularFlag.IsActive || !TryOpenVmModular(in a, in b, in m, multiply: false, out result))
+                UInt256.AddMod(in a, in b, in m, out result);
             return;
         }
 
@@ -37,6 +38,9 @@ public static unsafe partial class EvmInstructions
         if (!ZiskFlag.IsActive)
         {
             // Only SP1's runtime exports zkvm_uint256_mulmod, and only OpenVM's the division hint and its check.
+            if (OpenVmModularFlag.IsActive && TryOpenVmModular(in a, in b, in m, multiply: true, out result))
+                return;
+
             if (AirbenderFlag.IsActive)
                 AirbenderMulMod256(in a, in b, in m, out result);
             else if (Sp1Flag.IsActive)
@@ -66,6 +70,39 @@ public static unsafe partial class EvmInstructions
         result = product;
     }
 
+    /// <summary>
+    /// Computes ADDMOD or MULMOD on OpenVM's modular extension when <paramref name="m"/> is a modulus of the VM
+    /// configuration and both operands are reduced; otherwise returns <see langword="false"/> and leaves the
+    /// operation to the caller.
+    /// </summary>
+    /// <remarks>
+    /// The extension takes 32-byte aligned operands, so they go through an aligned buffer. Its result is proven
+    /// reduced before it is returned, since the extension alone does not constrain that.
+    /// </remarks>
+    [SkipLocalsInit]
+    internal static bool TryOpenVmModular(in UInt256 a, in UInt256 b, in UInt256 m, bool multiply, out UInt256 result)
+    {
+        int index = OpenVmModular.IndexOf(m.u0, m.u1, m.u2, m.u3);
+        if (index < 0 || a >= m || b >= m)
+        {
+            Unsafe.SkipInit(out result);
+            return false;
+        }
+
+        byte* buffer = stackalloc byte[3 * 32 + 31];
+        UInt256* words = (UInt256*)(((nuint)buffer + 31) & ~(nuint)31);
+        words[0] = a;
+        words[1] = b;
+        if (multiply)
+            OpenVmModular.Multiply(index, words + 2, words, words + 1);
+        else
+            OpenVmModular.Add(index, words + 2, words, words + 1);
+
+        OpenVmModular.AssertReduced(index, words + 2);
+        result = words[2];
+        return true;
+    }
+
     internal struct Sp1MulModOperands
     {
         public UInt256 Multiplier;
@@ -85,6 +122,9 @@ public static unsafe partial class EvmInstructions
             return;
         }
 
+        if (AirbenderMontgomery.TryMultiply(in a, in b, in m, out result))
+            return;
+
         byte* buffer = stackalloc byte[3 * 32 + 31];
         UInt256* words = (UInt256*)(((nuint)buffer + 31) & ~(nuint)31);
         words[0] = a;
@@ -95,13 +135,47 @@ public static unsafe partial class EvmInstructions
         WordDivision.Remainder((uint*)words, in m, out result);
     }
 
+    /// <summary>Divides <paramref name="a"/> by <paramref name="b"/> on Airbender's u256 delegation if the quotient is at most seven.</summary>
+    /// <remarks>
+    /// When the top limb of <paramref name="b"/> is nonzero and that of <paramref name="a"/> is below eight times it,
+    /// <c>a &lt; 8 b</c>. Subtracting <paramref name="b"/> until the delegation borrows and adding it back once is then
+    /// at most nine delegations, where <see cref="WordDivision"/> normalises and divides eight digits. SNARK verifiers
+    /// reduce this way modulo a 254-bit prime.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static bool TryAirbenderSmallQuotient(in UInt256 a, in UInt256 b, out uint quotient, out UInt256 remainder)
+    {
+        if (b.u3 == 0 || a.u3 >> 3 >= b.u3)
+        {
+            Unsafe.SkipInit(out quotient);
+            Unsafe.SkipInit(out remainder);
+            return false;
+        }
+
+        byte* buffer = stackalloc byte[2 * 32 + 31];
+        UInt256* words = (UInt256*)(((nuint)buffer + 31) & ~(nuint)31);
+        words[0] = a;
+        words[1] = b;
+        uint count = 0;
+        while (!AirbenderArithmetic.Subtract(words, words + 1))
+            count++;
+
+        AirbenderArithmetic.Add(words, words + 1);
+        quotient = count;
+        remainder = words[0];
+        return true;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
         Debug.Assert(!b.IsZero);
         if (AirbenderFlag.IsActive)
         {
-            WordDivision.DivRem(in a, in b, out result, out _);
+            if (TryAirbenderSmallQuotient(in a, in b, out uint quotient, out _))
+                result = new UInt256(quotient);
+            else
+                WordDivision.DivRem(in a, in b, out result, out _);
             return;
         }
 
@@ -123,7 +197,7 @@ public static unsafe partial class EvmInstructions
         {
             if (b.IsZero)
                 result = default;
-            else
+            else if (!TryAirbenderSmallQuotient(in a, in b, out _, out result))
                 WordDivision.DivRem(in a, in b, out _, out result);
             return;
         }
@@ -142,6 +216,14 @@ public static unsafe partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void SignedDivide256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
+        if (ZiskFlag.IsActive)
+        {
+            Unsafe.SkipInit(out result);
+            fixed (UInt256* pa = &a, pb = &b, pq = &result)
+                Accelerators.SDiv256((ulong*)pa, (ulong*)pb, (ulong*)pq);
+            return;
+        }
+
         if (!AirbenderFlag.IsActive)
         {
             Unsafe.SkipInit(out result);
@@ -160,6 +242,22 @@ public static unsafe partial class EvmInstructions
         WordDivision.DivRem(in dividend, in divisor, out result, out _);
         if (negativeDividend != negativeDivisor)
             result = Negate(in result);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial void SignedMod256(in UInt256 a, in UInt256 b, out UInt256 result)
+    {
+        Unsafe.SkipInit(out result);
+        if (ZiskFlag.IsActive)
+        {
+            fixed (UInt256* pa = &a, pb = &b, pr = &result)
+                Accelerators.SMod256((ulong*)pa, (ulong*)pb, (ulong*)pr);
+            return;
+        }
+
+        Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in a)).Mod(
+            in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b)),
+            out Unsafe.As<UInt256, Int256>(ref result));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

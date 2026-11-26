@@ -13,7 +13,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -173,7 +172,7 @@ public class GetPayloadDirectResponseTests
         ];
         Withdrawal[]? withdrawals = withdrawalCount < 0 ? null : CreateWithdrawals(withdrawalCount);
         Block block = CreateBlock(transactions, withdrawals, requests: null, BalKind.None, slotNumber: null);
-        byte[] blockRlp = Rlp.Encode(block).Bytes;
+        byte[] blockRlp = Rlp.Encode(block);
 
         if (version == 1)
         {
@@ -208,7 +207,7 @@ public class GetPayloadDirectResponseTests
         ];
         PayloadBodiesV2DirectResponse.PayloadBody?[] itemsV2 =
         [
-            PayloadBodiesV2DirectResponse.CreatePayloadBody(blockRlp, ArrayMemoryManager.From(blockAccessListBytes)),
+            new PayloadBodiesV2DirectResponse.PayloadBody(blockRlp, blockAccessListBytes is null ? default(ReadOnlyMemory<byte>?) : blockAccessListBytes),
             null
         ];
 
@@ -334,7 +333,7 @@ public class GetPayloadDirectResponseTests
         GetPayloadV5DirectResponse direct = new(block, UInt256.Zero, blobsBundle, executionRequests: [], shouldOverrideBuilder: false);
         byte[] actualJson = await WriteStreamableAsync(direct);
         JsonNode transactionNode = JsonNode.Parse(actualJson)!["executionPayload"]!["transactions"]![0]!;
-        byte[] expectedRlp = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] expectedRlp = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
 
         Assert.That(transactionNode.GetValue<string>(), Is.EqualTo(expectedRlp.ToHexString(true)));
     }
@@ -353,7 +352,7 @@ public class GetPayloadDirectResponseTests
         byte[][] executionRequests = [];
         int version = includeV6Fields ? 6 : 5;
 
-        block.EncodedTransactions = Array.ConvertAll(transactions, static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+        block.EncodedTransactions = Array.ConvertAll(transactions, static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping));
         byte[] fastPathJson = await WriteStreamableAsync(CreateDirectResult(version, block, blobsBundle, executionRequests));
 
         block.EncodedTransactions = null;
@@ -448,7 +447,7 @@ public class GetPayloadDirectResponseTests
             ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(block.ParentHash!, block.Timestamp).TestObject;
             if (balKind == BalKind.Encoded)
             {
-                block.EncodedBlockAccessList = Rlp.Encode(bal).Bytes;
+                block.EncodedBlockAccessList = Rlp.Encode(bal);
             }
             else
             {
@@ -550,8 +549,8 @@ public class GetPayloadDirectResponseTests
         byte[]? blockAccessList,
         bool includeNull) =>
         includeNull
-            ? [PayloadBodiesV2DirectResponse.CreatePayloadBody(transactions, withdrawals, ArrayMemoryManager.From(blockAccessList)), null, PayloadBodiesV2DirectResponse.CreatePayloadBody([], null, null)]
-            : [PayloadBodiesV2DirectResponse.CreatePayloadBody(transactions, withdrawals, ArrayMemoryManager.From(blockAccessList))];
+            ? [new PayloadBodiesV2DirectResponse.PayloadBody(transactions, withdrawals, blockAccessList is null ? default(ReadOnlyMemory<byte>?) : blockAccessList), null, new PayloadBodiesV2DirectResponse.PayloadBody([], null, null)]
+            : [new PayloadBodiesV2DirectResponse.PayloadBody(transactions, withdrawals, blockAccessList is null ? default(ReadOnlyMemory<byte>?) : blockAccessList)];
 
     private static bool GetCanBeStreamable(Type type)
     {

@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
 {
@@ -144,6 +145,7 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static int CommonPrefixLength(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
         {
+            if (StrictAlignmentFlag.IsActive) return Bytes.CommonPrefixLengthByWords(left, right);
             nint length = Math.Min(left.Length, right.Length);
             ref byte l = ref MemoryMarshal.GetReference(left);
             ref byte r = ref MemoryMarshal.GetReference(right);

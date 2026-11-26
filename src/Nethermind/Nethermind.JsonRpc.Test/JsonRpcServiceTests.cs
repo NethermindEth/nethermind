@@ -37,6 +37,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
@@ -356,6 +357,90 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public async Task Trailing_cancellation_token_is_cancelled_by_request_abort_or_timeout([Values] bool abort)
+    {
+        IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
+        JsonRpcService service = CreateServiceFor(module);
+        using CancellationTokenSource requestAbort = new();
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        bool cancelledOnlyOnTrigger = false;
+        module.test_cancellation_token(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            CancellationToken token = call.ArgAt<CancellationToken>(1);
+            bool cancelledBefore = token.IsCancellationRequested;
+            (abort ? requestAbort : timeout).Cancel();
+            cancelledOnlyOnTrigger = !cancelledBefore && token.IsCancellationRequested;
+            token.ThrowIfCancellationRequested();
+            return ResultWrapper<string>.Success(call.ArgAt<string>(0));
+        });
+
+        try
+        {
+            int? errorCode = null;
+            OperationCanceledException? unanswered = null;
+            try
+            {
+                using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("test_cancellation_token", "a"), _context, requestAbort.Token);
+                errorCode = (response as JsonRpcErrorResponse)?.Error?.Code;
+            }
+            catch (OperationCanceledException exception)
+            {
+                unanswered = exception;
+            }
+
+            using JsonRpcResponse extraArgument = await service.SendRequestAsync(RpcTest.BuildJsonRequest("test_cancellation_token", "a", "b"), _context);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cancelledOnlyOnTrigger, Is.True);
+                // An abort ends the request unanswered, like one abandoned in the module queue; a timeout is answered.
+                Assert.That(unanswered?.CancellationToken, Is.EqualTo(abort ? requestAbort.Token : null));
+                Assert.That(errorCode, Is.EqualTo(abort ? null : ErrorCodes.Timeout));
+                AssertInvalidParamsWithoutData(extraArgument, "too many arguments, want at most 1");
+            }
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
+    public async Task Request_abort_after_the_method_returned_does_not_cancel_its_returned_timeout_source()
+    {
+        IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
+        JsonRpcService service = CreateServiceFor(module);
+        using CancellationTokenSource requestAbort = new();
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        module.test_cancellation_token(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(call => ResultWrapper<string>.Success(call.ArgAt<string>(0)));
+
+        try
+        {
+            using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("test_cancellation_token", "a"), _context, requestAbort.Token);
+            await requestAbort.CancelAsync();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response, Is.Not.InstanceOf<JsonRpcErrorResponse>());
+                // The source goes back to the pool, where a late abort of the finished request would cancel the next renter.
+                Assert.That(timeout.IsCancellationRequested, Is.False);
+            }
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    private JsonRpcService CreateServiceFor(IMetadataTestRpcModule module)
+    {
+        IJsonRpcConfig config = _configurationProvider.GetConfig<IJsonRpcConfig>();
+        RpcModuleProvider moduleProvider = new(new RealFileSystem(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        moduleProvider.Register(new SingletonModulePool<IMetadataTestRpcModule>(new SingletonFactory<IMetadataTestRpcModule>(module), true));
+        return new JsonRpcService(moduleProvider, _logManager, config, _gcKeeper);
+    }
+
+    [Test]
     public void Request_context_is_current_only_while_the_method_runs()
     {
         JsonRpcContext? seen = null;
@@ -590,7 +675,7 @@ public class JsonRpcServiceTests
     {
         IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
         IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
-        pool.GetModule(false).Returns(rpcModule);
+        pool.GetModule(false, Arg.Any<CancellationToken>()).Returns(rpcModule);
 
         rpcModule.eth_getLogs(Arg.Any<Filter>())
             .Throws(new Exception("test exception"));
@@ -611,7 +696,7 @@ public class JsonRpcServiceTests
     {
         IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
         IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
-        pool.GetModule(Arg.Any<bool>()).Returns(rpcModule);
+        pool.GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(rpcModule);
 
         JsonRpcErrorResponse response = AssertJsonRpcError(TestRequestWithPool(pool, method, parameters), ErrorCodes.InvalidParams);
         response.Dispose();
@@ -624,7 +709,34 @@ public class JsonRpcServiceTests
     }
 
     [Test]
-    public void Returns_module_to_pool_once_and_internal_error_when_preparing_params_throws([Values("eth_getLogs", "eth_newFilter")] string method)
+    public void Returns_eth_getLogs_module_when_parameter_binding_throws_after_rental()
+    {
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
+        pool.GetModule(false, Arg.Any<CancellationToken>()).Returns(rpcModule);
+        JsonRpcRequest request = new()
+        {
+            JsonRpc = "2.0",
+            Method = "eth_getLogs",
+            ParamsUtf8 = Encoding.UTF8.GetBytes("""[{"fromBlock":"0x1","toBlock":"0x2","address":[null]}]"""),
+            ParamsKind = JsonValueKind.Array,
+            Id = 67
+        };
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(
+            SendRequestWithPool(pool, request),
+            ErrorCodes.InvalidParams,
+            "invalid argument 0: non-string address at index 0");
+
+        using (Assert.EnterMultipleScope())
+        {
+            pool.Received(1).ReturnModule(rpcModule);
+            Assert.That(rpcModule.ReceivedCalls(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Returns_internal_error_without_renting_module_when_logging_throws([Values("eth_getLogs", "eth_newFilter")] string method)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsTrace.Returns(true);
@@ -635,14 +747,15 @@ public class JsonRpcServiceTests
 
         IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
         IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
-        pool.GetModule(Arg.Any<bool>()).Returns(rpcModule);
+        pool.GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(rpcModule);
 
         JsonRpcErrorResponse response = AssertJsonRpcError(TestRequestWithPool(pool, method, "{}"), ErrorCodes.InternalError);
         response.Dispose();
 
         using (Assert.EnterMultipleScope())
         {
-            pool.Received(1).ReturnModule(rpcModule);
+            await pool.DidNotReceive().GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            pool.DidNotReceive().ReturnModule(Arg.Any<IEthRpcModule>());
             Assert.That(rpcModule.ReceivedCalls(), Is.Empty);
             logger.Received(1).Error(Arg.Any<string>(), Arg.Any<ArgumentException>());
         }
@@ -655,7 +768,7 @@ public class JsonRpcServiceTests
     {
         IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
         ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
-        pool.GetModule(false).Returns(rpcModule);
+        pool.GetModule(false, Arg.Any<CancellationToken>()).Returns(rpcModule);
         using CancellationTokenSource timeoutCts = new();
         IEnumerable<ParityTxTraceFromReplay> traces = streamed
             ? new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(static (_, _, _) => { }, timeoutCts, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())
@@ -690,7 +803,7 @@ public class JsonRpcServiceTests
     {
         IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
         ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
-        pool.GetModule(false).Returns(rpcModule);
+        pool.GetModule(false, Arg.Any<CancellationToken>()).Returns(rpcModule);
         using CancellationTokenSource timeout = new();
         Exception cause = kind switch
         {
@@ -702,6 +815,8 @@ public class JsonRpcServiceTests
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
             .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplayStreamingResult(
                 (_, _, _) => throw failure, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
+        TestLogger logger = new();
+        _logManager = new OneLoggerLogManager(new(logger));
         using JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayTransaction", TestItem.KeccakA.ToString(), new[] { "trace" });
         using MemoryStream stream = new();
         PipeWriter writer = PipeWriter.Create(stream);
@@ -716,9 +831,14 @@ public class JsonRpcServiceTests
                 error = new { code = ErrorCodes.InternalError, message = "Internal error" },
                 id = 67
             });
+        // The processor does not log a replacement error, so for -32603 the cause line is the only record of its message.
+        string[] expectedCause = durationError
+            ? []
+            : [$"{InternalErrorCause}, request: Id:67, trace_replayTransaction(params omitted), exception chain: {cause.GetType()}: {cause.Message}"];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo(expected));
+            Assert.That(logger.LogList.Where(static line => line.StartsWith(InternalErrorCause, StringComparison.Ordinal)), Is.EqualTo(expectedCause));
             pool.DidNotReceive().ReturnModule(rpcModule);
         }
         response.Dispose();
@@ -730,7 +850,7 @@ public class JsonRpcServiceTests
     {
         IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
         ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
-        pool.GetModule(false).Returns(rpcModule);
+        pool.GetModule(false, Arg.Any<CancellationToken>()).Returns(rpcModule);
         InvalidOperationException failure = new("Result write failed");
         FailingReplayResult result = deferred ? new DeferredFailingReplayResult(failure) : new FailingReplayResult(failure);
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
@@ -799,7 +919,7 @@ public class JsonRpcServiceTests
     {
         IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
         ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
-        pool.GetModule(false).Returns(rpcModule);
+        pool.GetModule(false, Arg.Any<CancellationToken>()).Returns(rpcModule);
         using CancellationTokenSource timeout = new();
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
             .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplayStreamingResult(
@@ -821,7 +941,7 @@ public class JsonRpcServiceTests
     {
         IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
         ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
-        pool.GetModule(false).Returns(rpcModule);
+        pool.GetModule(false, Arg.Any<CancellationToken>()).Returns(rpcModule);
         string method = blockReplay ? "trace_replayBlockTransactions" : "trace_replayTransaction";
         object[] parameters = [blockReplay ? "latest" : TestItem.KeccakA.ToString(), new[] { "trace" }];
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>()).Throws(failure.Exception);
@@ -941,7 +1061,7 @@ public class JsonRpcServiceTests
     {
         IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
         IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
-        pool.GetModule(false).Returns(rpcModule);
+        pool.GetModule(false, Arg.Any<CancellationToken>()).Returns(rpcModule);
         ResultWrapper<IEnumerable<FilterLog>> shared = ResultWrapper<IEnumerable<FilterLog>>.Success([]);
         rpcModule.eth_getLogs(Arg.Any<Filter>()).Returns(shared);
 
@@ -1027,7 +1147,8 @@ public class JsonRpcServiceTests
             Arg.Is<SignableTransactionForRpc>(static tx => tx is LegacyTransactionForRpc && ((LegacyTransactionForRpc)tx).Input!.SequenceEqual(new byte[] { 0x60, 0x2a })),
             Arg.Any<BlockParameter?>(),
             Arg.Any<Dictionary<Address, AccountOverride>?>(),
-            Arg.Any<BlockOverride?>());
+            Arg.Any<BlockOverride?>(),
+            Arg.Any<CancellationToken>());
     }
 
     [TestCase("", null)]
@@ -1247,14 +1368,16 @@ public class JsonRpcServiceTests
             .Returns(ModuleResolution.Unknown);
         JsonRpcService service = new(provider, new OneLoggerLogManager(new(logger)), new JsonRpcConfig(), _gcKeeper);
         using JsonDocument parameters = JsonDocument.Parse($"[\"{secret}\"]");
-        JsonRpcRequest request = new() { Id = 67, Method = "unknown_method", Params = parameters.RootElement };
+        JsonRpcRequest request = new() { Id = 67, Method = "unknown\tmethod", Params = parameters.RootElement };
 
         using JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
         string log = logger.LogList.Single(line => line.Contains("Validation error when handling request"));
+        string errorLog = logger.LogList.Single(line => line.StartsWith("Sending error response", StringComparison.Ordinal));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(log, Does.Contain("unknown_method").And.Contain("67"));
+            Assert.That(log, Does.Contain(@"unknown\tmethod").And.Contain("67"));
+            Assert.That(errorLog, Does.Contain(@"unknown\tmethod").And.Contain("67"));
             Assert.That(log, Does.Not.Contain(secret));
         }
     }
@@ -1303,7 +1426,7 @@ public class JsonRpcServiceTests
             {
                 Assert.That(log, Does.Contain("test_string").And.Contain("67").And.Contain(nameof(InvalidOperationException)));
                 Assert.That(log.Contains(Environment.NewLine), Is.EqualTo(!maskSensitiveData));
-                Assert.That(logger.LogList, Has.None.Contains(secret));
+                AssertOnlyInternalErrorCauseCarries(logger, secret, maskSensitiveData);
             }
         }
         finally
@@ -1317,7 +1440,7 @@ public class JsonRpcServiceTests
     {
         const string secret = "rental-secret-5349";
         IRpcModulePool<IMetadataTestRpcModule> pool = Substitute.For<IRpcModulePool<IMetadataTestRpcModule>>();
-        pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IMetadataTestRpcModule>(new InvalidOperationException($"failure {secret}")));
+        pool.GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromException<IMetadataTestRpcModule>(new InvalidOperationException($"failure {secret}")));
         TestLogger logger = new();
         _logManager = new OneLoggerLogManager(new(logger));
 
@@ -1328,7 +1451,7 @@ public class JsonRpcServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(log, Does.Contain("test_string").And.Contain(nameof(InvalidOperationException)));
-            Assert.That(logger.LogList, Has.None.Contains(secret));
+            AssertOnlyInternalErrorCauseCarries(logger, secret, maskSensitiveData: false);
         }
     }
 
@@ -1354,6 +1477,122 @@ public class JsonRpcServiceTests
             Assert.That(logger.LogList.Where(static l => l.Contains("secret")), Is.Empty, "the params must not be formatted on a fault that may be an exhausted heap");
             module.DidNotReceive().test_node_fault(Arg.Any<NodeFaultPayload>());
         }
+    }
+
+    private const string InternalErrorCause = "Internal error cause";
+
+    // The secret sits in the exception message as well as in the params. The params never reach the log; the
+    // message reaches only the Debug cause line, and only while masking is off.
+    private static void AssertOnlyInternalErrorCauseCarries(TestLogger logger, string secret, bool maskSensitiveData)
+    {
+        string[] withSecret = [.. logger.LogList.Where(line => line.Contains(secret))];
+        if (maskSensitiveData)
+        {
+            Assert.That(withSecret, Is.Empty);
+            return;
+        }
+
+        Assert.That(withSecret, Has.Length.EqualTo(1));
+        Assert.That(withSecret[0], Does.StartWith($"{InternalErrorCause}, request: Id:67, test_string(params omitted), exception chain: "));
+    }
+
+    // Calls test_string, which fails with the given exception: thrown by the handler or, with rentalFailure, by module rental.
+    private JsonRpcResponse TestFailingRequest(Exception failure, bool rentalFailure)
+    {
+        if (rentalFailure)
+        {
+            IRpcModulePool<IMetadataTestRpcModule> pool = Substitute.For<IRpcModulePool<IMetadataTestRpcModule>>();
+            pool.GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromException<IMetadataTestRpcModule>(failure));
+            return TestRequestWithPool(pool, "test_string", "x");
+        }
+
+        IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
+        module.test_string(Arg.Any<string>()).Throws(failure);
+        return TestRequest(module, "test_string", "x");
+    }
+
+    // Responses carry no error data, and the Error line keeps only the type and the stack, so this Debug line is the
+    // only record of what an internal error was. Masking replaces the chain as a whole.
+    [Test]
+    public void Internal_error_cause_is_logged_at_debug_only([Values] bool maskSensitiveData, [Values] bool rentalFailure)
+    {
+        const string outer = "outer-cause-71203";
+        const string inner = "inner-cause-38511";
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            Exception failure = new InvalidOperationException(outer, new IOException(inner));
+            TestLogger infoLogger = new() { IsDebug = false, IsTrace = false };
+            TestLogger debugLogger = new() { IsTrace = false };
+            TestLogger traceLogger = new();
+            foreach (TestLogger logger in new[] { infoLogger, debugLogger, traceLogger })
+            {
+                _logManager = new OneLoggerLogManager(new(logger));
+                using JsonRpcResponse response = TestFailingRequest(failure, rentalFailure);
+                Assert.That(AssertJsonRpcError(response, ErrorCodes.InternalError, "Internal error").Error!.Data, Is.Null);
+            }
+
+            string expectedChain = maskSensitiveData
+                ? "[redacted]"
+                : $"{typeof(InvalidOperationException)}: {outer} ---> {typeof(IOException)}: {inner}";
+            string[] expected = [$"{InternalErrorCause}, request: Id:67, test_string(params omitted), exception chain: {expectedChain}"];
+            using (Assert.EnterMultipleScope())
+            {
+                // With masking off the cause line must also be the only line with either message.
+                Assert.That(infoLogger.LogList.Where(CauseOrMessage), Is.Empty);
+                Assert.That(debugLogger.LogList.Where(CauseOrMessage), Is.EqualTo(expected));
+                Assert.That(traceLogger.LogList.Where(CauseOrMessage), Is.EqualTo(expected));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+
+        static bool CauseOrMessage(string line) =>
+            line.StartsWith(InternalErrorCause, StringComparison.Ordinal) || line.Contains(outer) || line.Contains(inner);
+    }
+
+    [Test]
+    public void Internal_error_cause_chain_is_bounded()
+    {
+        Exception failure = new IOException("cause-9");
+        for (int depth = 8; depth >= 0; depth--) failure = new InvalidOperationException($"cause-{depth}", failure);
+        TestLogger logger = new();
+        _logManager = new OneLoggerLogManager(new(logger));
+
+        using JsonRpcResponse response = TestFailingRequest(failure, rentalFailure: false);
+
+        AssertJsonRpcError(response, ErrorCodes.InternalError, "Internal error");
+        string line = logger.LogList.Single(static line => line.StartsWith(InternalErrorCause, StringComparison.Ordinal));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(line, Does.Contain("cause-0").And.Contain("cause-7"));
+            Assert.That(line, Does.Not.Contain("cause-8").And.Not.Contain("cause-9"));
+            Assert.That(line, Does.EndWith("cause-7 ---> ..."));
+        }
+    }
+
+    // Shedding before invocation and the ArgumentException -32602 arm get no cause line.
+    [TestCase("argument", false, ErrorCodes.InvalidParams)]
+    [TestCase("limit", true, ErrorCodes.LimitExceeded)]
+    [TestCase("rentalTimeout", true, ErrorCodes.ModuleTimeout)]
+    public void Internal_error_cause_is_not_logged_for_other_arms(string kind, bool rentalFailure, int expectedCode)
+    {
+        Exception failure = kind switch
+        {
+            "limit" => new LimitExceededException("limit-cause-1"),
+            "rentalTimeout" => new ModuleRentalTimeoutException("timeout-cause-1"),
+            _ => new ArgumentException("argument-cause-1")
+        };
+        TestLogger logger = new();
+        _logManager = new OneLoggerLogManager(new(logger));
+
+        using JsonRpcResponse response = TestFailingRequest(failure, rentalFailure);
+
+        AssertJsonRpcError(response, expectedCode);
+        Assert.That(logger.LogList, Has.None.StartsWith(InternalErrorCause));
     }
 
     [TestCaseSource(nameof(InvalidRawUtf8ParamCases))]
@@ -1386,6 +1625,45 @@ public class JsonRpcServiceTests
     [Test]
     public void IncorrectMethodNameTest() =>
         AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound("incorrect_method"));
+
+    [TestCase("get_Context")]
+    [TestCase("set_Context")]
+    public void Property_accessor_of_a_module_is_an_unknown_method(string method)
+    {
+        BoundedModulePool<ISubscribeRpcModule> pool = new(new SingletonFactory<ISubscribeRpcModule>(Substitute.For<ISubscribeRpcModule>()), 1, 1000);
+        AssertJsonRpcError(TestRequestWithPool(pool, method), ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound(method));
+    }
+
+    [Test]
+    public async Task Non_array_params_are_rejected_before_module_rental([Values("{\"a\":1}", "\"bar\"", "1", "true")] string rawParams)
+    {
+        IRpcModulePool<INetRpcModule> pool = Substitute.For<IRpcModulePool<INetRpcModule>>();
+        pool.GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Throws(new LimitExceededException("Too many requests"));
+        using JsonDocument parameters = JsonDocument.Parse(rawParams);
+        JsonRpcRequest request = new() { JsonRpc = "2.0", Method = "net_version", Params = parameters.RootElement, Id = 67 };
+
+        using JsonRpcResponse response = SendRequestWithPool(pool, request);
+
+        AssertInvalidParamsWithoutData(response, "non-array args");
+        await pool.DidNotReceive().GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        pool.DidNotReceive().ReturnModule(Arg.Any<INetRpcModule>());
+    }
+
+    // Plugins compiled against Fail(string, int, bool) bind to that exact signature, and a positional bool means
+    // isTemporary rather than the error data of a ResultWrapper<bool>.
+    [Test]
+    public void Fail_with_temporary_flag_keeps_its_three_parameter_overload()
+    {
+        MethodInfo? fail = typeof(ResultWrapper<string>).GetMethod(nameof(ResultWrapper<string>.Fail), [typeof(string), typeof(int), typeof(bool)]);
+        ResultWrapper<bool> wrapper = ResultWrapper<bool>.Fail("busy", ErrorCodes.ResourceUnavailable, true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fail?.ReturnType, Is.EqualTo(typeof(ResultWrapper<string>)));
+            Assert.That(wrapper.IsTemporary, Is.True);
+            Assert.That(wrapper.HasErrorData, Is.False);
+        }
+    }
 
     [Test]
     public void NetVersionTest()
@@ -1559,7 +1837,7 @@ public class JsonRpcServiceTests
         static IRpcModulePool<IEthRpcModule> FaultedRental()
         {
             IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
-            pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(new OutOfMemoryException()));
+            pool.GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromException<IEthRpcModule>(new OutOfMemoryException()));
             return pool;
         }
 
@@ -1657,7 +1935,7 @@ public class JsonRpcServiceTests
 
         // Before-invocation path: module rental times out.
         IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
-        pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(new ModuleRentalTimeoutException("timeout")));
+        pool.GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromException<IEthRpcModule>(new ModuleRentalTimeoutException("timeout")));
         using JsonRpcErrorResponse rentalRejection = AssertJsonRpcError(
             TestRequestWithPool(pool, "eth_getLogs", "{}"),
             ErrorCodes.ModuleTimeout,
@@ -1678,7 +1956,7 @@ public class JsonRpcServiceTests
         _logManager = new OneLoggerLogManager(new ILogger(logger));
 
         IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
-        pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(exception));
+        pool.GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromException<IEthRpcModule>(exception));
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(
             TestRequestWithPool(pool, "eth_getLogs", filter),
@@ -1709,6 +1987,32 @@ public class JsonRpcServiceTests
                 "Timeout",
                 filter);
         }
+    }
+
+    /// <remarks>
+    /// The aborted rental itself is covered through the processor, in <see cref="JsonRpcProcessorTests"/>, and an aborted
+    /// request whose method stops on the cancellation in <see cref="Trailing_cancellation_token_is_cancelled_by_request_abort_or_timeout"/>.
+    /// </remarks>
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public async Task Cancellation_other_than_the_aborted_rental_keeps_its_error(bool aborted, bool duringInvocation)
+    {
+        using CancellationTokenSource transport = new();
+        if (aborted) await transport.CancelAsync();
+        IEthRpcModule module = Substitute.For<IEthRpcModule>();
+        // The worst case for the invocation: the module throws the transport's own cancellation while it runs.
+        module.eth_getLogs(Arg.Any<Filter>()).Throws(new OperationCanceledException(transport.Token));
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        pool.GetModule(false, Arg.Any<CancellationToken>()).Returns(duringInvocation
+            ? Task.FromResult(module)
+            : Task.FromCanceled<IEthRpcModule>(new CancellationToken(canceled: true)));
+        RpcModuleProvider provider = new(new RealFileSystem(), new JsonRpcConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
+        provider.Register(pool);
+        JsonRpcService service = new(provider, _logManager, new JsonRpcConfig(), _gcKeeper);
+
+        using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_getLogs", "{}"), _context, transport.Token);
+        AssertJsonRpcError(response, duringInvocation ? ErrorCodes.Timeout : ErrorCodes.InternalError);
     }
 
     [TestCase(false)]
@@ -1786,6 +2090,9 @@ public class JsonRpcServiceTests
 
         [JsonRpcMethod(Description = "Test method used to verify JSON-RPC parameter binding faults.")]
         ResultWrapper<string> test_node_fault(NodeFaultPayload value);
+
+        [JsonRpcMethod(Description = "Test method used to verify the request cancellation token.")]
+        ResultWrapper<string> test_cancellation_token(string value, CancellationToken cancellationToken);
     }
 
     [JsonConverter(typeof(NodeFaultPayloadConverter))]
@@ -1831,10 +2138,10 @@ public class JsonRpcServiceTests
     {
         public List<string> Methods { get; } = [];
 
-        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context)
+        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken = default)
         {
             Methods.Add(request.Method);
-            return inner.SendRequestAsync(request, context);
+            return inner.SendRequestAsync(request, context, cancellationToken);
         }
 
         public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, in JsonRpcId id, string? methodName = null) =>

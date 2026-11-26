@@ -182,6 +182,33 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
     /// <inheritdoc/>
     /// <remarks>
+    /// A transaction held in the cache or by a pending update is served from memory instead, as
+    /// <see cref="TryGetValueNonLocked"/> does. Unlike that read, this one does not add the transaction to the cache.
+    /// </remarks>
+    internal override bool TryGetAvailableCellMask(ValueHash256 hash, out BlobCellMask availableMask, out IOwnedReadOnlyList<byte>? networkForm)
+    {
+        networkForm = null;
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        if (!base.TryGetValueNonLocked(hash, out Transaction? lightTx))
+        {
+            availableMask = default;
+            return false;
+        }
+
+        availableMask = GetAvailableCellMask(lightTx);
+        if (lightTx is LightTransaction { Type: TxType.Blob, BlobCellMask.IsFull: true }
+            && !(_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate) && pendingUpdate.Transaction is not null)
+            && !_blobTxCache.Contains(hash)
+            && _blobTxStorage is IBlobTxNetworkFormStorage storage)
+        {
+            storage.TryGetNetworkForm(hash, lightTx.Timestamp, out networkForm);
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// A concurrent second caller reports the transaction as absent rather than waiting for the
     /// in-progress storage read, which keeps the read de-duplicated without blocking a pool thread.
     /// The miss is safe: callers treat it as "not in the pool yet" and retry on a later announcement.
@@ -249,8 +276,10 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         bool readCompleted = false;
         try
         {
-            if (!_blobTxStorage.TryGet(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx)
-                || loadedTx is null)
+            bool loaded = _blobTxStorage is IBlobTxElidedReadStorage elidedReadStorage
+                ? elidedReadStorage.TryGetFullRecordWithoutBlobs(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx)
+                : _blobTxStorage.TryGet(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx);
+            if (!loaded || loadedTx is null)
             {
                 blobTx = default;
                 return false;
@@ -369,7 +398,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     public override int TryGetBlobsAndProofsV1(
          byte[][] requestedBlobVersionedHashes,
          Span<byte[]?> blobs,
-         Span<ReadOnlyMemory<byte[]>> proofs)
+         Span<ReadOnlyMemory<byte>> proofs)
     {
         int found = 0;
         using ArrayPoolListRef<TxLookupKey> dbKeys = new(requestedBlobVersionedHashes.Length);
@@ -400,10 +429,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                         && cachedWrapper.HasFullBlobs())
                     {
                         blobs[i] = cachedWrapper.Blobs[indexOfBlob];
-                        proofs[i] = new ReadOnlyMemory<byte[]>(
-                            cachedWrapper.Proofs,
-                            Ckzg.CellsPerExtBlob * indexOfBlob,
-                            Ckzg.CellsPerExtBlob);
+                        proofs[i] = cachedWrapper.GetProofs(Ckzg.CellsPerExtBlob * indexOfBlob, Ckzg.CellsPerExtBlob);
                         found++;
                         break;
                     }
@@ -484,16 +510,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                     if (fullTx?.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper
                         || !wrapper.HasFullBlobs()
                         || (uint)blobIdx >= (uint)wrapper.Blobs.Length
-                        || Ckzg.CellsPerExtBlob * (blobIdx + 1) > wrapper.Proofs.Length)
+                        || Ckzg.CellsPerExtBlob * (blobIdx + 1) > wrapper.ProofCount)
                     {
                         continue;
                     }
 
                     blobs[outIdx] = wrapper.Blobs[blobIdx];
-                    proofs[outIdx] = new ReadOnlyMemory<byte[]>(
-                        wrapper.Proofs,
-                        Ckzg.CellsPerExtBlob * blobIdx,
-                        Ckzg.CellsPerExtBlob);
+                    proofs[outIdx] = wrapper.GetProofs(Ckzg.CellsPerExtBlob * blobIdx, Ckzg.CellsPerExtBlob);
                     found++;
 
                     if (cacheStorageResult)
@@ -548,7 +571,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
         else
         {
-            Dictionary<TxLookupKey, int> indices = new(count);
+            Dictionary<TxLookupKey, int> indices = [with(count)];
             for (int i = 0; i < count; i++)
             {
                 if (!indices.TryGetValue(keys[i], out int index))
@@ -644,7 +667,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 return false;
             }
 
-            candidates = new(Math.Min(txHashes.Count, MaxBlobCellCandidates));
+            candidates = [with(Math.Min(txHashes.Count, MaxBlobCellCandidates))];
             BlobCellMask capturedMask = BlobCellMask.Empty;
             foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
             {
@@ -678,7 +701,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
 
         candidates.Sort(static (x, y) => y.AvailableMask.Count.CompareTo(x.AvailableMask.Count));
-        List<BlobCellsCandidate> loadedCandidates = new(Math.Min(candidates.Count, requestedMask.Count));
+        List<BlobCellsCandidate> loadedCandidates = [with(Math.Min(candidates.Count, requestedMask.Count))];
         BlobCellMask loadedMask = BlobCellMask.Empty;
         int candidateLoads = 0;
         for (int i = 0;

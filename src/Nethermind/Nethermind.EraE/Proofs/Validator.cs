@@ -30,9 +30,7 @@ public sealed class Validator
             ulong secondsPerSlot = blocksConfig?.SecondsPerSlot ?? 12;
             _slotTime = new SlotTime(
                 specProvider.BeaconChainGenesisTimestamp.Value * 1000,
-                new Timestamper(),
-                TimeSpan.FromSeconds(secondsPerSlot),
-                TimeSpan.Zero);
+                TimeSpan.FromSeconds(secondsPerSlot));
         }
         _trustedAccumulators = trustedAccumulators;
         _trustedHistoricalRoots = trustedHistoricalRoots;

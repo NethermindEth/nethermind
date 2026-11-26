@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Collections;
 using Nethermind.State.Flat.Persistence;
@@ -44,6 +45,8 @@ public class FlatTrieVerifier
     private long _mismatchedSlot;
     private long _missingInFlat;
     private long _missingInTrie;
+    // Each storage trie is read through its own HashVerifyingTrieStore, so their counts are summed here.
+    private long _storageTrieHashMismatchCount;
     private int _busyStorageWorkers;
     private int _offloadedPartitions;
 
@@ -99,7 +102,7 @@ public class FlatTrieVerifier
     }
 
     // Internal method for testing with direct components
-    internal void Verify(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken) => VerifyCore(reader, trieStore, stateRoot, cancellationToken);
+    internal bool Verify(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken) => VerifyCore(reader, trieStore, stateRoot, cancellationToken);
 
     private bool VerifyCore(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken)
     {
@@ -115,7 +118,7 @@ public class FlatTrieVerifier
         Task[] workers = new Task[_storageWorkerCount];
         for (int i = 0; i < _storageWorkerCount; i++)
         {
-            workers[i] = Task.Run(() => ProcessStorageQueue(channel.Reader, reader, verifyingTrieStore, cancellationToken));
+            workers[i] = Task.Run(() => ProcessStorageQueue(channel.Reader, reader, verifyingTrieStore, cancellationToken), CancellationToken.None);
         }
 
         try
@@ -141,14 +144,15 @@ public class FlatTrieVerifier
             progressTracker.Finish();
         }
 
-        if (verifyingTrieStore.HashMismatchCount > 0)
+        long hashMismatchCount = verifyingTrieStore.HashMismatchCount + Interlocked.Read(ref _storageTrieHashMismatchCount);
+        if (hashMismatchCount > 0)
         {
-            if (_logger.IsError) _logger.Error($"Hash verification found {verifyingTrieStore.HashMismatchCount} mismatches");
+            if (_logger.IsError) _logger.Error($"Hash verification found {hashMismatchCount} mismatches");
         }
 
         bool isOk = Stats.MismatchedAccount == 0 && Stats.MismatchedSlot == 0 &&
                     Stats.MissingInFlat == 0 && Stats.MissingInTrie == 0 &&
-                    verifyingTrieStore.HashMismatchCount == 0;
+                    hashMismatchCount == 0;
 
         if (!isOk)
         {
@@ -439,10 +443,10 @@ public class FlatTrieVerifier
         ReadOnlySpan<byte> trieAccountRlp = trieLeaf.Value.AsSpan();
 
         RlpReader flatReader = new(flatAccountRlp);
-        Account? flatAccount = AccountDecoder.Slim.Decode(ref flatReader);
+        Account? flatAccount = AccountDecoder.Slim.Decode(ref flatReader, RlpBehaviors.TrustedInput);
 
         RlpReader trieReader = new(trieAccountRlp);
-        Account? trieAccount = AccountDecoder.Instance.Decode(ref trieReader);
+        Account? trieAccount = AccountDecoder.Instance.Decode(ref trieReader, RlpBehaviors.TrustedInput);
 
         if (flatAccount != trieAccount)
         {
@@ -511,7 +515,7 @@ public class FlatTrieVerifier
             return;
         }
 
-        IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
+        HashVerifyingTrieStore storageTrieStore = (HashVerifyingTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
 
         // A single whale contract otherwise pins one worker for the whole channel drain.
         if (ShouldSplitStorage(storageTrieStore, job.StorageRoot))
@@ -522,6 +526,8 @@ public class FlatTrieVerifier
         {
             VerifyStorageHashedRange(job, reader, storageTrieStore, ValueKeccak.Zero, ValueKeccak.MaxValue, endExclusive: false, cancellationToken);
         }
+
+        Interlocked.Add(ref _storageTrieHashMismatchCount, storageTrieStore.HashMismatchCount);
     }
 
     /// <summary>
@@ -564,7 +570,7 @@ public class FlatTrieVerifier
                         {
                             Interlocked.Decrement(ref _offloadedPartitions);
                         }
-                    });
+                    }, CancellationToken.None);
                 }
                 else
                 {
@@ -742,7 +748,7 @@ public class FlatTrieVerifier
             return;
         }
 
-        IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
+        HashVerifyingTrieStore storageTrieStore = (HashVerifyingTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
 
         using HashSortedSlotPool flatSlots = new(_scratchDirectory, _logManager, cancellationToken) { MaxInMemoryEntries = PreimageSlotsInMemory };
         using (IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue))
@@ -796,6 +802,8 @@ public class FlatTrieVerifier
                 hasTrie = trieIter.MoveNext();
             }
         }
+
+        Interlocked.Add(ref _storageTrieHashMismatchCount, storageTrieStore.HashMismatchCount);
     }
 
     private static int CompareStorageKeys(in ValueHash256 flatKey, in TreePath triePath, bool hasFlat, bool hasTrie) =>
@@ -819,7 +827,7 @@ public class FlatTrieVerifier
         }
 
         RlpReader ctx = new(trieValue);
-        byte[] decodedTrieValue = ctx.DecodeByteArray();
+        byte[] decodedTrieValue = ctx.DecodeByteArray<OffFlag>();
 
         ReadOnlySpan<byte> flatTrimmed = flatValue.WithoutLeadingZeros();
         ReadOnlySpan<byte> trieTrimmed = decodedTrieValue.AsSpan().WithoutLeadingZeros();

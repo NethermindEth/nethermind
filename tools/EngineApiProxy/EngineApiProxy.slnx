@@ -19,6 +19,7 @@
     <Project Path="../../src/Nethermind/Nethermind.Logging.NLog/Nethermind.Logging.NLog.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network/Nethermind.Network.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Network.Core/Nethermind.Network.Core.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />

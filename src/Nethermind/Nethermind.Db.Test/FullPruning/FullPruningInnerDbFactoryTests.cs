@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq.Expressions;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db.FullPruning;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Db.Test.FullPruning
 {
@@ -77,7 +81,7 @@ namespace Nethermind.Db.Test.FullPruning
         [Test]
         public void keeps_the_live_db_when_the_factory_already_resolved_a_path()
         {
-            // GetFullDbPath advances the factory's index as a side effect, so the live DB must come from disk.
+            // The live DB comes from disk, so what the factory was asked before does not change what is deleted.
             TestContext test = new();
             test.Directory.Exists.Returns(true);
             IDirectoryInfo live = Dir("0");
@@ -88,6 +92,26 @@ namespace Nethermind.Db.Test.FullPruning
             Assert.That(test.TestedDbFactory.DeleteStaleInnerDbs(), Is.EqualTo(1));
             live.DidNotReceive().Delete(Arg.Any<bool>());
             leftover.Received(1).Delete(true);
+        }
+
+        public enum Layout { NoDb, LegacyDb, IndexedDb }
+
+        [TestCase(Layout.NoDb, 0, 1)]
+        [TestCase(Layout.LegacyDb, null, 0)]
+        [TestCase(Layout.IndexedDb, 10, 11)]
+        public void GetFullDbPath_returns_the_next_db_path_without_advancing(Layout layout, int? next, int? afterNext)
+        {
+            TestContext test = new();
+            IDirectoryInfo indexedDb = Dir("10");
+            test.Directory.Exists.Returns(layout != Layout.NoDb);
+            if (layout == Layout.LegacyDb) test.Directory.EnumerateFiles().Returns(new[] { Substitute.For<IFileInfo>() });
+            if (layout == Layout.IndexedDb) test.Directory.EnumerateDirectories().Returns(new[] { indexedDb });
+
+            Assert.That(test.TestedDbFactory.GetFullDbPath(test.DbSettings), Is.EqualTo(Combine(test.Path, next)));
+            Assert.That(test.TestedDbFactory.GetFullDbPath(test.DbSettings), Is.EqualTo(Combine(test.Path, next)));
+            test.TestedDbFactory.CreateDb(test.DbSettings);
+            test.RocksDbFactory.Received(1).CreateDb(Arg.Is(MatchSettings(test, next)));
+            Assert.That(test.TestedDbFactory.GetFullDbPath(test.DbSettings), Is.EqualTo(Combine(test.Path, afterNext)));
         }
 
         [Test]
@@ -112,6 +136,88 @@ namespace Nethermind.Db.Test.FullPruning
             test.Directory.EnumerateDirectories().Returns(_ => throw new DirectoryNotFoundException());
 
             Assert.That(test.TestedDbFactory.DeleteStaleInnerDbs(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void opens_the_newer_indexed_db_when_deleting_the_older_one_did_not_finish()
+        {
+            using TempPath tempPath = TempPath.GetTempDirectory();
+            string older = Path.Combine(tempPath.Path, "0");
+            string newer = Path.Combine(tempPath.Path, "1");
+            Directory.CreateDirectory(older);
+            Directory.CreateDirectory(newer);
+            File.WriteAllText(Path.Combine(older, "000001.sst"), "data");
+            File.WriteAllText(Path.Combine(older, DbSettings.DeletingMarkerFileName), "marker");
+            File.WriteAllText(Path.Combine(newer, "000002.sst"), "data");
+            IDbFactory dbFactory = CreatePassThroughDbFactory();
+
+            new FullPruningInnerDbFactory(dbFactory, new RealFileSystem(), tempPath.Path, LimboLogs.Instance).CreateDb(new DbSettings("name", tempPath.Path));
+
+            dbFactory.Received(1).CreateDb(Arg.Is<DbSettings>(s => s.DbPath == newer));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Directory.Exists(older), Is.False);
+                Assert.That(File.Exists(Path.Combine(newer, "000002.sst")), Is.True);
+            }
+        }
+
+        [Test]
+        public void opens_the_indexed_db_when_deleting_the_main_one_did_not_finish()
+        {
+            using TempPath tempPath = TempPath.GetTempDirectory();
+            string indexed = Path.Combine(tempPath.Path, "0");
+            Directory.CreateDirectory(indexed);
+            File.WriteAllText(Path.Combine(tempPath.Path, "000001.sst"), "data");
+            File.WriteAllText(Path.Combine(tempPath.Path, DbSettings.DeletingMarkerFileName), "marker");
+            File.WriteAllText(Path.Combine(indexed, "000002.sst"), "data");
+            IDbFactory dbFactory = CreatePassThroughDbFactory();
+
+            new FullPruningInnerDbFactory(dbFactory, new RealFileSystem(), tempPath.Path, LimboLogs.Instance).CreateDb(new DbSettings("name", tempPath.Path));
+
+            dbFactory.Received(1).CreateDb(Arg.Is<DbSettings>(s => s.DbPath == indexed));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Directory.EnumerateFiles(tempPath.Path), Is.Empty);
+                Assert.That(File.Exists(Path.Combine(indexed, "000002.sst")), Is.True);
+            }
+        }
+
+        [Test]
+        public void deletes_the_marker_last_when_finishing_an_interrupted_delete()
+        {
+            TestContext test = new();
+            List<string> calls = [];
+            IFileInfo mainMarker = RecordingFile(DbSettings.DeletingMarkerFileName, "main marker", calls);
+            IFileInfo mainTable = RecordingFile("000001.sst", "main table", calls);
+            test.Directory.Exists.Returns(true);
+            test.Directory.EnumerateFiles().Returns(new[] { mainMarker, mainTable });
+            test.Directory.EnumerateFiles(DbSettings.DeletingMarkerFileName).Returns(new[] { mainMarker });
+            IFileInfo indexedMarker = RecordingFile(DbSettings.DeletingMarkerFileName, "indexed marker", calls);
+            IFileInfo indexedTable = RecordingFile("000002.sst", "indexed table", calls);
+            IDirectoryInfo indexed = Dir("0");
+            indexed.EnumerateFiles().Returns(new[] { indexedMarker, indexedTable });
+            indexed.EnumerateFiles(DbSettings.DeletingMarkerFileName).Returns(new[] { indexedMarker });
+            indexed.When(static d => d.Delete(true)).Do(_ => calls.Add("indexed folder"));
+            test.Directory.EnumerateDirectories().Returns(new[] { indexed });
+
+            _ = test.TestedDbFactory;
+
+            Assert.That(calls, Is.EqualTo(new[] { "main table", "main marker", "indexed table", "indexed folder" }));
+        }
+
+        private static IFileInfo RecordingFile(string name, string label, List<string> calls)
+        {
+            IFileInfo file = Substitute.For<IFileInfo>();
+            file.Name.Returns(name);
+            file.When(static f => f.Delete()).Do(_ => calls.Add(label));
+            return file;
+        }
+
+        private static IDbFactory CreatePassThroughDbFactory()
+        {
+            IDbFactory dbFactory = Substitute.For<IDbFactory>();
+            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(static c => c.Arg<DbSettings>().DbPath);
+            return dbFactory;
         }
 
         private static IDirectoryInfo Dir(string name)
@@ -140,7 +246,7 @@ namespace Nethermind.Db.Test.FullPruning
             public IFileSystem FileSystem { get; } = Substitute.For<IFileSystem>();
             public IDirectoryInfo Directory { get; } = Substitute.For<IDirectoryInfo>();
 
-            public FullPruningInnerDbFactory TestedDbFactory => _testedDbFactory ??= new(RocksDbFactory, FileSystem, Path);
+            public FullPruningInnerDbFactory TestedDbFactory => _testedDbFactory ??= new(RocksDbFactory, FileSystem, Path, LimboLogs.Instance);
 
             public TestContext()
             {

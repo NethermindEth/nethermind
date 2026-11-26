@@ -17,6 +17,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
@@ -263,24 +264,14 @@ public class StorageDeleteWarmupBenchmark
 
         public long Loads => Interlocked.Read(ref _loads);
 
+        public MigrationCursor? GetMigrationCursor() => inner.GetMigrationCursor();
+
         private void Read()
         {
             Interlocked.Increment(ref _loads);
             if (readMicros <= 0) return;
             long until = Stopwatch.GetTimestamp() + readMicros * Stopwatch.Frequency / 1_000_000;
             while (Stopwatch.GetTimestamp() < until) Thread.SpinWait(8);
-        }
-
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
-        {
-            Read();
-            return inner.TryLoadStateRlp(path, flags);
-        }
-
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
-        {
-            Read();
-            return inner.TryLoadStorageRlp(address, path, flags);
         }
 
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
@@ -293,6 +284,18 @@ public class StorageDeleteWarmupBenchmark
         {
             Read();
             return inner.TryLoadStorageRlp(address, path, flags, action, arg);
+        }
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Read();
+            return inner.TryLoadStateRlp(path, hash, flags, action, arg);
+        }
+
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Read();
+            return inner.TryLoadStorageRlp(address, path, hash, flags, action, arg);
         }
 
         public Account? GetAccount(Address address) => inner.GetAccount(address);

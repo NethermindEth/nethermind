@@ -29,6 +29,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
@@ -48,10 +49,11 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Collections;
 
 [assembly: InternalsVisibleTo("Ethereum.Basic.Test")]
+[assembly: InternalsVisibleTo("Ethereum.Ssz.Test")]
 
 namespace Ethereum.Test.Base;
 
-public abstract class BlockchainTestBase
+public abstract partial class BlockchainTestBase
 {
     private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
@@ -127,6 +129,19 @@ public abstract class BlockchainTestBase
             ? [((ForkActivation)0, test.Network)]
             : [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
+        if (test.TransitionTerminalTotalDifficulty is { } terminalTotalDifficulty)
+        {
+            // A total-difficulty transition has no block or timestamp to activate at. The pre-merge fork's rules stay
+            // in force, and PoSSwitcher (from the merge module, see RunTest) classifies each block against the
+            // terminal total difficulty: that decides the PoW/PoS header rules, block rewards and PREVRANDAO, which
+            // is everything Paris changes over the forks it can follow apart from difficulty-bomb delays, which only
+            // PoW blocks use.
+            EnsureTotalDifficultyTransitionIsSupported(test);
+            CustomSpecProvider provider = new(test.ChainId, test.ChainId, transitions.ToArray());
+            provider.UpdateMergeTransitionInfo(null, terminalTotalDifficulty);
+            return provider;
+        }
+
         if (test.NetworkAfterTransition is not null)
         {
             ForkActivation activation = test.TransitionForkActivation!.Value;
@@ -151,6 +166,27 @@ public abstract class BlockchainTestBase
             ? new OverridableReleaseSpec(after) { Eip1559TransitionBlock = activation.BlockNumber }
             : after;
 
+    /// <summary>
+    /// Refuses a total-difficulty transition other than one from a pre-merge fork with EIP-1559 (London, Arrow Glacier
+    /// or Gray Glacier) to Paris.
+    /// </summary>
+    /// <remarks>
+    /// The provider keeps the source fork's rules after the merge. Over these forks, Paris adds only the merge and
+    /// difficulty-bomb delays, so the post-merge blocks get Paris's rules; from any other fork they would not.
+    /// </remarks>
+    /// <exception cref="NotSupportedException">
+    /// The transition starts post-merge, starts from a fork without EIP-1559 or does not end at Paris.
+    /// </exception>
+    private static void EnsureTotalDifficultyTransitionIsSupported(BlockchainTest test)
+    {
+        if (IsPostMergeSpec(test.Network!) || !test.Network!.IsEip1559Enabled || test.NetworkAfterTransition is not Paris)
+        {
+            throw new NotSupportedException(
+                $"Total-difficulty transition from {test.Network!.Name} to {test.NetworkAfterTransition?.Name} is not supported: " +
+                "only one from a pre-merge fork with EIP-1559 to Paris is.");
+        }
+    }
+
     protected async Task<EthereumTestResult> RunTest(
         BlockchainTest test,
         Stopwatch? stopwatch = null,
@@ -159,13 +195,13 @@ public abstract class BlockchainTestBase
         ISpecProvider? specProvider = null,
         List<BlockRejection>? rejections = null)
     {
-        QuarantinedFixtures.IgnoreIfQuarantined(test);
         Assert.That(test.LoadFailure, Is.Null, $"test data loading failure in {test.Name}");
         rejections ??= [];
         RejectionRecorder rejectionRecorder = new(rejections);
         _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
         if (test.NetworkAfterTransition is not null)
-            _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
+            _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at " +
+                (test.TransitionTerminalTotalDifficulty is { } ttd ? $"total difficulty {ttd}" : $"{test.TransitionForkActivation}"));
 
         specProvider ??= CreateSpecProvider(test);
 
@@ -229,7 +265,9 @@ public abstract class BlockchainTestBase
         // RLP-fed blockchain test). The merge module decorates IHeaderValidator with the
         // EIP-3675 post-Merge field rules (difficulty=0, nonce=0, empty UnclesHash) which the
         // base HeaderValidator does not enforce, and which legacy invalid-block fixtures rely on.
-        if (isEngineTest || isPostMerge)
+        // A total-difficulty transition needs it too: CreateSpecProvider relies on its PoSSwitcher.
+        bool isTotalDifficultyTransition = test.TransitionTerminalTotalDifficulty is not null;
+        if (isEngineTest || isPostMerge || isTotalDifficultyTransition)
         {
             containerBuilder.AddModule(new TestMergeModule());
         }
@@ -269,59 +307,10 @@ public abstract class BlockchainTestBase
 
         try
         {
-            BlockHeader parentHeader;
             string lastPayloadStatus = "";
             string? lastValidationError = null;
             string? asyncBlockError = null;
-            // Genesis processing
-            using (stateProvider.BeginScope(null))
-            {
-                InitializeTestState(test, stateProvider, specProvider);
-
-                stopwatch?.Start();
-
-                test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
-
-                RlpReader genesisReader = new(test.GenesisRlp.Bytes);
-                Block genesisBlock = blockDecoder.DecodeComplete(ref genesisReader);
-                Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
-
-                using ManualResetEvent genesisProcessed = new(false);
-                EventHandler<BlockEventArgs> onNewHeadBlock = (_, args) =>
-                {
-                    if (args.Block.Number == 0)
-                    {
-                        Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
-                        genesisProcessed.Set();
-                    }
-                };
-                EventHandler<BlockRemovedEventArgs> onGenesisBlockRemoved = (_, args) =>
-                {
-                    if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
-                    {
-                        Assert.Fail($"Failed to process genesis block: {args.Message ?? args.Exception?.ToString()}");
-                        genesisProcessed.Set();
-                    }
-                };
-
-                blockTree.NewHeadBlock += onNewHeadBlock;
-                blockchainProcessor.BlockRemoved += onGenesisBlockRemoved;
-
-                try
-                {
-                    blockTree.SuggestBlock(genesisBlock);
-                    Assert.That(genesisProcessed.WaitOne(_genesisProcessingTimeoutMs), Is.True,
-                        "Timed out waiting for genesis block processing.");
-                    parentHeader = genesisBlock.Header;
-                }
-                finally
-                {
-                    blockTree.NewHeadBlock -= onNewHeadBlock;
-                    blockchainProcessor.BlockRemoved -= onGenesisBlockRemoved;
-                }
-
-                genesisBlock.DisposeAccountChanges();
-            }
+            BlockHeader parentHeader = ProcessGenesis(test, stateProvider, specProvider, blockDecoder, blockTree, blockchainProcessor, stopwatch);
 
             List<string> engineWitnessDifferences = [];
             if (test.Blocks is not null)
@@ -415,6 +404,62 @@ public abstract class BlockchainTestBase
         {
             await blockchainProcessingQueue.StopAsync(true);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Sets up the test's pre-state, then suggests its genesis block and waits until the block is the head.
+    /// </summary>
+    /// <returns>The genesis block header.</returns>
+    private static BlockHeader ProcessGenesis(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider, BlockDecoder blockDecoder, IBlockTree blockTree, BlockchainProcessor blockchainProcessor, Stopwatch? stopwatch)
+    {
+        using (stateProvider.BeginScope(null))
+        {
+            InitializeTestState(test, stateProvider, specProvider);
+
+            stopwatch?.Start();
+
+            test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
+
+            RlpReader genesisReader = new(test.GenesisRlp);
+            Block genesisBlock = blockDecoder.DecodeComplete(ref genesisReader);
+            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+
+            using ManualResetEvent genesisProcessed = new(false);
+            EventHandler<BlockEventArgs> onNewHeadBlock = (_, args) =>
+            {
+                if (args.Block.Number == 0)
+                {
+                    Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
+                    genesisProcessed.Set();
+                }
+            };
+            EventHandler<BlockRemovedEventArgs> onGenesisBlockRemoved = (_, args) =>
+            {
+                if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
+                {
+                    Assert.Fail($"Failed to process genesis block: {args.Message ?? args.Exception?.ToString()}");
+                    genesisProcessed.Set();
+                }
+            };
+
+            blockTree.NewHeadBlock += onNewHeadBlock;
+            blockchainProcessor.BlockRemoved += onGenesisBlockRemoved;
+
+            try
+            {
+                blockTree.SuggestBlock(genesisBlock);
+                Assert.That(genesisProcessed.WaitOne(_genesisProcessingTimeoutMs), Is.True,
+                    "Timed out waiting for genesis block processing.");
+            }
+            finally
+            {
+                blockTree.NewHeadBlock -= onNewHeadBlock;
+                blockchainProcessor.BlockRemoved -= onGenesisBlockRemoved;
+            }
+
+            genesisBlock.DisposeAccountChanges();
+            return genesisBlock.Header;
         }
     }
 

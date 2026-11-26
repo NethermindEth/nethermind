@@ -6,8 +6,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State.Flat.Sync.Snap;
-using Nethermind.State.SnapServer;
+using Nethermind.State.Flat.Migration;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -19,12 +18,14 @@ public class FlatWorldStateManager(
     ITrieWarmer trieWarmer,
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
-    IFlatStateRootIndex flatStateRootIndex,
     IStateHeaderProvider stateHeaderProvider,
     FlatTrieVerifier trieVerifier,
+    Lazy<HalfPathMigrationCursor> migrationCursor,
     ILogManager logManager)
     : IWorldStateManager, IDisposable
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<FlatWorldStateManager>();
+
     private readonly FlatScopeProvider _mainWorldState = new(
         codeDb,
         flatDbManager,
@@ -35,14 +36,8 @@ public class FlatWorldStateManager(
         logManager,
         isReadOnly: false);
 
-    private SnapFlatStateServer? _snapServer;
-
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
     public IStateReader GlobalStateReader => flatStateReader;
-    public ISnapStateServer SnapStateServer => _snapServer ??= new SnapFlatStateServer(
-        flatDbManager,
-        flatStateRootIndex,
-        logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
     public IWorldStateScopeProvider CreateResettableWorldState() => CreateReadOnlyScopeProvider(filterInMemorySlotReads: false);
@@ -66,8 +61,17 @@ public class FlatWorldStateManager(
     public IOverridableWorldScope CreateOverridableWorldScope() =>
         overridableWorldScopeFactory();
 
-    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) =>
-        trieVerifier.Verify(stateAtBlock, cancellationToken);
+    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
+    {
+        // The flat iterators the verification compares against only see what the migration has copied.
+        if (migrationCursor.Value.Current is not null)
+        {
+            if (_logger.IsWarn) _logger.Warn("The flat DB cannot be verified until its migration from the patricia trie state completes.");
+            return false;
+        }
+
+        return trieVerifier.Verify(stateAtBlock, cancellationToken);
+    }
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
 

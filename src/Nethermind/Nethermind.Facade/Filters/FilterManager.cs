@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Collections.Pooled;
 using Nethermind.Blockchain;
@@ -11,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -23,22 +25,33 @@ namespace Nethermind.Facade.Filters
     /// Serves <c>eth_getFilterChanges</c> for installed filters.
     /// </summary>
     /// <remarks>
-    /// Filters do not buffer results. Processed blocks with their receipts and reorg removals (for log filters),
+    /// Filters do not buffer results. Canonical blocks with their receipts and reorg removals (for log filters),
     /// block hashes (for block filters) and new pending transactions are each appended once to a log shared by all
     /// filters of that kind, every filter holds only a cursor into it, and its results are matched when it is polled.
     /// Memory is therefore independent of the number of filters and of how many results they match: a log keeps what
     /// the least recently polled filter has not read yet, and a filter that stops polling is removed by the
-    /// <see cref="FilterStore"/> timeout. Only log filters keep receipts alive; the receipts cache already holds those of
-    /// recent blocks, so an idle log filter adds only the older blocks processed within that timeout.
+    /// <see cref="FilterStore"/> timeout. With the receipt store on, only log filters keep receipts alive; the receipts
+    /// cache already holds those of recent blocks, so an idle log filter adds only the older blocks processed within that
+    /// timeout. With the receipt store off, processed receipts are held until their block becomes canonical, up to
+    /// <see cref="PendingReceiptBlockLimit"/> blocks, and while a log filter is installed the receipts of up to
+    /// <see cref="RecentCanonicalReceiptBlockLimit"/> canonical blocks are held to report their removal.
+    /// A block already reported as added is not reported again until it is removed, so moving the head back to a
+    /// canonical ancestor reports only the removed blocks.
     /// Results are returned as pooled lists that the caller disposes.
     /// </remarks>
     public sealed class FilterManager
     {
+        // Bound outstanding additions and the recent canonical history independently.
+        private const int PendingReceiptBlockLimit = 128;
+        private const int RecentCanonicalReceiptBlockLimit = 128;
+
         private readonly FilterEventLog<BlockEvent> _blocks;
         private readonly FilterEventLog<Hash256> _blockHashes;
         private readonly FilterEventLog<PendingTransaction> _pendingTransactions;
+        private readonly UnstoredReceipts? _unstoredReceipts;
 
         private Hash256? _lastBlockHash;
+        private Hash256? _canonicalTip;
         private readonly FilterStore _filterStore;
         private readonly ITxPool _txPool;
         private readonly Eip8116Schedule _eip8116;
@@ -49,18 +62,29 @@ namespace Nethermind.Facade.Filters
             ITxPool txPool,
             IReceiptMonitor receiptMonitor,
             ILogManager logManager,
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            IBlockTree blockTree,
+            IReceiptConfig receiptConfig)
         {
             _eip8116 = new Eip8116Schedule(specProvider);
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             ArgumentNullException.ThrowIfNull(receiptMonitor);
             ArgumentNullException.ThrowIfNull(logManager);
-            _blocks = new FilterEventLog<BlockEvent>(filterStore);
+            _unstoredReceipts = receiptConfig.StoreReceipts ? null : new UnstoredReceipts();
+            _blocks = new FilterEventLog<BlockEvent>(filterStore, _unstoredReceipts is { } receipts ? receipts.ClearCanonical : null);
             _blockHashes = new FilterEventLog<Hash256>(filterStore);
             _pendingTransactions = new FilterEventLog<PendingTransaction>(filterStore);
+            if (_unstoredReceipts is null)
+            {
+                receiptMonitor.ReceiptsInserted += OnCanonicalReceiptsInserted;
+            }
+            else
+            {
+                blockTree.BlockAddedToMain += OnBlockAddedToMain;
+                blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
+            }
             mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
-            receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
             _filterStore.FilterSaved += OnFilterSaved;
             _filterStore.FilterRemoved += OnFilterRemoved;
             txPool.NewPending += OnNewPendingTransaction;
@@ -109,22 +133,79 @@ namespace Nethermind.Facade.Filters
             Hash256 blockHash = block.Hash ?? throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
             _lastBlockHash = blockHash;
             _blockHashes.Append(blockHash);
-            if (_blocks.IsTracking)
+            if (_unstoredReceipts is { } unstoredReceipts && e.TxReceipts.Length != 0)
             {
-                _blocks.Append(new BlockEvent(block.Timestamp, block.Header.Bloom, e.TxReceipts, Removed: false,
-                    _eip8116.IsEnabled(block.Number, block.Timestamp)));
+                unstoredReceipts.AddPending(blockHash.ValueHash256, e.TxReceipts);
             }
+        }
+
+        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+        {
+            if (e.PreviousBlock is { } previous) OnBlockRemovedFromMain(previous.Header);
+            BlockHeader header = e.Block.Header;
+            if (!TryMoveCanonicalTip(header, removed: false)) return;
+            if (_unstoredReceipts is { } receiptCache && header.Hash is { } hash
+                && receiptCache.TryTakePending(hash.ValueHash256, out TxReceipt[]? receipts))
+            {
+                if (_blocks.IsTracking)
+                {
+                    BlockEvent item = new(header.Timestamp, header.Bloom, receipts, false, _eip8116.IsEnabled(header.Number, header.Timestamp));
+                    _blocks.Append(item, (Cache: receiptCache, Hash: hash.ValueHash256, Receipts: receipts),
+                        static state => state.Cache.AddCanonical(state.Hash, state.Receipts));
+                }
+            }
+            else
+            {
+                AppendCanonicalReceipts(header, removed: false);
+            }
+        }
+
+        private void OnBlockRemovedFromMain(object? sender, BlockHeaderEventArgs e) => OnBlockRemovedFromMain(e.Header);
+
+        private void OnBlockRemovedFromMain(BlockHeader header)
+        {
+            TryMoveCanonicalTip(header, removed: true);
+            AppendCanonicalReceipts(header, removed: true);
+        }
+
+        private bool TryMoveCanonicalTip(BlockHeader header, bool removed)
+        {
+            if (removed)
+            {
+                _canonicalTip = header.ParentHash;
+                return true;
+            }
+
+            if (header.Hash is { } hash && hash == _canonicalTip) return false;
+            _canonicalTip = header.Hash;
+            return true;
+        }
+
+        private void AppendCanonicalReceipts(BlockHeader header, bool removed)
+        {
+            if (_blocks.IsTracking && header.Hash is { } hash && _unstoredReceipts!.TryGetCanonical(hash.ValueHash256, out TxReceipt[] receipts))
+            {
+                PublishReceipts(header, receipts, removed);
+            }
+        }
+
+        private void PublishReceipts(BlockHeader header, TxReceipt[] receipts, bool removed)
+        {
+            if (_blocks.IsTracking)
+                OnReceiptsInserted(this, new ReceiptsEventArgs(header, receipts, removed, _eip8116.IsEnabled(header.Number, header.Timestamp)));
+        }
+
+        private void OnCanonicalReceiptsInserted(object? sender, ReceiptsEventArgs e)
+        {
+            if (TryMoveCanonicalTip(e.BlockHeader, e.WasRemoved)) OnReceiptsInserted(sender, e);
         }
 
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
-            if (!e.WasRemoved || e.TxReceipts is null || e.TxReceipts.Length == 0 || !_blocks.IsTracking)
+            if (_blocks.IsTracking && e.TxReceipts is { Length: > 0 } receipts)
             {
-                return;
+                _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, receipts, e.WasRemoved, e.LogIndexPerReceipt));
             }
-
-            _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, e.TxReceipts, Removed: true,
-                _eip8116.IsEnabled(e.BlockHeader.Number, e.BlockHeader.Timestamp)));
         }
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
@@ -175,7 +256,7 @@ namespace Nethermind.Facade.Filters
             if (_pendingTransactions.Read(filterId, advance: true, out _) is not { } transactions)
                 return ArrayPoolList<Hash256>.Empty();
 
-            ArrayPoolList<Hash256> result = new(transactions.Count);
+            ArrayPoolList<Hash256> result = [with(transactions.Count)];
             using PooledSet<Hash256>? reported = transactions.Count > 1 ? new PooledSet<Hash256>(transactions.Count) : null;
             foreach (PendingTransaction transaction in transactions)
             {
@@ -299,7 +380,7 @@ namespace Nethermind.Facade.Filters
         /// and the garbage collector releases the rest. Only reads that advance a cursor keep a filter alive in
         /// <see cref="FilterStore"/>, so a filter that stops polling times out and stops holding events back.
         /// </remarks>
-        private sealed class FilterEventLog<TEvent>(FilterStore filterStore)
+        private sealed class FilterEventLog<TEvent>(FilterStore filterStore, Action? onLastFilterRemoved = null)
         {
             private readonly Lock _lock = new();
             private readonly Dictionary<int, Cursor> _cursors = [];
@@ -340,6 +421,7 @@ namespace Nethermind.Facade.Filters
                     if (_cursors.Remove(filterId) && _cursors.Count == 0)
                     {
                         Volatile.Write(ref _isTracking, false);
+                        onLastFilterRemoved?.Invoke();
                     }
                 }
             }
@@ -361,10 +443,26 @@ namespace Nethermind.Facade.Filters
                         return;
                     }
 
-                    Node node = new(item, _tail.Sequence + 1);
-                    _tail.Next = node;
-                    _tail = node.After;
+                    AppendCore(item);
                 }
+            }
+
+            public void Append<TState>(TEvent item, TState state, Action<TState> beforeAppend)
+            {
+                lock (_lock)
+                {
+                    if (_cursors.Count == 0) return;
+
+                    beforeAppend(state);
+                    AppendCore(item);
+                }
+            }
+
+            private void AppendCore(TEvent item)
+            {
+                Node node = new(item, _tail.Sequence + 1);
+                _tail.Next = node;
+                _tail = node.After;
             }
 
             /// <summary>
@@ -446,6 +544,23 @@ namespace Nethermind.Facade.Filters
                 public Link Position = position;
                 public long TrackedSequence { get; } = position.Sequence;
             }
+        }
+
+        private sealed class UnstoredReceipts
+        {
+            private readonly LruCache<ValueHash256, TxReceipt[]> _pending = new(PendingReceiptBlockLimit, "pending filter receipts");
+            private readonly LruCache<ValueHash256, TxReceipt[]> _canonical = new(RecentCanonicalReceiptBlockLimit, "canonical filter receipts");
+
+            public void AddPending(in ValueHash256 blockHash, TxReceipt[] receipts) => _pending.Set(blockHash, receipts);
+
+            public bool TryTakePending(in ValueHash256 blockHash, [MaybeNullWhen(false)] out TxReceipt[] receipts) =>
+                _pending.TryRemove(blockHash, out receipts);
+
+            public void AddCanonical(in ValueHash256 blockHash, TxReceipt[] receipts) => _canonical.Set(blockHash, receipts);
+
+            public bool TryGetCanonical(in ValueHash256 blockHash, out TxReceipt[] receipts) => _canonical.TryGet(blockHash, out receipts);
+
+            public void ClearCanonical() => _canonical.Clear();
         }
     }
 }

@@ -298,7 +298,7 @@ public static class TestEqualityComparers
             return actual.Version == expected.Version &&
                 ByteArraysEqual(actual.Blobs, expected.Blobs) &&
                 ByteArraysEqual(actual.Commitments, expected.Commitments) &&
-                ByteArraysEqual(actual.Proofs, expected.Proofs);
+                actual.Proofs.AsSpan().SequenceEqual(expected.Proofs);
         }
 
         public int GetHashCode(ShardBlobNetworkWrapper obj) => 0;

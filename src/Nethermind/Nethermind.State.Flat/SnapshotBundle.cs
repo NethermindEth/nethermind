@@ -56,6 +56,7 @@ public sealed class SnapshotBundle : IDisposable
 
     internal SnapshotPooledList _snapshots;
     private readonly INodeRecordBuffer? _nodeRecordBuffer;
+    private readonly bool _ownsNodeRecordBuffer;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
 
@@ -67,17 +68,22 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <param name="filterInMemorySlotReads">Serve slot reads with
     /// <see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>; for read-only execution only.</param>
+    /// <param name="privateNodeRecords">Write the trie nodes of this bundle to an <see cref="OverlayNodeRecordBuffer"/> over
+    /// <paramref name="nodeRecordBuffer"/>, freed with the bundle, instead of to <paramref name="nodeRecordBuffer"/> itself;
+    /// for bundles whose snapshots never reach the snapshot repository.</param>
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
         INodeRecordBuffer? nodeRecordBuffer,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
         SnapshotPooledList? snapshots = null,
-        bool filterInMemorySlotReads = false)
+        bool filterInMemorySlotReads = false,
+        bool privateNodeRecords = false)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
-        _nodeRecordBuffer = nodeRecordBuffer;
+        _ownsNodeRecordBuffer = privateNodeRecords && nodeRecordBuffer is not null;
+        _nodeRecordBuffer = _ownsNodeRecordBuffer ? new OverlayNodeRecordBuffer(nodeRecordBuffer!) : nodeRecordBuffer;
         _resourcePool = resourcePool;
         _usage = usage;
         // A bundle that can never have a filter would only pay GetSlotFiltered's extra checks on every read.
@@ -95,6 +101,9 @@ public sealed class SnapshotBundle : IDisposable
     /// <summary>The buffer the trie nodes written through this bundle are recorded in, also resolving the nodes warmed for the current block; <c>null</c> for a trie-less bundle.</summary>
     /// <remarks>Replaced when <see cref="CollectAndApplySnapshot"/> retires the block's transient resource, so read it for each operation.</remarks>
     internal INodeRecordBuffer? NodeRecordBuffer => _cacheableNodeRecordBuffer;
+
+    /// <summary>Whether <see cref="NodeRecordBuffer"/> is a private buffer freed with this bundle.</summary>
+    internal bool OwnsNodeRecordBuffer => _ownsNodeRecordBuffer;
 
     private WarmedNodeRecordBuffer? CreateCacheableNodeRecordBuffer(TransientResource transientResource) =>
         _nodeRecordBuffer is null ? null : new WarmedNodeRecordBuffer(_nodeRecordBuffer, transientResource.WarmedNodeBuffer);
@@ -237,7 +246,7 @@ public sealed class SnapshotBundle : IDisposable
         where TCtx : struct, INodeContext<TCtx>
     {
         GuardDispose();
-        new NodeRecordBufferVisitor<TCtx>(_readOnlySnapshotBundle, StateSnapshot, visitor, options, diagnostics).Accept(rootHash);
+        new NodeRecordBufferVisitor<TCtx>(_readOnlySnapshotBundle, StateSnapshot, visitor, options, diagnostics).Accept(rootHash, null);
     }
 
     /// <summary>Makes the final state trie readable from this bundle.</summary>
@@ -267,12 +276,13 @@ public sealed class SnapshotBundle : IDisposable
     /// reach by no pointer.
     /// </remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    internal bool TryLoadTrieNodeRecord<TArg>(Hash256? address, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    /// <param name="hash">The hash of the node, passed on to persistence.</param>
+    internal bool TryLoadTrieNodeRecord<TArg>(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         GuardDispose();
 
         if (!_transientResource.WarmedNodeBuffer.TryGet(address, path, out NodeRecord record, out _))
-            return _readOnlySnapshotBundle.TryLoadPersistedRlp(address, path, ReadFlags.None, action, arg);
+            return _readOnlySnapshotBundle.TryLoadPersistedRlp(address, path, hash, ReadFlags.None, action, arg);
 
         action(record.Span, arg);
         return true;
@@ -355,7 +365,7 @@ public sealed class SnapshotBundle : IDisposable
         public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => _buffer.StartWriteBatch(alignedTotalLength);
 
         public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            _readOnly.TryLoadPersistedRlp(_address, path, ReadFlags.None, action, arg);
+            _readOnly.TryLoadPersistedRlp(_address, path, hash, ReadFlags.None, action, arg);
 
         public void Dispose()
         {
@@ -576,6 +586,8 @@ public sealed class SnapshotBundle : IDisposable
         _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);
         _transientResource.ReleaseLease();
         _readOnlySnapshotBundle.Dispose();
+        // The scope's pins and the snapshots' pins keep the private records readable until they are released.
+        if (_ownsNodeRecordBuffer) _nodeRecordBuffer!.Dispose();
 
         Metrics.ActiveSnapshotBundle--;
     }

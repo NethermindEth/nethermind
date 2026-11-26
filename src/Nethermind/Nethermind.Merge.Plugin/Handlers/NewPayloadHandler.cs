@@ -32,6 +32,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -267,6 +268,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
             }
 
+            if (block.EncodedBlockAccessList is not null) block.BlockAccessList = null;
+
             // possible that headers sync finished before this was called, so blocks in cache weren't inserted
             if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
             {
@@ -278,6 +281,18 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
             _blockCacheService.TryAddBlock(block);
             return NewPayloadV1Result.Syncing;
+        }
+
+        if (block.BlockAccessList is null && block.EncodedBlockAccessList is { } encodedBlockAccessList && block.Header.BlockAccessListHash is not null)
+        {
+            if (!ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, PayloadTransactionCountGuard.GetParentBoundedGasLimit(block.Header.GasLimit, parentHeader, _specProvider.GetSpec(block.Header), block.Number), out ReadOnlyBlockAccessList? blockAccessList, out string? blockAccessListError, out bool isOverItemLimit))
+            {
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, blockAccessListError));
+                Hash256 parentHeaderHash = parentHeader.GetOrCalculateHash();
+                return NewPayloadV1Result.Invalid(isOverItemLimit && _blockTree.WasProcessed(parentHeader.Number, parentHeaderHash) ? parentHeaderHash : null, blockAccessListError);
+            }
+
+            block.BlockAccessList = blockAccessList;
         }
 
         if (_simulateBlockProduction)
@@ -359,7 +374,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
                 RecordBadBlock(block);
-                return NewPayloadV1Result.Invalid(error);
+                return NewPayloadV1Result.Invalid(null, error);
             }
 
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
@@ -556,7 +571,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 ReadOnlyBlockAccessList? stored = _blockAccessListStore?.Get(block.Number, block.GetOrCalculateHash());
                 return stored?.WireHash == commitment ? stored : null;
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot recheck inclusion list for {block.Hash}: its BAL does not decode. {exception.Message}");
                 return null;

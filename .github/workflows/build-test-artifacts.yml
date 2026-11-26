@@ -46,6 +46,16 @@ jobs:
           sudo chown "$(id -u):$(id -g)" /mnt/nm-artifacts
           ln -s /mnt/nm-artifacts src/Nethermind/artifacts
 
+      - name: Free up disk space (Linux)
+        # Private repositories (nethermind-sec) get the smaller hosted runner, which has no separate /mnt disk:
+        # /mnt is on the root disk, which starts with ~15 GB free. The build output overflows it, the runner worker
+        # dies on ENOSPC mid-build and leaves a red job with no logs. Drop the unused preinstalled toolchains.
+        if: runner.os == 'Linux' && github.event.repository.private
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/local/.ghcup /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/swift /usr/local/share/powershell /usr/lib/jvm /opt/az /usr/local/share/chromium /opt/google
+          docker image prune -af > /dev/null
+          df -h / | tail -1
+
       - name: Free up disk space (macOS)
         # No /mnt on macOS; reclaim disk for the build (a framework-dependent build needs no Xcode).
         if: runner.os == 'macOS'
@@ -61,11 +71,17 @@ jobs:
       - name: Wait for submodules
         wait: submodules
 
-      - name: Build
+      - name: Build Nethermind
         # Skip analyzers (run in code-lint); source generators still run, so binaries are identical.
-        run: |
-          dotnet build src/Nethermind/Nethermind.slnx -c release --no-restore -p:RunAnalyzersDuringBuild=false ${{ matrix.build_args }}
-          dotnet build src/Nethermind/EthereumTests.slnx -c release --no-restore -p:RunAnalyzersDuringBuild=false ${{ matrix.build_args }}
+        run: dotnet build src/Nethermind/Nethermind.slnx -c release --no-restore -p:RunAnalyzersDuringBuild=false ${{ matrix.build_args }}
+
+      - name: Prune foreign-RID native assets before the second build
+        # Foreign-RID natives are most of the first build's output. Dropping them here keeps the peak below the
+        # private-repo runner's disk; the prune after the second build catches anything it copies back.
+        run: dotnet run --file scripts/ci/prune-runtimes.cs -- "${{ matrix.rid }}"
+
+      - name: Build EthereumTests
+        run: dotnet build src/Nethermind/EthereumTests.slnx -c release --no-restore -p:RunAnalyzersDuringBuild=false ${{ matrix.build_args }}
 
       - name: Prune foreign-RID native assets
         run: dotnet run --file scripts/ci/prune-runtimes.cs -- "${{ matrix.rid }}"

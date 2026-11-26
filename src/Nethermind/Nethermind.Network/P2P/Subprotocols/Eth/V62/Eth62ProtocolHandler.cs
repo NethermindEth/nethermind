@@ -20,6 +20,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -61,8 +62,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _txGossipPolicy = transactionsGossipPolicy ?? TxPool.ShouldGossip.Instance;
             _handleSlow = HandleSlow;
             _handlePooledTransactionsSlow = HandlePooledTransactionsSlow;
-
-            EnsureGossipPolicy();
         }
 
         public void DisableTxFiltering() => _floodController.IsEnabled = false;
@@ -113,7 +112,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
-            int size = message.Content.ReadableBytes;
+            int size = message.Content.Length;
 
             bool CanAcceptBlockGossip()
             {
@@ -139,7 +138,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 case Eth62MessageCode.Status:
                     {
-                        using StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
+                        using StatusMessage statusMsg = Deserialize<StatusMessage>(message);
                         ReportIn(statusMsg, size);
                         Handle(statusMsg);
                         return true;
@@ -147,7 +146,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.NewBlockHashes:
                     if (CanAcceptBlockGossip())
                     {
-                        using NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content);
+                        using NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message);
                         ReportIn(newBlockHashesMessage, size);
                         Handle(newBlockHashesMessage);
                     }
@@ -179,7 +178,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleInBackground<GetBlockHeadersMessage, BlockHeadersMessage>(message, Handle);
                     return true;
                 case Eth62MessageCode.BlockHeaders:
-                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
+                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message);
                     ReportIn(headersMsg, size);
                     Handle(headersMsg, size);
                     return true;
@@ -187,7 +186,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleInBackground<GetBlockBodiesMessage, BlockBodiesMessage>(message, Handle);
                     return true;
                 case Eth62MessageCode.BlockBodies:
-                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
+                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message);
                     ReportIn(bodiesMsg, size);
                     HandleBodies(bodiesMsg, size);
                     return true;
@@ -210,18 +209,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        private bool CanGossip => EnsureGossipPolicy();
-
-        private bool EnsureGossipPolicy()
-        {
-            if (!_gossipPolicy.CanGossipBlocks)
-            {
-                SyncServer.StopNotifyingPeersAboutNewBlocks();
-                return false;
-            }
-
-            return true;
-        }
+        private bool CanGossip => _gossipPolicy.CanGossipBlocks;
 
         private void Handle(StatusMessage status)
         {
@@ -247,8 +235,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             };
 
             Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
-            HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
+            HeadHash = status.BestHash;
             NotifyProtocolInitialized(eventArgs);
         }
 
@@ -256,21 +244,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             where T : P2PMessage
         {
             message = null;
-            RlpReader ctx = new(packet.Content.AsSpan());
+            RlpReader ctx = new(packet.Content.Span);
             if (typeof(T) == typeof(V66.Messages.PooledTransactionsMessage))
             {
-                ctx.ReadSequenceLength();
+                ctx = ctx.EnterSequence(out _);
                 ctx.DecodeLong();
             }
-            int transactionCount = TransactionsMessageSerializer.ReadTransactionCount(ref ctx, out _);
-            InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.ReadableBytes, transactionCount);
+            int transactionCount = TransactionsMessageSerializer.ReadTransactionCount(ref ctx);
+            InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.Length, transactionCount);
             if (reservation is null)
             {
                 // Locally discarded responses cannot be judged for usefulness. As with scheduler rejection,
                 // resetting both sampling windows avoids false penalties but also discards unrelated evidence.
                 if (pooledResponse)
                     IgnorePooledTransactionResponse();
-                ReportIn("Transaction message ignored, inbound byte budget exhausted", packet.Content.ReadableBytes);
+                ReportIn("Transaction message ignored, inbound byte budget exhausted", packet.Content.Length);
                 return false;
             }
 
@@ -279,7 +267,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 // Pooled responses keep every item: the flood controller and announcement checks judge the response as sent.
                 using (TransactionsMessageSerializer.SkipKnown(typeof(T) == typeof(TransactionsMessage) ? this : null))
                 {
-                    message = Deserialize<T>(packet.Content);
+                    message = Deserialize<T>(packet);
                 }
                 TransactionsMessage transactions = getTransactions(message);
                 reservation.Attach(transactions.Transactions);

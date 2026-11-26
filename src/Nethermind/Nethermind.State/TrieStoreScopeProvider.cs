@@ -167,7 +167,7 @@ public partial class TrieStoreScopeProvider(
             }
 
             // Copy the span into a pooled array so the parallel loop can capture it.
-            ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
+            ArrayPoolList<ReadOnlyAccountChanges> accountChanges = [with(bal.AccountChanges.AsSpan())];
 
             _hintBalCts = new CancellationTokenSource();
             CancellationToken token = _hintBalCts.Token;
@@ -257,7 +257,11 @@ public partial class TrieStoreScopeProvider(
                     sink.OnStorageRead(in cell, in value);
                 }
             }
-            catch (MissingTrieNodeException) { }
+            catch (MissingTrieNodeException e)
+            {
+                ILogger logger = _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>();
+                if (logger.IsTrace) logger.Trace($"BAL warmup of {address} stopped on a missing trie node: {e.Message}");
+            }
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
@@ -327,7 +331,7 @@ public partial class TrieStoreScopeProvider(
         int estimatedAccountCount,
         ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
+        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = [with(estimatedAccountCount)];
         private Action<Address, Hash256>? _markDirty;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;

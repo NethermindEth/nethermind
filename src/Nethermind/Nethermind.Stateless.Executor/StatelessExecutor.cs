@@ -9,8 +9,10 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Stateless.Execution.IO;
 
@@ -33,7 +35,7 @@ public static partial class StatelessExecutor
             ReadOnlySpan<byte> consumed = data[WitnessNode.EndPlacement(data)..];
             KeccakHash.DonateConsumedInput(consumed[WitnessCode.PlaceInConsumedInput(payload.Witness.Codes, consumed)..]);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsOutOfMemory(ex))
         {
             Debug.WriteLine(ex.Message);
             return output;
@@ -73,7 +75,7 @@ public static partial class StatelessExecutor
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsOutOfMemory(ex))
         {
             Debug.WriteLine(ex.Message);
         }
@@ -87,13 +89,22 @@ public static partial class StatelessExecutor
         return output;
     }
 
+    /// <summary>Returns whether <paramref name="exception"/> is running out of memory, which the validation result must not report.</summary>
+    /// <remarks>
+    /// Memory is a limit of the machine validating the block, not a property of the block, so a valid block can run out of it.
+    /// Reporting that as an invalid block would make the guest prove a valid block invalid; letting the exception through
+    /// aborts the run instead. Inner exceptions count too, at any depth, as decoders and initializers wrap what they catch.
+    /// </remarks>
+    private static bool IsOutOfMemory(Exception exception) => exception.IsOrWraps<OutOfMemoryException>();
+
     /// <summary>Loads the KZG trusted setup the block's blob transactions need; the guest verifies none.</summary>
     static partial void InitializeKzg(IReleaseSpec spec);
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
         => Execute(suggestedBlock, witness, specProvider, validateHashes: true);
 
-    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes)
+    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes,
+        IBlockTracer? blockTracer = null)
     {
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
         BlockHeader parentHeader;
@@ -132,7 +143,7 @@ public static partial class StatelessExecutor
         }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
-            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
+            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree, blockValidator);
 
         if (!blockProcessingEnv.WorldState.TryBeginScope(parentHeader, out IDisposable? scope))
         {
@@ -146,7 +157,7 @@ public static partial class StatelessExecutor
         (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
             suggestedBlock,
             ProcessingOptions.ReadOnlyChain,
-            NullBlockTracer.Instance,
+            blockTracer ?? NullBlockTracer.Instance,
             specProvider.GetSpec(suggestedBlock.Header));
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))

@@ -421,7 +421,7 @@ internal class VotesManager : IVotesManager, IDisposable
         out string? error)
     {
         //TODO: try to minimize number of allocations, at least for common cases
-        Dictionary<Address, int> signedBy = new(allowedSigners.Count);
+        Dictionary<Address, int> signedBy = [with(allowedSigners.Count)];
         foreach (Address signer in allowedSigners)
             signedBy.TryAdd(signer, 0);
 
@@ -463,9 +463,7 @@ internal class VotesManager : IVotesManager, IDisposable
 
     private bool TrySign(Vote vote)
     {
-        KeccakRlpWriter writer = new();
-        _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
-        ValueHash256 hash = writer.GetValueHash();
+        ValueHash256 hash = _voteDecoder.ComputeValueHash(vote, RlpBehaviors.ForSealing);
         if (!_signer.TrySign(in hash, out Signature signature))
             return false;
         vote.Signature = signature;

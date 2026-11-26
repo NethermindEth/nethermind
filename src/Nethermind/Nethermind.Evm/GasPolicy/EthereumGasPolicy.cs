@@ -226,41 +226,33 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static bool TryConsumeAccountAccessGasWithDelegation(ref EthereumGasPolicy gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         Address address,
         Address? delegated)
     {
         if (!spec.UseHotAndColdStorage)
             return true;
 
-        bool notOutOfGas = TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address);
-        return notOutOfGas && (delegated is null || TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated));
+        bool notOutOfGas = TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, address);
+        return notOutOfGas && (delegated is null || TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, delegated));
     }
 
     public static bool TryConsumeAccountAccessGas(ref EthereumGasPolicy gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         Address address,
         AccountAccessKind kind = AccountAccessKind.Default) =>
-        TryConsumeAccountAccessGasCore<ColdAccountGasCost, DynamicStorageMode>(ref gas, spec, in accessTracker, isTracingAccess, address, kind);
+        TryConsumeAccountAccessGasCore<ColdAccountGasCost, DynamicStorageMode>(ref gas, spec, in accessTracker, address, kind);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryConsumeAccountAccessGasCore<TColdCost, TMode>(ref EthereumGasPolicy gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         Address address,
         AccountAccessKind kind)
         where TColdCost : struct, ISpecGasCost
         where TMode : struct, IStorageMode
     {
         if (!TMode.UseHotAndColdStorage(spec)) return true;
-        if (isTracingAccess)
-        {
-            // Ensure that tracing simulates access-list behavior.
-            accessTracker.WarmUp(address);
-        }
 
         // WarmUp first so the warm path skips IsPrecompile; precompiles are pre-warmed at tx start.
         return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
@@ -289,11 +281,10 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     public static bool TryConsumeStorageAccessGas(ref EthereumGasPolicy gas,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec) =>
-        TryConsumeStorageAccessGasCore<DynamicStorageMode>(ref gas, in accessTracker, isTracingAccess, in storageCell, storageAccessType, spec);
+        TryConsumeStorageAccessGasCore<DynamicStorageMode>(ref gas, in accessTracker, in storageCell, storageAccessType, spec);
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -326,20 +317,20 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref EthereumGasPolicy gas,
-        ref readonly StackAccessTracker accessTracker, bool isTracingAccess,
+        ref readonly StackAccessTracker accessTracker,
         in StorageCell storageCell, StorageAccessType storageAccessType, IReleaseSpec spec)
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IFlag =>
-        TryConsumeStorageAccessGasCore<StorageMode<Eip2929, Eip8038>>(ref gas, in accessTracker, isTracingAccess, in storageCell, storageAccessType, spec);
+        TryConsumeStorageAccessGasCore<StorageMode<Eip2929, Eip8038>>(ref gas, in accessTracker, in storageCell, storageAccessType, spec);
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref EthereumGasPolicy gas, IReleaseSpec spec,
-        ref readonly StackAccessTracker accessTracker, bool isTracingAccess, Address address,
+        ref readonly StackAccessTracker accessTracker, Address address,
         AccountAccessKind kind = AccountAccessKind.Default)
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IFlag =>
-        TryConsumeAccountAccessGasCore<ColdAccountGasCost<Eip8038>, StorageMode<Eip2929, Eip8038>>(ref gas, spec, in accessTracker, isTracingAccess, address, kind);
+        TryConsumeAccountAccessGasCore<ColdAccountGasCost<Eip8038>, StorageMode<Eip2929, Eip8038>>(ref gas, spec, in accessTracker, address, kind);
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -381,7 +372,6 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryConsumeStorageAccessGasCore<TMode>(ref EthereumGasPolicy gas,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec)
@@ -389,17 +379,6 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (!TMode.UseHotAndColdStorage(spec))
             return true;
-        if (isTracingAccess)
-        {
-            bool isCold = accessTracker.IsCold(in storageCell);
-            bool gasAvailable = storageAccessType != StorageAccessType.SLOAD && !TMode.IsEip8038Enabled(spec)
-                || UpdateGas(ref gas, GasCostOf.WarmStateRead);
-
-            if (gasAvailable && isCold)
-                accessTracker.WarmUp(in storageCell);
-
-            return gasAvailable;
-        }
 
         // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
         if (accessTracker.WarmUp(in storageCell))
@@ -767,7 +746,31 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return false;
     }
 
-    private sealed record IntrinsicGasMemo(IReleaseSpec Spec, bool IsEip2780SelfTransfer, IntrinsicGas<EthereumGasPolicy> Gas) : IIntrinsicGasMemo;
+    private sealed class IntrinsicGasMemo : IIntrinsicGasMemo
+    {
+        public readonly IReleaseSpec Spec;
+        public readonly bool IsEip2780SelfTransfer;
+        private readonly ulong _standardGas;
+        private readonly long _stateGas;
+        private readonly ulong _floorGas;
+
+        public IntrinsicGasMemo(IReleaseSpec spec, bool isEip2780SelfTransfer, in IntrinsicGas<EthereumGasPolicy> gas)
+        {
+            Debug.Assert(gas.Standard is { StateGasSpill: 0, StateGasSpillRefunded: 0, OutOfGas: false, IndependentStatePool: false }
+                && gas.Standard.StateReservoir == gas.Standard.StateGasUsed
+                && gas.FloorGas is { StateReservoir: 0, StateGasUsed: 0, StateGasSpill: 0, StateGasSpillRefunded: 0, OutOfGas: false, IndependentStatePool: false },
+                "Intrinsic gas sets only the fields the memo keeps, with the same state gas in the reservoir and as used.");
+            Spec = spec;
+            IsEip2780SelfTransfer = isEip2780SelfTransfer;
+            _standardGas = gas.Standard.Value;
+            _stateGas = gas.Standard.StateReservoir;
+            _floorGas = gas.FloorGas.Value;
+        }
+
+        public IntrinsicGas<EthereumGasPolicy> Gas => new(
+            new EthereumGasPolicy { Value = _standardGas, StateReservoir = _stateGas, StateGasUsed = _stateGas },
+            FromULong(_floorGas));
+    }
 
     internal static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGasWithoutMemo(Transaction tx, IReleaseSpec spec) =>
         CalculateIntrinsicGasWithoutMemo(tx, spec, IsEip2780SelfTransfer(tx, spec));

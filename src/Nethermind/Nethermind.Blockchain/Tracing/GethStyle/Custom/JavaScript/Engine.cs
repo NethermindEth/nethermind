@@ -35,6 +35,7 @@ public partial class Engine : IDisposable
     private NullThrowObserver? _availableNullThrowObserver;
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
+    private dynamic _toUint8Array;
     private int _disposed;
     private int _externalInterruptRequested;
     private readonly Lock _interruptGate = new();
@@ -126,6 +127,7 @@ public partial class Engine : IDisposable
 
         _bigInteger = V8Engine.Evaluate(_runtime.BigInteger);
         _createUint8Array = V8Engine.Evaluate(_runtime.CreateUint8Array);
+        _toUint8Array = V8Engine.Evaluate(_runtime.ToUint8Array);
     }
 
     /// <summary>
@@ -141,7 +143,7 @@ public partial class Engine : IDisposable
     /// <summary>
     /// Converts input to 20 byte Address byte representation
     /// </summary>
-    private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToArray().ToTypedScriptArray();
+    private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToTypedScriptArray();
 
     /// <summary>
     /// Checks if contract at given address is a precompile
@@ -164,13 +166,13 @@ public partial class Engine : IDisposable
     /// <summary>
     /// Creates a contract address from sender and nonce (used for CREATE instruction)
     /// </summary>
-    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToArray().ToTypedScriptArray();
+    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToTypedScriptArray();
 
     /// <summary>
     /// Creates a contract address from sender, salt and initcode (used for CREATE2 instruction)
     /// </summary>
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
-        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToArray().ToTypedScriptArray();
+        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToTypedScriptArray();
 
     /// <summary>
     /// Stops the running script, and any script the engine runs later. Called from a timer thread, so the engine
@@ -261,7 +263,29 @@ public partial class Engine : IDisposable
     /// <summary>
     /// Creates a JavaScript V8Engine typed byte array
     /// </summary>
-    public ITypedArray<byte> CreateUint8Array(byte[] buffer) => _createUint8Array(buffer);
+    public ITypedArray<byte> CreateUint8Array(ReadOnlySpan<byte> buffer)
+    {
+        ITypedArray<byte> array = _createUint8Array(buffer.Length);
+        if (buffer.Length > 0)
+        {
+            array.WriteBytes(buffer, 0, (ulong)buffer.Length, 0);
+        }
+
+        return array;
+    }
+
+    /// <summary>
+    /// Converts the elements of a script array to bytes the way assigning them to a <c>Uint8Array</c> does.
+    /// </summary>
+    /// <remarks>
+    /// As goja's <c>toUint8</c> in Geth, each element goes through JavaScript numeric coercion (so <c>'0x10'</c> and
+    /// objects with <c>valueOf</c> count), is truncated and wraps into a byte, and NaN and infinities become 0.
+    /// </remarks>
+    internal byte[] ToBytes(ScriptObject values)
+    {
+        ITypedArray<byte> array = _toUint8Array(values);
+        return array.Length == 0 ? [] : array.ToArray();
+    }
 
     /// <summary>
     /// Creates a JavaScript BigInteger object

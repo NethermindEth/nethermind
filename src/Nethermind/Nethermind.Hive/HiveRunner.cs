@@ -12,6 +12,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Hive
@@ -31,15 +32,20 @@ namespace Nethermind.Hive
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
-            blockTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
-            blockProcessingQueue.BlockRemoved += BlockProcessingFinished;
+            try
+            {
+                blockTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
+                blockProcessingQueue.BlockRemoved += BlockProcessingFinished;
 
-            ListEnvironmentVariables();
-            await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
-            await InitializeChain(hiveConfig.ChainFile);
-
-            blockTree.NewBestSuggestedBlock -= OnNewBestSuggestedBlock;
-            blockProcessingQueue.BlockRemoved -= BlockProcessingFinished;
+                ListEnvironmentVariables();
+                await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
+                await InitializeChain(hiveConfig.ChainFile);
+            }
+            finally
+            {
+                blockTree.NewBestSuggestedBlock -= OnNewBestSuggestedBlock;
+                blockProcessingQueue.BlockRemoved -= BlockProcessingFinished;
+            }
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
         }
@@ -136,7 +142,7 @@ namespace Nethermind.Hive
                     if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
                     await ProcessBlock(block, parent);
                 }
-                catch (RlpException e)
+                catch (RlpReaderException e)
                 {
                     if (_logger.IsError) _logger.Error($"HIVE Wrong block rlp.", e);
                 }
@@ -178,11 +184,11 @@ namespace Nethermind.Hive
 
         private static Block DecodeNextChainBlock(byte[] chainFileContent, int position, out int nextPosition)
         {
-            RlpReader reader = new(chainFileContent) { Position = position };
+            RlpReader reader = new(chainFileContent.AsSpan(position));
             reader.PeekNextItem();
             Block block = Rlp.Decode<Block>(ref reader, RlpBehaviors.AllowExtraBytes)
-                ?? throw new RlpException("Block decoding returned null.");
-            nextPosition = reader.Position;
+                ?? throw new RlpReaderException("Block decoding returned null.");
+            nextPosition = position + reader.BytesRead;
             return block;
         }
 
@@ -190,9 +196,8 @@ namespace Nethermind.Hive
         {
             byte[] fileContent = File.ReadAllBytes(file);
             if (_logger.IsDebug) _logger.Debug(fileContent.ToHexString());
-            Rlp blockRlp = new(fileContent);
-            return Rlp.Decode<Block>(blockRlp)
-                ?? throw new RlpException("Block decoding returned null.");
+            return Rlp.Decode<Block>(fileContent)
+                ?? throw new RlpReaderException("Block decoding returned null.");
         }
 
         private static async Task WaitForBlockProcessing(SemaphoreSlim semaphore)

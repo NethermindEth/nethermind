@@ -7,7 +7,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Encoding;
@@ -48,7 +48,7 @@ public class AuRaBlockStoreDecoderTests
         // The pre-fix wiring left BlockStore without a decoder, so it fell back to the base HeaderDecoder.
         BlockStore baseStore = new(db);
 
-        Assert.That(() => baseStore.Get(block.Number, block.Hash!), Throws.InstanceOf<RlpException>());
+        Assert.That(() => baseStore.Get(block.Number, block.Hash!), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]

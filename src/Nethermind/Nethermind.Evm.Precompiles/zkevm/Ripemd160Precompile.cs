@@ -16,7 +16,10 @@ public partial class Ripemd160Precompile
     {
         byte[] output = new byte[32];
 
-        Accelerators.Ripemd160(inputData.Span, output);
+        if (ZiskFlag.IsActive)
+            Accelerators.ZiskRipemd160(inputData.Span, output);
+        else
+            Accelerators.Ripemd160(inputData.Span, output);
 
         return output;
     }

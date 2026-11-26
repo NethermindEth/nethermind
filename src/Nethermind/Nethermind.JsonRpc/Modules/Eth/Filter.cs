@@ -43,6 +43,11 @@ public class Filter : IJsonRpcParam
                 filter = doc.RootElement;
             }
 
+            if (filter.ValueKind != JsonValueKind.Object)
+            {
+                throw new SafePublicMessageFormatException("expected a filter object");
+            }
+
             bool hasBlockHash = filter.TryGetProperty("blockHash"u8, out JsonElement blockHashElement);
             bool hasFromBlock = filter.TryGetProperty("fromBlock"u8, out JsonElement fromBlockElement);
             bool hasToBlock = filter.TryGetProperty("toBlock"u8, out JsonElement toBlockElement);
@@ -113,7 +118,7 @@ public class Filter : IJsonRpcParam
                     throw new JsonException($"Too many addresses ({addressCount}). Max is {MaxAddressCount}.");
                 }
 
-                HashSet<AddressAsKey> result = new(addressCount);
+                HashSet<AddressAsKey> result = [with(addressCount)];
                 int index = 0;
                 foreach (JsonElement element in token.EnumerateArray())
                 {

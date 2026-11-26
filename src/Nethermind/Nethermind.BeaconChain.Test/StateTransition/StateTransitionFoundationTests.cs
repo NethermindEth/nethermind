@@ -1,0 +1,645 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Buffers.Binary;
+using System.Collections;
+using System.Diagnostics;
+using System.Diagnostics.Tracing;
+using System.Reflection;
+using System.Security.Cryptography;
+using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+
+using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
+using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
+
+namespace Nethermind.BeaconChain.Test.StateTransition;
+
+public class StateTransitionFoundationTests
+{
+    private const ulong Gwei = 1_000_000_000;
+
+    [Test]
+    public void Deferred_queues_keep_their_arrays_when_nothing_is_consumed([Values] bool gloas)
+    {
+        PendingDeposit[] deposits = [new() { Slot = ulong.MaxValue }];
+        PendingConsolidation[] consolidations = [new() { SourceIndex = 0, TargetIndex = 1 }];
+        PendingPartialWithdrawal[] withdrawals = [new() { ValidatorIndex = 0, WithdrawableEpoch = ulong.MaxValue }];
+        PendingDeposit[] actualDeposits;
+        PendingConsolidation[] actualConsolidations;
+        PendingPartialWithdrawal[] actualWithdrawals;
+        if (gloas)
+        {
+            BeaconStateGloas state = CreateGloasState(out _, out _);
+            state.PendingDeposits = deposits;
+            state.PendingConsolidations = consolidations;
+            state.PendingPartialWithdrawals = withdrawals;
+            state.Validators![0].WithdrawableEpoch = Presets.FarFutureEpoch;
+            state.LatestBlockHash = state.LatestExecutionPayloadBid!.BlockHash;
+            BuilderPendingWithdrawal[] builderWithdrawals = state.BuilderPendingWithdrawals!;
+            GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
+            GloasEpochProcessing.ProcessPendingConsolidations(state);
+            GloasBlockProcessing.ProcessWithdrawals(state);
+            Assert.That(state.BuilderPendingWithdrawals, Is.SameAs(builderWithdrawals));
+            actualDeposits = state.PendingDeposits;
+            actualConsolidations = state.PendingConsolidations;
+            actualWithdrawals = state.PendingPartialWithdrawals;
+        }
+        else
+        {
+            BeaconStateFulu state = CreateFuluState(64);
+            state.PendingDeposits = deposits;
+            state.PendingConsolidations = consolidations;
+            state.PendingPartialWithdrawals = withdrawals;
+            state.Validators![0].WithdrawableEpoch = Presets.FarFutureEpoch;
+            EpochProcessing.ProcessPendingDeposits(state, new EpochCache());
+            EpochProcessing.ProcessPendingConsolidations(state);
+            BlockProcessing.ProcessWithdrawals(state, new() { Withdrawals = [] });
+            actualDeposits = state.PendingDeposits;
+            actualConsolidations = state.PendingConsolidations;
+            actualWithdrawals = state.PendingPartialWithdrawals;
+        }
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(actualDeposits, Is.SameAs(deposits));
+        Assert.That(actualConsolidations, Is.SameAs(consolidations));
+        Assert.That(actualWithdrawals, Is.SameAs(withdrawals));
+    }
+
+    [Test]
+    public void Proposer_selection_accepts_maximum_balance_on_the_largest_random_draw()
+    {
+        BeaconStateFulu state = CreateState(64, Presets.MaxEffectiveBalanceElectra);
+        byte[] seed = Convert.FromHexString("A63A6E1CB8C82332B7BBE43EBA9B49886EFCFE7AA503BCFC9AD30C95314D625E");
+        int[] indices = Enumerable.Range(0, 64).ToArray();
+        int firstCandidate = SwapOrNotShuffle.ComputeShuffledIndex(0, indices.Length, seed);
+        byte[] preimage = new byte[40];
+        seed.CopyTo(preimage, 0);
+
+        int proposer = state.ComputeProposerIndex(indices, seed);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(SHA256.HashData(preimage)), Is.EqualTo(ushort.MaxValue), "the first draw must exercise equality");
+        Assert.That(proposer, Is.EqualTo(firstCandidate));
+    }
+
+    [Test]
+    public void Deposit_request_bridge_index_changes_only_before_Fulu([Values] bool fulu)
+    {
+        BeaconStateFulu state = CreateState(64);
+        state.DepositRequestsStartIndex = Presets.UnsetDepositRequestsStartIndex;
+        state.PendingDeposits = [];
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet with { FuluForkEpoch = fulu ? 0ul : ulong.MaxValue };
+        DepositRequest request = new() { Index = 42, Amount = Gwei };
+
+        BlockProcessing.ProcessDepositRequest(state, request, spec);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(state.DepositRequestsStartIndex, Is.EqualTo(fulu ? Presets.UnsetDepositRequestsStartIndex : 42ul));
+        Assert.That(state.PendingDeposits, Has.Length.EqualTo(1));
+    }
+
+    [Test]
+    public void Pending_deposits_wait_for_the_Eth1_bridge_only_before_Fulu([Values] bool fulu)
+    {
+        BeaconStateFulu state = CreateFuluState(64);
+        state.Slot = Presets.SlotsPerEpoch;
+        state.FinalizedCheckpoint!.Epoch = 1;
+        state.DepositRequestsStartIndex = 1;
+        state.Eth1DepositIndex = 0;
+        state.PendingDeposits = [new PendingDeposit
+        {
+            Pubkey = state.Validators![0].Pubkey,
+            WithdrawalCredentials = state.Validators[0].WithdrawalCredentials,
+            Amount = Gwei,
+            Slot = 1,
+        }];
+        ulong balance = state.Balances![0];
+        EpochCache cache = new() { SigningSpec = BeaconChainSpec.Mainnet with { FuluForkEpoch = fulu ? 0ul : ulong.MaxValue } };
+
+        EpochProcessing.ProcessPendingDeposits(state, cache);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(state.Balances[0], Is.EqualTo(balance + (fulu ? Gwei : 0)));
+        Assert.That(state.PendingDeposits, Has.Length.EqualTo(fulu ? 0 : 1));
+    }
+
+    [Test]
+    public void Exit_churn_rejects_epoch_overflow()
+    {
+        BeaconStateFulu state = CreateState(64);
+        state.EarliestExitEpoch = ulong.MaxValue;
+        state.ExitBalanceToConsume = 0;
+
+        Assert.That(() => state.ComputeExitEpochAndUpdateChurn(Gwei, new EpochCache()), Throws.TypeOf<BeaconStateException>());
+    }
+
+    [Test]
+    public void Bulk_shuffle_matches_per_index_shuffle_and_round_trips([Values(1, 2, 33, 100, 1000, 6271)] int count)
+    {
+        byte[] seed = SHA256.HashData(BitConverter.GetBytes(count));
+
+        int[] perIndex = Enumerable.Range(0, count)
+            .Select(i => SwapOrNotShuffle.ComputeShuffledIndex(i, count, seed)).ToArray();
+
+        int[] bulk = Enumerable.Range(0, count).ToArray();
+        SwapOrNotShuffle.ShuffleList(bulk, seed);
+        Assert.That(bulk, Is.EqualTo(perIndex), "backwards bulk shuffle must equal the per-index mapping");
+
+        SwapOrNotShuffle.ShuffleList(bulk, seed, forwards: true);
+        Assert.That(bulk, Is.Ordered, "forwards shuffle must invert the backwards shuffle");
+    }
+
+    // Spec compute_shuffled_index: disjoint parallel swaps must preserve the permutation and its inverse.
+    [Test]
+    [NonParallelizable]
+    public void Bulk_shuffle_of_a_registry_sized_list_is_split_across_threads_and_matches_per_index_shuffle()
+    {
+        Assume.That(Environment.ProcessorCount, Is.GreaterThan(1), "a single processor runs the pieces in turn");
+        const int count = 400_009;
+        byte[] seed = SHA256.HashData(BitConverter.GetBytes(count));
+        int[] bulk = Enumerable.Range(0, count).ToArray();
+
+        using ParallelLoopCounter loops = new();
+        SwapOrNotShuffle.ShuffleList(bulk, seed);
+
+        Assert.That(loops.Begun, Is.GreaterThan(0), "pieces of the rounds ran as parallel loops");
+        for (int i = 0; i < count; i += 97)
+        {
+            Assert.That(bulk[i], Is.EqualTo(SwapOrNotShuffle.ComputeShuffledIndex(i, count, seed)), $"position {i}");
+        }
+
+        SwapOrNotShuffle.ShuffleList(bulk, seed, forwards: true);
+        Assert.That(bulk, Is.EqualTo(Enumerable.Range(0, count)), "inverse permutation");
+    }
+
+    [TestCase(100, 1)]
+    [TestCase(9200, 2)]
+    public void Committee_cache_assigns_every_active_validator_exactly_once(int validatorCount, int expectedCommitteesPerSlot)
+    {
+        // Every 10th validator is inactive to verify the active-set filtering.
+        BeaconStateFulu state = CreateState(validatorCount, inactiveEvery: 10);
+        EpochCache epochCache = new();
+        CommitteeCache cache = epochCache.GetCommitteeCache(state, epoch: 0);
+
+        int[] activeIndices = state.GetActiveValidatorIndices(0);
+        List<int> assigned = [];
+        int minSize = int.MaxValue, maxSize = 0;
+        for (ulong slot = 0; slot < Presets.SlotsPerEpoch; slot++)
+        {
+            for (int index = 0; index < cache.CommitteesPerSlot; index++)
+            {
+                ReadOnlySpan<int> committee = cache.GetBeaconCommittee(slot, index);
+                minSize = Math.Min(minSize, committee.Length);
+                maxSize = Math.Max(maxSize, committee.Length);
+                foreach (int validatorIndex in committee)
+                {
+                    assigned.Add(validatorIndex);
+                }
+            }
+        }
+        assigned.Sort();
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(cache.CommitteesPerSlot, Is.EqualTo(expectedCommitteesPerSlot));
+        Assert.That(cache.ActiveValidatorCount, Is.EqualTo(activeIndices.Length));
+        Assert.That(assigned, Is.EqualTo(activeIndices), "every active validator must appear exactly once per epoch");
+        Assert.That(maxSize - minSize, Is.LessThanOrEqualTo(1), "committee sizes must be balanced");
+        Assert.That(epochCache.GetCommitteeCache(state, 0), Is.SameAs(cache), "the LRU must reuse the cached shuffling");
+    }
+
+    [TestCase(64, 32 * Gwei, 128 * Gwei, 128 * Gwei, 0 * Gwei, Description = "Floored at MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA")]
+    [TestCase(15_625, 2048 * Gwei, 488 * Gwei, 256 * Gwei, 232 * Gwei, Description = "TAB/quotient rounded down to increment; exit churn capped")]
+    public void Churn_limits_follow_total_active_balance(int validatorCount, ulong effectiveBalance, ulong expectedBalanceChurn, ulong expectedActivationExitChurn, ulong expectedConsolidationChurn)
+    {
+        BeaconStateFulu state = CreateState(validatorCount, effectiveBalance);
+        EpochCache cache = new();
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.GetTotalActiveBalance(cache), Is.EqualTo((ulong)validatorCount * effectiveBalance));
+        Assert.That(state.GetBalanceChurnLimit(cache), Is.EqualTo(expectedBalanceChurn));
+        Assert.That(state.GetActivationExitChurnLimit(cache), Is.EqualTo(expectedActivationExitChurn));
+        Assert.That(state.GetConsolidationChurnLimit(cache), Is.EqualTo(expectedConsolidationChurn));
+        Assert.That(state.GetValidatorChurnLimit(cache), Is.EqualTo(Presets.MinPerEpochChurnLimit));
+        Assert.That(state.GetValidatorActivationChurnLimit(cache), Is.EqualTo(Presets.MinPerEpochChurnLimit));
+    }
+
+    [TestCase("0x000000000000000000000000000000000000000000000000000000000000aaaa", 32 * Gwei, 33 * Gwei, false, false, 32 * Gwei, false)]
+    [TestCase("0x010000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd", 32 * Gwei, 33 * Gwei, false, true, 32 * Gwei, true)]
+    [TestCase("0x010000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd", 31 * Gwei, 33 * Gwei, false, true, 32 * Gwei, false)]
+    [TestCase("0x020000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd", 2048 * Gwei, 2049 * Gwei, true, false, 2048 * Gwei, true)]
+    [TestCase("0x020000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd", 2048 * Gwei, 2048 * Gwei, true, false, 2048 * Gwei, false)]
+    [TestCase("0x020000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd", 32 * Gwei, 33 * Gwei, true, false, 2048 * Gwei, false)]
+    public void Withdrawal_credential_predicates(string credentials, ulong effectiveBalance, ulong balance, bool expectCompounding, bool expectEth1, ulong expectedMaxEffectiveBalance, bool expectPartiallyWithdrawable)
+    {
+        Validator validator = new()
+        {
+            WithdrawalCredentials = new Hash256(Bytes.FromHexString(credentials)),
+            EffectiveBalance = effectiveBalance,
+            WithdrawableEpoch = 10,
+        };
+        bool expectExecution = expectCompounding || expectEth1;
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validator.HasCompoundingWithdrawalCredential(), Is.EqualTo(expectCompounding));
+        Assert.That(validator.HasEth1WithdrawalCredential(), Is.EqualTo(expectEth1));
+        Assert.That(validator.HasExecutionWithdrawalCredential(), Is.EqualTo(expectExecution));
+        Assert.That(validator.GetMaxEffectiveBalance(), Is.EqualTo(expectedMaxEffectiveBalance));
+        Assert.That(validator.IsPartiallyWithdrawableValidator(balance), Is.EqualTo(expectPartiallyWithdrawable));
+        Assert.That(validator.IsFullyWithdrawableValidator(balance, epoch: 10), Is.EqualTo(expectExecution), "fully withdrawable once withdrawable epoch is reached");
+        Assert.That(validator.IsFullyWithdrawableValidator(balance, epoch: 9), Is.False, "not fully withdrawable before the withdrawable epoch");
+    }
+
+    [Test]
+    public void Exit_queue_consumes_churn_and_slashing_applies_electra_penalties()
+    {
+        // 64 validators * 32 ETH => balance churn floored at 128 ETH/epoch; first exit epoch is
+        // compute_activation_exit_epoch(0) = 5.
+        BeaconStateFulu state = CreateState(64, 32 * Gwei);
+        EpochCache cache = new();
+        Validator[] validators = state.Validators!;
+
+        state.InitiateValidatorExit(1, cache);
+        state.InitiateValidatorExit(1, cache); // Idempotent: a second call must not consume churn.
+        state.InitiateValidatorExit(2, cache);
+        state.SlashValidator(4, cache); // Consumes 32 ETH churn via the implied exit.
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validators[1].ExitEpoch, Is.EqualTo(5ul));
+            Assert.That(validators[1].WithdrawableEpoch, Is.EqualTo(5 + Presets.MinValidatorWithdrawabilityDelay));
+            Assert.That(state.EarliestExitEpoch, Is.EqualTo(5ul));
+            Assert.That(state.ExitBalanceToConsume, Is.EqualTo(32 * Gwei), "128 - 3 * 32 ETH of churn left in epoch 5");
+
+            Assert.That(validators[4].Slashed, Is.True);
+            Assert.That(validators[4].ExitEpoch, Is.EqualTo(5ul));
+            Assert.That(validators[4].WithdrawableEpoch, Is.EqualTo(Presets.EpochsPerSlashingsVector), "max(exit withdrawability, epoch + EPOCHS_PER_SLASHINGS_VECTOR)");
+            Assert.That(state.Slashings![0], Is.EqualTo(32 * Gwei));
+            ulong penalty = 32 * Gwei / Presets.MinSlashingPenaltyQuotientElectra;
+            Assert.That(state.Balances![4], Is.EqualTo(32 * Gwei - penalty));
+            // Proposer (lookahead slot 0 => validator 0) collects the full whistleblower reward.
+            Assert.That(state.Balances[0], Is.EqualTo(32 * Gwei + 32 * Gwei / Presets.WhistleblowerRewardQuotientElectra));
+        }
+
+        // A fourth 32 ETH exit exceeds the remaining churn and rolls over to epoch 6.
+        state.InitiateValidatorExit(5, cache);
+        state.InitiateValidatorExit(6, cache);
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validators[5].ExitEpoch, Is.EqualTo(5ul));
+        Assert.That(validators[6].ExitEpoch, Is.EqualTo(6ul));
+        Assert.That(state.EarliestExitEpoch, Is.EqualTo(6ul));
+        Assert.That(state.ExitBalanceToConsume, Is.EqualTo(96 * Gwei));
+    }
+
+    [Test]
+    public void Proposer_index_is_read_from_the_lookahead()
+    {
+        BeaconStateFulu state = CreateState(64, 32 * Gwei);
+        state.Slot = 70; // Epoch 2; the lookahead covers epochs 2 and 3 (slots 64..127).
+        state.ProposerLookahead = [.. Enumerable.Range(0, 64).Select(static i => (ulong)i)];
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.GetBeaconProposerIndex(), Is.EqualTo(6ul), "lookahead[state.slot % SLOTS_PER_EPOCH]");
+        Assert.That(state.GetBeaconProposerIndex(64), Is.EqualTo(0ul));
+        Assert.That(state.GetBeaconProposerIndex(95), Is.EqualTo(31ul));
+        Assert.That(state.GetBeaconProposerIndex(96), Is.EqualTo(32ul), "next epoch reads the second half");
+        Assert.That(state.GetBeaconProposerIndex(127), Is.EqualTo(63ul));
+        Assert.That(() => state.GetBeaconProposerIndex(63), Throws.TypeOf<BeaconStateException>(), "past epoch");
+        Assert.That(() => state.GetBeaconProposerIndex(128), Throws.TypeOf<BeaconStateException>(), "beyond the lookahead");
+    }
+
+    [TestCase(1ul, 5ul, 2ul, 5ul, true, Description = "Double vote: same target epoch, different data")]
+    [TestCase(1ul, 6ul, 2ul, 5ul, true, Description = "Surround vote: 1 surrounds 2")]
+    [TestCase(2ul, 5ul, 1ul, 6ul, false, Description = "Surrounded vote is not slashable from this side")]
+    [TestCase(1ul, 5ul, 1ul, 6ul, false, Description = "Different target epochs, no surround")]
+    public void Attestation_data_slashability(ulong source1, ulong target1, ulong source2, ulong target2, bool expected)
+    {
+        AttestationData data1 = CreateAttestationData(source1, target1, beaconBlockRootByte: 1);
+        AttestationData data2 = CreateAttestationData(source2, target2, beaconBlockRootByte: 2);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(BeaconStateAccessors.IsSlashableAttestationData(data1, data2), Is.EqualTo(expected));
+        Assert.That(BeaconStateAccessors.IsSlashableAttestationData(data1, data1), Is.False, "identical data is never slashable");
+    }
+
+    private static AttestationData CreateAttestationData(ulong sourceEpoch, ulong targetEpoch, byte beaconBlockRootByte) => new()
+    {
+        Slot = 100,
+        BeaconBlockRoot = FromFirstByte(beaconBlockRootByte),
+        Source = new Checkpoint { Epoch = sourceEpoch, Root = FromFirstByte(0x0A) },
+        Target = new Checkpoint { Epoch = targetEpoch, Root = FromFirstByte(0x0B) },
+    };
+
+    private static BeaconStateFulu CreateState(int validatorCount, ulong effectiveBalance = 32 * Gwei, int inactiveEvery = 0) =>
+        CreateMinimalFuluState(validatorCount, FromFirstByte(0x42), effectiveBalance, inactiveEvery);
+
+    private sealed class ParallelLoopCounter : EventListener
+    {
+        private int _begun;
+
+        public int Begun => Volatile.Read(ref _begun);
+
+        protected override void OnEventSourceCreated(EventSource eventSource)
+        {
+            if (eventSource.Name == "System.Threading.Tasks.Parallel.EventSource")
+                EnableEvents(eventSource, EventLevel.Informational, EventKeywords.All);
+        }
+
+        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        {
+            if (eventData.EventName == "ParallelLoopBegin")
+                Interlocked.Increment(ref _begun);
+        }
+    }
+}
+
+[TestFixture]
+public class ImportHotPathAllocationTests
+{
+    private const int ValidatorCount = 131_072;
+    private static readonly int AttestersPerSlot = ValidatorCount / (int)Presets.SlotsPerEpoch;
+
+    // Spec get_attesting_indices requires the index list; reward arithmetic must not allocate per credited flag.
+    private static readonly long AttestationBudgetBytes = 6L * AttestersPerSlot * sizeof(ulong);
+
+    // Spec process_pending_deposits has no pubkey lookup when the queue is empty.
+    private const long EmptyDepositQueueBudgetBytes = 64 * 1024;
+
+    [Test]
+    public void Request_registry_checks_colliding_keys_and_returns_first_duplicate()
+    {
+        Validator[] candidates = Enumerable.Range(0, 8).Select(static _ => new Validator()).ToArray();
+        GiveEveryValidatorItsOwnPubkey(candidates);
+        // A four-entry index has two buckets. At least four of eight keys share one bucket.
+        Validator[] colliding = candidates.GroupBy(v => v.Pubkey.GetHashCode() & 1).MaxBy(g => g.Count())!.ToArray();
+        Validator[] validators = [colliding[0], colliding[1], colliding[2], colliding[0]];
+        ValidatorPubkeyIndex registry = new();
+        registry.BeginBlock(Hash256.Zero);
+        registry.Extend(validators);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.Find(validators, colliding[0].Pubkey), Is.Zero);
+            Assert.That(registry.Find(validators, colliding[1].Pubkey), Is.EqualTo(1));
+            Assert.That(registry.Find(validators, colliding[3].Pubkey), Is.EqualTo(-1));
+        }
+    }
+
+    [Test]
+    public void Empty_request_blocks_and_read_only_refusals_keep_the_admitted_prefix()
+    {
+        Validator[] validators = [new(), new()];
+        GiveEveryValidatorItsOwnPubkey(validators);
+        ValidatorPubkeyIndex index = new();
+        EpochCache cache = new() { RequestRegistry = index };
+        Hash256 parent = FromFirstByte(1);
+        WithdrawalRequest[] withdrawals = [new() { ValidatorPubkey = validators[1].Pubkey }];
+        index.BeginBlock(Hash256.Zero);
+        cache.IndexRequestPubkeys(validators, [], []);
+        Assert.That(IndexArray(index, "_buckets"), Is.Empty);
+        cache.IndexRequestPubkeys(validators, withdrawals, []);
+        index.AdmitBlock(parent);
+        int[] certified = IndexArray(index, "_buckets");
+
+        index.BeginBlock(FromFirstByte(99));
+        cache.IndexRequestPubkeys(validators, [], []);
+        index.BeginBlock(parent);
+        cache.IndexRequestPubkeys(validators, withdrawals, []);
+        index.BeginBlock(parent);
+        cache.IndexRequestPubkeys(validators, withdrawals, []);
+        Assert.That(IndexArray(index, "_buckets"), Is.SameAs(certified));
+    }
+
+    private static int[] IndexArray(ValidatorPubkeyIndex index, string name) =>
+        (int[])typeof(ValidatorPubkeyIndex).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(index)!;
+    [Test]
+    public void Request_registry_rebuilds_for_divergent_appends([Values] bool admitFirstChild)
+    {
+        Validator[] candidates = [new(), new(), new(), new()];
+        GiveEveryValidatorItsOwnPubkey(candidates);
+        Validator[] parent = candidates[..2];
+        Validator[] child = [.. parent, candidates[2]];
+        Validator[] sibling = [.. parent, candidates[3]];
+        ConsolidationRequest[] requests = [new() { SourcePubkey = candidates[2].Pubkey, TargetPubkey = candidates[3].Pubkey }];
+        Hash256 parentRoot = FromFirstByte(1);
+        ValidatorPubkeyIndex index = new();
+        EpochCache cache = new() { RequestRegistry = index };
+        index.BeginBlock(Hash256.Zero);
+        cache.IndexRequestPubkeys(parent, [], requests);
+        index.AdmitBlock(parentRoot);
+        index.BeginBlock(parentRoot);
+        cache.IndexRequestPubkeys(child, [], requests);
+        Assert.That(cache.FindRequestValidator(child, candidates[2].Pubkey), Is.EqualTo(2));
+        if (admitFirstChild)
+            index.AdmitBlock(FromFirstByte(2));
+
+        index.BeginBlock(parentRoot);
+        // Prepared blocks use a new EpochCache; the index belongs to the importer.
+        cache = new EpochCache { RequestRegistry = index };
+        cache.IndexRequestPubkeys(sibling, [], requests);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.FindRequestValidator(sibling, candidates[2].Pubkey), Is.Null);
+            Assert.That(cache.FindRequestValidator(sibling, candidates[3].Pubkey), Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Legacy_deposit_updates_this_batch_and_the_next_request_block()
+    {
+        Validator[] extended = [new(), new(), new()];
+        GiveEveryValidatorItsOwnPubkey(extended);
+        Validator[] initial = extended[..2];
+        BlsPublicKey appended = extended[2].Pubkey;
+        ValidatorPubkeyIndex index = new();
+        EpochCache cache = new() { RequestRegistry = index };
+        index.BeginBlock(Hash256.Zero);
+        cache.IndexDepositPubkeys(initial, [new Deposit { Data = new DepositData { Pubkey = appended } }]);
+        Assert.That(cache.FindRequestValidator(initial, appended), Is.Null);
+        cache.RegisterDepositedValidator(extended);
+        Assert.That(cache.FindRequestValidator(extended, appended), Is.EqualTo(2));
+        index.AdmitBlock(FromFirstByte(1));
+
+        index.BeginBlock(FromFirstByte(1));
+        Validator[] clone = (Validator[])extended.Clone();
+        cache.IndexRequestPubkeys(clone, [new WithdrawalRequest { ValidatorPubkey = appended }], []);
+        Assert.That(cache.FindRequestValidator(clone, appended), Is.EqualTo(2));
+    }
+
+    [Test]
+    [Explicit("Mainnet-scale validator pubkey lookup measurement")]
+    public void Benchmark_request_pubkey_index()
+    {
+        const int count = 2_000_000;
+        const int blocks = 16;
+        Validator[] validators = Enumerable.Range(0, count).Select(static _ => new Validator()).ToArray();
+        GiveEveryValidatorItsOwnPubkey(validators);
+        Validator[] clone = (Validator[])validators.Clone();
+        WithdrawalRequest[][] withdrawals = new WithdrawalRequest[blocks + 1][];
+        ConsolidationRequest[][] consolidations = new ConsolidationRequest[blocks + 1][];
+        long[] expected = new long[blocks + 1];
+        byte[] absentBytes = new byte[BlsPublicKey.Length];
+        absentBytes[^1] = 0xff;
+        for (int slot = 0; slot <= blocks; slot++)
+        {
+            int first = (count - 1 + slot * 170_141) % count;
+            int second = (count / 2 + slot * 281_117) % count;
+            BinaryPrimitives.WriteInt32LittleEndian(absentBytes, slot);
+            BlsPublicKey absent = new(absentBytes);
+            withdrawals[slot] = [new() { ValidatorPubkey = validators[first].Pubkey }, new() { ValidatorPubkey = absent }];
+            consolidations[slot] = [new() { SourcePubkey = validators[second].Pubkey, TargetPubkey = absent }];
+            expected[slot] = first + second - 2;
+        }
+        Hash256[] roots = Enumerable.Range(0, blocks + 2).Select(i => FromFirstByte((byte)i)).ToArray();
+        for (int sample = 0; sample < 4; sample++)
+        {
+            foreach (bool indexed in new[] { sample % 2 == 0, sample % 2 != 0 })
+            {
+                ValidatorPubkeyIndex? registry = indexed ? new() : null;
+                foreach (int rounds in new[] { 1, blocks })
+                {
+                    long allocated = GC.GetAllocatedBytesForCurrentThread();
+                    long start = Stopwatch.GetTimestamp();
+                    long sum = 0;
+                    for (int i = 0; i < rounds; i++)
+                    {
+                        int slot = rounds == 1 ? 0 : i + 1;
+                        registry?.BeginBlock(roots[slot]);
+                        Validator[] stateRegistry = (slot & 1) == 0 ? validators : clone;
+                        EpochCache cache = new() { RequestRegistry = registry };
+                        cache.IndexRequestPubkeys(stateRegistry, withdrawals[slot], consolidations[slot]);
+                        sum += cache.FindRequestValidator(stateRegistry, withdrawals[slot][0].ValidatorPubkey)!.Value;
+                        sum += cache.FindRequestValidator(stateRegistry, withdrawals[slot][1].ValidatorPubkey) ?? -1;
+                        sum += cache.FindRequestValidator(stateRegistry, consolidations[slot][0].SourcePubkey)!.Value;
+                        sum += cache.FindRequestValidator(stateRegistry, consolidations[slot][0].TargetPubkey) ?? -1;
+                        cache.EndImportedRequests();
+                        registry?.AdmitBlock(roots[slot + 1]);
+                    }
+                    TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+                    long bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
+                    Assert.That(sum, Is.EqualTo(rounds == 1 ? expected[0] : expected[1..].Sum()));
+                    TestContext.Progress.WriteLine($"sample={sample} indexed={indexed} blocks={rounds} elapsed_ms={elapsed.TotalMilliseconds:F4} bytes={bytes}");
+                }
+                if (registry is not null)
+                {
+                    int[] buckets = IndexArray(registry, "_buckets");
+                    int[] links = IndexArray(registry, "_next");
+                    TestContext.Progress.WriteLine($"retained buckets={buckets.Length} links={links.Length} payload_bytes={(buckets.LongLength + links.LongLength) * sizeof(int)}");
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void Fulu_attestation_reward_does_not_allocate_for_every_credited_flag()
+    {
+        BeaconStateFulu state = CreateFuluState(ValidatorCount);
+        state.Slot = 1;
+        EpochCache cache = new();
+        Attestation attestation = WholeSlot(state, cache);
+
+        BeaconStateFulu warm = state.Clone();
+        BlockProcessing.ProcessAttestation(warm, attestation, cache, new PubkeyCache(), verifySignature: false);
+        BeaconStateFulu measured = state.Clone();
+
+        long allocated = Allocated(() => BlockProcessing.ProcessAttestation(measured, attestation, cache, new PubkeyCache(), verifySignature: false));
+
+        AssertAttestationAllocation(allocated, measured.CurrentEpochParticipation!);
+    }
+
+    [Test]
+    public void Gloas_attestation_reward_does_not_allocate_for_every_credited_flag()
+    {
+        BeaconStateGloas state = GloasForkTransition.UpgradeToGloas(CreateFuluStateAtBoundary(ValidatorCount), SyntheticSpec());
+        EpochCache cache = new();
+        AttestationData data = VoteFor(state, state.Slot - 1, state.GetPreviousEpoch(), state.GetBlockRootAtSlot(state.Slot - 1));
+        CommitteeCache committees = cache.GetCommitteeCache(state, data.Target!.Epoch);
+        AttestationGloas attestation = new()
+        {
+            Data = data,
+            CommitteeBits = new BitArray(committees.CommitteesPerSlot, true) { Length = Presets.MaxCommitteesPerSlot },
+            AggregationBits = new BitArray(AttestersPerSlot, true),
+        };
+
+        BeaconStateGloas warm = state.Clone();
+        GloasBlockProcessing.ProcessAttestation(warm, attestation, parentSlot: state.Slot - 1, cache, new PubkeyCache(), verifySignature: false);
+        BeaconStateGloas measured = state.Clone();
+
+        long allocated = Allocated(() => GloasBlockProcessing.ProcessAttestation(measured, attestation, parentSlot: state.Slot - 1, cache, new PubkeyCache(), verifySignature: false));
+
+        AssertAttestationAllocation(allocated, measured.PreviousEpochParticipation!);
+    }
+
+    [Test]
+    public void Fulu_empty_deposit_queue_does_not_index_the_registry()
+    {
+        BeaconStateFulu state = CreateFuluState(ValidatorCount);
+        GiveEveryValidatorItsOwnPubkey(state.Validators!);
+        EpochCache cache = new();
+        _ = cache.GetTotalActiveBalance(state);
+
+        long allocated = Allocated(() => EpochProcessing.ProcessPendingDeposits(state, cache));
+
+        Assert.That(allocated, Is.LessThan(EmptyDepositQueueBudgetBytes), "bytes allocated with no deposit pending");
+    }
+
+    [Test]
+    public void Gloas_empty_deposit_queue_does_not_index_the_registry()
+    {
+        BeaconStateGloas state = GloasForkTransition.UpgradeToGloas(CreateFuluStateAtBoundary(ValidatorCount), SyntheticSpec());
+        GiveEveryValidatorItsOwnPubkey(state.Validators!);
+        EpochCache cache = new();
+        _ = cache.GetTotalActiveBalance(state);
+
+        long allocated = Allocated(() => GloasEpochProcessing.ProcessPendingDeposits(state, cache));
+
+        Assert.That(allocated, Is.LessThan(EmptyDepositQueueBudgetBytes), "bytes allocated with no deposit pending");
+    }
+
+    private static Attestation WholeSlot(BeaconStateFulu state, EpochCache cache)
+    {
+        CommitteeCache committees = cache.GetCommitteeCache(state, 0);
+        BitArray committeeBits = new(committees.CommitteesPerSlot, true) { Length = Presets.MaxCommitteesPerSlot };
+
+        return new Attestation
+        {
+            AggregationBits = new BitArray(AttestersPerSlot, true),
+            Data = new AttestationData
+            {
+                Slot = 0,
+                Index = 0,
+                BeaconBlockRoot = state.GetBlockRootAtSlot(0),
+                Source = state.CurrentJustifiedCheckpoint,
+                Target = new Checkpoint { Epoch = 0, Root = state.GetBlockRoot(0) },
+            },
+            CommitteeBits = committeeBits,
+        };
+    }
+
+    private static void GiveEveryValidatorItsOwnPubkey(Validator[] validators)
+    {
+        byte[] bytes = new byte[BlsPublicKey.Length];
+        for (int i = 0; i < validators.Length; i++)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(bytes, i);
+            validators[i].Pubkey = new BlsPublicKey(bytes);
+        }
+    }
+
+    private static void AssertAttestationAllocation(long allocated, byte[] participation)
+    {
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(allocated, Is.LessThan(AttestationBudgetBytes), "bytes allocated by one slot-wide attestation");
+        Assert.That(participation.Count(static flags => flags != 0), Is.EqualTo(AttestersPerSlot), "every attester must be credited");
+    }
+
+    private static long Allocated(Action action)
+    {
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        action();
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+}

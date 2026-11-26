@@ -20,7 +20,6 @@ namespace Nethermind.HealthChecks
 
         public string Author => "Nethermind";
 
-        public bool MustInitialize => true;
         public bool Enabled => true; // Always enabled
 
 

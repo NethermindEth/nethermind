@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -20,6 +21,7 @@ using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test.Data;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Blockchain.Headers;
@@ -27,6 +29,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Repositories;
 using Newtonsoft.Json.Linq;
@@ -76,10 +79,10 @@ public class HashesOnlyBlockReaderTests
     }
 
     [Test]
-    public void Read_StoredBlock_HashesEveryTransactionAsTheDecoder()
+    public void Read_StoredBlock_HashesEveryTransactionAsTheDecoder([Values] bool native)
     {
         Block block = BlockShapes().First(static shape => shape.Name == "prague").Block;
-        MemDb blockDb = new();
+        using TestMemDb blockDb = native ? new PinnedTestDb() : new TestMemDb();
         new BlockStore(blockDb).Insert(block);
         HashesOnlyBlockReader reader = StandaloneReader(blockDb, new HeaderDecoder());
 
@@ -87,6 +90,14 @@ public class HashesOnlyBlockReaderTests
 
         Assert.That(hashesOnly.TransactionHashes, Is.EqualTo(block.Transactions.Select(static tx => tx.CalculateHash().ValueHash256).ToArray()),
             "every transaction type hashes to its canonical hash");
+        if (blockDb is PinnedTestDb pinned)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.NativeReads, Is.EqualTo(1), "the block is read as a native slice");
+                Assert.That(pinned.LiveHandles, Is.Zero, "the slice is released once the block is decoded");
+            }
+        }
     }
 
     [Test]
@@ -567,18 +578,15 @@ public class HashesOnlyBlockReaderTests
     // A later fork's body field: one more item after the withdrawals.
     private static byte[] WithTrailingBodyField(byte[] storedBlock)
     {
-        RlpReader reader = new(storedBlock);
-        int end = reader.ReadSequenceLength() + reader.Position;
-        List<Rlp> items = [];
-        while (reader.Position < end)
+        RlpReader reader = new RlpReader(storedBlock).EnterSequence(out _);
+        List<byte[]> items = [];
+        while (reader.HasNext)
         {
-            int length = reader.PeekNextRlpLength();
-            items.Add(new Rlp(reader.Peek(length).ToArray()));
-            reader.SkipBytes(length);
+            items.Add(reader.ReadEncodedItem().ToArray());
         }
 
-        items.Add(Rlp.OfEmptyList);
-        return Rlp.Encode([.. items]).Bytes;
+        items.Add(RlpTestHelper.OfEmptyList);
+        return RlpTestHelper.EncodeSequence([.. items]);
     }
 
     private static string Serialize(IBlockForRpcFactory factory, HashesOnlyBlock hashesOnly) =>

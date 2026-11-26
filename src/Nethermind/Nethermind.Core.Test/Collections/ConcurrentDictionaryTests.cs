@@ -86,7 +86,7 @@ public class ConcurrentDictionaryTests
                     Assert.That(populated.NoLockClear(), Is.True);
                     Assert.That(empty.NoLockClear(), Is.False);
                 }
-            });
+            }, testToken);
             clearTask.Wait(testToken);
         }
 

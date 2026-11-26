@@ -22,12 +22,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public SyncMode Current { get; } = syncMode;
 
-        public event EventHandler<SyncModeChangedEventArgs> Preparing
-        {
-            add { }
-            remove { }
-        }
-
         public event EventHandler<SyncModeChangedEventArgs> Changed
         {
             add { }
@@ -37,12 +31,6 @@ namespace Nethermind.Synchronization.ParallelSync
         public Task StopAsync() => Task.CompletedTask;
         public Task StartAsync() => Task.CompletedTask;
         public void Update() { }
-
-        public event EventHandler<SyncModeChangedEventArgs> Changing
-        {
-            add { }
-            remove { }
-        }
 
         public void Dispose() { }
     }

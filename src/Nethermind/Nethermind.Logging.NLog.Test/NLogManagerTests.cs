@@ -226,6 +226,50 @@ namespace Nethermind.Logging.NLog.Test
             }
         }
 
+        [Test]
+        public void Shutdown_does_not_load_the_configuration_again()
+        {
+            try
+            {
+                using (new NLogManager("test", null, "Abc.*:Warn"))
+                {
+                    NLogManager.Shutdown();
+
+                    Assert.That(LogManager.Configuration, Is.Null);
+                }
+            }
+            finally
+            {
+                LogManager.Configuration = ShippedConfiguration();
+            }
+        }
+
+        [Test]
+        public void Init_LogRules_are_ignored_without_a_configuration()
+        {
+            TextWriter previousWriter = InternalLogger.LogWriter;
+            Level previousLevel = InternalLogger.LogLevel;
+            using StringWriter internalLog = new();
+            try
+            {
+                NLogManager.Shutdown();
+                Assert.That(LogManager.Configuration, Is.Null, "precondition");
+
+                InternalLogger.LogWriter = internalLog;
+                InternalLogger.LogLevel = Level.Warn;
+
+                Assert.DoesNotThrow(() => new NLogManager("test", null, "Abc.*:Warn").Dispose());
+            }
+            finally
+            {
+                InternalLogger.LogWriter = previousWriter;
+                InternalLogger.LogLevel = previousLevel;
+                LogManager.Configuration = ShippedConfiguration();
+            }
+
+            Assert.That(internalLog.ToString(), Does.Contain("Ignoring Init.LogRules 'Abc.*:Warn': there is no NLog configuration."));
+        }
+
         /// <summary>Loads the linked <c>NLog.config</c> into a fresh configuration.</summary>
         private static LoggingConfiguration ShippedConfiguration() =>
             new XmlLoggingConfiguration(Path.Combine(AppContext.BaseDirectory, "NLog.config"));

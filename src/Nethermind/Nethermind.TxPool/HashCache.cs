@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
@@ -22,6 +25,8 @@ namespace Nethermind.TxPool
     {
         private const int SafeCapacity = 1024 * 16;
         private const int InvalidBlobProofsCapacity = 1024;
+        private const int NonceGapsCapacity = 1024;
+        private const int HashesPerNonceGap = 4;
 
         private readonly AssociativeKeyCache<ValueHash256> _longTermCache = new(
             longTermCapacity);
@@ -34,6 +39,9 @@ namespace Nethermind.TxPool
         // forgotten for another copy to be judged.
         private readonly AssociativeKeyCache<ValueHash256> _invalidBlobProofsCache = new(
             InvalidBlobProofsCapacity);
+
+        private readonly Lock _nonceGapsLock = new();
+        private readonly ClockCache<(AddressAsKey Sender, ulong Nonce), List<Hash256>> _nonceGaps = new(NonceGapsCapacity);
 
         public bool Get(Hash256 hash) => Get(in hash.ValueHash256);
 
@@ -68,6 +76,40 @@ namespace Nethermind.TxPool
 
         public void SetInvalidBlobProofs(Hash256 hash) => _invalidBlobProofsCache.Set(in hash.ValueHash256);
 
+        public bool HasInvalidBlobProofs(in ValueHash256 hash) => _invalidBlobProofsCache.GetNoRefresh(in hash);
+
+        public void SetNonceGap(Address sender, ulong predecessorNonce, Hash256 hash)
+        {
+            lock (_nonceGapsLock)
+            {
+                (AddressAsKey, ulong) key = (sender, predecessorNonce);
+                if (!_nonceGaps.TryGet(key, out List<Hash256> hashes))
+                {
+                    _nonceGaps.Set(key, [with(HashesPerNonceGap), hash]);
+                }
+                else if (hashes.Count < HashesPerNonceGap && !hashes.Contains(hash))
+                {
+                    hashes.Add(hash);
+                }
+            }
+        }
+
+        public void DeleteNonceGap(Address sender, ulong nonce)
+        {
+            List<Hash256>? hashes;
+            lock (_nonceGapsLock)
+            {
+                if (!_nonceGaps.Delete((sender, nonce), out hashes)) return;
+            }
+
+            foreach (Hash256 hash in hashes) DeleteFromCurrentBlock(hash);
+        }
+
+        private void ClearNonceGaps()
+        {
+            lock (_nonceGapsLock) _nonceGaps.Clear();
+        }
+
         /// <summary>
         /// Deletes <paramref name="hash"/> from the current block cache only when it was rejected for its sidecar.
         /// </summary>
@@ -88,6 +130,7 @@ namespace Nethermind.TxPool
 
         public void ClearCurrentBlockCache()
         {
+            ClearNonceGaps();
             _invalidBlobProofsCache.Clear();
             _currentBlockCache.Clear();
         }
@@ -98,6 +141,7 @@ namespace Nethermind.TxPool
         public void ClearAll()
         {
             _longTermCache.Clear();
+            ClearNonceGaps();
             _invalidBlobProofsCache.Clear();
             _currentBlockCache.Clear();
         }

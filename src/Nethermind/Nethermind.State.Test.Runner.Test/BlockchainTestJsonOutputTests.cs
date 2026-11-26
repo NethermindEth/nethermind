@@ -522,7 +522,7 @@ public class BlockchainTestJsonOutputTests
     private (string Path, string BlockHash) WriteOneBlockFixture()
     {
         TestBlockHeaderJson genesis = GenesisHeader(baseFeePerGas: "0x07");
-        byte[] blockRlp = Rlp.Encode(new Block(JsonToEthereumTest.Convert(ChildHeader(genesis, "0x01")))).Bytes;
+        byte[] blockRlp = Rlp.Encode(new Block(JsonToEthereumTest.Convert(ChildHeader(genesis, "0x01"))));
         string blockHash = Rlp.Decode<Block>(blockRlp).Header.Hash!.ToString();
 
         string file = Path.Combine(_directory, "one_block.json");
@@ -563,7 +563,7 @@ public class BlockchainTestJsonOutputTests
     {
         TestBlockHeaderJson genesis = GenesisHeader(baseFeePerGas: "0x07");
         // Number 2 on genesis skips a block number, which header validation rejects.
-        byte[] blockRlp = Rlp.Encode(new Block(JsonToEthereumTest.Convert(ChildHeader(genesis, "0x02")))).Bytes;
+        byte[] blockRlp = Rlp.Encode(new Block(JsonToEthereumTest.Convert(ChildHeader(genesis, "0x02"))));
         string blockHash = Rlp.Decode<Block>(blockRlp).Header.Hash!.ToString();
 
         string file = Path.Combine(_directory, "rejected_blocks.json");
@@ -679,5 +679,5 @@ public class BlockchainTestJsonOutputTests
     }
 
     private static string HashOf(TestBlockHeaderJson header) =>
-        Rlp.Decode<Block>(Rlp.Encode(new Block(JsonToEthereumTest.Convert(header))).Bytes).Header.Hash!.ToString();
+        Rlp.Decode<Block>(Rlp.Encode(new Block(JsonToEthereumTest.Convert(header)))).Header.Hash!.ToString();
 }

@@ -25,7 +25,7 @@ public static class VersionToMetrics
                 .ToArray();
 
             return versions.Length == 3
-                ? versions[0] * 100_000 + versions[1] * 1_000 + versions[2]
+                ? checked(versions[0] * 100_000 + versions[1] * 1_000 + versions[2])
                 : throw new ArgumentException("Invalid version format");
         }
         catch (Exception)

@@ -61,11 +61,11 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Test]
         public void Posting_enumerator_respects_direction_and_range(
-            [Values("empty", "forward", "backward", "mixed", "compressed")] string layout, [Values] bool backwards)
+            [Values("empty", "forward", "backward", "mixed", "compressed", "sizes")] string layout, [Values] bool backwards)
         {
             using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
             int[] blocks = SeedPostingChunks(db, layout);
-            (int From, int To)[] ranges = [(-1, int.MaxValue), (0, 0), (1, 1), (2, 2), (3, 5), (5, 15), (6, 14), (9, 11), (0, 5), (0, 7), (0, 9), (0, 11), (0, 13), (0, 15), (16, 18), (19, int.MaxValue), (int.MaxValue, int.MaxValue)];
+            (int From, int To)[] ranges = [(-1, int.MaxValue), (0, 0), (1, 1), (2, 2), (3, 5), (5, 15), (6, 14), (9, 11), (0, 5), (0, 7), (0, 9), (0, 11), (0, 13), (0, 15), (16, 18), (19, int.MaxValue), (120, 310), (139, 200), (int.MaxValue, int.MaxValue)];
             foreach ((int from, int to) in ranges)
             {
                 using IEnumerator<int> enumerator = CreatePostingEnumerator(db, from, to, backwards);
@@ -82,6 +82,24 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Test]
+        public void Posting_enumerator_ends_when_disposed([Values] bool backwards)
+        {
+            using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
+            SeedPostingChunks(db, "mixed");
+            IEnumerator<int> enumerator = CreatePostingEnumerator(db, 0, int.MaxValue, backwards);
+            Assert.That(enumerator.MoveNext(), Is.True);
+
+            enumerator.Dispose();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enumerator.MoveNext(), Is.False);
+                Assert.That(enumerator.Current, Is.EqualTo(-1));
+            }
+            enumerator.Dispose();
+        }
+
+        [Test]
         public void Posting_enumerator_rejects_inverted_range([Values] bool backwards)
         {
             using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
@@ -90,7 +108,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Test]
         public void Posting_enumerator_retains_one_view_when_chunks_are_replaced(
-            [Values("mixed", "compressed")] string layout, [Values] bool backwards)
+            [Values("mixed", "compressed", "sizes")] string layout, [Values] bool backwards)
         {
             using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
             int[] blocks = SeedPostingChunks(db, layout);
@@ -137,6 +155,24 @@ namespace Nethermind.Db.Test.LogIndex
         private int[] SeedPostingChunks(IDb db, string layout)
         {
             List<int> blocks = [];
+            if (layout == "sizes")
+            {
+                // Chunks that grow, shrink and grow again, compressed and not, so an enumerator reuses its buffer.
+                WritePostingChunk(db, Postfix.BackwardMerge, [3, 1], compressed: false);
+                blocks.AddRange([1, 3]);
+                foreach ((int first, int count, bool compressed) in new[] { (100, 40, true), (200, 3, true), (300, 20, false) })
+                {
+                    byte[] suffix = new byte[4];
+                    BinaryPrimitives.WriteInt32BigEndian(suffix, first + 1);
+                    int[] chunk = Enumerable.Range(first, count).ToArray();
+                    WritePostingChunk(db, suffix, chunk, compressed);
+                    blocks.AddRange(chunk);
+                }
+                WritePostingChunk(db, Postfix.ForwardMerge, [400, 401, int.MaxValue], compressed: false);
+                blocks.AddRange([400, 401, int.MaxValue]);
+                return blocks.ToArray();
+            }
+
             if (layout is "backward" or "mixed" or "compressed")
             {
                 WritePostingChunk(db, Postfix.BackwardMerge, [3, 1], compressed: false);
@@ -163,7 +199,7 @@ namespace Nethermind.Db.Test.LogIndex
 
         private void WritePostingChunk(IDb db, byte[] suffix, int[] blocks, bool compressed)
         {
-            byte[] value = new byte[blocks.Length * sizeof(int) + 64];
+            byte[] value = new byte[sizeof(int) + CompressionAlgorithm.GetMaxCompressedLength(blocks.Length)];
             if (compressed)
             {
                 BinaryPrimitives.WriteInt32LittleEndian(value, -blocks.Length);
@@ -191,15 +227,19 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 using CancellationTokenSource cancellation = new();
                 Task cancelledWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), cancellation.Token);
-                Task completedWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
+                Task<bool> completedWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
                 Assert.That(completedWait.IsCompleted, Is.False);
                 cancellation.Cancel();
                 Assert.That(async () => await cancelledWait, Throws.InstanceOf<OperationCanceledException>());
 
-                await compressor.WaitUntilEmptyAsync(TimeSpan.Zero, CancellationToken.None);
-                Assert.That(completedWait.IsCompleted, Is.False, "a timeout or cancellation must not signal queue completion");
+                bool drainedWithinZero = await compressor.WaitUntilEmptyAsync(TimeSpan.Zero, CancellationToken.None);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(drainedWithinZero, Is.False);
+                    Assert.That(completedWait.IsCompleted, Is.False, "a timeout or cancellation must not signal queue completion");
+                }
                 compressor.Start();
-                await completedWait.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(await completedWait.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
 
                 await Task.WhenAll(Enumerable.Range(0, 4).Select(async _ =>
                 {
@@ -588,6 +628,72 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, maxBlock: lastBlock - reorgDepth);
         }
 
+        [Test]
+        public async Task Set_ReorgBeyondRevertableDepth_CapsIndexAcrossRestart_Test()
+        {
+            const ulong maxReorgDepth = 4;
+            BlockReceipts reorged = testData.Batches.SelectMany(b => b).ToArray()[^((int)maxReorgDepth + 1)];
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth))
+            {
+                await AddReceiptsAsync(logIndexStorage, testData.Batches);
+                await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(reorged), Throws.TypeOf<LogIndexStateException>());
+            }
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth))
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(logIndexStorage.MaxBlockNumber, Is.Null, "queries must not use the index once a reorg could not be reverted");
+                    await Assert.ThatAsync(() => logIndexStorage.AddReceiptsAsync([reorged], false), Throws.TypeOf<LogIndexStateException>());
+                }
+            }
+        }
+
+        [Test]
+        public async Task Set_ReorgBelowRevertedMaxBlock_ThrowsBeyondPeakDepth_Test([Values] bool restart)
+        {
+            const ulong maxReorgDepth = 4;
+            BlockReceipts[] blocks = testData.Batches.SelectMany(b => b).ToArray();
+
+            ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth);
+            await AddReceiptsAsync(logIndexStorage, testData.Batches);
+            await logIndexStorage.RemoveReorgedAsync(blocks[^1]);
+
+            if (restart)
+            {
+                await logIndexStorage.DisposeAsync();
+                logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth);
+            }
+
+            await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(blocks[^((int)maxReorgDepth + 1)]), Throws.TypeOf<LogIndexStateException>());
+        }
+
+        [Test]
+        public async Task Set_Compact_ReorgBeyondFirstDepth_AfterDepthRaised_Throws_Test([Values] bool depthRecorded)
+        {
+            const ulong firstDepth = 4;
+            const ulong raisedDepth = firstDepth * 2;
+            BlockReceipts[] blocks = testData.Batches.SelectMany(b => b).ToArray();
+            IDbFactory dbFactory = CreateRecordingDbFactory();
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: firstDepth, dbFactory: dbFactory))
+            {
+                await AddReceiptsAsync(logIndexStorage, testData.Batches);
+                await CompactAsync(logIndexStorage);
+
+                // As an index written before the depth was recorded
+                if (!depthRecorded)
+                    _root.GetColumnDb(LogIndexColumns.Meta).Remove("mrd"u8);
+            }
+
+            // A second open at the raised depth must not replace the smallest depth the index has run with
+            await CreateLogIndexStorage(maxReorgDepth: raisedDepth, dbFactory: dbFactory).DisposeAsync();
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: raisedDepth, dbFactory: dbFactory))
+                await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(blocks[^((int)firstDepth + 1)]), Throws.TypeOf<LogIndexStateException>());
+        }
+
         [Combinatorial]
         public async Task Set_PeriodicReorg_Get_Test(
             [Values(10, 70)] int reorgFrequency,
@@ -624,7 +730,6 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: allReorgBlocks, addedBlocks: allAddedBlocks);
         }
 
-        [Ignore("Not supported, but is probably not needed.")]
         [Combinatorial]
         public async Task Set_ConsecutiveReorgsLast_Get_Test(
             [Values(new[] { 2, 1 }, new[] { 1, 2 })] int[] reorgDepths,
@@ -1333,19 +1438,17 @@ namespace Nethermind.Db.Test.LogIndex
 
                 foreach (BlockReceipts block in blocks)
                 {
-                    foreach (TxReceipt txReceipt in block.Receipts)
+                    BlockReceipts.LogReader logs = block.ReadLogs();
+                    while (logs.TryGetNext(out ReadOnlySpan<byte> logAddress, out ReadOnlySpan<byte> logTopics))
                     {
-                        foreach (LogEntry log in txReceipt.Logs!)
-                        {
-                            HashSet<int> addressMap = address.GetOrAdd(log.Address, static _ => []);
-                            addressMap.Add(block.BlockNumber);
+                        HashSet<int> addressMap = address.GetOrAdd(new Address(logAddress), static _ => []);
+                        addressMap.Add(block.BlockNumber);
 
-                            for (int i = 0; i < log.Topics.Length; i++)
-                            {
-                                Dictionary<Hash256, HashSet<int>> topicI = topic.GetOrAdd(i, static _ => []);
-                                HashSet<int> topicMap = topicI.GetOrAdd(log.Topics[i], static _ => []);
-                                topicMap.Add(block.BlockNumber);
-                            }
+                        for (int i = 0; i < logTopics.Length / Hash256.Size; i++)
+                        {
+                            Dictionary<Hash256, HashSet<int>> topicI = topic.GetOrAdd(i, static _ => []);
+                            HashSet<int> topicMap = topicI.GetOrAdd(new Hash256(logTopics.Slice(i * Hash256.Size, Hash256.Size)), static _ => []);
+                            topicMap.Add(block.BlockNumber);
                         }
                     }
                 }

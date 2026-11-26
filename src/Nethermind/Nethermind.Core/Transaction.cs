@@ -478,6 +478,23 @@ namespace Nethermind.Core
             tx.FrameCalldataStats = FrameCalldataStats;
         }
 
+        /// <summary>A copy of this transaction, of its runtime type and with its hash.</summary>
+        /// <remarks>
+        /// Unlike <see cref="CopyTo(Transaction, bool)"/> into a new <see cref="Transaction"/>, it keeps the state of a
+        /// subclass. Like it, it is shallow: reference-typed fields are shared. It also keeps
+        /// <see cref="IntrinsicGasMemo"/>, which holds for the copy as long as its payload is not changed.
+        /// </remarks>
+        internal Transaction ShallowCopy()
+        {
+            lock (this)
+            {
+                // The pre-hash memory has a single owner, so it is hashed and released here rather than shared.
+                CalculateHashInternal();
+                PooledBlobBuffers.Disown(this);
+                return (Transaction)MemberwiseClone();
+            }
+        }
+
         public virtual ProofVersion? GetProofVersion() =>
             NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
                 ? version
@@ -516,18 +533,24 @@ namespace Nethermind.Core
     /// </summary>
     /// <param name="Blobs">Complete blob payloads, or empty entries when only cells are available.</param>
     /// <param name="Commitments">One KZG commitment per blob.</param>
-    /// <param name="Proofs">Blob proofs for V0 or all cell proofs in blob-major order for V1.</param>
+    /// <param name="Proofs">
+    /// Blob proofs for V0 or all cell proofs in blob-major order for V1, each <see cref="BytesPerProof"/> bytes long,
+    /// back to back.
+    /// </param>
     /// <param name="Version">The proof representation used by this wrapper.</param>
     /// <param name="CellMask">The cell indices available for every blob when full blobs are absent.</param>
     /// <param name="Cells">Sparse cells in blob-major order and ascending cell-index order.</param>
     public record ShardBlobNetworkWrapper(
         byte[][] Blobs,
         byte[][] Commitments,
-        byte[][] Proofs,
+        byte[] Proofs,
         ProofVersion Version,
         BlobCellMask CellMask = default,
         byte[][]? Cells = null)
     {
+        /// <summary>The length of one KZG proof in <see cref="Proofs"/>.</summary>
+        public const int BytesPerProof = 48;
+
         /// <remarks>
         /// Record copies share this token. Disown the transaction before publishing any additional
         /// reference to its wrapper or blob arrays; idempotent returns alone do not prevent use after return.
@@ -557,7 +580,7 @@ namespace Nethermind.Core
         /// <param name="commitments">One KZG commitment per blob.</param>
         /// <param name="proofs">Proofs corresponding to <paramref name="version"/>.</param>
         /// <param name="version">The proof representation used by this wrapper.</param>
-        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs, ProofVersion version)
+        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[] proofs, ProofVersion version)
             : this(blobs, commitments, proofs, version, default, null)
         {
         }
@@ -569,12 +592,55 @@ namespace Nethermind.Core
         /// <param name="commitments">KZG commitments.</param>
         /// <param name="proofs">Blob or cell proofs.</param>
         /// <param name="version">The proof representation.</param>
-        public void Deconstruct(out byte[][] blobs, out byte[][] commitments, out byte[][] proofs, out ProofVersion version)
+        public void Deconstruct(out byte[][] blobs, out byte[][] commitments, out byte[] proofs, out ProofVersion version)
         {
             blobs = Blobs;
             commitments = Commitments;
             proofs = Proofs;
             version = Version;
+        }
+
+        /// <summary>The number of proofs in <see cref="Proofs"/>.</summary>
+        public int ProofCount => Proofs.Length / BytesPerProof;
+
+        /// <summary>Returns <paramref name="count"/> proofs from index <paramref name="start"/>, back to back, without a copy.</summary>
+        public ReadOnlyMemory<byte> GetProofs(int start, int count = 1) =>
+            Proofs.AsMemory(start * BytesPerProof, count * BytesPerProof);
+
+        /// <summary>Copies each proof in <see cref="Proofs"/> to an array of its own.</summary>
+        public byte[][] SplitProofs() => SplitProofs(Proofs);
+
+        /// <summary>Copies each proof in <paramref name="proofs"/>, held back to back as in <see cref="Proofs"/>, to an array of its own.</summary>
+        public static byte[][] SplitProofs(ReadOnlySpan<byte> proofs)
+        {
+            byte[][] split = new byte[proofs.Length / BytesPerProof][];
+            for (int i = 0; i < split.Length; i++)
+            {
+                split[i] = proofs.Slice(i * BytesPerProof, BytesPerProof).ToArray();
+            }
+
+            return split;
+        }
+
+        /// <summary>Copies separate proofs back to back, as <see cref="Proofs"/> holds them.</summary>
+        /// <returns><see langword="false"/> when a proof is missing or is not <see cref="BytesPerProof"/> bytes long.</returns>
+        public static bool TryJoinProofs(ReadOnlySpan<byte[]?> proofs, [NotNullWhen(true)] out byte[]? joined)
+        {
+            joined = null;
+            // Checked before the allocation, so that invalid input cannot make a large buffer.
+            foreach (byte[]? proof in proofs)
+            {
+                if (proof is not { Length: BytesPerProof }) return false;
+            }
+
+            byte[] buffer = new byte[proofs.Length * BytesPerProof];
+            for (int i = 0; i < proofs.Length; i++)
+            {
+                proofs[i]!.CopyTo(buffer, i * BytesPerProof);
+            }
+
+            joined = buffer;
+            return true;
         }
 
         /// <summary>

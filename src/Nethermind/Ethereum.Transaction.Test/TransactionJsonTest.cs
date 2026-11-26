@@ -239,7 +239,7 @@ public class TransactionJsonTest : GeneralStateTestBase
         PostStateJson postStateJson = new()
         {
             ExpectException = "TransactionException.INVALID_SIGNATURE_VRS",
-            Txbytes = Rlp.Encode(pinned, RlpBehaviors.SkipTypedWrapping).Bytes,
+            Txbytes = Rlp.Encode(pinned, RlpBehaviors.SkipTypedWrapping),
         };
         TransactionJson transactionJson = new() { Sender = senderKey.Address };
 
@@ -302,7 +302,7 @@ public class TransactionJsonTest : GeneralStateTestBase
         {
             Indexes = new IndexesJson(),
             ExpectException = expectException ? "TransactionException.TYPE_6_INVALID_FRAME_FORMAT" : null,
-            Txbytes = Rlp.Encode(frameTx, RlpBehaviors.SkipTypedWrapping).Bytes,
+            Txbytes = Rlp.Encode(frameTx, RlpBehaviors.SkipTypedWrapping),
         };
         TransactionJson transactionJson = new() { Sender = TestItem.AddressA };
 

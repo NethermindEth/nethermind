@@ -14,12 +14,11 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
 
     public ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs)
     {
-        ShardBlobNetworkWrapper result = new(blobs.ToArray(), new byte[blobs.Length][], new byte[blobs.Length][], ProofVersion.V0);
+        ShardBlobNetworkWrapper result = new(blobs.ToArray(), new byte[blobs.Length][], new byte[blobs.Length * Ckzg.BytesPerProof], ProofVersion.V0);
 
         for (int i = 0; i < blobs.Length; i++)
         {
             result.Commitments[i] = new byte[Ckzg.BytesPerCommitment];
-            result.Proofs[i] = new byte[Ckzg.BytesPerProof];
         }
 
         return result;
@@ -30,20 +29,20 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
             Ckzg.BlobToKzgCommitment(wrapper.Commitments[i], wrapper.Blobs[i], KzgPolynomialCommitments.CkzgSetup);
-            Ckzg.ComputeBlobKzgProof(wrapper.Proofs[i], wrapper.Blobs[i], wrapper.Commitments[i], KzgPolynomialCommitments.CkzgSetup);
+            Ckzg.ComputeBlobKzgProof(wrapper.Proofs.AsSpan(i * Ckzg.BytesPerProof, Ckzg.BytesPerProof), wrapper.Blobs[i], wrapper.Commitments[i], KzgPolynomialCommitments.CkzgSetup);
         }
     }
 
     public bool ValidateLengths(ShardBlobNetworkWrapper wrapper)
     {
-        if (wrapper.Blobs.Length != wrapper.Commitments.Length || wrapper.Blobs.Length != wrapper.Proofs.Length)
+        if (wrapper.Blobs.Length != wrapper.Commitments.Length || wrapper.Blobs.Length * Ckzg.BytesPerProof != wrapper.Proofs.Length)
         {
             return false;
         }
 
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
-            if (wrapper.Blobs[i].Length != Ckzg.BytesPerBlob || wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment || wrapper.Proofs[i].Length != Ckzg.BytesPerProof)
+            if (wrapper.Blobs[i].Length != Ckzg.BytesPerBlob || wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment)
             {
                 return false;
             }
@@ -66,11 +65,11 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
             return wrapper.Commitments.Length == 0 && wrapper.Proofs.Length == 0;
         }
 
-        if (wrapper.Blobs.Length is 1 && wrapper.Commitments.Length is 1 && wrapper.Proofs.Length is 1)
+        if (wrapper.Blobs.Length is 1 && wrapper.Commitments.Length is 1 && wrapper.Proofs.Length is Ckzg.BytesPerProof)
         {
             try
             {
-                return Ckzg.VerifyBlobKzgProof(wrapper.Blobs[0], wrapper.Commitments[0], wrapper.Proofs[0], KzgPolynomialCommitments.CkzgSetup);
+                return Ckzg.VerifyBlobKzgProof(wrapper.Blobs[0], wrapper.Commitments[0], wrapper.Proofs, KzgPolynomialCommitments.CkzgSetup);
             }
             catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
             {
@@ -84,19 +83,15 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
         length = wrapper.Blobs.Length * Ckzg.BytesPerCommitment;
         using ArrayPoolSpan<byte> flatCommitments = new(length);
 
-        length = wrapper.Blobs.Length * Ckzg.BytesPerProof;
-        using ArrayPoolSpan<byte> flatProofs = new(length);
-
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
             wrapper.Blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.BytesPerBlob, Ckzg.BytesPerBlob));
             wrapper.Commitments[i].CopyTo(flatCommitments.Slice(i * Ckzg.BytesPerCommitment, Ckzg.BytesPerCommitment));
-            wrapper.Proofs[i].CopyTo(flatProofs.Slice(i * Ckzg.BytesPerProof, Ckzg.BytesPerProof));
         }
 
         try
         {
-            return Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, wrapper.Blobs.Length, KzgPolynomialCommitments.CkzgSetup);
+            return Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, wrapper.Proofs, wrapper.Blobs.Length, KzgPolynomialCommitments.CkzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
