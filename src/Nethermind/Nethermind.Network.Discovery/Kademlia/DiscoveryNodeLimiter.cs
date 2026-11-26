@@ -46,8 +46,7 @@ internal sealed class DiscoveryNodeLimiter : IRoutingTableNodeLimiter<Node>
     private readonly HashSet<PublicKey> _bootNodeIds = [];
     private readonly PublicKey _currentNodeId;
     private readonly INetworkConfig _networkConfig;
-    private readonly IStaticNodesManager _staticNodesManager;
-    private readonly ITrustedNodesManager _trustedNodesManager;
+    private readonly IDiscoveryNodeExemptions? _exemptions;
     private readonly IForkInfo _forkInfo;
     private readonly ILogger _logger;
 
@@ -55,15 +54,13 @@ internal sealed class DiscoveryNodeLimiter : IRoutingTableNodeLimiter<Node>
         Node currentNode,
         IReadOnlyList<Node> bootNodes,
         INetworkConfig networkConfig,
-        IStaticNodesManager staticNodesManager,
-        ITrustedNodesManager trustedNodesManager,
+        IDiscoveryNodeExemptions? exemptions,
         IForkInfo forkInfo,
         ILogManager logManager)
     {
         _currentNodeId = currentNode.Id;
         _networkConfig = networkConfig;
-        _staticNodesManager = staticNodesManager;
-        _trustedNodesManager = trustedNodesManager;
+        _exemptions = exemptions;
         _forkInfo = forkInfo;
         _logger = logManager.GetClassLogger<DiscoveryNodeLimiter>();
 
@@ -213,7 +210,7 @@ internal sealed class DiscoveryNodeLimiter : IRoutingTableNodeLimiter<Node>
         if (id.Equals(_currentNodeId) || _bootNodeIds.Contains(id)) return true;
         if (node.IsStatic || node.IsTrusted) return true;
 
-        return _staticNodesManager.ContainsNode(id) || _trustedNodesManager.ContainsNode(id);
+        return _exemptions?.IsExempt(id) is true;
     }
 
     private bool IsForeignFork(Node node)

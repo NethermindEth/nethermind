@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
@@ -26,8 +27,7 @@ public class DiscoveryNodeLimiterTests
     private const uint IncompatibleForkHash = 0x22222222;
 
     private NetworkConfig _networkConfig = null!;
-    private IStaticNodesManager _staticNodesManager = null!;
-    private ITrustedNodesManager _trustedNodesManager = null!;
+    private IDiscoveryNodeExemptions _exemptions = null!;
     private IForkInfo _forkInfo = null!;
     private Node _currentNode = null!;
     private Node _bootNode = null!;
@@ -36,10 +36,8 @@ public class DiscoveryNodeLimiterTests
     public void Setup()
     {
         _networkConfig = new NetworkConfig();
-        _staticNodesManager = Substitute.For<IStaticNodesManager>();
-        _staticNodesManager.ContainsNode(Arg.Any<PublicKey>()).Returns(false);
-        _trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        _trustedNodesManager.ContainsNode(Arg.Any<PublicKey>()).Returns(false);
+        _exemptions = Substitute.For<IDiscoveryNodeExemptions>();
+        _exemptions.IsExempt(Arg.Any<PublicKey>()).Returns(false);
         _forkInfo = Substitute.For<IForkInfo>();
         _forkInfo.IsForkIdCompatible(Arg.Any<ForkId>())
             .Returns(static call => call.Arg<ForkId>().ForkHash == CompatibleForkHash);
@@ -243,16 +241,14 @@ public class DiscoveryNodeLimiterTests
         Bootnode,
         StaticFlag,
         TrustedFlag,
-        StaticManager,
-        TrustedManager
+        ManagedProvider
     }
 
     [TestCase(Exemption.Self)]
     [TestCase(Exemption.Bootnode)]
     [TestCase(Exemption.StaticFlag)]
     [TestCase(Exemption.TrustedFlag)]
-    [TestCase(Exemption.StaticManager)]
-    [TestCase(Exemption.TrustedManager)]
+    [TestCase(Exemption.ManagedProvider)]
     public void Exempt_nodes_are_admitted_and_never_consume_a_slot(Exemption exemption)
     {
         DiscoveryNodeLimiter limiter = CreateLimiter();
@@ -311,12 +307,12 @@ public class DiscoveryNodeLimiterTests
         Assert.That(limiter.TryAdmit(node, []), Is.True);
 
         // Gaining the exemption releases the charge: nine more ordinary nodes fit.
-        _staticNodesManager.ContainsNode(node.Id).Returns(true);
+        _exemptions.IsExempt(node.Id).Returns(true);
         Assert.That(limiter.TryAdmit(node, []), Is.True);
         AdmitNodes(limiter, 9);
 
         // Losing it recharges on the next refresh; the table is full afterwards.
-        _staticNodesManager.ContainsNode(node.Id).Returns(false);
+        _exemptions.IsExempt(node.Id).Returns(false);
         Assert.That(limiter.TryAdmit(node, []), Is.True);
         Assert.That(limiter.TryAdmit(CreateNode(TestItem.PrivateKeys[20].PublicKey, "192.0.2.200"), []), Is.False);
     }
@@ -340,8 +336,7 @@ public class DiscoveryNodeLimiterTests
         _currentNode,
         [_bootNode],
         _networkConfig,
-        _staticNodesManager,
-        _trustedNodesManager,
+        _exemptions,
         _forkInfo,
         NullLogManager.Instance);
 
@@ -357,8 +352,7 @@ public class DiscoveryNodeLimiterTests
         Node node = CreateNode(id, "192.0.2.50");
         node.IsStatic = exemption == Exemption.StaticFlag;
         node.IsTrusted = exemption == Exemption.TrustedFlag;
-        if (exemption == Exemption.StaticManager) _staticNodesManager.ContainsNode(id).Returns(true);
-        if (exemption == Exemption.TrustedManager) _trustedNodesManager.ContainsNode(id).Returns(true);
+        if (exemption == Exemption.ManagedProvider) _exemptions.IsExempt(id).Returns(true);
 
         return node;
     }

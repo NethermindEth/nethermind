@@ -58,14 +58,14 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Returns(static call => call.Arg<ForkId>().ForkHash == CompatibleForkHash);
             _nodeLimiter = Substitute.For<IRoutingTableNodeLimiter<Node>>();
             _nodeLimiter.WouldAdmit(Arg.Any<Node>()).Returns(true);
+            _kademliaConfig.NodeLimiter = _nodeLimiter;
             _nodeSource = new NodeSource(
                 _kademliaDiscovery,
                 _adapter,
                 _discoveryConfig,
                 _kademliaConfig,
                 _forkInfo,
-                LimboLogs.Instance,
-                _nodeLimiter);
+                LimboLogs.Instance);
         }
 
         [TearDown]

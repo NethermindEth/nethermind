@@ -44,9 +44,8 @@ public abstract class DiscoveryKademliaModuleBase(Node currentNode, IReadOnlyLis
     /// <summary>Creates the subnet limiter bound to this protocol's current node and bootnodes.</summary>
     protected IRoutingTableNodeLimiter<Node> CreateNodeLimiter(
         INetworkConfig networkConfig,
-        IStaticNodesManager staticNodesManager,
-        ITrustedNodesManager trustedNodesManager,
+        IDiscoveryNodeExemptions? exemptions,
         IForkInfo forkInfo,
         ILogManager logManager)
-        => new DiscoveryNodeLimiter(currentNode, bootNodes, networkConfig, staticNodesManager, trustedNodesManager, forkInfo, logManager);
+        => new DiscoveryNodeLimiter(currentNode, bootNodes, networkConfig, exemptions, forkInfo, logManager);
 }

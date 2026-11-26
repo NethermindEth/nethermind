@@ -32,16 +32,21 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()
             .AddSingleton<DiscoveryHandler>()
 
-            // The limiter instance is registered even when filtering is disabled so that `NodeSource` can inject it;
-            // the config leaves `NodeLimiter` null in that case, which keeps the routing table unguarded.
-            .AddSingleton<IRoutingTableNodeLimiter<Node>, INetworkConfig, IStaticNodesManager, ITrustedNodesManager, IForkInfo, ILogManager>(
-                (networkConfig, staticNodesManager, trustedNodesManager, forkInfo, logManager) =>
-                    CreateNodeLimiter(networkConfig, staticNodesManager, trustedNodesManager, forkInfo, logManager))
-            .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig, INetworkConfig, IRoutingTableNodeLimiter<Node>>(
-                (discoveryConfig, networkConfig, nodeLimiter) =>
+            // The limiter is built inline (not registered) so that `NodeSource` gets it only through the
+            // config; the config leaves `NodeLimiter` null when filtering is disabled, which keeps the
+            // routing table unguarded. Exemptions are optional: outside the full client they are absent and
+            // nothing is exempt beyond self/bootnodes/flags.
+            .AddSingleton<KademliaConfig<Node>>(ctx =>
                 {
-                    KademliaConfig<Node> config = CreateKademliaConfig(discoveryConfig);
-                    config.NodeLimiter = networkConfig.FilterDiscoveryNodesByRecentIp ? nodeLimiter : null;
+                    KademliaConfig<Node> config = CreateKademliaConfig(ctx.Resolve<IDiscoveryConfig>());
+                    INetworkConfig networkConfig = ctx.Resolve<INetworkConfig>();
+                    config.NodeLimiter = networkConfig.FilterDiscoveryNodesByRecentIp
+                        ? CreateNodeLimiter(
+                            networkConfig,
+                            ctx.ResolveOptional<IDiscoveryNodeExemptions>(),
+                            ctx.Resolve<IForkInfo>(),
+                            ctx.Resolve<ILogManager>())
+                        : null;
                     return config;
                 })
             ;
