@@ -397,6 +397,11 @@ namespace Ethereum.Test.Base
                 return new BlockchainTest { Name = name, Category = category, LoadFailure = testJson.LoadFailure };
             }
 
+            if (testJson.Pre is null && testJson.PreHash is null)
+            {
+                return new BlockchainTest { Name = name, Category = category, LoadFailure = "Missing pre-state: neither pre nor preHash is set." };
+            }
+
             BlockchainTest test = new()
             {
                 Name = name,
