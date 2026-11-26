@@ -655,9 +655,8 @@ public class InitDatabaseSnapshotTests
         }
     }
 
-    // A legal path of exactly 4,080 UTF-8 bytes below the temporary directory, whatever that directory's name: ASCII
-    // components of at most 200 bytes, so the lock file name next to it still fits a component and its path the limit,
-    // while a name below it, such as the marker's, would exceed the limit. Its parent directories are created.
+    // Build a 4,080-byte UTF-8 path using 200-byte ASCII parent components and a final name of at most 220 bytes. The
+    // sibling lock path fits and the marker path exceeds the Linux limit.
     private string LongDatabasePath()
     {
         string parent = _tempDir.Path;
