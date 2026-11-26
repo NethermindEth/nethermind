@@ -6,7 +6,9 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -229,9 +231,31 @@ public class TrustedInputTests
         }
     }
 
+    /// <remarks>
+    /// The KZG setup is process-wide and is never unloaded, so an earlier test that loads it would hide a writer that
+    /// skips it. The scenario therefore runs in a test process of its own.
+    /// </remarks>
     [Test]
     public void Writer_collects_recoveries_after_point_evaluation()
     {
+        string assembly = typeof(TrustedInputTests).Assembly.Location;
+        string host = Environment.ProcessPath!;
+        ProcessStartInfo start = new(host) { RedirectStandardOutput = true, RedirectStandardError = true };
+        if (Path.GetFileNameWithoutExtension(host) == "dotnet") start.ArgumentList.Add(assembly);
+        start.ArgumentList.Add("--filter");
+        start.ArgumentList.Add($"FullyQualifiedName={typeof(TrustedInputTests).FullName}.{nameof(Writer_collects_recoveries_after_point_evaluation_in_a_fresh_process)}");
+        using Process process = Process.Start(start)!;
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        string output = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        Assert.That(process.ExitCode, Is.Zero, $"{output}{error.Result}");
+    }
+
+    [Test]
+    [Explicit("Run by Writer_collects_recoveries_after_point_evaluation in a process of its own")]
+    public void Writer_collects_recoveries_after_point_evaluation_in_a_fresh_process()
+    {
+        Assert.That(KzgPolynomialCommitments.IsInitialized, Is.False, "The KZG setup must start unloaded");
         (Block template, Witness witness, _) = StatelessInputGeneratorTests.CreateBlock(amsterdam: false, currentChainActivation: true);
         using (witness)
         {
@@ -254,6 +278,7 @@ public class TrustedInputTests
             Transaction[] transactions = [Call(0, KzgPointEvaluationPrecompile.Address, point), Call(1, ECRecoverPrecompile.Address, recovery)];
             Block block = new(template.Header.Clone(), transactions, [], template.Withdrawals);
             block.Header.TxRoot = TxTrie.CalculateRoot(transactions);
+            Assert.That(KzgPolynomialCommitments.IsInitialized, Is.False, "Building the block must not load the KZG setup");
             byte[] encoded = TrustedInput.Write(BlockchainIds.Mainnet, block, witness);
 
             TrustedPayload payload = TrustedInput.Read(encoded);
