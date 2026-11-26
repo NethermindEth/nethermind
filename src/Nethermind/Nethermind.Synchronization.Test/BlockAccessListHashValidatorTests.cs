@@ -92,5 +92,7 @@ public class BlockAccessListHashValidatorTests
         // Two account reads, 0x00..02 before 0x00..01.
         yield return new TestCaseData(Bytes.FromHexString("0xf6da940000000000000000000000000000000000000002c0c0c0c0c0da940000000000000000000000000000000000000001c0c0c0c0c0")) { TestName = "accounts_out_of_order" };
         yield return new TestCaseData(Bytes.FromHexString("0xc1c0")) { TestName = "empty_account_entry" };
+        // A balance of 33 bytes, over the 32 bytes of an integer, which the reader reports as a limit error.
+        yield return new TestCaseData(Bytes.FromHexString("0xf843f841940000000000000000000000000000000000000001c0c0e4e380a1010101010101010101010101010101010101010101010101010101010101010101c3c20105c0")) { TestName = "value_longer_than_32_bytes" };
     }
 }

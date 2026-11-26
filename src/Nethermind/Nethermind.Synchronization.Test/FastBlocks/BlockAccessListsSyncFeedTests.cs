@@ -126,7 +126,7 @@ public class BlockAccessListsSyncFeedTests
         byte[] blockAccessList = canonical ? BlockAccessListEncodings.Canonical : BlockAccessListEncodings.LeadingZero;
         SetUpThreeBlockFeed(blockAccessList);
         using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
-        int requested = batch.Infos.OfType<BlockInfo>().Count();
+        ulong[] requested = [.. batch.Infos.OfType<BlockInfo>().Select(static info => info.BlockNumber)];
         PeerInfo peerInfo = CreateSession(TestItem.PublicKeyA);
         batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(_ => blockAccessList).ToArray());
         batch.ResponseSourcePeer = peerInfo;
@@ -135,13 +135,23 @@ public class BlockAccessListsSyncFeedTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(requested, Is.EqualTo(3));
+            Assert.That(requested, Is.EquivalentTo(new ulong[] { 1, 2, 3 }));
             Assert.That(result, Is.EqualTo(canonical ? SyncResponseHandlingResult.OK : SyncResponseHandlingResult.NoProgress));
-            _blockAccessListStore.Received(canonical ? requested : 0).Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+            _blockAccessListStore.Received(canonical ? requested.Length : 0).Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
             _syncPeerPool.Received(canonical ? 0 : 1).ReportBreachOfProtocol(
                 peerInfo,
                 DisconnectReason.InvalidTxOrUncle,
                 Arg.Is<string>(static message => message.Contains("error decoding block access list")));
+        }
+
+        if (canonical) return;
+
+        // The rejected heights are pending again, so the next request asks for the same three.
+        using BlockAccessListsSyncBatch? retry = await _feed.PrepareRequest();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retry, Is.Not.Null);
+            Assert.That(retry?.Infos.OfType<BlockInfo>().Select(static info => info.BlockNumber), Is.EquivalentTo(requested));
         }
     }
 
