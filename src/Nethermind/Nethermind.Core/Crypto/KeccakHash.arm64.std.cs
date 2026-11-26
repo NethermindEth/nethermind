@@ -80,7 +80,9 @@ public sealed partial class KeccakHash
         int offset = 0;
         while (true)
         {
-            for (nuint round = 0; round < ROUNDS; round++)
+            // Peel the digest's final round so the JIT drops the 21 output lanes we never store.
+            nuint rounds = TAbsorbMessage.IsActive && offset == paddedBlockOffset ? ROUNDS - 1u : ROUNDS;
+            for (nuint round = 0; round < rounds; round++)
             {
                 RoundArmSha3(
                     ref a0, ref a1, ref a2, ref a3, ref a4,
@@ -113,6 +115,17 @@ public sealed partial class KeccakHash
             a14 ^= LoadLane(ref block, 14);
             a15 ^= LoadLane(ref block, 15);
             a16 ^= LoadLane(ref block, 16);
+        }
+
+        if (TAbsorbMessage.IsActive)
+        {
+            RoundArmSha3(
+                ref a0, ref a1, ref a2, ref a3, ref a4,
+                ref a5, ref a6, ref a7, ref a8, ref a9,
+                ref a10, ref a11, ref a12, ref a13, ref a14,
+                ref a15, ref a16, ref a17, ref a18, ref a19,
+                ref a20, ref a21, ref a22, ref a23, ref a24,
+                LoadLane(ref constants, ROUNDS - 1));
         }
 
         a0.GetLower().StoreUnsafe(ref destination);
