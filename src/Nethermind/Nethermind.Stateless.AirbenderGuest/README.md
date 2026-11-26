@@ -46,6 +46,31 @@ exercises an unaligned fused PUSH2 jump target, which must work on RV32:
 make verify INPUT=11962427.ssz
 ```
 
+## Record division hints
+
+Place an unhinted trusted fixture in `bin/` and run:
+
+```bash
+make record-division INPUT=25532382.nti
+```
+
+The target records the quotient and remainder at each division in the guest, then
+replays the block with the same binary. It writes `bin/25532382-divisions.nti`
+after every hint is accepted and the public result matches. The normal trusted
+guest can run the resulting input. Regenerate it when the guest arithmetic changes.
+
+## Run on each trie provider
+
+```bash
+make build-scope-guests
+make verify GUEST_NAME=nethermind-trusted-fallback INPUT=25532382.nti GUEST_INPUT=Trusted EXPECTED_DIGEST=<digest>
+```
+
+`EXPECTED_DIGEST` is the digest that `StatelessInputGen convert` prints for the input. Both guests print
+`SCOPE: native` or `SCOPE: managed` for the trie provider the block runs on. `nethermind-trusted-scope` chooses it
+as production does. `nethermind-trusted-fallback` refuses libairbender's tries, so the block runs on the managed
+witness nodes, which it decodes from the input on first use.
+
 ## Notes
 
 - The image keeps its unwind tables, so an exception is caught by the

@@ -284,10 +284,10 @@ internal static unsafe class GuestWord
         }
 
         // Each limb is stored as it is read, so a byte gather holds one limb at a time.
-        Unsafe.Add(ref slot, 3) = ZkEvmBitOperations.ReadUInt64BigEndian(ref source);
-        Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 8));
-        Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 16));
-        slot = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 24));
+        Unsafe.Add(ref slot, 3) = ZkEvmBitOperations.ReadUInt64BigEndianGathered(ref source);
+        Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.ReadUInt64BigEndianGathered(ref Unsafe.Add(ref source, 8));
+        Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndianGathered(ref Unsafe.Add(ref source, 16));
+        slot = ZkEvmBitOperations.ReadUInt64BigEndianGathered(ref Unsafe.Add(ref source, 24));
     }
 
     /// <summary>Stores the stack word that ends at <paramref name="end"/>, in limb layout, big-endian to the 32 bytes at <paramref name="destination"/>.</summary>
@@ -388,6 +388,8 @@ internal static unsafe class GuestWord
     private static ulong ReverseHalves(ulong x, ulong m8, ulong m16)
     {
         if (ZkEvmBitOperations.HasByteReverse) return BitOperations.RotateLeft(BinaryPrimitives.ReverseEndianness(x), 32);
+        if (ZkEvmBitOperations.HasRev8)
+            return ((ulong)BinaryPrimitives.ReverseEndianness((uint)(x >> 32)) << 32) | BinaryPrimitives.ReverseEndianness((uint)x);
 
         x = ((x & m8) << 8) + ((x >> 8) & m8);
         return ((x & m16) << 16) + ((x >> 16) & m16);
