@@ -175,10 +175,10 @@ public abstract class StateSyncFeedTestsBase(
         return containerBuilder;
     }
 
-    protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength, bool failOnTimeout = true)
+    protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength, bool failOnTimeout = true, Func<CancellationToken, Task>? runFeed = null)
     {
         using CancellationTokenSource roundCancellation = CancellationTokenSource.CreateLinkedTokenSource(safeContext.CancellationToken);
-        Task feedTask = safeContext.RunFeed(roundCancellation.Token);
+        Task feedTask = (runFeed ?? safeContext.RunFeed)(roundCancellation.Token);
 
         Task completed = await Task.WhenAny(
             feedTask,

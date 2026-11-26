@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat.Persistence;
@@ -16,7 +18,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
 
-public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager) : IStateSyncTestOperation
+public class FlatLocalDbContext(IPersistence persistence, [KeyFilter(DbNames.Code)] IDb codeDb, ILogManager logManager) : IStateSyncTestOperation
 {
     private Hash256 _rootHash = Keccak.EmptyTreeHash;
 
@@ -24,7 +26,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
 
     public void UpdateRootHash()
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         ValueHash256 hash = default;
         bool found = reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None,
             static (rlp, result) => result[0] = ValueKeccak.Compute(rlp), new Span<ValueHash256>(ref hash));
@@ -33,7 +35,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
 
     public void SetAccountsAndCommit(params (Hash256 Address, Account? Account)[] accounts)
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState);
         WritableTrieStore adapter = new(reader, writeBatch);
         StateTree tree = new(adapter, logManager);
@@ -47,7 +49,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     public void AssertFlushed()
     {
         // Sync write batches are visible in persistence as soon as they are disposed. Verify the root node exists.
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         Assert.That(reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None, static (_, _) => { }, 0), Is.True, "root node should exist after flush");
     }
 
@@ -56,6 +58,15 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         (string remoteStr, string localStr) = Dump(remote, logger, stage);
 
         Assert.That(localStr, Is.EqualTo(remoteStr), $"{stage}\n{remoteStr}\n{localStr}");
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
+        StateTree tree = new(new ReadOnlyTrieStore(reader), logManager);
+        TrieStatsCollector collector = new(codeDb, LimboLogs.Instance);
+        tree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), remote.StateTree.RootHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0), stage);
+            Assert.That(collector.Stats.MissingCode, Is.EqualTo(0), stage);
+        }
     }
 
     public void DumpTrees(RemoteDbContext remote, ILogger logger, string stage) => Dump(remote, logger, stage);
@@ -63,8 +74,9 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     private (string Remote, string Local) Dump(RemoteDbContext remote, ILogger logger, string stage)
     {
         logger.Info($"==================== {stage} ====================");
+        UpdateRootHash();
 
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         StateTree localTree = new(new ReadOnlyTrieStore(reader), logManager);
         localTree.RootHash = remote.StateTree.RootHash;
 
@@ -83,7 +95,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
 
     public void DeleteStateRoot()
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState);
         // The whole state trie is under the empty-path root, so [Zero, MaxValue] removes every node (heal re-fetches).
         writeBatch.DeleteAccountRange(ValueKeccak.Zero, ValueKeccak.MaxValue);

@@ -60,6 +60,7 @@ namespace Nethermind.Synchronization.SnapSync
         private int _consecutiveAccountRefreshes;
 
         private readonly ILogger _logger;
+        private readonly ISnapTrieFactory _snapTrieFactory;
         string? _lastStateRangesReport;
         private DateTimeOffset _lastLogTime = DateTimeOffset.MinValue;
         private readonly TimeSpan _maxTimeBetweenLog = TimeSpan.FromSeconds(5);
@@ -81,7 +82,6 @@ namespace Nethermind.Synchronization.SnapSync
         internal int AccountsToRefreshCount => AccountsToRefresh.Count;
 
         private readonly FastSync.IStateSyncPivot _pivot;
-        private readonly ISnapTrieFactory _snapTrieFactory;
         private readonly bool _enableStorageRangeSplit;
         private readonly ulong _stateMinDistanceFromHead;
 
@@ -113,9 +113,9 @@ namespace Nethermind.Synchronization.SnapSync
         public ProgressTracker(ISnapTrieFactory snapTrieFactory, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager, TimeSpan? checkpointInterval = null)
         {
             _logger = logManager?.GetClassLogger<ProgressTracker>() ?? throw new ArgumentNullException(nameof(logManager));
+            _snapTrieFactory = snapTrieFactory ?? throw new ArgumentNullException(nameof(snapTrieFactory));
 
             _pivot = pivot;
-            _snapTrieFactory = snapTrieFactory;
             _checkpointInterval = syncConfig.SnapResume && snapTrieFactory.SupportsCheckpoints ? checkpointInterval ?? DefaultCheckpointInterval : null;
             _endResponse = new EndResponse(_responseLock);
 

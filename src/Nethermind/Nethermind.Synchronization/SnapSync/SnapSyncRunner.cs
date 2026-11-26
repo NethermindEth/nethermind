@@ -20,6 +20,7 @@ public class SnapSyncRunner(
     {
         snapTrieFactory.EnsureInitialize();
         progressTracker.Reset();
+        progressTracker.LoadProgress();
         try
         {
             await runDispatcher(token);
