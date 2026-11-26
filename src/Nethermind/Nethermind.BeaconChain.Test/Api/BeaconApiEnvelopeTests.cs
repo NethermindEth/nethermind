@@ -3,6 +3,7 @@
 
 using System.Net.Http;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Api.Endpoints;
@@ -32,6 +33,40 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         // Bounds every request in this fixture: an events-endpoint validation bug that fell through
         // to the infinite SSE loop must fail fast here, not hang the run.
         _host.Client.Timeout = TimeSpan.FromSeconds(5);
+    }
+
+    [Test]
+    public void Request_scopes_capture_independent_heads_and_share_caches([Values] bool publishedHead)
+    {
+        BeaconChainStatusHolder status = new(Spec, _host.Timestamper);
+        StatusMessageV2 first = new() { ForkDigest = [], HeadRoot = TestRoot(90), FinalizedRoot = Hash256.Zero };
+        StatusMessageV2 second = new() { ForkDigest = [], HeadRoot = TestRoot(91), FinalizedRoot = Hash256.Zero };
+        status.CurrentStatus = first;
+        HeadSnapshotHolder? heads = publishedHead ? new() { Current = new(first, first.HeadRoot, Hash256.Zero, false) } : null;
+        ServiceCollection services = new();
+        BeaconApiEndpoints.AddServices(services, Spec, status, _host.Clock, _host.Store,
+            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, headSnapshots: heads);
+        using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
+        using IServiceScope firstScope = provider.CreateScope();
+        BeaconApiHead firstView = firstScope.ServiceProvider.GetRequiredService<BeaconApiHead>();
+        status.CurrentStatus = second;
+        if (heads is not null) heads.Current = new(second, second.HeadRoot, Hash256.Zero, true);
+        using IServiceScope secondScope = provider.CreateScope();
+        BeaconApiHead secondView = secondScope.ServiceProvider.GetRequiredService<BeaconApiHead>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstView.StatusSource.CurrentStatus.HeadRoot, Is.EqualTo(first.HeadRoot));
+            Assert.That(secondView.StatusSource.CurrentStatus.HeadRoot, Is.EqualTo(second.HeadRoot));
+            Assert.That(firstScope.ServiceProvider.GetRequiredService<BeaconApiHead>(), Is.SameAs(firstView));
+            Assert.That(secondView, Is.Not.SameAs(firstView));
+            Assert.That(firstScope.ServiceProvider.GetRequiredService<ValidatorIndexCache>(),
+                Is.SameAs(secondScope.ServiceProvider.GetRequiredService<ValidatorIndexCache>()));
+            Assert.That(firstScope.ServiceProvider.GetRequiredService<StateCommitteeCache>(),
+                Is.SameAs(secondScope.ServiceProvider.GetRequiredService<StateCommitteeCache>()));
+            Assert.That(firstScope.ServiceProvider.GetRequiredService<System.Threading.RateLimiting.ConcurrencyLimiter>(),
+                Is.SameAs(secondScope.ServiceProvider.GetRequiredService<System.Threading.RateLimiting.ConcurrencyLimiter>()));
+        }
     }
 
     [TestCase(true, TestName = "Header_reports_finalized_true_when_the_blocks_epoch_is_at_or_before_the_finalized_checkpoint")]
@@ -227,21 +262,19 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         head.Message.StateRoot = TestRoot(34);
         host.Store.PutBlock(headRoot, head);
         ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
-        BeaconApiContext ctx = new(Spec, host.StatusHolder, new SlotClock(Spec, time), host.Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null, snapshots);
-
-        ctx = ctx.ForRequest();
+        SlotClock clock = new(Spec, time);
+        BeaconApiHead view = BeaconApiHead.Capture(host.StatusHolder, forkChoice: snapshots);
         EventsEndpoint.EventCache cache = new();
-        Assert.That(cache.Head(ctx, headRoot, start - 1), Is.Null);
+        Assert.That(cache.Head(Spec, host.Store, view, clock, headRoot, start - 1), Is.Null);
         host.Store.PutBlock(previous, older);
         host.Store.PutBlock(current, parent);
         time.Add(TimeSpan.FromSeconds(Spec.SecondsPerSlot));
-        Assert.That(cache.Head(ctx, headRoot, start - 1), Is.Not.Null, "a missing ancestor is retried in the next slot after backfill");
-        EventsEndpoint.HeadEventDto? payload = EventsEndpoint.CreateHeadEvent(ctx, headRoot, start - 1);
+        Assert.That(cache.Head(Spec, host.Store, view, clock, headRoot, start - 1), Is.Not.Null, "a missing ancestor is retried in the next slot after backfill");
+        EventsEndpoint.HeadEventDto? payload = EventsEndpoint.CreateHeadEvent(Spec, host.Store, view, headRoot, start - 1);
         Assert.That(payload, Is.Not.Null);
         using JsonDocument body = JsonDocument.Parse(JsonSerializer.Serialize(payload));
         using JsonDocument finalized = JsonDocument.Parse(JsonSerializer.Serialize(
-            EventsEndpoint.CreateFinalizedEvent(ctx, start / Spec.SlotsPerEpoch, new ResolvedBlock(headRoot, new Nethermind.BeaconChain.StateTransition.ForkedSignedBeaconBlock.OfFulu(head)))));
+            EventsEndpoint.CreateFinalizedEvent(Spec, host.Store, view, start / Spec.SlotsPerEpoch, new ResolvedBlock(headRoot, new Nethermind.BeaconChain.StateTransition.ForkedSignedBeaconBlock.OfFulu(head)))));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(body.RootElement.GetProperty("state").GetString(), Is.EqualTo(head.Message.StateRoot.ToString()));
@@ -252,11 +285,11 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
             Assert.That(finalized.RootElement.GetProperty("state").GetString(), Is.EqualTo(head.Message.StateRoot.ToString()));
             Assert.That(finalized.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.EqualTo(optimistic));
         }
-        Assert.That(EventsEndpoint.CreateHeadEvent(ctx, headRoot, start)?.EpochTransition, Is.False);
-        EventsEndpoint.HeadEventDto? cached = cache.Head(ctx, headRoot, start - 1);
+        Assert.That(EventsEndpoint.CreateHeadEvent(Spec, host.Store, view, headRoot, start)?.EpochTransition, Is.False);
+        EventsEndpoint.HeadEventDto? cached = cache.Head(Spec, host.Store, view, clock, headRoot, start - 1);
         host.Store.DeleteBlock(previous);
         host.Store.DeleteBlock(current);
-        Assert.That(cache.Head(ctx, headRoot, start - 1), Is.EqualTo(cached), "another subscriber reuses the computed dependent roots");
+        Assert.That(cache.Head(Spec, host.Store, view, clock, headRoot, start - 1), Is.EqualTo(cached), "another subscriber reuses the computed dependent roots");
     }
 
     /// <summary>RFC 9110 section 12.5.1 assigns quality using the most specific matching range.</summary>
