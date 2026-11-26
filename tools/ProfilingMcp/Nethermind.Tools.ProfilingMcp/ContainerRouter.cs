@@ -39,6 +39,7 @@ internal sealed class ContainerRouter : IAsyncDisposable
     private readonly Func<string?, string, Task<McpClient>> _start;
     private readonly Func<string?, string, CancellationToken, Task<string?>> _provideDebuggingLibraries;
     private readonly Func<string?, string, CancellationToken, Task<string>> _identify;
+    private readonly Lock _admission = new();
     private volatile bool _disposed;
 
     public ContainerRouter() : this(ContainerSidecar.StartAsync, ContainerSidecar.ProvideDebuggingLibrariesAsync, ContainerSidecar.ContainerIdAsync)
@@ -146,17 +147,17 @@ internal sealed class ContainerRouter : IAsyncDisposable
 
     private Lazy<Task<McpClient>> Add((string? DockerHost, string Container) key)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        Lazy<Task<McpClient>> sidecar = _sidecars.GetOrAdd(key, key =>
+        // Serialized with DisposeAsync, so that every sidecar added is seen by its disposal loop and none is handed out after it began.
+        lock (_admission)
         {
-            Lazy<Task<McpClient>> created = null!;
-            created = new(() => StartAsync(key, created));
-            return created;
-        });
-
-        // A sidecar added while the router was being disposed would be missed by DisposeAsync.
-        ObjectDisposedException.ThrowIf(_disposed && _sidecars.TryRemove(new KeyValuePair<(string?, string), Lazy<Task<McpClient>>>(key, sidecar)), this);
-        return sidecar;
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _sidecars.GetOrAdd(key, key =>
+            {
+                Lazy<Task<McpClient>> created = null!;
+                created = new(() => StartAsync(key, created));
+                return created;
+            });
+        }
     }
 
     /// <remarks>
@@ -207,7 +208,9 @@ internal sealed class ContainerRouter : IAsyncDisposable
     /// <remarks>New sidecars are refused from now on; ones still starting are waited for, so that none outlives the router.</remarks>
     public async ValueTask DisposeAsync()
     {
-        _disposed = true;
+        lock (_admission)
+            _disposed = true;
+
         while (!_sidecars.IsEmpty)
         {
             foreach (KeyValuePair<(string?, string), Lazy<Task<McpClient>>> entry in _sidecars)

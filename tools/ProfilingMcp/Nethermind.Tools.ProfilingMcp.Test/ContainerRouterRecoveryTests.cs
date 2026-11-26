@@ -145,6 +145,37 @@ public class ContainerRouterRecoveryTests
         }
     }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Disposes_a_running_sidecar_that_is_looked_up_during_disposal(CancellationToken cancellationToken)
+    {
+        // The race is narrow, so it is run many times.
+        for (int i = 0; i < 50; i++)
+        {
+            ContainerRouter router = new((_, _) => StartSidecarAsync());
+            await (await router.LiveSidecarAsync((null, "node"))).Value;
+            TaskCompletionSource looking = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task lookups = Task.Run(async () =>
+            {
+                looking.SetResult();
+                try
+                {
+                    while (true)
+                        await router.LiveSidecarAsync((null, "node"));
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            }, cancellationToken);
+
+            await looking.Task;
+            await router.DisposeAsync();
+            await lookups.WaitAsync(cancellationToken);
+
+            Assert.That(_sidecars[^1].Client.Completion.IsCompleted, Is.True, $"run {i}: the sidecar was disposed");
+        }
+    }
+
     [TestCase("write_dump", false, true)]
     [TestCase("write_dump", true, false)]
     [TestCase("native_memory", false, true)]
