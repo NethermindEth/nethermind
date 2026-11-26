@@ -278,7 +278,9 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
                     rebound = true;
                 }
 
-                if (!SymbolEqualityComparer.Default.Equals(reboundMethod?.OriginalDefinition, candidate.OriginalDefinition))
+                if (reboundMethod is null
+                    || !SymbolEqualityComparer.Default.Equals((reboundMethod.ReducedFrom ?? reboundMethod).OriginalDefinition, candidate.OriginalDefinition)
+                    || MayViolateNullableConstraint(candidate, reboundMethod, context.Operation))
                     continue;
             }
 
@@ -311,9 +313,64 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
             return null;
 
         InvocationExpressionSyntax rewritten = invocation.ReplaceNode(toArrayCall.Syntax, span);
-        return model.GetSpeculativeSymbolInfo(invocation.SpanStart, rewritten, SpeculativeBindingOption.BindAsExpression)
-            .Symbol as IMethodSymbol;
+        ConditionalAccessExpressionSyntax? conditional = null;
+        for (SyntaxNode? node = invocation.Parent; node is not null and not MemberDeclarationSyntax; node = node.Parent)
+        {
+            if (node is ConditionalAccessExpressionSyntax access && access.WhenNotNull.Span.Contains(invocation.Span))
+                conditional = access;
+        }
+
+        if (conditional is null)
+            return model.GetSpeculativeSymbolInfo(invocation.SpanStart, rewritten, SpeculativeBindingOption.BindAsExpression)
+                .Symbol as IMethodSymbol;
+
+        // A call after `?.` only binds inside its conditional access, so speculate on the whole access.
+        SyntaxAnnotation marker = new();
+        ExpressionStatementSyntax statement = SyntaxFactory.ExpressionStatement(
+            conditional.ReplaceNode(invocation, rewritten.WithAdditionalAnnotations(marker)));
+        if (!model.TryGetSpeculativeSemanticModel(conditional.SpanStart, statement, out SemanticModel? speculative))
+            return null;
+
+        foreach (SyntaxNode node in statement.GetAnnotatedNodes(marker))
+            return speculative.GetSymbolInfo(node).Symbol as IMethodSymbol;
+
+        return null;
     }
+
+    /// <summary>
+    /// Returns whether a type argument of the bound span overload may break a nullable constraint of <paramref name="candidate"/>.
+    /// </summary>
+    /// <remarks>
+    /// Binding succeeds despite such mismatches: they are warnings (CS8631, CS8634, CS8714), which builds treating
+    /// warnings as errors still reject. Type parameters without a non-null constraint count as possibly null.
+    /// </remarks>
+    private static bool MayViolateNullableConstraint(IMethodSymbol candidate, IMethodSymbol boundMethod, IOperation call)
+    {
+        if (call.SemanticModel?.GetNullableContext(call.Syntax.SpanStart).WarningsEnabled() != true)
+            return false;
+
+        ImmutableArray<ITypeSymbol> typeArguments = boundMethod.TypeArguments;
+        for (int i = 0; i < typeArguments.Length; i++)
+        {
+            ITypeParameterSymbol parameter = candidate.TypeParameters[i];
+            bool rejectsNull = parameter.HasNotNullConstraint
+                || parameter is { HasReferenceTypeConstraint: true, ReferenceTypeConstraintNullableAnnotation: not NullableAnnotation.Annotated }
+                || !parameter.ConstraintTypes.IsEmpty;
+            if (rejectsNull && MayBeNull(typeArguments[i]))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool MayBeNull(ITypeSymbol type) => type switch
+    {
+        { IsValueType: true } => type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T,
+        { NullableAnnotation: NullableAnnotation.Annotated } => true,
+        ITypeParameterSymbol parameter => !parameter.HasNotNullConstraint
+            && parameter is not { HasReferenceTypeConstraint: true, ReferenceTypeConstraintNullableAnnotation: NullableAnnotation.NotAnnotated },
+        _ => false,
+    };
 
     private static string? MatchingSpanParamKind(
         ITypeSymbol candidateParamType,

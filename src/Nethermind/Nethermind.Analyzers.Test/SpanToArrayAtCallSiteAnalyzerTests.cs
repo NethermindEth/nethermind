@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
@@ -163,20 +164,47 @@ public class SpanToArrayAtCallSiteAnalyzerTests
         await Verify(source, Diagnostic().WithLocation(0).WithArguments("M", "ReadOnlySpan", "int"));
     }
 
-    [Test]
-    public async Task Constrained_generic_overload_reports_only_when_available()
+    [TestCase("unmanaged", "int", true)]
+    [TestCase("unmanaged", "string", false)] // CS8377
+    [TestCase("class", "string", true)]
+    [TestCase("class", "int", false)] // CS0452
+    [TestCase("class", "string?", false)] // CS8634, an error when warnings are errors
+    [TestCase("notnull", "string", true)]
+    [TestCase("notnull", "string?", false)] // CS8714, an error when warnings are errors
+    [TestCase("IComparable<T>", "int", true)]
+    [TestCase("IComparable<T>", "object", false)] // CS0311
+    public async Task Constrained_generic_span_overload_reports_only_when_call_compiles(string constraint, string typeArgument, bool reports)
     {
-        string source = """
+        string Arg(int location) => reports ? $"{{|#{location}:s.ToArray()|}}" : "s.ToArray()";
+        string source = $$"""
+            #nullable enable
             using System;
+            class R
+            {
+                public int Count<T>(T[] values) => values.Length;
+                public int Count<T>(ReadOnlySpan<T> values) where T : {{constraint}} => values.Length;
+            }
+            static class E
+            {
+                public static int Count<T>(this string receiver, T[] values) => values.Length;
+                public static int Count<T>(this string receiver, ReadOnlySpan<T> values) where T : {{constraint}} => values.Length;
+            }
             class C
             {
-                static int Count<T>(T[] values) => values.Length;
-                static int Count<T>(ReadOnlySpan<T> values) where T : unmanaged => values.Length;
-                static int CountLabels(ReadOnlySpan<string> labels) => Count<string>(labels.ToArray());
-                static int CountNumbers(ReadOnlySpan<int> numbers) => Count<int>({|#0:numbers.ToArray()|});
+                static int Instance(R r, ReadOnlySpan<{{typeArgument}}> s) => r.Count<{{typeArgument}}>({{Arg(0)}});
+                static int? Conditional(R? r, ReadOnlySpan<{{typeArgument}}> s) => r?.Count<{{typeArgument}}>({{Arg(1)}});
+                static int Extension(string e, ReadOnlySpan<{{typeArgument}}> s) => e.Count<{{typeArgument}}>({{Arg(2)}});
+                static int Static(string e, ReadOnlySpan<{{typeArgument}}> s) => E.Count<{{typeArgument}}>(e, {{Arg(3)}});
+                static void ConditionalInferred(string? e, ReadOnlySpan<{{typeArgument}}> s)
+                {
+                    e?.Count({{Arg(4)}});
+                }
             }
             """;
-        await Verify(source, Diagnostic().WithLocation(0).WithArguments("Count", "ReadOnlySpan", "int"));
+        DiagnosticResult[] expected = reports
+            ? [.. Enumerable.Range(0, 5).Select(i => Diagnostic().WithLocation(i).WithArguments("Count", "ReadOnlySpan", typeArgument))]
+            : [];
+        await Verify(source, expected);
     }
 
     [Test]
