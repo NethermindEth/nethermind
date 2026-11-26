@@ -19,7 +19,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 
 [assembly: InternalsVisibleTo("Nethermind.Stateless.Executor")]
 
@@ -59,10 +58,7 @@ public partial class StatelessBlockProcessingEnv(
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
     public IWorldState WorldState => _worldState ??= CreateWorldState(
-        new TrieStoreScopeProvider(
-            // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
-            WitnessNodeStorage.CreateTrieStore(witness.State), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
-        ),
+        CreateScopeProvider(witness, logManager),
         logManager
     );
 
@@ -71,6 +67,9 @@ public partial class StatelessBlockProcessingEnv(
 
     /// <summary>Creates the block's code cache, sized for <see cref="CodeCacheCapacity"/> codes.</summary>
     private static partial ICodeCache CreateCodeCache();
+
+    /// <summary>Creates the provider of world-state scopes over the witness.</summary>
+    private static partial IWorldStateScopeProvider CreateScopeProvider(Witness witness, ILogManager logManager);
 
     private BlockProcessor GetProcessor()
     {

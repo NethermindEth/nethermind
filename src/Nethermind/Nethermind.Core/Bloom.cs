@@ -73,6 +73,8 @@ public partial class Bloom : IEquatable<Bloom>
             ThrowInvalidUpdate();
         }
 
+        if (TrySetNatively(sequence, masterBloom)) return;
+
         KeccakCache.ComputeTo(sequence, out ValueHash256 keccak);
         ReadOnlySpan<byte> hash = keccak.Bytes;
         (int b1, byte m1) = ByteMask(hash[0], hash[1]);
@@ -194,6 +196,9 @@ public partial class Bloom : IEquatable<Bloom>
         (int w, ulong m) = WordMask(index);
         ULongs[w] |= m;
     }
+
+    /// <summary>Sets the bits of <paramref name="sequence"/> where the platform has its own bloom.</summary>
+    private partial bool TrySetNatively(ReadOnlySpan<byte> sequence, Bloom? masterBloom);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void SetByteMasks(int b1, byte m1, int b2, byte m2, int b3, byte m3)
