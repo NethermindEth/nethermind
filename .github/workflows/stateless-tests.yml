@@ -119,6 +119,17 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         run: make build GUEST_INPUT=${{ matrix.input }}
 
+      - name: Check trusted-input fallbacks in the Airbender simulator
+        if: matrix.vm == 'airbender' && matrix.input == 'Trusted'
+        working-directory: src/Nethermind/Nethermind.Stateless.AirbenderGuest
+        # The build above made the managed assemblies.
+        run: make -o dotnet-build test-trusted-input GUEST_INPUT=Trusted
+
+      - name: Build the Airbender guests that report their trie provider
+        if: matrix.vm == 'airbender' && matrix.input == 'Trusted'
+        working-directory: src/Nethermind/Nethermind.Stateless.AirbenderGuest
+        run: make -o dotnet-build build-scope-guests
+
       - name: Upload guest binary
         uses: actions/upload-artifact@v7
         with:
@@ -247,6 +258,21 @@ jobs:
             grep -q "public_values=${{ steps.expected.outputs.digest }}" "$RUNNER_TEMP/run.log" || \
               { echo "::error::Public values mismatch"; exit 1; }
           fi
+
+      - name: Verify the block on each trie provider
+        if: matrix.vm == 'airbender' && matrix.input == 'Trusted'
+        working-directory: src/Nethermind/${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          for case in scope:native fallback:managed; do
+            guest="nethermind-trusted-${case%%:*}" scope="${case#*:}"
+            make verify GUEST_NAME="$guest" INPUT="${{ steps.expected.outputs.input }}" GUEST_INPUT=Trusted EXPECTED_DIGEST="${{ steps.expected.outputs.digest }}" 2>&1 | tee "$RUNNER_TEMP/$guest.log"
+            grep -q "${{ steps.expected.outputs.output }}" "$RUNNER_TEMP/$guest.log" || \
+              { echo "::error::$guest: output mismatch"; exit 1; }
+            grep -q "SCOPE: $scope" "$RUNNER_TEMP/$guest.log" || \
+              { echo "::error::$guest did not run on the $scope trie provider"; exit 1; }
+            echo "$guest ($scope): $(grep -m1 -oE 'Cycles: [0-9]+' "$RUNNER_TEMP/$guest.log")"
+          done
 
       - name: Verify malformed hints fall back to recovery
         if: matrix.vm == 'airbender' && matrix.input == 'Trusted'

@@ -14,9 +14,9 @@ GUEST_ARCH := riscv32
 # libairbender of a bflat-airbender release. bflat does not check a local
 # manifest, so the download is checked against AIRBENDER_SHA256 instead.
 # AIRBENDER_LIB_DIR names another libairbender build.
-BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:eadcaf8cd2fdcf4008c902fb47cfc4fe2c27c016@sha256:3c7859f64d59c90f42b4199ecbb937adca456a415c67942d32e909963282ac40
-AIRBENDER_VERSION := v1.0.5
-AIRBENDER_SHA256 := ecabf7f2d1e5a7ddb4473906a45a9c75adcece564a83ea19e1f8bffbd6cd9db2
+BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:3e6703196d4a350e61344168b1332b77ed3e8092@sha256:4882cdff7be52c6ace87b1ee711e9d9da92f78245326bb1bf452521eb928597f
+AIRBENDER_VERSION := v1.0.9
+AIRBENDER_SHA256 := f5e7de3ed52ee666d6786a963df9939e01bffca4a544b1475cdf8f8e406133c6
 AIRBENDER_LIB_DIR ?= $(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION)
 BFLAT_DOCKER_ARGS = --mount type=bind,source="$(AIRBENDER_LIB_DIR)",target=/airbender,readonly
 GUEST_EXTLIB := /airbender/libairbender.bflat.manifest
@@ -76,3 +76,34 @@ $(GUEST_DIR)/bin/%.hex: $(GUEST_DIR)/bin/%.raw
 	python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); n=len(d); d+=bytes(-n % 4); w=[n, *struct.unpack(f'<{len(d)//4}I', d)]; open(sys.argv[2],'w').write(''.join(f'{x:08x}' for x in w))" $< $@
 
 .PHONY: verify
+
+# Exercise the witness fallback and the division delegation against the production guest runtime.
+.PHONY: test-trusted-input
+test-trusted-input: dotnet-build $(GUEST_DIR)/bin/trusted-input-test.hex
+	$(MAKE) -o dotnet-build build GUEST_INPUT=Trusted GUEST_NAME=trusted-input-test \
+		BFLAT_DOCKER_ARGS='$(BFLAT_DOCKER_ARGS) --mount type=bind,source="$(MAKEFILE_DIR)/../Nethermind.Evm/WordDivision.zkevm.cs",target=/test/WordDivision.cs,readonly \
+		--mount type=bind,source="$(MAKEFILE_DIR)/../Nethermind.Consensus/Stateless/AirbenderWitnessNodes.zkevm.cs",target=/test/WitnessNodes.cs,readonly' \
+		GUEST_SOURCES='$(SRC_DIR)/tests/TrustedInput.cs /test/WordDivision.cs /test/WitnessNodes.cs'
+	$(AIRBENDER_CLI) run --bin "$(GUEST_DIR)/bin/trusted-input-test.bin" --text "$(GUEST_DIR)/bin/trusted-input-test.text" \
+		--input-file "$(GUEST_DIR)/bin/trusted-input-test.hex" --cycles 10000000 --expected-results 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
+$(GUEST_DIR)/bin/trusted-input-test.hex: $(MAKEFILE_DIR)/../../../scripts/ci/airbender-division-input.cs
+	mkdir -p "$(@D)"
+	dotnet run --file "$<" -- "$@"
+
+# Trusted-input guests that print the trie provider each block runs on: nethermind-trusted-scope as production
+# chooses it, and nethermind-trusted-fallback with libairbender's tries refused, so on the managed witness nodes.
+.PHONY: build-scope-guests
+build-scope-guests: GUEST_INPUT = Trusted
+build-scope-guests: dotnet-build
+	$(MAKE) -o dotnet-build build GUEST_INPUT=Trusted GUEST_NAME=nethermind-trusted-scope \
+		GUEST_SUBSTITUTIONS='$(GUEST_SUBSTITUTIONS) --substitution $(SRC_DIR)/scope-report.xml'
+	$(MAKE) -o dotnet-build build GUEST_INPUT=Trusted GUEST_NAME=nethermind-trusted-fallback \
+		GUEST_SUBSTITUTIONS='$(GUEST_SUBSTITUTIONS) --substitution $(SRC_DIR)/scope-report.xml --substitution $(SRC_DIR)/witness-fallback.xml'
+
+# Record and replay the same arithmetic build. INPUT is an unhinted framed .nti under bin/.
+.PHONY: record-division
+record-division:
+	@$(REQUIRE_INPUT)
+	$(MAKE) build GUEST_NAME=division-recorder GUEST_INPUT=Trusted GUEST_SUBSTITUTIONS='$(GUEST_SUBSTITUTIONS) --substitution $(SRC_DIR)/trace-division.xml'
+	cd "$(MAKEFILE_DIR)/../../.." && dotnet run --file scripts/ci/record-airbender-divisions.cs -- "$(GUEST_DIR)" "$(INPUT)"
