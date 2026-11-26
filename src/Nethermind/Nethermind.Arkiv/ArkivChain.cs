@@ -691,7 +691,7 @@ public sealed class ArkivChain : IDisposable
                 Hash256 entity = new(entry.Key.AsSpan(1));
                 for (int offset = keep * 8; offset < entry.Value.Length; offset += 8)
                     batch.Set(EntityKey(entity, BinaryPrimitives.ReadUInt64BigEndian(entry.Value.AsSpan(offset))), null);
-                batch.Set(entry.Key, keep == 0 ? null : entry.Value.AsSpan(0, keep * 8));
+                batch.Set(entry.Key, keep == 0 ? null : entry.Value.AsSpan(0, keep * 8).ToArray());
             }
         }
         batch.Set(HeadKey, HeadValue(number, hash));

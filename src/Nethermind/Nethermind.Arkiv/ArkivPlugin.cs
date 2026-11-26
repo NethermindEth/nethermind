@@ -11,6 +11,7 @@ using Nethermind.Arkiv.Rpc;
 using Nethermind.Arkiv.State;
 using Nethermind.Arkiv.Sync;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;

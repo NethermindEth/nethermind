@@ -207,31 +207,35 @@ public class ArkivChainTests
     [Test]
     public void Restoring_a_checkpoint_removes_abandoned_entity_history_and_replays_in_order()
     {
-        using ArkivChain chain = Open(checkpointInterval: 100);
+        int firstEntityHeight = RabdiFixture.EntityBlockIndexes.First() + 1;
+        Assert.That(firstEntityHeight, Is.GreaterThan(3));
+        using ArkivChain chain = Open(checkpointInterval: (ulong)(firstEntityHeight - 2));
+        int forkHeight = firstEntityHeight - 1;
+        int endHeight = firstEntityHeight + 1;
         Dictionary<Hash256, (ulong Number, string? Json)> touched = [];
-        for (int n = 1; n <= 500; n++)
+        for (int n = 1; n <= endHeight; n++)
         {
             ArkivBlockResult result = chain.Execute(B(n), commit: true);
             foreach (ArkivEntitySnapshot entity in result.Entities)
-                if (n > 400) touched[entity.Key] = ((ulong)n, entity.Json is null ? null : System.Text.Encoding.UTF8.GetString(entity.Json));
+                if (n > forkHeight) touched[entity.Key] = ((ulong)n, entity.Json is null ? null : System.Text.Encoding.UTF8.GetString(entity.Json));
         }
         Assert.That(touched, Is.Not.Empty);
-        Dictionary<Hash256, (bool Found, string? Json)> at401 = touched.Keys.ToDictionary(key => key, key =>
+        Dictionary<Hash256, (bool Found, string? Json)> atFork = touched.Keys.ToDictionary(key => key, key =>
         {
-            (bool found, JsonElement? entity) = chain.EntityAt(key, 401);
+            (bool found, JsonElement? entity) = chain.EntityAt(key, (ulong)forkHeight);
             return (found, entity?.GetRawText());
         });
 
-        Block fork401 = RabdiFixture.Sibling(B(401));
-        _tree[fork401.Hash!] = fork401;
-        chain.Execute(fork401, commit: true);
+        Block fork = RabdiFixture.Sibling(B(forkHeight));
+        _tree[fork.Hash!] = fork;
+        chain.Execute(fork, commit: true);
         foreach (Hash256 key in touched.Keys)
         {
-            (bool found, JsonElement? entity) = chain.EntityAt(key, 500);
-            Assert.That((found, entity?.GetRawText()), Is.EqualTo(at401[key]));
+            (bool found, JsonElement? entity) = chain.EntityAt(key, (ulong)endHeight);
+            Assert.That((found, entity?.GetRawText()), Is.EqualTo(atFork[key]));
         }
 
-        chain.Execute(B(501), commit: true);
+        chain.Execute(B(endHeight + 1), commit: true);
         foreach (KeyValuePair<Hash256, (ulong Number, string? Json)> entry in touched)
         {
             (bool found, JsonElement? entity) = chain.EntityAt(entry.Key, entry.Value.Number);

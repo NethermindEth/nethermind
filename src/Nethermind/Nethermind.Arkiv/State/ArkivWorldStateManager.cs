@@ -51,7 +51,6 @@ public sealed class ArkivWorldStateManager(IWorldStateManager inner, ArkivRoots 
 
     public IWorldStateScopeProvider GlobalWorldState => _global;
     public IStateReader GlobalStateReader => _reader;
-    public ISnapStateServer SnapStateServer => inner.SnapStateServer;
     public IReadOnlyKeyValueStore? HashServer => inner.HashServer;
     public IWorldStateScopeProvider CreateResettableWorldState() => new ArkivScopeProvider(inner.CreateResettableWorldState(), roots);
     public IWorldStateScopeProvider CreateReadOnlyQueryWorldState() => new ArkivScopeProvider(inner.CreateReadOnlyQueryWorldState(), roots);
