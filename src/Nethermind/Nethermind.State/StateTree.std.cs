@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.State
 {
@@ -11,7 +11,7 @@ namespace Nethermind.State
     {
         internal partial void WriteAccounts(Dictionary<AddressAsKey, Account?> accounts)
         {
-            if (Avx2.IsSupported && accounts.Count >= KeyHashBatch.MinimumBatchSize)
+            if (KeccakHash.MaxBatchWidth != 0 && accounts.Count >= KeyHashBatch.MinimumBatchSize)
             {
                 SetAccounts(accounts);
             }
