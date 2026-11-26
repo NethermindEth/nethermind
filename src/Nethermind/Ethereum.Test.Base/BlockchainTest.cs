@@ -35,6 +35,12 @@ namespace Ethereum.Test.Base
         public Dictionary<Address, AccountState>? PostState { get; set; }
         public Hash256? PostStateRoot { get; set; }
 
+        /// <summary>The <c>blockchain_tests_engine_x</c> pre-allocation group the test runs on.</summary>
+        public string? PreHash { get; set; }
+
+        /// <summary>The <c>blockchain_tests_engine_x</c> post-state as changes to the group's pre-allocation; a null account is deleted.</summary>
+        public Dictionary<Address, AccountState?>? PostStateDiff { get; set; }
+
         public override string? ToString() => Name;
     }
 }

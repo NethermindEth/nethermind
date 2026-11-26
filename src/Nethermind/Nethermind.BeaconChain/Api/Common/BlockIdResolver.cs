@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Common;
@@ -30,16 +31,16 @@ internal readonly record struct ResolvedBlock(Hash256 Root, ForkedSignedBeaconBl
 
 internal static class BlockIdResolver
 {
-    public static bool TryResolve(BeaconApiContext ctx, string blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage)
+    public static bool TryResolve(BeaconChainStore store, BeaconApiHead view, string blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage)
     {
         resolved = default;
 
-        if (!IdResolver.TryResolveRoot(ctx, blockId, out Hash256? root, out errorStatus, out errorMessage))
+        if (!IdResolver.TryResolveRoot(store, view, blockId, out Hash256? root, out errorStatus, out errorMessage))
         {
             return false;
         }
 
-        if (!ctx.Store.TryGetForkedBlock(root!, out ForkedSignedBeaconBlock? block))
+        if (!store.TryGetForkedBlock(root!, out ForkedSignedBeaconBlock? block))
         {
             errorStatus = StatusCodes.Status404NotFound;
             errorMessage = $"Block {root} is not retained by this node.";
