@@ -50,6 +50,7 @@ namespace Nethermind.Network.Config
         public int MaxOutgoingConnectPerSec { get; set; } = 20;
         public int ConnectTimeoutMs { get; set; } = 2000;
         public int ProcessingThreadCount { get; set; } = 1;
+        public RlpxTransport RlpxTransport { get; set; } = RlpxTransport.DotNetty;
         public string? ClientIdMatcher { get; set; } = null;
         public bool DisableDiscV4DnsFeeder { get; set; } = false;
         public long RlpxHostShutdownCloseTimeoutMs { get; set; } = 1000;

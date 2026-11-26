@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using DotNetty.Handlers.Timeout;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
+using Nethermind.Network.Rlpx.Sockets;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats.Model;
 
@@ -26,7 +27,7 @@ internal static class RlpxErrorHandler
     /// </returns>
     public static bool TryHandle(ISession session, Exception exception, ILogger logger)
     {
-        if (exception is SocketException or RlpReaderException or ReadTimeoutException)
+        if (exception is SocketException or RlpReaderException or ReadTimeoutException or RlpxReadTimeoutException)
         {
             if (logger.IsTrace) TraceCommunicationError(session, exception, logger);
         }

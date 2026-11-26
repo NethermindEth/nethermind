@@ -16,6 +16,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Rlpx.Sockets;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
@@ -63,7 +64,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
             .AddSingleton<ISessionMonitor, SessionMonitor>()
             .AddSingleton<IPrivilegedIpProvider, PrivilegedIpProvider>()
-            .AddSingleton<IRlpxHost, RlpxHost>()
             .AddSingleton<Handshake.IHandshakeService, Handshake.HandshakeService>()
 
             .AddSingleton<INodeStatsManager>(ctx => new NodeStatsManager(
@@ -183,6 +183,15 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddProtocolHandler<Subprotocols.Eth.V72.Eth72ProtocolHandler>()
 
             ;
+
+        if (configProvider.GetConfig<INetworkConfig>().RlpxTransport == RlpxTransport.Sockets)
+        {
+            builder.AddSingleton<IRlpxHost, SocketRlpxHost>();
+        }
+        else
+        {
+            builder.AddSingleton<IRlpxHost, RlpxHost>();
+        }
     }
 
     private sealed class TxGossipPolicySource(ILifetimeScope lifetimeScope) : ITxGossipPolicySource
