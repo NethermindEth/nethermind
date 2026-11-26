@@ -743,17 +743,40 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null, CancellationToken cancellationToken = default)
     {
+        // Two leading separators make a UNC or device path on Windows, which would open a connection to another host.
+        if (!Path.IsPathFullyQualified(fileName) || fileName is ['/' or '\\', '/' or '\\', ..])
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("file path must be an absolute local path", ErrorCodes.InvalidParams);
+        }
+
         byte[] blockRlp;
         try
         {
-            blockRlp = File.ReadAllBytes(fileName);
+            using FileStream stream = new(fileName, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 0);
+            // Reading only the reported length bounds devices such as /dev/zero, which report none.
+            if (!stream.CanSeek)
+            {
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("could not read file: not a regular file", ErrorCodes.InvalidInput);
+            }
+
+            if (stream.Length > jsonRpcConfig.MaxRequestBodySize)
+            {
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"could not read file: larger than {jsonRpcConfig.MaxRequestBodySize} bytes", ErrorCodes.InvalidInput);
+            }
+
+            blockRlp = new byte[stream.Length];
+            stream.ReadExactly(blockRlp);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"could not read file: {exception.Message}", ErrorCodes.InvalidInput);
         }
 
-        return debug_traceBlock(blockRlp, options, cancellationToken);
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> result = debug_traceBlock(blockRlp, options, cancellationToken);
+        // RLP diagnostics quote input bytes, which here come from a file the caller may not otherwise be able to read.
+        return result.Result.Error?.StartsWith("could not decode block", StringComparison.Ordinal) == true
+            ? ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("could not decode block", ErrorCodes.InvalidInput)
+            : result;
     }
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null, CancellationToken cancellationToken = default)
