@@ -262,22 +262,50 @@ public class StreamingSnapshotInitializerTests
         }
     }
 
-    [Test]
-    public async Task InitializeAsync_MarkerCannotBeCreated_ThrowsAndKeepsWhatIsThere()
+    [TestCase(false, false, TestName = "InitializeAsync_FileAtTheMarkerPath_TheClaimReportsTheOtherExtraction")]
+    [TestCase(true, false, TestName = "InitializeAsync_DirectoryAtTheMarkerPath_TheClaimReportsTheOtherExtraction")]
+    [TestCase(false, true, TestName = "InitializeAsync_FileAtTheMarkerPathWithMaskedPaths_TheClaimRedactsTheWholeChain")]
+    public async Task InitializeAsync_MarkerCannotBeCreated_ThrowsAndKeepsWhatIsThere(bool directory, bool masked)
     {
         _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
         _config.Checksum = Convert.ToHexString(SHA256.HashData(_server.Content));
         // Only an entry at the marker path, which the content check skips: the claim creates its marker anew, so it fails.
+        // On Windows a directory there makes the create fail with access denied rather than "file exists".
         Directory.CreateDirectory(_dbPath);
-        File.WriteAllBytes(MarkerPath, [1, 2, 3]);
-
-        IOException exception = (await Assert.ThrowsAsync<IOException>(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None)))!;
+        if (directory)
+            Directory.CreateDirectory(MarkerPath);
+        else
+            File.WriteAllBytes(MarkerPath, [1, 2, 3]);
+        bool wasMasked = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = masked;
+        IOException exception;
+        try
+        {
+            exception = (await Assert.ThrowsAsync<IOException>(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None)))!;
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = wasMasked;
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception.Message, Does.Contain("was not completed, or is still running in another process").And.Contain("empty the directory by hand"),
                 "a marker created after admission is another extraction's, and the start must say so");
-            Assert.That(File.ReadAllBytes(MarkerPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "the entry at the marker path must stay as it was");
+            if (masked)
+            {
+                Assert.That(exception.InnerException, Is.Null, "the cause names the path, so it is dropped when paths are masked");
+                Assert.That(ChainMessages(exception), Has.None.Contains(_dbPath), "no message in the chain may name the path");
+            }
+            else
+            {
+                Assert.That(exception.InnerException, Is.InstanceOf<IOException>().Or.InstanceOf<UnauthorizedAccessException>(), "the failed create must stay as the cause");
+            }
+
+            if (directory)
+                Assert.That(Directory.Exists(MarkerPath), Is.True, "the directory at the marker path must stay");
+            else
+                Assert.That(File.ReadAllBytes(MarkerPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "the entry at the marker path must stay as it was");
             Assert.That(Directory.EnumerateFileSystemEntries(_dbPath).Count(), Is.EqualTo(1), "nothing may be extracted when the marker cannot be created");
         }
     }
@@ -311,6 +339,12 @@ public class StreamingSnapshotInitializerTests
     }
 
     private string MarkerPath => Path.Combine(_dbPath, ".nethermind-snapshot-extracting");
+
+    private static IEnumerable<string> ChainMessages(Exception? exception)
+    {
+        for (; exception is not null; exception = exception.InnerException)
+            yield return exception.Message;
+    }
 
     private StreamingSnapshotInitializer CreateInitializer(int connections = 2, IDriveInfo[]? drives = null, ILogManager? logManager = null) =>
         new(_config, _server.Url, _dbPath, drives ?? [],

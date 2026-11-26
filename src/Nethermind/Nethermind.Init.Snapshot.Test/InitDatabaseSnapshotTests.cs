@@ -526,10 +526,13 @@ public class InitDatabaseSnapshotTests
         {
             if (Interlocked.Increment(ref requests) == 2)
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(data)!);
+                Directory.CreateDirectory(_dbPath);
                 File.WriteAllBytes(MarkerPath, [4, 5, 6]);
                 if (withData)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(data)!);
                     File.WriteAllBytes(data, [1, 2, 3]);
+                }
             }
 
             return Task.CompletedTask;
@@ -545,16 +548,18 @@ public class InitDatabaseSnapshotTests
             Assert.That(File.ReadAllBytes(MarkerPath), Is.EqualTo(new byte[] { 4, 5, 6 }), "the other extraction's marker must stay as it was");
             if (withData)
                 Assert.That(File.ReadAllBytes(data), Is.EqualTo(new byte[] { 1, 2, 3 }), "the other extraction's file must stay as it was");
-            Assert.That(Directory.GetFileSystemEntries(_dbPath, "*", SearchOption.AllDirectories).Length, Is.EqualTo(withData ? 3 : 2), "nothing may be extracted");
+            Assert.That(Directory.GetFileSystemEntries(_dbPath, "*", SearchOption.AllDirectories).Length, Is.EqualTo(withData ? 3 : 1), "nothing may be extracted");
         }
     }
 
-    [Test]
+    [TestCase(false, TestName = "Execute_DatabaseDirectoryThatCannotBeSearched_StopsWithoutTakingItForADatabase")]
+    [TestCase(true, TestName = "Execute_DatabaseDirectoryThatCannotBeSearchedWithMaskedPaths_StopsAndRedactsTheWholeChain")]
     [Platform(Include = "Linux")] // Unix permissions
     [SupportedOSPlatform("linux")]
-    public async Task Execute_DatabaseDirectoryThatCannotBeSearched_StopsWithoutTakingItForADatabase()
+    public async Task Execute_DatabaseDirectoryThatCannotBeSearched_StopsWithoutTakingItForADatabase(bool masked)
     {
-        // As another user than root the marker cannot be looked up; as root it is found. Either way the start must stop.
+        // As another user than root the marker cannot be looked up; as root it is found. Either way the start must stop,
+        // and only a marker that was found may be reported as one.
         WriteSnapshotTar();
         AdvanceCheckpoint(SnapshotStage.Verified);
         string data = Path.Combine(_dbPath, "000001.sst");
@@ -563,6 +568,9 @@ public class InitDatabaseSnapshotTests
         File.WriteAllBytes(data, [1, 2, 3]);
         UnixFileMode mode = File.GetUnixFileMode(_dbPath);
         File.SetUnixFileMode(_dbPath, UnixFileMode.None);
+        bool wasMasked = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = masked;
+        bool denied = !CanSearch(_dbPath);
         IOException exception;
         try
         {
@@ -571,12 +579,28 @@ public class InitDatabaseSnapshotTests
         }
         finally
         {
+            SensitiveLogMasking.Enabled = wasMasked;
             File.SetUnixFileMode(_dbPath, mode);
         }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception.Message, Does.Contain(".nethermind-snapshot-extracting").And.Contain(_dbPath), "the error must name the directory and what could not be checked");
+            Assert.That(exception.Message, Does.Contain(".nethermind-snapshot-extracting"), "the error must name what could not be checked or was found");
+            Assert.That(exception.Message, denied
+                ? Does.Contain("Could not check").And.Not.Contain("was not completed")
+                : Does.Contain("was not completed").And.Not.Contain("Could not check"),
+                "a marker that could not be looked up must not be reported as found, and one that was found must be");
+            if (masked)
+            {
+                Assert.That(exception.InnerException, Is.Null, "the cause names the path, so it is dropped when paths are masked");
+                for (Exception? link = exception; link is not null; link = link.InnerException)
+                    Assert.That(link.Message, Does.Not.Contain(_dbPath), "no message in the chain may name the path");
+            }
+            else
+            {
+                Assert.That(exception.Message, Does.Contain(_dbPath), "the error must name the directory");
+            }
+
             Assert.That(File.ReadAllBytes(data), Is.EqualTo(new byte[] { 1, 2, 3 }), "nothing may be changed");
             Assert.That(File.Exists(MarkerPath), Is.True, "the marker must stay");
             Assert.That(File.Exists(_snapshotPath), Is.True, "nothing may be extracted");
@@ -1022,6 +1046,24 @@ public class InitDatabaseSnapshotTests
         {
             await run;
             Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "on Linux letter case tells two directories apart");
+        }
+    }
+
+    // Whether this user may look up names in the directory: as root, permissions do not apply.
+    private static bool CanSearch(string directory)
+    {
+        try
+        {
+            _ = File.GetAttributes(Path.Combine(directory, "probe"));
+            return true;
+        }
+        catch (FileNotFoundException)
+        {
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

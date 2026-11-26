@@ -12,6 +12,10 @@ internal static class SnapshotDatabase
     // In the database directory, so it stays with the data when the snapshot directory and its checkpoint change or are lost.
     private const string ExtractionMarker = ".nethermind-snapshot-extracting";
 
+    // How an exclusive create reports that its path exists: ERROR_FILE_EXISTS on Windows, EEXIST on Linux and macOS.
+    private const int FileExistsHResult = unchecked((int)0x80070050);
+    private const int FileExistsErrno = 17;
+
     private static ReadOnlySpan<byte> ExtractionMarkerContent => "Nethermind snapshot extraction in progress"u8;
 
     public static bool Exists(string dbPath)
@@ -61,7 +65,7 @@ internal static class SnapshotDatabase
         {
             marker = new(MarkerPath(dbPath), FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 0, FileOptions.WriteThrough);
         }
-        catch (IOException e) when (HasUnfinishedExtraction(dbPath))
+        catch (Exception e) when (IsMarkerCollision(e, dbPath))
         {
             // Another extraction created its marker after the content check. Other failures stay as they are.
             throw new IOException(UnfinishedExtraction(dbPath), SensitiveLogMasking.Enabled ? null : e);
@@ -144,4 +148,14 @@ internal static class SnapshotDatabase
     }
 
     private static string MarkerPath(string dbPath) => Path.Combine(dbPath, ExtractionMarker);
+
+    // How an exclusive create reports an entry already at the marker path: as "file exists" (EEXIST, for an entry of any
+    // kind, on Unix; ERROR_FILE_EXISTS for a file on Windows), or on Windows as access denied for a directory there. Any
+    // other failure, a permission error with no marker included, is not a collision.
+    private static bool IsMarkerCollision(Exception e, string dbPath) => e switch
+    {
+        UnauthorizedAccessException => OperatingSystem.IsWindows() && Directory.Exists(MarkerPath(dbPath)),
+        IOException => e.HResult == (OperatingSystem.IsWindows() ? FileExistsHResult : FileExistsErrno) && HasUnfinishedExtraction(dbPath),
+        _ => false,
+    };
 }
