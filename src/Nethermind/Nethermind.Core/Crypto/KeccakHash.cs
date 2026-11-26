@@ -180,13 +180,9 @@ public sealed partial class KeccakHash
     /// <remarks>A no-op on the host. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     internal static partial void DonateConsumedInput(ReadOnlySpan<byte> consumed);
 
-    /// <summary>Writes the Keccak-256 digest of <paramref name="input"/> to <paramref name="output"/> through
-    /// <see cref="ComputeHash256"/>, where that is the target's faster path.</summary>
+    /// <summary>Writes the Keccak-256 digest of <paramref name="input"/> to <paramref name="output"/>
+    /// when the target supplies a specialized one-shot implementation.</summary>
     /// <returns>Whether the digest was written.</returns>
-    /// <remarks>The host returns false and keeps <see cref="ComputeHash"/>'s own path: its
-    /// <see cref="ComputeHash256"/> goes through <see cref="ComputeHash"/>, so taking it here would recurse. The
-    /// guest takes its lean absorb for every 256-bit digest, callers that hash straight into their own storage
-    /// included. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     private static partial bool TryComputeHash256Into(ReadOnlySpan<byte> input, Span<byte> output);
 
     /// <summary>Computes the Keccak digest of <paramref name="input"/> in one shot.</summary>

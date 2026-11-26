@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -212,11 +213,11 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Avx512VL_permutation_matches_scalar()
+        public void Hardware_permutation_matches_scalar()
         {
-            if (!Avx512F.VL.IsSupported)
+            if (!Sha3.IsSupported && !Avx512F.VL.IsSupported)
             {
-                Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
+                Assert.Ignore("Requires ARM SHA3 or AVX-512VL.");
             }
 
             const int stateLength = 25;
@@ -238,7 +239,10 @@ namespace Nethermind.Core.Test
                 actual.CopyTo(expected, 0);
 
                 KeccakHash.KeccakF1600Scalar(ref expected[0]);
-                KeccakHash.KeccakF1600Avx512VL(ref actual[0]);
+                if (Sha3.IsSupported)
+                    KeccakHash.KeccakF1600ArmSha3(ref actual[0]);
+                else
+                    KeccakHash.KeccakF1600Avx512VL(ref actual[0]);
 
                 Assert.That(actual, Is.EqualTo(expected), $"Permutation mismatch for test case {testCase}.");
             }
@@ -433,6 +437,23 @@ namespace Nethermind.Core.Test
             byte[] bytes = Bytes.FromHexString(hexString);
             ValueHash256 h = ValueKeccak.Compute(bytes);
             Assert.That(h.Bytes.ToHexString(), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Hash256_writes_only_the_digest_when_input_and_output_overlap(
+            [Values(20, 32, 135, 136, 137, 272, 532)] int inputLength)
+        {
+            const int inputOffset = 1;
+            const int outputOffset = 3;
+            byte[] buffer = FilledInput(Math.Max(inputOffset + inputLength, outputOffset + Hash256.Size) + 1);
+            byte[] expected = (byte[])buffer.Clone();
+            Org.BouncyCastle.Crypto.Digests.KeccakDigest reference = new(256);
+            reference.BlockUpdate(buffer, inputOffset, inputLength);
+            reference.DoFinal(expected, outputOffset);
+
+            KeccakHash.ComputeHash(buffer.AsSpan(inputOffset, inputLength), buffer.AsSpan(outputOffset, Hash256.Size));
+
+            Assert.That(buffer, Is.EqualTo(expected));
         }
 
         [Test]
