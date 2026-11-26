@@ -352,7 +352,7 @@ public partial class SnapProviderTests
             for (int round = 0; round < Headers.Length; round++)
                 text.AppendLine($"root {round} {Headers[round].StateRoot}: {string.Join("; ", Changes[round])}");
             text.AppendLine(Root4Target.Hash is null
-                ? "root 4 target: not found"
+                ? "root 4 target: unavailable"
                 : $"root 4 target: {(Root4Target.Owner is null ? "state" : $"storage of {Root4Target.Owner}")} node at '{Root4Target.Path}' {Root4Target.Hash}");
             return text.ToString();
         }
@@ -821,7 +821,7 @@ public partial class SnapProviderTests
         private readonly IPersistence _persistence;
         private readonly Random _random;
         private readonly Queue<string> _recentRequests = new();
-        private readonly bool[] _roundCompleted = new bool[GeneratedRounds];
+        private readonly bool?[] _roundCompleted = new bool?[GeneratedRounds];
         private int _round = -1;
         private int _roundRequests;
         private string? _partialAnswer;
@@ -920,20 +920,21 @@ public partial class SnapProviderTests
             for (int round = 0; round < GeneratedRounds; round++)
             {
                 bool expected = round is not (3 or 4);
-                if (_roundCompleted[round] != expected) ScheduleErrors.Add($"round {round} {(expected ? "did not complete" : "completed")}");
+                if (_roundCompleted[round] is not { } completed) ScheduleErrors.Add($"round {round} completion not checked");
+                else if (completed != expected) ScheduleErrors.Add($"round {round} {(expected ? "did not complete" : "completed")}");
             }
         }
 
         public string Describe()
         {
             StringBuilder text = new();
-            text.AppendLine($"rounds completed: {string.Join(", ", _roundCompleted.Select((completed, round) => $"{round} {(completed ? "yes" : "no")}"))}");
+            text.AppendLine($"rounds completed: {string.Join(", ", _roundCompleted.Select((completed, round) => $"{round} {completed switch { true => "yes", false => "no", null => "not checked" }}"))}");
             text.AppendLine($"round 3 planned to move on after request {Root3RequestsBeforeMovingOn} at that root: {_root3Cut ?? "did not"}");
             text.AppendLine($"round 4: {_root4Cut ?? "did not move on"}");
             text.AppendLine($"planned partial answer: {_partialAnswer ?? "none"}");
             text.AppendLine(_firstMultiItemRoot3Response is { } delivered
                 ? $"delivered: request {delivered.Request} reached healing with {delivered.Answered} responses to {delivered.Requested} items"
-                : "delivered: no request of root 3 with more than one item reached healing before it moved on");
+                : "delivered: no multi-item request at root 3 was observed by the pre-handle hook");
             text.AppendLine("last requests:");
             foreach (string request in _recentRequests) text.AppendLine(request);
             return text.ToString();
