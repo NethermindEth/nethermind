@@ -127,7 +127,7 @@ public interface IJsonRpcConfig : IConfig
     long? MaxRequestBodySize { get; set; }
 
     [ConfigItem(
-        Description = "The max number of logs per response for the `eth_getLogs` JSON-RPC method. `0` to lift the limit.",
+        Description = "The max number of logs per response for the `eth_getLogs` JSON-RPC method, and of block numbers per response for `logIndex_blockNumbers`. `0` to lift the limit.",
         DefaultValue = "20000")]
     public int MaxLogsPerResponse { get; set; }
 
