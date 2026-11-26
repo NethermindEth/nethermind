@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis.CSharp.Testing;
@@ -164,15 +165,22 @@ public class SpanToArrayAtCallSiteAnalyzerTests
         await Verify(source, Diagnostic().WithLocation(0).WithArguments("M", "ReadOnlySpan", "int"));
     }
 
-    [TestCase("unmanaged", "int", true)]
-    [TestCase("unmanaged", "string", false)] // CS8377
-    [TestCase("class", "string", true)]
-    [TestCase("class", "int", false)] // CS0452
-    [TestCase("class", "string?", false)] // CS8634, an error when warnings are errors
-    [TestCase("notnull", "string", true)]
-    [TestCase("notnull", "string?", false)] // CS8714, an error when warnings are errors
-    [TestCase("IComparable<T>", "int", true)]
-    [TestCase("IComparable<T>", "object", false)] // CS0311
+    private static IEnumerable<TestCaseData> ConstrainedSpanOverloadCases()
+    {
+        yield return new TestCaseData("unmanaged", "int", true);
+        yield return new TestCaseData("unmanaged", "string", false); // CS8377
+        yield return new TestCaseData("class", "string", true);
+        yield return new TestCaseData("class", "int", false); // CS0452
+        yield return new TestCaseData("class", "string?", false); // CS8634, an error when warnings are errors
+        yield return new TestCaseData("notnull", "string", true);
+        yield return new TestCaseData("notnull", "string?", false); // CS8714, an error when warnings are errors
+        yield return new TestCaseData("IComparable<T>", "int", true);
+        yield return new TestCaseData("IComparable<T>", "object", false); // CS0311
+        yield return new TestCaseData("IDisposable?", "IDisposable?", true);
+        yield return new TestCaseData("IDisposable", "IDisposable?", false); // CS8631, an error when warnings are errors
+    }
+
+    [TestCaseSource(nameof(ConstrainedSpanOverloadCases))]
     public async Task Constrained_generic_span_overload_reports_only_when_call_compiles(string constraint, string typeArgument, bool reports)
     {
         string Arg(int location) => reports ? $"{{|#{location}:s.ToArray()|}}" : "s.ToArray()";
@@ -205,6 +213,24 @@ public class SpanToArrayAtCallSiteAnalyzerTests
             ? [.. Enumerable.Range(0, 5).Select(i => Diagnostic().WithLocation(i).WithArguments("Count", "ReadOnlySpan", typeArgument))]
             : [];
         await Verify(source, expected);
+    }
+
+    [TestCase("byte", true)]
+    [TestCase("Span<byte>", false)] // CS9244
+    public async Task Span_overload_without_allows_ref_struct_reports_only_when_call_compiles(string tag, bool reports)
+    {
+        string argument = reports ? "{|#0:s.ToArray()|}" : "s.ToArray()";
+        string source = $$"""
+            using System;
+            class C
+            {
+                static int Count<T, TTag>(T[] values) where TTag : allows ref struct => values.Length;
+                static int Count<T, TTag>(ReadOnlySpan<T> values) => values.Length;
+                static int Use(ReadOnlySpan<int> s) => Count<int, {{tag}}>({{argument}});
+            }
+            """;
+        DiagnosticResult[] expected = reports ? [Diagnostic().WithLocation(0).WithArguments("Count", "ReadOnlySpan", "int")] : [];
+        await Verify(source, ReferenceAssemblies.Net.Net90, expected);
     }
 
     [Test]
@@ -334,12 +360,15 @@ public class SpanToArrayAtCallSiteAnalyzerTests
     private static DiagnosticResult Diagnostic() =>
         CSharpAnalyzerVerifier<SpanToArrayAtCallSiteAnalyzer, DefaultVerifier>.Diagnostic(SpanToArrayAtCallSiteAnalyzer.DiagnosticId);
 
-    private static async Task Verify(string source, params DiagnosticResult[] expected)
+    private static Task Verify(string source, params DiagnosticResult[] expected) =>
+        Verify(source, ReferenceAssemblies.Net.Net80, expected);
+
+    private static async Task Verify(string source, ReferenceAssemblies referenceAssemblies, params DiagnosticResult[] expected)
     {
         CSharpAnalyzerTest<SpanToArrayAtCallSiteAnalyzer, DefaultVerifier> test = new()
         {
             TestCode = source,
-            ReferenceAssemblies = ReferenceAssemblies.Net.Net80,
+            ReferenceAssemblies = referenceAssemblies,
         };
         test.ExpectedDiagnostics.AddRange(expected);
         await test.RunAsync();

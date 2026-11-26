@@ -269,7 +269,7 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
             if (!otherParamsMatch)
                 continue;
 
-            if (HasTypeParameterConstraints(candidate))
+            if (MayRejectTypeArguments(candidate, currentOriginal))
             {
                 // A matching signature is not enough: the compiler must accept the type arguments at this call.
                 if (!rebound)
@@ -293,12 +293,18 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         return bestMatch;
     }
 
-    private static bool HasTypeParameterConstraints(IMethodSymbol method)
+    /// <summary>
+    /// Returns whether <paramref name="candidate"/> may reject type arguments that <paramref name="current"/> accepts,
+    /// through a constraint or a missing <c>allows ref struct</c>.
+    /// </summary>
+    private static bool MayRejectTypeArguments(IMethodSymbol candidate, IMethodSymbol current)
     {
-        foreach (ITypeParameterSymbol parameter in method.TypeParameters)
+        for (int i = 0; i < candidate.TypeParameters.Length; i++)
         {
+            ITypeParameterSymbol parameter = candidate.TypeParameters[i];
             if (parameter.HasReferenceTypeConstraint || parameter.HasValueTypeConstraint || parameter.HasUnmanagedTypeConstraint
-                || parameter.HasNotNullConstraint || parameter.HasConstructorConstraint || !parameter.ConstraintTypes.IsEmpty)
+                || parameter.HasNotNullConstraint || parameter.HasConstructorConstraint || !parameter.ConstraintTypes.IsEmpty
+                || (current.TypeParameters[i].AllowsRefLikeType && !parameter.AllowsRefLikeType))
                 return true;
         }
 
@@ -343,6 +349,7 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
     /// <remarks>
     /// Binding succeeds despite such mismatches: they are warnings (CS8631, CS8634, CS8714), which builds treating
     /// warnings as errors still reject. Type parameters without a non-null constraint count as possibly null.
+    /// Only top-level nullability is checked; nested nullability in constraint types is not.
     /// </remarks>
     private static bool MayViolateNullableConstraint(IMethodSymbol candidate, IMethodSymbol boundMethod, IOperation call)
     {
@@ -352,12 +359,19 @@ public sealed class SpanToArrayAtCallSiteAnalyzer : DiagnosticAnalyzer
         ImmutableArray<ITypeSymbol> typeArguments = boundMethod.TypeArguments;
         for (int i = 0; i < typeArguments.Length; i++)
         {
+            if (!MayBeNull(typeArguments[i]))
+                continue;
+
             ITypeParameterSymbol parameter = candidate.TypeParameters[i];
-            bool rejectsNull = parameter.HasNotNullConstraint
-                || parameter is { HasReferenceTypeConstraint: true, ReferenceTypeConstraintNullableAnnotation: not NullableAnnotation.Annotated }
-                || !parameter.ConstraintTypes.IsEmpty;
-            if (rejectsNull && MayBeNull(typeArguments[i]))
+            if (parameter.HasNotNullConstraint
+                || parameter is { HasReferenceTypeConstraint: true, ReferenceTypeConstraintNullableAnnotation: NullableAnnotation.NotAnnotated })
                 return true;
+
+            foreach (ITypeSymbol constraintType in parameter.ConstraintTypes)
+            {
+                if (constraintType is { IsValueType: false, NullableAnnotation: NullableAnnotation.NotAnnotated })
+                    return true;
+            }
         }
 
         return false;
