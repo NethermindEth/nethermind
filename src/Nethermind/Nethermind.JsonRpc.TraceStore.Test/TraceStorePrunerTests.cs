@@ -76,16 +76,13 @@ public class TraceStorePrunerTests
         BlockTree tree = builder.TestObject;
         Block fork = Build.A.Block.WithParent(tree.FindBlock(6UL, BlockTreeLookupOptions.RequireCanonical)!).WithExtraData([1]).TestObject;
         tree.SuggestBlock(fork);
-        List<Block> recorded = [.. Enumerable.Range(6, 5).Select(number => tree.FindBlock((ulong)number, BlockTreeLookupOptions.RequireCanonical)!), fork];
         CheckpointObservingDb db = new();
-        foreach (Block block in recorded)
-            db[block.Hash!.Bytes] = [1];
+        List<Block> recorded = [.. Seed(db, [.. Canonical(tree, 11).Skip(6), fork])];
 
         using TraceStorePruner pruner = CreatePruner(builder, db, 3);
         if (advanceHead)
         {
-            Block next = Build.A.Block.WithParent(tree.Head!).TestObject;
-            db[next.Hash!.Bytes] = [1];
+            Block next = Seed(db, Build.A.Block.WithParent(tree.Head!).TestObject)[0];
             recorded.Add(next);
             AddToMain(tree, next);
         }
@@ -95,9 +92,7 @@ public class TraceStorePrunerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(drained, Is.True, "checkpoint past the window");
-            Assert.That(recorded.Where(block => block.Number <= cutoff && db.Get(block.Hash!) is not null).Select(block => block.Number), Is.Empty,
-                "levels outside the new retention window, fork included");
-            Assert.That(recorded.Where(block => block.Number > cutoff).Select(block => db.Get(block.Hash!)), Is.All.Not.Null);
+            AssertWindow(db, recorded, cutoff, "fork included");
         }
     }
 
@@ -116,8 +111,7 @@ public class TraceStorePrunerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(started && drained, Is.True, "checkpoint moved back to the fork, then past the window");
-            Assert.That(fork.Where(block => block.Number <= 9 && db.Get(block.Hash!) is not null).Select(block => block.Number), Is.Empty);
-            Assert.That(fork.Where(block => block.Number > 9).Select(block => db.Get(block.Hash!)), Is.All.Not.Null);
+            AssertWindow(db, fork, 9);
         }
     }
 
@@ -127,26 +121,55 @@ public class TraceStorePrunerTests
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(11);
         BlockTree tree = builder.TestObject;
         CheckpointObservingDb db = new();
-        Block[] original = [.. Enumerable.Range(0, 11).Select(number => tree.FindBlock((ulong)number, BlockTreeLookupOptions.RequireCanonical)!)];
-        foreach (Block block in original)
-            db[block.Hash!.Bytes] = [1];
-
-        GatedLevelRepository levels = new(builder.ChainLevelInfoRepository);
+        Block[] original = Seed(db, Canonical(tree, 11));
+        ControlledLevelRepository levels = new(builder.ChainLevelInfoRepository, holdFirstRead: true);
         using TraceStorePruner pruner = new(tree, levels, db, 3, LimboLogs.Instance);
-        await levels.Held.Task.WaitAsync(Timeout);
-        // The batch has read levels 0 to 7 of the original chain; the replacing branch is processed before it commits.
-        Block[] fork = BuildFork(tree, db, 5, 6);
-        AddToMain(tree, fork);
-        levels.Release();
+        Block[] fork;
+        try
+        {
+            await levels.Held.Task.WaitAsync(Timeout);
+            // The batch has read levels 0 to 7 of the original chain; the replacing branch is processed before it commits.
+            fork = BuildFork(tree, db, 5, 6);
+            AddToMain(tree, fork);
+        }
+        finally
+        {
+            levels.Release();
+        }
 
         bool drained = await db.WaitForCheckpoint(next => next >= 9);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(drained, Is.True, "checkpoint past the window");
-            Assert.That(fork.Where(block => block.Number <= 8 && db.Get(block.Hash!) is not null).Select(block => block.Number), Is.Empty, "replacing branch");
-            Assert.That(fork.Where(block => block.Number > 8).Select(block => db.Get(block.Hash!)), Is.All.Not.Null, "replacing branch");
-            Assert.That(original.Where(block => block.Number <= 8 && db.Get(block.Hash!) is not null).Select(block => block.Number), Is.Empty, "replaced chain");
-            Assert.That(original.Where(block => block.Number > 8).Select(block => db.Get(block.Hash!)), Is.All.Not.Null, "replaced chain");
+            AssertWindow(db, fork, 8, "replacing branch");
+            AssertWindow(db, original, 8, "replaced chain");
+        }
+    }
+
+    [Test]
+    public async Task Unreadable_level_does_not_block_newer_levels_and_is_read_again_on_restart()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(12);
+        BlockTree tree = builder.TestObject;
+        CheckpointObservingDb db = new();
+        Block[] chain = Seed(db, Canonical(tree, 12));
+        using (new TraceStorePruner(tree, new ControlledLevelRepository(builder.ChainLevelInfoRepository, unreadable: 2), db, 3, LimboLogs.Instance))
+        {
+            bool skipped = await db.WaitForCheckpoint(next => next == 2);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(skipped, Is.True, "checkpoint kept at the unreadable level");
+                AssertWindow(db, chain.Where(block => block.Number != 2), 8, "readable levels");
+                Assert.That(db.Get(chain[2].Hash!), Is.Not.Null, "unreadable level");
+            }
+        }
+
+        using TraceStorePruner restarted = CreatePruner(builder, db, 3);
+        bool drained = await db.WaitForCheckpoint(next => next == 9);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(drained, Is.True, "checkpoint past the window after the level is readable");
+            AssertWindow(db, chain, 8);
         }
     }
 
@@ -163,16 +186,14 @@ public class TraceStorePrunerTests
         Block[] fork = BuildFork(tree, db, 5, 7);
         Assert.That(() => AddToMain(tree, fork), Throws.Nothing, "block processing is not affected by the trace store");
         await db.CheckpointWriteFailed.Task.WaitAsync(Timeout);
-        Block next = Build.A.Block.WithParent(fork[^1]).TestObject;
-        db[next.Hash!.Bytes] = [1];
+        Block next = Seed(db, Build.A.Block.WithParent(fork[^1]).TestObject)[0];
         AddToMain(tree, next);
 
         bool drained = await db.WaitForCheckpoint(checkpoint => checkpoint == 6) && await db.WaitForCheckpoint(checkpoint => checkpoint >= 11);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(started && drained, Is.True, "checkpoint moved back to the fork after the failure, then past the window");
-            Assert.That(fork.Where(block => block.Number <= 10 && db.Get(block.Hash!) is not null).Select(block => block.Number), Is.Empty);
-            Assert.That(fork.Where(block => block.Number > 10).Append(next).Select(block => db.Get(block.Hash!)), Is.All.Not.Null);
+            AssertWindow(db, fork.Append(next), 10);
         }
     }
 
@@ -187,21 +208,27 @@ public class TraceStorePrunerTests
         void HoldPublisher(object? sender, BlockReplacementEventArgs e)
         {
             dispatched.TrySetResult();
-            release.Task.Wait(Timeout);
+            release.Task.Wait();
         }
 
         // Subscribed first, so the publisher has already taken the pruner's handler when it is held here.
         tree.BlockAddedToMain += HoldPublisher;
         using TraceStorePruner pruner = CreatePruner(builder, db, 3);
         bool started = await db.WaitForCheckpoint(next => next == 8);
-        Block[] fork = BuildFork(tree, db, 5, 7);
-        Task reorganization = Task.Run(() => AddToMain(tree, fork));
-        await dispatched.Task.WaitAsync(Timeout);
-        await pruner.StopAsync().WaitAsync(Timeout);
-        int writes = db.CheckpointWrites;
-        release.TrySetResult();
-        await reorganization.WaitAsync(Timeout);
+        Task reorganization = Task.Run(() => AddToMain(tree, BuildFork(tree, db, 5, 7)));
+        int writes;
+        try
+        {
+            await dispatched.Task.WaitAsync(Timeout);
+            await pruner.StopAsync().WaitAsync(Timeout);
+            writes = db.CheckpointWrites;
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
 
+        await reorganization.WaitAsync(Timeout);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(started, Is.True);
@@ -214,29 +241,33 @@ public class TraceStorePrunerTests
     public async Task Stopping_keeps_progress_and_restart_resumes_from_checkpoint([Values] bool keptAllInBetween)
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(300);
-        Hash256[] hashes = [.. Enumerable.Range(0, 300).Select(number => builder.TestObject.FindBlock((ulong)number, BlockTreeLookupOptions.RequireCanonical)!.Hash!)];
         CheckpointObservingDb db = new(holdAt: 256);
-        foreach (Hash256 hash in hashes)
-            db[hash.Bytes] = [1];
+        Block[] chain = Seed(db, Canonical(builder.TestObject, 300));
 
         using (TraceStorePruner interrupted = CreatePruner(builder, db, 1))
         {
-            await db.Held.Task.WaitAsync(Timeout);
-            Task stopping = interrupted.StopAsync();
-            Assert.That(stopping.IsCompleted, Is.False, "stopping waits for the batch in progress");
-            db.Release();
-            await stopping.WaitAsync(Timeout);
+            try
+            {
+                await db.Held.Task.WaitAsync(Timeout);
+                Task stopping = interrupted.StopAsync();
+                Assert.That(stopping.IsCompleted, Is.False, "stopping waits for the batch in progress");
+                db.Release();
+                await stopping.WaitAsync(Timeout);
+            }
+            finally
+            {
+                db.Release();
+            }
         }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.Checkpoint, Is.EqualTo(256UL));
-            Assert.That(hashes.Take(256).Where(hash => db.Get(hash) is not null), Is.Empty);
-            Assert.That(hashes.Skip(256).Select(hash => db.Get(hash)), Is.All.Not.Null);
+            AssertWindow(db, chain, 255);
         }
 
         // Below the checkpoint, so only a recheck from genesis removes it.
-        db[hashes[0].Bytes] = [1];
+        Seed(db, chain[0]);
         if (keptAllInBetween)
             CreatePruner(builder, db, 0).Dispose();
 
@@ -245,9 +276,8 @@ public class TraceStorePrunerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(drained, Is.True, "checkpoint past the window");
-            Assert.That(db.Get(hashes[0]), keptAllInBetween ? Is.Null : Is.Not.Null);
-            Assert.That(hashes[1..299].Where(hash => db.Get(hash) is not null), Is.Empty);
-            Assert.That(db.Get(hashes[299]), Is.Not.Null);
+            Assert.That(db.Get(chain[0].Hash!), keptAllInBetween ? Is.Null : Is.Not.Null);
+            AssertWindow(db, chain.Skip(1), 298);
         }
     }
 
@@ -261,21 +291,37 @@ public class TraceStorePrunerTests
         tree.TryUpdateMainChain(blocks[^1].Header, true, true, blocks);
     }
 
+    private static Block[] Canonical(BlockTree tree, int count) =>
+        [.. Enumerable.Range(0, count).Select(number => tree.FindBlock((ulong)number, BlockTreeLookupOptions.RequireCanonical)!)];
+
+    private static Block[] Seed(IDb db, params Block[] blocks)
+    {
+        foreach (Block block in blocks)
+            db[block.Hash!.Bytes] = [1];
+        return blocks;
+    }
+
     private static Block[] BuildFork(BlockTree tree, IDb db, ulong parentNumber, int length)
     {
         Block[] fork = new Block[length];
         Block parent = tree.FindBlock(parentNumber, BlockTreeLookupOptions.RequireCanonical)!;
         for (int i = 0; i < fork.Length; i++)
-        {
             parent = fork[i] = Build.A.Block.WithParent(parent).WithExtraData([1]).TestObject;
-            db[parent.Hash!.Bytes] = [1];
-        }
-
-        return fork;
+        return Seed(db, fork);
     }
 
-    /// <summary>Holds the first level read after it returns, until released; returns copies, as a database read does.</summary>
-    private sealed class GatedLevelRepository(IChainLevelInfoRepository inner) : IChainLevelInfoRepository
+    /// <summary>Asserts that the traces of the blocks at or below <paramref name="cutoff"/> are removed and the others kept.</summary>
+    private static void AssertWindow(IDb db, IEnumerable<Block> blocks, ulong cutoff, string label = "")
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.Where(block => block.Number <= cutoff && db.Get(block.Hash!) is not null).Select(block => block.Number), Is.Empty, $"{label} retained at or below {cutoff}");
+            Assert.That(blocks.Where(block => block.Number > cutoff && db.Get(block.Hash!) is null).Select(block => block.Number), Is.Empty, $"{label} removed above {cutoff}");
+        }
+    }
+
+    /// <summary>Returns copies of the levels, as a database read does; can hold the first read until released or fail one level.</summary>
+    private sealed class ControlledLevelRepository(IChainLevelInfoRepository inner, bool holdFirstRead = false, ulong unreadable = ulong.MaxValue) : IChainLevelInfoRepository
     {
         private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -285,19 +331,28 @@ public class TraceStorePrunerTests
 
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
         {
+            for (int i = 0; i < blockNumbers.Count; i++)
+            {
+                if (blockNumbers[i] == unreadable) throw new InvalidDataException("Injected unreadable block level.");
+            }
+
             using IOwnedReadOnlyList<ChainLevelInfo?> levels = inner.MultiLoadLevel(blockNumbers);
             ArrayPoolList<ChainLevelInfo?> copies = new(levels.Count, levels.Count);
             for (int i = 0; i < levels.Count; i++)
-                copies[i] = levels[i] is { } level ? new ChainLevelInfo(level.HasBlockOnMainChain, [.. level.BlockInfos]) : null;
+                copies[i] = Copy(levels[i]);
 
-            if (Held.TrySetResult()) _release.Task.Wait(Timeout);
+            if (holdFirstRead && Held.TrySetResult()) _release.Task.Wait();
             return copies;
         }
+
+        public ChainLevelInfo? LoadLevel(ulong number) =>
+            number == unreadable ? throw new InvalidDataException("Injected unreadable block level.") : Copy(inner.LoadLevel(number));
 
         public void Delete(ulong number, BatchWrite? batch = null) => inner.Delete(number, batch);
         public void PersistLevel(ulong number, ChainLevelInfo level, BatchWrite? batch = null) => inner.PersistLevel(number, level, batch);
         public BatchWrite StartBatch() => inner.StartBatch();
-        public ChainLevelInfo? LoadLevel(ulong number) => inner.LoadLevel(number);
+
+        private static ChainLevelInfo? Copy(ChainLevelInfo? level) => level is null ? null : new ChainLevelInfo(level.HasBlockOnMainChain, [.. level.BlockInfos]);
     }
 
     /// <summary>Records every checkpoint the pruner writes; can hold the writer of one checkpoint until released.</summary>
@@ -334,7 +389,7 @@ public class TraceStorePrunerTests
             Interlocked.Increment(ref _writes);
             ulong next = BinaryPrimitives.ReadUInt64BigEndian(value!);
             _checkpoints.Writer.TryWrite(next);
-            if (next == holdAt && Held.TrySetResult()) _release.Task.Wait(Timeout);
+            if (next == holdAt && Held.TrySetResult()) _release.Task.Wait();
         }
 
         /// <summary>Waits for the first checkpoint, in write order after those already consumed, that satisfies <paramref name="reached"/>.</summary>

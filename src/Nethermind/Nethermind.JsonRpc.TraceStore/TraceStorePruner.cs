@@ -39,6 +39,7 @@ public class TraceStorePruner : IStoppableService, IDisposable
     private readonly Task _worker = Task.CompletedTask;
     private ulong _lowestChanged = ulong.MaxValue;
     private ulong _next;
+    private ulong _skipped = ulong.MaxValue;
     private bool _loaded;
     private volatile bool _stopped;
 
@@ -118,7 +119,7 @@ public class TraceStorePruner : IStoppableService, IDisposable
             // A block replaced a level the checkpoint has passed, by a reorganization deeper than the window or a rewind.
             try
             {
-                WriteCheckpoint(_db, changed);
+                WriteCheckpoint(_db, Math.Min(_skipped, changed));
             }
             catch
             {
@@ -127,6 +128,7 @@ public class TraceStorePruner : IStoppableService, IDisposable
             }
 
             _next = changed;
+            if (changed <= _skipped) _skipped = ulong.MaxValue;
         }
 
         ulong from = _next;
@@ -137,7 +139,8 @@ public class TraceStorePruner : IStoppableService, IDisposable
         using ArrayPoolListRef<ulong> numbers = new(count);
         for (ulong number = from; number <= last; number++) numbers.Add(number);
 
-        using IOwnedReadOnlyList<ChainLevelInfo?> levels = _levels.MultiLoadLevel(numbers);
+        ulong skipped = _skipped;
+        using IOwnedReadOnlyList<ChainLevelInfo?> levels = LoadLevels(numbers, ref skipped);
         using ArrayPoolListRef<Hash256> expired = new(count);
         for (int i = 0; i < levels.Count; i++)
         {
@@ -154,12 +157,43 @@ public class TraceStorePruner : IStoppableService, IDisposable
         using (IWriteBatch batch = _db.StartWriteBatch())
         {
             foreach (Hash256 hash in expired.AsSpan()) batch.Remove(hash.Bytes);
-            WriteCheckpoint(batch, last + 1);
+            WriteCheckpoint(batch, Math.Min(skipped, last + 1));
         }
 
         _next = last + 1;
+        _skipped = skipped;
         if (_logger.IsTrace) _logger.Trace($"Removed {expired.Count} traces from TraceStore on levels {from} to {last}.");
         return true;
+    }
+
+    /// <summary>Reads the levels; a level that cannot be read is <see langword="null"/> and lowers <paramref name="skipped"/> to its number.</summary>
+    private IOwnedReadOnlyList<ChainLevelInfo?> LoadLevels(in ArrayPoolListRef<ulong> numbers, ref ulong skipped)
+    {
+        try
+        {
+            return _levels.MultiLoadLevel(numbers);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Reading block levels {numbers[0]} to {numbers[numbers.Count - 1]} for TraceStore pruning failed, reading them one by one. {e.Message}");
+        }
+
+        ArrayPoolList<ChainLevelInfo?> levels = new(numbers.Count, numbers.Count);
+        for (int i = 0; i < numbers.Count; i++)
+        {
+            try
+            {
+                levels[i] = _levels.LoadLevelWithoutCaching(numbers[i]);
+            }
+            catch (Exception e)
+            {
+                // Newer levels still expire; the checkpoint stays at this level, so the next start reads it again.
+                skipped = Math.Min(skipped, numbers[i]);
+                if (_logger.IsWarn) _logger.Warn($"TraceStore pruning skipped unreadable block level {numbers[i]} until the next start. {e.Message}");
+            }
+        }
+
+        return levels;
     }
 
     private bool TryGetCutoff(out ulong cutoff)
