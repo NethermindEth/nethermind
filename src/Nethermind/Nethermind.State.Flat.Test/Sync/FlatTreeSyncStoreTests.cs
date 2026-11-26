@@ -126,8 +126,14 @@ public class FlatTreeSyncStoreTests(FlatLayout layout, bool carryForwardCache)
 
     /// <summary>
     /// A reader that read a slot before, through the caches of the persistence, does not keep the cleared slot for the
-    /// readers after it: a new reader, and a sync reader, which bypasses the caches, find neither the slot nor the node.
+    /// readers after it: a new reader finds neither the slot nor the node, and a sync reader, which bypasses the caches,
+    /// shows that the store itself no longer has them.
     /// </summary>
+    /// <remarks>
+    /// The carry-forward cache serves readers at the state it was last committed to, and a sync batch commits it to
+    /// <see cref="StateId.Sync"/> while the persisted state stays where it was, so an empty batch at the persisted state
+    /// brings ordinary readers back onto the cache before each read.
+    /// </remarks>
     [Test]
     public void EnsureStorageEmpty_leaves_no_slot_for_a_reader_after_one_that_read_it()
     {
@@ -142,6 +148,7 @@ public class FlatTreeSyncStoreTests(FlatLayout layout, bool carryForwardCache)
             batch.SetStorageTrieNode(owner, nodePath, StorageNodeRlp);
         }
 
+        CommitCacheAtPersistedState();
         using (IPersistence.IPersistenceReader primed = _persistence.CreateReader())
         {
             UInt256 value = default;
@@ -151,6 +158,7 @@ public class FlatTreeSyncStoreTests(FlatLayout layout, bool carryForwardCache)
         using FlatTestContainer container = CreateContainer(_persistence);
         container.Resolve<FlatTreeSyncStore>().EnsureStorageEmpty(owner);
 
+        CommitCacheAtPersistedState();
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         using IPersistence.IPersistenceReader syncReader = _persistence.CreateReader(ReaderFlags.Sync);
         using (Assert.EnterMultipleScope())
@@ -161,6 +169,13 @@ public class FlatTreeSyncStoreTests(FlatLayout layout, bool carryForwardCache)
             Assert.That(reader.LoadStorageRlp(owner, nodePath, ReadFlags.None), Is.Null, "storage node through a new reader");
             Assert.That(syncReader.LoadStorageRlp(owner, nodePath, ReadFlags.None), Is.Null, "storage node through a sync reader");
             Assert.That(reader.GetAccount(address), Is.Not.Null, "the account");
+        }
+
+        void CommitCacheAtPersistedState()
+        {
+            using (_persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            {
+            }
         }
     }
 
