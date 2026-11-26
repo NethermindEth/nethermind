@@ -213,8 +213,8 @@ namespace Nethermind.Db.Test
             if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
         }
 
-        [TestCase("State0", true, false, null, false, 262144UL)]
-        [TestCase("State0", false, null, 0UL, false, 0UL)]
+        [TestCase("Flat", true, false, null, false, 262144UL)]
+        [TestCase("Flat", false, null, 0UL, false, 0UL)]
         [TestCase("Flat", true, false, 1048576UL, false, 1048576UL)]
         [TestCase("Blocks", false, null, null, false, 262144UL)]
         [TestCase("Blocks", null, null, null, true, 262144UL)]
@@ -223,7 +223,6 @@ namespace Nethermind.Db.Test
             DbConfig config = new()
             {
                 VerifyChecksum = generic,
-                StateDbVerifyChecksum = prefixed,
                 FlatDbVerifyChecksum = prefixed,
                 ReadAheadSize = readAhead
             };

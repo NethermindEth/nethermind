@@ -61,16 +61,16 @@ internal static class ExecutionProofVerifier
         if (proof.Length > MaxProofNodes)
             throw new InvalidDataException("An execution proof contains too many nodes.");
 
-        using MemDb nodes = MemDb.WithCapacity(proof.Length);
+        MemoryNodeStorage nodes = new();
         foreach (byte[] node in proof)
         {
             if (node is null || node.Length is 0 or > MaxNodeBytes)
                 throw new InvalidDataException("An execution proof contains an invalid node size.");
-            nodes[Keccak.Compute(node).Bytes] = node;
+            nodes.Set(null, TreePath.Empty, ValueKeccak.Compute(node), node);
         }
 
         // Indexing by computed hashes prevents a provider from substituting a referenced child.
-        RawScopedTrieStore store = new(new NodeStorage(nodes, INodeStorage.KeyScheme.Hash));
+        RawScopedTrieStore store = new(nodes);
         PatriciaTree tree = new(store, root, allowCommits: false, NullLogManager.Instance);
         try
         {

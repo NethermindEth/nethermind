@@ -1576,11 +1576,11 @@ public class HistoryWriterTests
     private FlatStateActivationPolicy ActiveFlatPolicy() =>
         new(
             new FlatDbConfig { Enabled = true },
+            new InitConfig { BaseDbPath = "/data" },
+            new SyncConfig(),
             new TestHardwareInfo(32L * 1024 * 1024 * 1024),
             new Lazy<IColumnsDb<FlatDbColumns>>(_db),
-            new Lazy<IDb>(Substitute.For<IDb>()),
-            new SyncConfig(),
-            new InitConfig { BaseDbPath = "/data" },
+            Substitute.For<IDbFactory>(),
             Substitute.For<IFileSystem>(),
             LimboLogs.Instance);
 

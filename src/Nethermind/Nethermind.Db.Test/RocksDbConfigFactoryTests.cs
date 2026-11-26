@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Test;
+using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -19,7 +20,7 @@ public class RocksDbConfigFactoryTests
         {
             RocksDbOptions = "write_buffer_size=100;",
             AdditionalRocksDbOptions = "max_write_buffer_number=2;",
-            StateDbRocksDbOptions = "state_only=true;",
+            FlatDbRocksDbOptions = "flat_only=true;",
             ReceiptsBlocksDbRocksDbOptions = "column_only=true;",
             WriteAheadLogSync = true,
             ReadAheadSize = 123,
@@ -31,7 +32,7 @@ public class RocksDbConfigFactoryTests
             StatsDumpPeriodSec = 42,
             SkipCheckingSstFileSizesOnDbOpen = true
         };
-        RocksDbConfigFactory factory = new(dbConfig, new PruningConfig { Mode = PruningMode.Full }, new TestHardwareInfo(100.GiB, 1024), LimboLogs.Instance);
+        RocksDbConfigFactory factory = new(dbConfig, new TestHardwareInfo(100.GiB, 1024), LimboLogs.Instance);
 
         IRocksDbConfig config = factory.GetForDatabase(null, columnName);
 

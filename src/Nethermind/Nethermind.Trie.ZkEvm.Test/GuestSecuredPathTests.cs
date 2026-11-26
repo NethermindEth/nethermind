@@ -318,7 +318,7 @@ public class GuestSecuredPathTests
     /// <summary>Witness nodes keyed by made-up hashes, referenced as a trie does: embedded when shorter than a hash.</summary>
     private sealed class Witness
     {
-        private readonly NodeStorage _storage = new(new MemDb(), INodeStorage.KeyScheme.Hash);
+        private readonly MemoryNodeStorage _storage = new();
         private readonly Dictionary<Hash256, byte[]> _hashed = [];
         private int _count;
 

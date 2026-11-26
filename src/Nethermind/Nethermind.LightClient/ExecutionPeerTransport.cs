@@ -199,7 +199,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             UseDefaultDiscv5Bootnodes = !isGnosis,
         };
         KeyStoreConfig keyStore = new() { KeyStoreDirectory = Path.GetFullPath(dataDirectory ?? init.DataDir) };
-        ConfigProvider config = new(init, net, sync, discovery, keyStore, new FlatDbConfig { Enabled = false });
+        ConfigProvider config = new(init, net, sync, discovery, keyStore, new FlatDbConfig { Enabled = true });
         ContainerBuilder builder = new();
         builder.RegisterModule(new NethermindModule(chainSpec, config, logManager));
         if (isGnosis)
@@ -647,16 +647,15 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         ValidateAccountRange(response);
         if (response.PathAndAccounts.Count == 0 && response.Proofs.Count == 0 && stateRoot != Keccak.EmptyTreeHash)
             throw new ExecutionDataUnavailableException("Execution peer does not have the requested state root.");
-        using MemDb db = new();
-        NodeStorage nodes = new(db, INodeStorage.KeyScheme.Hash);
+        MemoryNodeStorage nodes = new();
         if (response.PathAndAccounts.Count != 0)
         {
-            PatriciaSnapTrieFactory factory = new(nodes, NullDb.Instance, logs);
+            MemorySnapTrieFactory factory = new(nodes, logs);
             if (SnapProviderHelper.AddAccountRange(factory, 0, stateRoot, path, path.IncrementPath(),
                     response.PathAndAccounts, response.Proofs).result != AddRangeResult.OK)
                 throw new InvalidDataException("Could not reconstruct the verified account path.");
         }
-        byte[][] witness = CollectProof(db, nodes, stateRoot, path, response.Proofs);
+        byte[][] witness = CollectProof(nodes, stateRoot, path, response.Proofs);
         Account exported = ExecutionProofVerifier.VerifyAccount(stateRoot, address, witness);
         if (exported != FindAccount(path, response.PathAndAccounts))
             throw new InvalidDataException("Reconstructed account witness differs from the verified range.");
@@ -668,28 +667,27 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     {
         ValueHash256 slotPath = ValueKeccak.Compute(key.ToBigEndian());
         ValidateStorageRange(response);
-        using MemDb db = new();
-        NodeStorage nodes = new(db, INodeStorage.KeyScheme.Hash);
+        MemoryNodeStorage nodes = new();
         bool hasSlots = response.PathsAndSlots.Count != 0 && response.PathsAndSlots[0].Count != 0;
         if (!hasSlots && response.Proofs.Count == 0 && account.StorageRoot != Keccak.EmptyTreeHash)
             throw new ExecutionDataUnavailableException("Execution peer does not have the requested storage root.");
         if (hasSlots)
         {
-            PatriciaSnapTrieFactory factory = new(nodes, NullDb.Instance, logs);
+            MemorySnapTrieFactory factory = new(nodes, logs);
             if (SnapProviderHelper.ReconstructStorageProofNodes(factory, new(accountPath, account.ToStruct()),
                     response.PathsAndSlots[0], slotPath, slotPath.IncrementPath(), response.Proofs) != AddRangeResult.OK)
                 throw new InvalidDataException("Could not reconstruct the verified storage path.");
         }
-        byte[][] witness = CollectProof(db, nodes, account.StorageRoot, slotPath, response.Proofs);
+        byte[][] witness = CollectProof(nodes, account.StorageRoot, slotPath, response.Proofs);
         UInt256 value = ExecutionProofVerifier.VerifyStorage(account.StorageRoot, key, witness);
         if (value != (hasSlots ? FindStorage(slotPath, response.PathsAndSlots[0]) : UInt256.Zero))
             throw new InvalidDataException("Reconstructed storage witness differs from the verified range.");
         return new ExecutionStorageProof(key, value, witness);
     }
 
-    private static byte[][] CollectProof(MemDb db, NodeStorage nodes, Hash256 root, ValueHash256 path, IByteArrayList rangeProof)
+    private static byte[][] CollectProof(MemoryNodeStorage nodes, Hash256 root, ValueHash256 path, IByteArrayList rangeProof)
     {
-        for (int i = 0; i < rangeProof.Count; i++) db[Keccak.Compute(rangeProof[i]).Bytes] = rangeProof[i].ToArray();
+        for (int i = 0; i < rangeProof.Count; i++) nodes.Set(null, TreePath.Empty, ValueKeccak.Compute(rangeProof[i]), rangeProof[i]);
         if (root == Keccak.EmptyTreeHash) return [];
         PatriciaTree tree = new(new RawScopedTrieStore(nodes), root, allowCommits: false, Nethermind.Logging.NullLogManager.Instance);
         ProofCollector collector = new(path.Bytes.ToArray());

@@ -6,16 +6,14 @@ using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
-using Nethermind.State.SnapServer;
 
-namespace Nethermind.Core.Test;
+namespace Nethermind.State.SnapServer;
 
-/// <summary>A snap server that holds no state: every request is answered with an empty response.</summary>
 public class NoopSnapServer : ISnapServer
 {
     public static readonly NoopSnapServer Instance = new();
 
-    public bool CanServe => true;
+    public bool CanServe => false;
 
     public IByteArrayList GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken) =>
         EmptyByteArrayList.Instance;

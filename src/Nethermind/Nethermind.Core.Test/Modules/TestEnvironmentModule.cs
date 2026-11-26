@@ -88,7 +88,9 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 ISyncServer syncServer = ctx.Resolve<ISyncServer>();
                 IEnode enode = ctx.Resolve<IEnode>();
                 ISnapServer snapServer = ctx.Resolve<ISnapServer>();
-                return new SyncPeerMock(blockTree, syncServer, enode.PublicKey, snapSyncPeer: new MockSnapSyncPeer(snapServer));
+                ISnapSyncPeer? snapSyncPeer = snapServer.CanServe ? new MockSnapSyncPeer(snapServer) : null;
+
+                return new SyncPeerMock(blockTree, syncServer, enode.PublicKey, snapSyncPeer: snapSyncPeer);
             })
 
             .AddDecorator<ISyncConfig>((_, syncConfig) =>

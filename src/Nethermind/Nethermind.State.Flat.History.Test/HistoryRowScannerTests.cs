@@ -519,7 +519,7 @@ public class HistoryRowScannerTests
         ValueHash256 orphan = new(orphanBytes);
         ValueHash256 slot = Keccak.Compute("scratch slot").ValueHash256;
         using MemDb storageDb = new();
-        StorageTree storageTree = new(new RawScopedTrieStore(storageDb), LimboLogs.Instance);
+        StorageTree storageTree = new(new RawScopedTrieStore(new TestNodeStorage(storageDb)), LimboLogs.Instance);
         storageTree.Set(slot.Bytes, new byte[] { 0x81, 0x80 });
         storageTree.UpdateRootHash();
         byte[] accountRow = AccountDecoder.Slim.Encode(new Account(1, 2, storageTree.RootHash, Keccak.OfAnEmptyString));
@@ -531,7 +531,7 @@ public class HistoryRowScannerTests
         if (owner == SlotOwner.DeletedAccountClearedAfterSlot)
             RecordScanRow(source.GetColumnDb(FlatHistoryColumns.StorageClears), FlatHistoryColumns.StorageClears, orphan.Bytes, 4, []);
         using MemDb accountsDb = new();
-        StateTree accountsTree = new(new RawScopedTrieStore(accountsDb), LimboLogs.Instance);
+        StateTree accountsTree = new(new RawScopedTrieStore(new TestNodeStorage(accountsDb)), LimboLogs.Instance);
         AccountRowRlp.Set(accountsTree, live, accountRow);
         accountsTree.UpdateRootHash();
         BulkFillScratchState state = new(scratch, Keccak.EmptyTreeHash, 8);

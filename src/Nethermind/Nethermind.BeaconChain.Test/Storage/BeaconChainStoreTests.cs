@@ -54,7 +54,7 @@ public class BeaconChainStoreTests
     {
         using TempPath path = TempPath.GetTempDirectory();
         DbConfig config = new();
-        RocksDbConfigFactory configs = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+        RocksDbConfigFactory configs = new(config, new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
         using HyperClockCacheWrapper cache = new();
         RocksDbFactory factory = new(configs, config, cache, new RealFileSystem(), LimboLogs.Instance, path.Path);
         using IColumnsDb<BeaconChainDbColumns> db = factory.CreateColumnsDb<BeaconChainDbColumns>(new DbSettings("BeaconChain", "canonical"));

@@ -29,7 +29,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
     {
         protected ISnapServer SyncServer { get; }
         private bool CanServe { get; }
-        private const string DisconnectMessage = "Serving snap data is not implemented in this node.";
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -40,6 +39,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
         public override string ProtocolCode => Code;
         public byte SnapProtocolVersion => ProtocolVersion;
         public override int MessageIdSpaceSize => 8;
+
+        private const string DisconnectMessage = "Serving snap data is not implemented in this node.";
 
         private readonly MessageDictionary<GetAccountRangeMessage, AccountRangeMessage> _getAccountRangeRequests;
         private readonly MessageDictionary<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
@@ -84,25 +85,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
             switch (message.PacketType)
             {
                 case Snap1MessageCode.GetAccountRange:
-                    HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
+                    if (ShouldServeSnap())
+                        HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.AccountRange:
                     HandleCorrelatedResponse(_getAccountRangeRequests, message, size, SelectAccountRange);
                     return true;
                 case Snap1MessageCode.GetStorageRanges:
-                    HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
+                    if (ShouldServeSnap())
+                        HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.StorageRanges:
                     HandleCorrelatedResponse(_getStorageRangeRequests, message, size, SelectStorageRanges);
                     return true;
                 case Snap1MessageCode.GetByteCodes:
-                    HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
+                    if (ShouldServeSnap())
+                        HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.ByteCodes:
                     HandleCorrelatedResponse(_getByteCodesRequests, message, size, SelectByteCodes);
                     return true;
                 case Snap1MessageCode.GetTrieNodes:
-                    HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
+                    if (ShouldServeSnap())
+                        HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.TrieNodes:
                     HandleCorrelatedResponse(_getTrieNodesRequests, message, size, SelectTrieNodes);

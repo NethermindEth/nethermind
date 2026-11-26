@@ -36,7 +36,7 @@ public class HistoryAvailabilityTests
         _directory = TempPath.GetTempDirectory();
         DbConfig dbConfig = new();
         _columns = (ColumnsDb<FlatHistoryColumns>)new RocksDbFactory(
-                new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+                new RocksDbConfigFactory(dbConfig, new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
                 dbConfig, new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, _directory.Path)
             .CreateColumnsDb<FlatHistoryColumns>(new DbSettings(nameof(HistoryAvailabilityTests), _directory.Path));
         using (IWriteBatch batch = AvailableBlocks.StartWriteBatch())

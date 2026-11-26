@@ -288,9 +288,9 @@ public class SnapProofTests
         };
         VerifiedHead head = new(0, 0, Hash256.Zero, root);
 
-        using (MemDb db = new())
+
         {
-            PatriciaSnapTrieFactory factory = new(new NodeStorage(db), NullDb.Instance, NullLogManager.Instance);
+            MemorySnapTrieFactory factory = new(new MemoryNodeStorage(), NullLogManager.Instance);
             Assert.That(SnapProviderHelper.VerifyAccountRange(factory, root, requested, requested.IncrementPath(),
                 response.PathAndAccounts, response.Proofs), Is.EqualTo(existing ? AddRangeResult.DifferentRootHash : AddRangeResult.OK));
         }
@@ -331,9 +331,9 @@ public class SnapProofTests
             Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof)),
         };
 
-        using (MemDb db = new())
+
         {
-            PatriciaSnapTrieFactory factory = new(new NodeStorage(db), NullDb.Instance, NullLogManager.Instance);
+            MemorySnapTrieFactory factory = new(new MemoryNodeStorage(), NullLogManager.Instance);
             Assert.That(SnapProviderHelper.ReconstructStorageProofNodes(factory, new(ValueKeccak.Compute(Address.Bytes), account.ToStruct()),
                 response.PathsAndSlots[0], requested, requested.IncrementPath(), response.Proofs),
                 Is.EqualTo(AddRangeResult.OK), "The single-key range check alone accepts this response.");

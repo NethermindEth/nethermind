@@ -303,7 +303,7 @@ public class LogIndexReorgTests
     {
         Directory.CreateDirectory(dbPath.Path);
         DbConfig dbConfig = new();
-        RocksDbConfigFactory configFactory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+        RocksDbConfigFactory configFactory = new(dbConfig, new TestHardwareInfo(0), LimboLogs.Instance);
         return new(configFactory, dbConfig, cache, new RealFileSystem(), LimboLogs.Instance, dbPath.Path);
     }
 

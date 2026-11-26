@@ -2319,7 +2319,7 @@ public class OtsRpcModuleTests
             _reverseViews = reverseViews;
             _observe = observe;
             DbConfig config = new();
-            RocksDbConfigFactory rocksConfig = new(config, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+            RocksDbConfigFactory rocksConfig = new(config, new TestHardwareInfo(0), LimboLogs.Instance);
             _factory = new(rocksConfig, config, _cache, new RealFileSystem(), LimboLogs.Instance, _path.Path);
         }
         public IDb CreateDb(DbSettings settings) => _factory.CreateDb(settings);

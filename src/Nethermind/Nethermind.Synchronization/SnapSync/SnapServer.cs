@@ -24,13 +24,12 @@ public sealed class SnapServer(
     IHeaderStore headerStore,
     IBlockAccessListStore blockAccessListStore) : ISnapServer
 {
-    public bool CanServe => stateServer.CanServe;
-
     private const long HardResponseByteLimit = ISnapStateServer.HardResponseByteLimit;
     private const int CodeReadChunkSize = 64;
     private const int AccessListReadChunkSize = 16;
     private const int AccessListSizeEstimate = 128 * 1024;
 
+    public bool CanServe => stateServer.CanServe;
 
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken) =>
         stateServer.GetTrieNodes(pathSet, rootHash, cancellationToken);

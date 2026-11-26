@@ -101,7 +101,7 @@ internal sealed class FinalizedHeaderHistory : IAsyncDisposable
             MaxOpenFiles = 64,
             AdditionalRocksDbOptions = "write_buffer_size=1048576;max_write_buffer_number=2;max_total_wal_size=4194304;block_based_table_factory.block_cache=1048576;target_file_size_base=1048576;max_bytes_for_level_base=4194304;max_log_file_size=1048576;keep_log_file_num=2;",
         };
-        RocksDbConfigFactory configs = new(config, new PruningConfig(), new HardwareInfo(), logs, validateConfig: false);
+        RocksDbConfigFactory configs = new(config, new HardwareInfo(), logs, validateConfig: false);
         // The database uses the private block cache above, so the factory's shared fallback is only needed while opening.
         using HyperClockCacheWrapper fallback = new(1024 * 1024);
         RocksDbFactory factory = new(configs, config, fallback, new RealFileSystem(), logs, directory);

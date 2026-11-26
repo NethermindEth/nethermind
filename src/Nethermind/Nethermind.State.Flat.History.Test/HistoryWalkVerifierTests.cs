@@ -1081,7 +1081,7 @@ public class HistoryWalkVerifierTests
 
     private FakeHeaders RecordContractsAroundOverflowingBuckets(int corruptedContract = -1)
     {
-        StateTree[] trees = [new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance), new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance)];
+        StateTree[] trees = [new(new RawScopedTrieStore(new MemoryNodeStorage()), LimboLogs.Instance), new(new RawScopedTrieStore(new MemoryNodeStorage()), LimboLogs.Instance)];
         for (int contract = 0; contract < BucketContracts.Length; contract++)
         {
             (ValueHash256 path, int slotCount) = BucketContracts[contract];

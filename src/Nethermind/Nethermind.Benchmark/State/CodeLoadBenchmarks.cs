@@ -149,7 +149,7 @@ public class CodeLoadBenchmarks
             dbConfig.CodeDbRowCacheSize = 16UL * 1024 * 1024;
         }
 
-        RocksDbConfigFactory configFactory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(8L * 1024 * 1024 * 1024), NullLogManager.Instance, validateConfig: false);
+        RocksDbConfigFactory configFactory = new(dbConfig, new TestHardwareInfo(8L * 1024 * 1024 * 1024), NullLogManager.Instance, validateConfig: false);
         _db = (DbOnTheRocks)new RocksDbFactory(configFactory, dbConfig, new HyperClockCacheWrapper(), new RealFileSystem(), NullLogManager.Instance, basePath)
             .CreateDb(new DbSettings(DbNames.Code, DbNames.Code));
         _codeDb = new CountingCodeDb(new KeyValueWithBatchingBackedCodeDb(_db));

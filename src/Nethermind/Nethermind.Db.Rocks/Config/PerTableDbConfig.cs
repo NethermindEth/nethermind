@@ -76,6 +76,11 @@ public class PerTableDbConfig : IRocksDbConfig
 
     private string[] GetPrefixes()
     {
+        if (_tableName is null)
+        {
+            return [];
+        }
+
         if (_columnName != null)
         {
             return [

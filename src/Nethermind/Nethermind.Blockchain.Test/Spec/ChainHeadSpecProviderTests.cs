@@ -145,8 +145,9 @@ public class ChainHeadSpecProviderTests
         Task[] tasks = new Task[workers];
         for (int w = 0; w < workers; w++)
         {
-            tasks[w] = Task.Factory.StartNew(
-                () =>
+            tasks[w] = Task.Run(() =>
+            {
+                while (!cts.IsCancellationRequested)
                 {
                     IReleaseSpec spec = provider.GetCurrentHeadSpec();
                     using (Assert.EnterMultipleScope())
@@ -165,17 +166,11 @@ public class ChainHeadSpecProviderTests
                 Volatile.Write(ref currentHeader, headers[round % headers.Length]);
                 await Task.Yield();
             }
+            cts.Cancel();
         });
 
-        try
-        {
-            await rotator;
-        }
-        finally
-        {
-            cts.Cancel();
-            await Task.WhenAll(tasks);
-        }
+        await Task.WhenAll(tasks);
+        await rotator;
     }
 
     [Test]

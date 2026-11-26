@@ -153,7 +153,6 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
     {
         public List<(TreePath Path, byte[] Rlp)> Committed { get; set; } = [];
 
-        public INodeStorage.KeyScheme Scheme => inner.Scheme;
 
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(path, hash);
 

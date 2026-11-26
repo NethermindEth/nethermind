@@ -48,7 +48,7 @@ public class HashesOnlyBlockRocksDbBenchmarks
     {
         _directory = TempPath.GetTempDirectory();
         DbConfig dbConfig = new();
-        RocksDbConfigFactory configFactory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(8L * 1024 * 1024 * 1024), NullLogManager.Instance, validateConfig: false);
+        RocksDbConfigFactory configFactory = new(dbConfig, new TestHardwareInfo(8L * 1024 * 1024 * 1024), NullLogManager.Instance, validateConfig: false);
         _blockDb = new RocksDbFactory(configFactory, dbConfig, new HyperClockCacheWrapper(), new RealFileSystem(), NullLogManager.Instance, _directory.Path)
             .CreateDb(new DbSettings(DbNames.Blocks, DbNames.Blocks));
         BlockStore blockStore = new(_blockDb);

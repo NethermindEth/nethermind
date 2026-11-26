@@ -52,7 +52,8 @@ public class Snap2ProtocolHandler : Snap1ProtocolHandler, ISnapSyncPeer, IStatic
             case Snap1MessageCode.TrieNodes:
                 return false;
             case Snap2MessageCode.GetBlockAccessLists:
-                HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
+                if (ShouldServeSnap())
+                    HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Snap2MessageCode.BlockAccessLists:
                 HandleCorrelatedResponse(_getBlockAccessListsRequests, message, size, SelectBlockAccessLists);

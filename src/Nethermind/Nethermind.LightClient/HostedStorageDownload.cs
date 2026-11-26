@@ -66,8 +66,7 @@ internal static class HostedStorageDownload
             if (bytes > 3 * 1024 * 1024)
                 throw new InvalidDataException("Hosted storage range exceeds the response limit.");
         }
-        using MemDb db = new();
-        PatriciaSnapTrieFactory factory = new(new NodeStorage(db), NullDb.Instance, logs);
+        MemorySnapTrieFactory factory = new(new MemoryNodeStorage(), logs);
         (AddRangeResult result, bool more, _, _) = SnapProviderHelper.AddStorageRange(
             factory, account, slots, start, runStart: start, limitHash: ValueKeccak.MaxValue, proofs: response.Proofs);
         if (result != AddRangeResult.OK)

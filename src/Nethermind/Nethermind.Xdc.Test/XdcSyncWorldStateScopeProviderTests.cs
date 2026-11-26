@@ -3,7 +3,6 @@
 
 using System;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -14,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Test;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.Xdc.Contracts;
@@ -28,7 +28,7 @@ internal class XdcSyncWorldStateScopeProviderTests
     [Test]
     public void BeginScope_ReadsAccountAndStorageFromCompletedSyncRoot()
     {
-        (XdcSyncWorldStateScopeProvider provider, IPersistence.IPersistenceReader reader, BlockHeader header, Address address, MemDb codeDb) =
+        (XdcSyncWorldStateScopeProvider provider, SubstitutablePersistenceReader reader, BlockHeader header, Address address, MemDb codeDb) =
             CreateProvider();
 
         using (provider)
@@ -54,7 +54,7 @@ internal class XdcSyncWorldStateScopeProviderTests
     [Test]
     public void ReadOnlyTransactionFactory_UsesCompletedSyncStateForConstantContract()
     {
-        (IPersistence persistence, IPersistence.IPersistenceReader reader, BlockHeader header, Address contractAddress, MemDb codeDb) =
+        (IPersistence persistence, SubstitutablePersistenceReader reader, BlockHeader header, Address contractAddress, MemDb codeDb) =
             CreateContractFixture();
 
         using (codeDb)
@@ -66,7 +66,7 @@ internal class XdcSyncWorldStateScopeProviderTests
             .Build())
         {
             XdcSyncReadOnlyTxProcessingEnvFactory factory = container.Resolve<XdcSyncReadOnlyTxProcessingEnvFactory>();
-            MasternodeVotingContract contract = new(container.Resolve<IAbiEncoder>(), contractAddress, factory);
+            MasternodeVotingContract contract = new(contractAddress, factory);
 
             Assert.That(contract.GetCandidates(header), Is.EqualTo(new[] { TestItem.AddressB }));
         }
@@ -76,15 +76,18 @@ internal class XdcSyncWorldStateScopeProviderTests
     [Test]
     public void TryBeginScope_RefusesMissingSyncRoot()
     {
-        (XdcSyncWorldStateScopeProvider provider, IPersistence.IPersistenceReader reader, BlockHeader header, _, MemDb codeDb) =
+        (XdcSyncWorldStateScopeProvider provider, SubstitutablePersistenceReader reader, BlockHeader header, _, MemDb codeDb) =
             CreateProvider();
         header.StateRoot = TestItem.KeccakA;
 
         using (provider)
         using (codeDb)
         {
-            Assert.That(provider.TryBeginScope(header, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
-            Assert.That(scope, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.TryBeginScope(header, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
+                Assert.That(scope, Is.Null);
+            }
         }
         reader.Received(1).Dispose();
     }
@@ -92,20 +95,23 @@ internal class XdcSyncWorldStateScopeProviderTests
     [Test]
     public void TryBeginScope_RefusesIncorrectSyncRootContents()
     {
-        (XdcSyncWorldStateScopeProvider provider, IPersistence.IPersistenceReader reader, BlockHeader header, _, MemDb codeDb) =
+        (XdcSyncWorldStateScopeProvider provider, SubstitutablePersistenceReader reader, BlockHeader header, _, MemDb codeDb) =
             CreateProvider();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(_ => [0x80]);
 
         using (provider)
         using (codeDb)
         {
-            Assert.That(provider.TryBeginScope(header, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
-            Assert.That(scope, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.TryBeginScope(header, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
+                Assert.That(scope, Is.Null);
+            }
         }
         reader.Received(1).Dispose();
     }
 
-    private static (XdcSyncWorldStateScopeProvider Provider, IPersistence.IPersistenceReader Reader, BlockHeader Header, Address Address, MemDb CodeDb) CreateProvider()
+    private static (XdcSyncWorldStateScopeProvider Provider, SubstitutablePersistenceReader Reader, BlockHeader Header, Address Address, MemDb CodeDb) CreateProvider()
     {
         Address address = TestItem.AddressA;
         MemoryNodeStorage nodeStorage = new();
@@ -124,7 +130,7 @@ internal class XdcSyncWorldStateScopeProviderTests
         byte[] stateRootRlp = nodeStorage.Get(null, TreePath.Empty, stateTree.RootHash.ValueHash256)!;
         byte[] storageRootRlp = nodeStorage.Get(address.ToAccountPath.ToHash256(), TreePath.Empty, storageTree.RootHash.ValueHash256)!;
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(_ => stateRootRlp);
         reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(_ => storageRootRlp);
 
@@ -141,7 +147,7 @@ internal class XdcSyncWorldStateScopeProviderTests
         return (provider, reader, header, address, codeDb);
     }
 
-    private static (IPersistence Persistence, IPersistence.IPersistenceReader Reader, BlockHeader Header, Address ContractAddress, MemDb CodeDb) CreateContractFixture()
+    private static (IPersistence Persistence, SubstitutablePersistenceReader Reader, BlockHeader Header, Address ContractAddress, MemDb CodeDb) CreateContractFixture()
     {
         Address contractAddress = TestItem.AddressA;
         Address candidate = TestItem.AddressB;
@@ -157,7 +163,7 @@ internal class XdcSyncWorldStateScopeProviderTests
         stateTree.Commit();
 
         byte[] stateRootRlp = nodeStorage.Get(null, TreePath.Empty, stateTree.RootHash.ValueHash256)!;
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(_ => stateRootRlp);
 
         IPersistence persistence = Substitute.For<IPersistence>();
