@@ -112,9 +112,14 @@ public class SocketRlpxConnectionTests
         byte[] header = new byte[Frame.HeaderSize];
         header[2] = Frame.BlockSize;
         header[3] = 0xf7;
-        byte[] next = Content(100, 1);
+        byte[] malformed = test.Peer.EncryptFrame(header, new byte[Frame.BlockSize]);
+        long received = test.Socket.Received;
 
-        await test.Peer.SendAsync([.. test.Peer.EncryptFrame(header, new byte[Frame.BlockSize]), .. test.Peer.Encode(0x10, next, EncodingMode.Framed)]);
+        // The next frame comes in a later read, after the error was handled.
+        await test.Peer.SendAsync(malformed);
+        Assert.That(() => test.Socket.Received, Is.EqualTo(received + malformed.Length).After(5000, 10));
+        await Task.Delay(100);
+        await test.Peer.SendAsync(test.Peer.Encode(0x10, Content(100, 1), EncodingMode.Framed));
         string[] expected = privileged ? ["receive 16"] : ["disconnect Exception", "receive 16"];
         await test.WaitForEventsAsync(expected.Length);
 
@@ -177,6 +182,7 @@ public class SocketRlpxConnectionTests
         await test.Peer.SendAsync(frames[..firstFrameLength]);
         test.Peer.Socket.Close();
         await test.Connection.Completion.WaitAsync(Timeout);
+        await test.StopAsync();
 
         Assert.That(test.Events, Is.Empty, "the end of the stream is not an error");
         await test.StopAndAssertBuffersReturnedAsync();
@@ -189,7 +195,7 @@ public class SocketRlpxConnectionTests
 
         await test.Connection.Closed.WaitAsync(Timeout);
         await test.Connection.Completion.WaitAsync(Timeout);
-        await Task.Delay(100);
+        await test.StopAsync();
 
         Assert.That(test.Events, Is.EqualTo(privileged ? Array.Empty<string>() : ["disconnect Exception"]));
         await test.StopAndAssertBuffersReturnedAsync();
@@ -405,6 +411,7 @@ public class SocketRlpxConnectionTests
         test.Enqueue(Content(10, 1));
         await test.Connection.Closed.WaitAsync(Timeout);
         await test.Connection.Completion.WaitAsync(Timeout);
+        await test.StopAsync();
 
         Assert.That(test.Events, Is.Empty);
         await test.StopAndAssertBuffersReturnedAsync();
