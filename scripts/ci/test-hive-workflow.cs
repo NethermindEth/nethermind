@@ -197,9 +197,10 @@ foreach (var hive in new HiveRun[]
             $"Print results must exit {hive.CheckerCode} with '{string.Join("', '", hive.CheckerOutput)}', got {check.Code}: {check.Output}{check.Error}");
     });
 
-// Only a limit with a test part (text after its first /) lets suites without cases pass: Hive then starts every suite
-// that the suite part selects, also those where no test matches. Without a test part, every started suite runs all its
-// tests, so a suite without cases stays a problem.
+// Only a limit with a test part lets suites without cases pass: Hive then starts every suite that the suite part
+// selects, also those where no test matches. Without a test part, every started suite runs all its tests, so a suite
+// without cases stays a problem. The test part is the text after the first / outside [...] and (...) and not escaped
+// by a backslash, as in Hive's splitRegexp.
 const string withEmptySuite = """{"name":"graphql","testCases":{"1":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
 const string ethHeaders = """{"name":"eth","testCases":{"1":{"name":"GetBlockHeaders","summaryResult":{"pass":true}},"2":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
 const string snapWrapperOnly = """{"name":"snap","testCases":{"1":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
@@ -225,6 +226,14 @@ tests.Case("empty suites allowed only under a limit with a test part", () =>
         ("eth", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
         ("eth/", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
         ("", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
+        // A / inside a character class, inside parentheses or escaped does not split the limit, so these have no test part.
+        ("^[^/]+$", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
+        ("^(eth|snap|a/b)$", "0", [ethHeaders, snapWrapperOnly], 1, "Suite 'snap' ran no test cases."),
+        (@"eth\/x", "1", [listedFailure, withEmptySuite], 1, "Suite 'graphql' ran no test cases."),
+        // The first / outside them splits, also after a class with a /, an unmatched ] (a literal) or a class with a (.
+        ("^[a/b]+$/^Status$", "1", [listedFailure, withEmptySuite], 0, null),
+        ("]/Status", "1", [listedFailure, withEmptySuite], 0, null),
+        ("[(]/Status", "1", [listedFailure, withEmptySuite], 0, null),
         // Under a test part the selected suites must still run a case between them.
         ("^(eth|snap)$/^GetBlockHeaders$", "0", [withEmptySuite, snapWrapperOnly], 1, "Hive ran no test cases."),
     })

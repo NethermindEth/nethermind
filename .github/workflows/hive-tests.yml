@@ -275,8 +275,23 @@ jobs:
         run: |
           rm -f ../hive/workspace/logs/hive.json
           options=(--hive-exit-code "$HIVE_STATUS")
-          # Hive splits a limit at its first / into a suite and a test pattern. With a test pattern (/<test>, eth/<test>),
-          # Hive still starts every suite that matches, also those where no test matches. Without one (eth, eth/ or no
-          # limit), every suite it starts runs all its tests.
-          [[ "$LIMIT" == */?* ]] && options+=(--allow-empty-suites)
+          # Hive splits a limit into a suite and a test pattern at its first / outside [...] and (...) and not escaped by
+          # a backslash (splitRegexp in hivesim/testmatch.go, mirrored below). With a test pattern (/<test>, eth/<test>),
+          # Hive still starts every suite that matches, also those where no test matches. Without one (eth, eth/,
+          # ^[^/]+$ or no limit), every suite it starts runs all its tests.
+          has_test_part() {
+            local s=$1 i cs=0 cp=0
+            for (( i = 0; i < ${#s}; i++ )); do
+              case ${s:i:1} in
+                '[') cs=$(( cs + 1 )) ;;
+                ']') cs=$(( cs > 0 ? cs - 1 : 0 )) ;; # an unmatched ] is a literal
+                '(') (( cs )) || cp=$(( cp + 1 )) ;;
+                ')') (( cs )) || cp=$(( cp - 1 )) ;;
+                '\') i=$(( i + 1 )) ;; # the next character is escaped
+                /) if (( cs == 0 && cp == 0 )); then [[ -n "${s:i+1}" ]]; return; fi ;;
+              esac
+            done
+            return 1
+          }
+          if has_test_part "$LIMIT"; then options+=(--allow-empty-suites); fi
           dotnet run --file scripts/hive-results.cs -- "${options[@]}" "../hive/workspace/logs/*.json"
