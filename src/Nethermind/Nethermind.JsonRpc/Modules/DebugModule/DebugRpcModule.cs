@@ -743,10 +743,9 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null, CancellationToken cancellationToken = default)
     {
-        // Two leading separators make a UNC or device path on Windows, which would open a connection to another host.
-        if (!Path.IsPathFullyQualified(fileName) || fileName is ['/' or '\\', '/' or '\\', ..])
+        if (!IsAbsoluteLocalPath(fileName))
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("file path must be an absolute local path", ErrorCodes.InvalidParams);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(AbsoluteLocalPathError, ErrorCodes.InvalidParams);
         }
 
         byte[] blockRlp;
@@ -1277,6 +1276,12 @@ public class DebugRpcModule(
     }
 
     private const string ExistingFileError = "location would overwrite an existing file";
+    private const string AbsoluteLocalPathError = "file path must be an absolute local path";
+
+    // Non-string arguments arrive as their raw JSON text, so a relative path could be "123" or "{}".
+    // Two leading separators make a UNC or device path on Windows, which would open a connection to another host.
+    private static bool IsAbsoluteLocalPath(string path) =>
+        Path.IsPathFullyQualified(path) && path is not ['/' or '\\', '/' or '\\', ..];
 
     public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null)
     {
@@ -1286,11 +1291,9 @@ public class DebugRpcModule(
             return ResultWrapper<IEnumerable<BadBlock>>.Success(blocks.Select(ToBadBlock));
         }
 
-        // Non-string arguments arrive as their raw JSON text, so a relative path could be "123" or "{}".
-        // Two leading separators make a UNC or device path on Windows, which would open a connection to another host.
-        if (!Path.IsPathFullyQualified(file) || file is ['/' or '\\', '/' or '\\', ..])
+        if (!IsAbsoluteLocalPath(file))
         {
-            return ResultWrapper<IEnumerable<BadBlock>>.Fail("file path must be an absolute local path", ErrorCodes.InvalidParams);
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail(AbsoluteLocalPathError, ErrorCodes.InvalidParams);
         }
 
         // Checked up front to fail before serializing, and so an existing directory fails the same way on every
