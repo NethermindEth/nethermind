@@ -2,12 +2,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#:property PublishAot=false
 #:include script-process.helpers.cs
 
 using System.IO.Compression;
 
-var entry = (string)AppContext.GetData("EntryPointFilePath")!;
-var project = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(entry)!, "../../tools/PgoTrim/PgoTrim.csproj"));
+const string projectPath = "tools/PgoTrim/PgoTrim.csproj";
+var root = new DirectoryInfo(Environment.CurrentDirectory);
+while (root is not null && !File.Exists(Path.Combine(root.FullName, projectPath)))
+    root = root.Parent;
+var project = Path.Combine(root?.FullName ?? throw new DirectoryNotFoundException("Run from within the Nethermind checkout."), projectPath);
 var temporary = Directory.CreateTempSubdirectory("nethermind-pgo-trim-");
 try
 {
@@ -22,17 +26,20 @@ try
         Record(4, "ColdNull", 1, "NULL"),
         "*** END PGO Data ***"
     ]);
-    var result = await ScriptProcess.Run("dotnet", ["run", "--project", project, "-c", "Release", "--", input, output], CancellationToken.None);
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+    var result = await ScriptProcess.Run("dotnet", ["run", "--project", project, "-c", "Debug", "--", input, output], timeout.Token);
     if (result.Code != 0)
         throw new InvalidOperationException($"PgoTrim exit {result.Code}: {result.Output}{result.Error}");
 
     using var data = new StreamReader(new GZipStream(File.OpenRead(output), CompressionMode.Decompress));
-    var report = await data.ReadToEndAsync();
+    var report = await data.ReadToEndAsync(timeout.Token);
     if (!report.Contains("MethodName: HotTyped", StringComparison.Ordinal) || !report.Contains("MethodName: HotNull", StringComparison.Ordinal) ||
-        report.Contains("MethodName: Cold", StringComparison.Ordinal) || !report.Contains("TypeHandle: NULL", StringComparison.Ordinal))
+        report.Contains("MethodName: Cold", StringComparison.Ordinal) || !report.Contains("TypeHandle: System.String", StringComparison.Ordinal) ||
+        !report.Contains("TypeHandle: NULL", StringComparison.Ordinal) || report.AsSpan().Count("Schema InstrumentationKind 195 ") != 2)
         throw new InvalidOperationException($"Trimmed profile has the wrong records:\n{report}");
     if (!result.Output.Contains("Histograms: 2 total (1 with types, 1 all-NULL)", StringComparison.Ordinal))
         throw new InvalidOperationException($"Summary did not count only emitted histograms:\n{result.Output}");
+    Console.WriteLine("PASS summary_counts_only_emitted_histograms");
     Console.WriteLine("Passed 1 tests.");
 }
 finally
