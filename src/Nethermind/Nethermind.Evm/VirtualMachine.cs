@@ -1562,6 +1562,8 @@ public partial class VirtualMachine<TGasPolicy>(
             return new(CopyToPrecompileScratch(callData.Span), precompileSuccess: true);
         }
 
+        CallResult result;
+        string? error;
         try
         {
             Result<byte[]> output = precompile.Run(callData, spec);
@@ -1572,12 +1574,8 @@ public partial class VirtualMachine<TGasPolicy>(
                 return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
             }
 
-            if (!success && output.Error is not null && IsTracingActions)
-            {
-                TracePrecompileError(output.Error);
-            }
-
-            return new(
+            error = success ? null : output.Error;
+            result = new(
                 data,
                 precompileSuccess: success,
                 shouldRevert: !success,
@@ -1598,6 +1596,14 @@ public partial class VirtualMachine<TGasPolicy>(
             if (_logger.IsError) LogExecutionException(precompile, exception);
             return new(default, precompileSuccess: false, shouldRevert: true);
         }
+
+        // Outside the try, so a tracer's own exception, such as a cancellation, is not taken for a precompile fault.
+        if (error is not null && IsTracingActions)
+        {
+            TracePrecompileError(error);
+        }
+
+        return result;
     }
 
     /// <remarks>Like Geth, a precompile that rejects its input after charging gas fails its frame with the precompile's

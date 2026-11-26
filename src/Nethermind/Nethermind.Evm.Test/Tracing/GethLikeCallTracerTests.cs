@@ -940,21 +940,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     [Test(Description = "Like geth, a precompile that rejects its input after charging gas fails with its own error")]
     public void Precompile_failure_reports_precompile_error([Values] bool child, [Values] bool enoughGas, [Values] TraceDispatch dispatch)
     {
-        // One byte is not a multiple of the 192-byte pairing size; the 45000 base cost is charged before the check.
-        byte[] input = [1];
-        Address pairing = new("0x0000000000000000000000000000000000000008");
         ulong gasLimit = child || enoughGas ? 100000UL : 50000UL;
-        const ulong precompileGas = 50000;
-        byte[] code = Prepare.EvmCode.CallWithInput(pairing, (long)(enoughGas ? precompileGas : ChildGas), input).Op(Instruction.POP).STOP().Done;
-        Transaction? rootCall = child ? null : Build.A.Transaction
-            .WithGasLimit(gasLimit)
-            .WithGasPrice(1)
-            .WithNonce(TestState.GetNonce(Sender))
-            .WithData(input)
-            .To(pairing)
-            .SignedAndResolved(SenderKey)
-            .TestObject;
-        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit, code, transaction: rootCall);
+        (Block block, Transaction tx) = PreparePairingFailure(child, enoughGas, gasLimit);
         GasSpentTracer receipt = new();
         _processor.CallAndRestore(tx, block.Header, receipt);
 
@@ -974,7 +961,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(frame.To, Is.EqualTo(pairing), "failing frame target");
+            Assert.That(frame.To, Is.EqualTo(Pairing), "failing frame target");
             Assert.That(frame.Error, Is.EqualTo(enoughGas ? "bad elliptic curve pairing size" : "out of gas"), "precompile error");
             Assert.That(root.GasUsed, Is.EqualTo(receipt.SpentGas), "the root reports the transaction's gasUsed");
             if (child)
@@ -988,6 +975,40 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             }
             Assert.That(structResult.Entries.Select(static entry => entry.Error), Is.All.Null, "struct log steps");
         }
+    }
+
+    [Test(Description = "A tracer's own exception while it takes a precompile's error is not taken for a precompile fault")]
+    public void Precompile_error_tracer_exception_propagates([Values] bool child)
+    {
+        (Block block, Transaction tx) = PreparePairingFailure(child, enoughGas: true, 100000);
+
+        Assert.Throws<OperationCanceledException>(() => _processor.CallAndRestore(tx, block.Header, new ThrowingActionErrorDetailsTracer()));
+    }
+
+    private static readonly Address Pairing = new("0x0000000000000000000000000000000000000008");
+
+    /// <summary>Calls the pairing precompile with one byte, which is not a multiple of its 192-byte input size.</summary>
+    /// <remarks>The 45000 base cost is charged before the size check, so 50000 gas reaches the check and 10000 does not.</remarks>
+    private (Block block, Transaction tx) PreparePairingFailure(bool child, bool enoughGas, ulong gasLimit)
+    {
+        byte[] input = [1];
+        byte[] code = Prepare.EvmCode.CallWithInput(Pairing, enoughGas ? 50000 : (long)ChildGas, input).Op(Instruction.POP).STOP().Done;
+        Transaction? rootCall = child ? null : Build.A.Transaction
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .WithNonce(TestState.GetNonce(Sender))
+            .WithData(input)
+            .To(Pairing)
+            .SignedAndResolved(SenderKey)
+            .TestObject;
+        return PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit, code, transaction: rootCall);
+    }
+
+    private sealed class ThrowingActionErrorDetailsTracer : TxTracer
+    {
+        public ThrowingActionErrorDetailsTracer() => IsTracingActions = true;
+
+        public override void ReportActionErrorDetails(string error) => throw new OperationCanceledException();
     }
 
     [Test(Description = "Like geth, a CREATE frame that halts or fails its code deposit reports all its gas as used")]
@@ -1070,10 +1091,14 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
             yield return new TestCaseData(activation, DepositOutcome.OversizeWithDepositGas, TraceDispatch.Traced);
         }
+        // Leaves exactly the 200 * 24577 deposit gas after RETURN; one less cannot pay for it.
+        yield return new TestCaseData(MainnetSpecProvider.CancunActivation, DepositOutcome.OversizeWithDepositGas, TraceDispatch.Traced, 4_972_019UL);
+        yield return new TestCaseData(MainnetSpecProvider.CancunActivation, DepositOutcome.Oversize, TraceDispatch.Traced, 4_972_018UL);
     }
 
     [TestCaseSource(nameof(RootDepositCases))]
-    public void Root_create_code_deposit_diagnostic(ForkActivation activation, DepositOutcome outcome, TraceDispatch dispatch)
+    public void Root_create_code_deposit_diagnostic(ForkActivation activation, DepositOutcome outcome, TraceDispatch dispatch,
+        ulong? gasLimitOverride = null)
     {
         IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
         int length = outcome switch
@@ -1088,7 +1113,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         // 1024 bytes require 204800 deposit gas; this budget comfortably executes the short initcode,
         // but cannot pay that deposit. The one-byte control requires only 200 deposit gas. Before Amsterdam, about 4.9M
         // gas pays for an oversized deposit, so only its size fails it; from Amsterdam on, the size is checked first.
-        ulong gasLimit = outcome == DepositOutcome.OversizeWithDepositGas ? 6_000_000UL : 100_000UL;
+        ulong gasLimit = gasLimitOverride ?? (outcome == DepositOutcome.OversizeWithDepositGas ? 6_000_000UL : 100_000UL);
         (Block block, Transaction tx) = PrepareInitTx(activation, gasLimit, initCode);
         Address address = ContractAddress.From(Sender, TestState.GetNonce(Sender));
         GasSpentTracer receipt = new();
@@ -1150,6 +1175,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, oversize, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, oversize, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, oversize, false, (byte)0xEF);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, oversize, false, (byte)0, 6_000_000UL);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1024, false);
         yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, 1024, true);
@@ -1158,7 +1184,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     [TestCaseSource(nameof(ChildDepositCases))]
     public void Child_create_code_deposit_diagnostic(ForkActivation activation, Instruction opcode, int length, bool onlyTopCall,
-        byte firstByte = 0)
+        byte firstByte = 0, ulong gasLimit = 100000)
     {
         IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
         byte[] initCode = DepositInitCode(length, firstByte);
@@ -1168,7 +1194,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             : Prepare.EvmCode.Create2(initCode, salt, 0);
         // Before EIP-150, a failed CREATE leaves no parent gas; STOP still exposes its result on the stack.
         byte[] code = create.STOP().Done;
-        (Block block, Transaction tx) = PrepareTx(activation, 100000, code);
+        (Block block, Transaction tx) = PrepareTx(activation, gasLimit, code);
         ulong nonce = TestState.GetNonce(Recipient);
         Address address = opcode == Instruction.CREATE ? ContractAddress.From(Recipient, nonce) : ContractAddress.From(Recipient, salt, initCode);
         UInt256 balance = TestState.GetBalance(Recipient);
@@ -1208,7 +1234,10 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             {
                 Assert.That(child.Type, Is.EqualTo(opcode));
                 string? error = success ? null
-                    : firstByte == 0xEF ? "invalid code: must not begin with 0xef" : "contract creation code storage out of gas";
+                    : firstByte == 0xEF ? "invalid code: must not begin with 0xef"
+                    // About 4.9M gas pays for an oversized deposit before Amsterdam, so only its size fails it.
+                    : length > spec.MaxCodeSize && gasLimit > 5_000_000 ? $"max code size exceeded: code size {length} limit {spec.MaxCodeSize}"
+                    : "contract creation code storage out of gas";
                 Assert.That(child.Error, Is.EqualTo(error));
                 Assert.That(child.To, Is.EqualTo(success ? address : null));
                 Assert.That(child.Input.ToArray(), Is.EqualTo(initCode));
