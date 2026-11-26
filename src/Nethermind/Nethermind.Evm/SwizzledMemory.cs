@@ -89,31 +89,34 @@ internal static unsafe class SwizzledMemory
             ref uint end = ref Unsafe.Add(ref group, groups);
             // A group is the source's four bytes read big-endian: a word of the source with its bytes reversed. A
             // source off a word boundary is read as the aligned words that cover it, each group merged from two.
-            nuint address = (nuint)Unsafe.AsPointer(ref next);
-            uint* words = (uint*)(address & ~(nuint)3);
-            int shift = (int)(address & 3) << 3;
-            if (shift == 0)
+            fixed (byte* start = &next)
             {
-                do
+                nuint address = (nuint)start;
+                uint* words = (uint*)(address & ~(nuint)3);
+                int shift = (int)(address & 3) << 3;
+                if (shift == 0)
                 {
-                    group = BinaryPrimitives.ReverseEndianness(*words);
-                    words++;
-                    group = ref Unsafe.Add(ref group, 1);
+                    do
+                    {
+                        group = BinaryPrimitives.ReverseEndianness(*words);
+                        words++;
+                        group = ref Unsafe.Add(ref group, 1);
+                    }
+                    while (Unsafe.IsAddressLessThan(ref group, ref end));
                 }
-                while (Unsafe.IsAddressLessThan(ref group, ref end));
-            }
-            else
-            {
-                uint current = *words;
-                do
+                else
                 {
-                    words++;
-                    uint following = *words;
-                    group = BinaryPrimitives.ReverseEndianness((current >> shift) | (following << (32 - shift)));
-                    current = following;
-                    group = ref Unsafe.Add(ref group, 1);
+                    uint current = *words;
+                    do
+                    {
+                        words++;
+                        uint following = *words;
+                        group = BinaryPrimitives.ReverseEndianness((current >> shift) | (following << (32 - shift)));
+                        current = following;
+                        group = ref Unsafe.Add(ref group, 1);
+                    }
+                    while (Unsafe.IsAddressLessThan(ref group, ref end));
                 }
-                while (Unsafe.IsAddressLessThan(ref group, ref end));
             }
             i += groups << 2;
         }
