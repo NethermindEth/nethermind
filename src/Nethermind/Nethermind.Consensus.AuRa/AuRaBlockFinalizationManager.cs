@@ -17,12 +17,20 @@ using Nito.Collections;
 
 namespace Nethermind.Consensus.AuRa
 {
+    /// <param name="loadLastFinalizedBlockLevel">
+    /// When <c>false</c>, <see cref="LastFinalizedBlockLevel"/> starts at 0 instead of being loaded by walking
+    /// <see cref="ChainLevelInfo"/> back from the head. Only the startup scan is skipped: later queries such as
+    /// <see cref="GetFinalizationLevel"/> and <see cref="GetLastLevelFinalizedBy"/> work as before. Intended for
+    /// heads already past the merge transition, where the startup value no longer selects the active validator.
+    /// On a post-merge head the scan can read back to the merge transition, or to genesis if no level was finalized.
+    /// </param>
     public class AuRaBlockFinalizationManager(
         IBlockTree blockTree,
         IChainLevelInfoRepository chainLevelInfoRepository,
         IValidatorStore validatorStore,
         ILogManager logManager,
-        ulong twoThirdsMajorityTransition = ulong.MaxValue) : IAuRaBlockFinalizationManager
+        ulong twoThirdsMajorityTransition = ulong.MaxValue,
+        bool loadLastFinalizedBlockLevel = true) : IAuRaBlockFinalizationManager
     {
         private static readonly List<BlockHeader> Empty = [];
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -37,9 +45,8 @@ namespace Nethermind.Consensus.AuRa
         // Must be computed eagerly: MultiValidator.SetFinalizationManager reads LastFinalizedBlockLevel
         // during DI resolution (inside InitializeBlockchain, before SetMainBlockBranchProcessor runs)
         // to pick the active validator. Reading 0 produces state-root divergence on archive sync when
-        // crossing a validator-contract transition. This scan only reads ChainLevelInfo metadata and
-        // does not allocate BlockHeaders — cheap even on long post-merge chains.
-        private ulong _lastFinalizedBlockLevel = LoadInitialLastFinalizedBlockLevel(blockTree, chainLevelInfoRepository);
+        // crossing a validator-contract transition. Skippable via loadLastFinalizedBlockLevel; see its doc.
+        private ulong _lastFinalizedBlockLevel = loadLastFinalizedBlockLevel ? LoadInitialLastFinalizedBlockLevel(blockTree, chainLevelInfoRepository, logManager) : 0UL;
 
         public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
         {
@@ -65,18 +72,28 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        private static ulong LoadInitialLastFinalizedBlockLevel(IBlockTree blockTree, IChainLevelInfoRepository chainLevelInfoRepository)
+        private const ulong InitialScanLogInterval = 1_000_000;
+
+        private static ulong LoadInitialLastFinalizedBlockLevel(IBlockTree blockTree, IChainLevelInfoRepository chainLevelInfoRepository, ILogManager logManager)
         {
             if (blockTree.Head is null) return 0UL;
-            ulong level = blockTree.Head.Number + 1;
+            ILogger logger = logManager.GetClassLogger<AuRaBlockFinalizationManager>();
+            ulong headNumber = blockTree.Head.Number;
+            ulong level = headNumber + 1;
             ChainLevelInfo chainLevel;
             do
             {
-                if (level == 0) return 0UL;
+                if (level == 0) break;
                 level--;
+                ulong scanned = headNumber - level;
+                if (scanned != 0 && scanned % InitialScanLogInterval == 0 && logger.IsInfo)
+                    logger.Info($"Searching for the last AuRa-finalized block below head {headNumber}: {scanned} levels scanned, now at level {level}.");
                 chainLevel = chainLevelInfoRepository.LoadLevel(level);
             }
             while (chainLevel?.MainChainBlock?.IsFinalized != true);
+
+            if (headNumber - level >= InitialScanLogInterval && logger.IsInfo)
+                logger.Info($"Last AuRa-finalized block search finished at level {level} after scanning {headNumber - level + 1} levels.");
 
             return level;
         }

@@ -5,7 +5,7 @@ using System.Net;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 
@@ -93,7 +93,7 @@ public class EnrDiscoveryCreateNodeTests
 
         Assert.That(
             () => new EnrRecordParser(signer).ParseRecord(record.ToString()),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Invalid ENR signature."));
+            Throws.TypeOf<RlpReaderException>().With.Message.EqualTo("Invalid ENR signature."));
     }
 
     private static NodeRecord CreateNodeRecord(int? tcpPort, int? udpPort)

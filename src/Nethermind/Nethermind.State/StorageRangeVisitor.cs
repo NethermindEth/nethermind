@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
@@ -35,6 +36,8 @@ public sealed class StorageRangeVisitor(Address address, in ValueHash256 startKe
     public ValueHash256? NextKey { get; private set; }
 
     public bool IsFullDbScan => false;
+
+    public bool IsRangeScan => IsFullDbScan;
 
     public bool ShouldVisit(in TreePathContextWithStorage nodeContext, in ValueHash256 nextNode) =>
         !_isComplete && (nodeContext.Storage is null
@@ -76,7 +79,7 @@ public sealed class StorageRangeVisitor(Address address, in ValueHash256 startKe
         }
 
         RlpReader reader = new(node.LeafValue);
-        ReadOnlySpan<byte> content = reader.DecodeByteArraySpan(RlpLimit.L32);
+        ReadOnlySpan<byte> content = reader.DecodeByteArraySpan<OffFlag>(RlpLimit.L32);
         ValueHash256 value = default;
         content.CopyTo(value.BytesAsSpan[(ValueHash256.MemorySize - content.Length)..]);
         _slots.Add((key, value));

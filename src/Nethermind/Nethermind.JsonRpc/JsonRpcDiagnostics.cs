@@ -165,7 +165,8 @@ internal sealed class JsonRpcDiagnostics
                     Message = maskErrorDetails ? "[redacted]" : error.Message,
                     Data = maskErrorDetails ? error.Data is null ? null : "[redacted]" : "# streamable error data omitted #",
                     SuppressWarning = error.SuppressWarning,
-                    OperatorActionable = error.OperatorActionable
+                    OperatorActionable = error.OperatorActionable,
+                    RequestError = error.RequestError
                 }
             },
             _ => null

@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Core;
@@ -42,7 +41,7 @@ public static class ConfigExtensions
         PropertyInfo propertyInfo = interfaceType.GetProperty(propertyName)!;
         ConfigItemAttribute attribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>()!;
         string? defaultValue = attribute.DefaultValue;
-        return (T)TypeDescriptor.GetConverter(typeof(T)).ConvertFrom(defaultValue!)!;
+        return (T)ConfigSourceHelper.ParseValue(typeof(T), defaultValue ?? "null", GetCategoryName(interfaceType), propertyName)!;
     }
 
     /// <summary>

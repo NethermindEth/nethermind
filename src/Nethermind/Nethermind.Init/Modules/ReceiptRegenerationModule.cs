@@ -24,7 +24,7 @@ namespace Nethermind.Init.Modules;
 /// Overrides only <see cref="IReceiptFinder.RegenerableKey"/>, never the unkeyed registration. Regeneration costs a
 /// block execution, so it must stay unreachable from anything that is not a read-only query: peer-facing serving,
 /// which any peer can drive, and consensus components that read receipts on the processing path (the AuRa validator
-/// contract, Shutter) — the latter also tolerate absent receipts, which this decorator deliberately does not.
+/// contract) — the latter also tolerate absent receipts, which this decorator deliberately does not.
 /// A decorator would not do: an Autofac decorator applies to keyed registrations of the same service too.
 /// The wrapped inner is the unkeyed finder, so a plugin's override of <see cref="IReceiptFinder"/> keeps applying.
 /// </para>

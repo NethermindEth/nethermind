@@ -10,9 +10,11 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
@@ -49,12 +51,12 @@ internal class WorldStateDbDeciderModule : Module
 
             // Injected into the block tree at construction time, so it must not resolve
             // IWorldStateManager (whose graph resolves the block tree back).
-            .AddSingleton<IStateBoundary, FlatStateActivationPolicy, IFlatDbConfig, Func<FlatStateBoundary>, Func<StateBoundaryStore>>(
-                (policy, flatDbConfig, flatBoundary, trieBoundary) =>
+            .AddSingleton<IStateBoundary, FlatStateActivationPolicy, IFlatDbConfig, Func<FlatStateBoundary>, Func<StateBoundaryStore>, Func<HalfPathMigrationCursor>>(
+                (policy, flatDbConfig, flatBoundary, trieBoundary, migrationCursor) =>
                     !policy.ShouldTurnOnFlatDb() ? trieBoundary()
-                    // ImportFlatDb copies trie state at blockTree.Head, so during import the head
-                    // must still rewind to the trie's persisted block; the flat DB is empty then.
-                    : flatDbConfig.ImportFromPruningTrieState
+                    // ImportFlatDb, and a migration starting, take trie state at blockTree.Head, so the head must
+                    // still rewind to the trie's persisted block while the flat DB is empty.
+                    : flatDbConfig.ImportFromPruningTrieState || migrationCursor().Current is not null
                         ? new ImportFallbackStateBoundary(flatBoundary(), trieBoundary())
                         : flatBoundary())
 
@@ -63,6 +65,12 @@ internal class WorldStateDbDeciderModule : Module
                     policy.ShouldTurnOnFlatDb()
                         ? flatFactory()
                         : patriciaFactory().AdminRpcModule)
+
+            .AddSingleton<ISnapStateServer, FlatStateActivationPolicy, Func<SnapFlatStateServer>, Func<PruningTrieStoreModule.PruningTrieStateFactoryOutput>>(
+                (policy, flatFactory, patriciaFactory) =>
+                    policy.ShouldTurnOnFlatDb()
+                        ? flatFactory()
+                        : patriciaFactory().SnapStateServer)
 
             .AddSingleton<ISnapTrieFactory, FlatStateActivationPolicy, Func<FlatSnapTrieFactory>, Func<PatriciaSnapTrieFactory>>(
                 (policy, flatFactory, patriciaFactory) =>

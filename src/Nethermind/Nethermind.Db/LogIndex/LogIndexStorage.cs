@@ -89,6 +89,10 @@ namespace Nethermind.Db.LogIndex
             public static readonly byte[] MinBlockNum = "min"u8.ToArray();
             public static readonly byte[] MaxBlockNum = "max"u8.ToArray();
             public static readonly byte[] CompressionAlgo = "alg"u8.ToArray();
+            public static readonly byte[] UnrevertedReorg = "unr"u8.ToArray();
+            public static readonly byte[] PeakMaxBlockNum = "pmx"u8.ToArray();
+            public static readonly byte[] MinReorgDepth = "mrd"u8.ToArray();
+            public static readonly byte[] UnknownDepthMaxBlockNum = "umx"u8.ToArray();
         }
 
         public static class Postfix
@@ -163,6 +167,7 @@ namespace Nethermind.Db.LogIndex
         public const int BlockNumberSize = sizeof(int);
         private const int MaxKeyLength = Hash256.Size + 1; // Math.Max(Address.Size, Hash256.Size)
         private const int MaxDbKeyLength = MaxKeyLength + BlockNumberSize;
+        private const int MaxStackDecompressionInput = 1024;
 
         private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Shared;
 
@@ -187,6 +192,16 @@ namespace Nethermind.Db.LogIndex
 
         private readonly int _maxReorgDepth;
 
+        /// <summary>
+        /// The smallest <see cref="_maxReorgDepth"/> the index has run with, as values may have been compressed with it.
+        /// </summary>
+        private readonly int _minReorgDepth;
+
+        /// <summary>
+        /// The max block of an index written before <see cref="_minReorgDepth"/> was recorded, as values up to it may have been compressed with any depth.
+        /// </summary>
+        private readonly int? _unknownDepthMaxBlock;
+
         private readonly AllMergeOperators _mergeOperators;
         private readonly ICompressor _compressor;
         private readonly ICompactor _compactor;
@@ -196,8 +211,14 @@ namespace Nethermind.Db.LogIndex
 
         private int? _maxBlock;
         private int? _minBlock;
+        private int? _unrevertedReorg;
 
-        public int? MaxBlockNumber => _maxBlock;
+        /// <summary>
+        /// The highest <see cref="_maxBlock"/> lowered by a reorg, as values may have been compressed against it.
+        /// </summary>
+        private int? _peakMaxBlock;
+
+        public int? MaxBlockNumber => _unrevertedReorg is null ? _maxBlock : null;
         public int? MinBlockNumber => _minBlock;
 
         private Exception? _lastBackgroundError;
@@ -252,6 +273,16 @@ namespace Nethermind.Db.LogIndex
                 _compressionAlgorithm = SelectCompressionAlgorithm(config.CompressionAlgorithm);
 
                 (_minBlock, _maxBlock) = (LoadRangeBound(SpecialKey.MinBlockNum), LoadRangeBound(SpecialKey.MaxBlockNum));
+                _unrevertedReorg = LoadRangeBound(SpecialKey.UnrevertedReorg);
+                _peakMaxBlock = LoadRangeBound(SpecialKey.PeakMaxBlockNum);
+
+                int? storedReorgDepth = LoadRangeBound(SpecialKey.MinReorgDepth);
+                _minReorgDepth = Math.Min(storedReorgDepth ?? _maxReorgDepth, _maxReorgDepth);
+                _unknownDepthMaxBlock = storedReorgDepth is null && _maxBlock is { } maxBlock
+                    ? SaveRangeBound(_metaDb, SpecialKey.UnknownDepthMaxBlockNum, maxBlock)
+                    : LoadRangeBound(SpecialKey.UnknownDepthMaxBlockNum);
+                if (storedReorgDepth != _minReorgDepth)
+                    SaveRangeBound(_metaDb, SpecialKey.MinReorgDepth, _minReorgDepth);
 
                 if (Enabled)
                     _compressor.Start();
@@ -558,6 +589,12 @@ namespace Nethermind.Db.LogIndex
 
         private int? GetLastReorgableBlockNumber() => _maxBlock - _maxReorgDepth;
 
+        private int? GetLastPossiblyCompressedBlockNumber()
+        {
+            int? lastCompressed = (_peakMaxBlock > _maxBlock ? _peakMaxBlock : _maxBlock) - _minReorgDepth;
+            return _unknownDepthMaxBlock > lastCompressed ? _unknownDepthMaxBlock : lastCompressed;
+        }
+
         private static bool IsBlockNewer(int next, int? lastMin, int? lastMax, bool isBackwardSync) => isBackwardSync
             ? lastMin is null || next < lastMin
             : lastMax is null || next > lastMax;
@@ -606,38 +643,30 @@ namespace Nethermind.Db.LogIndex
             long timestamp = Stopwatch.GetTimestamp();
 
             LogIndexAggregate aggregate = new(batch, isBackwardSync);
-            foreach ((int blockNumber, TxReceipt[] receipts) in batch)
+            Dictionary<AddressAsKey, List<int>>.AlternateLookup<ReadOnlySpan<byte>> addresses = aggregate.Address.GetAlternateLookup<ReadOnlySpan<byte>>();
+            Dictionary<ValueHash256, List<int>>[] topics = aggregate.Topic;
+            foreach (BlockReceipts block in batch)
             {
+                int blockNumber = block.BlockNumber;
                 if (!IsBlockNewer(blockNumber, isBackwardSync))
                     continue;
 
                 stats?.IncrementBlocks();
-                stats?.IncrementTx(receipts.Length);
+                stats?.IncrementTx(block.TxCount);
 
-                foreach (TxReceipt receipt in receipts)
+                BlockReceipts.LogReader logs = block.ReadLogs();
+                while (logs.TryGetNext(out ReadOnlySpan<byte> address, out ReadOnlySpan<byte> logTopics))
                 {
-                    if (receipt.Logs is null)
-                        continue;
+                    stats?.IncrementLogs();
 
-                    foreach (LogEntry log in receipt.Logs)
+                    AddBlock(ref CollectionsMarshal.GetValueRefOrAddDefault(addresses, address, out _), blockNumber);
+
+                    for (int topicIndex = 0; topicIndex < logTopics.Length / Hash256.Size; topicIndex++)
                     {
-                        stats?.IncrementLogs();
+                        stats?.IncrementTopics();
 
-                        List<int> addressBlocks = aggregate.Address.GetOrAdd(log.Address, static _ => new(1));
-
-                        if (addressBlocks.Count == 0 || addressBlocks[^1] != blockNumber)
-                            addressBlocks.Add(blockNumber);
-
-                        int topicsLength = Math.Min(log.Topics.Length, MaxTopics);
-                        for (byte topicIndex = 0; topicIndex < topicsLength; topicIndex++)
-                        {
-                            stats?.IncrementTopics();
-
-                            List<int> topicBlocks = aggregate.Topic[topicIndex].GetOrAdd(log.Topics[topicIndex], static _ => new(1));
-
-                            if (topicBlocks.Count == 0 || topicBlocks[^1] != blockNumber)
-                                topicBlocks.Add(blockNumber);
-                        }
+                        ValueHash256 topic = new(logTopics.Slice(topicIndex * Hash256.Size, Hash256.Size));
+                        AddBlock(ref CollectionsMarshal.GetValueRefOrAddDefault(topics[topicIndex], topic, out _), blockNumber);
                     }
                 }
             }
@@ -646,6 +675,13 @@ namespace Nethermind.Db.LogIndex
             stats?.Aggregating.Include(Stopwatch.GetElapsedTime(timestamp));
 
             return aggregate;
+
+            static void AddBlock(ref List<int>? blocks, int blockNumber)
+            {
+                blocks ??= [with(1)];
+                if (blocks.Count == 0 || blocks[^1] != blockNumber)
+                    blocks.Add(blockNumber);
+            }
         }
 
         private async ValueTask LockRunAsync(SemaphoreSlim semaphore)
@@ -669,11 +705,44 @@ namespace Nethermind.Db.LogIndex
 
             try
             {
+                ThrowIfReorgedBeyondRevert();
+
+                // Compressed values are immutable, so a block that may already be compressed cannot be reverted
+                if (block.BlockNumber <= GetLastPossiblyCompressedBlockNumber())
+                    StopAtUnrevertableReorg(block.BlockNumber);
+
                 RemoveReorgedCore(block);
             }
             finally
             {
                 _forwardWriteSemaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// Caps the index below <paramref name="blockNumber"/>, stops queries from using it and blocks further forward writes, also after a restart.
+        /// </summary>
+        /// <remarks>Later reorgs are no longer reverted, so even the blocks below <paramref name="blockNumber"/> may go stale.</remarks>
+        private void StopAtUnrevertableReorg(int blockNumber)
+        {
+            using (DbBatches batches = new(_rootDb))
+            {
+                SaveRangeBound(batches.Meta, SpecialKey.UnrevertedReorg, blockNumber);
+                SaveRangeBound(batches.Meta, SpecialKey.MaxBlockNum, blockNumber - 1);
+                batches.Commit();
+            }
+
+            (_unrevertedReorg, _maxBlock) = (blockNumber, blockNumber - 1);
+            ThrowIfReorgedBeyondRevert();
+        }
+
+        private void ThrowIfReorgedBeyondRevert()
+        {
+            if (_unrevertedReorg is { } block)
+            {
+                throw new LogIndexStateException(
+                    $"Log index: block {block} was replaced by a reorg deeper than the index can revert, so the index is no longer used. " +
+                    "Restart with LogIndex.Reset=true to rebuild the log index.");
             }
         }
 
@@ -686,31 +755,32 @@ namespace Nethermind.Db.LogIndex
             Span<byte> keyBuffer = stackalloc byte[MaxDbKeyLength];
             Span<byte> dbValue = MergeOps.Create(MergeOp.Reorg, block.BlockNumber, stackalloc byte[MergeOps.Size]);
 
-            foreach (TxReceipt receipt in block.Receipts)
+            BlockReceipts.LogReader logs = block.ReadLogs();
+            while (logs.TryGetNext(out ReadOnlySpan<byte> address, out ReadOnlySpan<byte> topics))
             {
-                foreach (LogEntry log in receipt.Logs ?? [])
-                {
-                    ReadOnlySpan<byte> addressKey = CreateMergeDbKey(log.Address.Bytes, keyBuffer, isBackwardSync: false);
-                    batches.Address.Merge(addressKey, dbValue);
+                ReadOnlySpan<byte> addressKey = CreateMergeDbKey(address, keyBuffer, isBackwardSync: false);
+                batches.Address.Merge(addressKey, dbValue);
 
-                    int topicsLength = Math.Min(log.Topics.Length, MaxTopics);
-                    for (int topicIndex = 0; topicIndex < topicsLength; topicIndex++)
-                    {
-                        Hash256 topic = log.Topics[topicIndex];
-                        ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topic.Bytes, keyBuffer, isBackwardSync: false);
-                        batches.Topics[topicIndex].Merge(topicKey, dbValue);
-                    }
+                for (int topicIndex = 0; topicIndex < topics.Length / Hash256.Size; topicIndex++)
+                {
+                    ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topics.Slice(topicIndex * Hash256.Size, Hash256.Size), keyBuffer, isBackwardSync: false);
+                    batches.Topics[topicIndex].Merge(topicKey, dbValue);
                 }
             }
 
             // Need to update the last block number so that new-receipts comparison won't fail when rewriting it
             int blockNum = block.BlockNumber - 1;
 
+            int? peakMaxBlock = _peakMaxBlock;
+            if (_maxBlock is { } currentMax && !(peakMaxBlock >= currentMax))
+                peakMaxBlock = SaveRangeBound(batches.Meta, SpecialKey.PeakMaxBlockNum, currentMax);
+
             (int minBlock, int maxBlock) = SaveRange(batches, blockNum, blockNum, isBackwardSync, isReorg: true);
 
             batches.Commit();
 
             // Postpone in-memory values update until batch is committed
+            _peakMaxBlock = peakMaxBlock;
             UpdateRange(minBlock, maxBlock, isBackwardSync);
         }
 
@@ -735,7 +805,9 @@ namespace Nethermind.Db.LogIndex
                     .ToArray();
 
                 await Task.WhenAll(tasks);
-                await _compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30));
+                TimeSpan compressionWait = TimeSpan.FromSeconds(30);
+                if (!await _compressor.WaitUntilEmptyAsync(compressionWait) && _logger.IsWarn)
+                    _logger.Warn($"Log index: compression queue did not drain within {compressionWait}, continuing compaction");
             }
 
             CompactingStats compactStats = await _compactor.ForceAsync();
@@ -756,6 +828,9 @@ namespace Nethermind.Db.LogIndex
             long totalTimestamp = Stopwatch.GetTimestamp();
 
             bool isBackwardSync = aggregate.IsBackwardSync;
+            if (!isBackwardSync)
+                ThrowIfReorgedBeyondRevert();
+
             SemaphoreSlim semaphore = isBackwardSync ? _backwardWriteSemaphore : _forwardWriteSemaphore;
             await LockRunAsync(semaphore);
 
@@ -774,17 +849,17 @@ namespace Nethermind.Db.LogIndex
                     timestamp = Stopwatch.GetTimestamp();
 
                     // Add addresses
-                    foreach ((Address address, List<int> blocks) in aggregate.Address)
+                    foreach ((AddressAsKey address, List<int> blocks) in aggregate.Address)
                     {
-                        MergeBlockNumbers(batches.Address, address.Bytes, blocks, isBackwardSync, stats);
+                        MergeBlockNumbers(batches.Address, address.Value.Bytes, blocks, isBackwardSync, stats);
                     }
 
                     // Add topics
                     for (int topicIndex = 0; topicIndex < aggregate.Topic.Length; topicIndex++)
                     {
-                        Dictionary<Hash256, List<int>> topics = aggregate.Topic[topicIndex];
+                        Dictionary<ValueHash256, List<int>> topics = aggregate.Topic[topicIndex];
 
-                        foreach ((Hash256 topic, List<int> blocks) in topics)
+                        foreach ((ValueHash256 topic, List<int> blocks) in topics)
                         {
                             MergeBlockNumbers(batches.Topics[topicIndex], topic.Bytes, blocks, isBackwardSync, stats);
                         }
@@ -891,13 +966,6 @@ namespace Nethermind.Db.LogIndex
             return index < 0 ? ~index : index;
         }
 
-        private ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
-        {
-            ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
-            int length = (int)_compressionAlgorithm.Compress(blockNumbers, (nuint)blockNumbers.Length, buffer);
-            return buffer[..length];
-        }
-
         private static int ReadCompressionMarker(ReadOnlySpan<byte> source) => -BinaryPrimitives.ReadInt32LittleEndian(source);
         private static void WriteCompressionMarker(Span<byte> source, int len) => BinaryPrimitives.WriteInt32LittleEndian(source, -len);
 
@@ -944,19 +1012,22 @@ namespace Nethermind.Db.LogIndex
 
         private static IDb GetMetaDb(IColumnsDb<LogIndexColumns> rootDb) => rootDb.GetColumnDb(LogIndexColumns.Meta);
 
-        private byte[] CompressDbValue(ReadOnlySpan<byte> key, Span<byte> data)
+        private byte[] CompressDbValue(ReadOnlySpan<byte> key, Span<byte> data) => CompressDbValue(_compressionAlgorithm, key, data);
+
+        internal static byte[] CompressDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> key, Span<byte> data)
         {
             if (IsCompressed(data, out _))
                 throw new LogIndexStateException("Attempt to compress already compressed data.", key);
             if (data.Length % BlockNumberSize != 0)
                 throw new LogIndexStateException($"Invalid length of data to compress: {data.Length}.", key);
 
-            byte[] buffer = Pool.Rent(data.Length + BlockNumberSize);
+            ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
+            byte[] buffer = Pool.Rent(BlockNumberSize + CompressionAlgorithm.GetMaxCompressedLength(blockNumbers.Length));
 
             try
             {
-                WriteCompressionMarker(buffer, data.Length / BlockNumberSize);
-                int compressedLen = Compress(data, buffer.AsSpan(BlockNumberSize..)).Length;
+                WriteCompressionMarker(buffer, blockNumbers.Length);
+                int compressedLen = (int)algorithm.Compress(blockNumbers, (nuint)blockNumbers.Length, buffer.AsSpan(BlockNumberSize..));
                 return buffer[..(BlockNumberSize + compressedLen)];
             }
             finally
@@ -965,18 +1036,66 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private static void DecompressDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> data, Span<int> buffer)
+        [SkipLocalsInit]
+        internal static void DecompressDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> data, Span<int> buffer)
         {
             if (!IsCompressed(data, out int len))
                 throw new ValidationException("Data is not compressed");
 
-            if (buffer.Length < len)
+            if (buffer.Length < len + CompressionAlgorithm.DecompressionOverrun)
                 throw new ArgumentException($"Buffer is too small to decompress {len} block numbers.", nameof(buffer));
 
-            _ = algorithm.Decompress(data[BlockNumberSize..], (nuint)len, buffer);
+            // The decoder reads past the end of its input, and the value read from the database has no padding.
+            ReadOnlySpan<byte> compressed = data[BlockNumberSize..];
+            int inputLength = compressed.Length + CompressionAlgorithm.CompressedDataOverread;
+            byte[]? rented = null;
+            Span<byte> input = inputLength <= MaxStackDecompressionInput
+                ? stackalloc byte[MaxStackDecompressionInput]
+                : rented = Pool.Rent(inputLength);
+
+            try
+            {
+                compressed.CopyTo(input);
+                input.Slice(compressed.Length, CompressionAlgorithm.CompressedDataOverread).Clear();
+                _ = algorithm.Decompress(input, (nuint)len, buffer);
+            }
+            finally
+            {
+                if (rented is not null) Pool.Return(rented);
+            }
         }
 
-        private void DecompressDbValue(ReadOnlySpan<byte> data, Span<int> buffer) => DecompressDbValue(_compressionAlgorithm, data, buffer);
+        /// <summary>
+        /// Reads the ascending block numbers of a stored value into <paramref name="buffer"/>, which is reused across
+        /// values and replaced by a larger pooled array only when it is too small.
+        /// </summary>
+        /// <returns>The number of block numbers read.</returns>
+        private static int ReadDbValue(CompressionAlgorithm algorithm, ReadOnlySpan<byte> value, ref int[]? buffer)
+        {
+            bool compressed = IsCompressed(value, out int length);
+            if (!compressed) length = value.Length / BlockNumberSize;
+
+            int capacity = compressed ? length + CompressionAlgorithm.DecompressionOverrun : length;
+            buffer ??= [];
+            if (buffer.Length < capacity)
+            {
+                int[] larger = SafeArrayPool<int>.Shared.Rent(capacity);
+                ReturnDbValueBuffer(buffer);
+                buffer = larger;
+            }
+
+            Span<int> blocks = buffer.AsSpan(0, length);
+            if (compressed) DecompressDbValue(algorithm, value, buffer.AsSpan(0, capacity));
+            else ReadBlockNumbers(value, blocks);
+
+            ReverseBlocksIfNeeded(blocks);
+            return length;
+        }
+
+        private static void ReturnDbValueBuffer(int[]? buffer)
+        {
+            if (buffer is { Length: > 0 }) SafeArrayPool<int>.Shared.Return(buffer);
+        }
 
         private Span<byte> RemoveReorgableBlocks(Span<byte> data)
         {

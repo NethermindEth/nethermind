@@ -17,9 +17,9 @@ namespace Nethermind.Benchmarks.Rlp
 
         private readonly byte[][] _scenarios =
         [
-            Serialization.Rlp.Rlp.Encode(Account.TotallyEmpty).Bytes,
+            Serialization.Rlp.Rlp.Encode(Account.TotallyEmpty),
             Serialization.Rlp.Rlp.Encode(
-                new Account(123, UInt256.Parse("1000000000000000000000", NumberStyles.HexNumber))).Bytes,
+                new Account(123, UInt256.Parse("1000000000000000000000", NumberStyles.HexNumber))),
         ];
 
         [Params(0, 1)]

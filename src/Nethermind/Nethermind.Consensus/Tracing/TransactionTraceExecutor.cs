@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -73,7 +74,7 @@ public sealed class TransactionTraceExecutor(
             return inner.ProcessTransactions(block, options, tracer, token);
         }
 
-        inner.SetupTxTimingMetrics(block);
+        ArrayPoolList<long>? txTimings = PerTxTimingCollector.Prepare(block.Transactions.Length);
         if (balManager.Enabled) balManager.NextTransaction();
 
         // A seeded prefix stands in for the transactions ahead of the target: they are neither executed nor traced.
@@ -96,7 +97,7 @@ public sealed class TransactionTraceExecutor(
             if (boundary.IsExecutionRequired && target < 0)
                 throw new InvalidOperationException("The indexed trace could not locate its transaction boundary.");
             senderRecovery.RecoverData(block, first, ExecutionEnd(block, boundary, target));
-            TxReceipt[] receipts = Execute(block, options, tracer, token, boundary, first);
+            TxReceipt[] receipts = Execute(block, options, tracer, token, boundary, first, txTimings);
             boundary.HasExecuted = true;
             return receipts;
         }
@@ -133,14 +134,14 @@ public sealed class TransactionTraceExecutor(
         public bool HasStorage(Address address) => false;
     }
 
-    private TxReceipt[] Execute(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token, TransactionTraceBoundary boundary, int first)
+    private TxReceipt[] Execute(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token, TransactionTraceBoundary boundary, int first, ArrayPoolList<long>? txTimings)
     {
         for (int i = first; i < block.Transactions.Length && !boundary.IsComplete; i++)
         {
             token.ThrowIfCancellationRequested();
             Transaction tx = block.Transactions[i];
             ITransactionProcessorAdapter processor = balManager.Enabled ? balManager.GetTxProcessor((uint)i + 1) : transactionProcessor;
-            long start = inner.StartTxTimer();
+            long start = PerTxTimingCollector.Start(txTimings);
             TransactionResult result;
             try
             {
@@ -148,7 +149,7 @@ public sealed class TransactionTraceExecutor(
             }
             finally
             {
-                inner.StopTxTimer(i, start);
+                PerTxTimingCollector.Stop(txTimings, i, start);
             }
 
             if (!result) BlockProcessor.BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, tx, i);

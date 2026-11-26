@@ -88,6 +88,15 @@ foreach (var response in new[] { "{broken", "[]", "null", "{\"status\":\"offline
         Cases.Equal(2, fixture.Commands.Count(command => command[0] == "curl"));
         Cases.True(!fixture.Commands.Any(command => command.Contains("delete") || command.Contains("DELETE")), "retry leaves live runner intact");
     });
+foreach (var removed in new[] { true, false })
+    await Cases.Test($"create removes the JIT config from metadata once online (removal succeeds: {removed})", async () =>
+    {
+        using var fixture = new LifecycleFixture { SucceedZone = "europe-west1-b", RemoveMetadataStatus = removed ? 0 : 1 };
+        Cases.Equal(removed ? 0 : 1, await fixture.Execute());
+        Cases.True(fixture.Commands.Any(command => command.Contains("remove-metadata") && command.Contains("--keys=runner-jit-config") && command.Contains("--zone=europe-west1-b")), "JIT config removal requested");
+        Cases.Equal(!removed, fixture.Commands.Any(command => command.Contains("delete") && command.Contains("instances")));
+        Cases.Equal(!removed, fixture.Commands.Any(command => command[0] == "gh" && command.Contains("DELETE")));
+    });
 Cases.Finish();
 
 partial class Program

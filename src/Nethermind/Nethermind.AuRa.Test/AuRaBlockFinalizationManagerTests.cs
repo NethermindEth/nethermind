@@ -62,6 +62,27 @@ namespace Nethermind.AuRa.Test
             Assert.That(finalizationManager.LastFinalizedBlockLevel, Is.EqualTo(1));
         }
 
+        // No finalized level: the scan walks from the head down to genesis (head + 1 reads).
+        [TestCase(200_000UL, null, true, 200_001UL, 0UL)]
+        // Stops at the last finalized level.
+        [TestCase(2_000UL, 1_301UL, true, 700UL, 1_301UL)]
+        // Not loaded: no read at all.
+        [TestCase(200_000UL, null, false, 0UL, 0UL)]
+        public void Initial_scan_loads_last_finalized_level(ulong headNumber, ulong? finalizedLevel, bool loadLastFinalizedBlockLevel, ulong expectedLoadLevelCalls, ulong expectedLastFinalizedLevel)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.Head.Returns(Build.A.Block.WithNumber(headNumber).TestObject);
+            CountingChainLevelInfoRepository chainLevelInfoRepository = new(finalizedLevel);
+
+            AuRaBlockFinalizationManager finalizationManager = new(blockTree, chainLevelInfoRepository, _validatorStore, _logManager, loadLastFinalizedBlockLevel: loadLastFinalizedBlockLevel);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chainLevelInfoRepository.LoadLevelCalls, Is.EqualTo(expectedLoadLevelCalls));
+                Assert.That(finalizationManager.LastFinalizedBlockLevel, Is.EqualTo(expectedLastFinalizedLevel));
+            }
+        }
+
         private void FinalizeToLevel(ulong upperLevel, IChainLevelInfoRepository chainLevelInfoRepository)
         {
             for (ulong i = 0; i <= upperLevel; i++)

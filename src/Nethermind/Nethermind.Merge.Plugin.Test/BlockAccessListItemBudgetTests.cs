@@ -95,7 +95,7 @@ public class BlockAccessListItemBudgetTests(bool parallel) : BaseEngineModuleTes
 
         Block block = (await BuildBlock(chain, []))!;
 
-        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(new Rlp(block.EncodedBlockAccessList!))!;
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(block.EncodedBlockAccessList!)!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(block.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { a.Hash, c.Hash }));
@@ -116,7 +116,7 @@ public class BlockAccessListItemBudgetTests(bool parallel) : BaseEngineModuleTes
 
         Block block = (await BuildBlock(chain, []))!;
 
-        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(new Rlp(block.EncodedBlockAccessList!))!;
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(block.EncodedBlockAccessList!)!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(StorageKeys(bal, Eip7002Constants.WithdrawalRequestPredeployAddress), Is.EqualTo(4 + 16 * 3));

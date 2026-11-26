@@ -45,6 +45,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -1901,9 +1902,10 @@ public partial class EngineModuleTests
             ExecutionPayload executionPayload = await CreateBlockRequest(chain, block, TestItem.AddressA);
             PrivateKey from = TestItem.PrivateKeyB;
             Address to = TestItem.AddressD;
-            (_, UInt256 toBalanceAfter) = AddTransactions(chain, executionPayload, from, to, count, 1, out BlockHeader parentHeader);
+            (UInt256 fromBalanceAfterValue, UInt256 toBalanceAfter) = AddTransactions(chain, executionPayload, from, to, count, 1, out _);
+            // Every transfer pays 1 GWei per gas: BuildTransactions sets both fee caps to 1 GWei.
+            UInt256 gasFees = GasCostOf.Transaction * count * 1.GWei;
 
-            UInt256 fromBalance = chain.StateReader.GetBalance(parentHeader!, from.Address);
             executionPayload.GasUsed = GasCostOf.Transaction * count;
             executionPayload.StateRoot =
                 new Hash256("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
@@ -1922,7 +1924,7 @@ public partial class EngineModuleTests
                 Assert.That(chain.StateReader.HasStateForBlock(payloadBlock), Is.True);
 
                 UInt256 fromBalanceAfter = chain.StateReader.GetBalance(payloadBlock, from.Address);
-                Assert.That(fromBalanceAfter, Is.LessThan(fromBalance - toBalanceAfter));
+                Assert.That(fromBalanceAfter, Is.EqualTo(fromBalanceAfterValue - gasFees));
                 Assert.That(chain.StateReader.GetBalance(payloadBlock, to), Is.EqualTo(toBalanceAfter));
                 Block findBlock = chain.BlockTree.FindBlock(executionPayload.BlockHash, BlockTreeLookupOptions.None)!;
                 TxReceipt[]? receipts = chain.ReceiptStorage.Get(findBlock);
@@ -1941,19 +1943,38 @@ public partial class EngineModuleTests
         Address recipient = TestItem.AddressD;
         PrivateKey sender = TestItem.PrivateKeyB;
 
-        Transaction[] txsSource =
+        Transaction[] transfers =
             BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
+        // Non-empty calldata, so a decoder that drops it cannot pass the comparison below.
+        Transaction withCalldata = Build.A.Transaction
+            .WithNonce(transfers[^1].Nonce + 1)
+            .WithTo(recipient)
+            .WithValue(value.GWei)
+            .WithData([0x01, 0x02, 0x03])
+            .WithType(TxType.EIP1559)
+            .WithGasPrice(1.GWei)
+            .WithMaxFeePerGasIfSupports1559(1.GWei)
+            .WithChainId(chain.SpecProvider.ChainId)
+            .SignedAndResolved(sender).TestObject;
+        Transaction[] txsSource = [.. transfers, withCalldata];
 
         ExecutionPayload executionPayload = new();
         executionPayload.SetTransactions(txsSource);
 
-        Transaction[] txsReceived = executionPayload.TryGetTransactions().Data!;
+        // SetTransactions keeps the array it was given, so decode from a payload that holds only the encodings.
+        ExecutionPayload decodingPayload = new() { Transactions = executionPayload.Transactions };
+        Transaction[] txsReceived = decodingPayload.TryGetTransactions().Data!;
 
-        Assert.That(txsReceived, Is.EqualTo(txsSource).UsingTransactionComparer(
-            nameof(Transaction.ChainId),
-            nameof(Transaction.Data),
-            nameof(Transaction.SenderAddress),
-            nameof(Transaction.Timestamp)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executionPayload.TryGetTransactions().Data, Is.EqualTo(txsSource).UsingTransactionComparer(
+                nameof(Transaction.SenderAddress),
+                nameof(Transaction.Timestamp)), "the payload that was set");
+            Assert.That(txsReceived, Is.Not.SameAs(txsSource));
+            Assert.That(txsReceived, Is.EqualTo(txsSource).UsingTransactionComparer(
+                nameof(Transaction.SenderAddress),
+                nameof(Transaction.Timestamp)));
+        }
     }
 
     [Test]
@@ -2645,8 +2666,6 @@ public partial class EngineModuleTests
         public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true) =>
             inner.ValidateSuggestedBlock(block, parent, out error, validateHashes);
 
-        public bool ValidateWithdrawals(Block block, out string? error) => inner.ValidateWithdrawals(block, out error);
-
         public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
             inner.ValidateBodyAgainstHeader(header, toBeValidated, out error);
     }
@@ -3159,7 +3178,7 @@ public partial class EngineModuleTests
         chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Pause();
         // The loop releases the forkchoice's wait for the commit before it leaves the block, and the rewind refuses
         // until the loop is idle.
-        Assert.That(() => chain.BlockProcessingQueue.IsEmpty && !chain.BlockTree.IsProcessingBlock, Is.True.After((int)GateTimeout.TotalMilliseconds, 10),
+        Assert.That(() => chain.BlockProcessingQueue.IsEmpty && !chain.Container.Resolve<BlockProcessingTracker>().IsProcessingBlock, Is.True.After((int)GateTimeout.TotalMilliseconds, 10),
             "precondition: the paused processing loop has drained");
         ResultWrapper<bool> rewind = byHash
             ? debug.debug_resetHead(blocks[0].BlockHash!)

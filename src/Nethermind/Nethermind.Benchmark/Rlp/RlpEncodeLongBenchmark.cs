@@ -40,7 +40,7 @@ namespace Nethermind.Benchmarks.Rlp
 
             Console.WriteLine($"Length current: {Current().Length}");
             Console.WriteLine($"Length improved: {Improved().Length}");
-            Check(Current().Bytes, Improved().Bytes);
+            Check(Current(), Improved());
         }
 
         private void Check(byte[] a, byte[] b)
@@ -55,9 +55,9 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark]
-        public Serialization.Rlp.Rlp Improved() => Serialization.Rlp.Rlp.Encode(_value);
+        public byte[] Improved() => Serialization.Rlp.Rlp.Encode(_value);
 
         [Benchmark]
-        public Serialization.Rlp.Rlp Current() => Serialization.Rlp.Rlp.Encode(_value);
+        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_value);
     }
 }

@@ -6,6 +6,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Logging;
 
 namespace Nethermind.Core.Cpu;
 
@@ -29,9 +30,10 @@ internal class ConsoleExitHandler : IDisposable
         {
             Console.CancelKeyPress += CancelKeyPressHandlerCallback;
         }
-        catch (PlatformNotSupportedException)
+        catch (PlatformNotSupportedException e)
         {
             // Thrown when running in Xamarin
+            LogSkipped("Cannot handle Ctrl+C", e);
         }
         AppDomain.CurrentDomain.ProcessExit += ProcessExitEventHandlerHandlerCallback;
     }
@@ -43,9 +45,10 @@ internal class ConsoleExitHandler : IDisposable
         {
             Console.CancelKeyPress -= CancelKeyPressHandlerCallback;
         }
-        catch (PlatformNotSupportedException)
+        catch (PlatformNotSupportedException e)
         {
             // Thrown when running in Xamarin
+            LogSkipped("Cannot detach the Ctrl+C handler", e);
         }
         AppDomain.CurrentDomain.ProcessExit -= ProcessExitEventHandlerHandlerCallback;
     }
@@ -65,9 +68,16 @@ internal class ConsoleExitHandler : IDisposable
         {
             process.KillTree(); // we need to kill entire process tree, not just the process itself
         }
-        catch
+        catch (Exception e)
         {
             // we don't care about exceptions here, it's shutdown and we just try to cleanup whatever we can
+            LogSkipped("Failed to kill the process tree", e);
         }
+    }
+
+    private static void LogSkipped(string message, Exception e)
+    {
+        ILogger logger = Static.LogManager.GetClassLogger<ConsoleExitHandler>();
+        if (logger.IsDebug) logger.Debug($"{message}: {e.Message}");
     }
 }

@@ -5,15 +5,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Autofac;
+using Autofac.Core;
+using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Container;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL;
@@ -87,20 +95,50 @@ public class OptimismModuleTests
         Assert.That(container.Resolve<Merge.Plugin.Data.PayloadTransactionCountGuard>(), Is.SameAs(Merge.Plugin.Data.PayloadTransactionCountGuard.Disabled));
     }
 
-    // The eth_sendTransaction tests wire their forwarding node the same way.
     [Test]
-    public void Node_that_forwards_to_the_sequencer_has_no_transaction_pool()
+    public void Tracing_environment_replays_with_the_optimism_block_processor()
     {
         ChainSpec chainSpec = new()
         {
             EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
         };
         ContainerBuilder builder = new();
-        builder.RegisterInstance(Substitute.For<ITxPool>()).As<ITxPool>();
-        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig { SequencerUrl = "http://localhost:8545" }));
+        builder.RegisterModule(new BlockProcessingModule(new InitConfig(), new BlocksConfig()));
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig()));
+        using IContainer container = builder.Build();
+        IBlockValidationModule[] validationModules = container.Resolve<IBlockValidationModule[]>();
+
+        // Configured like the debug and trace RPC environments.
+        using ILifetimeScope tracingScope = container.BeginLifetimeScope(tracing => tracing
+            .AddModule(validationModules)
+            .AddModule(new TransactionTraceModule(validationModules)));
+
+        tracingScope.ComponentRegistry.TryGetRegistration(
+            new KeyedService(TransactionTraceModule.BlockProcessorKey, typeof(BlockProcessor)), out IComponentRegistration? registration);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracingScope.IsRegistered<TransactionTraceExecutor>(), Is.True, "the environment replays transaction prefixes");
+            Assert.That(registration?.Activator.LimitType, Is.EqualTo(typeof(OptimismTransactionTraceBlockProcessor)));
+        }
+    }
+
+    // The eth_sendTransaction tests wire their forwarding node the same way.
+    [TestCase("http://localhost:8545", true, TestName = "Node that forwards to the sequencer has no transaction pool")]
+    [TestCase("", false, TestName = "Empty sequencer URL keeps the transaction pool")]
+    [TestCase(" ", false, TestName = "Blank sequencer URL keeps the transaction pool")]
+    public void Sequencer_url_decides_whether_the_node_has_a_transaction_pool(string sequencerUrl, bool forwardsToSequencer)
+    {
+        ChainSpec chainSpec = new()
+        {
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
+        };
+        ITxPool txPool = Substitute.For<ITxPool>();
+        ContainerBuilder builder = new();
+        builder.RegisterInstance(txPool).As<ITxPool>();
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig { SequencerUrl = sequencerUrl }));
         using IContainer container = builder.Build();
 
-        Assert.That(container.Resolve<ITxPool>(), Is.SameAs(NullTxPool.Instance));
+        Assert.That(container.Resolve<ITxPool>(), Is.SameAs(forwardsToSequencer ? NullTxPool.Instance : txPool));
     }
 
     [Test]
@@ -117,6 +155,32 @@ public class OptimismModuleTests
         using IContainer container = builder.Build();
 
         Assert.That(container.Resolve<IProofRpcModule>(), Is.TypeOf<OptimismProofRpcModule>());
+    }
+
+    [Test]
+    public void Receipt_finder_gives_no_stored_receipts_as_a_receipts_message_carries_them()
+    {
+        ChainSpec chainSpec = new()
+        {
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
+        };
+        IReceiptFinder inner = Substitute.For<IReceiptFinder>();
+        inner.TryAppendNetworkReceipts(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<ArrayPoolList<byte>>()).Returns(true);
+        TxReceipt[] receipts = [Build.A.Receipt.TestObject];
+        inner.Get(TestItem.KeccakA).Returns(receipts);
+        ContainerBuilder builder = new();
+        builder.RegisterInstance(inner).As<IReceiptFinder>();
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig()));
+        using IContainer container = builder.Build();
+        IReceiptFinder receiptFinder = container.Resolve<IReceiptFinder>();
+        using ArrayPoolList<byte> destination = new(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receiptFinder.TryAppendNetworkReceipts(Build.A.BlockHeader.TestObject, withBloom: false, destination), Is.False);
+            Assert.That(receiptFinder.Get(TestItem.KeccakA), Is.SameAs(receipts));
+            inner.DidNotReceiveWithAnyArgs().TryAppendNetworkReceipts(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<ArrayPoolList<byte>>());
+        }
     }
 
     [Test]

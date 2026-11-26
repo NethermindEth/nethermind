@@ -556,6 +556,9 @@ public class GuestOpcodeHandlerTests
         yield return Fails("KECCAK256 with one operand", Code(PUSH1, 0, KECCAK256), EvmExceptionType.StackUnderflow);
         yield return Fails("KECCAK256 at 2^32", Code(PUSH1, 1, PUSH5, 1, 0, 0, 0, 0, KECCAK256), EvmExceptionType.OutOfGas);
         yield return Fails("KECCAK256 of 2^32 bytes", Code(PUSH5, 1, 0, 0, 0, 0, PUSH1, 0, KECCAK256), EvmExceptionType.OutOfGas);
+        yield return Fails("POP POP after KECCAK256 of an empty range", Code(PUSH1, 0, PUSH2, 4, 0, KECCAK256, POP, POP), EvmExceptionType.StackUnderflow);
+        yield return Fails("POP POP after KECCAK256 of an empty range at 2^256 - 1",
+            Code([PUSH1, 0, PUSH32, .. Filled(32, 0xff), KECCAK256, POP, POP]), EvmExceptionType.StackUnderflow);
         yield return Fails("SHL with one operand", Code(PUSH1, 1, SHL), EvmExceptionType.StackUnderflow);
         foreach (byte op in (byte[])[ADD, SUB, AND, OR, XOR])
         {
@@ -585,27 +588,80 @@ public class GuestOpcodeHandlerTests
     /// A ZK_EVM test process cannot run the zkVM's keccak, so the range's bytes are memoized with a stand-in digest
     /// first: hashing any other bytes misses the memo and reaches the precompile, which throws. That leaves out the
     /// empty range, whose digest the guest takes from a constant hashed on first use. Memory holds 64 initialized
-    /// bytes, so a range may end on that boundary or run past it, which grows memory through the shared handler.
+    /// bytes, so a range may end on that boundary or run past it, which grows memory through the shared handler. When
+    /// the first hash of a 32- or 64-byte range stays inside those bytes, the second takes its digest from the memo the
+    /// first one filled.
     /// </remarks>
     [Test]
-    public void Keccak256_leaves_the_digest_of_its_range([Values(8, 32, 33, 64)] int length, [Values(0, 5, 32)] int offset)
+    public void Keccak256_leaves_the_digest_of_its_range([Values(8, 32, 33, 64)] int length, [Values(0, 5, 32)] int offset, [Values] bool twice)
     {
         byte[] memory = [.. WordA, .. WordB, .. new byte[32]];
         byte[] digest = Enumerable.Range(0, 32).Select(b => (byte)(0x80 + b + length + offset)).ToArray();
         KeccakCache.WriteMemo(memory.AsSpan(offset, length), new ValueHash256(digest));
         ulong hashGas = GasCostOf.Sha3 + GasCostOf.Sha3Word * (ulong)((length + 31) / 32);
+        // The digests go above the furthest range end, 96, so the second hash reads the bytes the first one did.
+        byte[] hashAgain = twice ? [PUSH1, (byte)length, PUSH1, (byte)offset, KECCAK256, PUSH1, 128, MSTORE] : [];
 
         AssertSucceedsOnExactlyItsGas(
             Code([
                 PUSH32, .. WordA, PUSH1, 0, MSTORE,
                 PUSH32, .. WordB, PUSH1, 32, MSTORE,
                 PUSH1, (byte)length, PUSH1, (byte)offset, KECCAK256,
-                PUSH1, 64, MSTORE,
+                PUSH1, 96, MSTORE,
+                .. hashAgain,
                 STOP]),
-            (3 + 3 + 3) + (3 + 3 + 3) + (3 + 3 + hashGas) + (3 + 3) + MemoryCost(3),
-            [.. WordA, .. WordB, .. digest],
+            (3 + 3 + 3) + (3 + 3 + 3) + (3 + 3 + hashGas) + (3 + 3) +
+            (twice ? (3 + 3 + hashGas) + (3 + 3) + MemoryCost(5) : MemoryCost(4)),
+            [.. WordA, .. WordB, .. new byte[32], .. digest, .. twice ? digest : []],
             []);
     }
+
+    /// <remarks>
+    /// A new stand-in digest for an input that was hashed shows whether a hash took the word memo's digest or
+    /// <see cref="KeccakCache"/>'s. The memo picks an entry from an XOR of the input's outer words, so inputs that swap
+    /// two words share one entry. A hash of an input with no stand-in throws after its entry takes the new key.
+    /// </remarks>
+    [Test]
+    public void Keccak256_word_memo_answers_only_the_input_its_entry_holds([Values(32, 64)] int length)
+    {
+        byte[] first = Enumerable.Range(0x40 + length, length).Select(static b => (byte)b).ToArray();
+        byte[] second = [.. first[8..16], .. first[..8], .. first[16..]];
+        byte[] third = [.. first[..16], .. first[24..32], .. first[16..24], .. first[32..]];
+
+        AssertWordMemoHash(first, 1, 1);
+        AssertWordMemoHash(first, 2, 1);
+        AssertWordMemoHash(second, 3, 3);
+        Assert.That(() => RunHash(third), Throws.Exception);
+        AssertWordMemoHash(third, 4, 4);
+
+        static void AssertWordMemoHash(byte[] input, byte standIn, byte expected)
+        {
+            KeccakCache.WriteMemo(input, new ValueHash256(StandIn(standIn)));
+            Assert.That(RunHash(input), Is.EqualTo(StandIn(expected)), $"stand-in {standIn}");
+        }
+
+        static byte[] StandIn(byte n) => Enumerable.Range(0, 32).Select(b => (byte)(n << 5 | b)).ToArray();
+
+        static byte[] RunHash(byte[] input)
+        {
+            byte[] stores = input.Chunk(32).SelectMany(static (word, i) => (byte[])[PUSH32, .. word, PUSH1, (byte)(i * 32), MSTORE]).ToArray();
+            Outcome outcome = Run(Code([.. stores, PUSH1, (byte)input.Length, PUSH1, 0, KECCAK256, PUSH1, (byte)input.Length, MSTORE, STOP]), AmpleGas);
+            Assert.That(outcome.Exception, Is.AnyOf(EvmExceptionType.None, EvmExceptionType.Stop));
+            return outcome.Memory[input.Length..(input.Length + 32)];
+        }
+    }
+
+    /// <remarks>
+    /// An empty range touches no memory, so an offset past the memory charges no expansion. An offset of -1 pushes
+    /// 2^256 - 1. With a word written first, offsets 0 and 31 lie inside the memory.
+    /// </remarks>
+    [Test]
+    public void Keccak256_of_an_empty_range_leaves_the_empty_digest([Values(0L, 31L, 1024L, 1L << 32, -1L)] long offset, [Values] bool written) =>
+        AssertSucceedsOnExactlyItsGas(
+            Code([.. written ? [PUSH1, 1, PUSH1, 0, MSTORE] : Array.Empty<byte>(), PUSH1, 0, PUSH32, .. Word(offset), KECCAK256, PUSH1, 0, MSTORE, STOP]),
+            (written ? 3 + 3 + 3 : 0UL) + (3 + 3 + GasCostOf.Sha3) + (3 + 3) + MemoryCost(1),
+            ValueKeccak.OfAnEmptyString.Bytes.ToArray(),
+            []);
 
     [TestCaseSource(nameof(Failures))]
     public void Fails_as_the_shared_handlers_do(byte[] code, EvmExceptionType exception) =>

@@ -13,10 +13,12 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.Db;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
@@ -24,6 +26,8 @@ using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
+
+using static SharedBloomScenarios;
 
 [TestFixture]
 public class PersistedSnapshotCompactorTests
@@ -36,6 +40,9 @@ public class PersistedSnapshotCompactorTests
     // Holds the nodes of the static test case sources, which are built before any test runs.
     private static readonly INodeRecordBuffer CaseBuffer = FlatTestHelpers.NewTestBuffer();
     private static readonly INodeRecordBufferPin CaseBufferRetain = CaseBuffer.PinHead();
+
+    // A block no scenario of the shared-bloom cases reaches: the event never happens.
+    private const ulong Never = ulong.MaxValue;
 
     [SetUp]
     public void SetUp()
@@ -1370,6 +1377,143 @@ public class PersistedSnapshotCompactorTests
                 Assert.That(big.Bloom.Capacity, Is.EqualTo(dedupedSum),
                     "merged bloom capacity must count the shared source bloom once, not once per sharer");
             }
+        }
+    }
+
+    /// <summary>
+    /// A large merge shares its bloom with every persisted snapshot inside its range
+    /// (<see cref="PersistedSnapshotCompactor"/> → <see cref="ISnapshotRepository.ShareBloomAcrossRange"/>).
+    /// </summary>
+    /// <remarks>
+    /// The slots are written in block 2. Cleared in block 6, they are written in the first CompactSize window and cleared
+    /// in the second, so the (0, 8] merge is the only compacted snapshot that drops them; the CompactSized snapshot at 8
+    /// shares its bloom over (4, 8] only. Cleared in block 3, the CompactSized (0, 4] merge has dropped them already, so
+    /// the (0, 8] merge never sees them: what it drops itself is not all its bloom misses.
+    /// </remarks>
+    [Test]
+    public async Task Large_merge_keeps_slots_cleared_later_in_its_range_readable_at_the_states_before_the_clear(
+        [Values(6ul, 3ul)] ulong cleared, [Values] bool recreated)
+    {
+        Scenario scenario = new(Written: 2, cleared, recreated);
+        using FlatTestContainer tier = new(Config());
+        for (ulong block = 1; block <= 8; block++) ConvertAndCompact(tier, block, scenario, largeMerge: true);
+
+        await using ILifetimeScope managerScope = BeginManagerScope(tier);
+        AssertReads(managerScope.Resolve<FlatDbManager>(), scenario, lastBlock: 8);
+    }
+
+    /// <summary>
+    /// The CompactSized snapshot made at a large boundary shares its bloom with the persisted snapshots inside its range
+    /// as well: <see cref="PersistedSnapshotCompactor"/> shares whenever the boundary block is a large one, whatever the
+    /// tier of the snapshot it just made.
+    /// </summary>
+    /// <remarks>
+    /// The large merge does not run here. On a node it runs later on another worker, and not at all when the window,
+    /// clamped to the persisted block, holds only the CompactSized snapshot.
+    /// </remarks>
+    [Test]
+    public async Task CompactSized_merge_at_a_large_boundary_keeps_slots_cleared_later_in_its_range_readable([Values] bool recreated)
+    {
+        Scenario scenario = new(Written: 5, Cleared: 7, recreated);
+        using FlatTestContainer tier = new(Config());
+        for (ulong block = 1; block <= 8; block++) ConvertAndCompact(tier, block, scenario, largeMerge: false);
+
+        await using ILifetimeScope managerScope = BeginManagerScope(tier);
+        AssertReads(managerScope.Resolve<FlatDbManager>(), scenario, lastBlock: 8);
+    }
+
+    /// <summary>
+    /// A large merge over a mixed chain whose two-block source already dropped the slots: the (0, 8] merge drops nothing
+    /// itself, yet base 5, which holds them, must not adopt its bloom.
+    /// </summary>
+    [Test]
+    public async Task Large_merge_over_a_two_block_merge_that_dropped_the_slots_keeps_them_readable()
+    {
+        Scenario scenario = new(Written: 5, Cleared: 6, Recreated: false);
+        using FlatTestContainer tier = new(Config());
+        // No CompactSized merge at 8, so the large merge assembles [(0, 4], (4, 6], 7, 8].
+        for (ulong block = 1; block <= 8; block++) ConvertAndCompact(tier, block, scenario, largeMerge: false, compactSizedAtLargeBoundary: false);
+        using (PersistedSnapshotList sources = tier.Repository.AssemblePersistedSnapshotsForCompaction(State(8), 0))
+        {
+            Assert.That(sources.Select(static s => (s.Tier, s.From.BlockNumber, s.To.BlockNumber)), Is.EqualTo(new[]
+            {
+                (SnapshotTier.PersistedCompactSized, 0ul, 4ul), (SnapshotTier.PersistedSmallCompacted, 4ul, 6ul),
+                (SnapshotTier.PersistedBase, 6ul, 7ul), (SnapshotTier.PersistedBase, 7ul, 8ul),
+            }), "precondition: the large merge's sources");
+        }
+
+        tier.Compactor.DoCompactSnapshot(State(8));
+
+        await using ILifetimeScope managerScope = BeginManagerScope(tier);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertReads(managerScope.Resolve<FlatDbManager>(), scenario, lastBlock: 8);
+            AssertSharing(tier.Repository, State(8), SnapshotTier.PersistedLargeCompacted, shares: false);
+            AssertEveryBloomCoversItsTable(tier.Repository);
+        }
+    }
+
+    /// <summary>The snapshot whose merged or rebuilt bloom a mechanism case inspects.</summary>
+    public enum Donor { Large, CompactSized, ReloadedCompactSized, ReloadedLarge }
+
+    /// <summary>
+    /// A merged or rebuilt bloom is shared over its range only when the range holds no storage clear (a "destructed"
+    /// self-destruct record); otherwise it stays on its own snapshot, which still gets a real bloom, at reload too.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="written"/> <see cref="Never"/>: a "destructed" record with no slot to drop, then a "new" one of
+    /// the same contract, must still keep the bloom: the record decides, not a drop in this merge or the newest flag.
+    /// <paramref name="cleared"/> <see cref="Never"/>: "new" records alone still share, at runtime and after a restart.
+    /// The reloaded (0, 4] case also checks that the clear-free (4, 6] next to it shares.
+    /// </remarks>
+    [TestCase(Donor.Large, 2ul, 6ul, 0ul, false)]
+    [TestCase(Donor.CompactSized, 5ul, 7ul, 0ul, false)]
+    [TestCase(Donor.ReloadedCompactSized, 2ul, 4ul, 0ul, false)]
+    [TestCase(Donor.Large, Never, 3ul, 7ul, false)]
+    [TestCase(Donor.CompactSized, Never, 5ul, 7ul, false)]
+    [TestCase(Donor.ReloadedLarge, Never, 3ul, 7ul, false)]
+    [TestCase(Donor.Large, 2ul, Never, 2ul, true)]
+    [TestCase(Donor.ReloadedLarge, 2ul, Never, 2ul, true)]
+    public void Merged_bloom_is_shared_only_over_a_range_without_a_storage_clear(Donor donor, ulong written, ulong cleared, ulong created, bool shares)
+    {
+        Scenario scenario = new(written, cleared, Recreated: false) { Created = created };
+        bool reload = donor is Donor.ReloadedCompactSized or Donor.ReloadedLarge;
+        using TempPath dir = TempPath.GetTempDirectory();
+        MemDb catalog = new();
+        RefCountedBloomFilter? ownerBloom = null;
+        using (FlatTestContainer run = new(Config(), baseDbPath: dir.Path, catalogDb: catalog))
+        {
+            for (ulong block = 1; block <= (donor == Donor.ReloadedCompactSized ? 6ul : 8ul); block++)
+                ConvertAndCompact(run, block, scenario, largeMerge: donor != Donor.CompactSized);
+            if (!reload) ownerBloom = AssertMechanism(run.Repository, donor, shares);
+        }
+
+        if (reload)
+        {
+            // After the loader has returned: a bloom it released too early fails the owner's probes.
+            using FlatTestContainer restarted = new(Config(), baseDbPath: dir.Path, catalogDb: catalog);
+            ownerBloom = AssertMechanism(restarted.Repository, donor, shares);
+        }
+
+        // Every lease on the owner's bloom went with its container: a leaked lease or snapshot would keep it alive.
+        Assert.That(ownerBloom?.ToString(), Is.EqualTo("Disposed"), "the owner's bloom once its container is disposed");
+    }
+
+    // Returns the owner's bloom.
+    private static RefCountedBloomFilter? AssertMechanism(SnapshotRepository repository, Donor donor, bool shares)
+    {
+        (ulong to, SnapshotTier tier) = donor switch
+        {
+            Donor.Large or Donor.ReloadedLarge => (8ul, SnapshotTier.PersistedLargeCompacted),
+            Donor.CompactSized => (8ul, SnapshotTier.PersistedCompactSized),
+            _ => (4ul, SnapshotTier.PersistedCompactSized),
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            RefCountedBloomFilter? ownerBloom = AssertSharing(repository, State(to), tier, shares);
+            if (donor == Donor.ReloadedCompactSized) AssertSharing(repository, State(6), SnapshotTier.PersistedSmallCompacted, shares: true);
+            AssertEveryBloomCoversItsTable(repository);
+            return ownerBloom;
         }
     }
 }

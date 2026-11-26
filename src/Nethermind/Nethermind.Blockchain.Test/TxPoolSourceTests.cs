@@ -402,7 +402,7 @@ public class TxPoolSourceTests
         byte[][] versionedHashes = new byte[blobCount][];
         byte[][] blobs = new byte[blobCount][];
         byte[][] commitments = new byte[blobCount][];
-        byte[][] proofs = new byte[blobCount][];
+        byte[] proofs = [];
         for (int i = 0; i < blobCount; i++)
         {
             byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
@@ -412,7 +412,6 @@ public class TxPoolSourceTests
             // Non-empty so the sidecar reads as complete rather than locally sampled; the bytes are never verified here.
             blobs[i] = [1];
             commitments[i] = [];
-            proofs[i] = [];
         }
 
         byte[] senderBytes = new byte[Address.Size];
@@ -605,8 +604,8 @@ public class TxPoolSourceTests
         TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
 
         Transaction[] invalidBlobs = new Transaction[invalidBlobCount];
-        Dictionary<AddressAsKey, Transaction[]> pendingBlobTransactions = new(invalidBlobCount + 1);
-        Dictionary<ValueHash256, Transaction> fullBlobTransactions = new(invalidBlobCount + 1);
+        Dictionary<AddressAsKey, Transaction[]> pendingBlobTransactions = [with(invalidBlobCount + 1)];
+        Dictionary<ValueHash256, Transaction> fullBlobTransactions = [with(invalidBlobCount + 1)];
         for (int i = 0; i < invalidBlobs.Length; i++)
         {
             UInt256 fee = 2.GWei + (UInt256)(invalidBlobCount - i);
@@ -692,7 +691,7 @@ public class TxPoolSourceTests
             .WithMaxPriorityFeePerGas(1.GWei)
             .SignedAndResolved(TestItem.PrivateKeys[invalidBlobCount])
             .TestObject;
-        Dictionary<AddressAsKey, Transaction[]> pendingBlobTransactions = new(invalidBlobCount + 1);
+        Dictionary<AddressAsKey, Transaction[]> pendingBlobTransactions = [with(invalidBlobCount + 1)];
         LightTransaction[] invalidBlobs = new LightTransaction[invalidBlobCount];
         for (int i = 0; i < invalidBlobs.Length; i++)
         {

@@ -27,5 +27,12 @@ namespace Nethermind.JsonRpc
         /// </summary>
         [JsonIgnore]
         public bool OperatorActionable { get; set; }
+
+        /// <summary>
+        /// Set when the error is a fault in the request even though its code is a server one, such as a rejected
+        /// transaction under <see cref="ErrorCodes.TransactionRejected"/>. It is logged like the JSON-RPC request errors.
+        /// </summary>
+        [JsonIgnore]
+        public bool RequestError { get; set; }
     }
 }

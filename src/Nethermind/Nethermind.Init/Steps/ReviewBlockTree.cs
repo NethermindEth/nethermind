@@ -67,7 +67,7 @@ namespace Nethermind.Init.Steps
                 {
                     if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
                 }
-            });
+            }, CancellationToken.None);
 
             blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
             try

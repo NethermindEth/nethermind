@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -15,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -106,6 +108,27 @@ namespace Nethermind.Merge.Plugin.Test
                 Assert.That(isTerminal, Is.False);
                 Assert.That(isPostMerge, Is.False);
                 Assert.That(genesis.Header.IsPostMerge, Is.False);
+            }
+        }
+
+        [Test]
+        public void RestorePostMergeForCall_keeps_pre_merge_headers_and_a_ttd_zero_genesis_with_a_difficulty_pre_merge()
+        {
+            TestSpecProvider preMergeSpec = new(London.Instance) { TerminalTotalDifficulty = (UInt256)5_000_000 };
+            BlockHeader preMerge = CreatePreTerminalBlock(3).Header;
+            ChainSpec hoodi = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(FindHoodiChainSpecPath());
+            PoSSwitcher hoodiSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), Substitute.For<IBlockTree>(), new ChainSpecBasedSpecProvider(hoodi), hoodi, LimboLogs.Instance);
+            // Hoodi's switcher calls its genesis (difficulty 1) post-merge, but a call at block 0 reads DIFFICULTY, as in geth.
+            BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).WithDifficulty(1).TestObject;
+
+            CreatePosSwitcher(Substitute.For<IBlockTree>(), specProvider: preMergeSpec).RestorePostMergeForCall(preMerge);
+            hoodiSwitcher.RestorePostMergeForCall(genesis);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preMerge.IsPostMerge, Is.False, "a header below the TTD keeps DIFFICULTY");
+                Assert.That(hoodiSwitcher.IsPostMerge(genesis.Clone()), Is.True, "the Hoodi switcher calls its genesis post-merge");
+                Assert.That(genesis.IsPostMerge, Is.False, "a genesis with a nonzero difficulty stays pre-merge although the switcher calls it post-merge");
             }
         }
 

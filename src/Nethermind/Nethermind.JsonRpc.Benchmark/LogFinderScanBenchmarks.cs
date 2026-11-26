@@ -22,6 +22,8 @@ namespace Nethermind.JsonRpc.Benchmark;
 /// cost is reading each canonical header and testing its bloom.
 /// </summary>
 [MemoryDiagnoser]
+[MinIterationCount(10)]
+[MaxIterationCount(30)]
 public class LogFinderScanBenchmarks
 {
     private const int BlocksAboveRange = 600;

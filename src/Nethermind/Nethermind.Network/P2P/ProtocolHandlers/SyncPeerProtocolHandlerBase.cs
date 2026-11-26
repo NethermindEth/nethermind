@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -15,9 +16,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
@@ -30,10 +33,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
         protected const int MaxReceiptsLookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
+        private static readonly int MaxRequestIdLength = Rlp.LengthOf(ulong.MaxValue);
 
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
+        // The size limits can end a response early, so blocks are read ahead a window at a time, not all at once.
+        protected const int ServingPrefetchWindow = 16;
         public Node Node => Session.Node;
         public string? ClientId => Node.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -101,7 +107,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
 
             OwnedBlockBodies blocks = await _nodeStats.RunSizeAndLatencyRequestSizer<OwnedBlockBodies, Hash256, BlockBody?>(RequestType.Bodies, blockHashes, async clampedBlockHashes =>
-                await SendRequest(new GetBlockBodiesMessage(clampedBlockHashes), token));
+            {
+                (OwnedBlockBodies Bodies, long Size) response = await SendRequest(new GetBlockBodiesMessage(clampedBlockHashes), token);
+                if (response.Bodies.Count <= clampedBlockHashes.Count) return response;
+
+                response.Bodies.Dispose();
+                Disconnect(DisconnectReason.BreachOfProtocol, "more block bodies than requested");
+                return (new OwnedBlockBodies([]), response.Size);
+            });
 
             return blocks;
         }
@@ -208,6 +221,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token) =>
             GetReceipts(blockHashes, token);
 
+        public virtual bool CanGetNodeData => false;
+
         public virtual Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
@@ -254,7 +269,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected virtual void SendNewTransactionsCore(ReadOnlySpan<Transaction> txs, bool sendFullTx)
         {
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-            ArrayPoolList<Transaction> txsToSend = new(1024);
+            ArrayPoolList<Transaction> txsToSend = [with(1024)];
 
             foreach (Transaction tx in txs)
             {
@@ -263,7 +278,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (txSize > packetSizeLeft && txsToSend.Count > 0)
                 {
                     SendMessage(txsToSend);
-                    txsToSend = new(1024);
+                    txsToSend = [with(1024)];
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                 }
 
@@ -335,14 +350,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Hash256 startingHash = msg.StartBlockHash;
             startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
 
-            IOwnedReadOnlyList<BlockHeader> headers =
+            IOwnedReadOnlyList<byte> headers =
                 startingHash is null || cancellationToken.IsCancellationRequested
-                    ? ArrayPoolList<BlockHeader>.Empty()
-                    : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
+                    ? ArrayPoolList<byte>.Empty()
+                    : SyncServer.FindHeadersRlp(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
 
-            headers = TruncateHeadersAtFirstMissing(headers);
-
-            return Task.FromResult(new BlockHeadersMessage(headers));
+            return Task.FromResult(new BlockHeadersMessage { EncodedHeaders = headers });
         }
 
         protected async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage request, CancellationToken cancellationToken)
@@ -361,41 +374,52 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<BlockBodiesMessage> FulfillBlockBodiesRequest(GetBlockBodiesMessage getBlockBodiesMessage, CancellationToken cancellationToken)
         {
             IReadOnlyList<Hash256> hashes = getBlockBodiesMessage.BlockHashes;
-            using ArrayPoolList<Block> blocks = new(hashes.Count);
-
-            ulong sizeEstimate = 0;
-            for (int i = 0; i < hashes.Count; i++)
+            using ArrayPoolList<MemoryManager<byte>> owners = new(hashes.Count);
+            using ArrayPoolList<ReadOnlyMemory<byte>> blocks = new(hashes.Count);
+            try
             {
-                if (cancellationToken.IsCancellationRequested)
+                ulong sizeEstimate = 0;
+                for (int i = 0; i < hashes.Count; i++)
                 {
-                    break;
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    int remaining = hashes.Count - i;
+                    if (i % ServingPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchBlocks(hashes, i, Math.Min(ServingPrefetchWindow, remaining));
+
+                    MemoryManager<byte>? block = SyncServer.FindBlockRlp(hashes[i]);
+                    if (block is null)
+                    {
+                        continue;
+                    }
+
+                    owners.Add(block);
+                    ulong blockSize = (ulong)block.Memory.Length;
+
+                    // Cap the message size; return the prefix (bodies match request hashes positionally).
+                    if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
+                    {
+                        break;
+                    }
+
+                    blocks.Add(block.Memory);
+                    sizeEstimate += blockSize;
+
+                    // Soft limit keeps the common-case response small.
+                    if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                    {
+                        break;
+                    }
                 }
 
-                Block? block = SyncServer.Find(hashes[i]);
-                if (block is null)
-                {
-                    continue;
-                }
-
-                ulong blockSize = MessageSizeEstimator.EstimateSize(block);
-
-                // Cap the message size; return the prefix (bodies match request hashes positionally).
-                if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
-                {
-                    break;
-                }
-
-                blocks.Add(block);
-                sizeEstimate += blockSize;
-
-                // Soft limit keeps the common-case response small.
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
-                {
-                    break;
-                }
+                return Task.FromResult(new BlockBodiesMessage { Bodies = OwnedBlockBodies.FromEncodedBlocks(blocks) });
             }
-
-            return Task.FromResult(new BlockBodiesMessage(blocks));
+            finally
+            {
+                foreach (IMemoryOwner<byte> owner in owners) owner.Dispose();
+            }
         }
 
         protected void Handle(BlockHeadersMessage message, long size) => _headersRequests.Handle(message.BlockHeaders, size);
@@ -412,78 +436,82 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return resp;
         }
 
+        /// <summary>Whether the receipts message of this protocol carries the bloom of each receipt.</summary>
+        /// <remarks>
+        /// Set by the message format, not by <see cref="ProtocolVersion"/>: XDC protocols have versions above eth/69
+        /// but use the eth/63 receipts message.
+        /// </remarks>
+        protected virtual bool ReceiptsWithBloom => true;
+
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-            ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
-
-            ulong sizeEstimate = 0;
-            for (int i = 0; i < hashes.Length && i < MaxReceiptsLookups; i++)
+            hashes = hashes[..Math.Min(hashes.Length, MaxReceiptsLookups)];
+            bool withBloom = ReceiptsWithBloom;
+            // Before eth/69 the message encodes receipts with the registered decoder, which a plugin can replace.
+            // Stored receipts are copied without this decoder, so such a plugin must also decorate IReceiptFinder.
+            IRlpDecoder<TxReceipt> decoder = withBloom ? Rlp.GetDecoderOrThrow<TxReceipt>() : ReceiptDecoder69;
+            ArrayPoolList<byte> buffer = [with(GetReceiptsBufferCapacity(hashes.Length))];
+            using ArrayPoolList<Range> blocks = new(hashes.Length);
+            try
             {
-                if (cancellationToken.IsCancellationRequested)
+                for (int i = 0; i < hashes.Length; i++)
                 {
-                    break;
+                    if (cancellationToken.IsCancellationRequested) break;
+
+                    Hash256 blockHash = hashes[i];
+                    int remaining = hashes.Length - i;
+                    if (i % ServingPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchReceipts(getReceiptsMessage.Hashes, i, Math.Min(ServingPrefetchWindow, remaining));
+
+                    int start = buffer.Count;
+                    if (!SyncServer.TryAppendReceipts(blockHash, decoder, withBloom, buffer)) break;
+
+                    // Cap the message size; return the prefix (receipts match request hashes positionally).
+                    if (GetMaxReceiptsResponseSize((ulong)buffer.Count) > HardOutgoingReceiptsMessageSizeLimit)
+                    {
+                        // An empty prefix means the block alone does not fit, so this peer can never get it from us.
+                        if (blocks.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node?.ToString("c"):hide}: {buffer.Count - start} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
+                        buffer.Truncate(start);
+                        break;
+                    }
+
+                    blocks.Add(new Range(start, buffer.Count));
+
+                    // Soft limit keeps the common-case response small.
+                    if ((ulong)buffer.Count > SoftOutgoingMessageSizeLimit) break;
                 }
 
-                Hash256 blockHash = hashes[i];
-                TxReceipt[]? blockTxReceipts = SyncServer.GetReceipts(blockHash);
-                if (blockTxReceipts is null)
-                {
-                    break;
-                }
-
-                ulong blockSize = MessageSizeEstimator.EstimateSize(blockTxReceipts);
-
-                // Cap the message size; return the prefix (receipts match request hashes positionally).
-                if (sizeEstimate + blockSize > HardOutgoingReceiptsMessageSizeLimit)
-                {
-                    // An empty prefix means the block alone does not fit, so this peer can never get it from us.
-                    if (txReceipts.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node?.ToString("c"):hide}: estimated {blockSize} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
-                    break;
-                }
-
-                txReceipts.Add(blockTxReceipts);
-                sizeEstimate += blockSize;
-
-                // Soft limit keeps the common-case response small.
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
-                {
-                    break;
-                }
+                return Task.FromResult(new ReceiptsMessage(NetworkBlockReceipts.FromBuffer(buffer, blocks.AsSpan().ToArray(), withBloom, withBloom ? DecodeReceipts : DecodeReceipts69)));
             }
-
-            return Task.FromResult(new ReceiptsMessage(txReceipts));
+            catch
+            {
+                buffer.Dispose();
+                throw;
+            }
         }
 
-        private static IOwnedReadOnlyList<BlockHeader> TruncateHeadersAtFirstMissing(IOwnedReadOnlyList<BlockHeader> headers)
-        {
-            ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
-            int toTake = headersSpan.Length;
-            for (int i = 0; i < headersSpan.Length; i++)
-            {
-                if (headersSpan[i] is null)
-                {
-                    toTake = i;
-                    break;
-                }
-            }
+        private static readonly RefRlpReaderFunc<TxReceipt[]> DecodeReceipts = static (ref RlpReader reader) =>
+            reader.DecodeNonNullArray(static (ref RlpReader receipt) => Rlp.GetDecoderOrThrow<TxReceipt>().Decode(ref receipt)!);
 
-            if (toTake != headersSpan.Length)
-            {
-                if (headers is ArrayPoolList<BlockHeader> asArrayPoolList)
-                {
-                    asArrayPoolList.Truncate(toTake);
-                    return headers;
-                }
+        private static readonly ReceiptMessageDecoder69 ReceiptDecoder69 = new();
 
-                ArrayPoolList<BlockHeader> newList = new(toTake);
-                newList.AddRange(headersSpan[..toTake]);
-                headers.Dispose();
-                return newList;
-            }
+        private static readonly RefRlpReaderFunc<TxReceipt[]> DecodeReceipts69 = static (ref RlpReader reader) =>
+            reader.DecodeNonNullArray(static (ref RlpReader receipt) => ReceiptDecoder69.Decode(ref receipt)!);
 
-            return headers;
-        }
+        /// <summary>The initial capacity of the buffer that the receipts of <paramref name="blocks"/> blocks are served from.</summary>
+        /// <remarks>
+        /// Sized up front, so the buffer does not double as it fills and copy the response at each step. A response stops
+        /// after the block that crosses the soft limit, so twice the limit holds it unless that block is larger than the limit.
+        /// </remarks>
+        private protected static int GetReceiptsBufferCapacity(int blocks) =>
+            (int)Math.Min((ulong)blocks * ReceiptsBufferBlockEstimate, 2 * SoftOutgoingMessageSizeLimit);
+
+        private const int ReceiptsBufferBlockEstimate = 128 * 1024;
+
+        internal static ulong GetMaxReceiptsResponseSize(ulong receiptsContentSize) =>
+            receiptsContentSize > int.MaxValue / 2
+                ? ulong.MaxValue
+                : (ulong)Rlp.LengthOfSequence(MaxRequestIdLength + Rlp.LengthOfSequence((int)receiptsContentSize));
 
 
         #region Cleanup

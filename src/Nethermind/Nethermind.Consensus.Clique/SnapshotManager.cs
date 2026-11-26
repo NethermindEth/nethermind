@@ -120,6 +120,9 @@ namespace Nethermind.Consensus.Clique
                     if (header.Hash is null)
                         throw new InvalidOperationException("Block tree block without hash set");
 
+                    if (header.Number != number)
+                        throw new InvalidOperationException($"Snapshot requested for block {number}, but {header.ToString(BlockHeader.Format.Short)} has another number");
+
                     Hash256 parentHash = header.ParentHash;
                     if (IsEpochTransition(number))
                     {

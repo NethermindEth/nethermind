@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Eip2930;
@@ -61,16 +62,13 @@ public partial class BlockProcessor
 
             ClearTransactionProcessedEvents();
             _pendingTransactionProcessedEvents?.EnsureCapacity(block.Transactions.Length);
-            inner.SetupTxTimingMetrics(block);
-
-            TxReceipt[] receipts = !ZkEvmFlag.IsActive && !block.IsGenesis && balManager.ParallelExecutionEnabled
-                ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
-                : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
-
-            return receipts;
+            ArrayPoolList<long>? txTimings = PerTxTimingCollector.Prepare(block.Transactions.Length);
+            return !ZkEvmFlag.IsActive && !block.IsGenesis && balManager.ParallelExecutionEnabled
+                ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token, txTimings)
+                : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token, txTimings);
         }
 
-        private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+        private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token, ArrayPoolList<long>? txTimings)
         {
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
             bool shouldValidateBal = shouldValidate
@@ -96,7 +94,7 @@ public partial class BlockProcessor
                     BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalExecutionGas, totalStateGas);
                 }
 
-                ProcessTransaction(txProcessor, stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner);
+                ProcessTransaction(txProcessor, stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, txTimings);
                 totalExecutionGas = receiptsTracer.CumulativeExecutionGasUsed;
                 totalStateGas = receiptsTracer.BlockStateGasUsed;
 
@@ -125,7 +123,7 @@ public partial class BlockProcessor
             return [.. receiptsTracer.TxReceipts];
         }
 
-        private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer outerReceiptsTracer, CancellationToken token)
+        private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer outerReceiptsTracer, CancellationToken token, ArrayPoolList<long>? txTimings)
         {
             using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
             int len = block.Transactions.Length;
@@ -185,7 +183,7 @@ public partial class BlockProcessor
                             ? new ParallelOptions { MaxDegreeOfParallelism = ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism, CancellationToken = token }
                             : ParallelUnbalancedWork.DefaultOptions,
                         new ParallelTxLoopState(block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults,
-                            specProvider, _txExecutionOrder, isBlockProcessingThread, inner, incrementalValidation, executedGas, rejection.Token),
+                            specProvider, _txExecutionOrder, isBlockProcessingThread, txTimings, incrementalValidation, executedGas, rejection.Token),
                         static (i, state) =>
                         {
                             // Block already rejected — executing the rest cannot change the outcome.
@@ -254,7 +252,7 @@ public partial class BlockProcessor
                                             txIndex,
                                             state.ReceiptsTracers[txIndex],
                                             state.ProcessingOptions,
-                                            state.Inner);
+                                            state.TxTimings);
                                     }
                                     ulong blockStateGasUsed = state.ReceiptsTracers[txIndex].BlockStateGasUsed;
                                     state.ExecutedGas.Add(tx.BlockGasUsed, blockStateGasUsed, state.Block.Header.GasLimit);
@@ -475,9 +473,9 @@ public partial class BlockProcessor
             int index,
             BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
-            IBlockProcessor.IBlockTransactionsExecutor inner)
+            ArrayPoolList<long>? txTimings)
         {
-            long txStart = inner.StartTxTimer();
+            long txStart = PerTxTimingCollector.Start(txTimings);
             TransactionResult result;
             try
             {
@@ -486,7 +484,7 @@ public partial class BlockProcessor
             finally
             {
                 // Stop the timer even on failure so a slow-block log captures the failing tx's time
-                inner.StopTxTimer(index, txStart);
+                PerTxTimingCollector.Stop(txTimings, index, txStart);
             }
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
         }
@@ -550,7 +548,7 @@ public partial class BlockProcessor
             ISpecProvider specProvider,
             int[] txExecutionOrder,
             bool isBlockProcessingThread,
-            IBlockProcessor.IBlockTransactionsExecutor inner,
+            ArrayPoolList<long>? txTimings,
             IncrementalValidationWorkItem incrementalValidation,
             ExecutedGasTally executedGas,
             CancellationToken rejection)
@@ -565,7 +563,7 @@ public partial class BlockProcessor
             public readonly Transaction[] Txs = block.Transactions;
             public readonly int[] TxExecutionOrder = txExecutionOrder;
             public readonly bool IsBlockProcessingThread = isBlockProcessingThread;
-            public readonly IBlockProcessor.IBlockTransactionsExecutor Inner = inner;
+            public readonly ArrayPoolList<long>? TxTimings = txTimings;
             public readonly IncrementalValidationWorkItem IncrementalValidation = incrementalValidation;
             public readonly ExecutedGasTally ExecutedGas = executedGas;
             public readonly CancellationToken Rejection = rejection;

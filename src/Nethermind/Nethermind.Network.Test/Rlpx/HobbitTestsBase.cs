@@ -55,7 +55,7 @@ public abstract class HobbitTestsBase
 
             if (outbound == StackType.Zero)
             {
-                byte[] rlpPacketType = Rlp.Encode((long)packet.PacketType).Bytes;
+                byte[] rlpPacketType = Rlp.Encode((long)packet.PacketType);
                 IByteBuffer packetBuffer = embeddedChannel.Allocator.Buffer(rlpPacketType.Length + packet.Data.Length);
                 packetBuffer.WriteBytes(rlpPacketType);
                 packetBuffer.WriteBytes(packet.Data);
@@ -74,11 +74,11 @@ public abstract class HobbitTestsBase
 
             if (inbound == StackType.Zero)
             {
-                ZeroPacket decodedPacket = embeddedChannel.ReadInbound<ZeroPacket>();
+                NettyBufferPacket decodedPacket = embeddedChannel.ReadInbound<NettyBufferPacket>();
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
-                    Assert.That(decodedPacket.Content.ReadAllHex(), Is.EqualTo(packet.Data.ToHexString()));
+                    Assert.That(decodedPacket.Buffer.ReadAllHex(), Is.EqualTo(packet.Data.ToHexString()));
                 }
                 decodedPacket.Release();
             }

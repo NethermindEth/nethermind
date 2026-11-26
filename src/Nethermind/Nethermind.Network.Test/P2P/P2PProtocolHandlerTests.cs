@@ -19,6 +19,7 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -53,7 +54,7 @@ namespace Nethermind.Network.Test.P2P
         private readonly Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
         private INodeStatsManager _nodeStatsManager;
 
-        private Packet CreatePacket<T>(T message) where T : P2PMessage => new(new ZeroPacket(_serializer.ZeroSerialize(message))
+        private Packet CreatePacket<T>(T message) where T : P2PMessage => new(new NettyBufferPacket(_serializer.ZeroSerialize(message))
         {
             Protocol = message.Protocol,
             PacketType = (byte)message.PacketType,
@@ -116,20 +117,44 @@ namespace Nethermind.Network.Test.P2P
                 NodeId = TestItem.PublicKeyB,
             };
 
-            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
-            // to account for adaptive packet type
-            data.ReadByte();
-
-            Packet packet = new(data.ReadAllBytesAsArray())
-            {
-                Protocol = message.Protocol,
-                PacketType = (byte)message.PacketType,
-            };
-
-            p2PProtocolHandler.HandleMessage(packet);
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
             Assert.That(_nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation, Is.Not.Null);
             _session.Received(1).InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>());
+        }
+
+        [TestCase(DisconnectReason.IdentitySameAsSelf, (byte)5, true)]
+        [TestCase(DisconnectReason.IdentitySameAsSelf, (byte)4, false)]
+        [TestCase(DisconnectReason.UnexpectedIdentity, (byte)5, true)]
+        [TestCase(DisconnectReason.UnexpectedIdentity, (byte)4, false)]
+        [TestCase(DisconnectReason.NoCapabilityMatched, (byte)5, true)]
+        [TestCase(DisconnectReason.NoCapabilityMatched, (byte)4, false)]
+        public void Enables_snappy_for_v5_hello_before_rejecting_it(DisconnectReason reason, byte p2pVersion, bool snappy)
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            bool snappyEnabled = false;
+            List<(DisconnectReason Reason, bool SnappyEnabled)> disconnects = [];
+            _session.When(static session => session.EnableSnappy()).Do(_ => snappyEnabled = true);
+            _session.When(static session => session.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
+                .Do(call => disconnects.Add((call.Arg<DisconnectReason>(), snappyEnabled)));
+
+            using HelloMessage message = new()
+            {
+                Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
+                NodeId = reason switch
+                {
+                    DisconnectReason.IdentitySameAsSelf => TestItem.PublicKeyA,
+                    DisconnectReason.UnexpectedIdentity => TestItem.PublicKeyC,
+                    _ => TestItem.PublicKeyB,
+                },
+                ClientId = "Nethermind/v1.0",
+                ListenPort = 30303,
+                P2PVersion = p2pVersion,
+            };
+
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
+
+            Assert.That(disconnects, Is.EqualTo(new[] { (reason, snappy) }));
         }
 
         [Test]
@@ -141,8 +166,10 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
-        public void Received_disconnect_is_logged_at_trace([Values] bool maskSensitiveData, [Values] bool knownReason)
+        public void Received_disconnect_is_logged_at_trace([Values] bool maskSensitiveData,
+            [Values(EthDisconnectReason.BreachOfProtocol, EthDisconnectReason.Other, (EthDisconnectReason)255)] EthDisconnectReason reason)
         {
+            bool knownReason = reason != (EthDisconnectReason)255;
             bool previous = SensitiveLogMasking.Enabled;
             SensitiveLogMasking.Enabled = maskSensitiveData;
             try
@@ -150,7 +177,7 @@ namespace Nethermind.Network.Test.P2P
                 _session.RemotePort.Returns(31417);
                 TestLogger logger = new() { IsDebug = false };
                 P2PProtocolHandler p2PProtocolHandler = CreateSession(new OneLoggerLogManager(new(logger)));
-                using DisconnectMessage message = new(knownReason ? EthDisconnectReason.BreachOfProtocol : (EthDisconnectReason)255);
+                using DisconnectMessage message = new(reason);
 
                 p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
@@ -165,6 +192,58 @@ namespace Nethermind.Network.Test.P2P
             {
                 SensitiveLogMasking.Enabled = previous;
             }
+        }
+
+        [Test]
+        public void Malformed_disconnect_closes_the_peer_without_escaping_to_the_pipeline(
+            [Values("820102", "c2", "c280", "c281", "c18180", "f838")] string hex)
+        {
+            TestLogger logger = new() { IsDebug = false };
+            P2PProtocolHandler handler = CreateSession(new OneLoggerLogManager(new(logger)));
+            Packet packet = new(Convert.FromHexString(hex))
+            {
+                Protocol = Protocol.P2P,
+                PacketType = P2PMessageCode.Disconnect,
+            };
+
+            handler.HandleMessage(packet);
+
+            _session.Received(1).MarkDisconnected(EthDisconnectReason.Other.ToDisconnectReason(), DisconnectType.Remote, "message");
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            Assert.That(logger.LogList, Has.Some.Contains("Failed to deserialize message DisconnectMessage"));
+        }
+
+        [TestCase("c3820100", 256)]
+        [TestCase("c3820101", 257)]
+        [TestCase("c584ffffff00", -256)]
+        public void Unknown_disconnect_reason_does_not_wrap_to_a_known_reason(string hex, int reason)
+        {
+            TestLogger logger = new() { IsDebug = false };
+            P2PProtocolHandler handler = CreateSession(new OneLoggerLogManager(new(logger)));
+            Packet packet = new(Convert.FromHexString(hex))
+            {
+                Protocol = Protocol.P2P,
+                PacketType = P2PMessageCode.Disconnect,
+            };
+
+            handler.HandleMessage(packet);
+
+            _session.Received(1).MarkDisconnected(EthDisconnectReason.Other.ToDisconnectReason(), DisconnectType.Remote, "message");
+            Assert.That(logger.LogList, Has.Some.Contains($"unknown disconnect reason ({reason})"));
+        }
+
+        [Test]
+        public void Internal_disconnect_decoder_failure_is_not_treated_as_a_remote_disconnect()
+        {
+            _serializer = Substitute.For<IMessageSerializationService>();
+            _serializer.Deserialize<DisconnectMessage>(Arg.Any<ArraySegment<byte>>())
+                .Returns(_ => throw new InvalidOperationException("decoder failure"));
+            P2PProtocolHandler handler = CreateSession();
+            Packet packet = new([]) { Protocol = Protocol.P2P, PacketType = P2PMessageCode.Disconnect };
+
+            Assert.That(() => handler.HandleMessage(packet), Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("decoder failure"));
+
+            _session.DidNotReceive().MarkDisconnected(Arg.Any<DisconnectReason>(), Arg.Any<DisconnectType>(), Arg.Any<string>());
         }
 
         [Test]
@@ -547,7 +626,7 @@ namespace Nethermind.Network.Test.P2P
             };
             using HelloMessage secondHello = CreateHello();
 
-            Assert.Catch<RlpException>(() => p2PProtocolHandler.HandleMessage(malformedFirstHello));
+            Assert.Catch<RlpReaderException>(() => p2PProtocolHandler.HandleMessage(malformedFirstHello));
             Assert.DoesNotThrow(() => p2PProtocolHandler.HandleMessage(CreateP2PPacket(secondHello)));
 
             using (Assert.EnterMultipleScope())

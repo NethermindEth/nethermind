@@ -54,6 +54,7 @@ public class SyncPeerPoolTests
 
         public Hash256 HeadHash { get; set; } = null!;
         public byte ProtocolVersion { get; set; }
+        public bool CanGetNodeData => ProtocolVersion < EthVersions.Eth67;
         public string ProtocolCode { get; } = null!;
         public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);
         public string ClientId { get; } = description;
@@ -76,9 +77,9 @@ public class SyncPeerPoolTests
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>
             _headersByHashFailure is not null ? Task.FromException<IOwnedReadOnlyList<BlockHeader>?>(_headersByHashFailure)
                 : Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(
-                    AnswersWithNullHeader ? new ArrayPoolList<BlockHeader>([null!])
+                    AnswersWithNullHeader ? [with([null!])]
                         : HeaderToReturn is null ? ArrayPoolList<BlockHeader>.Empty()
-                            : new ArrayPoolList<BlockHeader>([HeaderToReturn]));
+                            : [with([HeaderToReturn])]);
 
         /// <summary>
         /// Header this peer answers header requests with, whatever hash was asked for. When unset, head-header
@@ -96,8 +97,18 @@ public class SyncPeerPoolTests
         /// </summary>
         public bool AnswersWithNullHeader { get; set; }
 
+        /// <summary>
+        /// When set, head-header requests wait for this task first, which keeps a refresh in flight without a timer.
+        /// </summary>
+        public Task? HeadHeaderGate { get; set; }
+
         public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
+            if (HeadHeaderGate is not null)
+            {
+                await HeadHeaderGate;
+            }
+
             if (_headHeaderFailure is not null)
             {
                 throw _headHeaderFailure;
@@ -110,7 +121,7 @@ public class SyncPeerPoolTests
 
             if (_headerResponseTime.HasValue)
             {
-                await Task.Delay(_headerResponseTime.Value);
+                await Task.Delay(_headerResponseTime.Value, CancellationToken.None);
             }
 
             IsInitialized = true;
@@ -319,7 +330,7 @@ public class SyncPeerPoolTests
         Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(0));
     }
 
-    [Test]
+    [Test, NonParallelizable]
     public async Task Should_increment_PriorityPeerCount_when_called_SetPriorityPeer()
     {
         const int peersMaxCount = 1;
@@ -333,8 +344,38 @@ public class SyncPeerPoolTests
         await WaitForPeersInitialization(ctx);
         Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(0));
 
-        ctx.Pool.SetPeerPriority(peer.Id);
-        Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+        Metrics.PriorityPeers = 0;
+        Parallel.For(0, 20, _ => ctx.Pool.SetPeerPriority(peer.Id));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+            Assert.That(Metrics.PriorityPeers, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Removing_a_duplicate_session_preserves_the_registered_priority_peer()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+        SimpleSyncPeerMock registered = peers[0];
+        SimpleSyncPeerMock duplicate = new(registered.Id);
+        ctx.Pool.AddPeer(duplicate);
+        ctx.Pool.SetPeerPriority(registered.Id);
+
+        ctx.Pool.RemovePeer(duplicate);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PeerCount, Is.EqualTo(1));
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.EqualTo(1));
+        }
+
+        ctx.Pool.RemovePeer(registered);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.PeerCount, Is.Zero);
+            Assert.That(ctx.Pool.PriorityPeerCount, Is.Zero);
+        }
     }
 
     [Test]
@@ -596,18 +637,107 @@ public class SyncPeerPoolTests
         }
     }
 
-    [Test]
-    public async Task Will_remove_peer_if_times_out_on_init()
+    private static IEnumerable<TestCaseData> RefreshFailures()
+    {
+        yield return new TestCaseData(new TimeoutException(), false).SetArgDisplayNames("timeout");
+        yield return new TestCaseData(new AggregateException(new TimeoutException()), false).SetArgDisplayNames("faulted with timeout");
+        yield return new TestCaseData(new AggregateException(new TaskCanceledException()), false).SetArgDisplayNames("faulted with cancellation");
+        yield return new TestCaseData(new AggregateException(new AggregateException(new TimeoutException())), false).SetArgDisplayNames("nested timeout");
+        yield return new TestCaseData(null, true).SetArgDisplayNames("no exception");
+        yield return new TestCaseData(new AggregateException(new InvalidOperationException()), true).SetArgDisplayNames("faulted with other");
+        yield return new TestCaseData(new AggregateException(new TimeoutException(), new InvalidOperationException()), true).SetArgDisplayNames("timeout and other");
+        yield return new TestCaseData(new Exception("wrapper", new TimeoutException()), true).SetArgDisplayNames("timeout wrapped by a non-aggregate");
+    }
+
+    [TestCaseSource(nameof(RefreshFailures))]
+    public async Task Disconnects_on_refresh_failure_unless_it_is_a_timeout_or_cancellation(Exception? failure, bool shouldDisconnect)
     {
         await using Context ctx = new();
         SimpleSyncPeerMock peer = new(TestItem.PublicKeyA);
+
+        ctx.Pool.ReportRefreshFailed(peer, "test", failure);
+
+        Assert.That(peer.DisconnectRequested, Is.EqualTo(shouldDisconnect));
+    }
+
+    [Test]
+    public async Task Puts_to_sleep_a_peer_whose_head_requests_keep_timing_out()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+        PeerInfo peerInfo = ctx.Pool.InitializedPeers.Single();
+
+        for (int i = 0; i < PeerInfo.SleepThreshold; i++)
+        {
+            ctx.Pool.ReportRefreshFailed(peers[0], "faulted", new AggregateException(new TimeoutException()));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peers[0].DisconnectRequested, Is.False);
+            Assert.That(peerInfo.SleepingContexts, Is.EqualTo(AllocationContexts.All));
+        }
+    }
+
+    [Test]
+    public async Task Keeps_peer_whose_head_request_times_out_on_init()
+    {
+        await using Context ctx = new();
+        Task refreshFinished = WhenRefreshFinishes(ctx);
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { HeadHash = TestItem.KeccakA };
+        // Makes the head request fault with a TimeoutException.
         peer.SetHeaderResponseTime(int.MaxValue);
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
 
-        // The refresh goes through several thread-pool hops, as in It_is_fine_to_fail_init.
-        await Wait.ForCondition(() => peer.DisconnectRequested, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(50));
-        Assert.That(peer.DisconnectRequested, Is.True);
+        await refreshFinished.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.DisconnectRequested, Is.False);
+            Assert.That(peer.IsInitialized, Is.False);
+            Assert.That(ctx.Pool.PeerCount, Is.EqualTo(1));
+        }
+        ctx.Stats.Received(1).ReportSyncEvent(peer.Node, NodeStatsEventType.SyncInitFailed);
+    }
+
+    [Test]
+    public async Task Finished_refresh_leaves_a_newer_refresh_cancellable()
+    {
+        await using Context ctx = new();
+        Task refreshFinished = WhenRefreshFinishes(ctx);
+        TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { HeadHash = TestItem.KeccakA, HeadHeaderGate = gate.Task };
+        ctx.Pool.Start();
+        ctx.Pool.AddPeer(peer);
+
+        // Stands in for a newer refresh of the same peer that registered while the first one was in flight.
+        using CancellationTokenSource newer = new();
+        Assert.That(
+            () => ctx.Pool.TryReplaceRefreshCancellation(peer.Node.Id, newer),
+            Is.True.After(10_000, 10),
+            "guard: the refresh must register its cancellation source first");
+        gate.SetResult();
+        await refreshFinished.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.That(ctx.Pool.RefreshCancellationIs(peer.Node.Id, newer), Is.True, "the finished refresh removed the newer registration");
+        ctx.Pool.RemovePeer(peer);
+        Assert.That(newer.IsCancellationRequested, Is.True);
+    }
+
+    [Test]
+    public async Task Finished_refresh_unregisters_its_cancellation()
+    {
+        await using Context ctx = new();
+        Task refreshFinished = WhenRefreshFinishes(ctx);
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { HeadHash = TestItem.KeccakA };
+        ctx.Pool.Start();
+        ctx.Pool.AddPeer(peer);
+
+        await refreshFinished.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using CancellationTokenSource other = new();
+        Assert.That(ctx.Pool.TryReplaceRefreshCancellation(peer.Node.Id, other), Is.False);
     }
 
     [Test]
@@ -743,6 +873,17 @@ public class SyncPeerPoolTests
             cts.Token);
 
         Assert.That(result.HasPeer, Is.False);
+    }
+
+    [Test]
+    public async Task Allocate_after_disposal_rejects_even_an_available_peer()
+    {
+        Context ctx = new();
+        await SetupPeers(ctx, 1);
+        await ctx.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 0));
     }
 
     [Test]
@@ -990,6 +1131,23 @@ public class SyncPeerPoolTests
         Assert.That(result, Is.SameAs(requested));
     }
 
+    [Test, NonParallelizable]
+    public async Task Failed_refresh_releases_its_timeout_timer()
+    {
+        await using Context ctx = new();
+        ctx.Pool.Start();
+        SimpleSyncPeerMock[] peers = Enumerable.Range(0, 20).Select(static i => new SimpleSyncPeerMock(TestItem.PublicKeys[i])).ToArray();
+        foreach (SimpleSyncPeerMock peer in peers)
+            peer.SetHeaderFailure(new InvalidOperationException("Refresh failed"));
+
+        long before = Timer.ActiveCount;
+        foreach (SimpleSyncPeerMock peer in peers)
+            ctx.Pool.AddPeer(peer);
+
+        Assert.That(() => peers.All(static peer => peer.DisconnectRequested), Is.True.After(10_000, 10));
+        Assert.That(() => Timer.ActiveCount - before, Is.LessThan(peers.Length / 2).After(2_000, 20));
+    }
+
     private async Task<SimpleSyncPeerMock[]> SetupPeers(Context ctx, int count)
     {
         SimpleSyncPeerMock[] peers = new SimpleSyncPeerMock[count];
@@ -1007,6 +1165,21 @@ public class SyncPeerPoolTests
 
         await WaitForPeersInitialization(ctx);
         return peers;
+    }
+
+    /// <summary>
+    /// Completes when a refresh continuation has run to its end. After the outcome is reported and the
+    /// cancellation source unregistered, the pool offers its best block to a peer with the same total
+    /// difficulty, also after a failed refresh.
+    /// </summary>
+    private static Task WhenRefreshFinishes(Context ctx)
+    {
+        Block best = Build.A.Block.WithTotalDifficulty(1L).TestObject; // SimpleSyncPeerMock.TotalDifficulty is 1
+        ctx.BlockTree.BestSuggestedHeader.Returns(best.Header);
+        ctx.BlockTree.FindBlock(best.Hash!, BlockTreeLookupOptions.None).Returns(best);
+        TaskCompletionSource finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ctx.Pool.NotifyPeerBlock += (_, _) => finished.TrySetResult();
+        return finished.Task;
     }
 
     private async Task WaitForPeersInitialization(Context ctx)

@@ -6,6 +6,7 @@ using System.Linq;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
@@ -121,6 +122,17 @@ namespace Nethermind.Clique.Test
             // It resolves and tolerates a null runner: producer-only methods are no-ops rather than throwing.
             ICliqueRpcModule rpcModule = container.Resolve<ICliqueRpcModule>();
             Assert.That(rpcModule.clique_produceBlock(Keccak.Zero).Data, Is.False);
+        }
+
+        [Test]
+        public void Clique_module_makes_sync_wait_for_headers()
+        {
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddModule(new CliqueModule())
+                .Build();
+
+            Assert.That(container.Resolve<ISyncConfig>().NeedToWaitForHeader, Is.True);
         }
     }
 }

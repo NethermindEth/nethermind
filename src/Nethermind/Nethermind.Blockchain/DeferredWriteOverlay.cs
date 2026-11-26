@@ -89,9 +89,11 @@ internal sealed class DeferredWriteOverlay<TPayload>(
         }
     }
 
-    public bool TryGet(Hash256 blockHash, out TPayload payload)
+    public bool TryGet(Hash256 blockHash, out TPayload payload) => TryGet(in blockHash.ValueHash256, out payload);
+
+    public bool TryGet(in ValueHash256 blockHash, out TPayload payload)
     {
-        if (Volatile.Read(ref _pendingCount) != 0 && _pending.TryGetValue(blockHash.ValueHash256, out Entry? entry))
+        if (Volatile.Read(ref _pendingCount) != 0 && _pending.TryGetValue(blockHash, out Entry? entry))
         {
             payload = entry.Payload;
             return true;

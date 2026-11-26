@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Xdc.RLP;
@@ -21,23 +22,23 @@ public sealed class XdcHeaderDecoder : BaseXdcHeaderDecoder<XdcBlockHeader>
         byte[] extraData)
         => new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
 
-    protected override void DecodeHeaderSpecificFields(ref RlpReader decoderContext, XdcBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
+    protected override void DecodeHeaderSpecificFields(ref RlpReader fields, XdcBlockHeader header, RlpBehaviors rlpBehaviors)
     {
-        header.Validators = decoderContext.DecodeByteArray();
+        header.Validators = fields.DecodeByteArray();
         if (!IsForSealing(rlpBehaviors))
         {
-            header.Validator = decoderContext.DecodeByteArray();
+            header.Validator = fields.DecodeByteArray();
         }
-        header.Penalties = decoderContext.DecodeByteArray();
+        header.Penalties = fields.DecodeByteArray();
 
         // Optional tail: BaseFeePerGas exists if there are remaining bytes
-        if (decoderContext.Position != headerCheck)
+        if (fields.HasNext)
         {
-            header.BaseFeePerGas = decoderContext.DecodeUInt256();
+            header.BaseFeePerGas = fields.DecodeUInt256();
         }
     }
 
-    protected override void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, XdcBlockHeader header, RlpBehaviors rlpBehaviors)
+    protected override void EncodeHeaderSpecificFields(ref RlpWriter writer, XdcBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         writer.Encode(header.Validators);
         if (!IsForSealing(rlpBehaviors))

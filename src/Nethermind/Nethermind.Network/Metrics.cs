@@ -5,7 +5,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
-using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Core.Metric;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 
@@ -50,32 +50,6 @@ namespace Nethermind.Network
         [Description("Number of sync-serve requests dropped because the peer had too many requests in flight.")]
         public static long SyncServeRequestsDroppedOverPeerLimit;
 
-        [CounterMetric]
-        [Description("Number of bytes sent through Discovery (UDP).")]
-        public static long DiscoveryBytesSent;
-
-        [CounterMetric]
-        [Description("Number of bytes received through Discovery (UDP).")]
-        public static long DiscoveryBytesReceived;
-
-        [CounterMetric]
-        [Description("Number of sent discovery message")]
-        [DetailedMetric]
-        [KeyIsLabel("message_type")]
-        public static NonBlocking.ConcurrentDictionary<MsgType, long> DiscoveryMessagesSent { get; } = new();
-
-        [CounterMetric]
-        [Description("Number of sent discovery messages by protocol")]
-        [DetailedMetric]
-        [KeyIsLabel("protocol", "message_type")]
-        public static NonBlocking.ConcurrentDictionary<DiscoveryMessageKey, long> DiscoveryMessagesSentByProtocol { get; } = new();
-
-        [CounterMetric]
-        [Description("Number of sent discovery message")]
-        [DetailedMetric]
-        [KeyIsLabel("message_type")]
-        public static NonBlocking.ConcurrentDictionary<MsgType, long> DiscoveryMessagesReceived { get; } = new();
-
         [GaugeMetric]
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [Description("The current number of peers connected.")]
@@ -93,25 +67,25 @@ namespace Nethermind.Network
         [DataMember(Name = "nethermind_outgoing_p2p_messages")]
         [Description("Number of outgoing p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> OutgoingP2PMessages { get; } = new();
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, MetricCounter> OutgoingP2PMessages { get; } = new();
 
         [CounterMetric]
         [DataMember(Name = "nethermind_outgoing_p2p_message_bytes")]
         [Description("Bytes of outgoing p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> OutgoingP2PMessageBytes { get; } = new();
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, MetricCounter> OutgoingP2PMessageBytes { get; } = new();
 
         [CounterMetric]
         [DataMember(Name = "nethermind_incoming_p2p_messages")]
         [Description("Number of incoming p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> IncomingP2PMessages { get; } = new();
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, MetricCounter> IncomingP2PMessages { get; } = new();
 
         [CounterMetric]
         [DataMember(Name = "nethermind_incoming_p2p_message_bytes")]
         [Description("Bytes of incoming p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> IncomingP2PMessageBytes { get; } = new();
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, MetricCounter> IncomingP2PMessageBytes { get; } = new();
 
         [GaugeMetric]
         [Description("Number of candidate peers in peer manager")]

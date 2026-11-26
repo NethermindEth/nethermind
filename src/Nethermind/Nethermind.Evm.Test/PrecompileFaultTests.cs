@@ -4,8 +4,13 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -21,20 +26,130 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// A KZG setup fault or running out of memory is a node fault, so it must escape the precompile dispatch that turns every other
-/// precompile exception into a failed call. Both dispatch paths are covered: CALL runs a precompile in a call
-/// frame, and an untraced STATICCALL runs it inline.
+/// The precompile dispatch handles an exception in this order: a native library that cannot be used ends the process; a
+/// KZG setup fault or running out of memory is a node fault, so it escapes; any other exception fails the call. Within a
+/// node fault, only a missing library directly in it or one level down ends the process: a KZG setup fault caused
+/// directly by a missing library exits, one caused directly by a library built for another platform escapes.
+/// Both dispatch paths are covered: CALL runs a precompile in a call frame, and an untraced STATICCALL runs it inline.
 /// </summary>
 public class PrecompileFaultTests : VirtualMachineTestsBase
 {
     private const int CallGas = 100_000;
     private const int PointEvaluationInputLength = 192;
 
+    internal const string NativeLoadFailureChildArgument = "--nethermind-precompile-native-load-failure";
+    private const string LoggedLoadFailureMarker = "The VM logged the load failure itself.";
+
+    private ILogManager _logManager = LimboLogs.Instance;
+
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
+    protected override ILogManager GetLogManager() => _logManager;
+
     [OneTimeSetUp]
     public Task LoadKzgSetup() => KzgPolynomialCommitments.InitializeAsync();
+
+    [Test]
+    public async Task Wrong_format_library_ends_the_process_from_a_framed_call_with_error_logging_off()
+    {
+        (int exitCode, string output) = await RunInChildProcess(typeof(PrecompileFaultTests).Assembly, NativeLoadFailureChildArgument, nameof(Instruction.CALL));
+
+        Assert.That(exitCode, Is.EqualTo(ExitCodes.MissingPrecompile), output);
+    }
+
+    [Test]
+    public async Task Missing_export_two_levels_down_ends_the_process_from_an_inline_call_and_is_logged_itself()
+    {
+        (int exitCode, string output) = await RunInChildProcess(typeof(PrecompileFaultTests).Assembly, NativeLoadFailureChildArgument, nameof(Instruction.STATICCALL));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exitCode, Is.EqualTo(ExitCodes.MissingPrecompile), output);
+            Assert.That(output, Does.Contain(LoggedLoadFailureMarker));
+        }
+    }
+
+    /// <summary>Makes, in this process, the call that the VM must end the process on; started by the test assembly's entry point.</summary>
+    /// <returns>1 when the call returns or throws instead.</returns>
+    internal static int RunNativeLoadFailureChild(string call)
+    {
+        PrecompileFaultTests fixture = new();
+        Exception thrown;
+        if (call == nameof(Instruction.CALL))
+        {
+            // Error logging off: the process must end all the same.
+            thrown = new BadImageFormatException("wrong format");
+            fixture._logManager = NullLogManager.Instance;
+        }
+        else
+        {
+            EntryPointNotFoundException loadFailure = new("missing export");
+            thrown = new TypeInitializationException("Precompile", new InvalidOperationException("wrapper", loadFailure));
+            fixture._logManager = new OneLoggerLogManager(new ILogger(new LoadFailureLogger(loadFailure)));
+        }
+
+        try
+        {
+            fixture.Setup();
+            fixture.UsePointEvaluationPrecompile(new ThrowingPrecompile(thrown));
+            bool succeeded = fixture.ExecuteCall(Enum.Parse<Instruction>(call), new byte[PointEvaluationInputLength]);
+            Console.Error.WriteLine($"The call returned instead of ending the process; it succeeded: {succeeded}.");
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"The call threw instead of ending the process: {exception}");
+        }
+
+        return 1;
+    }
+
+    /// <summary>Runs the entry point of <paramref name="assembly"/> in a child process, for a test of code that ends the process.</summary>
+    /// <remarks>Both pipes are drained while the child runs. One two-minute deadline covers the exit and both pipes, which
+    /// a descendant of the child can hold open after the child has exited; past it the test fails without waiting further,
+    /// and the reads are cancelled and the pipes closed, so that neither outlives the test.</remarks>
+    public static async Task<(int ExitCode, string Output)> RunInChildProcess(Assembly assembly, params string[] arguments)
+    {
+        ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        start.ArgumentList.Add(assembly.Location);
+        foreach (string argument in arguments) start.ArgumentList.Add(argument);
+        using Process child = new() { StartInfo = start };
+        Assert.That(child.Start(), Is.True);
+        using CancellationTokenSource abandon = new();
+        // Disposed in reverse order on the way out: the readers, which close the pipes, then the token source.
+        using StreamReader standardOutput = child.StandardOutput;
+        using StreamReader standardError = child.StandardError;
+        Task<string> output = standardOutput.ReadToEndAsync(abandon.Token);
+        Task<string> error = standardError.ReadToEndAsync(abandon.Token);
+        try
+        {
+            await Task.WhenAll(child.WaitForExitAsync(), output, error).WaitAsync(TimeSpan.FromMinutes(2));
+        }
+        catch (TimeoutException)
+        {
+            try
+            {
+                child.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // The child may have exited while a descendant still holds a pipe.
+            }
+
+            string failure = $"The child process or a process holding its pipes did not end within two minutes (child exited: {child.HasExited}).\n{ReadSoFar(output)}\n{ReadSoFar(error)}";
+            abandon.Cancel();
+            Assert.Fail(failure);
+        }
+
+        return (child.ExitCode, $"{await output}\n{await error}");
+
+        static string ReadSoFar(Task<string> pipe) => pipe.IsCompletedSuccessfully ? pipe.Result : "(pipe still open)";
+    }
 
     [Test]
     public void Node_fault_escapes_the_point_evaluation_call(
@@ -131,5 +246,24 @@ public class PrecompileFaultTests : VirtualMachineTestsBase
     private sealed class FixedPrecompileProvider(FrozenDictionary<AddressAsKey, CodeInfo> precompiles) : IPrecompileProvider
     {
         public FrozenDictionary<AddressAsKey, CodeInfo> GetPrecompiles() => precompiles;
+    }
+
+    /// <summary>Writes <see cref="LoggedLoadFailureMarker"/> when an error is logged with <paramref name="loadFailure"/> itself.</summary>
+    private sealed class LoadFailureLogger(Exception loadFailure) : InterfaceLogger
+    {
+        public void Error(string text, Exception? ex = null)
+        {
+            if (ReferenceEquals(ex, loadFailure)) Console.WriteLine(LoggedLoadFailureMarker);
+        }
+
+        public void Info(string text) { }
+        public void Warn(string text) { }
+        public void Debug(string text) { }
+        public void Trace(string text) { }
+        public bool IsInfo => false;
+        public bool IsWarn => false;
+        public bool IsDebug => false;
+        public bool IsTrace => false;
+        public bool IsError => true;
     }
 }

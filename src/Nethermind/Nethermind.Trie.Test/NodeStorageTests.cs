@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,6 +27,8 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(TryGetCopy(nodeStorage, null, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(TryGetCopy(nodeStorage, null, Keccak.EmptyTreeHash), Is.EqualTo(Bytes.FromHexString("0x80")));
             Assert.That(nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.True);
         }
 
@@ -50,6 +53,7 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(TryGetCopy(nodeStorage, TestItem.KeccakB, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
             Assert.That(nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.True);
         }
 
@@ -69,10 +73,14 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
         TestMemDb testDb = new();
         NodeStorage nodeStorage = new(testDb, currentKeyScheme);
 
-        Assert.That(nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.Null);
+            Assert.That(TryGetCopy(nodeStorage, TestItem.KeccakB, TestItem.KeccakA), Is.Null);
+        }
 
-        testDb.KeyWasRead(TestItem.KeccakA.Bytes.ToArray());
-        testDb.KeyWasRead(NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA));
+        testDb.KeyWasRead(TestItem.KeccakA.Bytes.ToArray(), times: 2);
+        testDb.KeyWasRead(NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), times: 2);
     }
 
     [Test]
@@ -91,7 +99,11 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
             testDb[TestItem.KeccakA.Bytes] = TestItem.KeccakA.BytesToArray();
         }
 
-        Assert.That(nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(TryGetCopy(nodeStorage, TestItem.KeccakB, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+        }
     }
 
     [TestCase(false, 0, "000000000000000000003333333333333333333333333333333333333333333333333333333333333333")]
@@ -145,5 +157,13 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
 
         nodeStorage.Get(address, path, Keccak.Zero, ReadFlags.HintReadAhead);
         testDb.KeyWasReadWithFlags(NodeStorage.GetHalfPathNodeStoragePath(address, path, Keccak.Zero), expectedReadFlags);
+    }
+
+    /// <returns>A copy of the RLP <see cref="INodeStorage.TryGet{TArg}"/> passes, or null when it finds nothing.</returns>
+    private static byte[]? TryGetCopy(INodeStorage nodeStorage, Hash256? address, Hash256 keccak)
+    {
+        byte[]? copy = null;
+        nodeStorage.TryGet(address, TreePath.Empty, keccak, ReadFlags.None, static (rlp, result) => result[0] = rlp.ToArray(), new Span<byte[]?>(ref copy));
+        return copy;
     }
 }
