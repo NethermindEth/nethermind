@@ -200,8 +200,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
     private static IBlockProducerRunner CreateBlockProducerRunner(IComponentContext ctx) =>
         ctx.Resolve<IBlockProductionPolicy>().ShouldStartBlockProduction()
-        && ctx.Resolve<InitializedBlockProducer>().Producer is { } blockProducer
-            ? ResolveBlockProductionFactory<IBlockProducerRunnerFactory>(ctx).InitBlockProducerRunner(blockProducer)
+        && ctx.Resolve<InitializedBlockProducer>().Producer is not null
+            ? ResolveBlockProductionFactory<IBlockProducerRunnerFactory>(ctx).InitBlockProducerRunner(ctx.Resolve<IBlockProducer>())
             : new NoBlockProducerRunner();
 
     // Autofac rejects null from a delegate registration, and a factory may return no producer (e.g. Ethash).

@@ -46,4 +46,30 @@ public class BlockProcessingModuleTests
 
         ((IDisposable)runner).Received(producing ? 1 : 0).Dispose();
     }
+
+    [Test]
+    public void Runner_uses_the_registered_producer_and_the_container_disposes_it_once([Values] bool overridden)
+    {
+        IBlockProducer factoryProducer = Substitute.For<IBlockProducer, IDisposable>();
+        IBlockProducer overrideProducer = Substitute.For<IBlockProducer, IDisposable>();
+        IBlockProducer expected = overridden ? overrideProducer : factoryProducer;
+        IBlockProducerFactory producerFactory = Substitute.For<IBlockProducerFactory>();
+        IBlockProducerRunnerFactory runnerFactory = Substitute.For<IBlockProducerRunnerFactory>();
+        producerFactory.InitBlockProducer().Returns(factoryProducer);
+
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new BlockProcessingModule(new InitConfig(), new BlocksConfig()))
+            .AddSingleton<IBlockProductionPolicy>(AlwaysStartBlockProductionPolicy.Instance)
+            .AddSingleton(producerFactory)
+            .AddSingleton(runnerFactory);
+        if (overridden) builder.AddSingleton<IBlockProducer>(_ => overrideProducer);
+
+        using (IContainer container = builder.Build())
+        {
+            container.Resolve<IBlockProducerRunner>();
+            runnerFactory.Received(1).InitBlockProducerRunner(expected);
+        }
+
+        ((IDisposable)expected).Received(1).Dispose();
+    }
 }
