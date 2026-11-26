@@ -351,8 +351,7 @@ public class InitDatabaseSnapshotTests
         }
 
         File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(TestArchive.BuildFiles(seed: 43)));
-        // Extracted, Completed: the node stopped after the checkpoint advanced and before the marker was removed; the
-        // two-phase path removes it after Extracted, the streaming one after Completed, and admission is the same for both.
+        // Simulate a marker left with a legacy or inconsistent success checkpoint. Marker presence still stops admission.
         AdvanceCheckpoint(Enum.Parse<SnapshotStage>(checkpointOnRestart));
         Dictionary<string, byte[]> content = ContentOf(_dbPath);
 
@@ -926,6 +925,8 @@ public class InitDatabaseSnapshotTests
         SnapshotStage before = ReadCheckpoint();
         // A directory where the checkpoint writes its temporary file: the success checkpoint cannot be written.
         Directory.CreateDirectory(Path.Combine(_snapshotConfig.SnapshotDirectory, $"checkpoint_{_snapshotConfig.SnapshotFileName}.tmp"));
+        TestLogger logger = new();
+        _api.LogManager.Returns(new OneLoggerLogManager(new(logger)));
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
 
         Exception? failed = await Assert.CatchAsync(() => step.Execute(CancellationToken.None));
@@ -939,6 +940,9 @@ public class InitDatabaseSnapshotTests
             Assert.That(File.Exists(MarkerPath), Is.False, "the marker goes before the checkpoint once the extraction succeeded");
             Assert.That(File.ReadAllBytes(Path.Combine(_dbPath, "state", "a42.sst")), Is.EqualTo(TestArchive.BuildFiles()["state/a42.sst"]), "the database must be complete");
             Assert.That(ReadCheckpoint(), Is.EqualTo(before), "precondition: the checkpoint did not advance");
+            Assert.That(logger.LogList.Any(static line => line.Contains("successfully initialized")), Is.False, "a start that fails must not report success");
+            if (!streaming)
+                Assert.That(File.ReadAllBytes(_snapshotPath), Is.EqualTo(server.Content), "the archive must stay until the extraction is recorded");
         }
 
         await step.Execute(CancellationToken.None);
