@@ -4,12 +4,11 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Rewards
 {
-    public class RewardCalculator(ISpecProvider? specProvider) : IRewardCalculator, IRewardCalculatorSource
+    public class RewardCalculator(ISpecProvider? specProvider) : IRewardCalculator
     {
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
 
@@ -44,6 +43,5 @@ namespace Nethermind.Consensus.Rewards
 
         private static UInt256 GetUncleReward(UInt256 blockReward, BlockHeader blockHeader, BlockHeader uncle) => blockReward - ((uint)(blockHeader.Number - uncle.Number) * blockReward >> 3);
 
-        public IRewardCalculator Get(ITransactionProcessor processor) => this;
     }
 }

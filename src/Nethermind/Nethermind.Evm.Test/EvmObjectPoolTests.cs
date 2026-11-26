@@ -34,14 +34,18 @@ public class EvmObjectPoolTests
     private sealed class ChurnItem(int id) : Item(id);
     private sealed class GuardItem(int id) : Item(id);
     private sealed class OrderItem(int id) : Item(id);
+    private sealed class SharedItem(int id) : Item(id);
 
     [Test]
     public void Empty_pool_reports_no_item()
     {
         EvmObjectPool<EmptyItem> pool = new(localCapacity: 4);
 
-        Assert.That(pool.TryDequeue(out EmptyItem? item), Is.False);
-        Assert.That(item, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.TryDequeue(out EmptyItem? item), Is.False);
+            Assert.That(item, Is.Null);
+        }
     }
 
     [Test]
@@ -56,7 +60,9 @@ public class EvmObjectPoolTests
 
         // LIFO: the local free list hands back the most recently returned item first, which is what
         // keeps a call frame's stack hot in cache across the rent/return cycle.
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(pool.TryDequeue(out LocalItem? a), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(a, Is.SameAs(second));
         Assert.That(pool.TryDequeue(out LocalItem? b), Is.True);
         Assert.That(b, Is.SameAs(first));
@@ -78,12 +84,17 @@ public class EvmObjectPoolTests
         HashSet<int> seen = [];
         for (int i = 0; i < returned; i++)
         {
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
             Assert.That(pool.TryDequeue(out OverflowItem? item), Is.True, $"item {i} was lost");
+#pragma warning restore NUnit2045
             Assert.That(seen.Add(item!.Id), Is.True, $"item {item.Id} was handed out twice");
         }
 
-        Assert.That(pool.TryDequeue(out OverflowItem? _), Is.False);
-        Assert.That(seen, Has.Count.EqualTo(returned));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.TryDequeue(out OverflowItem? _), Is.False);
+            Assert.That(seen, Has.Count.EqualTo(returned));
+        }
     }
 
     [Test]
@@ -133,6 +144,30 @@ public class EvmObjectPoolTests
     }
 
     [Test]
+    public void Item_enqueued_to_the_shared_tier_skips_the_local_one()
+    {
+        EvmObjectPool<SharedItem> pool = new(localCapacity: 4);
+        SharedItem kept = new(1);
+        SharedItem shared = new(2);
+        SharedItem? seen = null;
+
+        RunOnNewThread(() =>
+        {
+            pool.Enqueue(kept);
+            // The local tier has room, yet the item goes where every thread can rent it.
+            pool.EnqueueShared(shared);
+        });
+
+        RunOnNewThread(() =>
+        {
+            pool.TryDequeue(out SharedItem? item);
+            seen = item;
+        });
+
+        Assert.That(seen, Is.SameAs(shared));
+    }
+
+    [Test]
     public void Local_tier_is_preferred_over_a_non_empty_shared_tier()
     {
         const int localCapacity = 2;
@@ -146,7 +181,9 @@ public class EvmObjectPoolTests
             pool.Enqueue(new OrderItem(id));
         }
 
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(pool.TryDequeue(out OrderItem? first), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(pool.TryDequeue(out OrderItem? second), Is.True);
         using (Assert.EnterMultipleScope())
         {
@@ -156,7 +193,9 @@ public class EvmObjectPoolTests
         }
 
         // Only now does the shared tier answer, oldest first.
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(pool.TryDequeue(out OrderItem? fromShared), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(fromShared!.Id, Is.EqualTo(2), "shared tier answers once the local tier is dry");
     }
 
@@ -242,8 +281,11 @@ public class EvmObjectPoolTests
             Assert.That(worker.Join(TimeSpan.FromSeconds(60)), Is.True, "worker thread did not finish");
         }
 
-        Assert.That(failures, Is.Empty, "a worker thread threw");
-        Assert.That(duplicates, Is.Zero, "the same instance was rented twice concurrently");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failures, Is.Empty, "a worker thread threw");
+            Assert.That(duplicates, Is.Zero, "the same instance was rented twice concurrently");
+        }
 
         // A draining thread reaches the shared tier plus its own local list; the other threads' local
         // lists are private to them by design, so this is an upper bound, not an exact count.
@@ -253,20 +295,23 @@ public class EvmObjectPoolTests
             drained++;
         }
 
-        Assert.That(drained, Is.LessThanOrEqualTo(maxShared + localCapacity));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(drained, Is.LessThanOrEqualTo(maxShared + localCapacity));
 
-        // Without recycling this workload would allocate threads * itemsPerThread * rounds = 256,000
-        // instances. The bound is deliberately loose: a starved worker can find its local list empty
-        // and the shared tier transiently drained while the other workers hold the whole working set,
-        // so post-warm-up allocation is legitimate and its rate tracks scheduling, not correctness.
-        // What is asserted is that recycling happens at all - a pool that stopped would miss by 100x.
-        // Exact per-instance behaviour is pinned by the single-threaded tests above.
-        Assert.That(Volatile.Read(ref allocated), Is.GreaterThan(0), "no item was ever allocated");
+            // Without recycling this workload would allocate threads * itemsPerThread * rounds = 256,000
+            // instances. The bound is deliberately loose: a starved worker can find its local list empty
+            // and the shared tier transiently drained while the other workers hold the whole working set,
+            // so post-warm-up allocation is legitimate and its rate tracks scheduling, not correctness.
+            // What is asserted is that recycling happens at all - a pool that stopped would miss by 100x.
+            // Exact per-instance behaviour is pinned by the single-threaded tests above.
+            Assert.That(Volatile.Read(ref allocated), Is.GreaterThan(0), "no item was ever allocated");
+        }
         Assert.That(Volatile.Read(ref allocated), Is.LessThan(threads * itemsPerThread * 4),
             "the pool stopped recycling and kept allocating fresh instances");
     }
 
-    private static void RunOnNewThread(ThreadStart body)
+    internal static void RunOnNewThread(ThreadStart body)
     {
         Thread thread = new(body) { IsBackground = true };
         thread.Start();

@@ -48,8 +48,11 @@ public class NodeHealthTrackerTests
         tracker.OnIncomingMessageFrom(Remote);
 
         Assert.That(routing.AddCalls, Has.Count.EqualTo(2));
-        Assert.That(routing.AddCalls[1].Hash, Is.EqualTo(Self));
-        Assert.That(routing.AddCalls[1].Node, Is.EqualTo(Self));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(routing.AddCalls[1].Hash, Is.EqualTo(Self));
+            Assert.That(routing.AddCalls[1].Node, Is.EqualTo(Self));
+        }
     }
 
     [Test]

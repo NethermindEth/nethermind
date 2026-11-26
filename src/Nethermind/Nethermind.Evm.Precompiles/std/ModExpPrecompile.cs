@@ -12,10 +12,10 @@ namespace Nethermind.Evm.Precompiles;
 
 public unsafe partial class ModExpPrecompile
 {
+    public static Address Address { get; } = Address.FromNumber(5);
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.ModExpPrecompile++;
-
         if (!TryPrepareInput(
             inputData,
             releaseSpec,
@@ -32,6 +32,17 @@ public unsafe partial class ModExpPrecompile
         ulong modulusOffset = expOffset + expLength;
         uint expStart = expOffset > uint.MaxValue ? uint.MaxValue : (uint)expOffset;
         uint modulusStart = modulusOffset > uint.MaxValue ? uint.MaxValue : (uint)modulusOffset;
+
+        // Contracts invert field elements as base^(p - 2) mod p; for well-known primes an inversion gives the same result far faster
+        if (modulusLength == PrimeFieldInverse.Size && expLength == PrimeFieldInverse.Size && baseLength <= PrimeFieldInverse.Size &&
+            PrimeFieldInverse.TryInvert(
+                inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength),
+                inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength),
+                inputSpan.SliceWithZeroPaddingEmptyOnError(modulusStart, modulusLength),
+                out byte[]? inverse))
+        {
+            return inverse;
+        }
 
         using mpz_t modulusInt = mpz_t.Create();
 

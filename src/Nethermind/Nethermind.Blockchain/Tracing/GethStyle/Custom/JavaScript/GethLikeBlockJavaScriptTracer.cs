@@ -3,6 +3,7 @@
 
 
 using System;
+using System.IO;
 using Microsoft.ClearScript;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,17 +21,31 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     private int _index;
     // Validated on construction so an unusable tracer is refused before any transaction; inline code keeps the
     // runtime it was compiled in, with its script cached.
-    private TracerRuntime? _runtime = TracerRuntime.CreateValidated(options.Tracer);
+    private TracerRuntime? _runtime = CreateRuntime(options);
     private GethLikeJavaScriptTxTracer? _currentTxTracer;
     private Hash256? _blockHash;
+    private Address? _coinbase;
     private UInt256 _baseFee;
+
+    private static TracerRuntime? CreateRuntime(GethTraceOptions options)
+    {
+        try
+        {
+            return TracerRuntime.CreateValidated(options.Tracer);
+        }
+        catch (Exception exception) when (options.CaptureJavaScriptErrors && exception is ArgumentException or InvalidDataException)
+        {
+            throw new JavaScriptTraceFailure(exception);
+        }
+    }
 
     public override void StartNewBlockTrace(Block block)
     {
         _ctx.block = block.Number;
+        _coinbase = block.Header.GasBeneficiary ?? Address.Zero;
         _blockHash = block.Hash;
         _baseFee = block.BaseFeePerGas;
-        _index = 0;
+        _index = options.TxHash is { } txHash ? block.GetTransactionIndex(txHash.ValueHash256) : 0;
         base.StartNewBlockTrace(block);
     }
 
@@ -51,7 +66,10 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         Engine engine = new(spec, _runtime);
         try
         {
-            return _currentTxTracer = new GethLikeJavaScriptTxTracer(engine, _db, _ctx, options);
+            return _currentTxTracer = new GethLikeJavaScriptTxTracer(engine, _db, _ctx, options)
+            {
+                IsFrameTransaction = tx!.SupportsFrames
+            };
         }
         catch
         {
@@ -63,10 +81,12 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     private void SetTransactionCtx(Transaction? tx)
     {
         _ctx.BlockHash = _blockHash;
+        _ctx.Coinbase = _coinbase;
         _ctx.error = Undefined.Value;
         _ctx.Output = null;
         _ctx.gasUsed = 0;
-        _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _baseFee);
+        // Geth exposes the effective gas tip, not the effective gas price, as ctx.gasPrice.
+        _ctx.GasPrice = tx!.CalculateMaxPriorityFeePerGas(spec.IsEip1559Enabled, _baseFee);
         _ctx.TxHash = tx.Hash;
         _ctx.txIndex = tx.Hash is not null ? _index++ : null;
         _ctx.gas = tx.GasLimit;
@@ -77,7 +97,23 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         _ctx.Input = tx.Data;
     }
 
-    protected override bool ShouldTraceTx(Transaction? tx) => base.ShouldTraceTx(tx) && tx is not null;
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The base calls this once per transaction start. Skipping an ownerless prefix advances its hashed-transaction
+    /// index and appends an alignment placeholder for recovery and mux children. Filtered replay must discard and
+    /// dispose these prefix entries through <c>KeepTrace</c> before publishing results.
+    /// </remarks>
+    protected override bool ShouldTraceTx(Transaction? tx)
+    {
+        if (tx is null || !base.ShouldTraceTx(tx)) return false;
+        if (options.DeadlineScope is { Current: null })
+        {
+            if (tx.Hash is not null) _index++;
+            AddTrace(new GethLikeTxTrace { TxHash = tx.Hash });
+            return false;
+        }
+        return true;
+    }
 
     protected override GethLikeTxTrace OnEnd(GethLikeJavaScriptTxTracer txTracer)
     {

@@ -109,7 +109,7 @@ When `--analyze-run <RUN_ID>` is provided, skip Phases 0–3 entirely and jump t
 When `--compare <RUN_ID_B>` is also provided:
 1. Analyze both runs independently (Phase 4a–4c for each).
 2. Download dotTrace XMLs from both runs.
-3. Run `bash scripts/dottrace-report.sh compare <a.xml> <b.xml> 20` for hotspot comparison.
+3. Run `dotnet run --file scripts/dottrace-report.cs -- compare <a.xml> <b.xml> 20` for hotspot comparison.
 4. In the final report, show side-by-side timing tables and delta percentages.
 
 ## Phase 0 — Discover gas-benchmarks branch and release
@@ -278,7 +278,7 @@ Report the run URL to the user immediately after triggering.
 
 **THIS PHASE IS MANDATORY. Always run it in full, even if the workflow reported success. Never skip or abbreviate it. A "success" workflow conclusion does NOT mean the blocks processed correctly — Nethermind exceptions can occur mid-run without failing the workflow.**
 
-Snippets in this phase never change the working directory (artifact paths are absolute `/tmp/...`; the one repo-relative path, `scripts/dottrace-report.sh`, keeps resolving because the cwd stays at the repo root). Keep them that way: the Bash tool's working directory persists across tool calls while variables do not — rely on neither.
+Snippets in this phase never change the working directory (artifact paths are absolute `/tmp/...`; the one repo-relative path, `scripts/dottrace-report.cs`, keeps resolving because the cwd stays at the repo root). Keep them that way: the Bash tool's working directory persists across tool calls while variables do not — rely on neither.
 
 ### 4a. Exception scan (NEVER SKIP)
 
@@ -428,7 +428,7 @@ If present:
 
 3. **Top hotspots** — show the top 20 functions by OwnTime (self-time excluding callees). The script path is relative to the nethermind repo root (the Bash tool's default working directory — Phase 4 snippets never change it):
    ```
-   bash scripts/dottrace-report.sh top <report.xml> 20
+   dotnet run --file scripts/dottrace-report.cs -- top <report.xml> 20
    ```
    Output columns: `Function | OwnTime | TotalTime`
    - **OwnTime** = time spent in the function body itself (the hotspot indicator)
@@ -437,7 +437,7 @@ If present:
 
 4. **Compare two runs** (when baseline available):
    ```
-   bash scripts/dottrace-report.sh compare <baseline.xml> <new.xml> 20
+   dotnet run --file scripts/dottrace-report.cs -- compare <baseline.xml> <new.xml> 20
    ```
    Output shows REGRESSIONS (B slower) and IMPROVEMENTS (B faster) with:
    - `[A] Own` / `[B] Own` = OwnTime in each run
@@ -451,7 +451,7 @@ If present:
    - System/GC functions (`System.GC`, `JIT_New`) indicate allocation pressure
    - Compare sstore/sload counts (from 4c) against OwnTime to distinguish I/O-bound vs compute-bound
 
-6. **Never load full XML into context** — files are 50-70MB. Always use `scripts/dottrace-report.sh`.
+6. **Never load full XML into context** — files are 50-70MB. Always use `scripts/dottrace-report.cs`.
 
 ## Phase 5 — Report
 

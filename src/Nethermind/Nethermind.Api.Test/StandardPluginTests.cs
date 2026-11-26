@@ -9,7 +9,7 @@ namespace Nethermind.Api.Test
     {
         public static void Run()
         {
-            Monitoring.Test.MetricsTests.ValidateMetricsDescriptions();
+            Nethermind.Monitoring.Test.MetricsTests.ValidateMetricsDescriptions();
             StandardConfigTests.ValidateDefaultValues();
             StandardConfigTests.ValidateDescriptions();
         }

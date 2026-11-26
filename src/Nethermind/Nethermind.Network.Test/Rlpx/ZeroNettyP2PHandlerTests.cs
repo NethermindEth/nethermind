@@ -4,25 +4,42 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Handlers.Timeout;
+using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V68;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Snappier;
@@ -31,6 +48,172 @@ namespace Nethermind.Network.Test.Rlpx;
 
 public class ZeroNettyP2PHandlerTests
 {
+    public enum PeerPrivilege { None, Static, Trusted }
+
+    [Test]
+    public void Malformed_status_is_rejected_inside_transport(
+        [Values(68, 69)] byte version, [Values] bool snappy, [Values] PeerPrivilege privilege, [Values] bool scalarIsList)
+    {
+        using PooledBufferLeakDetector detector = new();
+        TestLogger logger = new() { IsDebug = false };
+        OneLoggerLogManager logManager = new(new ILogger(logger));
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        Session session = CreateInitializedSession(logManager, privilege);
+        MessageSerializationService serializer = new(
+            SerializerInfo.Create(new StatusMessageSerializer()), SerializerInfo.Create(new StatusMessageSerializer69()));
+        using Eth68ProtocolHandler protocol = CreateEthHandler(session, version, serializer, logManager);
+        session.AddProtocolHandler(protocol);
+        bool initialized = false;
+        protocol.ProtocolInitialized += (_, _) => initialized = true;
+        List<DisconnectEventArgs> disconnected = [];
+        session.Disconnecting += (_, eventArgs) => disconnected.Add(eventArgs);
+        ZeroNettyP2PHandler handler = new(session, logManager);
+        if (snappy) handler.EnableSnappy();
+        byte[] oversizedScalar = new byte[version == 68 ? 33 : 5];
+        oversizedScalar.AsSpan().Fill(1);
+        byte[] malformedScalar = scalarIsList ? RlpTestHelper.OfEmptyList : Rlp.Encode(oversizedScalar);
+        byte[] forkId = RlpTestHelper.EncodeSequence(version == 68 ? Rlp.Encode(new byte[4]) : malformedScalar, RlpTestHelper.OfEmptyByteArray);
+        byte[] payload = version == 68
+            ? RlpTestHelper.EncodeSequence(Rlp.Encode(version), Rlp.Encode(1UL), malformedScalar,
+                Rlp.Encode(TestItem.KeccakA), Rlp.Encode(TestItem.KeccakB), forkId)
+            : RlpTestHelper.EncodeSequence(Rlp.Encode(version), Rlp.Encode(1UL), Rlp.Encode(TestItem.KeccakB),
+                forkId, RlpTestHelper.OfEmptyByteArray, Rlp.Encode(1UL), Rlp.Encode(TestItem.KeccakA));
+        bool limit = version == 68 && !scalarIsList;
+        bool disconnect = limit || privilege == PeerPrivilege.None;
+        DisconnectReason expectedReason = limit ? DisconnectReason.MessageLimitsBreached : DisconnectReason.Exception;
+        NettyBufferPacket packet = snappy
+            ? CreateCompressedPacket(detector.Allocator, payload, 0x10)
+            : new NettyBufferPacket(detector.Allocator.Buffer().WriteBytes(payload)) { PacketType = 0x10 };
+        try
+        {
+            handler.ChannelRead(context, packet);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(initialized, Is.False);
+                Assert.That(protocol.HeadHash, Is.Null);
+                Assert.That(disconnected, Has.Count.EqualTo(disconnect ? 1 : 0));
+                Assert.That(disconnected.Select(static args => args.DisconnectReason), Is.EqualTo(disconnect ? [expectedReason] : Array.Empty<DisconnectReason>()));
+                Assert.That(disconnected.Select(static args => args.DisconnectType), Is.EqualTo(disconnect ? [DisconnectType.Local] : Array.Empty<DisconnectType>()));
+                Assert.That(logger.LogList, Has.Some.Contains("Failed to deserialize message StatusMessage"));
+                Assert.That(packet.ReferenceCount, Is.Zero);
+            }
+            if (disconnect) context.DidNotReceive().FireExceptionCaught(Arg.Any<Exception>());
+            else context.Received(1).FireExceptionCaught(Arg.Any<RlpReaderException>());
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+            session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "test cleanup");
+            session.Dispose();
+        }
+    }
+
+    [Test]
+    public void Transport_rlp_limits_preserve_privileged_peer_policy([Values] bool snappy, [Values] PeerPrivilege privilege)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303)
+        {
+            IsStatic = privilege == PeerPrivilege.Static,
+            IsTrusted = privilege == PeerPrivilege.Trusted,
+        });
+        RlpLimitException exception = new("message exceeds decode limits");
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(_ => throw exception);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        if (snappy) handler.EnableSnappy();
+        NettyBufferPacket packet = snappy
+            ? CreateCompressedPacket(detector.Allocator, [0xc0], 0x10)
+            : new NettyBufferPacket(detector.Allocator.Buffer().WriteByte(0xc0)) { PacketType = 0x10 };
+        try
+        {
+            handler.ChannelRead(context, packet);
+            if (privilege == PeerPrivilege.None)
+            {
+                session.Received(1).InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+                context.DidNotReceive().FireExceptionCaught(Arg.Any<Exception>());
+            }
+            else
+            {
+                session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+                context.Received(1).FireExceptionCaught(exception);
+            }
+            Assert.That(packet.ReferenceCount, Is.Zero);
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+        }
+    }
+
+    [Test]
+    public void Rlp_limit_disconnect_is_preserved_without_a_second_disconnect([Values] bool snappy)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        Session session = CreateInitializedSession(LimboLogs.Instance, PeerPrivilege.Trusted);
+        IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
+        serializer.Deserialize<StatusMessage>(Arg.Any<ZeroPacket>()).Returns(_ => throw new RlpLimitException("status exceeds decode limits"));
+        using Eth68ProtocolHandler protocol = CreateEthHandler(session, 68, serializer, LimboLogs.Instance);
+        session.AddProtocolHandler(protocol);
+        List<DisconnectEventArgs> disconnected = [];
+        session.Disconnecting += (_, eventArgs) => disconnected.Add(eventArgs);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        if (snappy) handler.EnableSnappy();
+        NettyBufferPacket packet = snappy
+            ? CreateCompressedPacket(detector.Allocator, [0xc0], 0x10)
+            : new NettyBufferPacket(detector.Allocator.Buffer().WriteByte(0xc0)) { PacketType = 0x10 };
+        try
+        {
+            handler.ChannelRead(context, packet);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disconnected.Select(static args => args.DisconnectReason), Is.EqualTo(new[] { DisconnectReason.MessageLimitsBreached }));
+                Assert.That(disconnected.Select(static args => args.Details), Is.EqualTo(new[] { "status exceeds decode limits" }));
+                Assert.That(packet.ReferenceCount, Is.Zero);
+            }
+            context.DidNotReceive().FireExceptionCaught(Arg.Any<Exception>());
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+            session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "test cleanup");
+            session.Dispose();
+        }
+    }
+
+    [Test]
+    public void Internal_consumer_errors_are_not_handled_as_malformed_peer_data([Values] bool snappy, [Values] bool rlp)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        ISession session = Substitute.For<ISession>();
+        Exception exception = rlp ? new TestInternalRlpReaderException() : new TestInternalNethermindException();
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(_ => throw exception);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        if (snappy) handler.EnableSnappy();
+        NettyBufferPacket packet = snappy
+            ? CreateCompressedPacket(detector.Allocator, [0xc0], 0x10)
+            : new NettyBufferPacket(detector.Allocator.Buffer().WriteByte(0xc0)) { PacketType = 0x10 };
+        try
+        {
+            Assert.That(Assert.Catch(() => handler.ChannelRead(context, packet)), Is.SameAs(exception));
+            session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            Assert.That(packet.ReferenceCount, Is.Zero);
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+        }
+    }
+
     [Test]
     [TestCaseSource(nameof(ExceptionDisconnectCases))]
     public void When_exception_is_thrown_send_disconnect_message(Exception exception, DisconnectReason expectedReason)
@@ -48,6 +231,8 @@ public class ZeroNettyP2PHandlerTests
     {
         yield return new TestCaseData(new Exception(), DisconnectReason.Exception).SetName("Generic_exception_uses_generic_reason");
         yield return new TestCaseData(new CorruptedFrameException("malformed frame"), DisconnectReason.Exception).SetName("Corrupted_frame_uses_generic_reason");
+        yield return new TestCaseData(new RlpLimitException("message exceeds decode limits"), DisconnectReason.MessageLimitsBreached).SetName("RLP_limit_uses_message_limits_reason");
+        yield return new TestCaseData(new SocketException((int)SocketError.ConnectionReset), DisconnectReason.ConnectionReset).SetName("Connection_reset_uses_connection_reset_reason");
     }
 
     [TestCaseSource(nameof(ExpectedCommunicationExceptions))]
@@ -64,20 +249,14 @@ public class ZeroNettyP2PHandlerTests
 
     private static IEnumerable<TestCaseData> ExpectedCommunicationExceptions()
     {
-        yield return new TestCaseData(new RlpException("malformed message")).SetName("RLP_exception_is_logged_at_trace");
+        yield return new TestCaseData(new RlpReaderException("malformed message")).SetName("RLP_exception_is_logged_at_trace");
         yield return new TestCaseData(ReadTimeoutException.Instance).SetName("Read_timeout_is_logged_at_trace");
     }
 
     [Test]
     public void When_corrupted_frame_is_received_from_privileged_peer_then_keep_session([Values] bool isStatic)
     {
-        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303)
-        {
-            IsStatic = isStatic,
-            IsTrusted = !isStatic
-        };
-        ISession session = Substitute.For<ISession>();
-        session.Node.Returns(node);
+        ISession session = CreatePrivilegedSession(isStatic);
         IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         CorruptedFrameException exception = new("malformed frame");
@@ -86,6 +265,67 @@ public class ZeroNettyP2PHandlerTests
 
         session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         channelHandlerContext.Received().FireExceptionCaught(exception);
+    }
+
+    [Test]
+    public void When_unknown_socket_exception_is_received_from_privileged_peer_then_forward_exception([Values] bool isStatic)
+    {
+        ISession session = CreatePrivilegedSession(isStatic);
+        IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        SocketException exception = new((int)SocketError.ConnectionAborted);
+
+        handler.ExceptionCaught(channelHandlerContext, exception);
+
+        using (Assert.EnterMultipleScope())
+        {
+            session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            channelHandlerContext.Received().FireExceptionCaught(exception);
+            channelHandlerContext.DidNotReceive().CloseAsync();
+        }
+    }
+
+    [Test]
+    public async Task When_transport_resets_with_handler_active_but_without_crypto_handshake_then_close_transport([Values] bool isStatic)
+    {
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int listeningPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+        ISession session = CreatePrivilegedSession(isStatic);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        IEventLoopGroup group = new MultithreadEventLoopGroup(1);
+        IChannel? channel = null;
+
+        try
+        {
+            Task<Socket> acceptTask = listener.AcceptSocketAsync();
+            channel = await new Bootstrap()
+                .Group(group)
+                .Channel<TcpSocketChannel>()
+                .Handler(new P2PHandlerInitializer(handler))
+                .ConnectAsync(new IPEndPoint(IPAddress.Loopback, listeningPort));
+
+            using Socket accepted = await acceptTask.WaitAsync(TimeSpan.FromSeconds(5));
+            accepted.LingerState = new LingerOption(true, 0);
+            accepted.Dispose();
+
+            await channel.CloseCompletion.WaitAsync(TimeSpan.FromSeconds(5));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(channel.Open, Is.False);
+                session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
+        }
+        finally
+        {
+            if (channel is not null)
+            {
+                await channel.CloseAsync();
+            }
+
+            await group.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+        }
     }
 
     [Test]
@@ -114,11 +354,11 @@ public class ZeroNettyP2PHandlerTests
 
         IByteBuffer buff = Unpooled.Buffer(2);
         buff.WriteBytes(msg);
-        ZeroPacket packet = new(buff);
+        NettyBufferPacket packet = new(buff);
 
         Assert.That(() => handler.ChannelRead(channelHandlerContext, packet), Throws.InstanceOf<CorruptedFrameException>());
 
-        session.DidNotReceive().ReceiveMessage(Arg.Any<ZeroPacket>());
+        session.DidNotReceive().ReceiveMessage(Arg.Any<NettyBufferPacket>());
         allocator.DidNotReceive().Buffer(Arg.Any<int>());
         Assert.That(packet.ReferenceCount, Is.Zero, "the inbound packet must be released even when decoding throws");
     }
@@ -173,12 +413,12 @@ public class ZeroNettyP2PHandlerTests
         handler.EnableSnappy();
 
         IByteBuffer content = Unpooled.WrappedBuffer(data);
-        ZeroPacket packet = new(content);
+        NettyBufferPacket packet = new(content);
 
         handler.ChannelRead(channelHandlerContext, packet);
 
         session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
-        session.DidNotReceive().ReceiveMessage(Arg.Any<ZeroPacket>());
+        session.DidNotReceive().ReceiveMessage(Arg.Any<NettyBufferPacket>());
         allocator.DidNotReceive().Buffer(Arg.Any<int>());
         Assert.That(packet.ReferenceCount, Is.Zero, "the inbound packet must be released after disconnecting");
     }
@@ -201,15 +441,15 @@ public class ZeroNettyP2PHandlerTests
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         byte[] payload = [1, 2, 3, 4, 5];
-        ZeroPacket received = null;
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        NettyBufferPacket received = null;
+        session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>())).Do(call =>
         {
-            received = call.Arg<ZeroPacket>();
+            received = call.Arg<NettyBufferPacket>();
             if (retain) received.Retain();
             AssertPacket(received, payload, 7);
             if (throws) throw new InvalidOperationException("Consumer failed");
         });
-        ZeroPacket input = CreateCompressedPacket(detector.Allocator, payload, 7);
+        NettyBufferPacket input = CreateCompressedPacket(detector.Allocator, payload, 7);
         try
         {
             if (throws)
@@ -218,8 +458,11 @@ public class ZeroNettyP2PHandlerTests
                 handler.ChannelRead(context, input);
 
             handler.HandlerRemoved(context);
-            Assert.That(input.ReferenceCount, Is.Zero);
-            Assert.That(received, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(input.ReferenceCount, Is.Zero);
+                Assert.That(received, Is.Not.Null);
+            }
             Assert.That(received.ReferenceCount, Is.EqualTo(retain ? 1 : 0));
             if (retain) AssertPacket(received, payload, 7);
         }
@@ -249,8 +492,8 @@ public class ZeroNettyP2PHandlerTests
         byte[] payload = new byte[length];
         if (repeated) payload.AsSpan().Fill(42);
         else new Random(42).NextBytes(payload);
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>()))
-            .Do(call => AssertPacket(call.Arg<ZeroPacket>(), payload, 7));
+        session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>()))
+            .Do(call => AssertPacket(call.Arg<NettyBufferPacket>(), payload, 7));
 
         for (int i = 0; i < 2; i++)
         {
@@ -262,11 +505,11 @@ public class ZeroNettyP2PHandlerTests
                 Assert.That(backing.Array.AsSpan(backing.ArrayOffset, 7).ToArray(), Is.All.EqualTo(0xa5));
                 Assert.That(backing.Array.AsSpan(backing.ArrayOffset + length + 11, 32).ToArray(), Is.All.EqualTo(0xa5));
             }
-            ZeroPacket malformed = new(Unpooled.WrappedBuffer(new byte[] { 1 }));
+            NettyBufferPacket malformed = new(Unpooled.WrappedBuffer(new byte[] { 1 }));
             Assert.That(() => handler.ChannelRead(context, malformed), Throws.InstanceOf<CorruptedFrameException>());
             Assert.That(malformed.ReferenceCount, Is.Zero);
         }
-        session.Received(2).ReceiveMessage(Arg.Any<ZeroPacket>());
+        session.Received(2).ReceiveMessage(Arg.Any<NettyBufferPacket>());
     }
 
     [Test]
@@ -283,7 +526,7 @@ public class ZeroNettyP2PHandlerTests
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         byte[] payload = [1, 2, 3, 4, 5];
-        ZeroPacket input = CreateCompressedPacket(detector.Allocator, payload, 7);
+        NettyBufferPacket input = CreateCompressedPacket(detector.Allocator, payload, 7);
 
         Assert.That(() => handler.ChannelRead(context, input), Throws.InstanceOf<IndexOutOfRangeException>());
         using (Assert.EnterMultipleScope())
@@ -291,12 +534,12 @@ public class ZeroNettyP2PHandlerTests
             Assert.That(input.ReferenceCount, Is.Zero);
             Assert.That(failedOutput.ReferenceCount, Is.Zero);
         }
-        session.DidNotReceive().ReceiveMessage(Arg.Any<ZeroPacket>());
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>()))
-            .Do(call => AssertPacket(call.Arg<ZeroPacket>(), payload, 7));
+        session.DidNotReceive().ReceiveMessage(Arg.Any<NettyBufferPacket>());
+        session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>()))
+            .Do(call => AssertPacket(call.Arg<NettyBufferPacket>(), payload, 7));
         handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, payload, 7));
         handler.HandlerRemoved(context);
-        session.Received(1).ReceiveMessage(Arg.Any<ZeroPacket>());
+        session.Received(1).ReceiveMessage(Arg.Any<NettyBufferPacket>());
     }
 
     public enum RetainedConsumer { Packet, Slice, MemoryOwner }
@@ -310,19 +553,19 @@ public class ZeroNettyP2PHandlerTests
         ISession session = Substitute.For<ISession>();
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
-        ZeroPacket retained = null;
+        NettyBufferPacket retained = null;
         NettyBufferMemoryOwner owner = null;
         IByteBuffer retainedBuffer = null;
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>())).Do(call =>
         {
-            ZeroPacket packet = call.Arg<ZeroPacket>();
+            NettyBufferPacket packet = call.Arg<NettyBufferPacket>();
             if (retainedBuffer is null)
             {
-                retainedBuffer = packet.Content;
+                retainedBuffer = packet.Buffer;
                 if (consumer == RetainedConsumer.MemoryOwner)
-                    owner = new NettyBufferMemoryOwner(packet.Content);
+                    owner = new NettyBufferMemoryOwner(packet.Buffer);
                 else if (consumer == RetainedConsumer.Slice)
-                    retained = new ZeroPacket(packet.Content.RetainedSlice()) { PacketType = packet.PacketType };
+                    retained = new NettyBufferPacket(packet.Buffer.RetainedSlice()) { PacketType = packet.PacketType };
                 else
                 {
                     packet.Retain();
@@ -331,7 +574,7 @@ public class ZeroNettyP2PHandlerTests
             }
             else
             {
-                Assert.That(packet.Content, Is.Not.SameAs(retainedBuffer));
+                Assert.That(packet.Buffer, Is.Not.SameAs(retainedBuffer));
                 AssertPacket(packet, [9, 8, 7], 8);
             }
         });
@@ -339,10 +582,10 @@ public class ZeroNettyP2PHandlerTests
         {
             handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [1, 2, 3], 7));
             handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [9, 8, 7], 8));
-            session.Received(2).ReceiveMessage(Arg.Any<ZeroPacket>());
+            session.Received(2).ReceiveMessage(Arg.Any<NettyBufferPacket>());
             if (owner is not null)
             {
-                Assert.That(owner.Memory.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+                Assert.That(owner.Memory, Is.SequenceEqualTo(new byte[] { 1, 2, 3 }));
                 owner.Dispose();
                 Assert.That(retainedBuffer.ReferenceCount, Is.Zero);
             }
@@ -371,7 +614,7 @@ public class ZeroNettyP2PHandlerTests
             GasLimit = 21000,
             Signature = new Signature(1, 2, 27)
         };
-        Hash256 expectedHash = Keccak.Compute(TxDecoder.Instance.Encode(source).Bytes);
+        Hash256 expectedHash = Keccak.Compute(TxDecoder.Instance.Encode(source));
         TransactionsMessageSerializer serializer = new();
         using TransactionsMessage message = new(new ArrayPoolList<Transaction>(1) { source });
         using DisposableByteBuffer encoded = detector.Allocator.Buffer(256).AsDisposable();
@@ -379,18 +622,18 @@ public class ZeroNettyP2PHandlerTests
         byte[] payload = encoded.ReadAllBytesAsArray();
         Transaction decoded = null;
         IByteBuffer firstBuffer = null;
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>())).Do(call =>
         {
-            ZeroPacket packet = call.Arg<ZeroPacket>();
+            NettyBufferPacket packet = call.Arg<NettyBufferPacket>();
             if (decoded is null)
             {
-                firstBuffer = packet.Content;
-                using TransactionsMessage received = serializer.Deserialize(packet.Content);
+                firstBuffer = packet.Buffer;
+                using TransactionsMessage received = serializer.Deserialize(packet.Buffer);
                 decoded = received.Transactions[0];
             }
             else
             {
-                Assert.That(packet.Content, Is.SameAs(firstBuffer), "Overwrite the actual decoder input storage.");
+                Assert.That(packet.Buffer, Is.SameAs(firstBuffer), "Overwrite the actual decoder input storage.");
                 AssertPacket(packet, payload, 8);
             }
         });
@@ -401,7 +644,7 @@ public class ZeroNettyP2PHandlerTests
             handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, payload, 8));
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(decoded.Data.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3, 4 }));
+                Assert.That(decoded.Data, Is.SequenceEqualTo(new byte[] { 1, 2, 3, 4 }));
                 // Read Hash only after reuse so its delayed preimage must survive the overwrite.
                 Assert.That(decoded.Hash, Is.EqualTo(expectedHash));
             }
@@ -423,38 +666,41 @@ public class ZeroNettyP2PHandlerTests
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         IByteBuffer first = null;
-        ZeroPacket firstPacket = null;
+        NettyBufferPacket firstPacket = null;
         byte[] payload = new byte[length];
         new Random(42).NextBytes(payload);
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>())).Do(call =>
         {
-            ZeroPacket packet = call.Arg<ZeroPacket>();
+            NettyBufferPacket packet = call.Arg<NettyBufferPacket>();
             if (first is null)
             {
-                first = packet.Content;
+                first = packet.Buffer;
                 firstPacket = packet;
                 AssertPacket(packet, payload, 7);
                 packet.Protocol = "eth";
-                packet.Content.SkipBytes(length);
-                packet.Content.MarkReaderIndex().MarkWriterIndex();
+                packet.Buffer.SkipBytes(length);
+                packet.Buffer.MarkReaderIndex().MarkWriterIndex();
             }
             else
             {
                 AssertPacket(packet, [9, 8, 7], 8);
-                Assert.That(packet.Protocol, Is.Null, "protocol resolution from the previous message must not survive reuse");
-                Assert.That(ReferenceEquals(firstPacket, packet), Is.EqualTo(length == 65536));
-                Assert.That(ReferenceEquals(first, packet.Content), Is.EqualTo(length == 65536));
-                packet.Content.SkipBytes(1).ResetReaderIndex();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(packet.Protocol, Is.Null, "protocol resolution from the previous message must not survive reuse");
+                    Assert.That(ReferenceEquals(firstPacket, packet), Is.EqualTo(length == 65536));
+                    Assert.That(ReferenceEquals(first, packet.Buffer), Is.EqualTo(length == 65536));
+                }
+                packet.Buffer.SkipBytes(1).ResetReaderIndex();
                 AssertPacket(packet, [9, 8, 7], 8);
-                packet.Content.ResetWriterIndex();
-                Assert.That(packet.Content.WriterIndex, Is.Zero);
+                packet.Buffer.ResetWriterIndex();
+                Assert.That(packet.Buffer.WriterIndex, Is.Zero);
             }
         });
         try
         {
             handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, payload, 7));
             if (length > 65536) Assert.That(first.ReferenceCount, Is.Zero);
-            ZeroPacket malformed = new(Unpooled.WrappedBuffer(new byte[] { 1 }));
+            NettyBufferPacket malformed = new(Unpooled.WrappedBuffer(new byte[] { 1 }));
             Assert.That(() => handler.ChannelRead(context, malformed), Throws.InstanceOf<CorruptedFrameException>());
             Assert.That(malformed.ReferenceCount, Is.Zero);
             handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [9, 8, 7], 8));
@@ -474,9 +720,9 @@ public class ZeroNettyP2PHandlerTests
         ISession session = Substitute.For<ISession>();
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>())).Do(call =>
         {
-            ZeroPacket packet = call.Arg<ZeroPacket>();
+            NettyBufferPacket packet = call.Arg<NettyBufferPacket>();
             if (packet.PacketType == 7)
             {
                 handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [9, 8, 7], 8));
@@ -487,7 +733,7 @@ public class ZeroNettyP2PHandlerTests
         try
         {
             handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [1, 2, 3], 7));
-            session.Received(2).ReceiveMessage(Arg.Any<ZeroPacket>());
+            session.Received(2).ReceiveMessage(Arg.Any<NettyBufferPacket>());
         }
         finally
         {
@@ -510,10 +756,10 @@ public class ZeroNettyP2PHandlerTests
             if (inactive) handler.ChannelInactive(context);
             else handler.HandlerRemoved(context);
         }
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>())).Do(call =>
         {
-            ZeroPacket packet = call.Arg<ZeroPacket>();
-            output = packet.Content;
+            NettyBufferPacket packet = call.Arg<NettyBufferPacket>();
+            output = packet.Buffer;
             if (duringCallback) Cleanup();
             AssertPacket(packet, [1, 2, 3], 7);
         });
@@ -544,9 +790,9 @@ public class ZeroNettyP2PHandlerTests
         random.NextBytes(payload);
         byte[] compressed = Snappy.CompressToArray(payload);
         int delivered = 0;
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>())).Do(call =>
         {
-            AssertPacket(call.Arg<ZeroPacket>(), payload, 7);
+            AssertPacket(call.Arg<NettyBufferPacket>(), payload, 7);
             delivered++;
         });
         try
@@ -557,7 +803,7 @@ public class ZeroNettyP2PHandlerTests
                 // Bytes beyond WriterIndex remain present, but must never complete the truncated block.
                 IByteBuffer buffer = detector.Allocator.Buffer(compressed.Length + 7).WriteZero(7).WriteBytes(compressed);
                 buffer.SetIndex(7, 7 + truncatedLength);
-                ZeroPacket malformed = new(buffer);
+                NettyBufferPacket malformed = new(buffer);
                 Assert.That(() => handler.ChannelRead(context, malformed), Throws.InstanceOf<CorruptedFrameException>(), $"cut {truncatedLength}");
                 using (Assert.EnterMultipleScope())
                 {
@@ -585,12 +831,12 @@ public class ZeroNettyP2PHandlerTests
         handler.EnableSnappy();
         byte[] payload = new byte[SnappyParameters.MaxSnappyLength + delta];
         payload.AsSpan().Fill(0xa5);
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>()))
-            .Do(call => AssertPacket(call.Arg<ZeroPacket>(), payload, 7));
+        session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>()))
+            .Do(call => AssertPacket(call.Arg<NettyBufferPacket>(), payload, 7));
         try
         {
             handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, payload, 7));
-            session.Received(1).ReceiveMessage(Arg.Any<ZeroPacket>());
+            session.Received(1).ReceiveMessage(Arg.Any<NettyBufferPacket>());
             session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
         finally
@@ -633,17 +879,17 @@ public class ZeroNettyP2PHandlerTests
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         int delivered = 0;
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>())).Do(call =>
         {
-            IByteBuffer content = call.Arg<ZeroPacket>().Content;
+            ReadOnlySpan<byte> content = call.Arg<NettyBufferPacket>().Content.Span;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(content.ReadableBytes, Is.EqualTo(length));
-                Assert.That(content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, content.ReadableBytes).IndexOfAnyExcept((byte)0xa5), Is.EqualTo(-1));
+                Assert.That(content.Length, Is.EqualTo(length));
+                Assert.That(content.IndexOfAnyExcept((byte)0xa5), Is.EqualTo(-1));
             }
             delivered++;
         });
-        ZeroPacket packet = new(detector.Allocator.Buffer(encoded.Length + 7).WriteZero(7).WriteBytes(encoded).SkipBytes(7));
+        NettyBufferPacket packet = new(detector.Allocator.Buffer(encoded.Length + 7).WriteZero(7).WriteBytes(encoded).SkipBytes(7));
         try
         {
             if (valid)
@@ -667,25 +913,80 @@ public class ZeroNettyP2PHandlerTests
         }
     }
 
-    private static ZeroPacket CreateCompressedPacket(IByteBufferAllocator allocator, byte[] payload, byte packetType)
+    private static NettyBufferPacket CreateCompressedPacket(IByteBufferAllocator allocator, byte[] payload, byte packetType)
     {
         IByteBuffer buffer = allocator.Buffer();
         buffer.WriteInt(0x12345678);
         buffer.WriteBytes(Snappy.CompressToArray(payload));
         buffer.SkipBytes(4);
-        return new ZeroPacket(buffer) { PacketType = packetType };
+        return new NettyBufferPacket(buffer) { PacketType = packetType };
+    }
+
+    private static Session CreateInitializedSession(ILogManager logManager, PeerPrivilege privilege)
+    {
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303)
+        {
+            IsStatic = privilege == PeerPrivilege.Static,
+            IsTrusted = privilege == PeerPrivilege.Trusted
+        };
+        Session session = new(30303, node, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, logManager);
+        IProtocolHandler p2p = Substitute.For<IProtocolHandler>();
+        p2p.ProtocolCode.Returns(Protocol.P2P);
+        p2p.Name.Returns(Protocol.P2P);
+        p2p.MessageIdSpaceSize.Returns(0x10);
+        session.AddProtocolHandler(p2p);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, Substitute.For<IPacketSender>());
+        return session;
+    }
+
+    private static Eth68ProtocolHandler CreateEthHandler(ISession session, byte version,
+        IMessageSerializationService serializer, ILogManager logManager)
+    {
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        ISyncServer sync = Substitute.For<ISyncServer>();
+        ITxPool txPool = Substitute.For<ITxPool>();
+        IGossipPolicy gossip = Substitute.For<IGossipPolicy>();
+        IForkInfo forks = Substitute.For<IForkInfo>();
+        ITxPoolConfig txConfig = Substitute.For<ITxPoolConfig>();
+        IChainHeadSpecProvider spec = Substitute.For<IChainHeadSpecProvider>();
+        return version == 68
+            ? new Eth68ProtocolHandler(session, serializer, stats, sync, RunImmediatelyScheduler.Instance,
+                txPool, gossip, forks, logManager, txConfig, spec)
+            : new Eth69ProtocolHandler(session, serializer, stats, sync, RunImmediatelyScheduler.Instance,
+                txPool, gossip, forks, logManager, txConfig, spec);
     }
 
     private static void AssertPacket(ZeroPacket packet, byte[] payload, byte packetType)
     {
-        byte[] actual = new byte[packet.Content.ReadableBytes];
-        packet.Content.GetBytes(packet.Content.ReaderIndex, actual);
-        Assert.That(actual, Is.EqualTo(payload));
-        Assert.That(packet.PacketType, Is.EqualTo(packetType));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(packet.Content.ToArray(), Is.EqualTo(payload));
+            Assert.That(packet.PacketType, Is.EqualTo(packetType));
+        }
+    }
+
+    private static ISession CreatePrivilegedSession(bool isStatic)
+    {
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303)
+        {
+            IsStatic = isStatic,
+            IsTrusted = !isStatic
+        };
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(node);
+        return session;
+    }
+
+    private sealed class P2PHandlerInitializer(ZeroNettyP2PHandler handler) : ChannelInitializer<IChannel>
+    {
+        protected override void InitChannel(IChannel channel) => channel.Pipeline.AddLast(handler);
     }
 
     private class TestInternalNethermindException : Exception, IInternalNethermindException
     {
 
     }
+
+    private class TestInternalRlpReaderException() : RlpReaderException("internal decoder failure"), IInternalNethermindException;
 }

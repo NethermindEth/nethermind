@@ -5,6 +5,8 @@ using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -17,6 +19,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -51,6 +55,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISyncServer syncServer = new SyncServer(
                 Substitute.For<IReadOnlyKeyValueStore>(),
                 blockTree,
+                Substitute.For<IBlockStore>(),
+                Substitute.For<IHeaderStore>(),
+                new HeaderDecoder(),
                 Substitute.For<IReceiptFinder>(),
                 Substitute.For<IBlockAccessListStore>(),
                 Substitute.For<IBlockValidator>(),

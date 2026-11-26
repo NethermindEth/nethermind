@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -18,7 +19,7 @@ public static partial class TxsDecoder
     /// fails the whole call.
     /// </param>
     /// <remarks>Copies calldata and delayed-hash bytes so decoded transactions do not borrow the input.
-    /// Long lists decode in parallel and fall back to the serial pass on any failure, so the
+    /// Long lists decode in parallel. A failure the parallel pass does not skip falls back to the serial pass, so the
     /// reported error is always the one a single-threaded decode would have produced.</remarks>
     public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors) => DecodeTxs(txData, skipErrors, borrowMemory: false);
 
@@ -39,9 +40,17 @@ public static partial class TxsDecoder
 
     private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp, bool borrowMemory)
     {
-        RlpReader ctx = borrowMemory ? new(rlp.AsMemory()) : new(rlp);
+        RlpReader ctx = new(rlp);
         RlpBehaviors behaviors = RlpBehaviors.SkipTypedWrapping | RlpBehaviors.SkipPooledTransactions;
-        return rlpDecoder.DecodeCompleteNotNull(ref ctx, behaviors);
+        if (!borrowMemory || rlpDecoder is not TxDecoder txDecoder)
+        {
+            return rlpDecoder.DecodeCompleteNotNull(ref ctx, behaviors);
+        }
+
+        Transaction? transaction = null;
+        txDecoder.Decode(ref ctx, ref transaction, behaviors, rlp);
+        ctx.CheckEnd();
+        return transaction ?? throw new RlpReaderException($"{nameof(Transaction)} decoding returned null");
     }
 
     private static TransactionDecodingResult DecodeSequential(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors, bool borrowMemory)
@@ -55,7 +64,7 @@ public static partial class TxsDecoder
                 transactions[added] = DecodeTransaction(rlpDecoder, txData[i], borrowMemory);
                 added++;
             }
-            catch (RlpException e)
+            catch (RlpReaderException e)
             {
                 if (skipErrors) continue;
                 return new TransactionDecodingResult($"Transaction {i} is not valid: {e.Message}");

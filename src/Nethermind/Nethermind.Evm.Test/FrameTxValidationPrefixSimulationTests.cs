@@ -4,14 +4,18 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -20,6 +24,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -46,9 +51,14 @@ public class FrameTxValidationPrefixSimulationTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true });
+    }
+
+    private void UseSpec(IReleaseSpec spec)
+    {
+        _specProvider = new TestSpecProvider(spec);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         _virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
@@ -110,8 +120,8 @@ public class FrameTxValidationPrefixSimulationTests
             .SetName("Simulate_SecondLeadingDeployFrame_EndsThePrefixBeforeAnyPayer");
     }
 
-    // What the prefix loop admits is a leading run of VERIFY frames, which is wider than the layouts
-    // RecognizedPrefixLength names: the trailing VERIFY frame of an admitted one is never simulated.
+    // Direct simulation remains independent of public-pool grammar admission, so standalone callers
+    // still need the conservative trailing-VERIFY predicate for layouts the pool rejects earlier.
     [TestCaseSource(nameof(UnrecognizedPrefixCases))]
     public void Simulate_LayoutOutsideTheRecognizedGrammar_ResolvesAPayerOnlyFromALeadingVerifyRun(TxFrame[] frames, bool expectedPayer)
     {
@@ -126,7 +136,7 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(result.TransactionExecuted, Is.EqualTo(expectedPayer), result.ErrorDescription);
             Assert.That(tracer.Payer, expectedPayer ? Is.EqualTo(Sender) : Is.Null);
             Assert.That(FrameTxValidation.HasVerifyFrameAfterPrefix(tx), Is.True,
-                "the pool bound must claim the trailing VERIFY frame the simulation never reaches");
+                "the standalone predicate must detect the trailing VERIFY frame the simulation never reaches");
         }
     }
 
@@ -240,6 +250,27 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
+    public void Simulate_PrefixRunsAnEip7979Subroutine_ResolvesPayerOnlyWhenEnabled([Values] bool eip7979)
+    {
+        // CALLSUB and RETURNSUB are pure control flow, so the prefix may use them once they are defined.
+        UseSpec(new Bogota { IsEip8141Enabled = true, IsEip7979Enabled = eip7979 });
+        byte[] approve = ApproveCode(FrameFlags.ApproveExecutionAndPayment);
+        byte subroutine = (byte)(3 + approve.Length);
+        byte[] code = [(byte)Instruction.PUSH1, subroutine, (byte)Instruction.CALLSUB, .. approve, (byte)Instruction.CALLDEST, (byte)Instruction.RETURNSUB];
+        DeployContract(Sender, code, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(eip7979));
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(tracer.Payer, Is.EqualTo(eip7979 ? Sender : null));
+        }
+    }
+
+    [Test]
     public void Simulate_PrefixUsesAnUndefinedOpcode_RejectedByTheBadInstructionHalt()
     {
         // 0xF6 is undefined on every fork we ship, so the EVM's own halt fails the prefix and the tracer
@@ -273,6 +304,27 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(result.TransactionExecuted, Is.False);
             Assert.That(result.ErrorDescription, Does.Contain("MAX_VERIFY_GAS"));
             Assert.That(tracer.Payer, Is.Null);
+        }
+    }
+
+    [TestCase(Eip8141Constants.MaxVerifyGas, false, TestName = "Simulate_PrefixAboveTheSharedFloor_RejectedAsOverBudget")]
+    [TestCase(500_000ul, true, TestName = "Simulate_PrefixAboveTheSharedFloor_ResolvesPayerUnderARaisedBudget")]
+    public void Simulate_PrefixAboveTheSharedFloor_IsJudgedAgainstTheTracersBudget(ulong maxVerifyGas, bool resolves)
+    {
+        byte[] countdownFrom15400 = [0x61, 0x3c, 0x28, 0x5b, 0x60, 0x01, 0x90, 0x03, 0x80, 0x60, 0x03, 0x57, 0x50];
+        DeployContract(Sender, [.. countdownFrom15400, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 450_000, UInt256.Zero, default));
+        FrameTxValidationTracer tracer = new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, maxVerifyGas: maxVerifyGas);
+
+        TransactionResult result = Run(tx, tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(resolves));
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(tracer.Payer, Is.EqualTo(resolves ? Sender : null));
+            Assert.That(result.ErrorDescription ?? string.Empty, resolves ? Is.Empty : Does.Contain("MAX_VERIFY_GAS"));
         }
     }
 
@@ -351,16 +403,22 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     // Matched on the reason, so an unrelated rule firing first cannot stand in for the target one.
-    private void AssertPrefixCallTarget(Address target, bool violates)
+    private FrameTxValidationTracer AssertPrefixCallTarget(Address target, bool violates, string reason = "disallowed target", Instruction call = Instruction.STATICCALL)
     {
-        byte[] code = Prepare.EvmCode
-            .StaticCall(target, 50_000)
+        Prepare prepare = call switch
+        {
+            Instruction.STATICCALL => Prepare.EvmCode.StaticCall(target, 50_000),
+            Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(target, 50_000),
+            _ => throw new ArgumentOutOfRangeException(nameof(call), call, null),
+        };
+        byte[] code = prepare
             .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 
-        Assert.That(tracer.ViolationReason, violates ? Does.Contain("disallowed target") : Is.Null);
+        Assert.That(tracer.ViolationReason, violates ? Does.Contain(reason) : Is.Null);
+        return tracer;
     }
 
     // The banned list is the security surface of admission, so it is swept whole: any of these in the
@@ -401,6 +459,492 @@ public class FrameTxValidationPrefixSimulationTests
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 
         Assert.That(tracer.Violated, Is.True);
+    }
+
+    [Test]
+    public void InstructionMask_LeavesOutOnlyOpcodesTheTracerIgnores()
+    {
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance)
+        {
+            IsEip8141Enabled = true,
+            IsEip5920Enabled = true,
+            IsEip8298Enabled = true,
+            IsEip8360Enabled = true,
+        });
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
+            new CodeInfo(new byte[] { (byte)Instruction.STOP }),
+            executingAccount: Sender,
+            caller: Sender,
+            codeSource: Sender,
+            callDepth: 0,
+            value: UInt256.Zero,
+            inputData: ReadOnlyMemory<byte>.Empty);
+        byte[] words = new byte[5 * 32];
+        words.AsSpan().Fill(0xff);
+        IInstructionTracingFilter filter = new FrameTxValidationTracer(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
+        UInt256 mask = filter.InstructionMask;
+
+        List<Instruction> reacted = [];
+        for (int op = 0; op <= byte.MaxValue; op++)
+        {
+            if (!(mask & (UInt256.One << op)).IsZero) continue;
+
+            FrameTxValidationTracer tracer = new(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
+            tracer.StartOperation(0, (Instruction)op, 0, env);
+            tracer.SetOperationStack(new TraceStack(words));
+            if (tracer.Violated) reacted.Add((Instruction)op);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reacted, Is.Empty);
+            Assert.That((mask & (UInt256.One << (int)Instruction.SLOAD)).IsZero, Is.False);
+        }
+    }
+
+    [Test]
+    public void Simulate_PrefixUsesPay_RecordsViolationOnlyWhenEip5920Enabled([Values] bool enabled)
+    {
+        UseSpec(new Bogota { IsEip8141Enabled = true, IsEip5920Enabled = enabled });
+        byte[] deployed = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.PAY)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.ViolationReason, enabled ? Is.EqualTo("banned opcode PAY in validation prefix") : Is.Null);
+    }
+
+    // Banned in every prefix frame, deploy-frame initcode at tx.sender included. With EIP-8298 off, SETCODEFROM is
+    // undefined, so the prefix must fare exactly as with another undefined opcode (0xF6).
+    [Test]
+    public void Simulate_PrefixUsesSetCodeFrom_BannedOnlyUnderEip8298([Values] bool eip8298, [Values] bool inDeployFrame)
+    {
+        UseBogotaWithFrames(eip8298);
+        DeployContract(TestItem.AddressC, ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = SimulateAdoptingPrefix((byte)Instruction.SETCODEFROM, inDeployFrame);
+
+        if (eip8298)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.ViolationReason, Is.EqualTo("banned opcode SETCODEFROM in validation prefix"));
+                Assert.That(tracer.Payer, Is.Null);
+            }
+            return;
+        }
+
+        (TransactionResult undefinedResult, FrameTxValidationTracer undefinedTracer) = SimulateAdoptingPrefix(0xf6, inDeployFrame);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.EqualTo(undefinedTracer.ViolationReason));
+            Assert.That(tracer.Payer, Is.EqualTo(undefinedTracer.Payer));
+            Assert.That(result.TransactionExecuted, Is.EqualTo(undefinedResult.TransactionExecuted));
+            Assert.That(result.ErrorDescription, Is.EqualTo(undefinedResult.ErrorDescription));
+        }
+    }
+
+    // With EIP-8360 off, 0xF6 is undefined, so the prefix must fare exactly as with another undefined opcode (0x0C).
+    [Test]
+    public void Simulate_PrefixUsesTcreate_BannedOnlyUnderEip8360([Values] bool eip8360)
+    {
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip8360Enabled = eip8360 });
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = SimulateOpcodeBeforeApprove((byte)Instruction.TCREATE);
+
+        if (eip8360)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.ViolationReason, Is.EqualTo("banned opcode TCREATE in validation prefix"));
+                Assert.That(tracer.Payer, Is.Null);
+            }
+            return;
+        }
+
+        (TransactionResult undefinedResult, FrameTxValidationTracer undefinedTracer) = SimulateOpcodeBeforeApprove(0x0c);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.EqualTo(undefinedTracer.ViolationReason));
+            Assert.That(tracer.Payer, Is.EqualTo(undefinedTracer.Payer));
+            Assert.That(result.TransactionExecuted, Is.EqualTo(undefinedResult.TransactionExecuted));
+            Assert.That(result.ErrorDescription, Is.EqualTo(undefinedResult.ErrorDescription));
+        }
+    }
+
+    /// <summary>Runs <paramref name="opcode"/> on four zero operands in a self-verify frame that then approves.</summary>
+    private (TransactionResult, FrameTxValidationTracer) SimulateOpcodeBeforeApprove(byte opcode)
+    {
+        byte[] operands = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).Done;
+        DeployContract(Sender, [.. operands, opcode, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        return SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+    }
+
+    /// <summary>Runs <paramref name="opcode"/> on <see cref="TestItem.AddressC"/> in deploy-frame initcode or a self-verify frame.</summary>
+    private (TransactionResult, FrameTxValidationTracer) SimulateAdoptingPrefix(byte opcode, bool inDeployFrame)
+    {
+        byte[] adopt = [.. Prepare.EvmCode.PushData(TestItem.AddressC).Done, opcode, (byte)Instruction.POP];
+        if (!inDeployFrame)
+        {
+            DeployContract(Sender, [.. adopt, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+            return SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+        }
+
+        // A distinct initcode per opcode keeps each run's deployed sender fresh.
+        Address deployed = InstallFactory([.. adopt, (byte)Instruction.STOP]);
+        FundAccount(deployed, 1.Ether);
+        return SimulateAllowingAbort(DeployTx(deployed));
+    }
+
+    private void UseBogotaWithFrames(bool eip8298) =>
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip8298Enabled = eip8298 });
+
+    // Under EIP-8298 a helper holding SETCODEFROM as an instruction is refused, and one that can only reach it by
+    // delegating (DELEGATECALL, CALLCODE) is admitted but recorded as a code dependency. The same bytes as PUSH
+    // data or EIP-8024 immediates cannot run. With it off, as on master.
+    public sealed record MutableCodeTarget(string Name, byte[] Code, bool Refused, bool Tracked)
+    {
+        public override string ToString() => Name;
+    }
+
+    private static readonly MutableCodeTarget[] MutableCodeTargets =
+    [
+        new("plain code", [(byte)Instruction.STOP], false, false),
+        new("SETCODEFROM", [(byte)Instruction.SETCODEFROM, (byte)Instruction.STOP], true, false),
+        new("DELEGATECALL", [(byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false, true),
+        new("CALLCODE", [(byte)Instruction.CALLCODE, (byte)Instruction.STOP], false, true),
+        new("DELEGATECALL and SETCODEFROM", [(byte)Instruction.DELEGATECALL, (byte)Instruction.SETCODEFROM, (byte)Instruction.STOP], true, false),
+        new("PUSH data", [(byte)Instruction.PUSH2, (byte)Instruction.SETCODEFROM, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false, false),
+        new("EIP-8024 immediates", [(byte)Instruction.DUPN, (byte)Instruction.SETCODEFROM, (byte)Instruction.EXCHANGE, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false, false),
+    ];
+
+    [Test]
+    public void Simulate_PrefixCallsTargetWithMutableCode_IsClassifiedByItsCode(
+        [ValueSource(nameof(MutableCodeTargets))] MutableCodeTarget target,
+        [Values] bool eip8298,
+        [Values(Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction call)
+    {
+        UseBogotaWithFrames(eip8298);
+        DeployContract(TestItem.AddressC, target.Code);
+
+        FrameTxValidationTracer tracer = AssertPrefixCallTarget(TestItem.AddressC, target.Refused && eip8298, "has mutable code", call);
+
+        Assert.That(tracer.CodeDependencies, target.Tracked && eip8298
+            ? Is.EqualTo(new[] { new FrameTxCodeDependency(TestItem.AddressC, ValueKeccak.Compute(target.Code)) })
+            : Is.Empty);
+    }
+
+    // A proxy account delegating into an implementation that holds DELEGATECALL is admitted, with the
+    // implementation recorded so the pool revalidates and caps on its code.
+    [Test]
+    public void Simulate_ProxyAccountDelegatingIntoADelegatingImplementation_Admitted()
+    {
+        UseBogotaWithFrames(eip8298: true);
+        byte[] implementation = Prepare.EvmCode.PushData(1).Op(Instruction.POP).STOP().Op(Instruction.DELEGATECALL).Done;
+        DeployContract(TestItem.AddressC, implementation);
+        DeployContract(Sender, [.. Prepare.EvmCode.DelegateCall(TestItem.AddressC, 50_000).Op(Instruction.POP).Done, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+            Assert.That(tracer.CodeDependencies, Is.EqualTo(new[] { new FrameTxCodeDependency(TestItem.AddressC, ValueKeccak.Compute(implementation)) }));
+        }
+    }
+
+    [Test]
+    public void Simulate_DeployFrameTargetWithMutableCode_IsClassifiedByItsCode(
+        [Values] bool eip8298,
+        [Values(Instruction.SETCODEFROM, Instruction.DELEGATECALL)] Instruction held)
+    {
+        UseBogotaWithFrames(eip8298);
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode, epilogue: [(byte)Instruction.STOP, (byte)held]);
+        FundAccount(deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(DeployTx(deployed));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, eip8298 && held == Instruction.SETCODEFROM ? Is.EqualTo($"deploy frame target {Factory} has mutable code") : Is.Null);
+            Assert.That(tracer.CodeDependencies.Select(d => d.Account), eip8298 && held == Instruction.DELEGATECALL ? Is.EqualTo(new[] { Factory }) : Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Simulate_MutableCodeVerdict_IsCachedPerCodeHashOnlyUnderEip8298([Values] bool eip8298)
+    {
+        UseBogotaWithFrames(eip8298);
+        // Unique per run, so neither another test nor an earlier run has cached this code's verdict.
+        byte[] targetCode = Prepare.EvmCode.PushData(Guid.NewGuid().ToByteArray()).Op(Instruction.STOP).Done;
+        DeployContract(TestItem.AddressC, targetCode);
+        (ValueHash256, bool) key = (ValueKeccak.Compute(targetCode), Spec.IsEip8024Enabled);
+
+        AssertPrefixCallTarget(TestItem.AddressC, violates: false, "has mutable code");
+        bool scanned = FrameTxValidationTracer.MutableCodeCache.TryGet(key, out FrameTxValidationTracer.CodeMutability cached);
+        Assert.That(scanned, Is.EqualTo(eip8298), "verdict cached");
+        if (!eip8298) return;
+        Assert.That(cached, Is.EqualTo(FrameTxValidationTracer.CodeMutability.None), "cached verdict");
+
+        // A seeded verdict is used as is, so the code is not scanned again.
+        FrameTxValidationTracer.MutableCodeCache.Set(key, FrameTxValidationTracer.CodeMutability.Direct);
+        AssertPrefixCallTarget(TestItem.AddressC, violates: true, "has mutable code");
+    }
+
+    // EIP-8151: ecRecover returns the signer only while its code is empty or a delegation, so an owner check in the
+    // prefix depends on a third party's code. Under EIP-8298, which lets that code change, a returned signer is recorded
+    // like a delegating helper, tagged when a paymaster's pay frame recovered it. A withheld signer is not: its regular
+    // code can only be replaced by other regular code, so it stays withheld.
+    // With EIP-8151 off recovery reads no account, and with EIP-8298 off no code change can flip the result.
+    public sealed record EcRecoverSigner(string Name, byte[] Code, bool Approves)
+    {
+        public override string ToString() => Name;
+    }
+
+    private static readonly EcRecoverSigner[] EcRecoverSigners =
+    [
+        new("codeless signer", [], true),
+        new("delegated signer", [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressF.Bytes], true),
+        new("signer with code", [(byte)Instruction.STOP], false),
+    ];
+
+    [Test]
+    public void Simulate_PrefixRecoveringAnOwner_RecordsTheSignerAsACodeDependencyUnderEip8151AndEip8298(
+        [ValueSource(nameof(EcRecoverSigners))] EcRecoverSigner signer,
+        [Values] bool eip8151,
+        [Values] bool eip8298,
+        [Values] bool inPayFrame)
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = eip8151, IsEip8298Enabled = eip8298 });
+        if (signer.Code.Length > 0) DeployContract(OwnerKey.Address, signer.Code);
+        Address checker = inPayFrame ? Sponsor : Sender;
+        if (inPayFrame) DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecution), 1.Ether);
+        DeployContract(checker, OwnerCheckCode(OwnerKey, inPayFrame ? FrameFlags.ApprovePayment : FrameFlags.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = inPayFrame
+            ? FrameTx(nonce: 0,
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Sponsor, gasLimit: 200_000, UInt256.Zero, default))
+            : FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.EqualTo(signer.Approves || !eip8151), result.ErrorDescription);
+            Assert.That(tracer.Payer, signer.Approves || !eip8151 ? Is.EqualTo(checker) : Is.Null);
+            Assert.That(tracer.CodeDependencies, eip8151 && eip8298 && signer.Approves
+                ? Is.EqualTo(new[] { new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.Compute(signer.Code), inPayFrame) })
+                : Is.Empty);
+        }
+    }
+
+    public enum EcRecoverCall
+    {
+        Unrecoverable,
+        RecoversTheSender,
+        AfterThePrefix,
+    }
+
+    // A failed recovery reads no account, the sender's code is tracked already, and the frames after the payer is set
+    // are never simulated, so none of these is a dependency.
+    [TestCase(EcRecoverCall.Unrecoverable)]
+    [TestCase(EcRecoverCall.RecoversTheSender)]
+    [TestCase(EcRecoverCall.AfterThePrefix)]
+    public void Simulate_EcRecoverOfNoThirdPartySignerInThePrefix_RecordsNoDependency(EcRecoverCall call)
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        byte[] approve = ApproveCode(FrameFlags.ApproveExecutionAndPayment);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        switch (call)
+        {
+            case EcRecoverCall.Unrecoverable:
+                DeployContract(Sender, [.. EcRecoverCode(Eip8151Tests.CreateUnrecoverableInput()), .. approve], 1.Ether);
+                break;
+            case EcRecoverCall.RecoversTheSender:
+                Assert.That(TestItem.PrivateKeyA.Address, Is.EqualTo(Sender));
+                DeployContract(Sender, [.. EcRecoverCode(Eip8151Tests.CreateInput(TestItem.PrivateKeyA)), .. approve], 1.Ether);
+                break;
+            case EcRecoverCall.AfterThePrefix:
+                DeployContract(TestItem.AddressC, [.. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)), (byte)Instruction.STOP]);
+                DeployContract(Sender, approve, 1.Ether);
+                tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+                    new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default));
+                break;
+        }
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+            Assert.That(tracer.CodeDependencies, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Simulate_EcRecoverInANestedHelper_RecordsTheSignerNotTheHelper()
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        // The helper holds no DELEGATECALL or CALLCODE, so it is no EIP-8298 dependency of its own.
+        DeployContract(TestItem.AddressC, [.. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)), (byte)Instruction.STOP]);
+        DeployContract(Sender, [.. Prepare.EvmCode.StaticCall(TestItem.AddressC, 100_000).Op(Instruction.POP).Done, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+            Assert.That(tracer.CodeDependencies, Is.EqualTo(new[] { new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.OfAnEmptyString) }));
+        }
+    }
+
+    [Test]
+    public void Simulate_EcRecoverOutOfGasInTheSignerCodeCheck_RecordsNothing()
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        // 3000 gas pays for the recovery but not for EIP-8151's cold access to the recovered account, so the precompile
+        // runs out of gas before it reads the account and the VM reports nothing. The prefix ignores the call result.
+        byte[] call = Prepare.EvmCode.DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover, 3_000, Eip8151Tests.CreateInput(OwnerKey)).Op(Instruction.POP).Done;
+        DeployContract(Sender, [.. call, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.CodeDependencies, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Simulate_DelegateCallToEcRecover_RecordsTheRecoveredAccount()
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        byte[] call = Prepare.EvmCode.DynamicCallWithInput(Instruction.DELEGATECALL, PrecompiledAddresses.ECRecover, 50_000, Eip8151Tests.CreateInput(OwnerKey)).Op(Instruction.POP).Done;
+        DeployContract(Sender, [.. call, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.CodeDependencies, Is.EqualTo(new[] { new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.OfAnEmptyString) }));
+        }
+    }
+
+    // One dependency per signer ecRecover returned, however often the prefix recovers it; a withheld signer is none.
+    [Test]
+    public void Simulate_PrefixRecoveringSeveralSigners_RecordsEachReturnedSignerOnce()
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        PrivateKey second = TestItem.PrivateKeys[10];
+        PrivateKey withheld = TestItem.PrivateKeys[11];
+        DeployContract(withheld.Address, [(byte)Instruction.STOP]);
+        DeployContract(Sender,
+        [
+            .. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)),
+            .. EcRecoverCode(Eip8151Tests.CreateInput(second)),
+            .. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)),
+            .. EcRecoverCode(Eip8151Tests.CreateInput(withheld)),
+            .. ApproveCode(FrameFlags.ApproveExecutionAndPayment),
+        ], 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.CodeDependencies, Is.EqualTo(new[]
+            {
+                new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.OfAnEmptyString),
+                new FrameTxCodeDependency(second.Address, ValueKeccak.OfAnEmptyString),
+            }));
+        }
+    }
+
+    // The pool gives a pay-frame dependency a slot per paymaster, so a signer the sender's verify frame relied on first
+    // keeps the per-transaction slot.
+    [Test]
+    public void Simulate_SignerRecoveredInTheVerifyAndThePayFrame_IsRecordedAsAVerifyFrameDependency()
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        PrivateKey paymasterSigner = TestItem.PrivateKeys[10];
+        DeployContract(Sender, OwnerCheckCode(OwnerKey, FrameFlags.ApproveExecution), 1.Ether);
+        DeployContract(Sponsor, [.. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)), .. OwnerCheckCode(paymasterSigner, FrameFlags.ApprovePayment)], 1.Ether);
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Sponsor, gasLimit: 200_000, UInt256.Zero, default));
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.Payer, Is.EqualTo(Sponsor));
+            Assert.That(tracer.CodeDependencies, Is.EqualTo(new[]
+            {
+                new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.OfAnEmptyString),
+                new FrameTxCodeDependency(paymasterSigner.Address, ValueKeccak.OfAnEmptyString, InPaymasterFrame: true),
+            }));
+        }
+    }
+
+    // Signers and delegating helpers count against the same limit, and the first account over it violates the prefix.
+    [Test]
+    public void Simulate_PrefixRelyingOnMoreAccountsThanTheLimit_Violates([Values(3, 2, 0)] int limit)
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        Address[] helpers = [TestItem.AddressC, TestItem.AddressF];
+        Prepare code = Prepare.EvmCode;
+        foreach (Address helper in helpers)
+        {
+            DeployContract(helper, [(byte)Instruction.STOP, (byte)Instruction.DELEGATECALL]);
+            code = code.PushData(helper).Op(Instruction.EXTCODESIZE).Op(Instruction.POP);
+        }
+
+        DeployContract(Sender, [.. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)), .. code.Done, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        Address[] dependencies = [OwnerKey.Address, .. helpers];
+        bool admitted = limit >= dependencies.Length;
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()), maxCodeDependencies: limit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, admitted ? Is.Null : Is.EqualTo($"validation prefix relies on the code of more than {limit} accounts"));
+            Assert.That(tracer.CodeDependencies.Select(d => d.Account), Is.EqualTo(dependencies.Take(limit)));
+        }
+    }
+
+    private static readonly PrivateKey OwnerKey = TestItem.PrivateKeys[9];
+
+    /// <summary>A static call to ecRecover with <paramref name="input"/>, leaving its output in the return buffer.</summary>
+    private static byte[] EcRecoverCode(byte[] input) =>
+        Prepare.EvmCode.DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover, 50_000, input).Op(Instruction.POP).Done;
+
+    /// <summary>Code approving <paramref name="scope"/> only when ecRecover returns <paramref name="owner"/>'s address.</summary>
+    /// <remarks>The output is copied past the input, so a withheld (empty) one compares as zero. An approval the
+    /// context refuses reverts the frame, so a scope of zero is the rejection.</remarks>
+    private static byte[] OwnerCheckCode(PrivateKey owner, FrameFlags scope)
+    {
+        const int outputOffset = 256;
+        byte[] check = Prepare.EvmCode
+            .Op(Instruction.RETURNDATASIZE).PushData(0).PushData(outputOffset).Op(Instruction.RETURNDATACOPY)
+            .PushData(outputOffset).Op(Instruction.MLOAD).PushData(owner.Address).Op(Instruction.EQ)
+            .PushData((byte)scope).Op(Instruction.MUL).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        return [.. EcRecoverCode(Eip8151Tests.CreateInput(owner)), .. check];
     }
 
     [TestCase(true, TestName = "GAS immediately before a call is permitted")]
@@ -456,6 +1000,27 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
+    public void Simulate_TimestampThroughExpiryVerifierHelper_IsRejected()
+    {
+        DeployContract(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode);
+        byte[] code = Prepare.EvmCode
+            .PushData(UInt256.MaxValue).PushData(0).Op(Instruction.MSTORE)
+            .PushData(0).PushData(0).PushData(8).PushData(0)
+            .PushData(Eip8141Constants.ExpiryVerifierAddress).PushData(30_000)
+            .Op(Instruction.STATICCALL).Op(Instruction.POP)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, code, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.True);
+            Assert.That(tracer.ViolationReason, Is.EqualTo("banned opcode TIMESTAMP in validation prefix"));
+        }
+    }
+
+    [Test]
     public void Simulate_TimestampInCanonicalExpiryVerifier_Allowed()
     {
         DeployContract(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode);
@@ -474,6 +1039,92 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(result.TransactionExecuted, Is.True);
             Assert.That(tracer.Payer, Is.EqualTo(Sender));
         }
+    }
+
+    [TestCase(false, false, TestName = "Simulate_RecentRootVerifyFrameOverRecentRootCode_ReadsItsSlotAndEntries")]
+    [TestCase(true, true, TestName = "Simulate_RecentRootVerifyFrameOverOtherCode_RecordsViolation")]
+    public void Simulate_RecentRootVerifyFrame_IsPermittedOnlyOverRecentRootCode(bool otherCode, bool violates)
+    {
+        byte[] code = Eip8272Constants.RecentRootCode.ToArray();
+        DeployContract(Eip8272Constants.RecentRootAddress, otherCode ? [.. code, 0x00] : code);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.RecentRootVerify(100_000, CommitRecentRoot()), SelfVerifyFrame());
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx, RecentRootCurrentSlot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.EqualTo(violates));
+            Assert.That(tracer.Payer, violates ? Is.Null : Is.EqualTo(Sender));
+        }
+    }
+
+    [Test]
+    public void Simulate_SlotnumOutsideTheRecentRootVerifyFrame_RecordsViolation()
+    {
+        DeployContract(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray());
+        byte[] code = Prepare.EvmCode.Op(Instruction.SLOTNUM).Op(Instruction.POP).Done;
+        DeployContract(Sender, [.. code, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.RecentRootVerify(100_000, CommitRecentRoot()), SelfVerifyFrame());
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx, RecentRootCurrentSlot);
+
+        Assert.That(tracer.Violated, Is.True);
+    }
+
+    [TestCase(0, 0, false, TestName = "LoadOperationStorage_TupleDerivedKeyInTheTopLevelRecentRootFrame_IsPermitted")]
+    [TestCase(1, 0, true, TestName = "LoadOperationStorage_KeyNoTupleDerives_RecordsViolation")]
+    [TestCase(0, 1, true, TestName = "LoadOperationStorage_TupleDerivedKeyInANestedCall_RecordsViolation")]
+    public void LoadOperationStorage_RecentRootStorage_IsReadableOnlyThroughItsOwnTupleKeysAtTheTopLevel(int slotOffset, int callDepth, bool violates)
+    {
+        DeployContract(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray());
+        (ValueHash256 sourceId, ulong slot, ValueHash256 root) = CommitRecentRoot();
+        TxFrame frame = FrameTxTestFrames.RecentRootVerify(100_000, (sourceId, slot, root));
+        FrameTxValidationTracer tracer = Tracer(FrameTx(nonce: 0, frame, SelfVerifyFrame()));
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(null!, Eip8272Constants.RecentRootAddress, Sender, null, callDepth, UInt256.Zero, frame.Data);
+
+        ((IFrameTxPrefixTracer)tracer).StartPrefixFrame(frame, isDeployFrame: false, Eip8272Constants.RecentRootAddress);
+        tracer.StartOperation(0, Instruction.SLOAD, 50_000, in env);
+        tracer.LoadOperationStorage(Eip8272Constants.RecentRootAddress, RecentRootStore.ReferenceCell(sourceId, slot + (ulong)slotOffset).Index, default);
+
+        Assert.That(tracer.Violated, Is.EqualTo(violates), tracer.ViolationReason);
+    }
+
+    [Test]
+    public void StartPrefixFrame_RecentRootVerifyFrameBeforeActivation_RecordsViolation()
+    {
+        DeployContract(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray());
+        TxFrame frame = FrameTxTestFrames.RecentRootVerify(100_000, CommitRecentRoot());
+        FrameTxValidationTracer tracer = new(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Eip8141Prototype.Instance);
+
+        ((IFrameTxPrefixTracer)tracer).StartPrefixFrame(frame, isDeployFrame: false, Eip8272Constants.RecentRootAddress);
+
+        Assert.That(tracer.Violated, Is.True);
+    }
+
+    [Test]
+    public void Simulate_RecentRootVerifyFrameOverCodeThatNeverReadsTheSlot_RecordsViolation()
+    {
+        DeployContract(Eip8272Constants.RecentRootAddress, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.RecentRootVerify(100_000, CommitRecentRoot()), SelfVerifyFrame());
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx, RecentRootCurrentSlot);
+
+        Assert.That(tracer.Violated, Is.True);
+    }
+
+    private const ulong RecentRootCurrentSlot = 1_001;
+
+    private (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) CommitRecentRoot()
+    {
+        ValueHash256 sourceId = RecentRootStore.SourceId(TestItem.AddressC, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        ulong slot = RecentRootCurrentSlot - 1;
+        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, slot), RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256());
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        return (sourceId, slot, root);
     }
 
     [Test]
@@ -518,9 +1169,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_DeployFrameInstallsCodeAwayFromTheSender_RecordsViolation()
     {
-        // The carve-out covers code installed at tx.sender only; the sender already carrying code
-        // leaves the created address as the sole thing under test.
-        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
+        FundAccount(Sender, 1.Ether);
         InstallFactory(Prepare.EvmCode.ForInitOf(Prepare.EvmCode.Op(Instruction.STOP).Done).Done);
         Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
 
@@ -565,18 +1214,47 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Simulate_DeployFrameCreatesOverAnExistingAccount_RecordsViolation()
+    public void Simulate_DeployFrameCreatesOverAnExistingAccount_IsRejected()
     {
-        // A create that opens no frame returned zero on a collision the prefix must not turn on —
-        // here a front-run of the very deployment the frame intends.
         byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
         Address deployed = InstallFactory(initCode);
         DeployContract(deployed, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = DeployTx(deployed);
 
-        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx);
+        (TransactionResult result, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx);
 
-        Assert.That(tracer.ViolationReason, Does.Contain("CREATE opened no creation frame"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("deploy frame targets an already-deployed tx.sender"));
+            Assert.That(tracer.Payer, Is.Null);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> UninspectedEpilogues()
+    {
+        yield return new TestCaseData((object)new[] { (byte)Instruction.POP }).SetName("Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation");
+        yield return new TestCaseData((object)Prepare.EvmCode.PushData(1).Op(Instruction.ADD).Op(Instruction.POP).Op(Instruction.JUMPDEST).Op(Instruction.STOP).Done)
+            .SetName("Simulate_DeployFrameWithExhaustedFactoryNonceThenUninspectedOpcodes_RecordsViolation");
+        yield return new TestCaseData((object)Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done)
+            .SetName("Simulate_DeployFrameWithExhaustedFactoryNonceThenRevert_RecordsViolation");
+        yield return new TestCaseData((object)Prepare.EvmCode.PushData(0xff).Op(Instruction.JUMP).Done)
+            .SetName("Simulate_DeployFrameWithExhaustedFactoryNonceThenFault_RecordsViolation");
+    }
+
+    [TestCaseSource(nameof(UninspectedEpilogues))]
+    public void Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation(byte[] epilogue)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode, epilogue: epilogue);
+        FundAccount(deployed, 1.Ether);
+        _stateProvider.IncrementNonce(Factory, ulong.MaxValue - _stateProvider.GetNonce(Factory));
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(DeployTx(deployed));
+
+        Assert.That(tracer.ViolationReason, Is.EqualTo("CREATE opened no creation frame"));
     }
 
     [Test]
@@ -772,11 +1450,8 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Simulate_DeployFrameInstallingNothingOverADeployedSender_ResolvesThePayer()
+    public void Simulate_DeployFrameInstallingNothingOverADeployedSender_IsRejected()
     {
-        // The guard is that tx.sender carries code once the deploy frame is done, so a deploy frame that
-        // creates nothing passes it vacuously when the sender is already deployed. That is intended: the
-        // VERIFY frames behind it run the sender's real code either way.
         DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         DeployContract(Factory, Prepare.EvmCode.Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
@@ -786,8 +1461,9 @@ public class FrameTxValidationPrefixSimulationTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.ViolationReason, Is.Null);
-            Assert.That(result.TransactionExecuted, Is.True);
-            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("deploy frame targets an already-deployed tx.sender"));
+            Assert.That(tracer.Payer, Is.Null);
         }
     }
 
@@ -824,25 +1500,6 @@ public class FrameTxValidationPrefixSimulationTests
             .GetValue(_virtualMachine)!;
 
     [Test]
-    public void Simulate_PrefixDeclaringAnUncommittedRecentRootReference_RejectedBeforeAnyFrameRuns()
-    {
-        // RECENTROOTREFLOAD reads the envelope on the strength of the pre-state check, so a prefix must
-        // not run against references the main path would reject.
-        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.RecentRootReferences = [new RecentRootReference(TestItem.KeccakA, slot: 9, TestItem.KeccakB)];
-
-        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx, slotNumber: 10);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.ErrorDescription, Does.Contain("recent root reference"));
-            Assert.That(tracer.Payer, Is.Null, "the prefix must not have resolved a payer");
-        }
-    }
-
-    [Test]
     public void Simulate_DeployFrameAfterANonExpiryVerifyFrame_NotClaimedAsTheDeployGap()
     {
         // RecognizedPrefixLength reaches index 1 only past an expiry-verify frame, so a deploy frame
@@ -859,12 +1516,12 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     /// <summary>Runs a prefix the tracer may abort mid-execution, returning the tracer either way.</summary>
-    private (TransactionResult, FrameTxValidationTracer) SimulateAllowingAbort(Transaction tx)
+    private (TransactionResult, FrameTxValidationTracer) SimulateAllowingAbort(Transaction tx, ulong? slotNumber = null, int maxCodeDependencies = int.MaxValue)
     {
-        FrameTxValidationTracer tracer = Tracer(tx);
+        FrameTxValidationTracer tracer = Tracer(tx, maxCodeDependencies: maxCodeDependencies);
         try
         {
-            return (Run(tx, tracer), tracer);
+            return (Run(tx, tracer, slotNumber), tracer);
         }
         catch (OperationCanceledException)
         {
@@ -872,19 +1529,17 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [TestCase(0, true, TestName = "a payer covering the EIP-7623 floor resolves")]
-    [TestCase(-1, false, TestName = "a payer one wei short of the EIP-7623 floor does not")]
-    public void Simulate_PricesTheApproveGateOnTheSameBudgetExecutionEscrows(int balanceDelta, bool resolves)
+    [TestCase(0, true, TestName = "a payer covering max_fee resolves")]
+    [TestCase(-1, false, TestName = "a payer one wei short of max_fee does not")]
+    public void Simulate_PricesTheApproveGateAtTheMaxFee(int balanceDelta, bool resolves)
     {
-        // A calldata-heavy prefix prices on the EIP-7623 floor, so the simulated APPROVE gate must use
-        // the budget the main path escrows on.
-        Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero,
-                CalldataOf(30_000)));
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out ulong floorGas, out ulong maxGas), Is.True);
-        Assert.That(maxGas, Is.EqualTo(floorGas), "the fixture must be a shape where the floor binds");
+        // The base fees at inclusion are unknown here, so the simulated APPROVE gate prices max_cost at its bound,
+        // max_fee, as the admission exposure gate does.
+        const ulong maxFee = 1_000_000;
+        Transaction tx = FrameTx(nonce: 0, new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero, default));
+        tx.MaxFee = maxFee;
 
-        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), (UInt256)(maxGas + (ulong)(long)balanceDelta));
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), (UInt256)(maxFee + (ulong)(long)balanceDelta));
 
         (_, FrameTxValidationTracer tracer) = Simulate(tx);
 
@@ -964,13 +1619,6 @@ public class FrameTxValidationPrefixSimulationTests
         return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, raw);
     }
 
-    private static byte[] CalldataOf(int length)
-    {
-        byte[] data = new byte[length];
-        data.AsSpan().Fill(0xff);
-        return data;
-    }
-
     private static TestCaseData ParityCase(string name, byte param, bool approveWhenZero, bool expectedValid) =>
         new TestCaseData(param, approveWhenZero, expectedValid).SetName($"Parity_{name}");
 
@@ -1022,8 +1670,8 @@ public class FrameTxValidationPrefixSimulationTests
         return (Run(tx, tracer, slotNumber, extraOptions), tracer);
     }
 
-    private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default, TimeProvider? time = null) =>
-        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, timeout, time);
+    private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default, TimeProvider? time = null, int maxCodeDependencies = int.MaxValue) =>
+        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, timeout, time, maxCodeDependencies: maxCodeDependencies);
 
     private TransactionResult Run(Transaction tx, FrameTxValidationTracer tracer, ulong? slotNumber = null, ExecutionOptions extraOptions = ExecutionOptions.None)
     {
@@ -1055,9 +1703,9 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     /// <summary>Installs a CREATE2 factory for <paramref name="initCode"/> and returns the address it deploys to.</summary>
-    private Address InstallFactory(byte[] initCode, byte[]? prologue = null)
+    private Address InstallFactory(byte[] initCode, byte[]? prologue = null, byte[]? epilogue = null)
     {
-        DeployContract(Factory, [.. prologue ?? [], .. Prepare.EvmCode.Create2(initCode, Salt, 0).Done]);
+        DeployContract(Factory, [.. prologue ?? [], .. Prepare.EvmCode.Create2(initCode, Salt, 0).Done, .. epilogue ?? []]);
         return ContractAddress.From(Factory, Salt, initCode);
     }
 
@@ -1112,6 +1760,6 @@ public class FrameTxValidationPrefixSimulationTests
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 }

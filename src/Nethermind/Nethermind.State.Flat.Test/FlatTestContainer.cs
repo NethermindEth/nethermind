@@ -3,9 +3,11 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using System.Threading;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -13,10 +15,10 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NSubstitute;
+using Testably.Abstractions;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -32,13 +34,16 @@ namespace Nethermind.State.Flat.Test;
 /// The container builds lazily on first resolve; building runs <see cref="IPersistedSnapshotLoader.Load"/>,
 /// and disposal tears down the loader before the temp dir is removed. Reopen/restart tests build a second
 /// <see cref="FlatTestContainer"/> over the same <see cref="BaseDbPath"/> and the same
-/// <see cref="CatalogDb"/> instance to verify data survives a restart.
+/// <see cref="CatalogDb"/> instance to verify data survives a restart. A test that starts the
+/// <see cref="FlatDbManager"/> itself passes <c>loadPersistedTier: false</c>, so that the manager's
+/// constructor is the only load, as on a node start.
 /// </remarks>
 public sealed class FlatTestContainer : IDisposable
 {
     private readonly ContainerBuilder _builder;
     private readonly CancellationTokenSource _cts = new();
     private readonly TempPath? _ownedTempDir;
+    private readonly bool _loadPersistedTier;
     private IContainer? _container;
 
     public FlatDbConfig Config { get; }
@@ -57,9 +62,13 @@ public sealed class FlatTestContainer : IDisposable
         string? baseDbPath = null,
         IDb? catalogDb = null,
         Action<ContainerBuilder>? configure = null,
-        IStateHeaderProvider? finalizedStateProvider = null)
+        IStateHeaderProvider? finalizedStateProvider = null,
+        bool loadPersistedTier = true)
     {
+        _loadPersistedTier = loadPersistedTier;
         Config = config ?? new FlatDbConfig();
+        // Resolving Auto needs the hardware info and records the layout on disk.
+        if (Config.Layout == FlatLayout.Auto) Config.Layout = FlatLayout.Flat;
         Config.ArenaFileSizeBytes = arenaFileSizeBytes;
         Config.PersistedSnapshotArenaPageCacheBytes = arenaPageCacheBytes;
 
@@ -84,6 +93,7 @@ public sealed class FlatTestContainer : IDisposable
             .AddSingleton<IDbFactory, MemDbFactory>()
             .AddSingleton<IFlatDbConfig>(Config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IFileSystem>(new RealFileSystem())
             .AddSingleton<IMetricsConfig>(new MetricsConfig())
             .AddSingleton<IBlocksConfig>(new BlocksConfig())
             .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = BaseDbPath })
@@ -112,11 +122,15 @@ public sealed class FlatTestContainer : IDisposable
     private IContainer BuildAndLoad()
     {
         IContainer container = _builder.Build();
-        container.Resolve<PersistedSnapshotLoader>().Load();
+        if (_loadPersistedTier) container.Resolve<PersistedSnapshotLoader>().Load();
         return container;
     }
 
     public T Resolve<T>() where T : notnull => Container.Resolve<T>();
+
+    /// <summary>A child scope of the built graph with the registrations of <paramref name="configure"/> on top, to
+    /// resolve a production component over this graph with some of its dependencies replaced. The caller disposes it.</summary>
+    public ILifetimeScope BeginScope(Action<ContainerBuilder> configure) => Container.BeginLifetimeScope(configure);
 
     public SnapshotRepository Repository => Resolve<SnapshotRepository>();
     public IPersistedSnapshotLoader Loader => Resolve<PersistedSnapshotLoader>();

@@ -70,6 +70,11 @@ public enum BlockTreeSuggestOptions
     /// Force not to set as main block
     /// </summary>
     ForceDontSetAsMain = 8,
+
+    /// <summary>
+    /// Prevent block processing from running inline on the suggestion caller.
+    /// </summary>
+    NonBlockingProcessing = 16,
 }
 
 public static class BlockTreeSuggestOptionsExtensions

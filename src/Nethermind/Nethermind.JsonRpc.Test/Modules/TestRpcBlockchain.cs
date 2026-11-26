@@ -35,6 +35,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Container;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Filters;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
@@ -63,9 +64,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IProtocolsManager ProtocolsManager { get; private set; } = null!;
         public IReceiptConfig ReceiptConfig { get; private set; } = new ReceiptConfig();
+        public SyncMode SyncMode { get; private set; } = SyncMode.All;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
-        public IWallet TestWallet { get; } =
+        public IWallet TestWallet { get; private set; } =
             new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
                 LimboLogs.Instance);
 
@@ -118,6 +120,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
+            public Builder<T> WithWallet(IWallet wallet)
+            {
+                _blockchain.TestWallet = wallet;
+                return this;
+            }
+
             public Builder<T> WithGasPriceOracle(IGasPriceOracle gasPriceOracle)
             {
                 _blockchain.GasPriceOracle = gasPriceOracle;
@@ -134,6 +142,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 _blockchain.ReceiptConfig = receiptConfig;
                 _receiptConfigOverride = receiptConfig;
+                return this;
+            }
+
+            public Builder<T> WithSyncMode(SyncMode syncMode)
+            {
+                _blockchain.SyncMode = syncMode;
                 return this;
             }
 
@@ -166,7 +180,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 // Can't set globally as that would cause block production to fail with invalid stateroot
                 // as the reward is being applied.
                 // TODO: Double check if block production have the same reward calculator
-                builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculatorSource, RewardCalculator>());
+                builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculator, RewardCalculator>());
 
                 if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
                 if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
@@ -179,9 +193,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = static @this => new EthRpcModule(
             @this.RpcConfig,
             @this.Bridge,
+            @this.Container.Resolve<FilterStore>(),
+            @this.Container.Resolve<FilterManager>(),
             @this.BlockFinder,
             @this.BlockTree,
-            @this.ReceiptFinder,
+            @this.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
             @this.StateReader,
             @this.TxPool,
             @this.TxSender,
@@ -190,9 +206,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.SpecProvider,
             @this.GasPriceOracle,
             new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
-            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, @this.LogManager),
+            new StaticSelector(@this.SyncMode), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, @this.LogManager),
             @this.FeeHistoryOracle ??
-            new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
+            new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider, @this.RpcConfig),
             @this.ProtocolsManager,
             @this.ForkInfo,
             @this.BlocksConfig.SecondsPerSlot,
@@ -204,7 +220,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
-            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory());
+            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory(),
+            @this.Container.ResolveOptional<HashesOnlyBlockReader>(),
+            @this.ReceiptFinder);
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
@@ -222,9 +240,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ITxSigner txSigner = new WalletTxSigner(TestWallet, SpecProvider.ChainId);
             TxSealer = new TxSealer(txSigner, Timestamper);
-            TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(SpecProvider.ChainId));
+            TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(SpecProvider.ChainId), ChainHeadInfoProvider.SpecProvider);
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
-            FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
+            FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider, RpcConfig);
 
             ProtocolsManager = new ProtocolsManager(
                 Substitute.For<ISyncPeerPool>(),
@@ -247,7 +265,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>
-            RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
+            RpcTest.TestSerializedRequest(EthRpcModule, RpcConfig.Timeout, method, parameters);
 
         private IBlockProcessingQueue? _currentBlockchainProcessor;
 
@@ -264,7 +282,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newProcessor = new(BlockTree, BranchProcessor,
-                SpecProvider, BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>());
+                BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>(), Container.Resolve<BlockProcessingTracker>());
             _currentBlockchainProcessor = newProcessor;
             newProcessor.Start();
         }

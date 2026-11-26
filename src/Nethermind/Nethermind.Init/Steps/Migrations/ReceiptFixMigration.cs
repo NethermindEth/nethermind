@@ -14,8 +14,10 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers;
 using Polly;
@@ -24,9 +26,10 @@ namespace Nethermind.Init.Steps.Migrations
 {
     public class ReceiptFixMigration(
         IBlockTree blockTree,
-        IReceiptStorage receiptStorage,
+        IReceiptMigrationStore receiptStorage,
         ISyncPeerPool syncPeerPool,
         ISyncConfig syncConfig,
+        ISpecProvider specProvider,
         ILogManager logManager) : IDatabaseMigration
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ReceiptFixMigration>();
@@ -51,6 +54,7 @@ namespace Nethermind.Init.Steps.Migrations
                     receiptStorage,
                     logManager,
                     syncPeerPool,
+                    specProvider,
                     blockTree,
                     cancellationToken
                 );
@@ -73,14 +77,15 @@ namespace Nethermind.Init.Steps.Migrations
         private class MissingReceiptsFixVisitor(
             ulong startLevel,
             ulong endLevel,
-            IReceiptStorage receiptStorage,
+            IReceiptMigrationStore receiptStorage,
             ILogManager logManager,
             ISyncPeerPool syncPeerPool,
+            ISpecProvider specProvider,
             IBlockTree blockTree,
             CancellationToken cancellationToken
             ) : ReceiptsVerificationVisitor(startLevel, endLevel, receiptStorage, logManager)
         {
-            private readonly IReceiptStorage _receiptStorage = receiptStorage;
+            private readonly IReceiptMigrationStore _receiptStorage = receiptStorage;
             private readonly TimeSpan _delay = TimeSpan.FromSeconds(5);
 
             public override async Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken ct)
@@ -114,35 +119,54 @@ namespace Nethermind.Init.Steps.Migrations
 
                 FastBlocksAllocationStrategy strategy = new(TransferSpeedType.Receipts, block.Number, true);
                 using SyncPeerAllocation peer = await syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
-                ISyncPeer? currentSyncPeer = peer.Current?.SyncPeer;
-                if (currentSyncPeer is not null)
+                PeerInfo? peerInfo = peer.Current;
+                if (peerInfo is not null)
                 {
                     try
                     {
-                        using IOwnedReadOnlyList<TxReceipt[]?> receipts = await currentSyncPeer.GetReceipts(new List<Hash256> { block.Hash }, cancellationToken);
+                        using IOwnedReadOnlyList<TxReceipt[]?> receipts = await peerInfo.SyncPeer.GetReceipts(new List<Hash256> { block.Hash }, new[] { block.Transactions.Length }, cancellationToken);
                         TxReceipt[]? txReceipts = receipts.FirstOrDefault();
-                        if (txReceipts is not null)
+                        if (txReceipts is null)
+                        {
+                            if (_logger.IsError) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
+                        }
+                        else if (!HasExpectedRoot(block, txReceipts))
+                        {
+                            // Receipts come from an arbitrary peer: without this check a peer could write any receipts and logs for the block.
+                            syncPeerPool.ReportBreachOfProtocol(peerInfo, DisconnectReason.InvalidReceiptRoot, "receipts root mismatch");
+                            if (_logger.IsError) _logger.Error($"Rejected missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)} with a receipts root mismatch.");
+                        }
+                        else
                         {
                             _receiptStorage.Insert(block, txReceipts);
                             if (_logger.IsInfo) _logger.Info($"Downloaded missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
                             return true;
                         }
-                        else
-                        {
-                            if (_logger.IsInfo) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
-                        }
                     }
                     catch (Exception e)
                     {
-                        if (_logger.IsInfo) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.", e);
+                        if (_logger.IsError) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.", e);
                     }
                 }
                 else
                 {
-                    if (_logger.IsInfo) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}. No peer available.");
+                    if (_logger.IsError) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}. No peer available.");
                 }
 
                 return false;
+            }
+
+            private bool HasExpectedRoot(Block block, TxReceipt[] receipts)
+            {
+                if (block.ReceiptsRoot == Keccak.EmptyTreeHash)
+                {
+                    return receipts.Length == 0;
+                }
+
+                IReleaseSpec spec = specProvider.GetSpec(block.Header);
+                // Same rule as the fast-sync receipts feed: EIP-7668 roots ignore blooms, otherwise recompute all-zero blooms from logs.
+                if (!spec.IsEip7668Enabled) ReceiptsSyncFeed.NormalizeZeroBlooms(receipts);
+                return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot) == block.ReceiptsRoot;
             }
         }
     }

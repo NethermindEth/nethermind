@@ -14,7 +14,7 @@ namespace Nethermind.TxPool
     public class NullTxPool : ITxPool
     {
         public bool SupportsBlobs => false;
-        private NullTxPool() { }
+        protected NullTxPool() { }
 
         public static NullTxPool Instance { get; } = new();
 
@@ -46,13 +46,19 @@ namespace Nethermind.TxPool
 
         public void RemovePeer(PublicKey nodeId) { }
 
+        public void RemovePeer(ITxPoolPeer peer) { }
+
         public bool ContainsTx(Hash256 hash, TxType txType) => false;
+
+        public long GetRemovalGeneration(Address sender) => 0;
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
 
         public AcceptTxResult ValidateTxForBlobSampling(Transaction tx) => AcceptTxResult.Invalid;
 
         public void ForgetRejectedBlobTransaction(Hash256 hash) { }
+
+        public bool ForgetInvalidBlobProofs(Hash256 hash) => false;
 
         public bool RemoveTransaction(Hash256? hash) => false;
 
@@ -87,17 +93,8 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs)
-        {
-            blob = null;
-            cellProofs = null;
-            return false;
-        }
-
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs) => 0;
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs) => 0;
 
         public bool TryGetPendingBlobCellMask(in ValueHash256 hash, out BlobCellMask availableMask)
         {
@@ -128,19 +125,11 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) => false;
-
         public BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) => BlobCellMergeResult.TransactionUnavailable;
 
         public ulong GetLatestPendingNonce(Address address) => 0;
 
         public AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
-
-        public event EventHandler<TxEventArgs> NewDiscovered
-        {
-            add { }
-            remove { }
-        }
 
         public event EventHandler<TxEventArgs> NewPending
         {
@@ -159,7 +148,6 @@ namespace Nethermind.TxPool
             add { }
             remove { }
         }
-        public bool AcceptTxWhenNotSynced { get; set; }
         public void ResetTxPoolState() { }
     }
 }

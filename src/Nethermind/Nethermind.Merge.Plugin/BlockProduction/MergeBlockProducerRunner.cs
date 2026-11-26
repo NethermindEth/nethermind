@@ -43,7 +43,7 @@ public class MergeBlockProducerRunner : IBlockProducerRunner
     public async Task StopAsync()
     {
         await _postMergeProducerRunner.StopAsync();
-        if (_poSSwitcher.HasEverReachedTerminalBlock() && HasPreMergeProducerRunner)
+        if (HasPreMergeProducerRunner)
             await _preMergeProducerRunner!.StopAsync();
     }
 

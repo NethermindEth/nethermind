@@ -40,16 +40,16 @@ public static class FrameExceptionFragments
         FrameTxValidation.MissingFrames,
         FrameTxValidation.MissingSender,
         FrameTxValidation.InvalidMode,
-        FrameTxValidation.PostTxNotTrailing,
-        FrameTxValidation.PostTxNotEnabled,
+        FrameTxValidation.AssertFrameNotTrailing,
+        FrameTxValidation.AssertFrameNotEnabled,
         FrameTxValidation.InvalidFlags,
         FrameTxValidation.ValueOutsideSenderMode,
         FrameTxValidation.ExecutionApprovalWrongTarget,
         FrameTxValidation.AtomicBatchOnLastFrame,
         FrameTxValidation.AtomicBatchOnVerifyFrame,
-        FrameTxValidation.AtomicBatchOnPostTxFrame,
+        FrameTxValidation.AtomicBatchOnAssertFrame,
         FrameTxValidation.AtomicBatchFollowedByVerifyFrame,
-        FrameTxValidation.AtomicBatchFollowedByPostTxFrame,
+        FrameTxValidation.AtomicBatchFollowedByAssertFrame,
         FrameTxValidation.ApprovalScopeInAtomicBatch,
         FrameTxValidation.FrameGasOverflow,
         FrameTxValidation.InvalidExpiryFrame,
@@ -60,19 +60,14 @@ public static class FrameExceptionFragments
         // one fragment covers all three places a bad msg length is caught.
         FrameTxValidation.InvalidMsgLength,
         FrameTxValidation.ZeroDigestMsg,
-        FrameTxValidation.BlobFeeWithoutBlobs,
         FrameTxValidation.KeyedNoncesNotEnabled,
         FrameTxValidation.LegacyNonceNotAllowed,
         FrameTxValidation.MalformedNonceKeySet,
-        FrameTxValidation.TooManyRecentRootReferences,
-        FrameTxValidation.RecentRootReferencesNotEnabled,
         // The fixtures file a signer that does not match as a format failure, and a signature that
         // does not verify as a signature failure.
         FrameTxSignatureValidator.InvalidSecp256k1Signer,
         FrameTxSignatureValidator.InvalidP256Signer,
-        // A decoder literal, no constant to reference: the trailing element is present but is not
-        // the recent-root-reference sequence. Thrown before any rule runs, so no rule names it.
-        "frame transaction must not carry a trailing signature",
+        "frame transaction must not carry a trailing element",
     ];
 
     /// <summary>Signature verification — the spec <c>validate_signature</c> step.</summary>
@@ -114,19 +109,31 @@ public static class FrameExceptionFragments
     ];
 
     /// <summary>
-    /// Decode-time rejections of a frame field too wide or too long for its type, which the fixtures
-    /// also name as format failures. Reported before any rule runs, so they name no rule.
+    /// Decode-time rejections of a frame transaction's encoding — a field too wide or too long for its type, a field
+    /// not encoded canonically, or a list whose header does not match its elements — which the fixtures also name as
+    /// format failures. Reported before any rule runs, so they name no rule.
     /// </summary>
     public static readonly string[] Decode =
     [
         "Unexpected length of integer value",
+        // A nonce or nonce_seq wider than 64 bits, as BaseTxDecoder.DecodeNonce reports it. EIP-8250's
+        // seq_beyond_width labels it TYPE_6_INVALID_FRAME_FORMAT only; a plain nonce also matches NONCE_OVERFLOW.
+        "NonceTooWide",
         // Two producers: RlpReader words a bad address prefix, RlpHelpers a field that should be a
         // sequence and is not. The latter is trimmed of the byte range it goes on to name.
         "Unexpected RLP prefix",
         "Expected a sequence prefix",
-        // An overlong declared payload length runs the trailing recent-root-reference list off the end
-        // of the buffer. Frame context, so this does not widen the label to unrelated truncations.
-        "frame transaction recent root reference list is incomplete",
+        "frame transaction payload is incomplete",
+        // A field not encoded canonically: an integer or one-byte string with a leading zero or a header it does
+        // not need, a one-byte field (mode, flags) under a string or list prefix, and a long-form length on a string
+        // shorter than 56 bytes.
+        "Non-canonical integer",
+        "Unexpected byte value",
+        "Expected length greater than or equal to 56",
+        // A list header that does not match the bytes its elements take up, e.g. a frame's limits missing one.
+        "Data checkpoint failed",
+        // A fees list without both max_fee and max_priority_fee_per_gas.
+        "fees must hold two items",
         // Kept in step with FeeOverflow by DecodeCarriesEveryFeeOverflowWording, rather than spread
         // from it: a static initialiser reading a field declared below it silently reads null.
         "Collection count",

@@ -25,7 +25,9 @@ using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -37,6 +39,15 @@ public class FlatStateActivationPolicyTests
 {
     [Test]
     public void FreshFlatDbStarts() => Assert.DoesNotThrow(() => CreatePolicy());
+
+    [Test]
+    public void IncompleteLegacyMigrationIsRejectedEvenWithPopulatedFlatState()
+    {
+        SpyFlatColumnsDb db = CreateFlatDb(flatState: new StateId(1, Keccak.Zero));
+        BasePersistence.WriteMigrationCursor(db.GetColumnDb(FlatDbColumns.Metadata), MigrationCursor.Start);
+        InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() => CreatePolicy(flatDb: db))!;
+        Assert.That(exception.Message, Does.Contain("unfinished HalfPath to FlatDB migration"));
+    }
 
     [Test]
     public void ExistingFlatDbIsPreservedWhenLegacyFilesRemain()
@@ -114,7 +125,7 @@ public class FlatStateActivationPolicyTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(validateFlatState.Dependencies, Does.Contain(typeof(ApplyMemoryHint)));
+            Assert.That(validateFlatState.Dependencies, Does.Contain(typeof(ConfigureMemoryAllocators)));
             Assert.That(initializeBlockTree.Dependencies, Does.Contain(typeof(ValidateFlatState)));
         }
     }
@@ -218,7 +229,8 @@ public class FlatStateActivationPolicyTests
 
         string[] expectedEvents = expectedOutcome switch
         {
-            RepairOutcome.Wiped => [SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent],
+            // The wipe commits its marker, then drops the columns, then resets the state pointer.
+            RepairOutcome.Wiped => [SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent],
             RepairOutcome.Acknowledged => [SpyFlatColumnsDb.AcknowledgeEvent],
             _ => []
         };
@@ -260,10 +272,10 @@ public class FlatStateActivationPolicyTests
 
     [TestCase(true, HistoryRetentionMode.Rolling, FlatDbOnRepair.Resync, true)]
     [TestCase(true, HistoryRetentionMode.SinceBlock, FlatDbOnRepair.Resync, true)]
-    [TestCase(true, HistoryRetentionMode.None, FlatDbOnRepair.Resync, false)]
+    [TestCase(true, HistoryRetentionMode.None, FlatDbOnRepair.Resync, true)]
     [TestCase(false, HistoryRetentionMode.Rolling, FlatDbOnRepair.Resync, false)]
     [TestCase(true, HistoryRetentionMode.Rolling, FlatDbOnRepair.Ignore, false)]
-    public void Wipe_warns_to_wipe_flat_history_only_when_windowed(bool historyEnabled, HistoryRetentionMode retention, FlatDbOnRepair onRepair, bool expectWarn)
+    public void Wipe_warns_to_wipe_flat_history_whenever_history_is_enabled(bool historyEnabled, HistoryRetentionMode retention, FlatDbOnRepair onRepair, bool expectWarn)
     {
         TestLogger testLogger = new();
         IFlatDbConfig flatDbConfig = CreateFlatDbConfig(onRepair);

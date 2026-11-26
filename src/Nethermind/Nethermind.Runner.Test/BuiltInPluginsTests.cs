@@ -17,6 +17,8 @@ public class BuiltInPluginsTests
     {
         List<Type> pluginInAssembly = TypeDiscovery.FindNethermindBasedTypes(typeof(INethermindPlugin)).ToList();
         pluginInAssembly.Remove(typeof(IConsensusPlugin));
+        // TraceStore ships separately in the plugins directory, not as an embedded plugin.
+        pluginInAssembly.Remove(typeof(Nethermind.JsonRpc.TraceStore.TraceStorePlugin));
 
         HashSet<Type> builtInPlugins = NethermindPlugins.EmbeddedPlugins.ToHashSet();
         foreach (Type type in pluginInAssembly)

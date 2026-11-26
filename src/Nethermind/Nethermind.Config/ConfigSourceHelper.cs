@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Int256;
 using System.Text.Json;
@@ -15,6 +16,15 @@ namespace Nethermind.Config
 {
     public static class ConfigSourceHelper
     {
+        /// <summary>Parses the text of a configuration value into <paramref name="valueType"/>.</summary>
+        /// <remarks>
+        /// The text <c>null</c>, in any letter case, is reserved for "no value": a reference or nullable type, an array
+        /// and an item of a reference or nullable type all parse it to <see langword="null"/>. A JSON <c>null</c> and the
+        /// JSON string <c>"null"</c> reach this method as the same text, so a literal string "null" cannot be configured.
+        /// An array is read from a JSON array, where <c>[]</c> is empty, or else from comma-separated text, which keeps
+        /// empty items: empty text is one empty item and a trailing comma adds one.
+        /// </remarks>
+        /// <exception cref="System.Configuration.ConfigurationErrorsException">The text is not a valid <paramref name="valueType"/>.</exception>
         public static object? ParseValue(Type valueType, string valueString, string? category, string name)
         {
             try
@@ -43,8 +53,7 @@ namespace Nethermind.Config
                     }
                     else
                     {
-                        valueString = valueString.Trim().RemoveStart('[').RemoveEnd(']');
-                        string[] valueItems = valueString.Split(',').Select(static s => s.Trim()).ToArray();
+                        string[] valueItems = SplitArrayItems(valueString);
                         IList collection = (valueType.IsGenericType
                             ? (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))!
                             : (IList)Activator.CreateInstance(valueType, valueItems.Length)!)!;
@@ -52,13 +61,7 @@ namespace Nethermind.Config
                         int i = 0;
                         foreach (string valueItem in valueItems)
                         {
-                            string item = valueItem;
-                            if (valueItem.StartsWith('"') && valueItem.EndsWith('"'))
-                            {
-                                item = valueItem[1..^1];
-                            }
-
-                            object? itemValue = GetValue(itemType, item);
+                            object? itemValue = GetValue(itemType, valueItem);
                             if (valueType.IsGenericType)
                             {
                                 collection.Add(itemValue);
@@ -90,6 +93,38 @@ namespace Nethermind.Config
             catch (Exception e)
             {
                 throw new System.Configuration.ConfigurationErrorsException($"Could not load value {category}.{name}. See inner exception for details.", e);
+            }
+        }
+
+        private static string[] SplitArrayItems(string valueString)
+        {
+            valueString = valueString.Trim();
+            if (valueString.StartsWith('[') && TryParseJsonArray(valueString, out string[]? jsonItems))
+            {
+                return jsonItems;
+            }
+
+            return valueString.RemoveStart('[').RemoveEnd(']').Split(',').Select(static s =>
+            {
+                string item = s.Trim();
+                return item.Length >= 2 && item.StartsWith('"') && item.EndsWith('"') ? item[1..^1] : item;
+            }).ToArray();
+        }
+
+        private static bool TryParseJsonArray(string valueString, [NotNullWhen(true)] out string[]? items)
+        {
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(valueString);
+                items = document.RootElement.EnumerateArray()
+                    .Select(static e => e.ValueKind == JsonValueKind.String ? e.GetString()! : e.GetRawText())
+                    .ToArray();
+                return true;
+            }
+            catch (JsonException)
+            {
+                items = null;
+                return false;
             }
         }
 

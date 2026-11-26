@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Threading;
 
@@ -37,7 +38,7 @@ public static class TypeDiscovery
             // Early return if initialized while waiting for lock
             if (Volatile.Read(ref _allLoaded) == 1) return;
 
-            List<Assembly> loadedAssemblies = new(capacity: 48);
+            List<Assembly> loadedAssemblies = [with(capacity: 48)];
             Dictionary<string, Assembly> considered = [];
             foreach (Assembly assembly in AssemblyLoadContext.Default.Assemblies)
             {
@@ -70,7 +71,7 @@ public static class TypeDiscovery
                 }
             }
 
-            LoadOnce(loadedAssemblies, considered);
+            if (RuntimeFeature.IsDynamicCodeSupported) LoadOnce(loadedAssemblies, considered);
 
             foreach (KeyValuePair<string, Assembly> kv in considered.Where(static kv =>
                 kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindBasedTypes(kv.Value, _pluginType).Any())))

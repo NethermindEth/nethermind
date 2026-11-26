@@ -34,6 +34,7 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             .AddSingleton<FlatStateBoundary>()
             .AddSingleton<IStateBoundary, FlatStateActivationPolicy, FlatStateBoundary>((_, boundary) => boundary)
 
+            .Bind<ISnapStateServer, SnapFlatStateServer>()
             .Bind<IFullStateFinder, FlatFullStateFinder>()
             .Bind<ISnapTrieFactory, FlatSnapTrieFactory>()
             .Bind<ITreeSyncStore, FlatTreeSyncStore>()

@@ -24,14 +24,18 @@ public class PriorityFeeTooLowFilter(IChainHeadInfoProvider chainHeadInfoProvide
         {
             Metrics.PendingTransactionsTooLowPriorityFee++;
             if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low priority fee with options {handlingOptions} from {new StackTrace()}");
-            return AcceptTxResult.FeeTooLow.WithMessage($"MaxPriorityFeePerGas for blob transaction needs to be at least {_minBlobsPriorityFee}, is {tx.MaxPriorityFeePerGas}.");
+            return (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0
+                ? AcceptTxResult.FeeTooLow
+                : AcceptTxResult.FeeTooLow.WithMessage($"MaxPriorityFeePerGas for blob transaction needs to be at least {_minBlobsPriorityFee}, is {tx.MaxPriorityFeePerGas}.");
         }
 
-        if (_currentBlobBaseFeeRequired && tx.MaxFeePerBlobGas < chainHeadInfoProvider.CurrentFeePerBlobGas)
+        if (_currentBlobBaseFeeRequired && tx.IsBelowBlobBaseFee(chainHeadInfoProvider.CurrentFeePerBlobGas))
         {
             Metrics.PendingTransactionsTooLowFeePerBlobGas++;
             if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low blob fee per gas with options {handlingOptions} from {new StackTrace()}");
-            return AcceptTxResult.FeeTooLow.WithMessage($"MaxFeePerBlobGas needs to be at least equal to CurrentFeePerBlobGas ({chainHeadInfoProvider.CurrentFeePerBlobGas}), is {tx.MaxFeePerBlobGas}.");
+            return (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0
+                ? AcceptTxResult.FeeTooLow
+                : AcceptTxResult.FeeTooLow.WithMessage($"MaxFeePerBlobGas needs to be at least equal to CurrentFeePerBlobGas ({chainHeadInfoProvider.CurrentFeePerBlobGas}), is {tx.MaxFeePerBlobGas}.");
         }
 
         return AcceptTxResult.Accepted;

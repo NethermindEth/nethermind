@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -9,6 +10,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -44,33 +46,37 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     {
         // Sync write batches are visible in persistence as soon as they are disposed. Verify the root node exists.
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        Assert.That(reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None), Is.Not.Null, "root node should exist after flush");
+        Assert.That(reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None, static (_, _) => { }, 0), Is.True, "root node should exist after flush");
     }
 
-    public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)
+    public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage)
     {
-        UpdateRootHash();
-        if (!skipLogs) logger.Info($"==================== {stage} ====================");
+        (string remoteStr, string localStr) = Dump(remote, logger, stage);
+
+        Assert.That(localStr, Is.EqualTo(remoteStr), $"{stage}\n{remoteStr}\n{localStr}");
+    }
+
+    public void DumpTrees(RemoteDbContext remote, ILogger logger, string stage) => Dump(remote, logger, stage);
+
+    private (string Remote, string Local) Dump(RemoteDbContext remote, ILogger logger, string stage)
+    {
+        logger.Info($"==================== {stage} ====================");
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         StateTree localTree = new(new ReadOnlyTrieStore(reader), logManager);
         localTree.RootHash = remote.StateTree.RootHash;
 
-        if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
+        logger.Info("-------------------- REMOTE --------------------");
         TreeDumper dumper = new();
-        remote.StateTree.Accept(dumper, remote.StateTree.RootHash);
+        remote.StateTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), remote.StateTree.RootHash);
         string remoteStr = dumper.ToString();
-        if (!skipLogs) logger.Info(remoteStr);
-        if (!skipLogs) logger.Info("-------------------- LOCAL --------------------");
+        logger.Info(remoteStr);
+        logger.Info("-------------------- LOCAL --------------------");
         dumper.Reset();
-        localTree.Accept(dumper, localTree.RootHash);
+        localTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), localTree.RootHash);
         string localStr = dumper.ToString();
-        if (!skipLogs) logger.Info(localStr);
-
-        if (stage == "END")
-        {
-            Assert.That(localStr, Is.EqualTo(remoteStr), $"{stage}\n{remoteStr}\n{localStr}");
-        }
+        logger.Info(localStr);
+        return (remoteStr, localStr);
     }
 
     public void DeleteStateRoot()
@@ -86,13 +92,17 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     /// <summary>
     /// Read-only trie store for reading state trie nodes from flat persistence.
     /// </summary>
-    private class ReadOnlyTrieStore(IPersistence.IPersistenceReader reader) : AbstractMinimalTrieStore
+    internal class ReadOnlyTrieStore(IPersistence.IPersistenceReader reader) : AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = null;
+            reader.TryLoadStateRlp(path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            return rlp;
+        }
 
         public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
             address is null ? this : new ReadOnlyStorageTrieStore(reader, address);
@@ -106,8 +116,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStorageRlp(address, path, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = null;
+            reader.TryLoadStorageRlp(address, path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            return rlp;
+        }
     }
 
     /// <summary>
@@ -120,8 +134,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = null;
+            reader.TryLoadStateRlp(path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            return rlp;
+        }
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             new StateCommitter(writeBatch);
@@ -139,8 +157,6 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
             }
 
             public void Dispose() { }
-            public bool TryRequestConcurrentQuota() => false;
-            public void ReturnConcurrencyQuota() { }
         }
     }
 
@@ -155,8 +171,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStorageRlp(address, path, flags);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = null;
+            reader.TryLoadStorageRlp(address, path, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            return rlp;
+        }
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             new StorageCommitter(writeBatch, address);

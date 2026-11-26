@@ -17,13 +17,18 @@ internal sealed class PrewarmingSession(CancellationToken cancellationToken, ILo
     private readonly CancellationTokenSource _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
     private ParallelUnbalancedWork.BackgroundWork? _work;
     private IDisposable? _resources;
+    private Action? _stopWaiting;
     private bool _disposed;
 
     internal CancellationToken Token => _cancellation.Token;
 
-    internal void Start(Action warm, IDisposable resources)
+    /// <param name="warm">The pass.</param>
+    /// <param name="resources">Released once the pass is drained.</param>
+    /// <param name="stopWaiting">Lets the work of the pass that waits for block processing end once it has nothing left.</param>
+    internal void Start(Action warm, IDisposable resources, Action? stopWaiting = null)
     {
         _resources = resources;
+        _stopWaiting = stopWaiting;
         _work = ParallelUnbalancedWork.BackgroundFor(0, 1, CoordinatorOptions, _ => Warm(warm));
     }
 
@@ -44,7 +49,12 @@ internal sealed class PrewarmingSession(CancellationToken cancellationToken, ILo
         }
     }
 
-    internal void WaitForCompletion() => _work?.WaitForCompletion();
+    /// <summary>Waits for the pass to end before block processing: its work that waits for block processing ends once it has nothing left.</summary>
+    internal void WaitForCompletion()
+    {
+        _stopWaiting?.Invoke();
+        _work?.WaitForCompletion();
+    }
 
     public void Dispose()
     {

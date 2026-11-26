@@ -53,7 +53,9 @@ public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasP
     public void TryConsume_leaves_gas_untouched_when_unaffordable()
     {
         TGasPolicy gas = TGasPolicy.FromULong(100);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(TGasPolicy.TryConsume(ref gas, 101), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(100UL));
     }
 
@@ -61,7 +63,9 @@ public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasP
     public void TryConsume_reduces_when_affordable()
     {
         TGasPolicy gas = TGasPolicy.FromULong(100);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(TGasPolicy.TryConsume(ref gas, 40), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(60UL));
     }
 
@@ -102,7 +106,9 @@ public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasP
     {
         const ulong available = 6400;
         TGasPolicy gas = TGasPolicy.FromULong(available);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(TGasPolicy.TryReserveChildGas(ref gas, Cancun.Instance, out ulong childGas), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(childGas, Is.EqualTo(available - available / 64));
         Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.GreaterThanOrEqualTo(available / 64));
     }

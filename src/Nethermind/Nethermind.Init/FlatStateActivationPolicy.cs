@@ -7,6 +7,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -29,8 +30,8 @@ public sealed class FlatStateActivationPolicy
 {
     /// <summary>Message shown when a node still points at one of the removed state schemas.</summary>
     public const string LegacySchemaMessage =
-        "Hash and HalfPath schemas were deprecated in Nethermind 2.1 and are no longer supported. " +
-        "Migrate the database to FlatDB with Nethermind 2.1 and --FlatDb.ImportFromPruningTrieState=true, or start with a fresh FlatDB database. " +
+        "Hash and HalfPath schemas are no longer supported. " +
+        "Complete migration to FlatDB using a Nethermind version that supports --FlatDb.ImportFromPruningTrieState=true before upgrading, or start with a fresh FlatDB database. " +
         "See https://docs.nethermind.io/next/fundamentals/configuration/#flatdbimportfrompruningtriestate.";
 
     private static readonly long LowMemoryLayoutThreshold = 16.GiB;
@@ -123,6 +124,11 @@ public sealed class FlatStateActivationPolicy
             }
         }
 
+        // A populated flat DB may still contain only a prefix of a legacy migration. It cannot serve state alone.
+        if (!wipe && BasePersistence.ReadMigrationCursor(metadata) is not null)
+            throw new InvalidConfigurationException(
+                $"An unfinished HalfPath to FlatDB migration was detected. {LegacySchemaMessage}", -1);
+
         bool existingFlat = flatHasData && !wipe;
         if (existingFlat)
         {
@@ -186,9 +192,10 @@ public sealed class FlatStateActivationPolicy
         db.Flush();
         db.AcknowledgeRepair();
         if (logger.IsInfo) logger.Info("Flat DB wiped; the state sync refills it.");
-        // A windowed history keeps its watermark across this wipe, so the sync's pivot lands inside the captured window
-        // and HistoryWriter.SeedPivot refuses it at FinalizeSync, which cannot be retried in-process.
-        if (flatDbConfig.HistoryEnabled && flatDbConfig.IsHistoryWindowed() && logger.IsWarn)
+        // History keeps its watermark across this wipe. HistoryWriter.SeedPivot refuses the new pivot at FinalizeSync,
+        // which cannot be retried in-process: a windowed history when the pivot lands inside its captured window, an
+        // unwindowed one whenever it already holds history, since its rows resolve through the state the sync replaces.
+        if (flatDbConfig.HistoryEnabled && logger.IsWarn)
             logger.Warn("The flatHistory DB was not wiped. Stop the node and wipe it too, or the state sync cannot finish.");
     }
 

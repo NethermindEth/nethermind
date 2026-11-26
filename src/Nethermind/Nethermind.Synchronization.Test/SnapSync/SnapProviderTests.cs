@@ -9,18 +9,27 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
+using ConcurrentCollections;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -91,7 +100,7 @@ public class SnapProviderTests
 
         StorageRange storage = new()
         {
-            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
+            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, AccountStruct.TotallyEmpty) }.ToPooledList(),
         };
         List<PathWithStorageSlot> slots =
         [
@@ -101,11 +110,13 @@ public class SnapProviderTests
             new(new ValueHash256("0000000000000000000000000000000000000000000000000000000000000001"), []),
         ];
 
+#pragma warning disable NUnit2045 // Keep the state-changing response or range admission separate from dependent state checks.
         Assert.That(snapProvider.AddStorageRangeForAccount(
             storage,
             0,
             slots,
             null), Is.EqualTo(AddRangeResult.InvalidOrder));
+#pragma warning restore NUnit2045
 
         Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.False);
     }
@@ -120,17 +131,19 @@ public class SnapProviderTests
 
         StorageRange storage = new()
         {
-            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
+            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, AccountStruct.TotallyEmpty) }.ToPooledList(),
         };
 
         // Test with empty slots list
         List<PathWithStorageSlot> emptySlots = [];
 
+#pragma warning disable NUnit2045 // Keep the state-changing response or range admission separate from dependent state checks.
         Assert.That(snapProvider.AddStorageRangeForAccount(
             storage,
             0,
             emptySlots,
             null), Is.EqualTo(AddRangeResult.EmptyRange));
+#pragma warning restore NUnit2045
 
         Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.False);
     }
@@ -153,6 +166,90 @@ public class SnapProviderTests
         Assert.That(snapProvider.AddStorageRange(request, response), Is.EqualTo(expected));
     }
 
+    // A peer with no slots past a continuation's origin replies with no slot list and only the proof of the origin -
+    // geth's server and ours both do. That proves the rest of the range empty, so the account's large storage is
+    // complete; failing it would request the very same range again for ever.
+    [Test]
+    public void AddStorageRange_ProofOfAbsencePastTheOrigin_CompletesTheLargeStorage()
+    {
+        (PathWithAccount account, PathWithStorageSlot[] slots, StateTree stateTree) = BuildAccountWithStorage(100);
+        ValueHash256 origin = slots[^1].Path.IncrementPath();
+
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+        DrainAccountRangePartition(progressTracker);
+
+        Assert.That(AnswerStorageContinuationWithProofOnly(snapProvider, progressTracker, account, origin, ProveStorage(stateTree, account.Path, origin)),
+            Is.EqualTo(AddRangeResult.OK));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero, "the account's large storage is complete");
+            Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True, "nothing is queued again for the account");
+        }
+    }
+
+    // A proof that does not prove the rest of the range empty must fail the range, and the account must be re-proven
+    // from its origin rather than have its storage restarted from 0.
+    [TestCase(false, TestName = "{m} (junk proof)")]
+    [TestCase(true, TestName = "{m} (real proof, slots past the origin withheld)")]
+    public void AddStorageRange_ProofWithoutSlotLists_IsScoredAsAFailedRangeAndKeepsTheOrigin(bool realProof)
+    {
+        const int slotCount = 100;
+        (PathWithAccount account, PathWithStorageSlot[] slots, StateTree stateTree) = BuildAccountWithStorage(slotCount);
+        ValueHash256 origin = slots[slotCount / 2].Path;
+        byte[][] proof = realProof ? ProveStorage(stateTree, account.Path, origin) : [[0x0]];
+
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+        DrainAccountRangePartition(progressTracker);
+
+        Assert.That(AnswerStorageContinuationWithProofOnly(snapProvider, progressTracker, account, origin, proof), Is.Not.EqualTo(AddRangeResult.OK));
+
+        progressTracker.IsFinished(out SnapSyncBatch? refresh);
+        using (refresh)
+        {
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
+            Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null);
+#pragma warning restore NUnit2045
+            Assert.That(refresh.AccountsToRefreshRequest!.Paths[0].StorageStartingHash, Is.EqualTo(origin), "the account is re-proven from its origin, not restarted");
+        }
+    }
+
+    // DequeStorageToRetrieveRequest builds a batch from whatever it dequeues, so a batch can carry no account. A
+    // proof-only reply to it is not a proof of absence for any account and must not be read as one for account 0.
+    [Test]
+    public void AddStorageRange_ProofOnlyReplyToABatchWithoutAccounts_IsOutOfBounds()
+    {
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+        DrainAccountRangePartition(progressTracker);
+
+        using StorageRange request = CreateStorageRange(0);
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(0),
+            Proofs = new ByteArrayListAdapter(new List<byte[]> { new byte[] { 0x0 } }.ToPooledList()),
+        };
+
+#pragma warning disable NUnit2045 // Keep the state-changing response or range admission separate from dependent state checks.
+        Assert.That(snapProvider.AddStorageRange(request, response), Is.EqualTo(AddRangeResult.OutOfBounds));
+#pragma warning restore NUnit2045
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True, "an empty batch queues nothing again");
+    }
+
     [Test]
     public void AddStorageRange_ResponseHasMoreSlotListsThanRequestedAccounts_KeepsRangePhaseCompletable()
     {
@@ -166,7 +263,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Account.TotallyEmpty);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], AccountStruct.TotallyEmpty);
         progressTracker.EnqueueAccountStorage(account);
 
         DrainAccountRangePartition(progressTracker);
@@ -197,8 +294,8 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount covered = new(TestItem.ValueKeccaks[0], Account.TotallyEmpty);
-        PathWithAccount uncovered = new(TestItem.ValueKeccaks[1], Account.TotallyEmpty);
+        PathWithAccount covered = new(TestItem.ValueKeccaks[0], AccountStruct.TotallyEmpty);
+        PathWithAccount uncovered = new(TestItem.ValueKeccaks[1], AccountStruct.TotallyEmpty);
         progressTracker.EnqueueAccountStorage(covered);
         progressTracker.EnqueueAccountStorage(uncovered);
         DrainAccountRangePartition(progressTracker);
@@ -249,7 +346,7 @@ public class SnapProviderTests
         PathWithAccount[] accounts = new PathWithAccount[accountCount];
         for (int i = 0; i < accountCount; i++)
         {
-            accounts[i] = new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+            accounts[i] = new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
             progressTracker.EnqueueAccountStorage(accounts[i]);
         }
 
@@ -260,7 +357,9 @@ public class SnapProviderTests
             progressTracker.IsFinished(out SnapSyncBatch? batch);
             using (batch)
             {
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
                 Assert.That(batch!.StorageRangeRequest, Is.Not.Null, $"attempt {attempt}: below the streak limit the range is simply offered again");
+#pragma warning restore NUnit2045
                 Assert.That(batch.StorageRangeRequest!.Accounts.Count, Is.EqualTo(accountCount));
 
                 batch.StorageRangeResponse = CreateEmptySlotsResponse(0);
@@ -274,8 +373,10 @@ public class SnapProviderTests
             progressTracker.IsFinished(out SnapSyncBatch? next);
             using (next)
             {
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
                 Assert.That(next!.AccountsToRefreshRequest, Is.Not.Null,
                     "after the streak the account must be re-proven at the current pivot, not requested as a storage range again");
+#pragma warning restore NUnit2045
                 Assert.That(accounts.Select(static a => a.Path), Does.Contain(next.AccountsToRefreshRequest!.Paths[0].PathAndAccount!.Path));
                 progressTracker.ReportAccountRefreshFinished();
             }
@@ -297,7 +398,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
         progressTracker.EnqueueAccountStorage(account);
         DrainAccountRangePartition(progressTracker);
 
@@ -344,7 +445,7 @@ public class SnapProviderTests
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
 
         for (int attempt = 0; attempt < SnapProvider.MaxConsecutiveEmptyStorageResponses; attempt++)
         {
@@ -365,11 +466,14 @@ public class SnapProviderTests
             .Where(static line => line.Contains("came back empty"))
             .ToArray();
 
-        Assert.That(promotions, Has.Length.EqualTo(1), "the streak must promote the account exactly once");
-        Assert.That(logManager.Warns.Any(static line => line.Contains("came back empty")), Is.EqualTo(isContinuation),
-            isContinuation
-                ? "a stalled continuation is unreachable by any other request and is worth an operator warning"
-                : "a one-account batch is an ordinary account and must not warn");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(promotions, Has.Length.EqualTo(1), "the streak must promote the account exactly once");
+            Assert.That(logManager.Warns.Any(static line => line.Contains("came back empty")), Is.EqualTo(isContinuation),
+                isContinuation
+                    ? "a stalled continuation is unreachable by any other request and is worth an operator warning"
+                    : "a one-account batch is an ordinary account and must not warn");
+        }
     }
 
     private sealed class LaneRecordingLogManager : ILogManager, InterfaceLogger
@@ -454,7 +558,7 @@ public class SnapProviderTests
 
         for (int i = 0; i < accountCount; i++)
         {
-            progressTracker.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject));
+            progressTracker.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct()));
         }
 
         DrainAccountRangePartition(progressTracker);
@@ -464,7 +568,9 @@ public class SnapProviderTests
             progressTracker.IsFinished(out SnapSyncBatch? batch);
             using (batch)
             {
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
                 Assert.That(batch!.StorageRangeRequest, Is.Not.Null, $"attempt {attempt}: the whole batch is offered again");
+#pragma warning restore NUnit2045
                 Assert.That(batch.StorageRangeRequest!.Accounts.Count, Is.EqualTo(accountCount));
 
                 batch.StorageRangeResponse = CreateEmptySlotsResponse(0);
@@ -533,13 +639,15 @@ public class SnapProviderTests
         DrainAccountRangePartition(progressTracker);
 
         // Discovered at an older pivot with storage; the storage has since been emptied.
-        PathWithAccount stale = new(TestItem.KeccakA, Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount stale = new(TestItem.KeccakA, Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
         progressTracker.EnqueueAccountRefresh(stale, ValueKeccak.Zero, Keccak.MaxValue);
 
         progressTracker.IsFinished(out SnapSyncBatch? refresh);
         using (refresh)
         {
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
             Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(refresh.AccountsToRefreshRequest!.RootHash, Is.EqualTo(root));
 
             (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
@@ -550,9 +658,12 @@ public class SnapProviderTests
             snapProvider.ReleaseRequest(refresh, responseHandled: true);
         }
 
-        Assert.That(stale.Account!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash), "the proven (empty) storage root is adopted");
-        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? next), Is.True, "an account without storage leaves nothing to fetch");
-        Assert.That(next, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash), "the proven (empty) storage root is adopted");
+            Assert.That(progressTracker.IsFinished(out SnapSyncBatch? next), Is.True, "an account without storage leaves nothing to fetch");
+            Assert.That(next, Is.Null);
+        }
     }
 
     /// <summary>
@@ -584,7 +695,7 @@ public class SnapProviderTests
         // A path immediately before an existing account: absent from the state, and its neighbour is what proves
         // the absence. A gap with no successor would come back as an empty range, i.e. Expired rather than NotFound.
         ValueHash256 missing = ((ValueHash256)TestItem.KeccakB).DecrementPath();
-        PathWithAccount gone = new(missing, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject);
+        PathWithAccount gone = new(missing, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject.ToStruct());
 
         RegisterLargeStorage(progressTracker, gone, partitionCount);
 
@@ -602,8 +713,11 @@ public class SnapProviderTests
             snapProvider.ReleaseRequest(refresh, responseHandled: true);
         }
 
-        Assert.That(gone.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakG), "an absent account adopts nothing; guards that this was NotFound and not Verified");
-        Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero, "a deleted account must not keep counting as large storage left");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gone.Account.StorageRoot, Is.EqualTo(TestItem.KeccakG), "an absent account adopts nothing; guards that this was NotFound and not Verified");
+            Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero, "a deleted account must not keep counting as large storage left");
+        }
     }
 
     /// <summary>
@@ -633,7 +747,7 @@ public class SnapProviderTests
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
         DrainAccountRangePartition(progressTracker);
 
-        PathWithAccount account = new(TestItem.KeccakA, withStorage);
+        PathWithAccount account = new(TestItem.KeccakA, withStorage.ToStruct());
 
         RegisterLargeStorage(progressTracker, account, partitionCount);
 
@@ -652,9 +766,12 @@ public class SnapProviderTests
             snapProvider.ReleaseRequest(refresh, responseHandled: true);
         }
 
-        Assert.That(account.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakF), "guards that this was Verified with storage, not NotFound or emptied");
-        Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero,
-            "an account restarted at origin 0 must not keep its stale large-storage entry");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.Account.StorageRoot, Is.EqualTo(TestItem.KeccakF), "guards that this was Verified with storage, not NotFound or emptied");
+            Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero,
+                "an account restarted at origin 0 must not keep its stale large-storage entry");
+        }
 
         progressTracker.IsFinished(out SnapSyncBatch? requeued);
         using (requeued)
@@ -676,7 +793,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
         progressTracker.EnqueueAccountStorage(account);
         DrainAccountRangePartition(progressTracker);
 
@@ -719,7 +836,7 @@ public class SnapProviderTests
         switch (requestKind)
         {
             case nameof(SnapSyncBatch.StorageRangeRequest):
-                progressTracker.EnqueueAccountStorage(new(work, Account.TotallyEmpty));
+                progressTracker.EnqueueAccountStorage(new(work, AccountStruct.TotallyEmpty));
                 DrainAccountRangePartition(progressTracker);
                 break;
             case nameof(SnapSyncBatch.CodesRequest):
@@ -767,7 +884,7 @@ public class SnapProviderTests
         {
             batch.AccountRangeResponse = new AccountsAndProofs
             {
-                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.ValueKeccaks[0], Account.TotallyEmpty) },
+                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.ValueKeccaks[0], AccountStruct.TotallyEmpty) },
                 Proofs = EmptyByteArrayList.Instance
             };
         }
@@ -791,34 +908,7 @@ public class SnapProviderTests
     [Test]
     public void AddStorageRange_ShouldPersistEntries()
     {
-        const int slotCount = 6;
-        TestMemDb stateDb = new();
-        TestRawTrieStore store = new(stateDb);
-
-        // Build storage tree with RLP-encoded 32-byte values
-        Hash256 accountHash = TestItem.Tree.AccountAddress0;
-        StorageTree storageTree = new(store.GetTrieStore(accountHash), LimboLogs.Instance);
-        PathWithStorageSlot[] slots = new PathWithStorageSlot[slotCount];
-        for (int i = 0; i < slotCount; i++)
-        {
-            ValueHash256 slotKey = Keccak.Compute(i.ToBigEndianByteArray());
-            byte[] value = (i + 1).ToBigEndianByteArray();
-            byte[] rlpValue = Rlp.Encode(value).Bytes;
-            storageTree.Set(slotKey, rlpValue, false);
-            slots[i] = new PathWithStorageSlot(slotKey, rlpValue);
-        }
-        storageTree.Commit();
-        Array.Sort(slots, (a, b) => a.Path.CompareTo(b.Path));
-
-        StateTree stateTree = new(store.GetTrieStore(null), LimboLogs.Instance);
-        stateTree.Set(accountHash, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
-        stateTree.Commit();
-
-        // Collect proofs
-        AccountProofCollector proofCollector = new(accountHash.Bytes,
-            new ValueHash256[] { Keccak.Zero, slots[^1].Path });
-        stateTree.Accept(proofCollector, stateTree.RootHash);
-        AccountProof proof = proofCollector.BuildResult();
+        (PathWithAccount account, PathWithStorageSlot[] slots, StateTree stateTree) = BuildAccountWithStorage(6);
 
         using IContainer container = CreateContainer();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -826,15 +916,71 @@ public class SnapProviderTests
         StorageRange storageRange = new()
         {
             StartingHash = Keccak.Zero,
-            Accounts = new ArrayPoolList<PathWithAccount>(1)
-            {
-                new(accountHash, new Account(0, 1).WithChangedStorageRoot(storageTree.RootHash))
-            },
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
         };
 
         Assert.That(snapProvider.AddStorageRangeForAccount(
             storageRange, 0, slots,
-            new ByteArrayListAdapter(proof.StorageProofs[0].Proof.Concat(proof.StorageProofs[1].Proof).ToArray().ToPooledList())), Is.EqualTo(AddRangeResult.OK));
+            new ByteArrayListAdapter(ProveStorage(stateTree, account.Path, Keccak.Zero, slots[^1].Path).ToPooledList())), Is.EqualTo(AddRangeResult.OK));
+    }
+
+    // A, B, A again and M are requested; U never is, and no response serves M. Each letter of a response is one item.
+    // Only requested, distinct codes are stored and counted, and every requested hash left unserved is queued again.
+    [TestCase("", "", TestName = "{m} (empty)")]
+    [TestCase("UU", "", TestName = "{m} (padding only)")]
+    [TestCase("UAA", "A", TestName = "{m} (partial, padded, duplicate)")]
+    [TestCase("UBABA", "AB", TestName = "{m} (two distinct codes)")]
+    [NonParallelizable]
+    public void AddCodes_ShouldPersistOnlyRequestedCodes(string response, string expectedStored)
+    {
+        const long codesBaseline = 17, bytesBaseline = 29;
+        Dictionary<char, byte[]> code = new()
+        {
+            ['A'] = [0x60, 0x01, 0x60, 0x02],
+            ['B'] = [0x60, 0x03, 0x60, 0x04, 0x01, 0x00, 0x00],
+            ['M'] = [0x60, 0x05, 0x00],
+            ['U'] = [0x60, 0x06],
+        };
+        ValueHash256 Hash(char c) => ValueKeccak.Compute(code[c]);
+
+        long savedCodes = Metrics.SnapSyncedCodes, savedBytes = Metrics.SnapStateSynced;
+        Metrics.SnapSyncedCodes = codesBaseline;
+        Metrics.SnapStateSynced = bytesBaseline;
+        try
+        {
+            using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+                .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+                .Build();
+            SnapProvider snapProvider = container.Resolve<SnapProvider>();
+            ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+            IDb codeDb = container.ResolveNamed<IDb>(DbNames.Code);
+            DrainAccountRangePartition(progressTracker);
+
+            ArrayPoolList<byte[]> items = [with(response.Length)];
+            using IByteArrayList codes = new ByteArrayListAdapter(items);
+            foreach (char c in response) items.Add(code[c]);
+
+            snapProvider.AddCodes([Hash('A'), Hash('B'), Hash('A'), Hash('M')], codes);
+
+            progressTracker.IsFinished(out SnapSyncBatch? retry);
+            using (retry)
+            using (Assert.EnterMultipleScope())
+            {
+                foreach (char c in "ABMU")
+                {
+                    Assert.That(codeDb.Get(Hash(c).Bytes), expectedStored.Contains(c) ? Is.EqualTo(code[c]) : Is.Null, $"code {c} in the DB");
+                }
+
+                Assert.That(Metrics.SnapSyncedCodes - codesBaseline, Is.EqualTo(expectedStored.Length), "SnapSyncedCodes delta");
+                Assert.That(Metrics.SnapStateSynced - bytesBaseline, Is.EqualTo(expectedStored.Sum(c => code[c].Length)), "SnapStateSynced delta");
+                Assert.That(retry?.CodesRequest?.ToArray() ?? [], Is.EquivalentTo("ABM".Where(c => !expectedStored.Contains(c)).Select(Hash)), "codes queued again");
+            }
+        }
+        finally
+        {
+            Metrics.SnapSyncedCodes = savedCodes;
+            Metrics.SnapStateSynced = savedBytes;
+        }
     }
 
     [Test]
@@ -876,8 +1022,11 @@ public class SnapProviderTests
         snapProvider.ReleaseRequest(batch!, responseHandled: true);
         Assert.That(progressTracker.IsFinished(out batch), Is.EqualTo(false));
         ValueHash256 startingHash = batch!.AccountRangeRequest!.StartingHash;
-        Assert.That(startingHash.CompareTo(entries[3].Item1), Is.GreaterThan(0));
-        Assert.That(startingHash.CompareTo(entries[4].Item1), Is.LessThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(startingHash.CompareTo(entries[3].Item1), Is.GreaterThan(0));
+            Assert.That(startingHash.CompareTo(entries[4].Item1), Is.LessThan(0));
+        }
     }
 
     [Test]
@@ -918,7 +1067,9 @@ public class SnapProviderTests
         accountsAndProofs.PathAndAccounts = accounts;
         accountsAndProofs.Proofs = proofs;
 
+#pragma warning disable NUnit2045 // Keep the state-changing response or range admission separate from dependent state checks.
         Assert.That(snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs), Is.EqualTo(AddRangeResult.OK));
+#pragma warning restore NUnit2045
 
         Assert.That(container.Resolve<ISnapTestHelper>().CountTrieNodes(), Is.EqualTo(3)); // 3 child. Root branch node not saved due to state sync compatibility
     }
@@ -941,7 +1092,7 @@ public class SnapProviderTests
         }
 
         ValueHash256[] paths = asReq.Paths.Select((bt) => new ValueHash256(Bytes.FromHexString(bt))).ToArray();
-        List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
+        List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc.ToStruct())).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
         using IContainer container = CreateContainer();
@@ -965,6 +1116,1033 @@ public class SnapProviderTests
         List<string> Accounts
     );
 
+    public enum Interruption { Crash, CrashWithRequestInFlight, Shutdown }
+
+    /// <summary>
+    /// A restart keeps what the last checkpoint covers and downloads the rest again, now at a newer root. After a crash,
+    /// what the interrupted run wrote after that checkpoint is still on disk, as when the crash flushed it, including
+    /// what a request in flight at the checkpoint wrote once answered. A shutdown saves a checkpoint of everything
+    /// written, counting the request it dropped in flight as still to do. Resuming has to leave exactly what a run that
+    /// was never interrupted leaves when its pivot moves at that checkpoint, which is the state healing knows how to
+    /// finish. The accounts past the checkpoint, and the storage requested in flight, change between the roots, so
+    /// anything left over from the older root shows up as a difference, and the double-write check fails on any key
+    /// written twice.
+    /// </summary>
+    [Test]
+    public async Task Flat_snap_sync_resumed_from_a_checkpoint_matches_a_run_whose_pivot_moved_there([Values] Interruption interruption)
+    {
+        const int checkpointedRequests = 6;
+
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        SnapStateServer server = new(sourceStore.AsReadOnly(), LimboLogs.Instance);
+        SortedDictionary<ValueHash256, Account> accounts = [];
+        Dictionary<ValueHash256, StorageTree> storages = [];
+        for (int i = 0; i < 40; i++)
+        {
+            ValueHash256 path = Keccak.Compute(i.ToBigEndianByteArray());
+            accounts[path] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
+            if (i % 3 != 0) continue;
+
+            StorageTree storage = new(sourceStore.GetTrieStore(path.ToCommitment()), LimboLogs.Instance);
+            for (int slot = 0; slot < 4; slot++) storage.Set(SlotKey(slot), [(byte)(slot + 1)]);
+            storages[path] = storage;
+        }
+
+        Hash256 firstRoot = CommitSource(0);
+        TestSyncConfig syncConfig = new() { SnapResume = true, EnableSnapDoubleWriteCheck = true, SnapSyncAccountRangePartitionCount = 1 };
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> resumedDb = new();
+        FlatSnapTrieFactory resumedFactory = CreateFlatSnapTrieFactory(resumedDb, syncConfig);
+        IStateSyncPivot resumedPivot = CreatePivot(1, firstRoot);
+        byte[]? lastDurableCheckpoint;
+        int movePivotAt = checkpointedRequests;
+        ValueHash256? requestedInFlight = null;
+        if (interruption == Interruption.Shutdown)
+        {
+            await RunSnapSync(resumedFactory, syncConfig, resumedPivot, server, shutDownAtRequest: checkpointedRequests);
+            lastDurableCheckpoint = BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata));
+        }
+        else
+        {
+            // The crashed run went on to the end, but a checkpoint after a few requests is the last to reach the disk.
+            List<byte[]?> checkpointsBeforeRequest = [];
+            HeldRequests? held = await RunSnapSync(resumedFactory, syncConfig, resumedPivot, server,
+                beforeRequest: _ => checkpointsBeforeRequest.Add(BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata))),
+                holdInFlightFrom: interruption == Interruption.CrashWithRequestInFlight ? checkpointedRequests : null);
+
+            // The checkpoint saved with request n is read before request n + 1. The one saved with the request after the
+            // last one held was taken with them all in flight, so it covers only the requests before the first.
+            int lastCovered = checkpointedRequests;
+            if (interruption == Interruption.CrashWithRequestInFlight)
+            {
+                Assert.That(held, Is.Not.Null, "a storage request has to be held in flight");
+                movePivotAt = held!.First;
+                lastCovered = held.Last + 1;
+                requestedInFlight = held.StorageAccount;
+            }
+
+            lastDurableCheckpoint = checkpointsBeforeRequest[lastCovered + 1];
+            BasePersistence.WriteSnapCheckpoint(resumedDb, lastDurableCheckpoint);
+        }
+
+        ValueHash256 resumeFrom = SnapCheckpoint.Decode(lastDurableCheckpoint).Partitions[0].NextAccountPath;
+        ValueHash256[] afterCheckpoint = accounts.Keys.Where(path => path >= resumeFrom).ToArray();
+        Assert.That(afterCheckpoint, Has.Length.GreaterThan(4), "the checkpoint has to leave accounts to download again");
+
+        ValueHash256 deleted = afterCheckpoint.First(path => !storages.ContainsKey(path));
+        ValueHash256 withChangedStorage = afterCheckpoint.First(storages.ContainsKey);
+        ValueHash256 withChangedBalance = afterCheckpoint.Last(path => path != deleted);
+        accounts.Remove(deleted);
+        sourceTree.Set(deleted, null);
+        accounts[withChangedBalance] = accounts[withChangedBalance].WithChangedBalance(1000);
+        storages[withChangedStorage].Set(SlotKey(0), [0], rlpEncode: false);
+        storages[withChangedStorage].Set(SlotKey(1), [0x42]);
+        if (requestedInFlight is { } inFlight) storages[inFlight].Set(SlotKey(2), [0x43]);
+        Hash256 secondRoot = CommitSource(1);
+
+        MovePivot(resumedPivot, 2, secondRoot);
+        await RunSnapSync(resumedFactory, syncConfig, resumedPivot, server);
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> uninterruptedDb = new();
+        IStateSyncPivot uninterruptedPivot = CreatePivot(1, firstRoot);
+        await RunSnapSync(CreateFlatSnapTrieFactory(uninterruptedDb, syncConfig), syncConfig, uninterruptedPivot, server, beforeRequest: request =>
+        {
+            if (request == movePivotAt) MovePivot(uninterruptedPivot, 2, secondRoot);
+        });
+
+        using IPersistence.IPersistenceReader reader = new RocksDbPersistence(resumedDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateReader();
+        SnapCheckpoint? finished = BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata)) is { } record ? SnapCheckpoint.Decode(record) : null;
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+            {
+                Assert.That(ReadColumn(resumedDb, column), Is.EqualTo(ReadColumn(uninterruptedDb, column)), $"{column} column");
+            }
+
+            Assert.That(resumedPivot.UpdatedStorages, Is.EquivalentTo(uninterruptedPivot.UpdatedStorages), "accounts to heal");
+            Assert.That(finished?.Partitions.Select(static p => p.MoreAccountsToRight), Is.EqualTo(new[] { false }), "a finished state ranges phase leaves a checkpoint of finished ranges");
+            Assert.That(finished?.StorageRangesToRefetch(), Is.Empty, "with no storage left to download");
+
+            Assert.That(reader.GetAccountRaw(deleted), Is.Null, "the account deleted since the checkpoint");
+            RlpReader changed = new(reader.GetAccountRaw(withChangedBalance));
+            Assert.That(AccountDecoder.Slim.Decode(ref changed)!.Balance, Is.EqualTo(accounts[withChangedBalance].Balance), "the balance changed since the checkpoint");
+            UInt256 value = default;
+            Assert.That(reader.TryGetStorageRaw(withChangedStorage, SlotKey(0), ref value), Is.False, "the slot cleared since the checkpoint");
+        }
+
+        Hash256 CommitSource(ulong blockNumber)
+        {
+            using IBlockCommitter _ = sourceStore.BeginBlockCommit(blockNumber);
+            foreach ((ValueHash256 path, StorageTree storage) in storages)
+            {
+                storage.Commit();
+                if (accounts.TryGetValue(path, out Account? account)) accounts[path] = account.WithChangedStorageRoot(storage.RootHash);
+            }
+
+            foreach ((ValueHash256 path, Account account) in accounts) sourceTree.Set(path, account);
+            sourceTree.Commit();
+            return sourceTree.RootHash;
+        }
+
+        static ValueHash256 SlotKey(int slot) => Keccak.Compute(slot.ToBigEndianByteArray());
+    }
+
+    /// <summary>
+    /// A slot of a storage keeps its value from the first root to the second, changes at the third and is back at the
+    /// last, while another slot of it changes at every root. Healing at the second root finds the leaf of the first slot
+    /// already saved under a new parent, and the leaf saved at the third root replaces it, as the flat store keeps one
+    /// node per path. Healing at the last root has to save that leaf again rather than skip it as found saved before.
+    /// </summary>
+    [Test]
+    public async Task Flat_healing_over_roots_changing_a_storage_node_and_back_heals_to_the_last_root()
+    {
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        Hash256 owner = TestItem.KeccakA;
+        StorageTree storage = new(sourceStore.GetTrieStore(owner), LimboLogs.Instance);
+        ValueHash256 toggledSlot = new("0x1000000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 counterSlot = new("0x2000000000000000000000000000000000000000000000000000000000000000");
+        BlockHeader[] headers = [CommitSource(1, toggledValue: 1), CommitSource(2, toggledValue: 1), CommitSource(3, toggledValue: 2), CommitSource(4, toggledValue: 1)];
+
+        TestSyncConfig syncConfig = new() { SnapSync = true };
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        HealingPivot pivot = new(headers[0], headers) { CanFinalizeAt = header => header == headers[^1] };
+        await HealWithTrieNodes(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, pivot, sourceStore);
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[^1], headers[^1]), sourceStore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+        }
+
+        BlockHeader CommitSource(ulong blockNumber, byte toggledValue)
+        {
+            storage.Set(toggledSlot, [toggledValue]);
+            storage.Set(counterSlot, [(byte)blockNumber]);
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+    }
+
+    /// <summary>
+    /// A storage of slot pairs that share all but their last nibble, downloaded with the pivot moving back and forth
+    /// between a root holding every pair and one that deleted the first slot of each. A range ending at a first slot at
+    /// the full root is continued at the other from the second slot, which stands alone under the path of the pair there,
+    /// so that range rebuilds its leaf at that path, reaching back over the deleted slot. Healing at the last root
+    /// removes the deleted slots from flat only when no range persisted such a node: it matches the last root by hash,
+    /// so healing would skip it and leave the slot under it.
+    /// </summary>
+    [Test]
+    public async Task Flat_snap_sync_of_a_storage_over_moving_roots_heals_to_the_last_root_without_stale_slots()
+    {
+        const int pairCount = 64;
+        const int requestsPerRoot = 3;
+        const int lastAlternatingRequest = 60;
+
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        SnapStateServer server = new(sourceStore.AsReadOnly(), LimboLogs.Instance);
+        Dictionary<ValueHash256, Account> accounts = [];
+        for (int i = 0; i < 8; i++) accounts[Keccak.Compute(i.ToBigEndianByteArray())] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
+        ValueHash256 owner = accounts.Keys.First();
+        StorageTree storage = new(sourceStore.GetTrieStore(owner.ToCommitment()), LimboLogs.Instance);
+        for (int pair = 0; pair < pairCount; pair++)
+        {
+            storage.Set(PairSlot(pair, 0), [1]);
+            storage.Set(PairSlot(pair, 1), [2]);
+            // Single slots between the pairs, so that the ranges do not all end on the second slot of a pair.
+            storage.Set(Keccak.Compute((pairCount + pair).ToBigEndianByteArray()), [3]);
+        }
+
+        BlockHeader withPairs = CommitSource(1);
+        for (int pair = 0; pair < pairCount; pair++) storage.Set(PairSlot(pair, 0), [0], rlpEncode: false);
+        BlockHeader withoutFirstSlots = CommitSource(2);
+
+        TestSyncConfig syncConfig = new() { SnapSync = true, EnableSnapDoubleWriteCheck = true, SnapSyncAccountRangePartitionCount = 1 };
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        HealingPivot pivot = new(withPairs, withoutFirstSlots);
+        await RunSnapSync(CreateFlatSnapTrieFactory(db, syncConfig), syncConfig, pivot, server, beforeRequest: request =>
+            pivot.Header = request < lastAlternatingRequest && request / requestsPerRoot % 2 == 0 ? withPairs : withoutFirstSlots);
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        await HealWithTrieNodes(persistence, syncConfig, pivot, sourceStore);
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await RunSnapSync(CreateFlatSnapTrieFactory(atLastRootDb, syncConfig), syncConfig, new HealingPivot(withoutFirstSlots, withoutFirstSlots), server);
+
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        TestErrorLogManager verifierErrors = new();
+        FlatTrieVerifier verifier = new(verifierErrors);
+        verifier.Verify(reader, new FlatLocalDbContext.ReadOnlyTrieStore(reader), withoutFirstSlots.StateRoot!, default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivot.UpdatedStorages, Does.Contain(owner.ToCommitment()), "the storage downloaded over both roots is healed");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+            Assert.That(ReadColumn(db, FlatDbColumns.Account), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Account)), "account column");
+            Assert.That(verifier.Stats, Is.EqualTo(new FlatTrieVerifier.VerificationStats(accounts.Count, 2 * pairCount, 0, 0, 0, 0)), "flat against trie");
+            Assert.That(verifierErrors.Errors, Is.Empty, "trie node hashes");
+        }
+
+        BlockHeader CommitSource(ulong blockNumber)
+        {
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                accounts[owner] = accounts[owner].WithChangedStorageRoot(storage.RootHash);
+                foreach ((ValueHash256 path, Account account) in accounts) sourceTree.Set(path, account);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+
+        static ValueHash256 PairSlot(int pair, byte slot)
+        {
+            ValueHash256 path = Keccak.Compute(pair.ToBigEndianByteArray());
+            path.BytesAsSpan[^1] = slot;
+            return path;
+        }
+    }
+
+    /// <summary>
+    /// Healing saves a node once all its children are, so the round at the second root saves the leaf it changed at
+    /// storage path <c>1c</c> while the parent at <c>1</c> still waits for the leaf it changed under <c>1d</c>, and the
+    /// pivot moves on then. The last root has the subtree at <c>1</c> of the first root back, with a slot outside of it
+    /// changed. The flat store keeps one node per path, so it still has the node at <c>1</c> of the first root, now over
+    /// the leaf of the second root at <c>1c</c>; healing at the last root has to go down to that leaf rather than stop at
+    /// the node at <c>1</c> as found saved.
+    /// </summary>
+    [Test]
+    public async Task Flat_healing_after_a_round_abandoned_before_saving_a_parent_heals_to_the_last_root()
+    {
+        // The round at the first root takes requests 0 to 4: the state root, the storage root, the nodes at 1 and 2, at
+        // 1c and 1d, and the leaves under 1d. The one at the second root saves the leaf at 1c with request 8.
+        const int abandonAfterRequest = 8;
+
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        Hash256 owner = TestItem.KeccakA;
+        StorageTree storage = new(sourceStore.GetTrieStore(owner), LimboLogs.Instance);
+        ValueHash256 leafSlot = new("0x1c00000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 deeperSlot = new("0x1d00000000000000000000000000000000000000000000000000000000000000");
+        storage.Set(new ValueHash256("0x1d10000000000000000000000000000000000000000000000000000000000000"), [1]);
+        ValueHash256 counterSlot = new("0x2000000000000000000000000000000000000000000000000000000000000000");
+        BlockHeader[] headers = [CommitSource(1, value: 1), CommitSource(2, value: 2), CommitSource(3, value: 1)];
+
+        TestSyncConfig syncConfig = new() { SnapSync = true };
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        HealingPivot pivot = new(headers[0], headers) { CanFinalizeAt = header => header == headers[^1] };
+        await HealWithTrieNodes(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, pivot, sourceStore, afterRequest: (request, _) =>
+        {
+            if (request == abandonAfterRequest) pivot.Header = headers[^1];
+        });
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[^1], headers[^1]), sourceStore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+        }
+
+        BlockHeader CommitSource(ulong blockNumber, byte value)
+        {
+            storage.Set(leafSlot, [value]);
+            storage.Set(deeperSlot, [value]);
+            storage.Set(counterSlot, [(byte)blockNumber]);
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+    }
+
+    /// <summary>
+    /// The second root has an extension at storage path <c>1</c> going straight to <c>1c3</c>, so its round removes the
+    /// leaf of the first root at <c>1c3</c> without checking <c>1c</c>, and the pivot moves on before anything is saved.
+    /// The last root has the node at <c>1c</c> of the first root back; healing at it has to go down to <c>1c3</c> rather
+    /// than stop at the node at <c>1c</c> as found saved, leaving <c>1c3</c> empty.
+    /// </summary>
+    [Test]
+    public async Task Flat_healing_after_a_round_abandoned_below_an_extension_heals_to_the_last_root()
+    {
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        Hash256 owner = TestItem.KeccakA;
+        StorageTree storage = new(sourceStore.GetTrieStore(owner), LimboLogs.Instance);
+        ValueHash256 slot1c30 = new("0x1c30000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 slot1c31 = new("0x1c31000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 slot1c40 = new("0x1c40000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 slot1d00 = new("0x1d00000000000000000000000000000000000000000000000000000000000000");
+        storage.Set(slot1c30, [1]);
+        storage.Set(new ValueHash256("0x2000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        // 1 = branch {1c = branch {1c3, 1c4}, 1d}; then 1 = extension c3 -> branch {1c30, 1c31}; then 1c as at first.
+        BlockHeader[] headers =
+        [
+            CommitSource(1, (slot1c40, 1), (slot1d00, 1)),
+            CommitSource(2, (slot1c40, 0), (slot1d00, 0), (slot1c31, 1)),
+            CommitSource(3, (slot1c40, 1), (slot1d00, 3), (slot1c31, 0)),
+        ];
+        TreePath extensionPath = TreePath.FromHexString("1");
+
+        TestSyncConfig syncConfig = new() { SnapSync = true };
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        HealingPivot pivot = new(headers[0], headers) { CanFinalizeAt = header => header == headers[^1] };
+        await HealWithTrieNodes(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, pivot, sourceStore, afterRequest: (_, batch) =>
+        {
+            if (pivot.Header == headers[1] && batch.RequestedNodes!.Any(item => item.Address is not null && item.Path == extensionPath)) pivot.Header = headers[^1];
+        });
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[^1], headers[^1]), sourceStore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+        }
+
+        BlockHeader CommitSource(ulong blockNumber, params (ValueHash256 Slot, byte Value)[] slots)
+        {
+            foreach ((ValueHash256 slot, byte value) in slots) storage.Set(slot, [value]);
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+    }
+
+    /// <summary>
+    /// The second root has the account at state path <c>1</c> as a leaf, with its sibling under <c>1d</c> gone and its
+    /// storage changed, so its round removes the storage root of the first root without checking <c>1c</c>, where the
+    /// first root has the leaf of the account, and the pivot moves on before anything is saved. The last root has the
+    /// leaf at <c>1c</c> of the first root back; healing at it has to go down to the storage root rather than stop at the
+    /// leaf at <c>1c</c> as found saved, leaving the storage root empty.
+    /// </summary>
+    [Test]
+    public async Task Flat_healing_after_a_round_abandoned_below_a_shallower_state_leaf_heals_to_the_last_root()
+    {
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        ValueHash256 owner = new("0x1c00000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 sibling = new("0x1d00000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 counter = new("0x2000000000000000000000000000000000000000000000000000000000000000");
+        StorageTree storage = new(sourceStore.GetTrieStore(owner.ToCommitment()), LimboLogs.Instance);
+        ValueHash256 changedSlot = new("0x1000000000000000000000000000000000000000000000000000000000000000");
+        storage.Set(new ValueHash256("0x2000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        // 1 = branch {1c = leaf of the owner, 1d = leaf of the sibling}; then 1 = leaf of the owner; then 1 as at first.
+        BlockHeader[] headers =
+        [
+            CommitSource(1, slotValue: 1, withSibling: true),
+            CommitSource(2, slotValue: 2, withSibling: false),
+            CommitSource(3, slotValue: 1, withSibling: true),
+        ];
+        TreePath shallowerLeafPath = TreePath.FromHexString("1");
+
+        TestSyncConfig syncConfig = new() { SnapSync = true };
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        HealingPivot pivot = new(headers[0], headers) { CanFinalizeAt = header => header == headers[^1] };
+        await HealWithTrieNodes(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, pivot, sourceStore, afterRequest: (_, batch) =>
+        {
+            if (pivot.Header == headers[1] && batch.RequestedNodes!.Any(item => item.Address is null && item.Path == shallowerLeafPath)) pivot.Header = headers[^1];
+        });
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[^1], headers[^1]), sourceStore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+        }
+
+        BlockHeader CommitSource(ulong blockNumber, byte slotValue, bool withSibling)
+        {
+            storage.Set(changedSlot, [slotValue]);
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
+                sourceTree.Set(sibling, withSibling ? Build.An.Account.WithBalance(1).TestObject : null);
+                sourceTree.Set(counter, Build.An.Account.WithBalance(blockNumber).TestObject);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+    }
+
+    /// <summary>
+    /// An account has a storage at the first root, none at the second, and at the last either the same storage again or
+    /// one that keeps the subtree at storage path <c>1</c> of the first. Healing at the second root deletes the slots of
+    /// the account; the flat store keeps the storage trie nodes by path, so healing at the last root would find the nodes
+    /// it has again saved, and never write the slots under them back, unless those nodes went with the slots. Another
+    /// account keeps its storage throughout.
+    /// </summary>
+    [Test]
+    public async Task Flat_healing_over_roots_emptying_a_storage_and_filling_it_again_heals_to_the_last_root([Values] bool sameStorageAgain)
+    {
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        Hash256 owner = TestItem.KeccakA;
+        Hash256 witness = TestItem.KeccakB;
+        Hash256 counter = TestItem.KeccakC;
+        StorageTree storage = new(sourceStore.GetTrieStore(owner), LimboLogs.Instance);
+        StorageTree witnessStorage = new(sourceStore.GetTrieStore(witness), LimboLogs.Instance);
+        witnessStorage.Set(new ValueHash256("0x1000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        witnessStorage.Set(new ValueHash256("0x2000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        // The storage root is a branch {1 = branch {1c, 1d}, 2}, all of them over leaves.
+        ValueHash256[] slots =
+        [
+            new("0x1c00000000000000000000000000000000000000000000000000000000000000"),
+            new("0x1d00000000000000000000000000000000000000000000000000000000000000"),
+            new("0x2000000000000000000000000000000000000000000000000000000000000000"),
+        ];
+        BlockHeader[] headers =
+        [
+            CommitSource(1, 1, 1, 1),
+            CommitSource(2, 0, 0, 0),
+            CommitSource(3, 1, 1, sameStorageAgain ? (byte)1 : (byte)2),
+        ];
+
+        TestSyncConfig syncConfig = new() { SnapSync = true };
+        using SnapshotableMemColumnsDb<FlatDbColumns> atEmptyStorageDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atEmptyStorageDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[1], headers[1]), sourceStore);
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[^1], headers[^1]), sourceStore);
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        SortedDictionary<string, string>? slotsAtEmptyStorage = null;
+        SortedDictionary<string, string>? nodesAtEmptyStorage = null;
+        HealingPivot pivot = new(headers[0], headers)
+        {
+            CanFinalizeAt = header => header == headers[^1],
+            OnUpdate = round =>
+            {
+                // Before the round at the last root, once the one at the second root has saved its root.
+                if (round != 2) return;
+                slotsAtEmptyStorage = ReadColumn(db, FlatDbColumns.Storage);
+                nodesAtEmptyStorage = ReadColumn(db, FlatDbColumns.StorageNodes);
+            }
+        };
+        await HealWithTrieNodes(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, pivot, sourceStore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slotsAtEmptyStorage, Is.EqualTo(ReadColumn(atEmptyStorageDb, FlatDbColumns.Storage)), "storage column at the second root");
+            Assert.That(nodesAtEmptyStorage, Is.EqualTo(ReadColumn(atEmptyStorageDb, FlatDbColumns.StorageNodes)), "storage trie nodes at the second root");
+            Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+        }
+
+        BlockHeader CommitSource(ulong blockNumber, params byte[] values)
+        {
+            for (int i = 0; i < slots.Length; i++) storage.Set(slots[i], [values[i]]);
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                witnessStorage.Commit();
+                sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
+                sourceTree.Set(witness, Build.An.Account.WithBalance(1).WithStorageRoot(witnessStorage.RootHash).TestObject);
+                sourceTree.Set(counter, Build.An.Account.WithBalance(blockNumber).TestObject);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+    }
+
+    /// <summary>
+    /// The first root has the leaf of the owner <paramref name="oldLeafDepth"/> nibbles deep, next to an account sharing the
+    /// first <c>oldLeafDepth - 1</c> nibbles with the owner. The second root has that account gone and the owner at state
+    /// path <c>1</c> as a leaf, with no storage and a code healing does not have. Its round deletes the storage of the
+    /// owner, and the pivot moves on while the leaf waits for its code, so it is not saved in that round. Without the prefix
+    /// cleanup, the earlier leaf of the owner would survive. The last root has the subtree at <c>1</c> of the first root
+    /// back; healing at it has to go down to the storage of the owner rather than stop at the earlier leaf as found saved,
+    /// leaving the storage empty. Another account keeps its storage throughout.
+    /// </summary>
+    [Test]
+    public async Task Flat_healing_after_a_round_abandoned_while_a_shallower_state_leaf_without_storage_waits_for_its_code_heals_to_the_last_root([Values(2, 3, 32)] int oldLeafDepth)
+    {
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        ValueHash256 owner = new("0x1c00000000000000000000000000000000000000000000000000000000000000");
+        // The owner with the nibble at index oldLeafDepth - 1 flipped.
+        ValueHash256 neighbor = owner;
+        neighbor.BytesAsSpan[(oldLeafDepth - 1) / 2] ^= (byte)(oldLeafDepth % 2 == 0 ? 0x01 : 0x10);
+        ValueHash256 counter = new("0x2000000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 witness = new("0x3000000000000000000000000000000000000000000000000000000000000000");
+        StorageTree storage = new(sourceStore.GetTrieStore(owner.ToCommitment()), LimboLogs.Instance);
+        StorageTree witnessStorage = new(sourceStore.GetTrieStore(witness.ToCommitment()), LimboLogs.Instance);
+        witnessStorage.Set(new ValueHash256("0x1000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        witnessStorage.Set(new ValueHash256("0x2000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        ValueHash256[] slots =
+        [
+            new("0x1000000000000000000000000000000000000000000000000000000000000000"),
+            new("0x2000000000000000000000000000000000000000000000000000000000000000"),
+        ];
+        // 1 = the subtree of the owner and its neighbor, with a branch where they part; then 1 = leaf of the owner, with
+        // code and no storage; then 1 as at first.
+        BlockHeader[] headers =
+        [
+            CommitSource(1, slotValue: 1, withNeighbor: true),
+            CommitSource(2, slotValue: 0, withNeighbor: false),
+            CommitSource(3, slotValue: 1, withNeighbor: true),
+        ];
+        TreePath shallowerLeafPath = TreePath.FromHexString("1");
+
+        TestSyncConfig syncConfig = new() { SnapSync = true };
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        HealingPivot pivot = new(headers[0], headers) { CanFinalizeAt = header => header == headers[^1] };
+        bool movedOnWithTheLeafWaiting = false;
+        await HealWithTrieNodes(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, pivot, sourceStore, afterRequest: (_, batch) =>
+        {
+            // The code is queued once the leaf is handled, so the round moves on before it is requested.
+            if (pivot.Header != headers[1] || !batch.RequestedNodes!.Any(item => item.Address is null && item.Path == shallowerLeafPath)) return;
+            pivot.Header = headers[^1];
+            movedOnWithTheLeafWaiting = true;
+        });
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[^1], headers[^1]), sourceStore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(movedOnWithTheLeafWaiting, Is.True, "the round at the second root moved on with the leaf at 1 waiting");
+            Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+        }
+
+        BlockHeader CommitSource(ulong blockNumber, byte slotValue, bool withNeighbor)
+        {
+            foreach (ValueHash256 slot in slots) storage.Set(slot, [slotValue]);
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                witnessStorage.Commit();
+                // Healing has no code, so a leaf with code waits for it.
+                sourceTree.Set(owner, slotValue == 0
+                    ? Build.An.Account.WithBalance(1).WithCode([0x60, 0x00]).TestObject
+                    : Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
+                sourceTree.Set(neighbor, withNeighbor ? Build.An.Account.WithBalance(1).TestObject : null);
+                sourceTree.Set(counter, Build.An.Account.WithBalance(blockNumber).TestObject);
+                sourceTree.Set(witness, Build.An.Account.WithBalance(1).WithStorageRoot(witnessStorage.RootHash).TestObject);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+    }
+
+    /// <summary>
+    /// Heals the state at the pivot with trie nodes, answering each request from <paramref name="source"/>, a round at
+    /// each pivot until one can finalize.
+    /// </summary>
+    /// <param name="afterRequest">Called with the number of each request, and the request, once it is answered.</param>
+    private static async Task HealWithTrieNodes(IPersistence persistence, ISyncConfig syncConfig, IStateSyncPivot pivot, TestRawTrieStore source, Action<int, StateSyncBatch>? afterRequest = null)
+    {
+        TreeSync treeSync = new(new MemDb(), new FlatTreeSyncStore(persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance),
+            Substitute.For<IBlockTree>(), pivot, syncConfig, LimboLogs.Instance);
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        int request = 0;
+        BlockHeader? roundPivot;
+        do
+        {
+            roundPivot = treeSync.ResetStateRootToBestSuggested();
+            while (!treeSync.IsSyncRoundFinished())
+            {
+                StateSyncBatch? batch = await treeSync.PrepareRequest();
+                Assert.That(batch?.RequestedNodes, Is.Not.Null.And.Not.Empty, "healing stalled before the root was saved");
+
+                ArrayPoolList<byte[]> responses = [with(batch!.RequestedNodes!.Count)];
+                foreach (StateSyncItem item in batch.RequestedNodes) responses.Add(source.GetTrieStore(item.Address).LoadRlp(item.Path, item.Hash)!);
+                batch.Responses = new ByteArrayListAdapter(responses);
+                Assert.That(treeSync.HandleResponse(batch, peer), Is.EqualTo(SyncResponseHandlingResult.OK));
+                afterRequest?.Invoke(request++, batch);
+            }
+        }
+        while (!treeSync.CanFinalize(roundPivot!));
+    }
+
+    public enum HealingStop { DuringReassembly, AfterChunk, AfterRound, AwaitingFinalPivot }
+
+    /// <summary>
+    /// BAL healing writes skip the WAL, so the checkpoint of the finished ranges is deleted before healing writes
+    /// anything, and a crash during healing starts the sync over. A graceful stop lands between the chunks healing writes,
+    /// flushes them and saves the checkpoint again, so the restarted sync reassembles the trie over them and replays the
+    /// BALs from the anchor again. That has to leave the flat state a run never stopped leaves, under a trie it verifies
+    /// against. The BALs delete and revive accounts, clear and set slots and deploy code, in both rounds of healing.
+    /// </summary>
+    [Test]
+    public async Task Flat_snap_sync_stopped_during_healing_resumes_to_the_state_of_a_run_never_stopped([Values] HealingStop stop, [Values] bool crash)
+    {
+        const int movePivotAt = 6;
+        const int accountCount = 40;
+
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        SnapStateServer server = new(sourceStore.AsReadOnly(), LimboLogs.Instance);
+        Dictionary<Address, Account> accounts = [];
+        Dictionary<Address, StorageTree> storages = [];
+        for (int i = 0; i < accountCount; i++)
+        {
+            Address address = TestItem.Addresses[i];
+            accounts[address] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
+            if (i % 3 != 0) continue;
+
+            StorageTree storage = new(sourceStore.GetTrieStore(address.ToAccountPath.ToCommitment()), LimboLogs.Instance);
+            for (int slot = 1; slot <= 4; slot++) storage.Set((UInt256)slot, [(byte)slot]);
+            storages[address] = storage;
+        }
+
+        // Accounts 2 and 5 hold no storage, so an empty balance deletes them.
+        byte[] code = [0x60, 0x00, 0x60, 0x01];
+        Dictionary<ulong, List<ReadOnlyAccountChanges>> changes = [];
+        Dictionary<ulong, Hash256> roots = new() { [1] = CommitSource(1) };
+        SetBalance(2, 1, 1000);
+        SetSlot(2, 0, 1, 0x42);
+        SetBalance(2, 2, 0);
+        roots[2] = CommitSource(2);
+        SetSlot(5, 3, 2, 0);
+        DeployCode(9, 4);
+        SetBalance(19, 5, 0);
+        roots[20] = CommitSource(20);
+        SetBalance(25, 5, 77);
+        SetSlot(30, 0, 3, 0x99);
+        SetBalance(30, 2, 5);
+        SetBalance(38, 1, 2000);
+        roots[40] = CommitSource(40);
+
+        Dictionary<ulong, BlockHeader> headers = [];
+        BlockAccessListStore balStore = new(new MemDb());
+        for (ulong number = 1; number <= 40; number++)
+        {
+            headers[number] = Build.A.BlockHeader.WithNumber(number).WithParentHash(headers.GetValueOrDefault(number - 1)?.Hash ?? Keccak.Zero)
+                .WithStateRoot(roots.GetValueOrDefault(number) ?? Keccak.EmptyTreeHash).TestObject;
+            if (number > 1)
+                balStore.Insert(number, headers[number].Hash!, Build.A.BlockAccessList.WithAccountChanges([.. changes.GetValueOrDefault(number) ?? []]).TestObject);
+        }
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindHeader(Arg.Any<ulong>()).Returns(call => headers.GetValueOrDefault(call.Arg<ulong>()));
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(call => headers.Values.FirstOrDefault(header => header.Hash == call.Arg<Hash256>()));
+        blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
+        ManualTimestamper timestamper = new(DateTimeOffset.FromUnixTimeSeconds((long)headers[1].Timestamp).UtcDateTime);
+        TestSyncConfig syncConfig = new() { SnapResume = true, SnapSyncAccountRangePartitionCount = 1 };
+        List<byte[]?> checkpointsWhileApplying = [];
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> resumedDb = new();
+        using CancellationTokenSource shutdown = new();
+        byte[]? rangesCheckpoint = null;
+        HealingPivot stoppedPivot = new(headers[1], headers[20], headers[40]);
+        StateSyncRunner stopped = StartNode(resumedDb, stoppedPivot, stopping: true);
+        Exception? thrown = null;
+        try
+        {
+            await stopped.RunSnapSyncWithBalHealing(headers[1], shutdown.Token);
+        }
+        catch (Exception e)
+        {
+            thrown = e;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, crash ? Is.Not.Null.And.Not.InstanceOf<OperationCanceledException>() : Is.InstanceOf<OperationCanceledException>());
+            Assert.That(ReadCheckpoint(resumedDb), crash ? Is.Null : Is.EqualTo(rangesCheckpoint).And.Not.Null, "the checkpoint left by the stop");
+        }
+
+        StateSyncRunner resumed = StartNode(resumedDb, new HealingPivot(headers[40], headers[40]), stopping: false);
+        BlockHeader? anchor = resumed.GetResumedAnchor();
+        if (crash)
+        {
+            Assert.That(anchor, Is.Null, "nothing to resume after a crash");
+            CreateFlatSnapTrieFactory(resumedDb, syncConfig).EnsureInitialize();
+            Assert.That(resumedDb.GetColumnDb(FlatDbColumns.Account).GetAll(), Is.Empty, "the sync starts over");
+            return;
+        }
+
+        Assert.That(anchor, Is.EqualTo(headers[1]), "the anchor resumed from");
+        await resumed.RunSnapSyncWithBalHealing(anchor!, default);
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> uninterruptedDb = new();
+        await StartNode(uninterruptedDb, new HealingPivot(headers[1], headers[20], headers[40]), stopping: false).RunSnapSyncWithBalHealing(headers[1], default);
+
+        using IPersistence.IPersistenceReader reader = new RocksDbPersistence(resumedDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateReader();
+        TestErrorLogManager verifierErrors = new();
+        FlatTrieVerifier verifier = new(verifierErrors);
+        verifier.Verify(reader, new FlatLocalDbContext.ReadOnlyTrieStore(reader), roots[40], default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(checkpointsWhileApplying, Is.Not.Empty.And.All.Null, "the checkpoint is gone while healing writes");
+            Assert.That(ReadColumn(resumedDb, FlatDbColumns.Account), Is.EqualTo(ReadColumn(uninterruptedDb, FlatDbColumns.Account)), "account column");
+            Assert.That(ReadColumn(resumedDb, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(uninterruptedDb, FlatDbColumns.Storage)), "storage column");
+            Assert.That(verifier.Stats, Is.EqualTo(new FlatTrieVerifier.VerificationStats(accounts.Count, verifier.Stats.SlotCount, 0, 0, 0, 0)), "flat against trie");
+            Assert.That(verifierErrors.Errors, Is.Empty, "trie node hashes");
+        }
+
+        // One node's run: the ranges with the pivot moved at movePivotAt, or resumed already finished, then healing.
+        StateSyncRunner StartNode(IColumnsDb<FlatDbColumns> db, HealingPivot pivot, bool stopping)
+        {
+            FlatSnapTrieFactory factory = CreateFlatSnapTrieFactory(db, syncConfig);
+            ISnapSyncRunner snapSyncRunner = Substitute.For<ISnapSyncRunner>();
+            snapSyncRunner.Run(Arg.Any<CancellationToken>()).Returns(async _ =>
+            {
+                await RunSnapSync(factory, syncConfig, pivot, server, beforeRequest: request =>
+                {
+                    if (request == movePivotAt) pivot.Header = headers[2];
+                });
+                rangesCheckpoint ??= ReadCheckpoint(db);
+            });
+
+            IBlockAccessListStore observedBals = Substitute.For<IBlockAccessListStore>();
+            observedBals.Exists(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(call => balStore.Exists(call.ArgAt<ulong>(0), call.ArgAt<Hash256>(1)));
+            observedBals.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(call =>
+            {
+                checkpointsWhileApplying.Add(ReadCheckpoint(db));
+                // The second chunk of the first round, from the block after the anchor.
+                if (call.ArgAt<ulong>(0) == headers[1].Number + 1 + FlatBalHealing.BalsChunkSize) StopIf(HealingStop.AfterChunk);
+                return balStore.Get(call.ArgAt<ulong>(0), call.ArgAt<Hash256>(1));
+            });
+
+            RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
+            FlatBalHealing flatHealing = new(blockTree, observedBals, new TrieReassembler(persistence, LimboLogs.Instance), persistence,
+                Substitute.For<ITreeSyncStore>(), new MemDb(), new Lazy<ICodeRecovery>(Substitute.For<ICodeRecovery>()), LimboLogs.Instance);
+            IBalHealing healing = Substitute.For<IBalHealing>();
+            healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(call =>
+                flatHealing.Reassemble(new StopAfterStorageTries(call.Arg<IReadOnlyCollection<Hash256>>(), () => StopIf(HealingStop.DuringReassembly)), call.Arg<CancellationToken>()));
+            healing.ApplyRange(Arg.Any<Hash256>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>()).Returns(call =>
+                flatHealing.ApplyRange(call.ArgAt<Hash256>(0), call.ArgAt<BlockHeader>(1), call.ArgAt<BlockHeader>(2), call.ArgAt<CancellationToken>(3)));
+            healing.TryRecoverMissingCode(Arg.Any<CancellationToken>()).Returns(call => flatHealing.TryRecoverMissingCode(call.Arg<CancellationToken>()));
+
+            pivot.OnUpdate = round =>
+            {
+                if (round == 1) StopIf(HealingStop.AfterRound);
+            };
+            pivot.CanFinalizeAt = _ =>
+            {
+                StopIf(HealingStop.AwaitingFinalPivot);
+                return !stopping || stop != HealingStop.AwaitingFinalPivot;
+            };
+
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            syncModeSelector.WaitUntilMode(Arg.Any<Func<SyncMode, bool>>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+            syncPeerPool.InitializedPeers.Returns([]);
+            return new StateSyncRunner(snapSyncRunner, factory, healing, new StateHealingStrategy(syncConfig, new Lazy<IBalHealing>(healing), LimboLogs.Instance),
+                new BalFetcher(syncPeerPool, blockTree, observedBals, syncConfig, LimboLogs.Instance), pivot, blockTree, null!, null!, syncConfig, syncModeSelector,
+                Substitute.For<ISyncProgressResolver>(), Substitute.For<IBeaconSyncStrategy>(), syncPeerPool, timestamper, null, null, LimboLogs.Instance);
+
+            void StopIf(HealingStop at)
+            {
+                if (!stopping || at != stop) return;
+                if (crash) throw new InvalidOperationException("Crashed");
+                shutdown.Cancel();
+            }
+        }
+
+        void SetBalance(ulong block, int account, UInt256 balance)
+        {
+            Address address = TestItem.Addresses[account];
+            if (balance.IsZero)
+            {
+                accounts.Remove(address);
+                sourceTree.Set(address, null);
+            }
+            else
+            {
+                accounts[address] = accounts.TryGetValue(address, out Account? existing) ? existing.WithChangedBalance(balance) : Build.An.Account.WithBalance(balance).TestObject;
+            }
+
+            AddChange(block, Build.An.AccountChanges.WithAddress(address).WithBalanceChanges(new BalanceChange(0, balance)).TestObject);
+        }
+
+        void SetSlot(ulong block, int account, int slot, byte value)
+        {
+            Address address = TestItem.Addresses[account];
+            storages[address].Set((UInt256)slot, [value]);
+            AddChange(block, Build.An.AccountChanges.WithAddress(address).WithStorageChanges((UInt256)slot, new StorageChange(0, value)).TestObject);
+        }
+
+        void DeployCode(ulong block, int account)
+        {
+            Address address = TestItem.Addresses[account];
+            accounts[address] = accounts[address].WithChangedNonce(1).WithChangedCodeHash(Keccak.Compute(code));
+            AddChange(block, Build.An.AccountChanges.WithAddress(address)
+                .WithNonceChanges(new NonceChange(0, 1)).WithCodeChanges(new CodeChange(0, code)).TestObject);
+        }
+
+        void AddChange(ulong block, ReadOnlyAccountChanges change)
+        {
+            if (!changes.TryGetValue(block, out List<ReadOnlyAccountChanges>? blockChanges)) changes[block] = blockChanges = [];
+            blockChanges.Add(change);
+        }
+
+        Hash256 CommitSource(ulong blockNumber)
+        {
+            using IBlockCommitter _ = sourceStore.BeginBlockCommit(blockNumber);
+            foreach ((Address address, StorageTree storage) in storages)
+            {
+                storage.Commit();
+                if (accounts.TryGetValue(address, out Account? account)) accounts[address] = account.WithChangedStorageRoot(storage.RootHash);
+            }
+
+            foreach ((Address address, Account account) in accounts) sourceTree.Set(address, account);
+            sourceTree.Commit();
+            return sourceTree.RootHash;
+        }
+
+        static byte[]? ReadCheckpoint(IColumnsDb<FlatDbColumns> db) => BasePersistence.ReadSnapCheckpoint(db.GetColumnDb(FlatDbColumns.Metadata));
+    }
+
+    private static SortedDictionary<string, string> ReadColumn(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
+        [with(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)))];
+
+    /// <summary>A pivot at <see cref="Header"/>, which each healing round moves to the next of <paramref name="rounds"/>, staying at the last.</summary>
+    private sealed class HealingPivot(BlockHeader header, params BlockHeader[] rounds) : IStateSyncPivot
+    {
+        private int _round;
+
+        public BlockHeader Header { get; set; } = header;
+
+        /// <summary>Called with the index of the round about to start.</summary>
+        public Action<int>? OnUpdate { get; set; }
+
+        public Func<BlockHeader, bool> CanFinalizeAt { get; set; } = static _ => true;
+
+        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = [];
+
+        public ulong Diff => 0;
+
+        public BlockHeader GetPivotHeader() => Header;
+
+        public void UpdateHeaderForcefully()
+        {
+            OnUpdate?.Invoke(_round);
+            Header = rounds[Math.Min(_round++, rounds.Length - 1)];
+        }
+
+        public bool CanFinalize(BlockHeader pivot) => CanFinalizeAt(pivot);
+    }
+
+    /// <summary>Calls <paramref name="stop"/> once trie reassembly has gone through the accounts to heal, rebuilding their storage tries, and before it rebuilds the state trie.</summary>
+    private sealed class StopAfterStorageTries(IReadOnlyCollection<Hash256> accounts, Action stop) : IReadOnlyCollection<Hash256>
+    {
+        public int Count => accounts.Count;
+
+        public IEnumerator<Hash256> GetEnumerator()
+        {
+            foreach (Hash256 account in accounts) yield return account;
+            stop();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private static FlatSnapTrieFactory CreateFlatSnapTrieFactory(IColumnsDb<FlatDbColumns> db, ISyncConfig syncConfig) =>
+        new(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), Substitute.For<IPersistenceManager>(), db, new MemDb(), syncConfig, LimboLogs.Instance);
+
+    private static IStateSyncPivot CreatePivot(ulong blockNumber, Hash256 stateRoot)
+    {
+        IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
+        ConcurrentHashSet<Hash256> updatedStorages = [];
+        pivot.UpdatedStorages.Returns(updatedStorages);
+        MovePivot(pivot, blockNumber, stateRoot);
+        return pivot;
+    }
+
+    private static void MovePivot(IStateSyncPivot pivot, ulong blockNumber, Hash256 stateRoot) =>
+        pivot.GetPivotHeader().Returns(Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(stateRoot).TestObject);
+
+    /// <summary>Runs a snap sync state ranges phase to the end, answering each request from <paramref name="server"/> as it is made.</summary>
+    /// <param name="beforeRequest">
+    /// Called with the number of each request before it is made. With a checkpoint before every request, the one saved
+    /// before request <c>n</c> covers the first <c>n</c> requests.
+    /// </param>
+    /// <param name="shutDownAtRequest">
+    /// Shuts down once this request is made, leaving it unanswered, as a node shutting down drops it. No checkpoint is
+    /// taken while syncing then, so the one saved at the shutdown is the only one.
+    /// </param>
+    /// <param name="holdInFlightFrom">
+    /// Leaves the requests made from this one on unanswered up to the first storage request, holding them in flight
+    /// while the next request is made and answered, so the checkpoint taken with that one has them all in flight. Only
+    /// then are they answered. An account range held in flight is what lets a storage request go out before the account
+    /// ranges are done.
+    /// </param>
+    /// <returns>The requests held in flight, if any were.</returns>
+    private static async Task<HeldRequests?> RunSnapSync(ISnapTrieFactory factory, ISyncConfig syncConfig, IStateSyncPivot pivot, ISnapStateServer server, Action<int>? beforeRequest = null, int? shutDownAtRequest = null, int? holdInFlightFrom = null)
+    {
+        // Small enough that a range takes several requests.
+        const long byteLimit = 250;
+
+        using ProgressTracker tracker = new(factory, syncConfig, pivot, LimboLogs.Instance,
+            checkpointInterval: shutDownAtRequest is null ? TimeSpan.Zero : TimeSpan.MaxValue);
+        SnapProvider provider = new(tracker, new MemDb(), factory, LimboLogs.Instance);
+        using CancellationTokenSource shutdown = new();
+        HeldRequests? held = null;
+        SnapSyncRunner runner = new(_ =>
+        {
+            List<SnapSyncBatch> inFlight = [];
+            int? firstHeld = null;
+            for (int request = 0; ; request++)
+            {
+                beforeRequest?.Invoke(request);
+                if (tracker.IsFinished(out SnapSyncBatch? batch)) break;
+
+                if (request == shutDownAtRequest)
+                {
+                    shutdown.Cancel();
+                    break;
+                }
+
+                if (held is null && request >= holdInFlightFrom && batch is not null)
+                {
+                    firstHeld ??= request;
+                    inFlight.Add(batch);
+                    if (batch.StorageRangeRequest is { } storageRange) held = new HeldRequests(firstHeld.Value, request, storageRange.Accounts[0].Path);
+                    continue;
+                }
+
+                // Nothing else is left to request while the held ones are in flight.
+                if (batch is not null) Answer(batch);
+                else if (inFlight.Count == 0) throw new InvalidOperationException("No request to answer.");
+
+                foreach (SnapSyncBatch answeredLate in inFlight) Answer(answeredLate);
+                inFlight.Clear();
+                // Released before a storage request went out, so holding starts over at the next request.
+                if (held is null) firstHeld = null;
+            }
+
+            return Task.CompletedTask;
+        }, factory, tracker);
+
+        await runner.Run(shutdown.Token);
+        return held;
+
+        void Answer(SnapSyncBatch batch)
+        {
+            using (batch)
+            {
+                AnswerFrom(server, provider, batch, byteLimit);
+                provider.ReleaseRequest(batch, responseHandled: true);
+            }
+        }
+    }
+
+    /// <param name="First">The number of the first request held in flight.</param>
+    /// <param name="Last">The number of the last request held, the storage request.</param>
+    /// <param name="StorageAccount">The first account of the storage request held.</param>
+    private sealed record HeldRequests(int First, int Last, ValueHash256 StorageAccount);
+
+    private static void AnswerFrom(ISnapStateServer server, SnapProvider provider, SnapSyncBatch batch, long byteLimit)
+    {
+        if (batch.AccountRangeRequest is { } accountRange)
+        {
+            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+                server.GetAccountRanges(accountRange.RootHash, accountRange.StartingHash, accountRange.LimitHash, byteLimit, CancellationToken.None);
+            batch.AccountRangeResponse = new AccountsAndProofs { PathAndAccounts = accounts, Proofs = proofs };
+            Assert.That(provider.AddAccountRange(accountRange, batch.AccountRangeResponse), Is.EqualTo(AddRangeResult.OK));
+        }
+        else if (batch.StorageRangeRequest is { } storageRange)
+        {
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
+                server.GetStorageRanges(storageRange.RootHash!, storageRange.Accounts, storageRange.StartingHash, storageRange.LimitHash, byteLimit, CancellationToken.None);
+            batch.StorageRangeResponse = new SlotsAndProofs { PathsAndSlots = slots, Proofs = proofs ?? EmptyByteArrayList.Instance };
+            provider.AddStorageRange(storageRange, batch.StorageRangeResponse);
+        }
+        else if (batch.AccountsToRefreshRequest is { } refresh)
+        {
+            ValueHash256 path = refresh.Paths[0].PathAndAccount!.Path;
+            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+                server.GetAccountRanges(refresh.RootHash, path, path.IncrementPath(), byteLimit, CancellationToken.None);
+            batch.AccountsToRefreshResponse = new AccountsAndProofs { PathAndAccounts = accounts, Proofs = proofs };
+            provider.RefreshAccounts(refresh, batch.AccountsToRefreshResponse);
+        }
+        else
+        {
+            Assert.Fail($"Unexpected request {batch}");
+        }
+    }
+
     private static void DrainAccountRangePartition(ProgressTracker progressTracker)
     {
         progressTracker.IsFinished(out SnapSyncBatch? batch);
@@ -976,10 +2154,10 @@ public class SnapProviderTests
 
     private static StorageRange CreateStorageRange(int accountCount)
     {
-        ArrayPoolList<PathWithAccount> accounts = new(accountCount);
+        ArrayPoolList<PathWithAccount> accounts = [with(accountCount)];
         for (int i = 0; i < accountCount; i++)
         {
-            accounts.Add(new PathWithAccount(TestItem.ValueKeccaks[i], Account.TotallyEmpty));
+            accounts.Add(new PathWithAccount(TestItem.ValueKeccaks[i], AccountStruct.TotallyEmpty));
         }
 
         return new StorageRange { Accounts = accounts, StartingHash = Keccak.Zero };
@@ -987,13 +2165,81 @@ public class SnapProviderTests
 
     private static SlotsAndProofs CreateEmptySlotsResponse(int slotListCount)
     {
-        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = new(slotListCount);
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = [with(slotListCount)];
         for (int i = 0; i < slotListCount; i++)
         {
             pathsAndSlots.Add(new ArrayPoolList<PathWithStorageSlot>(0));
         }
 
         return new SlotsAndProofs { PathsAndSlots = pathsAndSlots, Proofs = EmptyByteArrayList.Instance };
+    }
+
+    /// <summary>
+    /// Builds the storage trie of one account from <paramref name="slotCount"/> slots, and a state trie holding that
+    /// account to take storage proofs from.
+    /// </summary>
+    private static (PathWithAccount Account, PathWithStorageSlot[] Slots, StateTree StateTree) BuildAccountWithStorage(int slotCount)
+    {
+        TestMemDb stateDb = new();
+        TestRawTrieStore store = new(stateDb);
+
+        // Build storage tree with RLP-encoded 32-byte values
+        Hash256 accountHash = TestItem.Tree.AccountAddress0;
+        StorageTree storageTree = new(store.GetTrieStore(accountHash), LimboLogs.Instance);
+        PathWithStorageSlot[] slots = new PathWithStorageSlot[slotCount];
+        for (int i = 0; i < slotCount; i++)
+        {
+            ValueHash256 slotKey = Keccak.Compute(i.ToBigEndianByteArray());
+            byte[] value = (i + 1).ToBigEndianByteArray();
+            byte[] rlpValue = Rlp.Encode(value);
+            storageTree.Set(slotKey, rlpValue, false);
+            slots[i] = new PathWithStorageSlot(slotKey, rlpValue);
+        }
+        storageTree.Commit();
+        Array.Sort(slots, (a, b) => a.Path.CompareTo(b.Path));
+
+        StateTree stateTree = new(store.GetTrieStore(null), LimboLogs.Instance);
+        stateTree.Set(accountHash, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
+        stateTree.Commit();
+
+        return (new PathWithAccount(accountHash, new Account(0, 1).WithChangedStorageRoot(storageTree.RootHash).ToStruct()), slots, stateTree);
+    }
+
+    private static byte[][] ProveStorage(StateTree stateTree, in ValueHash256 accountPath, params ValueHash256[] slotPaths)
+    {
+        AccountProofCollector proofCollector = new(accountPath.Bytes, slotPaths);
+        stateTree.Accept(proofCollector, stateTree.RootHash);
+        return proofCollector.BuildResult().StorageProofs.SelectMany(static storageProof => storageProof.Proof).ToArray();
+    }
+
+    /// <summary>
+    /// Queues <paramref name="account"/>'s storage continuation from <paramref name="origin"/> and answers it the way a
+    /// peer with no slots to serve there does: no slot list, only <paramref name="proof"/>.
+    /// </summary>
+    private static AddRangeResult AnswerStorageContinuationWithProofOnly(
+        SnapProvider snapProvider, ProgressTracker progressTracker, PathWithAccount account, ValueHash256 origin, byte[][] proof)
+    {
+        progressTracker.EnqueueNextSlot(new StorageRange
+        {
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+            StartingHash = origin,
+            LimitHash = Keccak.MaxValue
+        });
+
+        progressTracker.IsFinished(out SnapSyncBatch? batch);
+        using (batch)
+        {
+            Assert.That(batch!.StorageRangeRequest, Is.Not.Null);
+            batch.StorageRangeResponse = new SlotsAndProofs
+            {
+                PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(0),
+                Proofs = new ByteArrayListAdapter(proof.ToPooledList()),
+            };
+
+            AddRangeResult result = snapProvider.AddStorageRange(batch.StorageRangeRequest!, batch.StorageRangeResponse);
+            snapProvider.ReleaseRequest(batch, responseHandled: true);
+            return result;
+        }
     }
 
     private static (ISnapStateServer, Hash256) BuildSnapServerFromEntries((Hash256, Account)[] entries)

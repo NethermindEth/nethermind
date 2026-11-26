@@ -16,13 +16,14 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using Nethermind.State;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
@@ -45,8 +46,9 @@ namespace Nethermind.AuRa.Test
             public AuRaBlockProducer AuRaBlockProducer { get; private set; }
             public IBlockProducerRunner BlockProducerRunner { get; set; }
             public TimeSpan StepDelay { get; }
+            private BuildBlocksOnlyWhenNotProcessing _trigger;
 
-            public Context()
+            public Context(IAuraConfig auraConfig = null, IGasLimitCalculator gasLimitCalculator = null)
             {
                 StepDelay = TimeSpan.FromMilliseconds(20);
                 TransactionSource = Substitute.For<ITxSource>();
@@ -72,28 +74,20 @@ namespace Nethermind.AuRa.Test
                     block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.Header, block.GasLimit).ToArray());
                     return block;
                 });
-                StateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => true);
-                InitProducer();
+                StateProvider.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(x => true);
+                InitProducer(auraConfig ?? new AuRaConfig { ForceSealing = true }, gasLimitCalculator ?? new FollowOtherMiners(MainnetSpecProvider.Instance));
             }
 
-            private void InitProducer()
-            {
-                AuRaConfig auRaConfig = new();
-                auRaConfig.ForceSealing = true;
-                InitProducer(auRaConfig);
-            }
-
-            public void InitProducer(IAuraConfig auraConfig)
+            private void InitProducer(IAuraConfig auraConfig, IGasLimitCalculator gasLimitCalculator)
             {
                 IBlockProductionTrigger onAuRaSteps = new BuildBlocksOnAuRaSteps(AuRaStepCalculator, LimboLogs.Instance);
-                IBlockProductionTrigger onlyWhenNotProcessing = new BuildBlocksOnlyWhenNotProcessing(
+                _trigger = new BuildBlocksOnlyWhenNotProcessing(
                     onAuRaSteps,
                     BlockProcessingQueue,
                     BlockTree,
                     LimboLogs.Instance,
                     !auraConfig.AllowAuRaPrivateChains);
                 IBlocksConfig blocksConfig = new BlocksConfig();
-                FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
 
                 AuRaBlockProducer = new AuRaBlockProducer(
                     TransactionSource,
@@ -111,40 +105,38 @@ namespace Nethermind.AuRa.Test
                     blocksConfig);
 
                 BlockProducerRunner = new StandardBlockProducerRunner(
-                    onlyWhenNotProcessing,
+                    _trigger,
                     BlockTree,
                     AuRaBlockProducer);
                 _ = new
                 ProducedBlockSuggester(BlockTree, BlockProducerRunner);
             }
+
+            public async Task StopAsync()
+            {
+                await BlockProducerRunner.StopAsync();
+                await _trigger.DisposeAsync();
+            }
         }
 
         [Test]
         public async Task Produces_block() =>
-            (await StartStop(new Context())).ShouldProduceBlocks(Quantity.AtLeastOne());
+            await StartStop(new Context(), expectBlock: true);
 
         [Test]
-        public async Task Can_produce_first_block_when_private_chains_allowed()
-        {
-            Context context = new();
-            context.InitProducer(new AuRaConfig { AllowAuRaPrivateChains = true, ForceSealing = true });
-            (await StartStop(context, false)).ShouldProduceBlocks(Quantity.AtLeastOne());
-        }
+        public async Task Can_produce_first_block_when_private_chains_allowed() =>
+            await StartStop(new Context(new AuRaConfig { AllowAuRaPrivateChains = true, ForceSealing = true }), expectBlock: true, processingQueueEmpty: false);
 
         [Test]
         public async Task Cannot_produce_first_block_when_private_chains_not_allowed() =>
-            (await StartStop(new Context(), false)).ShouldProduceBlocks(Quantity.None());
-
-        [Test]
-        public async Task Does_not_produce_block_when_ProcessingQueueEmpty_not_raised() =>
-            (await StartStop(new Context(), false, true)).ShouldProduceBlocks(Quantity.None());
+            await StartStop(new Context(), expectBlock: false, processingQueueEmpty: false);
 
         [Test]
         public async Task Does_not_produce_block_when_QueueNotEmpty()
         {
             Context context = new();
             context.BlockProcessingQueue.IsEmpty.Returns(false);
-            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
+            await StartStop(context, expectBlock: false);
         }
 
         [Test]
@@ -152,26 +144,25 @@ namespace Nethermind.AuRa.Test
         {
             Context context = new();
             context.Sealer.CanSeal(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(false);
-            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
+            await StartStop(context, expectBlock: false);
         }
 
         [Test]
-        public async Task Does_not_produce_block_when_ForceSealing_is_false_and_no_transactions()
-        {
-            Context context = new();
-            AuRaConfig auRaConfig = new() { ForceSealing = false };
-            context.InitProducer(auRaConfig);
-            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
-        }
+        public async Task Does_not_produce_block_when_ForceSealing_is_false_and_no_transactions() =>
+            await StartStop(new Context(new AuRaConfig { ForceSealing = false }), expectBlock: false);
 
-        [Test, Category("Flaky"), Retry(9)]
-        public async Task Produces_block_when_ForceSealing_is_false_and_there_are_transactions()
+        [Test]
+        public async Task Produces_block_when_ForceSealing_is_false_and_there_are_transactions([Values(0, 1000)] int sealDelayMs)
         {
-            Context context = new();
-            AuRaConfig auRaConfig = new() { ForceSealing = false };
-            context.InitProducer(auRaConfig);
+            Context context = new(new AuRaConfig { ForceSealing = false });
             context.TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns(new[] { Build.A.Transaction.TestObject });
-            (await StartStop(context)).ShouldProduceBlocks(Quantity.AtLeastOne());
+            context.Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(async c =>
+            {
+                Block block = c.Arg<Block>();
+                await Task.Delay(sealDelayMs);
+                return block;
+            });
+            await StartStop(context, expectBlock: true);
         }
 
         [Test]
@@ -179,7 +170,7 @@ namespace Nethermind.AuRa.Test
         {
             Context context = new();
             context.Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(static c => Task.FromException(new Exception()));
-            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
+            await StartStop(context, expectBlock: false);
         }
 
         [Test]
@@ -187,7 +178,7 @@ namespace Nethermind.AuRa.Test
         {
             Context context = new();
             context.Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(static c => Task.FromCanceled(new CancellationToken(true)));
-            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
+            await StartStop(context, expectBlock: false);
         }
 
         [Test]
@@ -195,7 +186,7 @@ namespace Nethermind.AuRa.Test
         {
             Context context = new();
             context.BlockTree.Head.Returns((Block)null);
-            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
+            await StartStop(context, expectBlock: false);
         }
 
         [Test]
@@ -203,28 +194,74 @@ namespace Nethermind.AuRa.Test
         {
             Context context = new();
             context.BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns((Block)null);
-            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
+            await StartStop(context, expectBlock: false);
         }
 
         [Test]
-        public async Task Does_not_produce_block_when_there_is_new_best_suggested_block_not_yet_processed() =>
-            (await StartStop(new Context(), true, true)).ShouldProduceBlocks(Quantity.None());
-
-        private async Task<TestResult> StartStop(Context context, bool processingQueueEmpty = true, bool newBestSuggestedBlock = false)
+        public async Task Does_not_produce_block_when_target_block_state_is_unavailable()
         {
-            AutoResetEvent processedEvent = new(false);
+            Context context = new();
+            context.StateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+            context.StateProvider.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(false);
+            await StartStop(context, expectBlock: false);
+        }
+
+        [Test]
+        public async Task Does_not_produce_block_when_parent_state_is_unavailable_while_preparing()
+        {
+            IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+            gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<ulong?>()).Throws(new StateNotRetainedException("Parent state is not retained"));
+            Context context = new(gasLimitCalculator: gasLimitCalculator);
+
+            try
+            {
+                Block block = await context.AuRaBlockProducer.BuildBlock(Build.A.BlockHeader.TestObject);
+
+                Assert.That(block, Is.Null);
+                context.BlockchainProcessor.DidNotReceive().Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>());
+            }
+            finally
+            {
+                await context.StopAsync();
+            }
+        }
+
+        [Test]
+        public async Task Rethrows_other_exceptions_while_preparing()
+        {
+            IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+            gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<ulong?>()).Throws(new InvalidOperationException("Not a state error"));
+            Context context = new(gasLimitCalculator: gasLimitCalculator);
+
+            try
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(async () => await context.AuRaBlockProducer.BuildBlock(Build.A.BlockHeader.TestObject));
+            }
+            finally
+            {
+                await context.StopAsync();
+            }
+        }
+
+        [Test]
+        public async Task Does_not_produce_block_when_the_processing_queue_becomes_busy() =>
+            await StartStop(new Context(), expectBlock: false, queueBecomesBusy: true);
+
+        private async Task StartStop(Context context, bool expectBlock, bool processingQueueEmpty = true, bool queueBecomesBusy = false)
+        {
+            TaskCompletionSource processedEvent = new(TaskCreationOptions.RunContinuationsAsynchronously);
             context.BlockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
                 .Returns(AddBlockResult.Added)
                 .AndDoes(c =>
                 {
-                    processedEvent.Set();
+                    Volatile.Read(ref processedEvent).TrySetResult();
                 });
 
             context.BlockProducerRunner.Start();
-            await processedEvent.WaitOneAsync(context.StepDelay * 20, CancellationToken.None);
+            await Task.WhenAny(processedEvent.Task, Task.Delay(context.StepDelay * 20));
             context.BlockTree.ClearReceivedCalls();
             await Task.Delay(context.StepDelay * 2);
-            processedEvent.Reset();
+            Interlocked.Exchange(ref processedEvent, new(TaskCreationOptions.RunContinuationsAsynchronously));
 
             try
             {
@@ -233,31 +270,31 @@ namespace Nethermind.AuRa.Test
                     context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
                 }
 
-                if (newBestSuggestedBlock)
+                if (queueBecomesBusy)
                 {
-                    context.BlockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+                    context.BlockProcessingQueue.IsEmpty.Returns(false);
                     await Task.Delay(context.StepDelay * 5);
                     context.BlockTree.ClearReceivedCalls();
-                    processedEvent.Reset();
+                    Interlocked.Exchange(ref processedEvent, new(TaskCreationOptions.RunContinuationsAsynchronously));
                 }
 
-                await processedEvent.WaitOneAsync(context.StepDelay * 20, CancellationToken.None);
-
+                // A fixed window only suits the negative cases: a produced block reaches SuggestBlock through
+                // thread-pool continuations, which a busy test run can delay past any short window.
+                if (expectBlock)
+                {
+                    await processedEvent.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                }
+                else
+                {
+                    await Task.WhenAny(processedEvent.Task, Task.Delay(context.StepDelay * 20));
+                }
             }
             finally
             {
-                await context.BlockProducerRunner.StopAsync();
+                await context.StopAsync();
             }
 
-            return new TestResult(q => context.BlockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>()));
-        }
-
-        private class TestResult(Action<Quantity> assert)
-        {
-            private readonly Action<Quantity> _assert = assert;
-
-            public void ShouldProduceBlocks(Quantity quantity) =>
-                _assert(quantity);
+            context.BlockTree.Received(expectBlock ? Quantity.AtLeastOne() : Quantity.None()).SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>());
         }
     }
 }

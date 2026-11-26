@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -51,6 +52,12 @@ public class OptimismPostMergeBlockProducer(
             ?? throw new InvalidOperationException("Payload attributes are not set");
 
         BlockToProduce blockToProduce = base.PrepareBlock(parent, payloadAttributes, flags);
+        if (attrs.GetTransactions() is { Length: > 0 } transactions)
+        {
+            blockToProduce.RequiredTransactions = transactions;
+            blockToProduce.TransactionsExemptFromByteLimit = new HashSet<Transaction>(transactions, ReferenceEqualityComparer.Instance);
+        }
+
         if ((flags & IBlockProducer.Flags.EmptyBlock) != 0)
         {
             blockToProduce.Transactions = _payloadAttrsTxSource.GetTransactions(parent, blockToProduce.Header, attrs.GasLimit, attrs);
@@ -62,10 +69,41 @@ public class OptimismPostMergeBlockProducer(
     {
         BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
 
-        blockHeader.ExtraData = [];
+        blockHeader.ExtraData = HoloceneExtraData(blockHeader, payloadAttributes);
         blockHeader.RequestsHash = _specHelper.IsIsthmus(blockHeader) ? PostIsthmusRequestHash : null;
 
         return blockHeader;
+    }
+
+    /// <summary>
+    /// Returns the Holocene EIP-1559 parameters encoded as header extra data, or empty before Holocene.
+    /// </summary>
+    /// <remarks>
+    /// Applied to every built block, including improved ones, because <c>OptimismHeaderValidator</c> rejects
+    /// a post-Holocene header with empty extra data.
+    /// </remarks>
+    private byte[] HoloceneExtraData(BlockHeader blockHeader, PayloadAttributes? payloadAttributes)
+    {
+        if (payloadAttributes is not OptimismPayloadAttributes attrs || !_specHelper.IsHolocene(blockHeader))
+        {
+            return [];
+        }
+
+        // NOTE: This operation should never fail since attributes should be valid at this point.
+        if (!attrs.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Parameters, out string? error))
+        {
+            throw new InvalidOperationException($"{nameof(PayloadAttributes)} were not properly validated: {error}");
+        }
+
+        if (eip1559Parameters is { Denominator: 0, Elasticity: 0 })
+        {
+            IReleaseSpec spec = _specProvider.GetSpec(blockHeader);
+            eip1559Parameters = new EIP1559Parameters(eip1559Parameters.Version, (uint)spec.BaseFeeMaxChangeDenominator, (uint)spec.ElasticityMultiplier, eip1559Parameters.MinBaseFee);
+        }
+
+        byte[] extraData = new byte[eip1559Parameters.ByteLength];
+        eip1559Parameters.WriteTo(extraData);
+        return extraData;
     }
 
     /// <summary>

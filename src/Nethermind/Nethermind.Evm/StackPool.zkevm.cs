@@ -7,7 +7,7 @@ namespace Nethermind.Evm;
 
 internal static partial class StackPool
 {
-    private static readonly EvmObjectPool<StackItem> _stackPool = new();
+    private static EvmObjectPool<StackItem> _stackPool => field ??= new();
 
     public static partial void ReturnStacks(byte[] dataStack)
     {
@@ -17,6 +17,9 @@ internal static partial class StackPool
 
         _stackPool.Enqueue(new(dataStack));
     }
+
+    // One thread, one tier.
+    public static partial void ReturnStacksShared(byte[] dataStack) => ReturnStacks(dataStack);
 
     public static partial byte[] RentStacks()
     {

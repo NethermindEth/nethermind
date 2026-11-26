@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -23,7 +24,8 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider
     public const ulong PragueTimestamp = 0x68122dbc;
     public const ulong BalancerTimestamp = 0x69496dbc; // does not alter specs
     public const ulong OsakaTimestamp = 0x69de2dbc;
-    public static readonly Address FeeCollector = new("0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92");
+    // 0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92
+    public static readonly Address FeeCollector = new((ReadOnlySpan<byte>)[0x6b, 0xbe, 0x78, 0xee, 0x9e, 0x47, 0x48, 0x42, 0xdb, 0xd4, 0xab, 0x49, 0x87, 0xb3, 0xce, 0xfe, 0x88, 0x42, 0x6a, 0x92]);
 
     // Lazy because LondonGnosis.Apply → GnosisSpecProvider.FeeCollector → GnosisSpecProvider static
     // init → LondonGnosis.Instance (still building → null) is a circular init if Chiado or anything
@@ -39,8 +41,8 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider
             [LondonBlockNumber] = LondonGnosis.Instance,
             [ShanghaiTimestamp] = ShanghaiGnosis.Instance,
             [CancunTimestamp] = CancunGnosis.Instance,
-            [PragueTimestamp] = PragueGnosis.Instance,
-            [OsakaTimestamp] = OsakaGnosis.Instance,
+            [PragueTimestamp] = new PragueGnosis { DepositContractAddress = Eip6110Constants.GnosisDepositContractAddress },
+            [OsakaTimestamp] = new OsakaGnosis { DepositContractAddress = Eip6110Constants.GnosisDepositContractAddress },
         },
         // 8626000000000000000000058750000000000000000000
         terminalTotalDifficulty: new UInt256(15847367919172845568ul, 12460455203863319017ul, 25349535ul)) =>
@@ -64,7 +66,7 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider
     public override ulong ChainId => BlockchainIds.Gnosis;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public override ulong? DaoBlockNumber => null;
-    public string SealEngine => SealEngineType.AuRa;
+    public override string SealEngine => SealEngineType.AuRa;
 
-    public static GnosisSpecProvider Instance { get; } = new();
+    public static GnosisSpecProvider Instance => field ??= new();
 }

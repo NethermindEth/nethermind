@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using static System.Buffers.Binary.BinaryPrimitives;
 
@@ -119,26 +122,31 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             if (tx.Type == TxType.DepositTx)
                 continue;
 
-            UInt256 flzLen = L1CostFastlzCoef * ComputeFlzCompressLen(tx);
-            UInt256 daUsageEstimate = DaFootprintScale.IsZero ?
-                default :
-                UInt256.Max(
-                    MinTransactionSizeScaled,
-                    flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint underflow
-                ) / DaFootprintScale;
-
-            footprint += daUsageEstimate * daFootprintScalar;
+            footprint += ComputeDaUsageEstimate(tx) * daFootprintScalar;
         }
 
         return footprint;
     }
 
+    internal static UInt256 ComputeDaUsageEstimate(Transaction tx)
+    {
+        UInt256 flzLen = L1CostFastlzCoef * ComputeFlzCompressLen(tx);
+        return DaUsageFromEstimatedSize(UInt256.Max(
+            MinTransactionSizeScaled,
+            flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint underflow
+        ));
+    }
+
+    /// <summary>Scales the Fjord estimated size that <see cref="ComputeL1CostFjord"/> reports down to the DA usage estimate.</summary>
+    internal static UInt256 DaUsageFromEstimatedSize(in UInt256 estimatedSize) =>
+        DaFootprintScale.IsZero ? default : estimatedSize / DaFootprintScale;
+
     [SkipLocalsInit]
     public static UInt256 ComputeDataGas(Transaction tx, bool isRegolith)
     {
-        byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+        using ArrayPoolSpan<byte> encoded = Rlp.GetDecoderOrThrow<Transaction>().EncodeToArrayPoolSpan(tx, RlpBehaviors.SkipTypedWrapping);
 
-        ulong zeroCount = (ulong)encoded.Count(static b => b == 0);
+        ulong zeroCount = (ulong)((ReadOnlySpan<byte>)encoded).Count((byte)0);
         ulong nonZeroCount = (ulong)encoded.Length - zeroCount;
         // Add pre-EIP-3529 overhead
         nonZeroCount += isRegolith ? 0UL : OptimismConstants.PreRegolithNonZeroCountOverhead;
@@ -180,9 +188,22 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     // Do not use SkipLocalsInit, `ht` should be zeros initially
     public static uint ComputeFlzCompressLen(Transaction tx)
     {
-        byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+        IRlpDecoder<Transaction> decoder = Rlp.GetDecoderOrThrow<Transaction>();
+        int length = decoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping);
+        byte[] encoded = ArrayPool<byte>.Shared.Rent(length);
+        try
+        {
+            RlpWriter writer = RlpWriter.ContentWriter(encoded.AsSpan(0, length));
+            decoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
+            Rlp.CheckLength(in writer, length);
+            return FlzCompressLen(encoded, length);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(encoded);
+        }
 
-        static uint FlzCompressLen(byte[] data)
+        static uint FlzCompressLen(byte[] data, int length)
         {
             uint n = 0;
             Span<uint> ht = stackalloc uint[8192];
@@ -229,8 +250,8 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
                 return ip + 1;
             }
             uint a = 0;
-            uint ipLimit = (uint)data.Length - 13;
-            if (data.Length < 13)
+            uint ipLimit = (uint)length - 13;
+            if (length < 13)
             {
                 ipLimit = 0;
             }
@@ -269,17 +290,16 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
                 ip = setNextHash(setNextHash(ip + l, ref ht), ref ht);
                 a = ip;
             }
-            literals((uint)data.Length - a);
+            literals((uint)length - a);
             return n;
         }
-        return FlzCompressLen(encoded);
     }
 
     internal static UInt256 ComputeGasUsedFjord(UInt256 estimatedSize) => BasicDivisor.IsZero ? default : estimatedSize * GasCostOf.TxDataNonZeroEip2028 / BasicDivisor;
 
     // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
     // https://specs.optimism.io/protocol/jovian/l1-attributes.html
-    private static UInt256 GetDaFootprintScalar(Block block)
+    internal static UInt256 GetDaFootprintScalar(Block block)
     {
         Transaction? firstTx = block.Transactions.FirstOrDefault();
         if (firstTx?.Type is not TxType.DepositTx)

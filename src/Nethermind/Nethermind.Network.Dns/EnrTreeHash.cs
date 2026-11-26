@@ -51,7 +51,7 @@ internal static class EnrTreeHash
     /// Decodes the unpadded standard base32 alphabet used by EIP-1459 hash labels. Leftover bits of an
     /// incomplete trailing group are discarded, matching the reference implementation.
     /// </summary>
-    private static bool TryDecodeBase32(string encoded, Span<byte> destination, out int length)
+    internal static bool TryDecodeBase32(string encoded, Span<byte> destination, out int length)
     {
         length = 0;
         if (encoded.Length * 5L / 8 > destination.Length)

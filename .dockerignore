@@ -5,3 +5,6 @@
 **/bin/
 **/obj/
 
+/tests/
+/sedge/
+/src/Nethermind/Nethermind.LightClient/Deployment/.env

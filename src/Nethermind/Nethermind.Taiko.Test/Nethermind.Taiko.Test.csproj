@@ -5,6 +5,7 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <NoWarn>$(NoWarn);NUnit1032</NoWarn>
+    <StartupObject>Nethermind.Taiko.Test.TaikoPrecompileFaultTests</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>

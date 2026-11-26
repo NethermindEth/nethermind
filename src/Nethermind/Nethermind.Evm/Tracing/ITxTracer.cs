@@ -46,6 +46,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// - <see cref="ReportActionEnd(ulong, Address, ReadOnlyMemory{byte})"/>
     /// - <see cref="ReportActionRevert"/>
     /// - <see cref="ReportActionError"/>
+    /// - <see cref="ReportPrecompileAccountRead"/>
     /// </remarks>
     bool IsTracingActions { get; }
 
@@ -106,6 +107,16 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     bool IsTracingReturnData { get; }
 
     /// <summary>
+    /// The memory in a CALL-family operation's output window after the call returns
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <c>ReportMemoryChange</c> for the output window, which is read only when this is set.
+    /// Depends on <see cref="IsTracingInstructions"/>.
+    /// </remarks>
+    bool IsTracingCallOutputMemory => false;
+
+    /// <summary>
     /// Code deployment
     /// </summary>
     /// <remarks>
@@ -122,6 +133,19 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// - <see cref="SetOperationStack"/>
     /// </remarks>
     bool IsTracingStack { get; }
+
+    /// <summary>
+    /// Stack pushes during instruction tracing
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <see cref="ReportStackPush(in ReadOnlySpan{byte})"/>
+    /// Defaults to <see cref="IsTracingInstructions"/>. A tracer that reads the stack only through
+    /// <see cref="SetOperationStack"/> snapshots returns <c>false</c>. Pushes are then skipped unless another tracer in
+    /// the chain traces them, in which case this tracer receives them too. The value is read once per transaction, so
+    /// it must stay stable for the transaction.
+    /// </remarks>
+    bool IsTracingStackPushes => IsTracingInstructions;
 
     /// <summary>
     /// Traces blockhash calls
@@ -172,6 +196,14 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingAccess
                       || IsTracingFees
                       || IsTracingLogs;
+
+    /// <summary>
+    /// Whether the tracer can see the fee payment: the fees, the state changes, or the logs
+    /// </summary>
+    /// <remarks>
+    /// The logs include the EIP-8037 burn log of a destroyed beneficiary, which includes its fee.
+    /// </remarks>
+    bool IsObservingFeePayment => IsTracingFees || IsTracingState || IsCollectingLogs || IsTracingLogs;
 
     /// <summary>
     /// Transaction completed successfully
@@ -238,14 +270,14 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     ///
     /// </summary>
     /// <param name="stackItem"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
+    /// <remarks>Depends on <see cref="IsTracingStackPushes"/></remarks>
     void ReportStackPush(in ReadOnlySpan<byte> stackItem);
 
     /// <summary>
     /// </summary>
     /// <param name="stackItem"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportStackPush(byte stackItem) => ReportStackPush(new[] { stackItem });
+    /// <remarks>Depends on <see cref="IsTracingStackPushes"/></remarks>
+    void ReportStackPush(byte stackItem) => ReportStackPush(new ReadOnlySpan<byte>(in stackItem));
 
     /// <summary>
     ///
@@ -297,7 +329,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="offset"></param>
     /// <param name="data"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportMemoryChange(UInt256 offset, byte data) => ReportMemoryChange(offset, new[] { data });
+    void ReportMemoryChange(UInt256 offset, byte data) => ReportMemoryChange(offset, new ReadOnlySpan<byte>(in data));
 
     /// <summary>
     /// Reports the slot key and new value written by SSTORE, for the vmTrace <c>store</c> entry.
@@ -369,7 +401,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     ///
     /// </summary>
     /// <param name="gas"></param>
-    /// <param name="output"></param>
+    /// <param name="output">Never mutated afterwards, so a tracer may keep a whole underlying array without copying it.</param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output);
 
@@ -377,7 +409,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     ///
     /// </summary>
     /// <param name="gasLeft"></param>
-    /// <param name="output"></param>
+    /// <param name="output">Never mutated afterwards, so a tracer may keep a whole underlying array without copying it.</param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output);
 
@@ -388,6 +420,28 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionError(EvmExceptionType evmExceptionType);
 
+    /// <summary>Sets additional diagnostic information for the current action's subsequent error.</summary>
+    void ReportActionErrorDetails(string error) { }
+
+    /// <summary>Sets diagnostic information for the current action, optionally excluding instruction and memory tracers.</summary>
+    /// <param name="error">The diagnostic information for the subsequent action error.</param>
+    /// <param name="actionOnly">Whether only leaves tracing actions without instructions or memory receive the information.</param>
+    /// <remarks>Wrappers and composites forward the scope to their children rather than filtering aggregate capabilities.</remarks>
+    void ReportActionErrorDetails(string error, bool actionOnly)
+    {
+        if (!actionOnly || (IsTracingActions && !IsTracingInstructions && !IsTracingMemory))
+            ReportActionErrorDetails(error);
+    }
+
+    /// <summary>Sets Geth's error text for the current creation, whose code deposit failed, before its <see cref="ReportActionError"/>.</summary>
+    /// <param name="error">The error Geth reports, such as <c>max code size exceeded</c>.</param>
+    /// <remarks>
+    /// The action error still reports <see cref="EvmExceptionType.OutOfGas"/> or <see cref="EvmExceptionType.InvalidCode"/>.
+    /// By default this is an action-only detail, see <see cref="ReportActionErrorDetails(string, bool)"/>; tracers that
+    /// write Geth's frame exits alongside instructions take it here.
+    /// </remarks>
+    void ReportCodeDepositError(string error) => ReportActionErrorDetails(error, actionOnly: true);
+
     /// <summary>
     /// Reports the remaining gas observed at an execution-segment boundary.
     /// </summary>
@@ -395,17 +449,48 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <remarks>
     /// Depends on <see cref="IsTracingActions"/>. Checkpoints are emitted when execution suspends,
     /// resumes, completes or fails, before the corresponding action completion or error notification
-    /// where applicable. These are not per-opcode updates; early action failures can occur without
+    /// where applicable. An exceptional halt consumes all the frame's gas, so the checkpoint before
+    /// its error reports zero. These are not per-opcode updates; early action failures can occur without
     /// a new checkpoint, leaving the previous observation in effect. The default implementation drops it.
     /// </remarks>
     void ReportActionRemainingGas(ulong gas) { }
+
+    /// <summary>
+    /// Reports an account a precompile read, which no opcode names: EIP-8151 ecRecover reads the recovered account's code.
+    /// </summary>
+    /// <param name="address">The account read.</param>
+    /// <remarks>Depends on <see cref="IsTracingActions"/>. Reported only once the read happens, so a call that cannot
+    /// pay for the access reports nothing. The default implementation drops it.</remarks>
+    void ReportPrecompileAccountRead(Address address) { }
+
+    /// <summary>
+    /// Reports a CALL-family or CREATE operation that entered no frame: it failed its depth or balance precheck, which
+    /// returns <paramref name="gas"/> to the caller at once, or its creation address collided, which consumes it.
+    /// </summary>
+    /// <param name="gas">Gas the frame would have received, including a value call's stipend.</param>
+    /// <param name="gasLeft">Gas returned to the caller: all of <paramref name="gas"/> after a failed precheck, none after a collision.</param>
+    /// <param name="value">Value the operation would have transferred.</param>
+    /// <param name="from">The calling or creating account.</param>
+    /// <param name="to">The callee, or the address the creation would have used.</param>
+    /// <param name="input">Call data or init code.</param>
+    /// <param name="callType">The CALL-family or CREATE operation.</param>
+    /// <param name="error"><see cref="EvmExceptionType.NotEnoughBalance"/>, <see cref="EvmExceptionType.CallDepthExceeded"/> or <see cref="EvmExceptionType.TransactionCollision"/>.</param>
+    /// <param name="isPrecompileCall">Whether <paramref name="to"/> is a precompile.</param>
+    /// <remarks>
+    /// Depends on <see cref="IsTracingActions"/>. The action is complete when reported, so no action end or error
+    /// follows. From EIP-8037 a creation runs its precheck in the creating operation, so only its collision is reported.
+    /// The default implementation drops it.
+    /// </remarks>
+    void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    { }
 
     /// <summary>
     ///
     /// </summary>
     /// <param name="gas"></param>
     /// <param name="deploymentAddress"></param>
-    /// <param name="deployedCode"></param>
+    /// <param name="deployedCode">Never mutated afterwards, so a tracer may keep a whole underlying array without copying it.</param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode);
 

@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -30,6 +32,7 @@ public class ReceiptSyncFeedTests
 {
     private IBlockTree _syncingFromBlockTree;
     private IBlockTree _syncingToBlockTree;
+    private BlockStore _syncingToBlockStore;
     private ReceiptsSyncFeed _feed;
     private ISyncConfig _syncConfig;
     private Block _pivotBlock;
@@ -48,7 +51,9 @@ public class ReceiptSyncFeedTests
             .TestObject;
 
         _receiptStorage = Substitute.For<IReceiptStorage>();
+        _syncingToBlockStore = new BlockStore(new MemDb());
         _syncingToBlockTree = Build.A.BlockTree()
+            .WithBlockStore(_syncingToBlockStore)
             .TestObject;
 
         for (ulong i = 1; i < 100; i++)
@@ -75,7 +80,9 @@ public class ReceiptSyncFeedTests
         _feed = new ReceiptsSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
+            _syncingToBlockStore,
             _receiptStorage,
+            ReceiptsRootCalculator.Instance,
             new MemorySyncPointers(),
             _syncPeerPool,
             _syncConfig,
@@ -101,8 +108,10 @@ public class ReceiptSyncFeedTests
         using ReceiptsSyncBatch req = (await _feed.PrepareRequest())!;
         req.Response = req.Infos.Take(8).Select(info => _syncingFromReceiptStore.Get(info!.BlockHash)).ToPooledList(8)!;
 
-        _receiptStorage
-            .When((it) => it.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]?>(), Arg.Any<bool>()))
+        IReceiptsInsertBatch insertBatch = Substitute.For<IReceiptsInsertBatch>();
+        _receiptStorage.StartInsertBatch().Returns(insertBatch);
+        insertBatch
+            .When((it) => it.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]?>()))
             .Do((callInfo) =>
             {
                 Block block = (Block)callInfo[0];
@@ -113,6 +122,50 @@ public class ReceiptSyncFeedTests
         Assert.That(act, Throws.TypeOf<Exception>());
         using ReceiptsSyncBatch req2 = (await _feed.PrepareRequest())!;
         Assert.That(req2.Infos[0]!.BlockNumber, Is.EqualTo(95));
+        insertBatch.Received(1).Dispose();
+    }
+
+    [Test]
+    public async Task ShouldKeepInsertFailureWhenStoringFails()
+    {
+        _feed.InitializeFeed();
+
+        using ReceiptsSyncBatch req = (await _feed.PrepareRequest())!;
+        req.Response = req.Infos.Take(8).Select(info => _syncingFromReceiptStore.Get(info!.BlockHash)).ToPooledList(8)!;
+
+        IReceiptsInsertBatch insertBatch = Substitute.For<IReceiptsInsertBatch>();
+        _receiptStorage.StartInsertBatch().Returns(insertBatch);
+        insertBatch
+            .When((it) => it.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]?>()))
+            .Do((callInfo) =>
+            {
+                Block block = (Block)callInfo[0];
+                if (block.Number == 95) throw new InvalidOperationException("insert failed");
+            });
+        insertBatch.When(static (it) => it.Dispose()).Do(static (_) => throw new IOException("store failed"));
+
+        Func<SyncResponseHandlingResult> act = () => _feed.HandleResponse(req);
+        Assert.That(act, Throws.InvalidOperationException.With.Message.EqualTo("insert failed"));
+        using ReceiptsSyncBatch req2 = (await _feed.PrepareRequest())!;
+        Assert.That(req2.Infos[0]!.BlockNumber, Is.EqualTo(_pivotBlock.Number));
+    }
+
+    [Test]
+    public async Task ShouldRequestAgainWhenStoringFails()
+    {
+        _feed.InitializeFeed();
+
+        using ReceiptsSyncBatch req = (await _feed.PrepareRequest())!;
+        req.Response = req.Infos.Take(8).Select(info => _syncingFromReceiptStore.Get(info!.BlockHash)).ToPooledList(8)!;
+
+        IReceiptsInsertBatch insertBatch = Substitute.For<IReceiptsInsertBatch>();
+        _receiptStorage.StartInsertBatch().Returns(insertBatch);
+        insertBatch.When(static (it) => it.Dispose()).Do(static (_) => throw new IOException("store failed"));
+
+        Func<SyncResponseHandlingResult> act = () => _feed.HandleResponse(req);
+        Assert.That(act, Throws.TypeOf<IOException>());
+        using ReceiptsSyncBatch req2 = (await _feed.PrepareRequest())!;
+        Assert.That(req2.Infos[0]!.BlockNumber, Is.EqualTo(_pivotBlock.Number));
     }
 
     [Test]

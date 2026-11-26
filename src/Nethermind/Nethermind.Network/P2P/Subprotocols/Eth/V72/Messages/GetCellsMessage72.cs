@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
@@ -10,7 +11,7 @@ public class GetCellsMessage72(
     ValueHash256[] hashes,
     byte[] cellMask,
     bool generateRandomRequestId = true)
-    : Eth66MessageBase(generateRandomRequestId)
+    : Eth66MessageBase(generateRandomRequestId), ITxServeRequest
 {
     public GetCellsMessage72(long requestId, ValueHash256[] hashes, byte[] cellMask)
         : this(hashes, cellMask, false) =>

@@ -6,12 +6,15 @@ using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381G1MsmPrecompile
 {
+    public static Address Address => field ??= Address.FromNumber(0x0c);
+
     private const int StackallocPairCountThreshold = 8;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
@@ -40,7 +43,7 @@ public partial class Bls12381G1MsmPrecompile
 
             try
             {
-                return MsmCore(input, decoded, pairCount);
+                return MsmCore(input, decoded.AsSpan(0, decodedLen), pairCount);
             }
             finally
             {
@@ -57,7 +60,7 @@ public partial class Bls12381G1MsmPrecompile
 
         Span<byte> output = stackalloc byte[Eip2537.LenG1Trimmed];
 
-        Accelerators.Status status = Accelerators.Bls12381G1Msm(decoded, (nuint)pairCount, output);
+        Accelerators.Status status = CurveAccelerators.Bls12381G1Msm(decoded, (nuint)pairCount, output);
 
         return HandleResult(output, status);
     }
@@ -73,7 +76,7 @@ public partial class Bls12381G1MsmPrecompile
 
         Span<byte> output = stackalloc byte[Eip2537.LenG1Trimmed];
 
-        Accelerators.Status status = Accelerators.Bls12381G1Msm(decoded, 1, output);
+        Accelerators.Status status = CurveAccelerators.Bls12381G1Msm(decoded, 1, output);
 
         return HandleResult(output, status);
     }

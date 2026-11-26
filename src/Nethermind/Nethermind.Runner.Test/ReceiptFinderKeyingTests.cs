@@ -32,7 +32,7 @@ public class ReceiptFinderKeyingTests
 {
     /// <summary>
     /// Consumers that must stay on the stored-only finder: consensus-path readers that tolerate absent receipts
-    /// (regeneration throws instead), peer-facing serving, and monitoring — none of which may cost a block execution.
+    /// (regeneration throws instead), peer-facing serving, monitoring, and stored-history APIs — none of which may cost a block execution.
     /// </summary>
     private static readonly HashSet<string> StoredOnlyConsumers =
     [
@@ -41,8 +41,9 @@ public class ReceiptFinderKeyingTests
         "Nethermind.Consensus.AuRa.AuRaValidatorFactory",
         "Nethermind.Consensus.AuRa.Validators.ContractBasedValidator",
         "Nethermind.Consensus.AuRa.InitializationSteps.TxAuRaFilterBuilders",
-        "Nethermind.Shutter.ShutterApi",
-        "Nethermind.Shutter.ShutterBlockHandler",
+        "Nethermind.Merge.Plugin.FrameTxWidthFinalizer",
+        // OTS requires retained receipts and must not re-execute blocks against historical state.
+        "Nethermind.JsonRpc.TraceStore.Ots.OtsRpcModule",
     ];
 
     /// <summary>
@@ -56,6 +57,7 @@ public class ReceiptFinderKeyingTests
         // (monitoring), which must stay stored-only.
         "Nethermind.Runner.Ethereum.JsonRpcRunner",
         "Nethermind.Blockchain.Receipts.FullInfoReceiptFinder",
+        "Nethermind.Optimism.OptimismReceiptFinder",
         "Nethermind.JsonRpc.Modules.Eth.EthRpcModule",
         "Nethermind.Optimism.Rpc.OptimismEthRpcModule",
         "Nethermind.JsonRpc.TraceStore.TraceStoreRpcModule",

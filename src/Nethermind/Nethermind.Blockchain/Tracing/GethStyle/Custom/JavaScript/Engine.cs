@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using System.Threading;
+using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Core.Extensions;
@@ -13,18 +16,31 @@ using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
-public class Engine : IDisposable
+public partial class Engine : IDisposable
 {
     private const bool IsDebugging = false;
+
+    /// <summary>
+    /// How often an external interrupt is sent again: V8 drops an interrupt that arrives while no script runs, so a
+    /// script entered just after it would otherwise run on.
+    /// </summary>
+    private static readonly TimeSpan InterruptRedeliveryPeriod = TimeSpan.FromMilliseconds(10);
     private V8ScriptEngine V8Engine { get; }
 
     private readonly IReleaseSpec _spec;
     private readonly TracerRuntime _runtime;
     private readonly bool _ownsRuntime;
 
+    private ScriptObject? _nullThrowInvoker;
+    private NullThrowObserver? _availableNullThrowObserver;
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
+    private dynamic _toUint8Array;
     private int _disposed;
+    private int _externalInterruptRequested;
+    private readonly Lock _interruptGate = new();
+    private Timer? _interruptRedelivery;
+    private JavaScriptInputException? _inputError;
 
     [ThreadStatic] private static Engine? _currentEngine;
 
@@ -60,6 +76,9 @@ public class Engine : IDisposable
             scriptEngine = runtime.CreateScriptEngine(IsDebugging
                 ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
                 : V8ScriptEngineFlags.None);
+            // An interrupt that lands in script a host helper re-entered must end the whole script, not surface as an
+            // error the tracer can catch and loop on.
+            scriptEngine.EnableRuntimeInterruptPropagation = true;
             V8Engine = scriptEngine;
             Initialize();
         }
@@ -108,6 +127,7 @@ public class Engine : IDisposable
 
         _bigInteger = V8Engine.Evaluate(_runtime.BigInteger);
         _createUint8Array = V8Engine.Evaluate(_runtime.CreateUint8Array);
+        _toUint8Array = V8Engine.Evaluate(_runtime.ToUint8Array);
     }
 
     /// <summary>
@@ -118,12 +138,12 @@ public class Engine : IDisposable
     /// <summary>
     /// Converts input to hex string
     /// </summary>
-    private string ToHex(object? bytes) => bytes is null ? "0x" : bytes.ToBytes().ToHexString();
+    private string ToHex(object? bytes) => bytes is null ? "0x" : bytes.ToBytes().ToHexString(withZeroX: true);
 
     /// <summary>
     /// Converts input to 20 byte Address byte representation
     /// </summary>
-    private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToArray().ToTypedScriptArray();
+    private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToTypedScriptArray();
 
     /// <summary>
     /// Checks if contract at given address is a precompile
@@ -146,33 +166,58 @@ public class Engine : IDisposable
     /// <summary>
     /// Creates a contract address from sender and nonce (used for CREATE instruction)
     /// </summary>
-    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToArray().ToTypedScriptArray();
+    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToTypedScriptArray();
 
     /// <summary>
     /// Creates a contract address from sender, salt and initcode (used for CREATE2 instruction)
     /// </summary>
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
-        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToArray().ToTypedScriptArray();
+        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToTypedScriptArray();
 
     /// <summary>
-    /// Stops the running script. Called from a timer thread, so the engine may be disposed between the check
-    /// and the call.
+    /// Stops the running script, and any script the engine runs later. Called from a timer thread, so the engine
+    /// may be disposed between the check and the call.
     /// </summary>
+    /// <remarks>
+    /// V8 ignores an interrupt that arrives while no script runs, so the interrupt is sent again every
+    /// <see cref="InterruptRedeliveryPeriod"/> until the engine is disposed. V8 interrupts the whole runtime, so until an
+    /// interrupted engine is disposed any other engine on the same <c>TracerRuntime</c> would be stopped too; callers keep
+    /// one live engine per runtime at a time.
+    /// </remarks>
     public void Interrupt()
     {
-        if (Volatile.Read(ref _disposed) != 0)
+        if (Interlocked.Exchange(ref _externalInterruptRequested, 1) == 0)
         {
-            return;
+            lock (_interruptGate)
+            {
+                if (Volatile.Read(ref _disposed) == 0)
+                    _interruptRedelivery = new Timer(static engine => ((Engine)engine!).DeliverInterrupt(), this,
+                        InterruptRedeliveryPeriod, InterruptRedeliveryPeriod);
+            }
         }
 
-        try
+        DeliverInterrupt();
+    }
+
+    private void DeliverInterrupt()
+    {
+        // The gate keeps a delivery from overlapping disposal, which stops the redelivery under the same gate.
+        lock (_interruptGate)
         {
-            V8Engine.Interrupt();
-        }
-        catch (ObjectDisposedException)
-        {
-            // The timeout fired after the tracing thread released the engine: there is no script left to stop,
-            // and the timer thread has no caller to report to.
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                V8Engine.Interrupt();
+            }
+            catch (ObjectDisposedException)
+            {
+                // The timeout fired after the tracing thread released the engine: there is no script left to stop,
+                // and the timer thread has no caller to report to.
+            }
         }
     }
 
@@ -189,9 +234,22 @@ public class Engine : IDisposable
         }
 
         Interlocked.CompareExchange(ref _currentEngine, null, this);
+        lock (_interruptGate)
+        {
+            _interruptRedelivery?.Dispose();
+            _interruptRedelivery = null;
+        }
+
         try
         {
-            V8Engine.Dispose();
+            try
+            {
+                _nullThrowInvoker?.Dispose();
+            }
+            finally
+            {
+                V8Engine.Dispose();
+            }
         }
         finally
         {
@@ -205,7 +263,29 @@ public class Engine : IDisposable
     /// <summary>
     /// Creates a JavaScript V8Engine typed byte array
     /// </summary>
-    public ITypedArray<byte> CreateUint8Array(byte[] buffer) => _createUint8Array(buffer);
+    public ITypedArray<byte> CreateUint8Array(ReadOnlySpan<byte> buffer)
+    {
+        ITypedArray<byte> array = _createUint8Array(buffer.Length);
+        if (buffer.Length > 0)
+        {
+            array.WriteBytes(buffer, 0, (ulong)buffer.Length, 0);
+        }
+
+        return array;
+    }
+
+    /// <summary>
+    /// Converts the elements of a script array to bytes the way assigning them to a <c>Uint8Array</c> does.
+    /// </summary>
+    /// <remarks>
+    /// As goja's <c>toUint8</c> in Geth, each element goes through JavaScript numeric coercion (so <c>'0x10'</c> and
+    /// objects with <c>valueOf</c> count), is truncated and wraps into a byte, and NaN and infinities become 0.
+    /// </remarks>
+    internal byte[] ToBytes(ScriptObject values)
+    {
+        ITypedArray<byte> array = _toUint8Array(values);
+        return array.Length == 0 ? [] : array.ToArray();
+    }
 
     /// <summary>
     /// Creates a JavaScript BigInteger object
@@ -215,5 +295,112 @@ public class Engine : IDisposable
     /// <summary>
     /// Creates a JavaScript tracer object from JavaScript code or name
     /// </summary>
-    public dynamic CreateTracer(string tracer) => V8Engine.Evaluate(_runtime.GetTracerScript(tracer));
+    public dynamic CreateTracer(string tracer)
+    {
+        try
+        {
+            return V8Engine.Evaluate(_runtime.GetTracerScript(tracer));
+        }
+        catch (ScriptEngineException ex) when (IdentifierRegex().IsMatch(tracer.Trim())
+            && ex.Message == $"ReferenceError: {tracer.Trim()} is not defined")
+        {
+            // Pack adds a leading '(', so the selector starts in column 2.
+            int line = 1, column = 2;
+            foreach (char character in tracer.AsSpan(0, tracer.Length - tracer.TrimStart().Length))
+            {
+                if (character == '\n')
+                {
+                    line++;
+                    column = 1;
+                }
+                else column++;
+            }
+            throw new InvalidDataException($"{ex.Message} at <eval>:{line}:{column}(0)", ex);
+        }
+        catch (ScriptEngineException ex) when (JavaScriptTraceFailure.IsRecoverable(ex))
+        {
+            throw new InvalidDataException(ex.Message, ex);
+        }
+    }
+
+    [GeneratedRegex(@"\A[A-Za-z_$][A-Za-z0-9_$]*\z")]
+    private static partial Regex IdentifierRegex();
+
+    // Capture the intrinsic before user code runs; strict frames hide the per-call marker from caller introspection.
+    internal void PrepareNullThrowCapture() => _nullThrowInvoker ??= (ScriptObject)V8Engine.Evaluate("""
+        (function () {
+            'use strict';
+            const apply = Reflect.apply;
+            return function (receiver, callback, markNull, first, second, hasSecond) {
+                try {
+                    return apply(callback, receiver, hasSecond ? [first, second] : [first]);
+                } catch (error) {
+                    if (error === null) markNull();
+                    throw error;
+                }
+            };
+        })()
+        """);
+
+    internal object? InvokeCapturingNull(object receiver, ScriptObject callback, object? first, object? second, bool hasSecond, out bool observedNullThrow)
+    {
+        observedNullThrow = false;
+        NullThrowObserver observer = Interlocked.Exchange(ref _availableNullThrowObserver, null) ?? new();
+        try
+        {
+            return _nullThrowInvoker!.Invoke(false, receiver, callback, observer.MarkNull, first, second, hasSecond);
+        }
+        catch
+        {
+            // Publish before rethrow: the caller's exception filter runs before this frame's finally blocks.
+            observedNullThrow = observer.CaughtNull;
+            throw;
+        }
+        finally
+        {
+            observer.CaughtNull = false;
+            Interlocked.CompareExchange(ref _availableNullThrowObserver, observer, null);
+        }
+    }
+
+    /// <remarks>
+    /// Callers must return without accessing the invalid input; V8 may deliver the interruption at a later safepoint.
+    /// </remarks>
+    internal JavaScriptInputException AbortInput(string message)
+    {
+        _inputError ??= new JavaScriptInputException(message);
+        V8Engine.Interrupt();
+        return _inputError;
+    }
+
+    internal void ThrowIfInputFailed()
+    {
+        ThrowIfInterrupted();
+        if (_inputError is { } error) throw error;
+    }
+
+    internal void ThrowIfInterrupted()
+    {
+        if (Volatile.Read(ref _externalInterruptRequested) != 0)
+            throw new ScriptInterruptedException("Script execution interrupted");
+    }
+
+    internal bool TryGetInputError(Exception exception, out string? message, bool observedNullThrow = false)
+    {
+        message = null;
+        // V8 uses the same interruption exception for input aborts and external requests; external requests take precedence.
+        if (_inputError is null || Volatile.Read(ref _externalInterruptRequested) != 0
+            || (!JavaScriptTraceFailure.IsInputFailure(exception, _inputError)
+                && !JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow))) return false;
+        message = _inputError.Message;
+        return true;
+    }
+
+    private sealed class NullThrowObserver
+    {
+        public bool CaughtNull;
+        public Action MarkNull { get; }
+
+        public NullThrowObserver() => MarkNull = () => CaughtNull = true;
+    }
 }

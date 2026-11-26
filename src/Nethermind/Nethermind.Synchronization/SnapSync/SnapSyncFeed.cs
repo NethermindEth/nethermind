@@ -138,6 +138,8 @@ namespace Nethermind.Synchronization.SnapSync
             bool isRangeResult = true;
             bool responseHandled = false;
 
+            // Held until the request is released below, so that a checkpoint never sees the response half handled.
+            using IDisposable? responseScope = _snapProvider.BeginResponse();
             try
             {
                 if (batch.AccountRangeResponse is not null)
@@ -169,7 +171,7 @@ namespace Nethermind.Synchronization.SnapSync
                         return SyncResponseHandlingResult.NotAssigned;
                     }
 
-                    _logger.Trace($"SNAP - timeout {peer}");
+                    _logger.Trace($"SNAP - timeout {peer:hide}");
                     Interlocked.Increment(ref Metrics.SnapRequestTimeouts);
                     OnUnproductiveResponse("no response");
                     return SyncResponseHandlingResult.LesserQuality;
@@ -202,19 +204,16 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             int maxSize = 10 * AllowedInvalidResponses;
-            while (_resultLog.Count > maxSize)
-            {
-                lock (_syncLock)
-                {
-                    if (_resultLog.Count > 0)
-                    {
-                        _resultLog.RemoveLast();
-                    }
-                }
-            }
-
+            // Trimmed before the add, so the log holds the new result and the maxSize before it. One critical
+            // section: a count read outside it can be stale by the time the lock is taken, after a pivot update
+            // has already cleared the log.
             lock (_syncLock)
             {
+                while (_resultLog.Count > maxSize)
+                {
+                    _resultLog.RemoveLast();
+                }
+
                 _resultLog.AddFirst((peer, result));
             }
 
@@ -304,7 +303,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                                         if (repeatOffender)
                                         {
-                                            if (_logger.IsDebug) _logger.Debug($"SNAP - peer kept failing across a pivot update, punishing:{peer}");
+                                            if (_logger.IsDebug) _logger.Debug($"SNAP - peer kept failing across a pivot update, punishing:{peer:hide}");
                                             return SyncResponseHandlingResult.LesserQuality;
                                         }
 
@@ -313,7 +312,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                                     if (allLastFailures == peerLastFailures)
                                     {
-                                        _logger.Trace($"SNAP - peer to be punished:{peer}");
+                                        _logger.Trace($"SNAP - peer to be punished:{peer:hide}");
                                         return SyncResponseHandlingResult.LesserQuality;
                                     }
 

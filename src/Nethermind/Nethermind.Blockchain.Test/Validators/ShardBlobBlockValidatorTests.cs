@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -29,6 +30,7 @@ public class ShardBlobBlockValidatorTests
             Build.A.Block
                 .WithBlobGasUsed(blobGasUsed)
                 .WithExcessBlobGas(excessBlobGas)
+                .WithParentBeaconBlockRoot(spec.IsBeaconBlockRootAvailable ? Keccak.Zero : null)
                 .WithWithdrawalsRoot(TestItem.KeccakA)
                 .WithWithdrawals(TestItem.WithdrawalA_1Eth)
                 .WithParent(parent)

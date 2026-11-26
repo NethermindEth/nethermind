@@ -12,6 +12,7 @@ namespace Nethermind.JsonRpc.Test;
 public class MemoryMessageStream : MemoryStream, IMessageBorderPreservingStream
 {
     private static readonly byte Delimiter = Convert.ToByte('\n');
+    private static readonly byte[] EndOfMessage = [Delimiter];
 
     public ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
     {
@@ -23,9 +24,10 @@ public class MemoryMessageStream : MemoryStream, IMessageBorderPreservingStream
         });
     }
 
-    public ValueTask<int> WriteEndOfMessageAsync()
+    public async ValueTask<int> WriteEndOfMessageAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
-        WriteByte(Delimiter);
-        return ValueTask.FromResult(1);
+        await WriteAsync(data, cancellationToken);
+        await WriteAsync(EndOfMessage, cancellationToken);
+        return 1;
     }
 }

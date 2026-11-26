@@ -30,6 +30,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -83,11 +84,38 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         ExecutionPayloadV3 executionPayload = await CreateBlockRequestV3(
-            chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: []);
+            chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: [], blobGasUsed: 0, excessBlobGas: 0);
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(executionPayload, [], executionPayload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+    }
+
+    [Test]
+    public async Task NewPayloadV3_pre_cancun_with_missing_blob_fields_returns_invalid_params([Values] bool omit)
+    {
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload, MergeTestBlockchain chain)
+            = await PreparePayloadRequestEnv(Shanghai.Instance);
+        using MergeTestBlockchain disposeChain = chain;
+
+        JsonObject payload = serializer.Deserialize<JsonObject>(serializer.Serialize(executionPayload))!;
+        foreach (string field in (string[])["blobGasUsed", "excessBlobGas"])
+        {
+            if (omit)
+                payload.Remove(field);
+            else
+                payload[field] = null;
+        }
+
+        JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(payload), "[]", null);
+
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error.Message, Is.EqualTo("blobGasUsed must be set"));
+        }
     }
 
     [Test]
@@ -123,12 +151,15 @@ public partial class EngineModuleTests
         using MergeTestBlockchain disposeChain = chain;
         ResultWrapper<GetPayloadV3Result?> result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!));
         BlobsBundleV1 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
-        Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
-        Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
-        Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
-        Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
+            Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
+            Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
+            Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
+        }
         ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
-            getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V0);
+            getPayloadResultBlobsBundle.Commitments, [.. getPayloadResultBlobsBundle.Proofs.SelectMany(static proof => proof)], ProofVersion.V0);
         Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
     }
 
@@ -142,13 +173,16 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         RlpBehaviors rlpBehaviors = (inMempoolForm ? RlpBehaviors.InMempoolForm : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors).Bytes).ToArray();
+        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors)).ToArray();
         Hash256[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).Select(h => new Hash256(h!)).ToArray();
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        Assert.That(result.Data.Status, Is.EqualTo(expectedPayloadStatus));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+            Assert.That(result.Data.Status, Is.EqualTo(expectedPayloadStatus));
+        }
     }
 
     [TestCase(false, PayloadStatus.Syncing)]
@@ -172,8 +206,11 @@ public partial class EngineModuleTests
         Hash256[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => new Hash256(h!)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        Assert.That(result.Data.Status, Is.EqualTo(expectedPayloadStatus));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+            Assert.That(result.Data.Status, Is.EqualTo(expectedPayloadStatus));
+        }
     }
 
     [Test]
@@ -228,7 +265,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         Block? b = payload.TryGetBlock().Data;
-        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Data![0], RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Data![0], RlpBehaviors.SkipTypedWrapping);
         txRlp[0] = 100; // set TxType to 100
         payload.Transactions = [txRlp];
         payload.BlockHash = b!.CalculateHash();
@@ -255,6 +292,45 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV3_rejects_more_transactions_than_parent_gas_limit_allows_before_decoding(
+        [Values(null, "withdrawals", "blobGasUsed", "excessBlobGas", "blobVersionedHashes", "parentBeaconBlockRoot")] string? missingField)
+    {
+        (IEngineRpcModule rpcModule, string? payloadId, _, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 0);
+        using MergeTestBlockchain disposeChain = chain;
+        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
+        ulong parentGasLimit = chain.BlockTree.FindHeader(payload.ParentHash)!.GasLimit;
+
+        // Undecodable entries: had they been decoded, the error would name transaction 0.
+        payload.Transactions = Enumerable.Repeat(new byte[] { 0xC0 }, (int)(parentGasLimit / 5_000)).ToArray();
+        payload.GasLimit = ulong.MaxValue;
+
+        switch (missingField)
+        {
+            case "withdrawals": payload.Withdrawals = null; break;
+            case "blobGasUsed": payload.BlobGasUsed = null; break;
+            case "excessBlobGas": payload.ExcessBlobGas = null; break;
+        }
+
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload,
+            missingField == "blobVersionedHashes" ? null! : [],
+            missingField == "parentBeaconBlockRoot" ? null : payload.ParentBeaconBlockRoot);
+
+        if (missingField is null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction count");
+                // The parent is the terminal PoW block.
+                Assert.That(result.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
+            }
+        }
+        else
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
+    [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload, MergeTestBlockchain chain)
@@ -265,7 +341,9 @@ public partial class EngineModuleTests
 
         JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), executionPayloadString, null!);
         JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
         Assert.That(response?.Error, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
@@ -295,9 +373,7 @@ public partial class EngineModuleTests
         JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), requestStr, "[]", "0x169630f535b4a41330164c6e5c92b1224c0c407f582d407d0ac3d206cd32fd52");
 
         JsonRpcResponse rpcResponse = await jsonRpcService.SendRequestAsync(request, context);
-        JsonRpcErrorResponse? response = (rpcResponse) as JsonRpcErrorResponse;
-        Assert.That(response?.Error, Is.Not.Null);
-        Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(RpcTest.AssertError(rpcResponse).Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     private async Task<(JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 correctExecutionPayload, MergeTestBlockchain chain)>
@@ -315,11 +391,8 @@ public partial class EngineModuleTests
         return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig, chain.Container.Resolve<GCKeeper>()), new(RpcEndpoint.Http), new(), executionPayload, chain);
     }
 
-    [Test]
-    public async Task NewPayload_should_reject_null_or_missing_required_fields(
-        [Values(3, 4, 5)] int version,
-        [Values("withdrawals", "blobGasUsed", "excessBlobGas")] string field,
-        [Values] bool omit)
+    [TestCaseSource(nameof(RequiredPayloadFieldsTestSource))]
+    public async Task NewPayload_should_reject_null_or_missing_required_fields(int version, string field, bool omit, string expectedMessage)
     {
         IReleaseSpec releaseSpec = version switch { 3 => Cancun.Instance, 4 => Prague.Instance, _ => Amsterdam.Instance };
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload, MergeTestBlockchain chain)
@@ -333,33 +406,77 @@ public partial class EngineModuleTests
             payload["slotNumber"] = "0x1";
         }
 
+        // The control payload carries exactly this version's fields, so no other field is demanded.
+        Assert.That(payload.Select(static p => p.Key), Is.EquivalentTo(RequiredPayloadFields(version).Select(static f => f.Field)));
+        using (JsonRpcResponse controlResponse = await jsonRpcService.SendRequestAsync(BuildRequest(payload), context))
+        {
+            Assert.That(controlResponse is ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success }, "the complete payload must pass parameter validation");
+        }
+
         if (omit)
             payload.Remove(field);
         else
             payload[field] = null;
 
-        List<object> parameters = [serializer.Serialize(payload), serializer.Serialize(Array.Empty<byte[]>()), TestItem.KeccakA.ToString()];
-        if (version >= EngineApiVersions.NewPayload.V4) parameters.Add(serializer.Serialize(Array.Empty<byte[]>()));
-        JsonRpcRequest request = RpcTest.BuildJsonRequest($"engine_newPayloadV{version}", [.. parameters]);
-
-        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(BuildRequest(payload), context);
         Error error = RpcTest.AssertError(response);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
-            // Omitted blob fields are rejected earlier by [JsonRequired] with a deserialization message.
-            if (!omit || field == "withdrawals")
+            Assert.That(error.Message, Is.EqualTo(expectedMessage));
+        }
+
+        JsonRpcRequest BuildRequest(JsonObject executionPayloadJson)
+        {
+            List<object> parameters = [serializer.Serialize(executionPayloadJson), serializer.Serialize(Array.Empty<byte[]>()), TestItem.KeccakA.ToString()];
+            if (version >= EngineApiVersions.NewPayload.V4) parameters.Add(serializer.Serialize(Array.Empty<byte[]>()));
+            return RpcTest.BuildJsonRequest($"engine_newPayloadV{version}", [.. parameters]);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> RequiredPayloadFieldsTestSource()
+    {
+        foreach (int version in (int[])[EngineApiVersions.NewPayload.V3, EngineApiVersions.NewPayload.V4, EngineApiVersions.NewPayload.V5])
+        {
+            foreach ((string field, string nullError, string omittedError) in RequiredPayloadFields(version))
             {
-                string expectedMessage = field switch
-                {
-                    "withdrawals" => "Withdrawals must be set",
-                    "blobGasUsed" => "Blob gas used must be set",
-                    _ => "Excess blob gas must be set"
-                };
-                Assert.That(error.Message, Is.EqualTo(expectedMessage));
+                yield return new TestCaseData(version, field, false, nullError);
+                yield return new TestCaseData(version, field, true, omittedError);
             }
         }
     }
+
+    // Values the JSON binder itself refuses name the payload argument, as Geth does.
+    private const string BindingError = "invalid argument 0";
+
+    private static readonly (string Field, string NullError, string OmittedError)[] ExecutionPayloadV3Fields =
+    [
+        BaseField("parentHash"), BaseField("feeRecipient"), BaseField("stateRoot"), BaseField("receiptsRoot"),
+        BaseField("logsBloom"), BaseField("prevRandao"), BaseField("blockNumber", BindingError), BaseField("gasLimit", BindingError),
+        BaseField("gasUsed", BindingError), BaseField("timestamp", BindingError), BaseField("extraData"),
+        BaseField("baseFeePerGas", BindingError), BaseField("blockHash"), BaseField("transactions", BindingError),
+        ForkField("withdrawals", "Withdrawals must be set"),
+        ForkField("blobGasUsed", "Blob gas used must be set"),
+        ForkField("excessBlobGas", "Excess blob gas must be set")
+    ];
+
+    private static readonly (string Field, string NullError, string OmittedError)[] ExecutionPayloadV4Fields =
+    [
+        .. ExecutionPayloadV3Fields,
+        ForkField("blockAccessList", "Block access list must be set"),
+        ForkField("slotNumber", "Slot number must be set")
+    ];
+
+    private static (string Field, string NullError, string OmittedError)[] RequiredPayloadFields(int newPayloadVersion) =>
+        newPayloadVersion >= EngineApiVersions.NewPayload.V5 ? ExecutionPayloadV4Fields : ExecutionPayloadV3Fields;
+
+    private static (string, string, string) BaseField(string field, string? nullError = null)
+    {
+        string error = $"{field} must be set";
+        return (field, nullError ?? error, error);
+    }
+
+    private static (string, string, string) ForkField(string field, string error) => (field, error, error);
 
     [Test]
     public async Task NewPayloadV3_should_decline_empty_fields()
@@ -470,6 +587,34 @@ public partial class EngineModuleTests
         Assert.That(errorResponse.Error?.Code, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
+    [Test]
+    public async Task ForkChoiceUpdated_rejects_null_withdrawal_entry_without_preparing_payload(
+        [Values(EngineApiVersions.Fcu.V2, EngineApiVersions.Fcu.V3)] int version,
+        [Values] bool afterValidWithdrawal)
+    {
+        IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            releaseSpec: version == EngineApiVersions.Fcu.V2 ? Shanghai.Instance : Cancun.Instance,
+            mockedPayloadService: payloadPreparationService);
+        Hash256 headHash = chain.BlockTree.HeadHash!;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 1,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = afterValidWithdrawal ? [TestItem.WithdrawalA_1Eth, null!] : [null!],
+            ParentBeaconBlockRoot = version == EngineApiVersions.Fcu.V3 ? Keccak.Zero : null,
+        };
+
+        string response = await RpcTest.TestSerializedRequest(chain.EngineRpcModule, $"engine_forkchoiceUpdatedV{version}",
+            chain.JsonSerializer.Serialize(new ForkchoiceStateV1(headHash, headHash, headHash)),
+            chain.JsonSerializer.Serialize(payloadAttributes));
+        JsonRpcErrorResponse errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response)!;
+
+        Assert.That(errorResponse.Error?.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes), response);
+        payloadPreparationService.DidNotReceiveWithAnyArgs().StartPreparingPayload(default!, default!);
+    }
+
     private const string FurtherValidationStatus = "FurtherValidation";
 
     [TestCaseSource(nameof(BlobVersionedHashesMatchTestSource))]
@@ -508,6 +653,7 @@ public partial class EngineModuleTests
                 Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
                 Substitute.For<IHandler<Hash256?, InclusionListBytes>>(),
                 Substitute.For<Nethermind.Consensus.Transactions.IInclusionListTxSource>(),
+                Substitute.For<IInclusionListComplianceEvaluator>(),
                 Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>>(),
                 Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
                 Substitute.For<IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>>(),
@@ -516,7 +662,8 @@ public partial class EngineModuleTests
                 chain.SpecProvider,
                 chain.Container.Resolve<GCKeeper>(),
                 chain.BlockProcessingQueue,
-                Substitute.For<ILogManager>()));
+                Substitute.For<ILogManager>(),
+                chain.BlockTree));
         }
 
 
@@ -596,12 +743,12 @@ public partial class EngineModuleTests
 
         await rpcModule.engine_newPayloadV3(payload, [], payload.ParentBeaconBlockRoot);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await rpcModule.engine_forkchoiceUpdatedV3(fcuState, payloadAttributes);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(fcuResponse.ErrorCode, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(payload.BlockHash));
-        });
+        }
     }
 
     [Test]
@@ -623,12 +770,12 @@ public partial class EngineModuleTests
 
         await rpcModule.engine_newPayloadV3(payload, [], payload.ParentBeaconBlockRoot);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await rpcModule.engine_forkchoiceUpdatedV2(fcuState, payloadAttributes);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(fcuResponse.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(payload.BlockHash));
-        });
+        }
     }
 
     [Test]
@@ -685,15 +832,123 @@ public partial class EngineModuleTests
 
         ForkchoiceStateV1 higherFinalized = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block2.BlockHash, safeBlockHash: block2.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> higherFinalizedResult = await rpcModule.engine_forkchoiceUpdatedV3(higherFinalized, null);
-        Assert.That(higherFinalizedResult.ErrorCode, Is.EqualTo(0));
-        Assert.That(higherFinalizedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(higherFinalizedResult.ErrorCode, Is.EqualTo(0));
+            Assert.That(higherFinalizedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
 
         ForkchoiceStateV1 repeatedHead = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block2.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV3(repeatedHead, payloadAttributes);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(0));
-        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(result.Data.PayloadId, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(0));
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.PayloadId, Is.Not.Null);
+        }
+    }
+
+    public enum ForkchoiceAttributesScenario
+    {
+        NoAttributes,
+        ValidAttributes,
+        MissingBeaconRoot,
+        UnsupportedFork,
+        StaleTimestamp,
+    }
+
+    // Forkchoice state is applied once, before attribute validation, and is not rolled back when attributes are rejected.
+    [TestCase(ForkchoiceAttributesScenario.NoAttributes, 0)]
+    [TestCase(ForkchoiceAttributesScenario.ValidAttributes, 0)]
+    [TestCase(ForkchoiceAttributesScenario.MissingBeaconRoot, MergeErrorCodes.InvalidPayloadAttributes)]
+    [TestCase(ForkchoiceAttributesScenario.UnsupportedFork, MergeErrorCodes.UnsupportedFork)]
+    [TestCase(ForkchoiceAttributesScenario.StaleTimestamp, MergeErrorCodes.InvalidPayloadAttributes)]
+    public async Task ForkChoiceUpdated_applies_forkchoice_state_once(ForkchoiceAttributesScenario scenario, int expectedErrorCode)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        ExecutionPayloadV3 block1 = await AddNewBlockV3(rpcModule, chain);
+        ExecutionPayloadV3 block2 = await AddNewBlockV3(rpcModule, chain);
+        ExecutionPayloadV3 block3 = await AddNewBlockV3(rpcModule, chain);
+
+        PayloadAttributes? payloadAttributes = scenario == ForkchoiceAttributesScenario.NoAttributes
+            ? null
+            : new PayloadAttributes
+            {
+                Timestamp = scenario == ForkchoiceAttributesScenario.StaleTimestamp ? block3.Timestamp : block3.Timestamp + 1,
+                PrevRandao = TestItem.KeccakH,
+                SuggestedFeeRecipient = TestItem.AddressF,
+                Withdrawals = [],
+                ParentBeaconBlockRoot = scenario is ForkchoiceAttributesScenario.MissingBeaconRoot or ForkchoiceAttributesScenario.UnsupportedFork
+                    ? null
+                    : TestItem.KeccakE
+            };
+
+        int forkChoiceUpdatedCount = 0;
+        chain.BlockTree.OnForkChoiceUpdated += (_, _) => forkChoiceUpdatedCount++;
+
+        ForkchoiceStateV1 forkchoiceState = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block2.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = scenario == ForkchoiceAttributesScenario.UnsupportedFork
+            ? await rpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes)
+            : await rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
+            if (expectedErrorCode == 0)
+            {
+                Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+                Assert.That(result.Data.PayloadId, scenario == ForkchoiceAttributesScenario.ValidAttributes ? Is.Not.Null : Is.Null);
+            }
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(block1.BlockHash));
+            Assert.That(chain.BlockTree.SafeHash, Is.EqualTo(block2.BlockHash));
+            Assert.That(forkChoiceUpdatedCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task ForkChoiceUpdated_rejects_null_or_missing_forkchoice_state_hash_without_applying_it(
+        [Values(EngineApiVersions.Fcu.V3, EngineApiVersions.Fcu.V4, EngineApiVersions.Fcu.V5)] int version,
+        [Values("headBlockHash", "safeBlockHash", "finalizedBlockHash")] string field,
+        [Values] bool omit)
+    {
+        IReleaseSpec releaseSpec = version switch { EngineApiVersions.Fcu.V3 => Cancun.Instance, EngineApiVersions.Fcu.V4 => Amsterdam.Instance, _ => Bogota.Instance };
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, _, MergeTestBlockchain chain)
+            = await PreparePayloadRequestEnv(releaseSpec);
+        using MergeTestBlockchain disposeChain = chain;
+        IBlockCacheService blockCacheService = chain.Container.Resolve<IBlockCacheService>();
+        Hash256? cachedHead = blockCacheService.HeadBlockHash;
+        Hash256? safe = chain.BlockTree.SafeHash;
+        Hash256? finalized = chain.BlockTree.FinalizedHash;
+        int forkChoiceUpdatedCount = 0;
+        chain.BlockTree.OnForkChoiceUpdated += (_, _) => forkChoiceUpdatedCount++;
+
+        // Unknown hashes take the syncing path, which would record whatever forkchoice state got through.
+        JsonObject forkchoiceState = new()
+        {
+            ["headBlockHash"] = TestItem.KeccakA.ToString(),
+            ["safeBlockHash"] = TestItem.KeccakB.ToString(),
+            ["finalizedBlockHash"] = TestItem.KeccakC.ToString()
+        };
+        if (omit)
+            forkchoiceState.Remove(field);
+        else
+            forkchoiceState[field] = null;
+
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(
+            RpcTest.BuildJsonRequest($"engine_forkchoiceUpdatedV{version}", serializer.Serialize(forkchoiceState), null), context);
+
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(blockCacheService.HeadBlockHash, Is.EqualTo(cachedHead));
+            Assert.That(chain.BlockTree.SafeHash, Is.EqualTo(safe));
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(finalized));
+            Assert.That(forkChoiceUpdatedCount, Is.Zero);
+        }
     }
 
     [Test]
@@ -702,7 +957,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        List<byte[]> request = new(requestSize);
+        List<byte[]> request = [with(requestSize)];
         for (int i = 0; i < requestSize; i++)
         {
             request.Add(Bytes.FromHexString(i.ToString("X64")));
@@ -712,13 +967,19 @@ public partial class EngineModuleTests
 
         if (requestSize > 128)
         {
-            Assert.That(result.Result, Is.EqualTo(Result.Fail($"The number of requested blobs must not exceed 128")));
-            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.TooLargeRequest));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result, Is.EqualTo(Result.Fail($"The number of requested blobs must not exceed 128")));
+                Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.TooLargeRequest));
+            }
         }
         else
         {
-            Assert.That(result.Result, Is.EqualTo(Result.Success));
-            Assert.That(result.Data, Has.Count.EqualTo(requestSize));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result, Is.EqualTo(Result.Success));
+                Assert.That(result.Data, Has.Count.EqualTo(requestSize));
+            }
         }
     }
 
@@ -730,8 +991,11 @@ public partial class EngineModuleTests
 
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.EqualTo(ArraySegment<BlobAndProofV1?>.Empty));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.EqualTo(ArraySegment<BlobAndProofV1?>.Empty));
+        }
     }
 
     [Test]
@@ -752,8 +1016,11 @@ public partial class EngineModuleTests
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-        Assert.That(result.Data.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
-        Assert.That(result.Data.Select(static b => b!.Proof), Is.EqualTo(wrapper.Proofs));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
+            Assert.That(result.Data.Select(static b => b!.Proof), Is.EqualTo(wrapper.SplitProofs()));
+        }
     }
 
     [Test]
@@ -794,8 +1061,8 @@ public partial class EngineModuleTests
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        List<byte[]> blobVersionedHashesRequest = new(requestSize);
-        List<BlobAndProofV1?> blobsAndProofs = new(requestSize);
+        List<byte[]> blobVersionedHashesRequest = [with(requestSize)];
+        List<BlobAndProofV1?> blobsAndProofs = [with(requestSize)];
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)
@@ -803,7 +1070,7 @@ public partial class EngineModuleTests
             bool addActualHash = i % 10 == 0;
 
             blobsAndProofs.Add(addActualHash && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
-                ? new BlobAndProofV1(wrapper.Blobs[actualIndex], wrapper.Proofs[actualIndex])
+                ? new BlobAndProofV1(wrapper.Blobs[actualIndex], wrapper.GetProofs(actualIndex).ToArray())
                 : null);
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
@@ -816,8 +1083,11 @@ public partial class EngineModuleTests
         {
             if (i % 10 == 0)
             {
-                Assert.That(resultBlobsAndProofs[i]!.Blob, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]));
-                Assert.That(resultBlobsAndProofs[i]!.Proof, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(resultBlobsAndProofs[i]!.Blob, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]));
+                    Assert.That(resultBlobsAndProofs[i]!.Proof, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).GetProofs(i / 10).ToArray()));
+                }
             }
             else
             {
@@ -844,15 +1114,18 @@ public partial class EngineModuleTests
     {
         const int Count = 16;
         byte[]?[] blobs = new byte[Count][];
-        ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[Count];
+        ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[Count];
         BlobsV2DirectResponse response = new(blobs, proofs, Count);
 
         FlushCountingBufferWriter writer = new();
         await response.WriteToAsync(writer, CancellationToken.None);
 
-        Assert.That(writer.FlushCount, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.FlushCount, Is.EqualTo(0));
 
-        Assert.That(writer.WrittenText, Is.EqualTo($"[{string.Join(',', Enumerable.Repeat("null", Count))}]"));
+            Assert.That(writer.WrittenText, Is.EqualTo($"[{string.Join(',', Enumerable.Repeat("null", Count))}]"));
+        }
     }
 
     [Test]
@@ -860,19 +1133,25 @@ public partial class EngineModuleTests
     {
         byte[] blob = RandomBytes((int)Eip4844Constants.GasPerBlob);
         byte[]?[] blobs = [blob];
-        ReadOnlyMemory<byte[]>[] proofs = [Array.Empty<byte[]>()];
+        ReadOnlyMemory<byte>[] proofs = [Array.Empty<byte>()];
         BlobsV2DirectResponse response = new(blobs, proofs, 1);
 
         FlushCountingBufferWriter writer = new();
         await response.WriteToAsync(writer, CancellationToken.None);
 
-        Assert.That(writer.FlushCount, Is.EqualTo(1));
-        Assert.That(writer.MaxSpanSizeHint, Is.EqualTo(blob.Length * 2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.FlushCount, Is.EqualTo(1));
+            Assert.That(writer.MaxSpanSizeHint, Is.EqualTo(blob.Length * 2));
+        }
 
         using JsonDocument doc = JsonDocument.Parse(writer.WrittenText);
-        Assert.That(doc.RootElement.GetArrayLength(), Is.EqualTo(1));
-        Assert.That(doc.RootElement[0].GetProperty("proofs").GetArrayLength(), Is.EqualTo(0));
-        Assert.That(writer.WrittenText, Is.EqualTo(JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(doc.RootElement.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(doc.RootElement[0].GetProperty("proofs").GetArrayLength(), Is.EqualTo(0));
+            Assert.That(writer.WrittenText, Is.EqualTo(JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions)));
+        }
     }
 
     [Test]
@@ -919,7 +1198,9 @@ public partial class EngineModuleTests
         await rpcModuleC.engine_forkchoiceUpdatedV3(new(payloadResultA2.BlockHash, chainC.BlockTree.GenesisHash!, chainC.BlockTree.GenesisHash!), null);
         await Task.Delay(1000);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await rpcModuleC.engine_newPayloadV3(payloadResultB2, [], TestItem.KeccakE)).Data.Status, Is.EqualTo("SYNCING"));
+#pragma warning restore NUnit2045
         Assert.That((await rpcModuleC.engine_newPayloadV3(payloadResultB3, [], TestItem.KeccakE)).Data.Status, Is.EqualTo("SYNCING"));
 
         await Task.Delay(1000);
@@ -929,8 +1210,11 @@ public partial class EngineModuleTests
         BlockHeader[]? heads = new ChainLevelHelper(chainC.BlockTree, chainC.BeaconPivot!, new SyncConfig(), chainC.LogManager)
             .GetNextHeaders(10, 3);
 
-        Assert.That(heads?[2].Hash, Is.EqualTo(payloadResultB2.BlockHash));
-        Assert.That(heads?[3].Hash, Is.EqualTo(payloadResultB3.BlockHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heads?[2].Hash, Is.EqualTo(payloadResultB2.BlockHash));
+            Assert.That(heads?[3].Hash, Is.EqualTo(payloadResultB3.BlockHash));
+        }
     }
 
     public static IEnumerable<TestCaseData> ForkchoiceUpdatedV3DeclinedTestCaseSource
@@ -1108,8 +1392,11 @@ public partial class EngineModuleTests
         await blockImprovementWait;
 
         ResultWrapper<GetPayloadV3Result?> payloadResult = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
-        Assert.That(payloadResult.Result, Is.EqualTo(Result.Success));
-        Assert.That(payloadResult.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payloadResult.Result, Is.EqualTo(Result.Success));
+            Assert.That(payloadResult.Data, Is.Not.Null);
+        }
 
         GetPayloadV3Result payload = payloadResult.Data;
         await rpcModule.engine_newPayloadV3(payload.ExecutionPayload, Array.ConvertAll(payload.BlobsBundle.GetBlobVersionedHashes(), static h => new Hash256(h!)), TestItem.KeccakE);
@@ -1121,9 +1408,11 @@ public partial class EngineModuleTests
     }
 
     private async Task<(IEngineRpcModule, string?, Transaction[], MergeTestBlockchain chain)> BuildAndGetPayloadV3Result(
-        IReleaseSpec spec, int transactionCount = 0, bool oneBlobPerTx = true)
+        IReleaseSpec spec, int transactionCount = 0, bool oneBlobPerTx = true, ISpecProvider? specProvider = null)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec);
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, configurer: specProvider is null
+            ? null
+            : builder => builder.AddSingleton<ISpecProvider>(specProvider));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         Transaction[] txs = [];
 

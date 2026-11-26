@@ -26,7 +26,7 @@ public class BalRecordingBlockProcessor(
     IRecordedBalStore store,
     IBlockAccessListManager balManager) : IBlockProcessor
 {
-    public event Action? TransactionsExecuted
+    public event Action<Block>? TransactionsExecuted
     {
         add => inner.TransactionsExecuted += value;
         remove => inner.TransactionsExecuted -= value;

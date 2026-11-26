@@ -40,9 +40,6 @@ public abstract class NamedGnosisReleaseSpec(NamedReleaseSpec mainnetFork, Named
 /// Concrete Gnosis forks inherit as:
 /// <c>class CancunGnosis() : NamedGnosisReleaseSpec&lt;CancunGnosis&gt;(Cancun.Instance, ShanghaiGnosis.Instance)</c>.
 /// </summary>
-public abstract class NamedGnosisReleaseSpec<TSelf>(NamedReleaseSpec mainnetFork, NamedReleaseSpec? gnosisParent = null)
+public abstract partial class NamedGnosisReleaseSpec<TSelf>(NamedReleaseSpec mainnetFork, NamedReleaseSpec? gnosisParent = null)
     : NamedGnosisReleaseSpec(mainnetFork, gnosisParent)
-    where TSelf : NamedGnosisReleaseSpec<TSelf>, new()
-{
-    public static NamedReleaseSpec Instance { get; } = new TSelf();
-}
+    where TSelf : NamedGnosisReleaseSpec<TSelf>, new();

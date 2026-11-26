@@ -52,7 +52,8 @@ public class GethTxTraceEntry
 
     [JsonPropertyName("returnData")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? ReturnData { get; set; }
+    [JsonConverter(typeof(ByteReadOnlyMemoryConverter))]
+    public ReadOnlyMemory<byte>? ReturnData { get; set; }
 
     internal virtual void UpdateMemorySize(ulong size) { }
 }

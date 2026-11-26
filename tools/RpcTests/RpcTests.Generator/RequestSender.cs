@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.RpcTests.Generator;
 
@@ -15,7 +16,7 @@ public class RequestSender(Uri clientUrl, HttpClient httpClient)
     public async Task<TestCase> SendAsync(TestInfo test, CancellationToken ct)
     {
         if (Interlocked.Increment(ref _requestN) % LogPerRequests == 0)
-            await Console.Out.WriteLineAsync($"Sending request #{_requestN}");
+            await Console.Out.WriteLineAsync($"Sending request #{_requestN}".AsMemory(), ct);
 
         JsonNode response = await SendToClientAsync(test.Data, ct);
         return new TestCase(test, response);
@@ -25,7 +26,7 @@ public class RequestSender(Uri clientUrl, HttpClient httpClient)
     {
         try
         {
-            using JsonContent content = JsonContent.Create(requestData);
+            using JsonContent content = JsonContent.Create(requestData, RequestJsonContext.Default.JsonNode);
             using HttpResponseMessage response = await httpClient.PostAsync(clientUrl, content, ct);
             response.EnsureSuccessStatusCode();
 
@@ -66,3 +67,5 @@ public readonly record struct FilePos(string FilePath, int LineNumber)
     }
 }
 
+[JsonSerializable(typeof(JsonNode))]
+internal partial class RequestJsonContext : JsonSerializerContext;

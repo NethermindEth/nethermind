@@ -12,10 +12,10 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
-using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.Facade.Eth;
 
+[GenerateJsonWriter]
 public class BlockForRpc
 {
     private static IRlpDecoder<Block> _blockDecoder = new BlockDecoder();
@@ -54,49 +54,49 @@ public class BlockForRpc
         MixHash = block.MixHash;
         Nonce = block.Nonce;
 
-        if (specProvider is not null)
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        if (spec.IsEip1559Enabled)
         {
-            IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            if (spec.IsEip1559Enabled)
-            {
-                BaseFeePerGas = block.Header.BaseFeePerGas;
-            }
+            BaseFeePerGas = block.Header.BaseFeePerGas;
+        }
 
-            if (spec.IsEip4844Enabled)
-            {
-                BlobGasUsed = block.Header.BlobGasUsed;
-                ExcessBlobGas = block.Header.ExcessBlobGas;
-            }
+        if (spec.IsEip4844Enabled)
+        {
+            BlobGasUsed = block.Header.BlobGasUsed;
+            ExcessBlobGas = block.Header.ExcessBlobGas;
+        }
 
-            if (spec.IsEip4788Enabled)
-            {
-                ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
-            }
+        if (spec.IsEip4788Enabled)
+        {
+            ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
+        }
 
-            if (spec.IsEip7843Enabled)
-            {
-                SlotNumber = block.SlotNumber;
-            }
+        if (spec.IsEip7843Enabled)
+        {
+            SlotNumber = block.SlotNumber;
+        }
 
-            // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded.
-            if (specProvider.MergeBlockNumber is null)
-            {
-                TotalDifficulty = block.TotalDifficulty;
-            }
+        // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded. A chain that
+        // merges omits it for every block, pre-merge ones included, as the execution-apis test vectors expect. Such a
+        // chain may not know its merge block (mainnet's chainspec has only a TTD), so the TTD also counts.
+        if (specProvider.MergeBlockNumber is null && specProvider.TerminalTotalDifficulty is null)
+        {
+            TotalDifficulty = block.TotalDifficulty;
         }
 
         Number = block.Number;
         ParentHash = block.ParentHash;
         ReceiptsRoot = block.ReceiptsRoot;
         Sha3Uncles = block.UnclesHash;
-        Size = BlockDecoder.GetLength(block, RlpBehaviors.None);
+        // Blocks built from payloads have no stored encoding, so the length is computed once and kept.
+        Size = block.EncodedSize ??= BlockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
 
         if (!skipTxs)
         {
             Transactions = includeFullTransactionData
-                    ? GetTransactionsForRpc(block, specProvider.ChainId)
+                    ? GetTransactionsForRpc(block, specProvider.ChainId, spec)
                     : GetTransactionHashes(block.Transactions);
         }
         TransactionsRoot = block.TxRoot;
@@ -118,7 +118,7 @@ public class BlockForRpc
     public Hash256? Hash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public Bloom LogsBloom { get; set; }
+    public Bloom? LogsBloom { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? Miner { get; set; }
@@ -143,7 +143,7 @@ public class BlockForRpc
     public UInt256 Timestamp { get; set; }
 
     public UInt256? BaseFeePerGas { get; set; }
-    public object[] Transactions { get; set; }
+    public BlockTransactions? Transactions { get; set; }
     public Hash256 TransactionsRoot { get; set; }
     public Hash256[] Uncles { get; set; }
 
@@ -171,9 +171,9 @@ public class BlockForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ulong? SlotNumber { get; set; }
 
-    private static object[] GetTransactionHashes(Transaction[] transactions)
+    private static BlockTransactions GetTransactionHashes(Transaction[] transactions)
     {
-        if (transactions.Length == 0) return Array.Empty<Hash256>();
+        if (transactions.Length == 0) return BlockTransactions.Empty;
 
         Hash256[] hashes = new Hash256[transactions.Length];
         for (int i = 0; i < transactions.Length; i++)
@@ -183,26 +183,7 @@ public class BlockForRpc
         return hashes;
     }
 
-    private static object[] GetTransactionsForRpc(Block block, ulong chainId)
-    {
-        Transaction[] transactions = block.Transactions;
-        if (transactions.Length == 0) return Array.Empty<TransactionForRpc>();
-
-        TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            TransactionForRpcContext extraData = new(
-                chainId: chainId,
-                blockHash: block.Hash,
-                blockNumber: block.Number,
-                txIndex: i,
-                blockTimestamp: block.Timestamp,
-                baseFee: block.BaseFeePerGas,
-                receipt: null);
-            txs[i] = TransactionForRpc.FromTransaction(transactions[i], extraData);
-        }
-        return txs;
-    }
+    private static BlockTransactions GetTransactionsForRpc(Block block, ulong chainId, IReleaseSpec spec) => BlockTransactions.FromBlock(block, chainId, spec);
 
     private static Hash256[] GetUnclesHashes(BlockHeader[] headers)
     {

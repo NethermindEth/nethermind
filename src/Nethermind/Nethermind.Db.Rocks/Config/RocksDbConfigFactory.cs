@@ -13,7 +13,7 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IHardwareInfo hardwareInfo
     private readonly ILogger _logger = logManager.GetClassLogger<IRocksDbConfigFactory>();
     private bool _maxOpenFilesInitialized;
 
-    public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
+    public IRocksDbConfig GetForDatabase(string? databaseName, string? columnName)
     {
         // Automatically adjust MaxOpenFiles if not configured (only once)
         if (!_maxOpenFilesInitialized)

@@ -5,18 +5,21 @@ using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Open.Nat;
+using SharpOpenNat;
 
 namespace Nethermind.UPnP.Plugin;
 
 [RunnerStepDependencies()]
 public class UPnPStep(
+    INatDiscoverer natDiscoverer,
     IProcessExitSource processExitSource,
     INetworkConfig networkConfig,
     ILogManager logManager
 ) : IStep, IAsyncDisposable
 {
     private static readonly TimeSpan ExpirationRate = TimeSpan.FromMinutes(10);
+    // Spans several refreshes so that a late or failed one doesn't drop the mapping
+    private static readonly int LeaseDurationSeconds = (int)(ExpirationRate * 3).TotalSeconds;
     private readonly ILogger _logger = logManager.GetClassLogger<UPnPStep>();
 
     // Routers tend to clean mapping, so we need to periodically
@@ -56,12 +59,11 @@ public class UPnPStep(
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
         cts.CancelAfter(TimeSpan.FromSeconds(10));
-        NatDiscoverer discoverer = new();
-        NatDevice device;
+        INatDevice device;
 
         try
         {
-            device = await discoverer.DiscoverDeviceAsync(PortMapper.Upnp, cts);
+            device = await natDiscoverer.DiscoverDeviceAsync(PortMapper.Upnp, cts.Token);
         }
         catch (NatDeviceNotFoundException)
         {
@@ -73,13 +75,13 @@ public class UPnPStep(
             Protocol.Tcp,
             networkConfig.P2PPort,
             networkConfig.P2PPort,
-            (int)ExpirationRate.TotalMilliseconds + 10000,
+            LeaseDurationSeconds,
             "Nethermind P2P"));
         await device.CreatePortMapAsync(new Mapping(
             Protocol.Udp,
             networkConfig.DiscoveryPort,
             networkConfig.DiscoveryPort,
-            (int)ExpirationRate.TotalMilliseconds + 10000,
+            LeaseDurationSeconds,
             "Nethermind Discovery"));
 
         if (_logger.IsDebug) _logger.Debug("UPnP mapping added");

@@ -23,22 +23,11 @@ public class ULongConverter : JsonConverter<ulong>
     {
         ArgumentNullException.ThrowIfNull(s);
 
-        if (s == Nethermind.Core.Extensions.Bytes.ZeroHexValue)
+        if (s.StartsWith("0x", StringComparison.Ordinal))
         {
-            return 0UL;
-        }
-
-        if (s.StartsWith("0x0"))
-        {
-            return ulong.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
-        }
-
-        if (s.StartsWith("0x"))
-        {
-            Span<char> withZero = new(new char[s.Length - 1]);
-            withZero[0] = '0';
-            s.AsSpan(2).CopyTo(withZero[1..]);
-            return ulong.Parse(withZero, NumberStyles.AllowHexSpecifier);
+            ReadOnlySpan<char> digits = s.AsSpan(2);
+            // The runtime parser skips trailing NULs but needs a digit, so a bare "0x" reads as zero.
+            return digits.TrimEnd('\0').IsEmpty ? 0UL : ulong.Parse(digits, NumberStyles.AllowHexSpecifier);
         }
 
         return ulong.Parse(s, NumberStyles.Integer);

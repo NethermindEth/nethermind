@@ -94,7 +94,7 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TracePersistedNodeFailure(byte[] nodeRlp, Exception exception) =>
-                _logger.Trace($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {exception.Message}");
+                _logger.Trace($"Failed to add one of the persisted nodes (with RLP {(SensitiveLogMasking.Enabled ? "[redacted]" : nodeRlp.ToHexString()):hide}), {exception.Message:hide}");
         }
 
         public void UpdateNode(NetworkNode node)
@@ -180,7 +180,7 @@ namespace Nethermind.Network
             IWriteBatch? currentBatch;
             lock (_lock)
             {
-                if (_logger.IsTrace) _logger.Trace($"[{_fullDb.Name}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
+                if (_logger.IsTrace) _logger.Trace($"[{_fullDb.Name:hide}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
                 currentBatch = _currentBatch;
                 _currentBatch = null;
                 _updateCounter = 0;
@@ -251,7 +251,7 @@ namespace Nethermind.Network
                 sb.AppendLine($"{node.NodeId}@{node.Host}:{node.Port}, Rep: {node.Reputation}");
             }
 
-            _logger.Trace(sb.ToString());
+            _logger.Trace($"{sb.ToString():hide}");
         }
     }
 }

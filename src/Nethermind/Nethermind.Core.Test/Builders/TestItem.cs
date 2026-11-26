@@ -3,8 +3,8 @@
 
 using System;
 using System.Net;
-using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -168,6 +168,15 @@ namespace Nethermind.Core.Test.Builders
             return account;
         }
 
+        public static byte[] GenerateRandomAccountRlp(AccountDecoder? accountDecoder = null)
+        {
+            accountDecoder ??= _accountDecoder;
+            Account account = GenerateRandomAccount();
+            IRlpDecoder<Account?> encoder = accountDecoder;
+            byte[] value = encoder.Encode(account);
+            return value;
+        }
+
         public static Account GenerateIndexedAccount(int index)
         {
             Account account = new(
@@ -183,7 +192,7 @@ namespace Nethermind.Core.Test.Builders
 
             Account account = GenerateIndexedAccount(index);
             IRlpDecoder<Account?> encoder = accountDecoder;
-            byte[] value = encoder.Encode(account).Bytes;
+            byte[] value = encoder.Encode(account);
             return value;
         }
 

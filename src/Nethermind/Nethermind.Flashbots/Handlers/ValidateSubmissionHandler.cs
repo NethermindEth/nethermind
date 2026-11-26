@@ -89,6 +89,8 @@ public class ValidateSubmissionHandler(
         await processingQueue.WaitForExecutedCopyAsync(block.ParentHash!, ParentCommitWait);
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+        // The converter reads "0x" as the EIP-7668 bloom; before the fork it is the zero bloom, as it always was.
+        if (block.Header.Bloom is { IsZeroLength: true } && !releaseSpec.IsEip7668Enabled) block.Header.Bloom = new Bloom();
 
         if (!ValidateBlock(block, request.Message, request.RegisteredGasLimit, releaseSpec, out string? error))
         {
@@ -148,7 +150,8 @@ public class ValidateSubmissionHandler(
 
     private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, IReleaseSpec releaseSpec, out string? error)
     {
-        ShardBlobNetworkWrapper blobs = new(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs, releaseSpec.BlobProofVersion);
+        bool proofLengthsValid = ShardBlobNetworkWrapper.TryJoinProofs(blobsBundle.Proofs, out byte[]? proofs);
+        ShardBlobNetworkWrapper blobs = new(blobsBundle.Blobs, blobsBundle.Commitments, proofs ?? [], releaseSpec.BlobProofVersion);
 
         IBlobProofsVerifier verifier = IBlobProofsManager.For(releaseSpec.BlobProofVersion);
 
@@ -168,7 +171,7 @@ public class ValidateSubmissionHandler(
             }
         }
 
-        if (!verifier.ValidateLengths(blobs))
+        if (!proofLengthsValid || !verifier.ValidateLengths(blobs))
         {
             error = "Invalid blob lengths";
             return false;

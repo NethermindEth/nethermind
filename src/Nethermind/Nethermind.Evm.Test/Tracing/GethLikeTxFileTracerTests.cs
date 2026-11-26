@@ -4,14 +4,17 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -37,8 +40,11 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
     {
         GethLikeTxTrace trace = ExecuteAndTraceToFile(static e => { }, GetBytecode(), GethTraceOptions.Default);
 
-        Assert.That(trace.Gas, Is.EqualTo(24));
-        Assert.That(trace.ReturnValue.Length, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Gas, Is.EqualTo(24));
+            Assert.That(trace.ReturnValue.Length, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -144,6 +150,22 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
         ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), ClearSstoreCode(), GethTraceOptions.Default);
 
         Assert.That(entries.Single(e => e.OpcodeRaw == Instruction.SSTORE).Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
+    }
+
+    [Test]
+    public void Should_include_storage_refund_on_the_restoring_opcode_on_Amsterdam()
+    {
+        List<GethTxFileTraceEntry> entries = [];
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.AmsterdamActivation, 1_000_000, GethLikeTxMemoryTracerTests.RestoredSlotCode);
+
+        ExecuteAndTraceToFile(block, transaction, entries);
+
+        GethTxFileTraceEntry restore = entries.Last(e => e.OpcodeRaw == Instruction.SSTORE);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restore.GasCost, Is.EqualTo(GasCostOf.WarmStateRead));
+            Assert.That(restore.Refund, Is.EqualTo((long)Eip8038Constants.StorageWrite));
+        }
     }
 
     [Test]
@@ -271,6 +293,24 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
         }
     }
 
+    [TestCase(Instruction.REVERT, "execution reverted", 0)]
+    [TestCase(Instruction.INVALID, "invalid opcode: INVALID", 2)]
+    public void Should_repeat_faulting_opcode_with_error_without_action_ends(Instruction opcode, string error, int faultStackWords)
+    {
+        List<GethTxFileTraceEntry> entries = [];
+        ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), Prepare.EvmCode.PushData(0).PushData(0).Op(opcode).Done, GethTraceOptions.Default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.Select(static e => e.Opcode), Is.EqualTo(new[] { "PUSH1", "PUSH1", opcode.ToString(), opcode.ToString() }));
+            Assert.That(entries[2].Error, Is.Null);
+            Assert.That(entries[2].GasCost, Is.Zero);
+            Assert.That(entries[2].StackWordCount(), Is.EqualTo(2));
+            Assert.That(entries[3].Error, Is.EqualTo(error));
+            Assert.That(entries[3].StackWordCount(), Is.EqualTo(faultStackWords));
+        }
+    }
+
     [Test]
     public void Should_not_return_stack_when_disabled()
     {
@@ -278,6 +318,62 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { DisableStack = true });
 
         Assert.That(entries.All(e => e.Stack is null), Is.True);
+    }
+
+    [Test]
+    public void Should_write_stack_and_memory_from_buffers_reused_across_entries()
+    {
+        List<GethTxFileTraceEntry> entries = [];
+        HashSet<byte[]> stackArrays = [];
+        HashSet<byte[]> memoryArrays = [];
+
+        ExecuteAndTraceToFile(e =>
+        {
+            if (e.Stack is { Length: > 0 } stack && MemoryMarshal.TryGetArray(stack, out ArraySegment<byte> stackSegment))
+                stackArrays.Add(stackSegment.Array!);
+            if (e.Memory is { Length: > 0 } memory && MemoryMarshal.TryGetArray(memory, out ArraySegment<byte> memorySegment))
+                memoryArrays.Add(memorySegment.Array!);
+            entries.Add(CloneTraceEntry(e));
+        }, GetBytecode(), GethTraceOptions.Default with { EnableMemory = true });
+
+        UInt256 data1 = new(Bytes.FromHexString(SampleHexData1), isBigEndian: true);
+        UInt256 data2 = new(Bytes.FromHexString(SampleHexData2), isBigEndian: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stackArrays, Has.Count.EqualTo(1));
+            Assert.That(memoryArrays, Has.Count.EqualTo(1));
+            Assert.That(entries[2].GetStackWord(0), Is.EqualTo(data1));
+            Assert.That(entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero));
+            Assert.That(entries[5].GetStackWord(0), Is.EqualTo(data2));
+            Assert.That(entries[5].GetStackWord(1), Is.EqualTo((UInt256)32));
+            Assert.That(entries[3].MemoryWordCount(), Is.EqualTo(1));
+            Assert.That(entries[3].GetMemoryWord(0), Is.EqualTo(data1));
+            Assert.That(entries[6].GetMemoryWord(0), Is.EqualTo(data1));
+            Assert.That(entries[6].GetMemoryWord(1), Is.EqualTo(data2));
+        }
+    }
+
+    [Test]
+    public void Dispose_detaches_the_reused_entry_from_the_pooled_buffers()
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, GetBytecode());
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        GethTxFileTraceEntry? lastEntry = null;
+        GethLikeTxFileTracer tracer = new(e => lastEntry = e, GethTraceOptions.Default with { EnableMemory = true });
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        tracer.BuildResult();
+
+        bool hadSnapshots = lastEntry!.Stack is not null && lastEntry.Memory is not null;
+        tracer.Dispose();
+        tracer.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hadSnapshots, Is.True);
+            Assert.That(lastEntry.Stack, Is.Null);
+            Assert.That(lastEntry.Memory, Is.Null);
+        }
     }
 
     /// <summary>

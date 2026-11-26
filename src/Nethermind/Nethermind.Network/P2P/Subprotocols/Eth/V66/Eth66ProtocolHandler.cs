@@ -4,6 +4,7 @@
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -32,10 +33,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     /// </summary>
     public class Eth66ProtocolHandler : Eth65ProtocolHandler, IStaticProtocolInfo
     {
+        private ClockCache<long, byte>? _pooledTransactionRequests;
+
         private readonly MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _headersRequests66;
         private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
         private readonly MessageDictionary<GetNodeDataMessage, IByteArrayList> _nodeDataRequests66;
-        private readonly MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests66;
+        private protected readonly MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests66;
+
+        private static readonly Func<BlockHeadersMessage, int, IOwnedReadOnlyList<BlockHeader>> SelectBlockHeaders =
+            static (message, _) => message.EthMessage.BlockHeaders;
+        private static readonly Func<BlockBodiesMessage, int, (OwnedBlockBodies, long)> SelectBlockBodies =
+            static (message, size) => (message.EthMessage.Bodies, size);
+        private static readonly Func<ReceiptsMessage, int, (IOwnedReadOnlyList<TxReceipt[]>, long)> SelectReceipts =
+            static (message, size) => (message.EthMessage.TxReceipts, size);
+        private static readonly Action<ReadOnlySpan<byte>, GetReceiptsMessage> ValidateReceipts =
+            static (content, request) => ThrowIfReceiptsExceedRequest(content, 1, request.EthMessage);
+        private static readonly Func<NodeDataMessage, int, IByteArrayList> SelectNodeData =
+            static (message, _) => message.EthMessage.Data;
 
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -62,7 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
-            int size = message.Content.ReadableBytes;
+            int size = message.Content.Length;
 
             switch (message.PacketType)
             {
@@ -70,17 +84,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage, GetBlockHeadersHandler>(message);
                     return true;
                 case Eth66MessageCode.BlockHeaders:
-                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
-                    ReportIn(headersMsg, size);
-                    Handle(headersMsg, size);
+                    HandleCorrelatedResponse(_headersRequests66, message, size, SelectBlockHeaders);
                     return true;
                 case Eth66MessageCode.GetBlockBodies:
                     HandleInBackground<Eth66ProtocolHandler, GetBlockBodiesMessage, BlockBodiesMessage, GetBlockBodiesHandler>(message);
                     return true;
                 case Eth66MessageCode.BlockBodies:
-                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
-                    ReportIn(bodiesMsg, size);
-                    HandleBodies(bodiesMsg, size);
+                    HandleCorrelatedResponse(_bodiesRequests66, message, size, SelectBlockBodies);
                     return true;
                 case Eth66MessageCode.GetPooledTransactions:
                     HandleInBackground<Eth66ProtocolHandler, GetPooledTransactionsMessage, PooledTransactionsMessage, GetPooledTransactionsHandler>(message);
@@ -88,7 +98,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 case Eth66MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
-                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
+                        if (!Eth66RequestId.TryPeek(message.Content.Span, out long requestId))
+                            throw new SubprotocolException($"Could not read request ID from {nameof(PooledTransactionsMessage)}.");
+                        if (Volatile.Read(ref _pooledTransactionRequests)?.Delete(requestId) != true)
+                        {
+                            ReportIn($"Uncorrelated {nameof(PooledTransactionsMessage)} response ignored", size);
+                            return true;
+                        }
+                        if (!TryDeserializeTransactions(message, out PooledTransactionsMessage pooledTxMsg, static txMessage => txMessage.EthMessage, pooledResponse: true))
+                            return true;
                         ReportIn(pooledTxMsg, size);
                         HandlePooledTransactions(pooledTxMsg.EthMessage);
                     }
@@ -104,17 +122,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetReceiptsMessage, ReceiptsMessage, GetReceiptsHandler>(message);
                     return true;
                 case Eth66MessageCode.Receipts:
-                    ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
-                    ReportIn(receiptsMessage, size);
-                    Handle(receiptsMessage, size);
+                    HandleCorrelatedResponse(_receiptsRequests66, message, size, SelectReceipts, ValidateReceipts);
                     return true;
                 case Eth66MessageCode.GetNodeData:
                     HandleInBackground<Eth66ProtocolHandler, GetNodeDataMessage, NodeDataMessage, GetNodeDataHandler>(message);
                     return true;
                 case Eth66MessageCode.NodeData:
-                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
-                    ReportIn(nodeDataMessage, size);
-                    Handle(nodeDataMessage, size);
+                    HandleCorrelatedResponse(_nodeDataRequests66, message, size, SelectNodeData);
                     return true;
                 default:
                     return base.HandleMessageCore(message);
@@ -156,13 +170,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             return new NodeDataMessage(message.RequestId, nodeDataMessage);
         }
 
-        private void Handle(BlockHeadersMessage message, long size) => _headersRequests66.Handle(message.RequestId, message.EthMessage.BlockHeaders, size);
-
-        private void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size) => _bodiesRequests66.Handle(blockBodiesMessage.RequestId, (blockBodiesMessage.EthMessage.Bodies, size), size);
-
-        private void Handle(NodeDataMessage msg, int size) => _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
-
-        protected void Handle(ReceiptsMessage msg, long size) => _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
+        private protected override void TrackPooledTransactionRequest(P2PMessage message)
+        {
+            if (message is GetPooledTransactionsMessage request)
+                LazyInitializer.EnsureInitialized(ref _pooledTransactionRequests, static () => new(2048, lockPartition: 1)).Set(request.RequestId, 0);
+        }
 
         protected override void Handle(NewPooledTransactionHashesMessage message) => RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);
 
@@ -171,7 +183,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace($"Sending headers request to {Session.Node:c}:");
+                Logger.Trace($"Sending headers request to {Session.Node?.ToString("c"):hide}:");
                 Logger.Trace($"  Starting blockhash: {message.StartBlockHash}");
                 Logger.Trace($"  Starting number: {message.StartBlockNumber}");
                 Logger.Trace($"  Skip: {message.Skip}");

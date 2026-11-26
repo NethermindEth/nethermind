@@ -18,7 +18,7 @@ public sealed class NullSnapshotCatalog : ISnapshotCatalog
 
     public void Add(CatalogEntry entry) { }
 
-    public bool Remove(in StateId to, long depth) => false;
+    public bool Remove(in StateId to, SnapshotTier tier) => false;
 
     public IEnumerable<CatalogEntry> Load() => [];
 }

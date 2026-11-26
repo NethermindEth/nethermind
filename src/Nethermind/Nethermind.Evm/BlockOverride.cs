@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -17,6 +18,29 @@ public class BlockOverride
     public Address? FeeRecipient { get; set; }
     public UInt256? BaseFeePerGas { get; set; }
     public UInt256? BlobBaseFee { get; set; }
+
+    /// <summary>
+    /// The withdrawals of a block of <c>eth_simulateV1</c>, processed after its calls from Shanghai on. Methods that run
+    /// a single call reject them, see <see cref="WithdrawalsNotSupported"/>.
+    /// </summary>
+    public Withdrawal[]? Withdrawals { get; set; }
+
+    /// <summary>The error of a single-call method given <see cref="Withdrawals"/>: it builds no block to process them in.</summary>
+    public const string WithdrawalsNotSupported = "block override \"withdrawals\" is not supported for this RPC method";
+
+    /// <summary>A copy of <paramref name="header"/> with these overrides applied.</summary>
+    public BlockHeader ApplyTo(BlockHeader header)
+    {
+        BlockHeader result = header.Clone();
+        ApplyOverrides(result);
+        return result;
+    }
+
+    /// <summary>Gets or sets the requested beacon root. Single-call methods reject it; see <see cref="BeaconRootNotSupported"/>.</summary>
+    public Hash256? BeaconRoot { get; set; }
+
+    /// <summary>The error of a single-call method given an unsupported <see cref="BeaconRoot"/> override.</summary>
+    public const string BeaconRootNotSupported = "block override \"beaconRoot\" is not supported for this RPC method";
 
     public void ApplyOverrides(BlockHeader result)
     {
@@ -39,11 +63,18 @@ public class BlockOverride
             result.Beneficiary = result.Author = FeeRecipient;
         }
         if (BaseFeePerGas is not null) result.BaseFeePerGas = BaseFeePerGas.Value;
-        if (PrevRandao is not null && PrevRandao != Hash256.Zero) result.MixHash = PrevRandao;
+        if (PrevRandao is not null) result.MixHash = PrevRandao;
         // BlobBaseFee is not a direct header field — it is derived from ExcessBlobGas via the
         // EIP-4844 formula. The override is applied via BlobBaseFeeOverrideCalculatorDecorator
         // (and for simulate via IBlobBaseFeeOverrideProvider) instead.
     }
+
+    /// <summary>
+    /// The <see cref="PrevRandao"/> that PREVRANDAO returns in a single call run under <paramref name="callSpec"/>, the
+    /// spec of the call's block after these overrides, or <c>null</c> when the call keeps its block's own value.
+    /// </summary>
+    /// <remarks>As in geth, where a random value turns the merge rules on only from London: before it, opcode 0x44 reads the difficulty.</remarks>
+    public Hash256? PrevRandaoFor(IReleaseSpec callSpec) => callSpec.IsEip1559Enabled ? PrevRandao : null;
 
     public BlockOverride WithBaseFee(UInt256 baseFee)
     {

@@ -26,7 +26,7 @@ public class FlatEntryWriterTests
     private static byte[] Nibbles(string hex) =>
         hex.Select(c => (byte)(c >= 'a' ? c - 'a' + 10 : c >= 'A' ? c - 'A' + 10 : c - '0')).ToArray();
 
-    private static byte[] SmallAccountRlp() => Rlp.Encode(new Account(0, 1)).Bytes;
+    private static byte[] SmallAccountRlp() => Rlp.Encode(new Account(0, 1));
 
     #region WriteAccountFlatEntries Tests
 
@@ -49,7 +49,19 @@ public class FlatEntryWriterTests
 
         FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, leaf);
 
-        writeBatch.Received(1).SetAccountRaw(new Hash256(Bytes.FromHexString(expectedPathHex)), Arg.Any<Account>());
+        writeBatch.Received(1).SetAccountRaw(new Hash256(Bytes.FromHexString(expectedPathHex)), Arg.Any<AccountStruct>());
+    }
+
+    [Test]
+    public void WriteAccountFlatEntries_LeafCarryingNoAccount_Throws()
+    {
+        TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles("cdef"), Bytes.FromHexString("c1"));
+        TreePath empty = TreePath.Empty;
+        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
+
+        Assert.That(
+            () => FlatEntryWriter.WriteAccountFlatEntries(Substitute.For<IPersistence.IWriteBatch>(), TreePath.FromHexString("1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab"), leaf),
+            Throws.InvalidOperationException);
     }
 
     #endregion

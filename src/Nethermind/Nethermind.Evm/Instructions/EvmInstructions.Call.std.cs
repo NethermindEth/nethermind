@@ -39,12 +39,7 @@ public static partial class EvmInstructions
             return false;
         }
 
-        if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
-        {
-            result = EvmExceptionType.OutOfGas;
-            return true;
-        }
-
+        ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadAfterGas(in dataOffset, in dataLength);
         TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
         IReleaseSpec spec = vm.Spec;
 
@@ -62,9 +57,7 @@ public static partial class EvmInstructions
             // ID cannot fail and returns its input unchanged, so copy straight into a reusable buffer
             // rather than allocating an array per call. The data still has to live somewhere this frame
             // cannot overwrite, because RETURNDATACOPY may read it after the frame writes memory again.
-            Memory<byte> scratch = vm.RentPrecompileScratch(callData.Length);
-            callData.Span.CopyTo(scratch.Span);
-            outputData = scratch;
+            outputData = vm.CopyToPrecompileScratch(callData.Span);
         }
         else
         {
@@ -89,16 +82,28 @@ public static partial class EvmInstructions
         if (outputLength < (UInt256)copyLength)
             copyLength = (int)outputLength.ToLong();
 
-        if (copyLength > 0)
-        {
-            if (!vm.VmState.Memory.TrySave(in outputOffset, outputData.Span[..copyLength]))
-            {
-                result = EvmExceptionType.OutOfGas;
-                return true;
-            }
-        }
+        vm.VmState.Memory.SaveAfterGas(in outputOffset, outputData.Span[..copyLength]);
 
         result = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
         return true;
     }
+
+    // Mainline keeps CreateFullCallFrame out-of-line for icache locality on the common path.
+    private const MethodImplOptions FullCallFrameInlining = MethodImplOptions.NoInlining;
+
+    private const bool InlinesPrecompileFrames = false;
+
+    private static partial EvmExceptionType InlinePrecompileFrame<TGasPolicy, TOpCall, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ExecutionEnvironment callEnv,
+        TGasPolicy childGas,
+        long outputOffset,
+        long outputLength,
+        in Snapshot snapshot,
+        ref EvmStack stack,
+        bool newAccountCharged)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
+        where TTracingInst : struct, IFlag =>
+        throw new UnreachableException();
 }

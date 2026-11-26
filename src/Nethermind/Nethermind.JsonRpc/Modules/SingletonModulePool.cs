@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules
@@ -38,6 +39,9 @@ namespace Nethermind.JsonRpc.Modules
 
             return _onlyInstanceAsTask;
         }
+
+        /// <remarks>A singleton never queues a rental, so there is nothing for <paramref name="cancellationToken"/> to abandon.</remarks>
+        public Task<T> GetModule(bool canBeShared, CancellationToken cancellationToken) => GetModule(canBeShared);
 
         public void ReturnModule(T module)
         {

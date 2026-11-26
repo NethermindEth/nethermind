@@ -19,7 +19,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test
 {
     [TestFixture]
-    public class BytesTests
+    public partial class BytesTests
     {
         [OneTimeSetUp]
         public void Check_instruction_set_expectations() => VectorIsaExpectations.AssertPinnedInstructionSet();
@@ -190,6 +190,13 @@ namespace Nethermind.Core.Test
             byte[]? x = hexString1 is null ? null : Bytes.FromHexString(hexString1);
             byte[]? y = hexString2 is null ? null : Bytes.FromHexString(hexString2);
             Assert.That(comparer.Equals(x, y), Is.EqualTo(expectedResult));
+        }
+
+        [Test]
+        public void Hex_lookup_holds_both_lowercase_digits_of_every_byte([Range(0, 255)] int value)
+        {
+            string hex = value.ToString("x2");
+            Assert.That(Bytes.Lookup32[value], Is.EqualTo(hex[0] + ((uint)hex[1] << 16)));
         }
 
         [Test]
@@ -653,6 +660,14 @@ namespace Nethermind.Core.Test
             Assert.That(first, Is.EqualTo(expected));
         }
 
+        // Hosts take a SIMD branch of Or for spans of 16 bytes or more, so the four-word loop runs only here.
+        [TestCaseSource(nameof(OrTests))]
+        public void OrScalar(byte[] first, byte[] second, byte[] expected)
+        {
+            Bytes.OrScalar(first, second);
+            Assert.That(first, Is.EqualTo(expected));
+        }
+
         [TestCaseSource(nameof(XorTests))]
         public void Xor(byte[] first, byte[] second, byte[] expected)
         {
@@ -819,40 +834,6 @@ namespace Nethermind.Core.Test
             Vector128<byte> finalSeed = SpanExtensions.ComputeAesFinalSeed();
             return SpanExtensions.FastHashAesShort(ref start, input.Length, aesSeed, finalSeed);
         }
-
-#if !ZK_EVM
-        [TestCase(false, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_PublicPath")]
-        [TestCase(true, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_ScalarFallback")]
-        public void FastHash_StructuredEightByteInputs_AreDistributed(bool forceScalar)
-        {
-            const int count = 1024;
-            ulong pairedDelta = SolveCrcInput(0);
-            byte[] input0 = new byte[sizeof(ulong)];
-            byte[] input1 = new byte[sizeof(ulong)];
-            int equalPairs = 0;
-
-            foreach (uint seed in HashSeeds)
-                Assert.That(SpanExtensions.CombineHash(seed, pairedDelta),
-                    Is.EqualTo(SpanExtensions.CombineHash(seed, 0)), "raw CRC collision survives changing the seed");
-
-            for (uint value = 0; value < count; value++)
-            {
-                ulong word = value * 0x9E3779B97F4A7C15UL;
-                BinaryPrimitives.WriteUInt64LittleEndian(input0, word);
-                BinaryPrimitives.WriteUInt64LittleEndian(input1, word ^ pairedDelta);
-
-                int hash0 = forceScalar
-                    ? SpanExtensions.FastHashFallback(input0)
-                    : input0.FastHash();
-                int hash1 = forceScalar
-                    ? SpanExtensions.FastHashFallback(input1)
-                    : input1.FastHash();
-                if (SpanExtensions.CombineHash(0, (uint)hash0) == SpanExtensions.CombineHash(0, (uint)hash1)) equalPairs++;
-            }
-
-            Assert.That(equalPairs, Is.LessThan(2), $"structured pairs produced {equalPairs}/{count} equal chained hashes");
-        }
-#endif
 
         /// <remarks>
         /// Covers the widths that have their own paths, not just a pair that shares one. 20 against 32
@@ -1118,7 +1099,7 @@ namespace Nethermind.Core.Test
 
         private static void AssertIntHashesAreDistributed(Func<int, int> getHash, string context)
         {
-            HashSet<int> hashes = new(HashDistributionSampleCount);
+            HashSet<int> hashes = [with(HashDistributionSampleCount)];
             for (int value = 0; value < HashDistributionSampleCount; value++)
                 hashes.Add(getHash(value));
 
@@ -1169,10 +1150,10 @@ namespace Nethermind.Core.Test
 
         private static void AssertHash64WindowsAreDistributed(long[] hashes, string context)
         {
-            HashSet<long> fullHashes = new(hashes.Length);
-            HashSet<int> way0Sets = new(hashes.Length);
-            HashSet<int> signatures = new(hashes.Length);
-            HashSet<int> way1Sets = new(hashes.Length);
+            HashSet<long> fullHashes = [with(hashes.Length)];
+            HashSet<int> way0Sets = [with(hashes.Length)];
+            HashSet<int> signatures = [with(hashes.Length)];
+            HashSet<int> way1Sets = [with(hashes.Length)];
 
             foreach (long hash in hashes)
             {
@@ -1309,6 +1290,36 @@ namespace Nethermind.Core.Test
             }
         }
 
+        /// <summary>
+        /// The scalar loop the vector paths leave only a short tail to on the host: lengths span several of its
+        /// lane-count chunks, the fills hit the byte values its per-lane carry logic distinguishes, and the starts
+        /// put the first word boundary at each end of the bytes it counts one by one.
+        /// </summary>
+        [Test]
+        public void CountZerosWordAtATime_matches_naive(
+            [Values(0, 7, 8, 31, 32, 39, 223, 224, 225, 231, 247, 248, 249, 255, 256, 257, 496, 1000, 2049)] int length,
+            [Values(-1, 0x00, 0x01, 0x7F, 0x80, 0xFF)] int fill,
+            [Values(0, 1, 2, 3, 7)] int start)
+        {
+            Random rng = new(length);
+            byte[] buffer = new byte[start + length];
+            buffer.AsSpan(0, start).Fill(0xFF);
+            int expected = 0;
+            for (int i = start; i < buffer.Length; i++)
+            {
+                buffer[i] = fill >= 0 ? (byte)fill : rng.Next(3) == 0 ? (byte)0 : (byte)rng.Next(256);
+                if (buffer[i] == 0) expected++;
+            }
+
+            ReadOnlySpan<byte> data = buffer.AsSpan(start);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Bytes.CountZerosWordAtATime(data), Is.EqualTo(expected));
+                // The 32-bit form the guest takes, which reads the bytes before a word boundary one by one.
+                Assert.That(Bytes.CountZerosInAlignedWords(data), Is.EqualTo(expected));
+            }
+        }
+
         private static IEnumerable<TestCaseData> LeadingZerosCountCases()
         {
             yield return new TestCaseData(Array.Empty<byte>(), 0).Returns(0).SetName("empty");
@@ -1343,5 +1354,27 @@ namespace Nethermind.Core.Test
         [TestCaseSource(nameof(WithoutLeadingZerosCases))]
         public byte[] WithoutLeadingZeros_cases(byte[] bytes) =>
             new ReadOnlySpan<byte>(bytes).WithoutLeadingZeros().ToArray();
+
+        [TestCase("default", true)]
+        [TestCase("null array", true)]
+        [TestCase("empty array", false)]
+        [TestCase("empty slice", false)]
+        [TestCase("memory manager", false)]
+        public void ReadOnlyMemory_IsNull_tells_missing_from_empty(string source, bool expected)
+        {
+            // Code reads return default when not served and empty memory for an account without code; confusing the
+            // two would skip the by-address fallback or run nothing.
+            byte[]? none = null;
+            ReadOnlyMemory<byte> memory = source switch
+            {
+                "default" => default,
+                "null array" => none,
+                "empty array" => Array.Empty<byte>(),
+                "empty slice" => new byte[] { 1, 2 }.AsMemory(2),
+                _ => Nethermind.Core.Buffers.ArrayMemoryManager.From([1])!.Memory,
+            };
+
+            Assert.That(memory.IsNull(), Is.EqualTo(expected));
+        }
     }
 }

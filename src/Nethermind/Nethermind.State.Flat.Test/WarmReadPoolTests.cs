@@ -58,14 +58,21 @@ public class WarmReadPoolTests
     {
         using WarmReadPool pool = new(2);
         using CancellationTokenSource cts = new();
+        using ManualResetEventSlim bothWorkersRunning = new();
         int processed = 0;
 
         Assert.DoesNotThrow(() => pool.Run(10_000, workers: 2, j =>
         {
-            if (Interlocked.Increment(ref processed) > 16) cts.Cancel();
+            if (j == 0) bothWorkersRunning.Wait();
+            else bothWorkersRunning.Set();
+
+            int count = Interlocked.Increment(ref processed);
+            // Stalls the cancelling worker inside Cancel(); the other worker must still stop claiming.
+            if (count == 1) cts.Token.Register(static () => Thread.Sleep(100));
+            if (count > 16) cts.Cancel();
         }, cts.Token));
 
-        Assert.That(processed, Is.LessThan(10_000));
+        Assert.That(processed, Is.InRange(17, 18), "the cancelling job plus at most one the other worker already claimed");
     }
 
     [Test]

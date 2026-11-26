@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
 using NUnit.Framework;
@@ -44,11 +45,13 @@ public class EngineApiProxyTests
     {
         if (_proxyContainer is not null)
         {
+            await _proxyContainer.WriteDiagnosticLogsAsync("EngineApiProxy");
             await _proxyContainer.DisposeAsync();
             _proxyContainer = null;
         }
         if (_nethermindContainer is not null)
         {
+            await _nethermindContainer.WriteDiagnosticLogsAsync("Nethermind");
             await _nethermindContainer.DisposeAsync();
             _nethermindContainer = null;
         }
@@ -156,9 +159,12 @@ public class EngineApiProxyTests
 
         JsonNode fcuResult = await Utils.SendEngineRequestAsync(proxyClient, "engine_forkchoiceUpdatedV3", forkchoiceState, payloadAttributes);
 
-        Assert.That(fcuResult["payloadStatus"]["status"].GetValue<string>(), Is.EqualTo("VALID"));
-        Assert.That(fcuResult["payloadStatus"]["latestValidHash"].GetValue<string>(), Is.EqualTo(parentHash));
-        Assert.That(fcuResult["payloadId"], Is.Null, "Merged mode hides payloadId from CL even when EL produced one");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcuResult["payloadStatus"]["status"].GetValue<string>(), Is.EqualTo("VALID"));
+            Assert.That(fcuResult["payloadStatus"]["latestValidHash"].GetValue<string>(), Is.EqualTo(parentHash));
+            Assert.That(fcuResult["payloadId"], Is.Null, "Merged mode hides payloadId from CL even when EL produced one");
+        }
     }
 
     [Test]
@@ -169,7 +175,7 @@ public class EngineApiProxyTests
         // _proxyContainer.State — Testcontainers caches that property and won't observe
         // the Running→Exited transition for a process that dies shortly after start.
         ContainerBuilder builder = (await Utils.BuildEngineApiProxyContainerAsync(new[] { "-p", "9551" }))
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Execution Client endpoint is required"));
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Execution Client endpoint is required", o => o.WithMode(WaitStrategyMode.OneShot)));
         _proxyContainer = builder.Build();
         await _proxyContainer.StartAsync();
 

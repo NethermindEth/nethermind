@@ -4,16 +4,19 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
 public partial class BN254PairingCheckPrecompile
 {
+    public static Address Address => field ??= Address.FromNumber(8);
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         if (!ValidateInputLength(inputData))
-            return Errors.InvalidInputLength;
+            return Errors.Bn254PairingInputLength;
 
         if (inputData.Length == 0)
         {
@@ -23,7 +26,7 @@ public partial class BN254PairingCheckPrecompile
             return output;
         }
 
-        Accelerators.Status status = Accelerators.BN254Pairing(
+        Accelerators.Status status = CurveAccelerators.BN254Pairing(
             inputData.Span,
             (nuint)inputData.Length / BN254.PairSize,
             out bool verified

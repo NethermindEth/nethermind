@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using NodeBuffer = System.Collections.Generic.List<(Nethermind.Trie.TreePath Path, Nethermind.Trie.TrieNode Node)>;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 

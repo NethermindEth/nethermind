@@ -55,7 +55,7 @@ namespace Nethermind.TxPool
             }
 
             int commitmentsLength = GetFixedByteStringsSequenceLength(wrapper.Commitments.Length, Ckzg.BytesPerCommitment);
-            int proofsLength = GetFixedByteStringsSequenceLength(wrapper.Proofs.Length, Ckzg.BytesPerProof);
+            int proofsLength = GetFixedByteStringsSequenceLength(wrapper.ProofCount, Ckzg.BytesPerProof);
             if (commitmentsLength == 0 || proofsLength == 0)
             {
                 return 0;
@@ -63,7 +63,7 @@ namespace Nethermind.TxPool
 
             long contentLength = (long)tx.GetLength(shouldCountBlobs: false) - 1
                 + versionLength
-                + Rlp.OfEmptyList.Length
+                + Rlp.LengthOfNull
                 + commitmentsLength
                 + proofsLength;
             return GetTypedSequenceLength(contentLength);
@@ -94,7 +94,7 @@ namespace Nethermind.TxPool
 
             long contentLength = (long)consensusEncodingSize - 1
                 + versionLength
-                + Rlp.OfEmptyList.Length
+                + Rlp.LengthOfNull
                 + commitmentsLength
                 + proofsLength;
             return GetTypedSequenceLength(contentLength);
@@ -134,7 +134,16 @@ namespace Nethermind.TxPool
 
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => (UInt256)tx.MaxFeePerGas >= currentBaseFee;
 
-        public static bool CanPayForBlobGas(this Transaction tx, UInt256 currentPricePerBlobGas) => !tx.CarriesBlobs || tx.MaxFeePerBlobGas >= currentPricePerBlobGas;
+        public static bool CanPayForBlobGas(this Transaction tx, UInt256 currentPricePerBlobGas) =>
+            !tx.CarriesBlobs || !tx.IsBelowBlobBaseFee(currentPricePerBlobGas);
+
+        /// <summary>Whether <paramref name="tx"/> cannot cover the blob base fee; never for a transaction without blob fees.</summary>
+        /// <remarks>An EIP-8141 <c>max_fee</c> has no per-blob-gas cap, so the bound is its budget covering the blob gas
+        /// alone: a lower bound on what execution requires, which adds the execution and state gas.</remarks>
+        public static bool IsBelowBlobBaseFee(this Transaction tx, in UInt256 currentPricePerBlobGas) =>
+            tx.SupportsFrames
+                ? tx.CarriesBlobs && (UInt256.MultiplyOverflow((UInt256)tx.GetBlobGas(), currentPricePerBlobGas, out UInt256 blobFee) || tx.MaxFee < blobFee)
+                : tx.MaxFeePerBlobGas < currentPricePerBlobGas;
 
         public static bool CanBeBroadcast(this Transaction tx) => !tx.CarriesBlobs && tx.GetLength() <= MaxSizeOfTxForBroadcast;
 
@@ -268,6 +277,13 @@ namespace Nethermind.TxPool
         internal static bool IsOverflowWhenAddingTxCostToCumulative(this Transaction tx, UInt256 currentCost, out UInt256 cumulativeCost)
         {
             bool overflow = false;
+
+            // EIP-8141: max_fee bounds what execution, state and blob gas can cost together.
+            if (tx.SupportsFrames)
+            {
+                return UInt256.AddOverflow(currentCost, tx.MaxFee, out cumulativeCost)
+                    | UInt256.AddOverflow(cumulativeCost, (UInt256)tx.Value, out cumulativeCost);
+            }
 
             overflow |= UInt256.MultiplyOverflow((UInt256)tx.MaxFeePerGas, tx.GasLimit, out UInt256 maxTxCost);
             overflow |= UInt256.AddOverflow(currentCost, maxTxCost, out cumulativeCost);

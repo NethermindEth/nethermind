@@ -80,8 +80,11 @@ public class TxPoolContentListsTests
             localAccounts,
             maxTransactionsLists);
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
 
         return result.Data!.Select(static list => list.TxList.OfType<EIP1559TransactionForRpc>().Select(static tx => (int)tx.Input![0]).ToArray()).ToArray();
     }
@@ -233,8 +236,11 @@ public class TxPoolContentListsTests
         ResultWrapper<PreBuiltTxList[]?> result = rpcModule.taikoAuth_txPoolContent(
             Address.Zero, 1, 30_000_000, (ulong)maxBytesPerTxList, null, 10);
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Has.Length.EqualTo(expectedBatchCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Has.Length.EqualTo(expectedBatchCount));
+        }
         Assert.That(result.Data![0].EstimatedGasUsed, Is.EqualTo((ulong)Transaction.BaseTxGasCost));
     }
 
@@ -262,6 +268,7 @@ public class TxPoolContentListsTests
             Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
             Substitute.For<IHandler<Hash256?, InclusionListBytes>>(),
             Substitute.For<Nethermind.Consensus.Transactions.IInclusionListTxSource>(),
+            Substitute.For<IInclusionListComplianceEvaluator>(),
             Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>>(),
             Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
             Substitute.For<IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>>(),
@@ -273,6 +280,7 @@ public class TxPoolContentListsTests
             Substitute.For<ILogManager>(),
             txPool,
             blockFinder,
+            Substitute.For<IBlockTree>(),
             shareableTxProcessor,
             TxDecoder.Instance,
             Substitute.For<IL1OriginStore>(),

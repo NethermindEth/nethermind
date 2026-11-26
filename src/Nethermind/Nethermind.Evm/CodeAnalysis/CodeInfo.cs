@@ -10,22 +10,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo : IEquatable<CodeInfo>
 {
-    public static CodeInfo Empty { get; }
-    // Empty code sentinel
-    private static readonly JumpDestinationAnalyzer _emptyAnalyzer;
-
-    static CodeInfo()
-    {
-        CodeInfo stub = new(); // allocate without analyzer
-        _emptyAnalyzer = new JumpDestinationAnalyzer(stub, skipAnalysis: true);
-        Empty = new CodeInfo(_emptyAnalyzer);
-    }
-
     // Empty
     private CodeInfo() { }
     private CodeInfo(JumpDestinationAnalyzer analyzer) => _analyzer = analyzer;
@@ -33,7 +23,7 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
-        Code = code;
+        InitializeCode(code);
         if (code.Length == 0)
         {
             _analyzer = _emptyAnalyzer;
@@ -51,14 +41,65 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
         _analyzer = null;
     }
 
-    public ReadOnlyMemory<byte> Code { get; }
-    public ReadOnlySpan<byte> CodeSpan => Code.Span;
+    public partial ReadOnlyMemory<byte> Code { get; }
+    public partial ReadOnlySpan<byte> CodeSpan { get; }
+
+    /// <summary>The length of <see cref="Code"/>.</summary>
+    internal partial int CodeLength { get; }
+
+    partial void InitializeCode(ReadOnlyMemory<byte> code);
+
+    /// <summary>Creates the code info that a creation frame at <paramref name="callDepth"/> runs <paramref name="initCode"/> with.</summary>
+    /// <param name="initCode">The init code, from <see cref="TryLoadInitCode"/> or owned by the caller.</param>
+    /// <param name="callDepth">The call depth of the creation frame.</param>
+    internal static partial CodeInfo ForInitCode(ReadOnlyMemory<byte> initCode, int callDepth);
+
+    /// <summary>
+    /// Loads the <paramref name="length"/> bytes of <paramref name="memory"/> at <paramref name="location"/> as the init code
+    /// of a creation frame at <paramref name="callDepth"/>, for <see cref="ForInitCode"/>.
+    /// </summary>
+    /// <param name="memory">The memory of the creating frame, whose expansion over the range has been charged.</param>
+    /// <param name="location">The start of the init code in <paramref name="memory"/>.</param>
+    /// <param name="length">The length of the init code.</param>
+    /// <param name="callDepth">The call depth of the creation frame.</param>
+    /// <param name="initCode">The init code, in natural byte order.</param>
+    /// <returns>Whether the range lies within the addressable memory.</returns>
+    internal static partial bool TryLoadInitCode(ref EvmPooledMemory memory, in UInt256 location, in UInt256 length, int callDepth, out ReadOnlyMemory<byte> initCode);
+
+    /// <summary>The number of zero bytes that follow <see cref="ExecutionCodeSpan"/> in its backing array.</summary>
+    /// <remarks>
+    /// A PUSH32 in the last byte reads 32 immediate bytes, and the next opcode read then lands on the
+    /// next-to-last padding byte, which is STOP; the guest reads that opcode together with the byte after it.
+    /// </remarks>
+    internal const int ExecutionPadding = 34;
+
+    /// <summary>The code that dispatch runs, followed in memory by <see cref="ExecutionPadding"/> zero bytes.</summary>
+    /// <remarks>
+    /// Untraced dispatch reads into the padding instead of checking the program counter against the code
+    /// length. The padding is never JUMPDEST, and jump destinations are bounded by the code length anyway.
+    /// </remarks>
+    internal partial ReadOnlySpan<byte> ExecutionCodeSpan { get; }
+
+    private static byte[] CreatePaddedCode(ReadOnlySpan<byte> code)
+    {
+        byte[] padded = CreateExecutionBuffer(code.Length);
+        code.CopyTo(padded);
+        return padded;
+    }
+
+    /// <summary>Allocates a buffer for <paramref name="codeLength"/> code bytes followed by <see cref="ExecutionPadding"/> zero bytes.</summary>
+    internal static byte[] CreateExecutionBuffer(int codeLength)
+    {
+        byte[] buffer = GC.AllocateUninitializedArray<byte>(codeLength + ExecutionPadding);
+        buffer.AsSpan(codeLength).Clear();
+        return buffer;
+    }
     private Address? _delegatedAddress;
     internal Address? DelegatedAddress
     {
         get
         {
-            if (Code.Length != Eip7702Constants.DelegationHeaderLength + Address.Size)
+            if (CodeLength != Eip7702Constants.DelegationHeaderLength + Address.Size)
             {
                 return null;
             }
@@ -69,7 +110,7 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
                 return delegatedAddress;
             }
 
-            if (!ICodeInfoRepository.TryGetDelegatedAddress(Code.Span, out Address? parsedAddress))
+            if (!ICodeInfoRepository.TryGetDelegatedAddress(CodeSpan, out Address? parsedAddress))
             {
                 return null;
             }
@@ -122,6 +163,10 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
     }
+
+    /// <summary>The EIP-7979 bitmap of <c>JUMPDEST</c> and <c>CALLDEST</c> positions in this code, built on first use.</summary>
+    internal long[] JumpAndCallDestinationBitmap
+        => _analyzer?.JumpAndCallDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
 
     public override bool Equals(object? obj)
         => Equals(obj as CodeInfo);

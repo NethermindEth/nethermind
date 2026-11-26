@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -32,6 +33,13 @@ namespace Nethermind.Synchronization.FastSync
         public const int MaxRequestSize = 384; // TODO: Consider using peer-specific limits from NodeStats
 
         private const StateSyncBatch EmptyBatch = null;
+
+        /// <summary>The deepest path below a state leaf at which healing removes a node an earlier root left.</summary>
+        /// <remarks>
+        /// A node deeper on the path of an account needs two account hashes sharing 16 bytes, which takes about 2^64
+        /// hashes to find, so checking all 64 nibbles would only cost reads.
+        /// </remarks>
+        private const int DeepestStateLeafPathChecked = 32;
 
         private static readonly AccountDecoder AccountDecoder = new();
 
@@ -50,9 +58,6 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ReaderWriterLockSlim _stateDbLock = new();
         private readonly ReaderWriterLockSlim _codeDbLock = new();
 
-        private readonly Stopwatch _networkWatch = new();
-        private long _handleWatch = new();
-
         private Hash256 _rootNode = Keccak.EmptyTreeHash;
         private int _rootSaved;
 
@@ -70,9 +75,9 @@ namespace Nethermind.Synchronization.FastSync
         // SimpleDispatcher.Run drains in-flight workers before returning, and StateSyncRunner
         // only resets / cleans up outside dispatcher.Run — the drain is the sole barrier.
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _ongoingRequests = new();
-        private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = [];
-        private readonly LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
-        private readonly LruKeyCache<ValueHash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
+        private readonly Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = [];
+        private LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
+        private LruKeyCache<ValueHash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
         private ConcurrentDictionary<StateSyncItem.NodeKey, byte[]> _previouslyPendingItems = new();
         private ConcurrentDictionary<StateSyncItem.NodeKey, byte[]> _newPendingItems = new();
 
@@ -90,7 +95,7 @@ namespace Nethermind.Synchronization.FastSync
             _logger = logManager?.GetClassLogger<TreeSync>() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
-            _data = new DetailedProgress(_blockTree.NetworkId, progress);
+            _data = new DetailedProgress(_blockTree.NetworkId, progress, syncConfig.SnapSync);
             _pendingItems = new PendingSyncItems(syncConfig.SnapSync);
             _branchProgress = new BranchProgress(0, _logger);
         }
@@ -197,8 +202,8 @@ namespace Nethermind.Synchronization.FastSync
                     if (batch.Responses is null)
                     {
                         AddAgainAllItems();
-                        if (_logger.IsTrace) _logger.Trace($"Peer {peerInfo} failed to satisfy request.");
-                        Interlocked.Increment(ref _data.NotAssignedCount);
+                        if (_logger.IsTrace) _logger.Trace($"Peer {peerInfo:hide} failed to satisfy request.");
+                        Interlocked.Increment(ref _data.NoResponseCount);
                         return SyncResponseHandlingResult.LesserQuality;
                     }
 
@@ -297,14 +302,6 @@ namespace Nethermind.Synchronization.FastSync
                     _data.DisplayProgressReport(_ongoingRequests.Count, _branchProgress, _logger);
 
                     long elapsedTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
-                    long total = elapsedTime + _networkWatch.ElapsedMilliseconds;
-                    if (total != 0)
-                    {
-                        // calculate averages
-                        if (_logger.IsTrace)
-                            _logger.Trace(
-                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {elapsedTime:N0}ms ({(decimal)elapsedTime / total:P0})");
-                    }
 
                     if (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds > 250)
                     {
@@ -313,9 +310,7 @@ namespace Nethermind.Synchronization.FastSync
                                 $"Handle watch {elapsedTime:N0}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)elapsedTime / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
-                    Interlocked.Add(ref _handleWatch, (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds);
                     _data.LastDbReads = _data.DbChecks;
-                    _data.AverageTimeInHandler = _handleWatch / (decimal)_data.ProcessedRequestsCount;
 
                     Interlocked.Add(ref _data.HandledNodesCount, nonEmptyResponses);
                     return result;
@@ -342,20 +337,20 @@ namespace Nethermind.Synchronization.FastSync
 
             if (_rootNode == Keccak.EmptyTreeHash)
             {
-                if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - root is empty tree");
+                if (_logger.IsDebug) _logger.Debug("StateNode sync: falling asleep - root is empty tree");
                 return true;
             }
 
             BlockHeader? pivotHeader = _stateSyncPivot.GetPivotHeader();
             if (pivotHeader is null || pivotHeader.StateRoot != _rootNode)
             {
-                if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - updating state root");
+                if (_logger.IsDebug) _logger.Debug("StateNode sync: falling asleep - updating state root");
                 return true;
             }
 
             if (_hintsToResetRoot >= 32 && DateTime.UtcNow - _lastResetRoot > _minTimeBetweenReset)
             {
-                if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - many missing responses");
+                if (_logger.IsDebug) _logger.Debug("StateNode sync: falling asleep - many missing responses");
                 _stateSyncPivot.UpdateHeaderForcefully();
                 return true;
             }
@@ -433,6 +428,10 @@ namespace Nethermind.Synchronization.FastSync
                 if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({_pendingItems.Description})");
                 _pendingItems.Clear();
                 Interlocked.Exchange(ref _rootSaved, 0);
+
+                // A store keyed by path (flat) replaces a node found saved in an earlier round once a later root saves
+                // another node at its path, so a node found saved before has to be looked up again at the new root.
+                _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
             }
             else
             {
@@ -531,6 +530,15 @@ namespace Nethermind.Synchronization.FastSync
                         return AddNodeResult.AlreadySaved;
                     }
 
+                    if (syncItem.NodeDataType != NodeDataType.Code)
+                    {
+                        // A node is saved only once its children are, so a round that moves on to a new root in between
+                        // leaves the node of an earlier root over children it changed, which a store keyed by path keeps
+                        // at the same path. Removing it makes a later root that has it again go down through it. The read
+                        // lock keeps SaveNode out, so the node of this root cannot be saved at the path meanwhile.
+                        _store.RemoveMismatchedNode(syncItem.Address, syncItem.Path, syncItem.Hash);
+                    }
+
                     Interlocked.Increment(ref _data.StateWasNotThere);
                 }
                 finally
@@ -591,9 +599,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     foreach (DependentItem dependentItem in dependentItems)
                     {
-                        dependentItem.Counter--;
-
-                        if (dependentItem.Counter == 0)
+                        if (dependentItem.ResolveDependency())
                         {
                             nodesToSave.Add(dependentItem);
                         }
@@ -702,6 +708,7 @@ namespace Nethermind.Synchronization.FastSync
         private bool VerifyStorageUpdated(StateSyncItem item, byte[] value)
         {
             DependentItem dependentItem = new(item, value, _stateSyncPivot.UpdatedStorages.Count);
+            bool isComplete = dependentItem.Counter == 0;
 
             using ITreeSyncVerificationContext verificationContext = _store.CreateVerificationContext(value);
 
@@ -718,7 +725,7 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} is empty or account deleted, ensuring flat storage cleared");
                     _store.EnsureStorageEmpty(updatedAddress);
-                    dependentItem.Counter--;
+                    isComplete |= dependentItem.ResolveDependency();
                 }
                 else if (AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "incomplete storage") == AddNodeResult.Added)
                 {
@@ -727,11 +734,11 @@ namespace Nethermind.Synchronization.FastSync
                 else
                 {
                     if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} is ok");
-                    dependentItem.Counter--;
+                    isComplete |= dependentItem.ResolveDependency();
                 }
             }
 
-            if (dependentItem.Counter > 0)
+            if (!isComplete)
             {
                 if (_logger.IsDebug) _logger.Debug($"Queued extra {dependentItem.Counter} items for storage repair..");
             }
@@ -740,7 +747,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (_logger.IsDebug) _logger.Debug($"Storage OK");
             }
 
-            return dependentItem.Counter == 0;
+            return isComplete;
         }
 
         public void VerifyPostSyncCleanUp()
@@ -752,7 +759,9 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
                 }
 
-                _dependencies = [];
+                // Cleared in place, as the dictionary is the lock target; trimmed, as clearing keeps its capacity.
+                _dependencies.Clear();
+                _dependencies.TrimExcess();
             }
 
             if (_pendingItems.Count != 0)
@@ -763,12 +772,15 @@ namespace Nethermind.Synchronization.FastSync
             CleanupMemory();
         }
 
+        /// <remarks>
+        /// The saved-node caches are replaced rather than cleared, as clearing keeps their capacity, which grows to tens
+        /// of megabytes during a sync and would otherwise stay allocated for the life of the process.
+        /// </remarks>
         private void CleanupMemory()
         {
             _ongoingRequests.Clear();
-            _dependencies.Clear();
-            _alreadySavedNode.Clear();
-            _alreadySavedCode.Clear();
+            _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
+            _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
             if (_rootSaved == 1)
             {
                 _previouslyPendingItems.Clear();
@@ -815,6 +827,7 @@ namespace Nethermind.Synchronization.FastSync
                     // Note the counter is set to 16 first before decrementing at each loop. This is because it is possible
                     // than the node is downloaded during the loop which may trigger a save on this node.
                     DependentItem dependentBranch = new(currentStateSyncItem, currentResponseItem, 16);
+                    bool isBranchComplete = false;
 
                     TreePath parentPath = currentStateSyncItem.Path;
 
@@ -841,17 +854,17 @@ namespace Nethermind.Synchronization.FastSync
                             else
                             {
                                 _branchProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.AlreadySaved);
-                                dependentBranch.Counter--;
+                                isBranchComplete |= dependentBranch.ResolveDependency();
                             }
                         }
                         else
                         {
                             _branchProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.Empty);
-                            dependentBranch.Counter--;
+                            isBranchComplete |= dependentBranch.ResolveDependency();
                         }
                     }
 
-                    if (dependentBranch.Counter == 0)
+                    if (isBranchComplete)
                     {
                         SaveNode(currentStateSyncItem, currentResponseItem);
                     }
@@ -869,6 +882,7 @@ namespace Nethermind.Synchronization.FastSync
 
                         // Add nibbles to StateSyncItem.PathNibbles
                         TreePath childPath = currentStateSyncItem.Path.Append(trieNode.Key);
+                        RemoveSkippedNodes(currentStateSyncItem, childPath);
 
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
@@ -904,16 +918,19 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
+                        bool isAccountComplete = false;
+                        bool waitsForCode = false;
                         RlpReader ctx = new(trieNode.Value.AsSpan());
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
                             AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, TreePath.Empty, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
-                            if (addCodeResult == AddNodeResult.AlreadySaved) dependentItem.Counter--;
+                            if (addCodeResult == AddNodeResult.AlreadySaved) isAccountComplete |= dependentItem.ResolveDependency();
+                            else waitsForCode = true;
                         }
                         else
                         {
-                            dependentItem.Counter--;
+                            isAccountComplete |= dependentItem.ResolveDependency();
                         }
 
                         if (storageRoot != Keccak.EmptyTreeHash)
@@ -924,22 +941,28 @@ namespace Nethermind.Synchronization.FastSync
                             Debug.Assert(finalStorageRoot.Length == 64);
 
                             Hash256 address = finalStorageRoot.Path.ToCommitment();
+                            RemoveSkippedNodes(currentStateSyncItem, finalStorageRoot.Truncate(DeepestStateLeafPathChecked + 1));
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, address, TreePath.Empty, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult == AddNodeResult.AlreadySaved)
                             {
-                                dependentItem.Counter--;
+                                isAccountComplete |= dependentItem.ResolveDependency();
                             }
                         }
                         else
                         {
                             TreePath finalPath = currentStateSyncItem.Path.Append(trieNode.Key);
-                            Hash256 address = finalPath.Path.ToCommitment();
-                            _store.EnsureStorageEmpty(address);
-                            dependentItem.Counter--;
+                            // A leaf that waits for its code can be left unsaved by a round that moves on. A leaf of the
+                            // account that an earlier root left deeper on its path would then stay over the storage
+                            // cleared here, and a later root that has that leaf again would find it saved. So the nodes
+                            // on that path go first, down to the depth checked below a leaf with storage. Once saved,
+                            // this leaf removes what is left under it itself.
+                            if (waitsForCode) RemoveSkippedNodes(currentStateSyncItem, finalPath.Truncate(DeepestStateLeafPathChecked + 1));
+                            _store.EnsureStorageEmpty(finalPath.Path);
+                            isAccountComplete |= dependentItem.ResolveDependency();
                         }
 
-                        if (dependentItem.Counter == 0)
+                        if (isAccountComplete)
                         {
                             Interlocked.Increment(ref _data.SavedAccounts);
                             SaveNode(currentStateSyncItem, currentResponseItem);
@@ -963,19 +986,49 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private static uint CalculateRightness(NodeType nodeType, StateSyncItem currentStateSyncItem, int childIndex)
+        /// <summary>
+        /// Removes the nodes stored at the paths between <paramref name="node"/> and <paramref name="next"/>, where this
+        /// root has no node.
+        /// </summary>
+        /// <remarks>
+        /// Healing goes from an extension straight to its child, and from a state leaf straight to its storage, so it never
+        /// checks those paths. A node an earlier root left there would stop a later root that has it again above the
+        /// child, which this round may remove or replace. This runs before the child is added, so a round that moves on in
+        /// between leaves no node above a removed child.
+        /// </remarks>
+        private void RemoveSkippedNodes(StateSyncItem node, in TreePath next)
         {
-            if (nodeType == NodeType.Branch)
+            _stateDbLock.EnterReadLock();
+            try
             {
-                return currentStateSyncItem.Rightness + (uint)Math.Pow(16, Math.Max(0, 7 - currentStateSyncItem.Level)) * (uint)childIndex;
+                // No node hashes to zero, so this removes whichever node is stored.
+                for (int length = node.Path.Length + 1; length < next.Length; length++)
+                {
+                    _store.RemoveMismatchedNode(node.Address, next.Truncate(length), ValueKeccak.Zero);
+                }
             }
-
-            if (nodeType == NodeType.Extension)
+            finally
             {
-                return currentStateSyncItem.Rightness + (uint)Math.Pow(16, Math.Max(0, 7 - currentStateSyncItem.Level)) * 16 - 1;
+                _stateDbLock.ExitReadLock();
             }
+        }
 
-            throw new InvalidOperationException($"Not designed for {nodeType}");
+        /// <remarks>
+        /// Saturates at <see cref="uint.MaxValue"/>: a storage trie starts from the rightness of its account, so the sum
+        /// can pass 32 bits, and a wrapped value would queue a far-right node as a far-left one.
+        /// </remarks>
+        internal static uint CalculateRightness(NodeType nodeType, StateSyncItem currentStateSyncItem, int childIndex)
+        {
+            // 16^(7 - level), the width of one child at this level; 1 from level 7 down
+            ulong childWidth = 1UL << (4 * Math.Max(0, 7 - currentStateSyncItem.Level));
+            ulong offset = nodeType switch
+            {
+                NodeType.Branch => childWidth * (ulong)childIndex,
+                NodeType.Extension => childWidth * 16 - 1,
+                _ => throw new InvalidOperationException($"Not designed for {nodeType}")
+            };
+
+            return (uint)Math.Min(currentStateSyncItem.Rightness + offset, uint.MaxValue);
         }
 
         /// <summary>
@@ -990,7 +1043,7 @@ namespace Nethermind.Synchronization.FastSync
                 ref HashSet<DependentItem>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dependencies, dependency, out bool exists);
                 if (!exists)
                 {
-                    value = new HashSet<DependentItem>(DependentItemComparer.Instance);
+                    value = [with(DependentItemComparer.Instance)];
                 }
 
                 value.Add(dependentItem);

@@ -58,7 +58,7 @@ namespace Nethermind.Benchmarks.Store
             _preloadedRootHash = Keccak.EmptyTreeHash;
             if (PreloadedCount > 0)
             {
-                PatriciaTree preloadTree = new(baseStore, LimboLogs.Instance);
+                PatriciaTree preloadTree = new(baseStore, NullLogManager.Instance);
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> preloadSet = new(PreloadedCount);
                 for (int i = 0; i < PreloadedCount; i++)
                 {

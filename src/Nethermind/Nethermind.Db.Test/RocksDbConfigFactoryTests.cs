@@ -13,6 +13,48 @@ namespace Nethermind.Db.Test;
 public class RocksDbConfigFactoryTests
 {
     [Test]
+    public void Global_defaults_ignore_table_and_column_overrides([Values(null, "Blocks")] string? columnName)
+    {
+        DbConfig dbConfig = new()
+        {
+            RocksDbOptions = "write_buffer_size=100;",
+            AdditionalRocksDbOptions = "max_write_buffer_number=2;",
+            StateDbRocksDbOptions = "state_only=true;",
+            ReceiptsBlocksDbRocksDbOptions = "column_only=true;",
+            WriteAheadLogSync = true,
+            ReadAheadSize = 123,
+            VerifyChecksum = false,
+            EnableFileWarmer = true,
+            CompressibilityHint = 0.7,
+            FlushOnExit = FlushOnExitMode.Full,
+            EnableDbStatistics = true,
+            StatsDumpPeriodSec = 42,
+            SkipCheckingSstFileSizesOnDbOpen = true
+        };
+        RocksDbConfigFactory factory = new(dbConfig, new PruningConfig { Mode = PruningMode.Full }, new TestHardwareInfo(100.GiB, 1024), LimboLogs.Instance);
+
+        IRocksDbConfig config = factory.GetForDatabase(null, columnName);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.RocksDbOptions, Is.EqualTo("write_buffer_size=100;skip_checking_sst_file_sizes_on_db_open=true;"));
+            Assert.That(config.AdditionalRocksDbOptions, Is.EqualTo(dbConfig.AdditionalRocksDbOptions));
+            Assert.That(config.WriteBufferSize, Is.Null);
+            Assert.That(config.WriteBufferNumber, Is.Null);
+            Assert.That(config.RowCacheSize, Is.Null);
+            Assert.That(config.MaxOpenFiles, Is.EqualTo(819));
+            Assert.That(config.WriteAheadLogSync, Is.True);
+            Assert.That(config.ReadAheadSize, Is.EqualTo(123));
+            Assert.That(config.VerifyChecksum, Is.False);
+            Assert.That(config.EnableFileWarmer, Is.True);
+            Assert.That(config.CompressibilityHint, Is.EqualTo(0.7));
+            Assert.That(config.FlushOnExit, Is.EqualTo(FlushOnExitMode.Full));
+            Assert.That(config.EnableDbStatistics, Is.True);
+            Assert.That(config.StatsDumpPeriodSec, Is.EqualTo(42));
+        }
+    }
+
+    [Test]
     public void CanFetchNormally()
     {
         DbConfig dbConfig = new();

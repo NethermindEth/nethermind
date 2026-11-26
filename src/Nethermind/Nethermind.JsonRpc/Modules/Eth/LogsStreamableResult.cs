@@ -6,10 +6,10 @@ using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO.Pipelines;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Find;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -81,8 +81,7 @@ internal sealed class LogsStreamableResult(
 
     private async ValueTask<StreamableResultStatus> WriteLogsAsync(PipeWriter writer, long? maxResponseBodySize, CancellationToken cancellationToken)
     {
-        using IEnumerator<FilterLog> enumerator = logs.GetEnumerator();
-        ArrayBufferWriter<byte> itemBuffer = new();
+        using SerializedLogsCursor cursor = new(FoundLogs.Serialize(logs));
         int count = 0;
         int estimatedNextLogBytes = 0;
 
@@ -100,13 +99,13 @@ internal sealed class LogsStreamableResult(
                 return StreamableResultStatus.Truncated;
             }
 
-            StreamableResultStatus? terminalStatus = TryBufferNextLog(enumerator, itemBuffer);
+            StreamableResultStatus? terminalStatus = TryMoveToNextLog(cursor);
             if (terminalStatus is not null)
             {
                 return terminalStatus.GetValueOrDefault();
             }
 
-            int logBytes = itemBuffer.WrittenCount;
+            int logBytes = cursor.Current.Length;
             if (ReachedResponseBodyLimit(writer, maxResponseBodySize, logBytes, count))
             {
                 return StreamableResultStatus.Truncated;
@@ -117,7 +116,7 @@ internal sealed class LogsStreamableResult(
                 writer.Write(","u8);
             }
 
-            writer.Write(itemBuffer.WrittenSpan);
+            writer.Write(cursor.Current);
             count++;
             estimatedNextLogBytes = logBytes;
 
@@ -127,19 +126,11 @@ internal sealed class LogsStreamableResult(
             }
         }
 
-        StreamableResultStatus? TryBufferNextLog(IEnumerator<FilterLog> enumerator, ArrayBufferWriter<byte> itemBuffer)
+        StreamableResultStatus? TryMoveToNextLog(SerializedLogsCursor cursor)
         {
             try
             {
-                if (!enumerator.MoveNext())
-                {
-                    return StreamableResultStatus.Complete;
-                }
-
-                itemBuffer.Clear();
-                using Utf8JsonWriter itemWriter = new(itemBuffer, StreamingResultBase.WriterOptions);
-                JsonSerializer.Serialize(itemWriter, enumerator.Current, EthereumJsonSerializer.JsonOptions);
-                return null;
+                return cursor.MoveNext() ? null : StreamableResultStatus.Complete;
             }
             catch (OperationCanceledException)
             {
@@ -166,4 +157,41 @@ internal sealed class LogsStreamableResult(
         && writer is CountingWriter countingWriter
         && countingWriter.WrittenCount + (count > 0 ? 1 : 0) + logBytes + EnvelopeEndReserveBytes > maxResponseBodySize.Value;
 
+    private sealed class SerializedLogsCursor(IEnumerable<SerializedLogs> blocks) : IDisposable
+    {
+        private readonly IEnumerator<SerializedLogs> _blocks = blocks.GetEnumerator();
+        private SerializedLogs? _block;
+        private int _index;
+
+        public ReadOnlySpan<byte> Current => _block![_index];
+
+        public bool MoveNext()
+        {
+            if (_block is not null && ++_index < _block.Count)
+            {
+                return true;
+            }
+
+            do
+            {
+                _block?.Dispose();
+                _block = null;
+                if (!_blocks.MoveNext())
+                {
+                    return false;
+                }
+
+                _block = _blocks.Current;
+            } while (_block.Count == 0);
+
+            _index = 0;
+            return true;
+        }
+
+        public void Dispose()
+        {
+            _block?.Dispose();
+            _blocks.Dispose();
+        }
+    }
 }

@@ -21,11 +21,11 @@ namespace Nethermind.Core.Collections;
 /// </remarks>
 public static class SafeArrayPool<T>
 {
-    private static readonly SingleThreadedPow2Pool Pool = new();
-
     /// <summary>Gets the shared zkVM array pool.</summary>
-    /// <remarks>The concrete return type allows the zkVM AOT compiler to devirtualize pool operations.</remarks>
-    public static SingleThreadedPow2Pool Shared => Pool;
+    /// <remarks>
+    /// The concrete return type allows the zkVM AOT compiler to devirtualize pool operations.
+    /// </remarks>
+    public static SingleThreadedPow2Pool Shared => field ??= new();
 
     /// <summary>A single-threaded, power-of-two array pool for the zkVM guest.</summary>
     public sealed class SingleThreadedPow2Pool : ArrayPool<T>

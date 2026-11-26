@@ -3,6 +3,9 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Collections.Concurrent;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
@@ -10,12 +13,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Trie.Test
 {
@@ -92,7 +97,7 @@ namespace Nethermind.Trie.Test
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Not.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf2));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf2));
         }
 
         [Test]
@@ -111,7 +116,7 @@ namespace Nethermind.Trie.Test
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Not.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf2));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf2));
         }
 
         [Test]
@@ -177,8 +182,11 @@ namespace Nethermind.Trie.Test
             // leaf (root)
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
+                Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
+            }
         }
 
         [Test]
@@ -194,9 +202,9 @@ namespace Nethermind.Trie.Test
 
             // leaf (root)
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyC).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyC), Is.SequenceEqualTo(_longLeaf1));
         }
 
         [Test]
@@ -230,12 +238,15 @@ namespace Nethermind.Trie.Test
             byte[] emptyByte = [];
             byte[] emptyByteCompactEncoded = { 0 };
 
-            Assert.That(checkTree.GetNodeByKey(emptyByte, patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
-            Assert.That(checkTree.GetNodeByKey(Nibbles.CompactToHexEncode(emptyByteCompactEncoded), patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(checkTree.GetNodeByKey(emptyByte, patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
+                Assert.That(checkTree.GetNodeByKey(Nibbles.CompactToHexEncode(emptyByteCompactEncoded), patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
 
-            Assert.That(checkTree.GetNodeByKey(branchNodeKey1, patriciaTree.RootHash), Is.EqualTo(branchNodeValue1));
-            Assert.That(checkTree.GetNodeByKey([0xff], patriciaTree.RootHash), Is.Empty);
-            Assert.That(checkTree.Get(branchNodeKey1).ToArray(), Is.Empty);
+                Assert.That(checkTree.GetNodeByKey(branchNodeKey1, patriciaTree.RootHash), Is.EqualTo(branchNodeValue1));
+                Assert.That(checkTree.GetNodeByKey([0xff], patriciaTree.RootHash), Is.Empty);
+                Assert.That(checkTree.Get(branchNodeKey1).ToArray(), Is.Empty);
+            }
         }
 
         // [Test]
@@ -268,9 +279,12 @@ namespace Nethermind.Trie.Test
 
             // leaf (root)
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
-            Assert.That(checkTree.Get(_keyC).ToArray(), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
+                Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
+                Assert.That(checkTree.Get(_keyC).ToArray(), Is.Empty);
+            }
         }
 
         public void Test_add_many(int i)
@@ -295,7 +309,7 @@ namespace Nethermind.Trie.Test
             {
                 Hash256 key = TestItem.Keccaks[j];
                 byte[] value = TestItem.GenerateIndexedAccountRlp(j);
-                Assert.That(checkTree.Get(key.Bytes).ToArray(), Is.EqualTo(value), $@"{i} {j}");
+                Assert.That(checkTree.Get(key.Bytes), Is.SequenceEqualTo(value), $@"{i} {j}");
             }
         }
 
@@ -329,7 +343,7 @@ namespace Nethermind.Trie.Test
             {
                 Hash256 key = TestItem.Keccaks[j];
                 byte[] value = TestItem.GenerateIndexedAccountRlp(j);
-                Assert.That(checkTree.Get(key.Bytes).ToArray(), Is.EqualTo(value), $@"{i} {j}");
+                Assert.That(checkTree.Get(key.Bytes), Is.SequenceEqualTo(value), $@"{i} {j}");
             }
 
             // read missing
@@ -368,7 +382,7 @@ namespace Nethermind.Trie.Test
             {
                 Hash256 key = TestItem.Keccaks[j];
                 byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
-                Assert.That(checkTree.Get(key.Bytes).ToArray(), Is.EqualTo(value), $@"{i} {j}");
+                Assert.That(checkTree.Get(key.Bytes), Is.SequenceEqualTo(value), $@"{i} {j}");
             }
         }
 
@@ -405,7 +419,7 @@ namespace Nethermind.Trie.Test
                 byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
 
                 _logger.Trace($"Checking {key.Bytes.ToHexString()} = {value.ToHexString()}");
-                Assert.That(checkTree.Get(key.Bytes).ToArray(), Is.EqualTo(value), $@"{i} {j}");
+                Assert.That(checkTree.Get(key.Bytes), Is.SequenceEqualTo(value), $@"{i} {j}");
             }
         }
 
@@ -504,10 +518,10 @@ namespace Nethermind.Trie.Test
 
             // leaf (root)
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyC).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyD).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyC), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyD), Is.SequenceEqualTo(_longLeaf1));
         }
 
         [Test]
@@ -526,9 +540,9 @@ namespace Nethermind.Trie.Test
             // leaf (root)
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyC).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyD).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyC), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyD), Is.SequenceEqualTo(_longLeaf1));
         }
 
         private static PatriciaTree CreateCheckTree(ITrieStore trieStore, PatriciaTree patriciaTree)
@@ -548,8 +562,8 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyB, _longLeaf2);
             patriciaTree.Commit();
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf2));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf2));
         }
 
         [Test]
@@ -562,8 +576,8 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Commit();
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
         }
 
         [Test]
@@ -602,8 +616,8 @@ namespace Nethermind.Trie.Test
             patriciaTree.Commit();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
         }
 
         [Test]
@@ -631,9 +645,9 @@ namespace Nethermind.Trie.Test
             patriciaTree.Commit();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(key1).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(key2).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(key3).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(key1), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(key2), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(key3), Is.SequenceEqualTo(_longLeaf1));
         }
 
         [Test]
@@ -681,8 +695,8 @@ namespace Nethermind.Trie.Test
             patriciaTree.Commit();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(key1).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(key2).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(key1), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(key2), Is.SequenceEqualTo(_longLeaf1));
             Assert.That(checkTree.Get(key3).ToArray(), Is.Empty);
         }
 
@@ -704,10 +718,10 @@ namespace Nethermind.Trie.Test
             patriciaTree.Commit();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyC).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyD).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyC), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyD), Is.SequenceEqualTo(_longLeaf1));
         }
 
         [Test]
@@ -744,30 +758,146 @@ namespace Nethermind.Trie.Test
                 foreach ((Hash256, Hash256) it in kv)
                 {
                     (Hash256 key, Hash256 value) = it;
-                    Assert.That(tree.Get(key.Bytes).ToArray(), Is.EqualTo(value.BytesToArray()));
+                    Assert.That(tree.Get(key.Bytes), Is.SequenceEqualTo(value.BytesToArray()));
                 }
             });
         }
 
         [Test]
-        public void WarmUpPath_DoesNotThrow()
+        public void Commit_matches_serial_nodes_and_root(
+            [Values(4, 16, 128, 1200)] int count,
+            [Values(0, 4)] int sharedPrefix,
+            [Values] bool skipRoot)
         {
-            // Build a tree with extension, branch, and leaf nodes: _keyA, _keyB, _keyC, _keyD
-            using ITrieStore trieStore = CreateTrieStore();
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
-            patriciaTree.Set(_keyA, _longLeaf1);
-            patriciaTree.Set(_keyB, _longLeaf2);
-            patriciaTree.Set(_keyC, _longLeaf1);
-            patriciaTree.Set(_keyD, _longLeaf2);
-            patriciaTree.Commit();
+            CommitRecorder serial = new(parallel: false);
+            CommitRecorder parallel = new(parallel: true);
+            PatriciaTree expected = CreateCommitTree(serial, count, sharedPrefix);
+            PatriciaTree actual = CreateCommitTree(parallel, count, sharedPrefix);
+            TrieNode root = actual.RootRef!;
+            expected.Commit(skipRoot);
+            actual.Commit(skipRoot);
 
-            // Test warmup on various keys
-            Assert.That(() => patriciaTree.WarmUpPath(_keyA), Throws.Nothing);  // Existing key
-            Assert.That(() => patriciaTree.WarmUpPath(_keyB), Throws.Nothing);  // Existing key
-            Assert.That(() => patriciaTree.WarmUpPath(_keyC), Throws.Nothing);  // Existing key in different branch
-            Assert.That(() => patriciaTree.WarmUpPath(_keyD), Throws.Nothing);  // Existing key in different branch
-            Assert.That(() => patriciaTree.WarmUpPath(Bytes.FromHexString("00000000000cc")), Throws.Nothing);  // Non-existent key
-            Assert.That(() => patriciaTree.WarmUpPath(Bytes.FromHexString("fffffffffffff")), Throws.Nothing);  // Completely different path
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual.RootHash, Is.EqualTo(expected.RootHash));
+                Assert.That(parallel.Nodes.Count, Is.EqualTo(serial.Nodes.Count));
+                foreach ((TreePath path, byte[] rlp) in serial.Nodes)
+                    Assert.That(parallel.Nodes.GetValueOrDefault(path), Is.EqualTo(rlp), $"Node at {path}");
+                Assert.That(parallel.DuplicateWrites, Is.Zero);
+                Assert.That(parallel.ActiveAtDispose, Is.Zero);
+                Assert.That(parallel.Disposed, Is.True);
+                Assert.That(serial.Threads.Count, Is.EqualTo(1));
+            }
+
+            // The tree must keep the committer's sealed replacements, not the nodes it handed over.
+            // Commit reloads RootRef from the store, so walk the children of the root held before it.
+            int reachable = 0;
+            AssertKeepsReplacements(root, TreePath.Empty);
+            Assert.That(reachable, Is.EqualTo(parallel.Replacements.Count - (skipRoot ? 0 : 1)));
+
+            void AssertKeepsReplacements(TrieNode node, TreePath path)
+            {
+                if (path.Length > 0)
+                {
+                    if (parallel.Replacements.ContainsKey(node)) reachable++;
+                    Assert.That(parallel.Originals.ContainsKey(node), Is.False, $"Committed original kept at {path}");
+                }
+
+                int children = node.IsBranch ? 16 : node.NodeType == NodeType.Extension ? 1 : 0;
+                for (int i = 0; i < children; i++)
+                {
+                    TreePath childPath = path;
+                    node.AppendChildPath(ref childPath, i);
+                    if (node.GetChildWithChildPath(actual.TrieStore, ref childPath, i, keepChildRef: true) is { } child)
+                        AssertKeepsReplacements(child, childPath);
+                }
+            }
+        }
+
+        [Test]
+        public void Commit_obeys_shared_worker_limit([Values(1, 2)] int concurrency, [Values] bool fail)
+        {
+            CommitRecorder recorder = new(parallel: true, fail);
+            PatriciaTree tree = CreateCommitTree(recorder, 1200, 0);
+            using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
+            if (fail)
+                Assert.Throws<InvalidOperationException>(() => tree.Commit());
+            else
+                tree.Commit();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recorder.MaxActive, Is.InRange(1, concurrency));
+                if (concurrency == 1) Assert.That(recorder.Threads.Count, Is.EqualTo(1));
+                Assert.That(recorder.ActiveAtDispose, Is.Zero);
+                Assert.That(recorder.Disposed, Is.True);
+            }
+        }
+
+        private static PatriciaTree CreateCommitTree(CommitRecorder recorder, int count, int sharedPrefix)
+        {
+            IScopedTrieStore store = Substitute.For<IScopedTrieStore>();
+            store.BeginCommit(Arg.Any<TrieNode>(), Arg.Any<WriteFlags>()).Returns(recorder);
+            store.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>())
+                .Returns(call => new TrieNode(NodeType.Unknown, call.Arg<Hash256>()));
+            PatriciaTree tree = new(store, LimboLogs.Instance);
+            Random random = new(42);
+            for (int i = 0; i < count; i++)
+            {
+                byte[] key = new byte[32];
+                random.NextBytes(key);
+                key.AsSpan(0, sharedPrefix).Clear();
+                tree.Set(key, key);
+            }
+            return tree;
+        }
+
+        private sealed class CommitRecorder(bool parallel, bool fail = false) : ICommitter
+        {
+            public readonly ConcurrentDictionary<TreePath, byte[]> Nodes = new();
+            public readonly ConcurrentDictionary<int, byte> Threads = new();
+            public readonly ConcurrentDictionary<TrieNode, byte> Originals = new(ReferenceEqualityComparer.Instance);
+            public readonly ConcurrentDictionary<TrieNode, byte> Replacements = new(ReferenceEqualityComparer.Instance);
+            public int DuplicateWrites;
+            public int ActiveAtDispose;
+            public int MaxActive;
+            public bool Disposed;
+            private int _active;
+
+            public bool TryEnableParallelCommit() => parallel;
+
+            public TrieNode CommitNode(ref TreePath path, TrieNode node)
+            {
+                int active = Interlocked.Increment(ref _active);
+                int previous;
+                do
+                {
+                    previous = Volatile.Read(ref MaxActive);
+                } while (active > previous && Interlocked.CompareExchange(ref MaxActive, active, previous) != previous);
+                try
+                {
+                    Threads.TryAdd(Environment.CurrentManagedThreadId, 0);
+                    if (fail) throw new InvalidOperationException("Commit failed");
+                    if (!Nodes.TryAdd(path, node.FullRlp.AsSpan().ToArray())) Interlocked.Increment(ref DuplicateWrites);
+                    if (!parallel) return node;
+                    TrieNode replacement = node.Clone();
+                    replacement.Keccak = node.Keccak;
+                    replacement.Seal();
+                    Originals.TryAdd(node, 0);
+                    Replacements.TryAdd(replacement, 0);
+                    return replacement;
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _active);
+                }
+            }
+
+            public void Dispose()
+            {
+                ActiveAtDispose = Volatile.Read(ref _active);
+                Disposed = true;
+            }
         }
 
         [Test]

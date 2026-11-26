@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
@@ -54,27 +55,23 @@ namespace Nethermind.Benchmarks.Rlp
         public void Setup()
         {
             _block = _scenarios[ScenarioIndex];
-            Check(Current(), Improved());
             Check(Current(), Improved2());
         }
 
         [Benchmark]
-        public byte[] Improved() => throw new NotImplementedException();
-
-        [Benchmark]
-        public byte[] Improved2() => _blockDecoder.Encode(_block).Bytes;
+        public byte[] Improved2() => _blockDecoder.Encode(_block);
 
         [Benchmark]
         public byte[] Improved3()
         {
             int length = _blockDecoder.GetLength(_block, RlpBehaviors.None);
             byte[] bytes = new byte[length];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             _blockDecoder.Encode(ref writer, _block);
             return Bytes.Empty;
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_block).Bytes;
+        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_block);
     }
 }

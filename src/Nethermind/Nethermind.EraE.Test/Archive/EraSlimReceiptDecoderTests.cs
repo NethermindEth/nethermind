@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.EraE.Archive;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -51,9 +52,12 @@ internal class EraSlimReceiptDecoderTests
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
         Assert.That(receipts, Has.Length.EqualTo(1));
-        Assert.That(receipts[0].PostTransactionState, Is.EqualTo(expectedStateRoot), "pre-Byzantium go-ethereum receipts encode the state root in the status field; " +
-            "the decoder must restore PostTransactionState, not StatusCode");
-        Assert.That(receipts[0].StatusCode, Is.EqualTo(0), "StatusCode must not be set for pre-Byzantium receipts");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].PostTransactionState, Is.EqualTo(expectedStateRoot), "pre-Byzantium go-ethereum receipts encode the state root in the status field; " +
+                "the decoder must restore PostTransactionState, not StatusCode");
+            Assert.That(receipts[0].StatusCode, Is.EqualTo(0), "StatusCode must not be set for pre-Byzantium receipts");
+        }
     }
 
     [Test]
@@ -66,8 +70,11 @@ internal class EraSlimReceiptDecoderTests
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
         Assert.That(receipts, Has.Length.EqualTo(1));
-        Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
-        Assert.That(receipts[0].PostTransactionState, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
+            Assert.That(receipts[0].PostTransactionState, Is.Null);
+        }
     }
 
     [Test]
@@ -80,8 +87,11 @@ internal class EraSlimReceiptDecoderTests
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
         Assert.That(receipts, Has.Length.EqualTo(1));
-        Assert.That(receipts[0].StatusCode, Is.EqualTo(0));
-        Assert.That(receipts[0].PostTransactionState, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].StatusCode, Is.EqualTo(0));
+            Assert.That(receipts[0].PostTransactionState, Is.Null);
+        }
     }
 
     [Test]
@@ -93,8 +103,11 @@ internal class EraSlimReceiptDecoderTests
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
         Assert.That(receipts, Has.Length.EqualTo(1));
-        Assert.That(receipts[0].TxType, Is.EqualTo((TxType)txType));
-        Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].TxType, Is.EqualTo((TxType)txType));
+            Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -119,7 +132,7 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         Action act = () => sut.Decode(encoded.AsMemory());
 
-        Assert.That(act, Throws.TypeOf<RlpException>());
+        Assert.That(act, Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -131,7 +144,7 @@ internal class EraSlimReceiptDecoderTests
         EraSlimReceiptDecoder sut = new();
         Action act = () => sut.Decode(encoded.AsMemory());
 
-        Assert.That(act, Throws.TypeOf<RlpException>());
+        Assert.That(act, Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -179,11 +192,11 @@ internal class EraSlimReceiptDecoderTests
     {
         int contentLength = receipt.Length * receiptCount;
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         writer.StartSequence(contentLength);
         for (int i = 0; i < receiptCount; i++)
         {
-            receipt.CopyTo(bytes.AsSpan(writer.Position + i * receipt.Length));
+            receipt.CopyTo(bytes.AsSpan(writer.Length + i * receipt.Length));
         }
 
         return bytes;
@@ -213,7 +226,7 @@ internal class EraSlimReceiptDecoderTests
         int outerLength = Rlp.LengthOfSequence(receiptLength);
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(outerLength)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         writer.StartSequence(outerLength);
         writer.StartSequence(receiptLength);
         writer.Encode((byte)TxType.Legacy);

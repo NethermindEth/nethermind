@@ -99,6 +99,10 @@ namespace Nethermind.Synchronization
         public static long StateBranchProgress;
 
         [GaugeMetric]
+        [Description("Part of the account key space covered by SNAP Sync ranges, in basis points (10000 = all ranges done).")]
+        public static long SnapRangesProgress;
+
+        [GaugeMetric]
         [Description("Total wall-clock time the node has spent syncing, in seconds. Retained after sync completes; resumes accumulating if the node falls behind and re-syncs.")]
         public static long SyncTimeSeconds;
 

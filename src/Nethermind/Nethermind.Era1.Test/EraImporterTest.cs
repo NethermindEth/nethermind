@@ -2,18 +2,71 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Builders;
+using System.Buffers.Binary;
 using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Ethash;
+using Nethermind.Core.Specs;
+using Nethermind.Merge.Plugin;
+using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Caching;
+using Nethermind.Crypto;
 using Nethermind.Era1.Exceptions;
+using NSubstitute;
 
 namespace Nethermind.Era1.Test;
 
 public class EraImporterTest
 {
+    [Test]
+    public async Task Import_OfBlocksThatAreOnlyStored_KeepsTheArchivedBodiesAndIndexesTheTransactions([Values] bool withTrustedAccumulators)
+    {
+        const int ChainLength = 32;
+        await using IContainer sourceCtx = await EraTestModule.CreateExportedEraEnv(ChainLength);
+        string exportPath = sourceCtx.ResolveTempDirPath();
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        IBlockStore sourceStore = sourceCtx.Resolve<IBlockStore>();
+
+        await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true })
+            .Build();
+        targetCtx.Resolve<IBlockTree>().SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+        IBlockStore targetStore = targetCtx.Resolve<IBlockStore>();
+        IReceiptStorage targetReceipts = targetCtx.Resolve<IReceiptStorage>();
+        Dictionary<Hash256, TxReceipt[]> insertedReceipts = [];
+        targetReceipts.ReceiptsInserted += (_, e) => insertedReceipts[e.BlockHeader.Hash!] = e.TxReceipts;
+
+        string? accumulatorFile = withTrustedAccumulators ? Path.Join(exportPath, EraExporter.AccumulatorFileName) : null;
+        await targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, ulong.MaxValue, accumulatorFile, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong i = 1; i < ChainLength; i++)
+            {
+                Block block = sourceTree.FindBlock(i, BlockTreeLookupOptions.None)!;
+                Assert.That(targetStore.GetRlp(i, block.Hash!), Is.EqualTo(sourceStore.GetRlp(i, block.Hash!)), $"block {i}");
+                TxReceipt[] receipts = insertedReceipts[block.Hash!];
+                for (int t = 0; t < block.Transactions.Length; t++)
+                {
+                    Transaction transaction = block.Transactions[t];
+                    Assert.That(targetReceipts.FindBlockHash(transaction.Hash!), Is.EqualTo(block.Hash), $"transaction in block {i}");
+                    Assert.That(receipts[t].Recipient, Is.EqualTo(transaction.To), $"recipient of transaction {t} in block {i}");
+                }
+            }
+        }
+    }
+
     [Test]
     public void ImportAsArchiveSync_DirectoryContainsNoEraFiles_ThrowEraImportException()
     {
@@ -46,6 +99,57 @@ public class EraImporterTest
     }
 
     [Test]
+    public async Task Import_WhenRangeEndsAtEraBoundary_ImportsAllBlocks()
+    {
+        const int ChainLength = 17;
+        await using IContainer sourceCtx = await EraTestModule.CreateExportedEraEnv(ChainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+        await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true })
+            .Build();
+        targetCtx.Resolve<IBlockTree>().SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+        IBlockStore targetStore = targetCtx.Resolve<IBlockStore>();
+
+        await targetCtx.Resolve<IEraImporter>().Import(sourceCtx.ResolveTempDirPath(), 0, ulong.MaxValue, null, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong i = 1; i < ChainLength; i++)
+            {
+                Assert.That(targetStore.Get(i, sourceTree.FindBlock(i, BlockTreeLookupOptions.None)!.Hash!), Is.Not.Null, $"block {i}");
+            }
+        }
+    }
+
+    [TestCase(1UL << 62, "starts at block")]
+    [TestCase(ulong.MaxValue, "Invalid starting block number")]
+    public async Task Import_EraFileStartingAtWrongBlock_IsRefused(ulong startBlock, string expectedMessage)
+    {
+        await using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
+        IFileSystem fileSystem = outputCtx.Resolve<IFileSystem>();
+        string destinationPath = outputCtx.ResolveTempDirPath();
+
+        string lastEraFile = fileSystem.Directory.GetFiles(destinationPath, "*.era1").Order(StringComparer.Ordinal).Last();
+        byte[] bytes = await fileSystem.File.ReadAllBytesAsync(lastEraFile);
+        int blockCount = (int)BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(bytes.Length - sizeof(ulong)));
+        int startBlockOffset = bytes.Length - sizeof(ulong) - blockCount * sizeof(ulong) - sizeof(ulong);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(startBlockOffset), startBlock);
+        await fileSystem.File.WriteAllBytesAsync(lastEraFile, bytes);
+
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
+            .Build();
+
+        IEraImporter sut = inCtx.Resolve<IEraImporter>();
+        Assert.That(() => sut.Import(destinationPath, 0, 0, null, CancellationToken.None),
+            Throws.InstanceOf<EraException>().With.Message.Contains(expectedMessage));
+        Assert.That(() => fileSystem.File.Open(lastEraFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None).Dispose(), Throws.Nothing);
+    }
+
+    [Test]
     public async Task ImportAsArchiveSync_BlockCannotBeValidated_ThrowEraImportException()
     {
         await using IContainer testCtx = await EraTestModule.CreateExportedEraEnv(512);
@@ -61,6 +165,31 @@ public class EraImporterTest
 
         IEraImporter sut = targetCtx.Resolve<IEraImporter>();
         Assert.That(() => sut.Import(testCtx.ResolveTempDirPath(), 0, 0, null, CancellationToken.None), Throws.TypeOf<EraVerificationException>());
+    }
+
+    [Test]
+    public async Task ImportAsArchiveSync_ValidatesBlockAgainstItsParent()
+    {
+        await using IContainer testCtx = await EraTestModule.CreateExportedEraEnv(64);
+        Block genesis = testCtx.Resolve<IBlockTree>().FindBlock(0)!;
+
+        IBlockTree blockTree = Build.A.BlockTree().TestObject;
+        blockTree.SuggestBlock(genesis, BlockTreeSuggestOptions.None);
+
+        // The archive's own verification passes; only the parent-relative rules, which processing cannot catch, reject.
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>()).Returns(true);
+        blockValidator.ValidateOrphanedBlock(Arg.Any<Block>(), out Arg.Any<string?>()).Returns(true);
+        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), Arg.Any<bool>()).Returns(false);
+
+        await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(blockTree)
+            .AddSingleton<IBlockValidator>(blockValidator)
+            .Build();
+
+        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
+        Assert.That(() => sut.Import(testCtx.ResolveTempDirPath(), 0, 0, null, CancellationToken.None), Throws.TypeOf<EraVerificationException>());
+        blockValidator.Received().ValidateSuggestedBlock(Arg.Is<Block>(b => b.Number == 1), Arg.Is<BlockHeader>(p => p.Hash == genesis.Hash), out Arg.Any<string?>(), Arg.Any<bool>());
     }
 
     [Test]
@@ -217,5 +346,363 @@ public class EraImporterTest
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
 
         Assert.That(async () => await act(), Throws.TypeOf<ArgumentException>());
+    }
+
+    public enum ImportedHeader
+    {
+        Valid,
+        ProofOfWorkAfterProofOfStake,
+        ProofOfWorkAfterTerminalBlock,
+        NonIncreasingTimestamp,
+        UnknownParent
+    }
+
+    [Test]
+    public async Task Import_WithRealValidator([Values] ImportedHeader importedHeader)
+    {
+        bool terminalParent = importedHeader == ImportedHeader.ProofOfWorkAfterTerminalBlock;
+        bool proofOfWorkChild = importedHeader is ImportedHeader.ProofOfWorkAfterProofOfStake or ImportedHeader.ProofOfWorkAfterTerminalBlock;
+        TestSpecProvider specProvider = new(Paris.Instance) { TerminalTotalDifficulty = 1_000_000 };
+        Block genesis = Build.A.Block.Genesis.WithDifficulty(terminalParent ? 1UL : 1_000_000UL).WithTimestamp(1_663_000_000).TestObject;
+        BlockBuilder parentBuilder = Build.A.Block.WithParent(genesis).WithPostMergeRules();
+        if (terminalParent)
+            parentBuilder.WithDifficulty(999_999).WithPostMergeFlag(false);
+        Block parent = parentBuilder.TestObject;
+        BlockBuilder childBuilder = Build.A.Block.WithParent(parent).WithPostMergeRules().WithTotalDifficulty(1_000_000UL);
+        if (importedHeader == ImportedHeader.NonIncreasingTimestamp)
+            childBuilder.WithTimestamp(parent.Timestamp);
+        Block child = childBuilder.TestObject;
+        Block targetParent = importedHeader == ImportedHeader.UnknownParent
+            ? Build.A.Block.WithParent(genesis).WithPostMergeRules().WithExtraData([1]).TestObject
+            : parent;
+        BlockTreeBuilder targetTreeBuilder = new(genesis, specProvider);
+        BlockTree targetTree = targetTreeBuilder.WithBlocks(genesis, targetParent).TestObject;
+        targetTree.TryUpdateMainChain(targetParent.Header, true, forceUpdateHeadBlock: true, preloadedBlocks: [targetParent]);
+        await using IContainer targetCtx = new ContainerBuilder()
+            .AddModule(new EraTestModule(useRealValidator: true))
+            .AddModule(new EthHashModule(new MiningConfig()))
+            .AddSingleton<IBlockTree>(targetTree)
+            .AddSingleton<ISpecProvider>(specProvider)
+            .AddSingleton<ITimestamper>(new Timestamper(1_663_000_100L))
+            .AddSingleton(new ChainSpec { Genesis = genesis, Parameters = new ChainParameters { TerminalTotalDifficulty = 1_000_000 } })
+            .AddSingleton<IMergeConfig>(new MergeConfig())
+            .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+            .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
+            .AddDecorator<ISealValidator, MergeSealValidator>()
+            .Build();
+        if (proofOfWorkChild)
+        {
+            child.Header.IsPostMerge = false;
+            child.Header.Difficulty = targetCtx.Resolve<IDifficultyCalculator>().Calculate(child.Header, parent.Header);
+            // Self-consistent archive metadata can claim pre-merge TD; the local parent establishes consensus.
+            child.Header.TotalDifficulty = child.Difficulty;
+            child.Header.Hash = child.Header.CalculateHash();
+        }
+        string exportPath = targetCtx.ResolveTempDirPath();
+        Directory.CreateDirectory(exportPath);
+        string fileName = EraPathUtils.Filename(EraTestModule.TestNetwork, 0, Keccak.Zero);
+        ValueHash256 checksum;
+        using (EraWriter writer = new(Path.Join(exportPath, fileName), specProvider))
+        {
+            await writer.Add(child, []);
+            (_, checksum) = await writer.Finalize();
+        }
+        await File.WriteAllTextAsync(Path.Join(exportPath, EraExporter.ChecksumsFileName), $"{checksum} {fileName}");
+        IEraImporter importer = targetCtx.Resolve<IEraImporter>();
+        Hash256? finalizedBeforeImport = targetTree.FinalizedHash;
+        if (terminalParent)
+        {
+            targetCtx.Resolve<IPoSSwitcher>();
+            ((IClearableCache)targetTreeBuilder.HeaderStore).ClearCache();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.FindHeader(parent.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.TotalDifficulty, Is.Null);
+                Assert.That(targetTree.GetInfo(parent.Number, parent.Hash!).Info?.TotalDifficulty, Is.EqualTo(specProvider.TerminalTotalDifficulty));
+            }
+        }
+
+        if (importedHeader == ImportedHeader.Valid)
+        {
+            await importer.Import(exportPath, 2, 2, null, CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.FindBlock(child.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+                Assert.That(targetTree.FinalizedHash, Is.EqualTo(child.Hash));
+            }
+        }
+        else
+        {
+            string expectedError = proofOfWorkChild
+                ? "A proof-of-work block cannot follow a terminal or proof-of-stake parent."
+                : BlockErrorMessages.InvalidTimestamp;
+            Assert.That(() => importer.Import(exportPath, 2, 2, null, CancellationToken.None),
+                importedHeader == ImportedHeader.UnknownParent
+                    ? Throws.TypeOf<EraImportException>().With.Message.Contains("Unknown parent")
+                    : Throws.TypeOf<EraVerificationException>().With.Message.Contains(expectedError));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.FindBlock(child.Hash!, BlockTreeLookupOptions.None), Is.Null);
+                Assert.That(targetTree.Head!.Hash, Is.EqualTo(targetParent.Hash));
+                Assert.That(targetTree.FinalizedHash, Is.EqualTo(finalizedBeforeImport));
+            }
+        }
+    }
+
+    [Test]
+    public async Task Import_EpochForeignToLocalHeaders_KeepsLocalHeaders([Values] bool withTrustedAccumulators, [Values(1UL, 9UL)] ulong lowestLocalHeader)
+    {
+        const int chainLength = 16;
+        await using IContainer sourceCtx = await EraTestModule.CreateExportedEraEnv(chainLength);
+        string exportPath = sourceCtx.ResolveTempDirPath();
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+        await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true })
+            .Build();
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        targetTree.SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+
+        Hash256[] localHashes = new Hash256[chainLength];
+        for (ulong i = lowestLocalHeader; i < chainLength; i++)
+        {
+            BlockHeader local = sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Clone();
+            local.ExtraData = [0x4c, 0x4f, 0x43, (byte)i];
+            local.Hash = local.CalculateHash();
+            targetTree.Insert(local, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+            localHashes[i] = local.Hash;
+        }
+
+        string? accumulatorFile = withTrustedAccumulators ? Path.Join(exportPath, EraExporter.AccumulatorFileName) : null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, ulong.MaxValue, accumulatorFile, CancellationToken.None),
+                Throws.TypeOf<EraVerificationException>());
+            for (ulong i = 1; i < chainLength; i++)
+                Assert.That(targetTree.FindLevel(i)?.BlockInfos.Select(static info => info.BlockHash), i < lowestLocalHeader ? Is.Null : Is.EqualTo(new[] { localHashes[i] }), $"headers at {i}");
+        }
+    }
+
+    private static async Task<(IContainer Source, IContainer Target, IBlockTree TargetTree, string ExportPath)> BuildBeaconGapEnv(bool foreignBeaconHeaders)
+    {
+        const int chainLength = 16;
+        const ulong bestKnown = 4;
+        const ulong lowestBeacon = 10;
+        IContainer sourceCtx = await EraTestModule.CreateExportedEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+        IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true })
+            .Build();
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        targetTree.SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+
+        for (ulong i = 1; i <= bestKnown; i++)
+            targetTree.Insert(sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+
+        targetTree.LowestInsertedHeader = sourceTree.FindHeader(1, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+        for (ulong i = chainLength - 1; i >= lowestBeacon; i--)
+        {
+            BlockHeader beacon = sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Clone();
+            if (foreignBeaconHeaders)
+            {
+                beacon.ExtraData = [0x42, 0x43, (byte)i];
+                beacon.Hash = beacon.CalculateHash();
+            }
+
+            targetTree.Insert(beacon, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded | BlockTreeInsertHeaderOptions.BeaconHeaderMetadata | BlockTreeInsertHeaderOptions.NotOnMainChain);
+        }
+
+        return (sourceCtx, targetCtx, targetTree, sourceCtx.ResolveTempDirPath());
+    }
+
+    [Test]
+    public async Task Import_ArchiveForeignToBeaconHeadersAboveGap_WritesNothingInGap()
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, string exportPath) = await BuildBeaconGapEnv(foreignBeaconHeaders: true);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.LowestInsertedHeader?.Number, Is.LessThan(5UL));
+                Assert.That(targetTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(10UL));
+                Assert.That(
+                    () => targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, ulong.MaxValue, null, CancellationToken.None),
+                    Throws.TypeOf<EraVerificationException>());
+                for (ulong i = 5; i < 10; i++)
+                    Assert.That(targetTree.FindLevel(i), Is.Null, $"level {i}");
+            }
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_BeaconGap_MustLinkToBeaconHeaders([Values] bool linked)
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, _) = await BuildBeaconGapEnv(foreignBeaconHeaders: !linked);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+            Task Check() => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                targetTree,
+                0,
+                15,
+                number => Task.FromResult(sourceTree.FindBlock(number, BlockTreeLookupOptions.None)),
+                CancellationToken.None);
+
+            if (linked)
+                Assert.That(Check, Throws.Nothing);
+            else
+                Assert.That(Check, Throws.TypeOf<EraVerificationException>());
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_BeaconGapStartsAtForeignBlock_Throws()
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, _) = await BuildBeaconGapEnv(foreignBeaconHeaders: false);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+            Block foreign = Build.A.Block.WithNumber(5).WithParentHash(Keccak.OfAnEmptyString).TestObject;
+
+            Assert.That(
+                () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                    targetTree,
+                    5,
+                    15,
+                    number => Task.FromResult(number == 5 ? foreign : sourceTree.FindBlock(number, BlockTreeLookupOptions.None)),
+                    CancellationToken.None),
+                Throws.TypeOf<EraVerificationException>());
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_RangeEndsInsideBeaconGap_MustLinkToBestKnown([Values] bool linked)
+    {
+        (IContainer sourceCtx, IContainer targetCtx, IBlockTree targetTree, _) = await BuildBeaconGapEnv(foreignBeaconHeaders: false);
+        await using (sourceCtx)
+        await using (targetCtx)
+        {
+            IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+            Block first = linked
+                ? sourceTree.FindBlock(5, BlockTreeLookupOptions.None)!
+                : Build.A.Block.WithNumber(5).WithParentHash(Keccak.OfAnEmptyString).TestObject;
+
+            Func<Task> check = () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                targetTree,
+                5,
+                8,
+                number => Task.FromResult(number == 5 ? first : sourceTree.FindBlock(number, BlockTreeLookupOptions.None)),
+                CancellationToken.None);
+
+            if (linked)
+                Assert.That(check, Throws.Nothing);
+            else
+                Assert.That(check, Throws.TypeOf<EraVerificationException>());
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_CancelledOverKnownHeights_ThrowsWithoutReadingArchive()
+    {
+        const int chainLength = 16;
+        await using IContainer ctx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
+        int archiveReads = 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                    ctx.Resolve<IBlockTree>(),
+                    1,
+                    chainLength - 1,
+                    _ =>
+                    {
+                        archiveReads++;
+                        return Task.FromResult<Block?>(null);
+                    },
+                    new CancellationToken(canceled: true)),
+                Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(archiveReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_HeadersCoverRange_DoesNotLoadEveryLevel()
+    {
+        const int chainLength = 200;
+        await using IContainer sourceCtx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        await using IContainer ctx = EraTestModule.BuildContainerBuilder()
+            .AddDecorator<IBlockTree, FindLevelCountingBlockTree>()
+            .Build();
+        FindLevelCountingBlockTree blockTree = (FindLevelCountingBlockTree)ctx.Resolve<IBlockTree>();
+        blockTree.SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+        for (ulong i = 1; i < chainLength; i++)
+            blockTree.Insert(sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        blockTree.LowestInsertedHeader = sourceTree.FindHeader(1, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        blockTree.ResetCalls();
+
+        await KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(blockTree, 1, chainLength - 1, _ => Task.FromResult<Block?>(null), CancellationToken.None);
+
+        Assert.That(blockTree.FindLevelCalls, Is.LessThan(10));
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_BlockAboveHighestKnown_MustLinkToIt([Values] bool linked)
+    {
+        const int chainLength = 16;
+        await using IContainer ctx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
+        IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+        BlockHeader top = blockTree.FindHeader(blockTree.BestKnownNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
+        Block above = Build.A.Block.WithNumber(top.Number + 1).WithParentHash(linked ? top.Hash! : Keccak.OfAnEmptyString).TestObject;
+
+        Task Check() => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+            blockTree,
+            top.Number + 1,
+            top.Number + 1,
+            number => Task.FromResult<Block?>(number == above.Number ? above : null),
+            CancellationToken.None);
+
+        if (linked)
+            Assert.That(Check, Throws.Nothing);
+        else
+            Assert.That(Check, Throws.TypeOf<EraImportException>().With.Message.Contains("Unknown parent"));
+    }
+
+    [Test]
+    public async Task EnsureMatch_MainChainBlock_DoesNotAllocate()
+    {
+        await using IContainer ctx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10).Build();
+        IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+        Block block = blockTree.FindBlock(5, BlockTreeLookupOptions.None)!;
+        KnownHeaders.EnsureMatch(blockTree, block);
+
+        // Under one byte per call: absorbs one-off JIT and tiering allocations on this thread, while any per-call allocation fails.
+        const int calls = 100_000;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < calls; i++)
+            KnownHeaders.EnsureMatch(blockTree, block);
+
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(calls));
+    }
+
+    private sealed class FindLevelCountingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
+    {
+        public int FindLevelCalls { get; private set; }
+
+        public void ResetCalls() => FindLevelCalls = 0;
+
+        public override ChainLevelInfo? FindLevel(ulong number)
+        {
+            FindLevelCalls++;
+            return base.FindLevel(number);
+        }
     }
 }

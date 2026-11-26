@@ -80,7 +80,7 @@ public class ReorgTests
         _blockTree = blockTreeBuilder.TestObject;
 
         BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
-        BlockhashProvider blockhashProvider = new(blockhashCache, stateProvider, LimboLogs.Instance);
+        BlockhashProvider blockhashProvider = new(blockhashCache, LimboLogs.Instance);
         EthereumVirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
@@ -115,12 +115,12 @@ public class ReorgTests
             stateProvider,
             blockhashProvider,
             new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>()),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<IWorldStateManager>());
 
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             branchProcessor,
-            specProvider,
             [new RecoverSignatures(
                 ecdsa,
                 specProvider,
@@ -129,7 +129,8 @@ public class ReorgTests
             LimboLogs.Instance,
             BlockchainProcessor.Options.Default,
             Substitute.For<IProcessingStats>(),
-            new BlockTreeMutationLock());
+            new BlockTreeMutationLock(),
+            new BlockProcessingTracker());
     }
 
     [OneTimeTearDown]
@@ -171,9 +172,15 @@ public class ReorgTests
 
         await block2BAdded.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.That(_blockTree.Head, Is.EqualTo(block2B));
-        Assert.That(events.Count, Is.EqualTo(6));
-        Assert.That(events[4].Hash, Is.EqualTo(block1B.Hash!));
-        Assert.That(events[5].Hash, Is.EqualTo(block2B.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_blockTree.Head, Is.EqualTo(block2B));
+            Assert.That(events.Count, Is.EqualTo(6));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(events[4].Hash, Is.EqualTo(block1B.Hash!));
+            Assert.That(events[5].Hash, Is.EqualTo(block2B.Hash!));
+        }
     }
 }

@@ -90,7 +90,7 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-        private class TestZeroMerger() : ZeroFrameMerger(LimboLogs.Instance)
+        private class TestZeroMerger() : ZeroFrameMerger(NullLogManager.Instance)
         {
             public IByteBuffer Decode(IByteBuffer input)
             {

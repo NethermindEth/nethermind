@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging;
 using Nethermind.Api.Extensions;
@@ -19,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Hosting;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Runner.JsonRpc;
@@ -27,12 +30,12 @@ using Nethermind.Sockets;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
-using WebHost = Nethermind.Runner.JsonRpc.WebHost;
+using WebHost = Nethermind.JsonRpc.Hosting.WebHost;
 
 namespace Nethermind.Runner.Ethereum
 {
     public class JsonRpcRunner(
-        JsonRpcProcessor jsonRpcProcessor,
+        IJsonRpcProcessor jsonRpcProcessor,
         IJsonRpcUrlCollection jsonRpcUrlCollection,
         IWebSocketsManager webSocketsManager,
         IConfigProvider configurationProvider,
@@ -50,7 +53,7 @@ namespace Nethermind.Runner.Ethereum
         private readonly IConfigProvider _configurationProvider = configurationProvider;
         private readonly IRpcAuthentication _rpcAuthentication = rpcAuthentication;
         private readonly ILogManager _logManager = logManager;
-        private readonly JsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
+        private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
         private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection = jsonRpcUrlCollection;
         private readonly IWebSocketsManager _webSocketsManager = webSocketsManager;
         private WebHost? _webApp;
@@ -69,44 +72,45 @@ namespace Nethermind.Runner.Ethereum
 
             if (_logger.IsDebug) _logger.Debug("Initializing JSON RPC");
             string[] urls = _jsonRpcUrlCollection.Urls;
-            WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions
+            string[] listenUrls;
+            try
+            {
+                listenUrls = await JsonRpcListenUrls.ResolveAsync(_jsonRpcUrlCollection.Values, Dns.GetHostAddressesAsync, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug("JSON RPC host resolution cancelled");
+                return;
+            }
+            WebApplicationBuilder builder = JsonRpcHosting.CreateBuilder(new WebApplicationOptions
             {
                 ApplicationName = "Nethermind"
             });
 
-            IServiceCollection services = builder.Services;
-            services.AddSingleton<DiagnosticListener>(NullDiagnosticListener.Instance);
-            services.AddSingleton<DiagnosticSource>(NullDiagnosticListener.Instance);
-
             Startup startup = new();
+            IServiceCollection services = builder.Services;
+            services.AddRouting();
+            services.AddSingleton(_configurationProvider);
+            services.AddSingleton(_jsonRpcProcessor);
+            services.AddSingleton(_jsonRpcUrlCollection);
+            services.AddSingleton(_webSocketsManager);
+            services.AddSingleton(_rpcAuthentication);
+            services.AddSingleton(_txPool);
+            services.AddSingleton(_specProvider);
+            services.AddSingleton(_receiptFinder);
+            services.AddSingleton(_blockTree);
+            services.AddSingleton(_syncPeerPool);
+            services.AddSingleton(_mainProcessingContext);
+            foreach (IJsonRpcServiceConfigurer configurer in _jsonRpcServices)
+            {
+                configurer.Configure(services);
+            }
+            services.AddSingleton<ApplicationLifetime>();
+            // WebHost drives only this lifetime, so services that resolve the interface (e.g. the WebSocket pipeline) see shutdown.
+            services.Replace(ServiceDescriptor.Singleton<IHostApplicationLifetime>(static provider => provider.GetRequiredService<ApplicationLifetime>()));
+            startup.ConfigureServices(services);
             builder.WebHost
-                // Explicitly build from UseKestrelCore rather than UseKestrel to
-                // not add additional transports that we don't use e.g. msquic as that
-                // adds a lot of additional idle threads to the process.
-                .UseKestrelCore()
-                .UseKestrelHttpsConfiguration()
-                .ConfigureServices(s =>
-                {
-                    s.AddRouting();
-                    s.AddSingleton(_configurationProvider);
-                    s.AddSingleton(_jsonRpcProcessor);
-                    s.AddSingleton(_jsonRpcUrlCollection);
-                    s.AddSingleton(_webSocketsManager);
-                    s.AddSingleton(_rpcAuthentication);
-                    s.AddSingleton(_txPool);
-                    s.AddSingleton(_specProvider);
-                    s.AddSingleton(_receiptFinder);
-                    s.AddSingleton(_blockTree);
-                    s.AddSingleton(_syncPeerPool);
-                    s.AddSingleton(_mainProcessingContext);
-                    foreach (IJsonRpcServiceConfigurer configurer in _jsonRpcServices)
-                    {
-                        configurer.Configure(s);
-                    }
-                    s.AddSingleton<ApplicationLifetime>();
-                    startup.ConfigureServices(s);
-                })
-                .UseUrls(urls)
+                .UseUrls(listenUrls)
                 .ConfigureLogging(logging =>
                 {
                     logging.SetMinimumLevel(LogLevel.Information);
@@ -121,8 +125,6 @@ namespace Nethermind.Runner.Ethereum
             string urlsString = string.Join(" ; ", urls);
             // TODO: replace http with ws where relevant
 
-            ThisNodeInfo.AddInfo("JSON RPC     :", $"{urlsString}");
-
             _webApp = new WebHost(webApp.Services, webApp.Configuration, startup, _logManager);
 
             if (!cancellationToken.IsCancellationRequested)
@@ -133,7 +135,7 @@ namespace Nethermind.Runner.Ethereum
                 // #13203: the first point at which the ports actually accept a request. The engine URL is in the
                 // same set, so this is also when the consensus client can connect. At Debug there was nothing to
                 // distinguish a node still gated behind startup work from one already serving.
-                if (_logger.IsInfo) _logger.Info($"JSON-RPC is listening on {urlsString}");
+                if (_logger.IsInfo) _logger.Info($"JSON-RPC is listening on {urlsString:hide}");
             }
         }
 

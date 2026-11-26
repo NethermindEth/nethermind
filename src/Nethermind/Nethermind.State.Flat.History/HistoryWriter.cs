@@ -11,7 +11,9 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -33,6 +35,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // Above this, materializing a pre-value row per wiped slot is unbounded work on one block; poison instead.
     internal const int DestructSlotEnumerationCap = 10_000;
 
+    // Above every history key: the longest is a storage row, a flat storage key plus the block suffix.
+    private const int MaxHistoryKeyLength = 128;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly HistoryStore? _accountHistory;
@@ -61,6 +65,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private readonly ulong _captureFromBlock;
     private readonly PendingV3Writes? _pendingV3;
     private readonly ForwardCommitmentCapture? _commitments;
+    private readonly ulong _pivotImageGranularity;
+    private readonly FlatLayout _layout;
+    private readonly PivotHistoryImageWriter? _pivotImageWriter;
     private bool _formatStamped;
 
     public HistoryWriter(
@@ -70,12 +77,17 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
         ILogManager logManager,
-        ForwardCommitmentCapture? commitments)
+        ForwardCommitmentCapture? commitments,
+        CommitmentDepthPolicy? commitmentPolicy = null,
+        PivotHistoryImageWriter? pivotImageWriter = null)
     {
         ArgumentNullException.ThrowIfNull(history);
+        _pivotImageWriter = pivotImageWriter;
+        _pivotImageGranularity = Math.Max(1UL, commitmentPolicy?.Interval ?? 1UL);
         _commitments = commitments is { Enabled: true } ? commitments : null;
         ILogger logger = logManager.GetClassLogger<HistoryWriter>();
         _enabled = config.HistoryEnabled;
+        _layout = config.Layout;
         _history = history;
         _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(
             db,
@@ -89,7 +101,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _formatVersion = rowFormat.FormatVersion;
         _formatStamped = availability.StampedFormatVersion == _formatVersion;
         _isV3 = rowFormat.IsV3;
-        _pendingV3 = _isV3 ? new PendingV3Writes() : null;
+        _pendingV3 = _isV3 ? new PendingV3Writes(_rlpWrapSlots) : null;
         _captureFromBlock = config.HistoryRetention == HistoryRetentionMode.SinceBlock ? config.HistoryRetentionSinceBlock : 0;
         if (_isV3)
         {
@@ -112,6 +124,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             Metrics.FlatHistoryWatermark = (long)LastCapturedBlock;
             bool hasFloor = _availability.TryGetGlobalFloor(out ulong floor);
             if (hasFloor) Metrics.FlatHistoryFloor = (long)floor;
+            if (_pivotImageWriter is not null) _pivotImageWriter.Failed += DisableCapture;
+            ReportFlatStateAboveHistory(db.GetColumnDb(FlatDbColumns.Metadata));
             if (_captureFromBlock > 0) PublishSinceBlockFloor();
             else if (hasFloor && config.HistoryRetention == HistoryRetentionMode.None)
             {
@@ -120,6 +134,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             }
         }
     }
+
+    /// <inheritdoc/>
+    public bool HoldsFlatPersist => _enabled && _pivotImageWriter is { Holds: true };
+
+    /// <inheritdoc/>
+    public Task FlatPersistReleased => _pivotImageWriter?.Released ?? Task.CompletedTask;
 
     /// <inheritdoc/>
     public bool CaptureHealthy => _enabled && !_permanentGapDetected && _captureProven;
@@ -176,9 +196,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             return false;
         }
 
-        // v3 only: oldest touch per key still waiting to learn its pre-value.
+        // v3 only: oldest touch per key still waiting to learn its pre-value. Empty here: every walk clears it on the
+        // way out.
         PendingV3Writes? pending = _pendingV3;
-        pending?.Clear();
 
         StateId current = persistedHead;
         bool connected = false;
@@ -198,6 +218,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
         finally
         {
+            // First, so a publish that throws below cannot hand this walk's touches to the retry; the resolve that
+            // needed them has already run.
+            pending?.Clear();
             // Disposing writes, and a refusal disables capture, so nothing would rewrite a half-published walk.
             if (!complete) walkBatch.Clear();
             walkBatch.Dispose();
@@ -266,6 +289,34 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             if (_logger.IsWarn) _logger.Warn($"Could not remove the flat history marker for block {watermark}; it stays as an orphan ({e.Message}).");
         }
+        finally
+        {
+            _availability.ForgetMatchedRoots();
+        }
+    }
+
+    /// <summary>Capture runs before every flat persist, so a flat state persisted above the watermark means history was
+    /// turned on after the node synced without it (for example by <c>Pruning.Mode=None</c> on an upgraded node). The
+    /// blocks between are gone, and the first walk could only fail with a vaguer reason, so say why now.</summary>
+    /// <remarks>Not a gap: no persisted state yet, a state at genesis (seeded, or captured by the walk), a wipe for a
+    /// resync, a pivot image still being written, or a state below a since-block floor, where the watermark follows the
+    /// state without rows. A genesis state with no history is also what a crash leaves after it recorded a pivot image
+    /// and before the state pointer moved; the next sync begins a new image.</remarks>
+    private void ReportFlatStateAboveHistory(IDb metadata)
+    {
+        if (_pivotImageWriter is { Holds: true } || BasePersistence.ReadWipedForSync(metadata)) return;
+
+        StateId persisted = BasePersistence.ReadCurrentState(metadata);
+        if (persisted == StateId.PreGenesis || persisted.BlockNumber == 0 || persisted.BlockNumber < _captureFromBlock) return;
+
+        bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
+        if (hasWatermark && persisted.BlockNumber <= watermark) return;
+
+        DisableCapture(
+            $"Flat history cannot follow this node: the flat state is persisted at block {persisted.BlockNumber}, but history is captured " +
+            $"{(hasWatermark ? $"only up to block {watermark}" : "for no block")}, and the blocks between are no longer available. This happens " +
+            "when history is turned on, for example by Pruning.Mode=None, on a node that synced without it. As-of reads report no history. " +
+            "To keep history, wipe the flat and flatHistory databases and sync again.");
     }
 
     /// <summary>A since-block floor is set by config once and never moves. A published floor above it is a snap
@@ -473,24 +524,32 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             }
         }
 
+        _availability.ForgetMatchedRoots();
+
         // The genesis floor a later walk connects to. Deliberately not proof of health: the nodes that reach the
         // seed (history enabled mid-life) are exactly the ones whose first walk fails.
         _availability.PublishWatermark(0, _formatVersion);
         _history.SyncWal();
     }
 
-    /// <summary>Seeds a windowed node's floor at a snap-sync pivot, publishing watermark = floor = pivot.</summary>
+    /// <summary>Seeds the floor at a snap-sync pivot, publishing watermark = floor = pivot.</summary>
     /// <remarks>
+    /// Under v2 (unwindowed) this only records the pivot image, see <see cref="SeedUnwindowedPivot"/>.
     /// No rows are needed under v3: the persisted flat column holds exactly the pivot's state and the fallback answers.
     /// A since-block floor already standing above the pivot stays - the state starts at the pivot, the history at the
     /// configured block. Every slice floor rises with the general one: a row below the pivot resolves through live
     /// state the sync replaced, so nothing below it may stay readable. Receipt bodies still retained in memory for
-    /// blocks the pivot passes over are not derivable afterwards. No-op on v2, which has no fallback to lean on. Call
-    /// at the sync-completion seam before any block processes on top.
+    /// blocks the pivot passes over are not derivable afterwards. Call at the sync-completion seam before any block
+    /// processes on top.
     /// </remarks>
     public void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot)
     {
-        if (!_enabled || !_isV3) return;
+        if (!_enabled) return;
+        if (!_isV3)
+        {
+            SeedUnwindowedPivot(pivotBlock, pivotStateRoot);
+            return;
+        }
 
         // Raise-only for a rolling floor: seeding a pivot below it would re-admit reads for heights whose rows the
         // pruner has already deleted, and they would answer from live state instead of failing closed. A since-block
@@ -525,6 +584,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             HistoryAvailability.MarkBlock(columns.AvailableBlocks, pivotBlock, pivotStateRoot, _formatVersion);
         }
 
+        // A pivot at the watermark overwrites the marker a reader may already have matched.
+        _availability.ForgetMatchedRoots();
         _availability.PublishWatermark(pivotBlock, _formatVersion);
         Metrics.FlatHistoryWatermark = (long)pivotBlock;
         if (!hasFloor || pivotBlock >= currentFloor)
@@ -542,6 +603,72 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         if (_captureFromBlock > 0 && pivotBlock > _captureFromBlock && _logger.IsInfo) _logger.Info(
             $"Flat history starts at the sync pivot {pivotBlock}, not at FlatDb.HistoryRetentionSinceBlock {_captureFromBlock}: the node's state starts there.");
+    }
+
+    /// <summary>Starts an unwindowed history at a snap-sync pivot. v2 rows are post-values with no fallback, so the
+    /// pivot's whole state must be in rows before the history starts there; <see cref="PivotHistoryImageWriter"/>
+    /// writes them in the background and publishes the watermark and floor at the pivot when done. The image goes at the
+    /// start of the pivot's checkpoint window, so the every-block walk builds proof commitments for the pivot itself.</summary>
+    private void SeedUnwindowedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot)
+    {
+        if (_availability.TryGetWatermark(out ulong watermark) && (watermark > 0 || _availability.TryGetGlobalFloor(out _)))
+        {
+            throw new InvalidOperationException(
+                $"Cannot start the unwindowed flat history at the sync pivot {pivotBlock}: the flatHistory database already " +
+                $"holds history up to block {watermark}, whose rows resolve through state the snap sync replaced. Resync the " +
+                "flatHistory database.");
+        }
+
+        // The slots copy over from the flat storage column, whose keys and values match history rows only on this layout.
+        if (_layout != FlatLayout.Flat)
+        {
+            DisableCapture(
+                $"The sync moved the state to pivot {pivotBlock}, but unwindowed (v2) history can start at a pivot only on " +
+                $"FlatDb.Layout={nameof(FlatLayout.Flat)}; this node runs {_layout}. Capture stops here and as-of reads report no " +
+                $"history. Resync with FlatDb.Layout={nameof(FlatLayout.Flat)}, or sync from genesis with Sync.FastSync=false.");
+            return;
+        }
+
+        if (_pivotImageWriter is null)
+        {
+            throw new InvalidOperationException(
+                $"Cannot start the unwindowed flat history at the sync pivot {pivotBlock} without the pivot image writer.");
+        }
+
+        DiscardPriorHistory();
+        _pivotImageWriter.Begin(pivotBlock, pivotStateRoot, pivotBlock - pivotBlock % _pivotImageGranularity);
+    }
+
+    /// <summary>A fresh node executes genesis before it syncs, and an earlier sync attempt can leave part of an image:
+    /// either would read through below the new image, and a key gone by the pivot would resurface. Nothing here is
+    /// served yet, so all of it goes, at a cost independent of its size.</summary>
+    private void DiscardPriorHistory()
+    {
+        _commitments?.DiscardForPivot();
+
+        ReadOnlySpan<byte> first = [0x00];
+        Span<byte> last = stackalloc byte[MaxHistoryKeyLength];
+        last.Fill(0xFF);
+        try
+        {
+            foreach (FlatHistoryColumns column in Enum.GetValues<FlatHistoryColumns>())
+            {
+                bool commitmentColumn = column is FlatHistoryColumns.AccountCommitments or FlatHistoryColumns.StorageCommitments;
+                if (commitmentColumn && _commitments is not null) continue;
+
+                IRangeRemovableKeyValueStore removable = (IRangeRemovableKeyValueStore)_history.GetColumnDb(column);
+                removable.RemoveRange(first, last);
+                removable.ReclaimRange(first, last);
+            }
+
+            _history.SyncWal();
+        }
+        finally
+        {
+            _availability.ForgetObservedRecords();
+        }
+
+        _formatStamped = false;
     }
 
     [SkipLocalsInit]
@@ -613,7 +740,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         Span<byte> storageValue = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
-            ValueHash256 addrHash = entry.Address.ToAccountPath;
+            ValueHash256 addrHash = KeccakCache.Compute(entry.Address.AsSpan);
 
             if (entry.SelfDestructFlag is false)
             {
@@ -624,10 +751,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             if (entry.HasAccount)
             {
+                using NoOpPin pin = entry.PinAccount();
+                ReadOnlySpan<byte> account = WholeReadScanner.PerAddressEntry.SlimAccount(pin.Buffer);
                 if (_isV3)
-                    RecordAccountV3(block, addrHash, entry.Account, pending!, columns.AccountHistory);
+                    pending!.TrackAccount(addrHash, block, account, columns.AccountHistory, _accountHistoryV3!);
                 else
-                    RecordAccount(block, addrHash, entry.Account, in columns);
+                    RecordAccount(block, addrHash, account, in columns);
             }
 
             foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
@@ -651,17 +780,19 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     private void RecordAccount(ulong block, in ValueHash256 addrHash, Account? account, scoped in HistoryColumnBatches columns)
     {
-        ReadOnlySpan<byte> flatKey = addrHash.Bytes;
-
         if (account is null)
         {
-            _accountHistory!.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, columns.AccountHistory);
+            RecordAccount(block, addrHash, ReadOnlySpan<byte>.Empty, in columns);
             return;
         }
 
         using ArrayPoolSpan<byte> value = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-        _accountHistory!.RecordChange(block, flatKey, value, columns.AccountHistory);
+        RecordAccount(block, addrHash, value, in columns);
     }
+
+    /// <param name="slimAccount">The account's slim RLP; empty when the account is deleted.</param>
+    private void RecordAccount(ulong block, in ValueHash256 addrHash, ReadOnlySpan<byte> slimAccount, scoped in HistoryColumnBatches columns) =>
+        _accountHistory!.RecordChange(block, addrHash.Bytes, slimAccount, columns.AccountHistory);
 
     private void RecordStorage(ulong block, in ValueHash256 addrHash, in UInt256 slot, in UInt256? value, Span<byte> keyBuffer, Span<byte> valueBuffer, scoped in HistoryColumnBatches columns)
     {
@@ -678,27 +809,14 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     }
 
     /// <summary>The walk visits newest-to-oldest, so this post-value finalizes the newer pending touch.</summary>
-    private void RecordAccountV3(ulong block, in ValueHash256 addrHash, Account? account, PendingV3Writes pending, IWriteBatch accountBatch)
-    {
-        if (account is null)
-        {
-            pending.TrackAccount(addrHash, block, ReadOnlySpan<byte>.Empty, accountBatch, _accountHistoryV3!);
-            return;
-        }
-
-        using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-        pending.TrackAccount(addrHash, block, rlp, accountBatch, _accountHistoryV3!);
-    }
+    private void RecordAccountV3(ulong block, in ValueHash256 addrHash, Account? account, PendingV3Writes pending, IWriteBatch accountBatch) =>
+        pending.TrackAccount(addrHash, block, account, accountBatch, _accountHistoryV3!);
 
     private void RecordStorageV3(ulong block, in ValueHash256 addrHash, in UInt256 slot, in UInt256? value, Span<byte> keyBuffer, Span<byte> valueBuffer, PendingV3Writes pending, IWriteBatch storageBatch)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
-
-        int written = value is UInt256 slotValue
-            ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
-            : 0;
-        pending.TrackStorage(addrHash, slotHash, block, valueBuffer[..written], keyBuffer, storageBatch, _storageHistoryV3!);
+        pending.TrackStorage(addrHash, slotHash, block, value, keyBuffer, valueBuffer, storageBatch, _storageHistoryV3!);
     }
 
     /// <summary>v3 only: a self-destruct wipes slots via a range-delete with no per-slot entries, so the account's
@@ -724,7 +842,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 return;
             }
 
-            pending.TrackStorage(addrHash, slots.CurrentKey, block, ReadOnlySpan<byte>.Empty, storageKeyBuffer, storageBatch, _storageHistoryV3!);
+            pending.TrackStorage(addrHash, slots.CurrentKey, block, null, storageKeyBuffer, Span<byte>.Empty, storageBatch, _storageHistoryV3!);
         }
     }
 
@@ -741,66 +859,104 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         IWriteBatch accountBatch = columns.AccountHistory;
         IWriteBatch storageBatch = columns.StorageHistory;
 
-        Span<byte> keyBuffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
-
         int accountCount = pending.Accounts.Count;
+        int storageCount = pending.Storages.Count;
+        int chunkCapacity = Math.Min(PreValueMultiGetChunkSize, Math.Max(accountCount, storageCount));
+        using ArrayPoolSpan<byte> keyBuffer = new(chunkCapacity * BaseFlatPersistence.StorageKeyLength);
+        using ArrayPoolSpan<Range> preValueBuffer = new(chunkCapacity);
+        using PreValueBytes preValueBytes = new();
+
         KeyValuePair<ValueHash256, ulong>[] accounts = ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Rent(accountCount);
         ((ICollection<KeyValuePair<ValueHash256, ulong>>)pending.Accounts).CopyTo(accounts, 0);
         Array.Sort(accounts, 0, accountCount, AccountKeyOrder);
 
-        byte[][] accountChunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, accountCount)][];
         for (int offset = 0; offset < accountCount; offset += PreValueMultiGetChunkSize)
         {
             int count = Math.Min(PreValueMultiGetChunkSize, accountCount - offset);
-            byte[][] keys = count == accountChunkKeys.Length ? accountChunkKeys : new byte[count][];
+            Span<byte> keys = keyBuffer.Slice(0, count * BaseFlatPersistence.AccountKeyLength);
             for (int i = 0; i < count; i++)
             {
-                keys[i] = HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).ToArray();
+                HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).CopyTo(keys[(i * BaseFlatPersistence.AccountKeyLength)..]);
             }
 
-            KeyValuePair<byte[], byte[]?>[] preValues = _persistedAccounts[keys];
+            Span<Range> preValues = preValueBuffer.Slice(0, count);
+            preValueBytes.Reset();
+            _persistedAccounts.GetMany(keys, BaseFlatPersistence.AccountKeyLength, preValues, preValueBytes);
             for (int i = 0; i < count; i++)
             {
-                _accountHistoryV3!.RecordPreValue(accounts[offset + i].Value, accounts[offset + i].Key.Bytes, preValues[i].Value ?? ReadOnlySpan<byte>.Empty, accountBatch);
+                _accountHistoryV3!.RecordPreValue(accounts[offset + i].Value, accounts[offset + i].Key.Bytes, preValueBytes[preValues[i]], accountBatch);
             }
         }
 
         ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Return(accounts);
 
-        int storageCount = pending.Storages.Count;
         KeyValuePair<PendingV3Writes.SlotKey, ulong>[] storages = ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Rent(storageCount);
         ((ICollection<KeyValuePair<PendingV3Writes.SlotKey, ulong>>)pending.Storages).CopyTo(storages, 0);
         Array.Sort(storages, 0, storageCount, StorageKeyOrder);
 
-        byte[][] storageChunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, storageCount)][];
         for (int offset = 0; offset < storageCount; offset += PreValueMultiGetChunkSize)
         {
             int count = Math.Min(PreValueMultiGetChunkSize, storageCount - offset);
-            byte[][] keys = count == storageChunkKeys.Length ? storageChunkKeys : new byte[count][];
+            Span<byte> keys = keyBuffer.Slice(0, count * BaseFlatPersistence.StorageKeyLength);
             for (int i = 0; i < count; i++)
             {
-                keys[i] = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash).ToArray();
+                BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keys.Slice(i * BaseFlatPersistence.StorageKeyLength, BaseFlatPersistence.StorageKeyLength), storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash);
             }
 
-            KeyValuePair<byte[], byte[]?>[] preValues = _persistedStorage[keys];
+            Span<Range> preValues = preValueBuffer.Slice(0, count);
+            preValueBytes.Reset();
+            _persistedStorage.GetMany(keys, BaseFlatPersistence.StorageKeyLength, preValues, preValueBytes);
             for (int i = 0; i < count; i++)
             {
                 ulong touch = storages[offset + i].Value;
-                ReadOnlySpan<byte> preValue = preValues[i].Value ?? ReadOnlySpan<byte>.Empty;
+                ReadOnlySpan<byte> key = keys.Slice(i * BaseFlatPersistence.StorageKeyLength, BaseFlatPersistence.StorageKeyLength);
+                ReadOnlySpan<byte> preValue = preValueBytes[preValues[i]];
 
                 if (pending.Destructs.Count != 0
                     && pending.Destructs.TryGetValue(storages[offset + i].Key.AddrPath, out ulong destructBlock)
                     && destructBlock < touch)
                 {
-                    _storageHistoryV3!.RecordPreValue(destructBlock, keys[i], preValue, storageBatch);
+                    _storageHistoryV3!.RecordPreValue(destructBlock, key, preValue, storageBatch);
                     preValue = ReadOnlySpan<byte>.Empty;
                 }
 
-                _storageHistoryV3!.RecordPreValue(touch, keys[i], preValue, storageBatch);
+                _storageHistoryV3!.RecordPreValue(touch, key, preValue, storageBatch);
             }
         }
 
         ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Return(storages);
+    }
+
+    /// <summary>Copies each pre-value a multi-get finds into one pooled buffer, so a lookup allocates no value
+    /// arrays. A missing key keeps the default range, which reads back as an empty pre-value.</summary>
+    private sealed class PreValueBytes : IValueDecoder<Range>, IDisposable
+    {
+        private byte[] _bytes = ArrayPool<byte>.Shared.Rent(PreValueMultiGetChunkSize * 32);
+        private int _length;
+
+        public ReadOnlySpan<byte> this[Range range] => _bytes.AsSpan(range);
+
+        public void Reset() => _length = 0;
+
+        public Range Decode(ReadOnlySpan<byte> buffer)
+        {
+            int start = _length;
+            int end = start + buffer.Length;
+            if (end > _bytes.Length) Grow(end);
+            buffer.CopyTo(_bytes.AsSpan(start));
+            _length = end;
+            return start..end;
+        }
+
+        private void Grow(int required)
+        {
+            byte[] larger = ArrayPool<byte>.Shared.Rent(Math.Max(required, _bytes.Length * 2));
+            _bytes.AsSpan(0, _length).CopyTo(larger);
+            ArrayPool<byte>.Shared.Return(_bytes);
+            _bytes = larger;
+        }
+
+        public void Dispose() => ArrayPool<byte>.Shared.Return(_bytes);
     }
 
     // Sorted so each multi-get hands the persisted column keys in key order (grouped per account for storage),
@@ -815,9 +971,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             return byAccount != 0 ? byAccount : a.Key.SlotHash.Bytes.SequenceCompareTo(b.Key.SlotHash.Bytes);
         });
 
-    /// <summary>Per-walk deferred-resolution state. Keyed on value structs so tracking a touch allocates nothing.</summary>
-    private sealed class PendingV3Writes
+    /// <summary>Per-walk deferred-resolution state. Keyed on value structs so tracking a touch allocates nothing.
+    /// Post-values are encoded only when a row is written: a key's first touch in the walk writes nothing.</summary>
+    internal sealed class PendingV3Writes(bool rlpWrapSlots)
     {
+        private const int AccountRlpBufferSize = 256;
+        // Above what a capture of one persisted chunk normally tracks. A longer walk, a catch-up after a restart, grows
+        // the maps far past it; trimming back to it, not to zero, releases that walk's memory without making a chunk
+        // near the limit regrow its map from nothing on every capture.
+        private const int MaxRetainedEntries = 1 << 16;
+
         public readonly record struct SlotKey(ValueHash256 AddrPath, ValueHash256 SlotHash);
 
         public readonly Dictionary<ValueHash256, ulong> Accounts = [];
@@ -826,33 +989,53 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         public void Clear()
         {
-            Accounts.Clear();
-            Storages.Clear();
-            Destructs.Clear();
+            Clear(Accounts);
+            Clear(Storages);
+            Clear(Destructs);
+        }
+
+        private static void Clear<TKey>(Dictionary<TKey, ulong> map) where TKey : notnull
+        {
+            map.Clear();
+            if (map.EnsureCapacity(0) > MaxRetainedEntries) map.TrimExcess(MaxRetainedEntries);
         }
 
         /// <summary>Keeps the lowest destruct seen, for slots first written lower in this same walk.</summary>
         public void TrackDestruct(in ValueHash256 addrPath, ulong block) => Destructs[addrPath] = block;
 
-        public void TrackAccount(in ValueHash256 addrPath, ulong block, ReadOnlySpan<byte> postValue, IWriteBatch batch, HistoryStoreV3 store)
+        [SkipLocalsInit]
+        public void TrackAccount(in ValueHash256 addrPath, ulong block, Account? postValue, IWriteBatch batch, HistoryStoreV3 store)
+        {
+            if (!TouchAccount(addrPath, block, out ulong newerTouch)) return;
+
+            Span<byte> rlp = stackalloc byte[AccountRlpBufferSize];
+            store.RecordPreValue(newerTouch, addrPath.Bytes, EncodeAccount(postValue, rlp), batch);
+        }
+
+        /// <param name="slimPostValue">The post-value's slim RLP; empty when the account is deleted.</param>
+        public void TrackAccount(in ValueHash256 addrPath, ulong block, ReadOnlySpan<byte> slimPostValue, IWriteBatch batch, HistoryStoreV3 store)
+        {
+            if (TouchAccount(addrPath, block, out ulong newerTouch)) store.RecordPreValue(newerTouch, addrPath.Bytes, slimPostValue, batch);
+        }
+
+        /// <summary>Makes <paramref name="block"/> the key's oldest touch.</summary>
+        /// <returns>Whether a newer touch in another block is pending, which this touch's post-value resolves.</returns>
+        private bool TouchAccount(in ValueHash256 addrPath, ulong block, out ulong newerTouch)
         {
             ref ulong entry = ref CollectionsMarshal.GetValueRefOrAddDefault(Accounts, addrPath, out bool exists);
-            if (exists)
-            {
-                if (entry == block) return; // same-block re-touch: resolving here would fabricate a pre-value
-
-                store.RecordPreValue(entry, addrPath.Bytes, postValue, batch);
-            }
-
+            newerTouch = entry;
             entry = block;
+            // A same-block re-touch stays pending: resolving it would fabricate a pre-value.
+            return exists && newerTouch != block;
         }
 
         public void TrackStorage(
             in ValueHash256 addrPath,
             in ValueHash256 slotHash,
             ulong block,
-            ReadOnlySpan<byte> postValue,
+            in UInt256? postValue,
             Span<byte> keyBuffer,
+            Span<byte> valueBuffer,
             IWriteBatch batch,
             HistoryStoreV3 store)
         {
@@ -869,7 +1052,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             {
                 ReadOnlySpan<byte> destructKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, addrPath, slotHash);
                 if (exists) store.RecordPreValue(entry, destructKey, ReadOnlySpan<byte>.Empty, batch);
-                store.RecordPreValue(destructBlock, destructKey, postValue, batch);
+                store.RecordPreValue(destructBlock, destructKey, EncodeSlot(postValue, valueBuffer), batch);
                 entry = block;
                 return;
             }
@@ -877,11 +1060,24 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             if (exists)
             {
                 ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, addrPath, slotHash);
-                store.RecordPreValue(entry, flatKey, postValue, batch);
+                store.RecordPreValue(entry, flatKey, EncodeSlot(postValue, valueBuffer), batch);
             }
 
             entry = block;
         }
+
+        private static ReadOnlySpan<byte> EncodeAccount(Account? account, Span<byte> buffer)
+        {
+            if (account is null) return ReadOnlySpan<byte>.Empty;
+
+            int contentLength = AccountDecoder.Slim.GetContentLength(account);
+            RlpWriter writer = RlpWriter.ContentWriter(buffer);
+            AccountDecoder.Slim.Encode(account, ref writer, contentLength);
+            return buffer[..Rlp.LengthOfSequence(contentLength)];
+        }
+
+        private ReadOnlySpan<byte> EncodeSlot(in UInt256? value, Span<byte> buffer) =>
+            value is UInt256 slotValue ? buffer[..BaseFlatPersistence.EncodeSlotValue(slotValue, rlpWrapSlots, buffer)] : ReadOnlySpan<byte>.Empty;
     }
 
     private readonly ref struct HistoryColumnBatches(IColumnsWriteBatch<FlatHistoryColumns> batch)

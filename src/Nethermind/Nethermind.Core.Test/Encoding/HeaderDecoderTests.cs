@@ -8,7 +8,12 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Test;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs;
+using Nethermind.Core.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
@@ -29,13 +34,25 @@ public class HeaderDecoderTests
             .TestObject;
 
         HeaderDecoder decoder = new();
-        Rlp rlp = decoder.Encode(header);
-        RlpReader decoderContext = new(rlp.Bytes);
+        byte[] rlp = decoder.Encode(header);
+        RlpReader decoderContext = new(rlp);
         BlockHeader decoded = decoder.Decode(ref decoderContext)
             ?? throw new InvalidOperationException("Header decoding returned null.");
         decoded.Hash = decoded.CalculateHash();
 
         Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
+    }
+
+    [Test]
+    public void Exclude_hashes_controls_whether_the_hash_is_set([Values] bool excludeHashes)
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        HeaderDecoder decoder = new();
+        RlpReader decoderContext = new(decoder.Encode(header));
+
+        BlockHeader decoded = decoder.Decode(ref decoderContext, excludeHashes ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None)!;
+
+        Assert.That(decoded.Hash, Is.EqualTo(excludeHashes ? null : header.Hash));
     }
 
     [Test]
@@ -48,7 +65,7 @@ public class HeaderDecoderTests
     [Test]
     public void Can_handle_nulls()
     {
-        Rlp rlp = Rlp.Encode((BlockHeader?)null);
+        byte[] rlp = Rlp.Encode((BlockHeader?)null);
         BlockHeader? decoded = Rlp.Decode<BlockHeader>(rlp);
         Assert.That(decoded, Is.Null);
     }
@@ -57,7 +74,7 @@ public class HeaderDecoderTests
     public void Can_encode_decode_with_base_fee()
     {
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).TestObject;
-        Rlp rlp = Rlp.Encode(header);
+        byte[] rlp = Rlp.Encode(header);
         BlockHeader blockHeader = DecodeHeader(rlp);
         Assert.That(blockHeader.BaseFeePerGas, Is.EqualTo((UInt256)123));
     }
@@ -66,8 +83,26 @@ public class HeaderDecoderTests
     public void If_baseFee_is_zero_should_not_encode()
     {
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(0).WithNonce(0).WithDifficulty(0).TestObject;
-        Rlp rlp = Rlp.Encode(header);
-        Assert.That(Convert.ToHexString(rlp.Bytes).ToLower(), Is.EqualTo("f901f6a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2880000000000000000"));
+        byte[] rlp = Rlp.Encode(header);
+        Assert.That(Convert.ToHexString(rlp).ToLower(), Is.EqualTo("f901f6a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2880000000000000000"));
+    }
+
+    [Test]
+    public void Zero_base_fee_is_encoded_with_the_Eip1559Header_behavior()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(0).WithNonce(0).WithDifficulty(0).TestObject;
+        HeaderDecoder decoder = new();
+        byte[] withoutBaseFee = decoder.Encode(header);
+        byte[] withBaseFee = decoder.Encode(header, RlpBehaviors.Eip1559Header);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withoutBaseFee[..3], Is.EqualTo(Bytes.FromHexString("f901f6")));
+            Assert.That(withBaseFee, Is.EqualTo((byte[])[.. Bytes.FromHexString("f901f7"), .. withoutBaseFee[3..], Rlp.EmptyByteArrayByte]));
+            Assert.That(decoder.GetLength(header, RlpBehaviors.Eip1559Header), Is.EqualTo(withBaseFee.Length));
+            Assert.That(header.CalculateHash(RlpBehaviors.Eip1559Header), Is.EqualTo(Keccak.Compute(withBaseFee)));
+            Assert.That(DecodeHeader(withBaseFee).BaseFeePerGas, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -75,7 +110,7 @@ public class HeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(1).WithNonce(0).WithDifficulty(0)
             .WithWithdrawalsRoot(Keccak.Compute("withdrawals")).TestObject;
-        Rlp rlp = Rlp.Encode(header);
+        byte[] rlp = Rlp.Encode(header);
         BlockHeader blockHeader = DecodeHeader(rlp);
         Assert.That(blockHeader.WithdrawalsRoot, Is.EqualTo(Keccak.Compute("withdrawals")));
     }
@@ -84,8 +119,8 @@ public class HeaderDecoderTests
     public void If_withdrawals_are_null_should_not_encode()
     {
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(1).WithNonce(0).WithDifficulty(0).TestObject;
-        Rlp rlp = Rlp.Encode(header);
-        Assert.That(Convert.ToHexString(rlp.Bytes).ToLower(), Is.EqualTo("f901f7a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e288000000000000000001"));
+        byte[] rlp = Rlp.Encode(header);
+        Assert.That(Convert.ToHexString(rlp).ToLower(), Is.EqualTo("f901f7a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e288000000000000000001"));
     }
 
     [Test]
@@ -96,7 +131,7 @@ public class HeaderDecoderTests
             WithGasUsed(largeValue).
             WithGasLimit(largeValue).TestObject;
 
-        Rlp rlp = Rlp.Encode(header);
+        byte[] rlp = Rlp.Encode(header);
         BlockHeader blockHeader = DecodeHeader(rlp);
 
         using (Assert.EnterMultipleScope())
@@ -115,7 +150,7 @@ public class HeaderDecoderTests
             WithGasUsed(largeValue).
             WithGasLimit(largeValue).TestObject;
 
-        Rlp rlp = Rlp.Encode(header);
+        byte[] rlp = Rlp.Encode(header);
         BlockHeader blockHeader = DecodeHeader(rlp);
 
         using (Assert.EnterMultipleScope())
@@ -137,7 +172,7 @@ public class HeaderDecoderTests
             .WithExcessBlobGas(excessBlobGas)
             .WithParentBeaconBlockRoot(parentBeaconBlockRoot).TestObject;
 
-        Rlp rlp = Rlp.Encode(header);
+        byte[] rlp = Rlp.Encode(header);
         BlockHeader blockHeader = DecodeHeader(rlp);
 
         using (Assert.EnterMultipleScope())
@@ -159,7 +194,7 @@ public class HeaderDecoderTests
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
             .WithRequestsHash(Keccak.Zero).TestObject;
 
-        Rlp rlp = Rlp.Encode(header);
+        byte[] rlp = Rlp.Encode(header);
         BlockHeader blockHeader = DecodeHeader(rlp);
 
         Assert.That(blockHeader.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakB));
@@ -177,7 +212,7 @@ public class HeaderDecoderTests
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
             .WithRequestsHash(Keccak.Zero).TestObject;
 
-        Rlp rlp = Rlp.Encode(header);
+        byte[] rlp = Rlp.Encode(header);
         BlockHeader blockHeader = DecodeHeader(rlp);
 
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
@@ -239,7 +274,7 @@ public class HeaderDecoderTests
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
             .WithRequestsHash(Keccak.Zero).TestObject;
 
-        Rlp rlp = Rlp.Encode(header);
+        byte[] rlp = Rlp.Encode(header);
         BlockHeader blockHeader = DecodeHeader(rlp);
 
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
@@ -258,7 +293,7 @@ public class HeaderDecoderTests
         header.Bloom = null;
         header.MixHash = null;
 
-        Rlp rlp = Rlp.Encode(header);
+        byte[] rlp = Rlp.Encode(header);
         BlockHeader blockHeader = DecodeHeader(rlp);
 
         using (Assert.EnterMultipleScope())
@@ -277,26 +312,57 @@ public class HeaderDecoderTests
     [Test]
     public void Should_reject_empty_rlp_string_for_mandatory_fixed_size_field([Values(0, 1, 2, 3, 4, 5, 6)] int fieldIndex)
     {
-        byte[] validRlp = Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes;
+        byte[] validRlp = Rlp.Encode(Build.A.BlockHeader.TestObject);
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, fieldIndex, [0x80]);
 
-        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpReaderException>());
     }
 
     [TestCaseSource(nameof(OptionalHashRoundtripSource))]
     public void Can_encode_decode_with_null_optional_hashes_when_later_fields_are_present(BlockHeader header)
     {
-        Rlp rlp = Rlp.Encode(header);
+        byte[] rlp = Rlp.Encode(header);
         BlockHeader blockHeader = DecodeHeader(rlp);
 
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
     }
 
     [Test]
+    public void Spec_aware_decoder_accepts_empty_rlp_string_bloom_only_when_eip7668_is_active([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        HeaderDecoder decoder = new(new TestSingleReleaseSpecProvider(spec));
+        byte[] validRlp = Rlp.Encode(Build.A.BlockHeader.TestObject);
+        byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, BloomFieldIndex, [0x80]);
+
+        if (eip7668)
+        {
+            BlockHeader decoded = Decode(decoder);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.Bloom, Is.SameAs(Bloom.ZeroLength));
+                Assert.That(Rlp.Encode(decoded), Is.EqualTo(crafted));
+            }
+        }
+        else
+        {
+            // Before the fork it fails exactly as the spec-less decoder does.
+            string expected = Assert.Throws<RlpReaderException>(() => Decode(new HeaderDecoder()))!.Message;
+            Assert.That(() => Decode(decoder), Throws.TypeOf<RlpReaderException>().With.Message.EqualTo(expected));
+        }
+
+        BlockHeader Decode(HeaderDecoder headerDecoder)
+        {
+            RlpReader reader = new(crafted);
+            return headerDecoder.Decode(ref reader)!;
+        }
+    }
+
+    [Test]
     public void Should_reject_legacy_sequence_form_bloom_in_header()
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
-        byte[] validRlp = Rlp.Encode(header).Bytes;
+        byte[] validRlp = Rlp.Encode(header);
 
         byte[] listFormBloom = new byte[5 + Bloom.ByteLength];
         listFormBloom[0] = 0xF9;
@@ -308,7 +374,7 @@ public class HeaderDecoderTests
 
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, BloomFieldIndex, listFormBloom);
 
-        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -320,11 +386,11 @@ public class HeaderDecoderTests
             .WithBaseFee(1)
             .WithWithdrawalsRoot(Keccak.Zero)
             .TestObject;
-        byte[] validRlp = Rlp.Encode(header).Bytes;
+        byte[] validRlp = Rlp.Encode(header);
 
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, MixHashFieldIndex, [0x80]);
 
-        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -334,10 +400,10 @@ public class HeaderDecoderTests
             .WithBaseFee(1)
             .WithWithdrawalsRoot(Keccak.Zero)
             .TestObject;
-        byte[] validRlp = Rlp.Encode(header).Bytes;
+        byte[] validRlp = Rlp.Encode(header);
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, WithdrawalsRootFieldIndex, [0x80]);
 
-        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpReaderException>());
     }
 
     public static IEnumerable<TestCaseData> OptionalHashRoundtripSource()
@@ -427,7 +493,7 @@ public class HeaderDecoderTests
         }
     }
 
-    private static BlockHeader DecodeHeader(Rlp rlp) =>
+    private static BlockHeader DecodeHeader(byte[] rlp) =>
         Rlp.Decode<BlockHeader>(rlp) ?? throw new InvalidOperationException("Header decoding returned null.");
 
 }
@@ -436,25 +502,26 @@ public static class HeaderRlpTestHelper
 {
     public static byte[] ReplaceFieldEncoding(byte[] headerRlp, int fieldIndex, byte[] craftedField)
     {
-        RlpReader reader = new(headerRlp);
-        (int prefixLength, int contentLength) = reader.ReadPrefixAndContentLength();
+        RlpReader outer = new(headerRlp);
+        RlpReader reader = outer.EnterSequence(out int itemLength);
+        int contentLength = reader.Remaining;
+        int prefixLength = itemLength - contentLength;
 
-        int fieldStart = reader.Position;
+        int fieldStart = prefixLength;
         int fieldLength = 0;
         for (int i = 0; i <= fieldIndex; i++)
         {
-            fieldStart = reader.Position;
-            fieldLength = reader.PeekNextRlpLength();
-            reader.SkipItem();
+            fieldStart = prefixLength + reader.BytesRead;
+            fieldLength = reader.ReadEncodedItem().Length;
         }
 
         int contentLengthDelta = craftedField.Length - fieldLength;
         int craftedContentLength = contentLength + contentLengthDelta;
         byte[] result = new byte[Rlp.LengthOfSequence(craftedContentLength)];
-        RlpWriter writer = new(result);
+        RlpWriter writer = RlpWriter.ContentWriter(result);
         writer.StartSequence(craftedContentLength);
 
-        int craftedContentStart = writer.Position;
+        int craftedContentStart = writer.Length;
         headerRlp.AsSpan(prefixLength, fieldStart - prefixLength).CopyTo(result.AsSpan(craftedContentStart));
         craftedField.CopyTo(result.AsSpan(craftedContentStart + fieldStart - prefixLength));
         headerRlp.AsSpan(fieldStart + fieldLength, prefixLength + contentLength - fieldStart - fieldLength)

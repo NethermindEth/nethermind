@@ -23,6 +23,8 @@ Nethermind is an Ethereum execution client built on .NET. Consensus correctness 
 Report a domain finding only when you are at least 80% confident it is a real issue. Rule violations found by the project rules check are exempt from this threshold (see "When to stay silent").
 Be concise: one sentence per comment when possible.
 
+**EIP implementation?** If the PR implements or modifies an EIP, also invoke the `eip-implementation-reviewer` skill for spec compliance checking. It cross-references the diff against the actual EIP spec text — something this skill cannot do.
+
 `Codebase Rules` means the rule files under `.agents/rules/` (indexed in AGENTS.md).
 
 **Subagent warning:** Subagents do not inherit full review context automatically. If you launch subagents for this review, you **must** paste the relevant `Codebase Rules` files and all applicable domain review sections from this skill into the subagent prompt. After receiving subagent output, cross-check their findings against the rules in your own context.
@@ -125,7 +127,7 @@ Do not comment on anything below. CI will block the merge if any of it fails.
 | All unit & integration tests                                | `nethermind-tests.yml`                             |
 | CodeQL security analysis                                    | `codeql.yml`                                       |
 | Dependency vulnerabilities                                  | `dependency-review.yml`                            |
-| Ethereum Foundation hive tests (consensus, RPC, Engine API) | `hive-tests.yml`, `hive-consensus-tests.yml`       |
+| Ethereum Foundation hive tests (consensus, RPC, Engine API) | `hive-tests.yml`                                   |
 | JSON-RPC output correctness                                 | `rpc-comparison.yml`                               |
 
 Also skip: naming conventions, missing XML docs on `internal`/`private` members, minor grammar, refactoring suggestions that don't fix a real bug, logging improvements (unless security-related), build warnings that have no behavioural impact.

@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Synchronization.FastSync
@@ -13,7 +14,6 @@ namespace Nethermind.Synchronization.FastSync
         private long _lastDataSize;
         // private long _lastHandledNodesCount;
         internal long LastDbReads;
-        internal decimal AverageTimeInHandler;
         // ReSharper disable once NotAccessedField.Local
         internal long LastRequestedNodesCount;
         // ReSharper disable once NotAccessedField.Local
@@ -37,20 +37,29 @@ namespace Nethermind.Synchronization.FastSync
         internal long OkCount;
         internal long BadQualityCount;
         internal long NotAssignedCount;
+        internal long NoResponseCount;
         internal long DataSize;
 
         private string? _lastStateSyncReport;
 
-        private long TotalRequestsCount => EmptishCount + InvalidFormatCount + BadQualityCount + OkCount + NotAssignedCount;
+        private long TotalRequestsCount => EmptishCount + InvalidFormatCount + BadQualityCount + OkCount + NotAssignedCount + NoResponseCount;
         public long ProcessedRequestsCount => EmptishCount + BadQualityCount + OkCount;
 
         internal (DateTime small, DateTime full) LastReportTime = (DateTime.MinValue, DateTime.MinValue);
 
         private readonly IChainEstimations _chainEstimations;
+        private readonly bool _isSnapHealing;
 
-        public DetailedProgress(ulong chainId, byte[]? serializedInitialState)
+        /// <param name="chainId">Chain used to look up the full state size estimate.</param>
+        /// <param name="serializedInitialState">Progress persisted by a previous run, if any.</param>
+        /// <param name="isSnapHealing">
+        /// <see langword="true"/> when tree sync heals a state populated by snap ranges. The report then omits the
+        /// full state size percentage, as the healed bytes are a small and unpredictable fraction of the state.
+        /// </param>
+        public DetailedProgress(ulong chainId, byte[]? serializedInitialState, bool isSnapHealing = false)
         {
             _chainEstimations = ChainSizes.CreateChainSizeInfo(chainId);
+            _isSnapHealing = isSnapHealing;
 
             LoadFromSerialized(serializedInitialState);
         }
@@ -72,7 +81,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 Metrics.StateSynced = DataSize;
                 string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,9:F2} MB";
-                if (_chainEstimations.StateSize is not null)
+                if (!_isSnapHealing && _chainEstimations.StateSize is not null)
                 {
                     float percentage = Math.Min(1, (float)DataSize / _chainEstimations.StateSize.Value);
                     dataSizeInfo = string.Concat(dataSizeInfo,
@@ -82,9 +91,10 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (logger.IsInfo)
                 {
+                    string phase = _isSnapHealing ? "State Sync (Phase 2 of 2, healing)" : "State Sync ";
                     string stateSyncReport = logger.IsDebug ?
-                        $"State Sync  {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}" :
-                        $"State Sync  {dataSizeInfo} branch {branchProgress.Progress:P2} | acc {SavedAccounts} | nodes {SavedNodesCount}";
+                        $"{phase} {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}" :
+                        $"{phase} {dataSizeInfo} branch {branchProgress.Progress:P2} | acc {SavedAccounts} | nodes {SavedNodesCount}";
                     if (_lastStateSyncReport != stateSyncReport)
                     {
                         _lastStateSyncReport = stateSyncReport;
@@ -94,7 +104,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (logger.IsDebug && DateTime.UtcNow - LastReportTime.full > TimeSpan.FromSeconds(100))
                 {
                     long allChecks = CheckWasInDependencies + CheckWasCached + StateWasThere + StateWasNotThere;
-                    if (logger.IsDebug) logger.Debug($"OK {(decimal)OkCount / TotalRequestsCount:p2} | Emptish: {(decimal)EmptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal)BadQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal)InvalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal)NotAssignedCount / TotalRequestsCount:p2}");
+                    if (logger.IsDebug) logger.Debug($"OK {(decimal)OkCount / TotalRequestsCount:p2} | Emptish: {(decimal)EmptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal)BadQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal)InvalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal)NotAssignedCount / TotalRequestsCount:p2} | NoResponse {(decimal)NoResponseCount / TotalRequestsCount:p2}");
                     if (RequestedNodesCount > 0)
                     {
                         decimal consumedRatio = (decimal)ConsumedNodesCount / RequestedNodesCount;
@@ -118,8 +128,7 @@ namespace Nethermind.Synchronization.FastSync
                 return;
             }
 
-            RlpReader ctx = new(serializedData);
-            ctx.ReadSequenceLength();
+            RlpReader ctx = new RlpReader(serializedData).EnterSequence(out _);
             ConsumedNodesCount = ctx.DecodeLong();
             SavedStorageCount = ctx.DecodeLong();
             SavedStateCount = ctx.DecodeLong();
@@ -132,7 +141,7 @@ namespace Nethermind.Synchronization.FastSync
             StateWasNotThere = ctx.DecodeLong();
             DataSize = ctx.DecodeLong();
 
-            if (ctx.Position != ctx.Length)
+            if (ctx.HasNext)
             {
                 SecondsInSync = ctx.DecodeLong();
             }
@@ -158,12 +167,13 @@ namespace Nethermind.Synchronization.FastSync
 
             int contentLength = GetLength(progress);
             byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(bytes);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             foreach (long entry in progress)
             {
                 writer.Encode(entry);
             }
+            writer.EndSequence(sequence);
             return bytes;
         }
 

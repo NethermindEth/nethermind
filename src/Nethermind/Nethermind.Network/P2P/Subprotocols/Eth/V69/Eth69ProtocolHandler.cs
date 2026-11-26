@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -44,12 +45,19 @@ public class Eth69ProtocolHandler(
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
         gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer, IStaticProtocolInfo
 {
+    private static readonly Func<ReceiptsMessage69, int, (IOwnedReadOnlyList<TxReceipt[]>, long)> SelectReceipts =
+        static (message, size) => (message.EthMessage.TxReceipts, size);
+    private static readonly Action<ReadOnlySpan<byte>, GetReceiptsMessage> ValidateReceipts =
+        static (content, request) => ThrowIfReceiptsExceedRequest(content, 1, request.EthMessage);
+
     public override string Name => "eth69";
 
     public new static byte Version => EthVersions.Eth69;
     public override byte ProtocolVersion => Version;
 
     public override int MessageIdSpaceSize => 18;
+
+    protected override bool ReceiptsWithBloom => false;
 
     // Explicitly mark as not supported
     public override UInt256? TotalDifficulty
@@ -60,24 +68,22 @@ public class Eth69ProtocolHandler(
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {
-        int size = message.Content.ReadableBytes;
+        int size = message.Content.Length;
         switch (message.PacketType)
         {
             case Eth69MessageCode.Status:
-                StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content);
+                StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message);
                 ReportIn(statusMsg, size);
                 Handle(statusMsg);
                 return true;
             case Eth69MessageCode.Receipts:
-                ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
-                ReportIn(receiptsMessage, size);
-                base.Handle(receiptsMessage, size);
+                HandleCorrelatedResponse(_receiptsRequests66, message, size, SelectReceipts, ValidateReceipts);
                 return true;
             case Eth69MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage, ReceiptsMessage69>(message, Handle);
                 return true;
             case Eth69MessageCode.BlockRangeUpdate:
-                BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message.Content);
+                BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message);
                 ReportIn(blockRangeUpdateMsg, size);
                 Handle(blockRangeUpdateMsg);
                 return true;
@@ -152,7 +158,7 @@ public class Eth69ProtocolHandler(
             NetworkId = SyncServer.NetworkId,
             GenesisHash = SyncServer.Genesis.Hash!,
             ForkId = _forkInfo.GetForkId(head.Number, head.Timestamp),
-            EarliestBlock = SyncServer.LowestBlock,
+            EarliestBlock = Math.Min(SyncServer.LowestBlock, head.Number),
             LatestBlock = head.Number,
             LatestBlockHash = head.Hash!
         };
@@ -169,7 +175,7 @@ public class Eth69ProtocolHandler(
             throw new ArgumentException($"Latest block ({latest.Number}) hash is not provided.");
 
         if (Logger.IsTrace)
-            Logger.Trace($"OUT {Counter:D5} BlockRangeUpdate to {Node:c}");
+            Logger.Trace($"OUT {Counter:D5} BlockRangeUpdate to {Node?.ToString("c"):hide}");
 
         BlockRangeUpdateMessage msg = new()
         {

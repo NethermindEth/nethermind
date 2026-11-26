@@ -295,6 +295,8 @@ public sealed class TransactionChangesetBuilder(
     private void FollowTip()
     {
         CancellationToken token = _cancellation.Token;
+        using ManualResetEventSlim delay = new(false, spinCount: 0);
+        using CancellationTokenRegistration registration = token.UnsafeRegister(static state => ((ManualResetEventSlim)state!).Set(), delay);
         using IHistoryBlockExecutor executor = executors.Create();
         while (!token.IsCancellationRequested)
         {
@@ -303,13 +305,15 @@ public sealed class TransactionChangesetBuilder(
             if (token.IsCancellationRequested) return;
 
             ReportProgress();
-            Rest(RestFor(Stopwatch.GetElapsedTime(startedAt), built), token);
+            Rest(RestFor(Stopwatch.GetElapsedTime(startedAt), built), delay);
         }
     }
 
     private void Retrofit()
     {
         CancellationToken token = _cancellation.Token;
+        using ManualResetEventSlim delay = new(false, spinCount: 0);
+        using CancellationTokenRegistration registration = token.UnsafeRegister(static state => ((ManualResetEventSlim)state!).Set(), delay);
         using IHistoryBlockExecutor executor = executors.Create();
         while (!token.IsCancellationRequested)
         {
@@ -317,7 +321,7 @@ public sealed class TransactionChangesetBuilder(
             bool built = Guarded(() => TryBuildNextChunk(executor), token);
             if (token.IsCancellationRequested) return;
 
-            Rest(RestFor(Stopwatch.GetElapsedTime(startedAt), built), token);
+            Rest(RestFor(Stopwatch.GetElapsedTime(startedAt), built), delay);
         }
     }
 
@@ -330,13 +334,13 @@ public sealed class TransactionChangesetBuilder(
         return built ? rest : rest + IdleDelay;
     }
 
-    private static void Rest(TimeSpan duration, CancellationToken token)
+    private static void Rest(TimeSpan duration, ManualResetEventSlim delay)
     {
         TimeSpan maximum = TimeSpan.FromMilliseconds(int.MaxValue);
-        while (duration > TimeSpan.Zero && !token.IsCancellationRequested)
+        while (duration > TimeSpan.Zero)
         {
             TimeSpan interval = duration > maximum ? maximum : duration;
-            if (token.WaitHandle.WaitOne(interval)) return;
+            if (delay.Wait(interval)) return;
             duration -= interval;
         }
     }

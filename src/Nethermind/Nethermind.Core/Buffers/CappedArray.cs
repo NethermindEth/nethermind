@@ -15,14 +15,10 @@ namespace Nethermind.Core.Buffers;
 /// underlying array can be null and this struct is meant to be non nullable, checking the `IsNull` property to check
 /// if it represent null.
 /// </summary>
-public readonly struct CappedArray<T> where T : struct
+public readonly partial struct CappedArray<T> where T : struct
 {
     private static readonly CappedArray<T> _null = default;
-    private static readonly CappedArray<T> _empty = new([]);
     public static ref readonly CappedArray<T> Null => ref _null;
-    public static ref readonly CappedArray<T> Empty => ref _empty;
-    public static object NullBoxed { get; } = _null;
-    public static object EmptyBoxed { get; } = _empty;
 
     private readonly T[]? _array;
     private readonly int _length;

@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool.Filters;
 
@@ -16,9 +19,22 @@ namespace Nethermind.TxPool.Filters;
 /// head read lock, so the simulator has to bound its own wait.
 /// The simulation re-verifies the frame signatures unless <see cref="FrameTxSignatureFilter"/> already has.
 /// Admitting an opaque transaction with no verdict leaves no payer, so <see cref="FrameTxPayerExposureFilter"/>
-/// reserves nothing against it: the exposure bound lapses while this node's own simulator is faulting.</remarks>
-internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator, ILogger logger) : IIncomingTxFilter
+/// reserves nothing against it: the exposure bound lapses while this node's own simulator is faulting.
+/// A gossiped transaction's simulation yields to block processing and to this node's block building, and is deferred.
+/// An accepted prefix's code dependencies (EIP-8298 targets, EIP-8151 ecRecover signers) are reserved against <paramref name="maxPendingPerCode"/>,
+/// with the slots of the pending transaction it replaces counted as free.</remarks>
+internal sealed class FrameTxSimulationFilter(
+    IFrameTxPrefixSimulator? simulator,
+    ILogger logger,
+    IChainHeadInfoProvider? headInfo = null,
+    PendingCodeDependencyCache? codeDependencies = null,
+    int maxPendingPerCode = 0,
+    TxDistinctSortedPool? standardPool = null,
+    TxDistinctSortedPool? blobPool = null) : IIncomingTxFilter
 {
+    private readonly Func<bool>? _blockWorkInProgress = headInfo is null ? null : () => headInfo.IsProcessingBlock || headInfo.IsBuildingBlock;
+    private readonly IReadOnlyStateProvider? _headState = headInfo?.ReadOnlyStateProvider;
+
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         // Fast path: legible prefixes resolved natively (payer already set) never reach the EVM.
@@ -33,10 +49,12 @@ internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator
             return AcceptTxResult.Accepted;
         }
 
+        bool local = (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
         FrameTxSimulationResult result = simulator.Simulate(
             tx,
             signaturesPreValidated: state.FrameSignaturesVerified,
-            local: (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0);
+            local: local,
+            preempt: local || state.ReAddedFromReorg ? null : _blockWorkInProgress);
         switch (result.Outcome)
         {
             case FrameTxSimulationOutcome.Rejected:
@@ -46,10 +64,12 @@ internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator
                 if (result.NodeBound)
                 {
                     Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationDeferred);
+                    state.FrameValidationYielded = result.Yielded && !local && !tx.CarriesBlobs;
                     if (logger.IsTrace) logger.Trace($"Deferred frame transaction {tx.Hash}, this node's validation-prefix simulation bounds were spent: {result.Reason}.");
                     return AcceptTxResult.FrameSimulationDeferred.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationDeferred);
                 }
 
+                state.FrameValidationRan = true;
                 Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
                 if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.Reason}.");
                 return AcceptTxResult.FrameSimulationFailed.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationFailed);
@@ -61,6 +81,21 @@ internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator
                 return AcceptTxResult.Accepted;
 
             case FrameTxSimulationOutcome.Accepted:
+                state.FrameValidationRan = true;
+                if (result.CodeDependencies.Count > 0 && codeDependencies is not null)
+                {
+                    Address? paymaster = _headState is null ? null : PendingCodeDependencyCache.SlotPaymaster(tx, _headState);
+                    Transaction? replaced = standardPool is null || blobPool is null ? null : PendingReplacement.Find(tx, standardPool, blobPool);
+                    if (!codeDependencies.TryReserve(tx.Hash!.ValueHash256, result.CodeDependencies, paymaster, replaced?.Hash?.ValueHash256, maxPendingPerCode, out bool recorded))
+                    {
+                        Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxCodeDependencyLimitReached);
+                        if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, an account its prefix relies on, whose code can change or that ecRecover returned, already has all its slots taken by other pending transactions or paymasters.");
+                        return AcceptTxResult.FrameTxCodeDependencyLimitReached;
+                    }
+
+                    state.CodeDependenciesReserved = recorded;
+                }
+
                 tx.PayerAddress = result.Payer;
                 if (logger.IsTrace) logger.Trace($"Simulated frame transaction {tx.Hash} validation prefix; resolved payer {result.Payer}.");
                 return AcceptTxResult.Accepted;

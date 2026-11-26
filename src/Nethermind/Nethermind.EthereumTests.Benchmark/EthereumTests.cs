@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Ethereum.Test.Base;
 
@@ -15,14 +16,14 @@ namespace Nethermind.EthereumTests.Benchmark
 
         [Benchmark]
         [ArgumentsSource(nameof(TestFileSource))]
-        public void Run(string testFile)
+        public async Task Run(string testFile)
         {
             FileTestsSource source = new(testFile);
             IEnumerable<EthereumTest> tests = source.LoadTests(TestType.State);
 
             foreach (GeneralStateTest test in tests)
             {
-                RunTest(test);
+                await RunTest(test);
             }
         }
     }

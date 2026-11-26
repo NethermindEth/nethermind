@@ -6,12 +6,15 @@ using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381PairingCheckPrecompile
 {
+    public static Address Address => field ??= Address.FromNumber(0xf);
+
     private const int StackallocPairCountThreshold = 4;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
@@ -34,7 +37,7 @@ public partial class Bls12381PairingCheckPrecompile
 
             try // Is this really needed on zkVM?
             {
-                return RunInternal(inputData.Span, decoded, pairCount);
+                return RunInternal(inputData.Span, decoded.AsSpan(0, decodedLen), pairCount);
             }
             finally
             {
@@ -64,7 +67,7 @@ public partial class Bls12381PairingCheckPrecompile
             dstOffset += Eip2537.LenG2Trimmed;
         }
 
-        Accelerators.Status status = Accelerators.Bls12381Pairing(decoded, (nuint)pairCount, out bool verified);
+        Accelerators.Status status = CurveAccelerators.Bls12381Pairing(decoded, (nuint)pairCount, out bool verified);
 
         if (status == Accelerators.Status.OK)
         {

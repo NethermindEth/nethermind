@@ -19,6 +19,9 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.Tracing;
 
 /// <summary>RPC-only processor which omits block finalization after a completed transaction prefix.</summary>
+/// <remarks>A chain with its own block processor registers its own variant under
+/// <see cref="TransactionTraceModule.BlockProcessorKey"/>, built on <see cref="TransactionTraceReplay"/>. An unpersisted
+/// replay returns no receipts, so this must not be installed where its caller reads them, such as receipt regeneration.</remarks>
 public sealed class TransactionTraceBlockProcessor(
     ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator,
     TransactionTraceExecutor executor, IWorldState state, IReceiptStorage receipts,
@@ -27,14 +30,11 @@ public sealed class TransactionTraceBlockProcessor(
     : BlockProcessor(specProvider, blockValidator, rewardCalculator, executor, state, receipts,
         beaconRoot, blockHashes, logManager, withdrawals, requests, balManager)
 {
-    public override (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
-        IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
-    {
-        if (TransactionTraceBoundary.Get(blockTracer, options) is not null && !_balManager.ForceConstructGeneratedBlockAccessList)
-            options |= ProcessingOptions.ForceSequentialBlockAccessList;
+    private readonly TransactionTraceReplay _replay = new(executor, balManager);
 
-        return base.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
-    }
+    public override (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
+        IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token) =>
+        base.ProcessOne(suggestedBlock, _replay.BeginBlock(blockTracer, options, ReceiptsTracer), blockTracer, spec, token);
 
     /// <inheritdoc/>
     /// <remarks>Intentionally empty: the suggested block is the canonical instance and a replay never writes its artifacts back onto it.</remarks>
@@ -43,15 +43,11 @@ public sealed class TransactionTraceBlockProcessor(
     }
 
     protected override TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
-        IReleaseSpec spec, TxReceipt[] receipts)
-    {
-        if (!_balManager.ForceConstructGeneratedBlockAccessList
-            && TransactionTraceBoundary.Get(blockTracer, options)?.IsComplete == true)
+        IReleaseSpec spec, TxReceipt[] receipts) =>
+        _replay.FinalizeBlock(blockTracer, options, ReceiptsTracer) switch
         {
-            ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: false);
-            return receipts;
-        }
-
-        return base.FinalizeBlock(block, blockTracer, options, spec, receipts);
-    }
+            TransactionTraceReplay.Finalization.Skip => receipts,
+            TransactionTraceReplay.Finalization.WithoutCommitments => FinalizeBlock<OffFlag>(block, blockTracer, spec, receipts),
+            _ => base.FinalizeBlock(block, blockTracer, options, spec, receipts),
+        };
 }

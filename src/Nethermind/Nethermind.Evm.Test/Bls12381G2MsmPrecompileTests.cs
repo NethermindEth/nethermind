@@ -123,16 +123,51 @@ public class Bls12381G2MsmPrecompileTests : PrecompileTests<Bls12381G2MsmPrecomp
     [Test]
     public void Msm_with_interleaved_infinity_point_matches_single_point_result()
     {
-        const string validItem =
-            "0000000000000000000000000000000003632695b09dbf86163909d2bb25995b36ad1d137cf252860fd4bb6c95749e19eb0c1383e9d2f93f2791cb0cf6c8ed9d000000000000000000000000000000001688a855609b0bbff4452d146396558ff18777f329fd4f76a96859dabfc6a6f6977c2496280dbe3b1f8923990c1d6407000000000000000000000000000000000c8567fee05d05af279adc67179468a29d7520b067dbb348ee315a99504f70a206538b81a457cce855f4851ad48b7e80000000000000000000000000000000001238dcdfa80ea46e1500026ea5feadb421de4409f4992ffbf5ae59fa67fd82f38452642a50261b849e74b4a33eed70cc973f40c12c92b703d7b7848ef8b4466d40823aad3943a312b57432b91ff68be1";
-        const string expectedOutput =
-            "00000000000000000000000000000000119a5147fe9ddca7123f721b5662c1a44b0964c37a214cdf3a4fd34166e3b25210344e65220c38ec84d0e3b5ccc7e46d000000000000000000000000000000001642dad5dacf4295b871fe9b2787f0861f158807b2b6c01c2dce12ab053c9472bd3cb98de5dc33f40053ff45ce5c9af40000000000000000000000000000000005bb5761602b6639f2ecaf79f2d1f853fbdf75f4b3852b90808b858993a83f8a0da8a2ce7072aa91e3b6b3ffd0b3d1e20000000000000000000000000000000000a75143b9551d4ae41fb8bd71fdba7826b994c65904d9189a5ac5130a59cbb9d8dee0e016735565148fc49823d3969e";
         string infinityItem = new('0', Bls12381G2MsmPrecompile.ItemSize * 2);
 
         // infinity first, then valid, then infinity again -> dead slots on both sides of the live one
-        Test(infinityItem + validItem + infinityItem, expectedOutput, true);
+        Test(infinityItem + ValidItem + infinityItem, ValidItemOutput, true);
         // valid first, infinity trailing
-        Test(validItem + infinityItem, expectedOutput, true);
+        Test(ValidItem + infinityItem, ValidItemOutput, true);
+    }
+
+    private const string ValidItem =
+        "0000000000000000000000000000000003632695b09dbf86163909d2bb25995b36ad1d137cf252860fd4bb6c95749e19eb0c1383e9d2f93f2791cb0cf6c8ed9d000000000000000000000000000000001688a855609b0bbff4452d146396558ff18777f329fd4f76a96859dabfc6a6f6977c2496280dbe3b1f8923990c1d6407000000000000000000000000000000000c8567fee05d05af279adc67179468a29d7520b067dbb348ee315a99504f70a206538b81a457cce855f4851ad48b7e80000000000000000000000000000000001238dcdfa80ea46e1500026ea5feadb421de4409f4992ffbf5ae59fa67fd82f38452642a50261b849e74b4a33eed70cc973f40c12c92b703d7b7848ef8b4466d40823aad3943a312b57432b91ff68be1";
+    private const string ValidItemOutput =
+        "00000000000000000000000000000000119a5147fe9ddca7123f721b5662c1a44b0964c37a214cdf3a4fd34166e3b25210344e65220c38ec84d0e3b5ccc7e46d000000000000000000000000000000001642dad5dacf4295b871fe9b2787f0861f158807b2b6c01c2dce12ab053c9472bd3cb98de5dc33f40053ff45ce5c9af40000000000000000000000000000000005bb5761602b6639f2ecaf79f2d1f853fbdf75f4b3852b90808b858993a83f8a0da8a2ce7072aa91e3b6b3ffd0b3d1e20000000000000000000000000000000000a75143b9551d4ae41fb8bd71fdba7826b994c65904d9189a5ac5130a59cbb9d8dee0e016735565148fc49823d3969e";
+    // ValidItemOutput doubled through the G2 add precompile, independent of the MSM path.
+    private const string ValidItemDoubledOutput =
+        "000000000000000000000000000000000dfd08798e959dcf9d5d68b88444c0998078f8c90ba197a2f59a140c5011485587c046537527b69adcb64e1fb764bf9700000000000000000000000000000000124b680786606c7fa4ed2979a046d968007d68d313e0da33427ccf678eff57350ba7dbb2a809fcff58ecc693c0ace8460000000000000000000000000000000001103bed3f1de5d3aebe1e195d301fb71eabc039036c7aa53b9a79c21d623b1ae75a01a458e3606fca3d61b08ec6ae8e0000000000000000000000000000000015fd3017e9706f66221561c773f08b9a228f91906448c0d02b3cb4f82eef474b6238019cee43f412a7921677b8f09279";
+    private const string NotOnCurvePoint =
+        "00000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb800000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be";
+    private const string NotInSubgroupPoint =
+        "00000000000000000000000000000000197bfd0342bbc8bee2beced2f173e1a87be576379b343e93232d6cef98d84b1d696e5612ff283ce2cfdccb2cfb65fa0c00000000000000000000000000000000184e811f55e6f9d84d77d2f79102fd7ea7422f4759df5bf7f6331d550245e3f1bcf6a30e3b29110d85e0ca16f9f6ae7a000000000000000000000000000000000f10e1eb3c1e53d2ad9cf2d398b2dc22c5842fab0a74b174f691a7e914975da3564d835cd7d2982815b8ac57f507348f000000000000000000000000000000000767d1c453890f1b9110fda82f5815c27281aba3f026ee868e4176a0654feea41a96575e0c4d58a14dbfbcc05b5010b1";
+    private static readonly string ZeroScalar = new('0', 64);
+    private static readonly string ZeroScalarItem = ValidItem[..^64] + ZeroScalar;
+
+    // A term with a zero scalar contributes nothing, so dropping it must leave the MSM result unchanged.
+    [Test]
+    public void Msm_with_zero_scalar_terms_matches_result_without_them()
+    {
+        string infinityItem = new('0', Bls12381G2MsmPrecompile.ItemSize * 2);
+        string infinityOutput = new('0', 512);
+
+        Test(ZeroScalarItem + ValidItem, ValidItemOutput, true);
+        Test(ValidItem + ZeroScalarItem + infinityItem + ZeroScalarItem, ValidItemOutput, true);
+        Test(ZeroScalarItem + ValidItem + ZeroScalarItem + ValidItem, ValidItemDoubledOutput, true);
+        Test(ZeroScalarItem + ZeroScalarItem, infinityOutput, true);
+        Test(infinityItem + ZeroScalarItem, infinityOutput, true);
+    }
+
+    // A zero-scalar term is dropped from the MSM only after its point has been fully validated.
+    [TestCase(NotOnCurvePoint, "invalid point: not on curve")]
+    [TestCase(NotInSubgroupPoint, "g2 point is not on correct subgroup")]
+    public void Msm_rejects_invalid_point_with_zero_scalar(string point, string error)
+    {
+        string invalidItem = point + ZeroScalar;
+
+        RunFailureTest(ValidItem + invalidItem, error);
+        RunFailureTest(invalidItem + ZeroScalarItem, error);
     }
 
     // A multi-point MSM where every item is the point at infinity (npoints == 0 after compaction)

@@ -2,20 +2,235 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
 public class TransactionForRpcTests
 {
+    private static IEnumerable<TestCaseData> TraceCallCalldataCases()
+    {
+        foreach (TestCaseData calldata in TraceCallCalldataRows())
+        {
+            yield return new TestCaseData(calldata.Arguments[0], calldata.Arguments[1], "buffered");
+            if (calldata.Arguments[1] is not null)
+            {
+                yield return new TestCaseData(calldata.Arguments[0], calldata.Arguments[1], "streamed");
+                yield return new TestCaseData(calldata.Arguments[0], calldata.Arguments[1], "callTracer");
+            }
+        }
+    }
+
+    private static IEnumerable<TestCaseData> TraceCallCalldataRows()
+    {
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":\"0x01\"", "01");
+        yield return new TestCaseData("\"input\":\"0x01\",\"data\":\"0x2a\"", "01");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":\"0x\"", "");
+        yield return new TestCaseData("\"input\":\"0x\",\"data\":\"0x2a\"", "");
+        yield return new TestCaseData("\"data\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"input\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":null", "2a");
+        yield return new TestCaseData("\"input\":null,\"data\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"input\":\"0x2a\",\"data\":null", "2a");
+        yield return new TestCaseData("\"data\":null,\"input\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"input\":\"0x2a\",\"data\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"data\":null,\"input\":null", "");
+        yield return new TestCaseData("\"value\":\"0x0\"", "");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":\"0x01\",\"INPUT\":null", "2a");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":null,\"INPUT\":\"0x01\"", "01");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"DATA\":null,\"input\":null", "");
+        yield return new TestCaseData("\"data\":null,\"DATA\":\"0x2a\",\"input\":null", "2a");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"DATA\":\"0x03\",\"input\":\"0x01\"", "01");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"DATA\":null", "");
+        yield return new TestCaseData("\"data\":\"0x1\",\"input\":\"0x01\"", null);
+        yield return new TestCaseData("\"data\":\"0xzz\",\"input\":\"0x01\"", null);
+        yield return new TestCaseData("\"data\":1,\"input\":\"0x01\"", null);
+        yield return new TestCaseData("\"input\":\"0xzz\",\"input\":\"0x01\",\"data\":\"0x2a\"", null);
+    }
+
+    [TestCaseSource(nameof(TraceCallCalldataCases))]
+    public async Task Debug_traceCall_prefers_input_over_data(string calldata, string? expected, string mode)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = mode == "streamed" })
+            .Build();
+        using JsonDocument call = JsonDocument.Parse($$"""
+            {"from":"{{TestItem.AddressA}}","to":"{{TestItem.AddressD}}","gas":"0x186a0",{{calldata}}}
+            """);
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call.RootElement, "latest",
+            new
+            {
+                tracer = mode == "callTracer" ? "callTracer" : null,
+                stateOverrides = new Dictionary<string, object>
+                {
+                    [TestItem.AddressD.ToString()] = new { code = "0x366000600037366000f3" }
+                }
+            });
+        JToken json = JToken.Parse(response);
+        if (expected is null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            return;
+        }
+        Assert.That(json["error"], Is.Null, response);
+        JToken result = json["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            if (mode == "callTracer")
+                Assert.That((string?)result["input"], Is.EqualTo("0x" + expected), response);
+            if (mode == "callTracer" && expected.Length == 0)
+                Assert.That(result["output"], Is.Null, response);
+            else
+            {
+                string output = (string)result[mode == "callTracer" ? "output" : "returnValue"]!;
+                Assert.That(output.StartsWith("0x") ? output[2..] : output, Is.EqualTo(expected), response);
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(TraceCallCalldataRows))]
+    public async Task Shared_call_defaults_prefer_input_over_data(string calldata, string? expected)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        string fields = $"\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressD}\",\"gas\":\"0x186a0\"";
+        using JsonDocument call = JsonDocument.Parse($"{{{fields},{calldata}}}");
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [TestItem.AddressD.ToString()] = new { code = "0x366000600037366000f3" }
+        };
+        foreach (string method in new[] { "eth_call", "eth_estimateGas", "eth_createAccessList", "trace_call" })
+        {
+            Task<string> Request(JsonElement transaction) => method == "trace_call"
+                ? RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, transaction, new[] { "trace" }, "latest", stateOverrides)
+                : chain.TestEthRpc(method, transaction, "latest", stateOverrides);
+
+            string response = await Request(call.RootElement);
+            JToken json = JToken.Parse(response);
+            if (expected is null)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+                    Assert.That(json["result"], Is.Null, response);
+                }
+                continue;
+            }
+            Assert.That(json["error"], Is.Null, response);
+            using JsonDocument reference = JsonDocument.Parse($"{{{fields},\"input\":\"0x{expected}\"}}");
+            JToken referenceResponse = JToken.Parse(await Request(reference.RootElement));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(referenceResponse["error"], Is.Null);
+                Assert.That(JToken.DeepEquals(json["result"], referenceResponse["result"]), Is.True, response);
+                if (method == "eth_call") Assert.That((string?)json["result"], Is.EqualTo("0x" + expected));
+                if (method == "trace_call") Assert.That((string?)json["result"]?["output"], Is.EqualTo("0x" + expected));
+            }
+        }
+    }
+
+    [Test]
+    public async Task Malformed_blob_hashes_use_semantic_validation_after_submission_defaults(
+        [Values(0, 2, 33)] int hashLength, [Values] bool invalidFee, [Values] bool suppliedBlobs)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableEthSignTransaction = true }).Build(new TestSpecProvider(Cancun.Instance));
+        Address sender = chain.TestWallet.GetAccounts()[0];
+        string hash = "0x" + new string('0', hashLength * 2);
+        string sidecar = suppliedBlobs ? "\"blobs\":[]," : "";
+        using JsonDocument call = JsonDocument.Parse($$"""
+            { {{sidecar}}"from":"{{sender}}","to":"{{TestItem.AddressD}}","gas":"0x186a0","nonce":"0x0",
+              "gasPrice":"{{(invalidFee ? "0x0" : "0x1")}}","maxFeePerBlobGas":"0x1",
+              "blobVersionedHashes":["{{hash}}"],"input":"0x01","data":"0x2a" }
+            """);
+        foreach (string method in new[] { "eth_call", "eth_estimateGas", "eth_createAccessList", "eth_sendTransaction",
+                     "eth_signTransaction", "eth_fillTransaction", "debug_traceCall", "trace_call" })
+        {
+            string response = method switch
+            {
+                "debug_traceCall" => await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, call.RootElement, "latest"),
+                "trace_call" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, call.RootElement, new[] { "trace" }, "latest"),
+                _ => await chain.TestEthRpc(method, call.RootElement)
+            };
+            bool rejectsFeeFirst = invalidFee && method == "eth_createAccessList";
+            string expectedError = method is "eth_sendTransaction" or "eth_signTransaction" or "eth_fillTransaction"
+                ? RpcTransactionErrors.DataAndInputDiffer
+                : rejectsFeeFirst ? "gasPrice must be non-zero after london fork"
+                : RpcTransactionErrors.InvalidBlobVersionedHashSize;
+            JToken json = JToken.Parse(response);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), method + ": " + response);
+                Assert.That((string?)json["error"]?["message"],
+                    Is.EqualTo(expectedError), method + ": " + response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+        }
+    }
+
+    [Test]
+    public void Blob_submission_alias_checks_precede_validation_without_affecting_calls(
+        [Values] bool suppliedBlobs, [Values] bool invalidFee, [Values("missing", "empty", "size", "version", "count", "zero-cap")] string hashKind,
+        [Values] bool conflictingAliases)
+    {
+        string sidecar = suppliedBlobs ? "\"blobs\":[]," : "";
+        string hashes = hashKind switch
+        {
+            "missing" => "null",
+            "size" => "[\"0x0100000000000000000000000000000000000000000000000000000000000000\"]",
+            "version" => "[\"0x0200000000000000000000000000000000000000000000000000000000000000\"]",
+            "zero-cap" => "[\"0x0100000000000000000000000000000000000000000000000000000000000000\"]",
+            _ => "[]"
+        };
+        string blobError = hashKind switch
+        {
+            "missing" => RpcTransactionErrors.BlobFeeCapWithoutBlobHashes,
+            "size" => RpcTransactionErrors.InvalidBlobVersionedHashSize,
+            "version" => RpcTransactionErrors.InvalidBlobVersionedHashVersion,
+            "count" => BlockErrorMessages.BlobGasUsedAboveBlockLimit(Cancun.Instance.GasCosts.MaxBlobGasPerBlock, 7, 7 * Eip4844Constants.GasPerBlob),
+            "zero-cap" => RpcTransactionErrors.ZeroMaxFeePerBlobGas,
+            _ => RpcTransactionErrors.AtLeastOneBlobInBlobTransaction
+        };
+        TransactionForRpc request = DeserializeTransactionForRpc($$"""
+            { {{sidecar}}"to":"{{TestItem.AddressD}}","blobVersionedHashes":{{hashes}},"maxFeePerBlobGas":"0x1",
+              "maxFeePerGas":"0x1","maxPriorityFeePerGas":"{{(invalidFee ? "0x2" : "0x1")}}",
+              "input":"0x01","data":"{{(conflictingAliases ? "0x2a" : "0x01")}}" }
+            """);
+        if (hashKind == "size") ((BlobTransactionForRpc)request).BlobVersionedHashes = [[0x01, 0x00]];
+        if (hashKind == "count")
+        {
+            byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
+            hash[0] = 1;
+            ((BlobTransactionForRpc)request).BlobVersionedHashes = new byte[7][];
+            Array.Fill(((BlobTransactionForRpc)request).BlobVersionedHashes!, hash);
+        }
+        if (hashKind == "zero-cap") ((BlobTransactionForRpc)request).MaxFeePerBlobGas = 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.ToValidatedTransaction(spec: Cancun.Instance).Error, Is.EqualTo(conflictingAliases ? RpcTransactionErrors.DataAndInputDiffer : blobError));
+            Assert.That(request.ToCallTransaction(Cancun.Instance).Error, Is.EqualTo(blobError));
+        }
+    }
+
     private readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
     public static readonly ulong SomeChainId = 123ul;
@@ -48,8 +263,11 @@ public class TransactionForRpcTests
         string serialized = serializer.Serialize(txForRpc);
         JToken json = JToken.Parse(serialized);
 
-        Assert.That(json.Value<string>("s"), Is.EqualTo("0x20000000000000000000000000000000000000000000000000000000000"));
-        Assert.That(json.Value<string>("r"), Is.EqualTo("0x1000000000000000000000000000000000000000000000000000000000000"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.Value<string>("s"), Is.EqualTo("0x20000000000000000000000000000000000000000000000000000000000"));
+            Assert.That(json.Value<string>("r"), Is.EqualTo("0x1000000000000000000000000000000000000000000000000000000000000"));
+        }
     }
 
     [TestCase("""{"type":"0x0","gasPrice":"0x1"}""", typeof(LegacyTransactionForRpc))]
@@ -60,6 +278,19 @@ public class TransactionForRpcTests
     [TestCase("""{"gasPrice":"0x1","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}""", typeof(EIP1559TransactionForRpc))]
     [TestCase("""{"gasPrice":"0x1","blobVersionedHashes":[]}""", typeof(BlobTransactionForRpc))]
     [TestCase("""{"gasPrice":"0x1","authorizationList":[]}""", typeof(SetCodeTransactionForRpc))]
+    [TestCase("""{"type":"0x2","gasPrice":"0x1"}""", typeof(LegacyTransactionForRpc))]
+    [TestCase("""{"type":"0x0","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}""", typeof(EIP1559TransactionForRpc))]
+    [TestCase("""{"type":"0x1","maxFeePerGas":"0x2"}""", typeof(EIP1559TransactionForRpc))]
+    [TestCase("""{"type":"0x0","accessList":[]}""", typeof(AccessListTransactionForRpc))]
+    [TestCase("""{"type":"0x2","authorizationList":[]}""", typeof(SetCodeTransactionForRpc))]
+    [TestCase("""{"maxFeePerGas":"0x2","type":"0x3","blobVersionedHashes":[]}""", typeof(BlobTransactionForRpc))]
+    [TestCase("""{"type":"0x3","maxFeePerGas":"0x2"}""", typeof(EIP1559TransactionForRpc))]
+    [TestCase("""{"type":"0x4","accessList":[]}""", typeof(AccessListTransactionForRpc))]
+    [TestCase("""{"type":"0x4","blobVersionedHashes":[]}""", typeof(BlobTransactionForRpc))]
+    [TestCase("""{"maxFeePerGas":"0x2","blobs":[]}""", typeof(BlobTransactionForRpc))]
+    [TestCase("""{"type":"0x3","authorizationList":[]}""", typeof(SetCodeTransactionForRpc))]
+    [TestCase("""{"type":"0x6","blobVersionedHashes":[]}""", typeof(FrameTransactionForRpc))]
+    [TestCase("""{"frames":[],"blobVersionedHashes":[]}""", typeof(FrameTransactionForRpc))]
     public void Deserializes_polymorphically_when_declared_as_SignableTransactionForRpc(string json, Type expectedType)
     {
         SignableTransactionForRpc tx = _serializer.Deserialize<SignableTransactionForRpc>(json)
@@ -70,14 +301,40 @@ public class TransactionForRpcTests
     }
 
     [Test]
+    public void Nested_transactions_are_read_in_sequence()
+    {
+        Utf8JsonReader reader = new(
+            """[{"gasPrice":"0x1","nonce":"0x7"},null,{"type":"0x2","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}]"""u8);
+        reader.Read();
+        SignableTransactionForRpc?[] txs = new SignableTransactionForRpc?[3];
+        for (int i = 0; i < txs.Length; i++)
+        {
+            reader.Read();
+            txs[i] = TypeInfoJsonSerializer.Deserialize<SignableTransactionForRpc>(ref reader, EthereumJsonSerializer.JsonOptions);
+        }
+
+        reader.Read();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndArray));
+            Assert.That(txs[0], Is.TypeOf<LegacyTransactionForRpc>().With.Property(nameof(LegacyTransactionForRpc.Nonce)).EqualTo(7UL));
+            Assert.That(txs[1], Is.Null);
+            Assert.That(txs[2], Is.TypeOf<EIP1559TransactionForRpc>());
+        }
+    }
+
+    [Test]
     public void GasPrice_does_not_drop_the_access_list()
     {
         Transaction tx = ToTransaction(
             """{"gasPrice":"0x7","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x1"]}]}""");
 
-        Assert.That(tx.Type, Is.EqualTo(TxType.AccessList));
-        Assert.That(tx.AccessList?.Count, Is.EqualTo((1, 1)));
-        Assert.That(tx.GasPrice, Is.EqualTo((UInt256)7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.AccessList));
+            Assert.That(tx.AccessList?.Count, Is.EqualTo((1, 1)));
+            Assert.That(tx.GasPrice, Is.EqualTo((UInt256)7));
+        }
     }
 
     [Test]
@@ -86,10 +343,13 @@ public class TransactionForRpcTests
         Transaction tx = ToTransaction(
             """{"gasPrice":"0x7","authorizationList":[{"chainId":"0x1","address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","nonce":"0x0","yParity":"0x0","r":"0x1","s":"0x1"}]}""");
 
-        Assert.That(tx.Type, Is.EqualTo(TxType.SetCode));
-        Assert.That(tx.AuthorizationList?.Length, Is.EqualTo(1));
-        Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)7));
-        Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.SetCode));
+            Assert.That(tx.AuthorizationList?.Length, Is.EqualTo(1));
+            Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)7));
+            Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)7));
+        }
     }
 
     [Test]
@@ -98,10 +358,118 @@ public class TransactionForRpcTests
         Transaction tx = ToTransaction(
             """{"gasPrice":"0x7","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000001"]}""");
 
-        Assert.That(tx.Type, Is.EqualTo(TxType.Blob));
-        Assert.That(tx.BlobVersionedHashes?.Length, Is.EqualTo(1));
-        Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.Blob));
+            Assert.That(tx.BlobVersionedHashes?.Length, Is.EqualTo(1));
+            Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)7));
+        }
     }
+
+    [Test]
+    public void Explicit_type_does_not_drop_the_dynamic_fees()
+    {
+        Transaction tx = ToTransaction("""{"type":"0x0","maxFeePerGas":"0x9","maxPriorityFeePerGas":"0x7"}""");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.EIP1559));
+            Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)9));
+            Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)7));
+        }
+    }
+
+    [Test]
+    public void Explicit_type_does_not_drop_the_authorization_list()
+    {
+        Transaction tx = ToTransaction(
+            """{"type":"0x2","maxFeePerGas":"0x7","authorizationList":[{"chainId":"0x1","address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","nonce":"0x0","yParity":"0x0","r":"0x1","s":"0x1"}]}""");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.SetCode));
+            Assert.That(tx.AuthorizationList?.Length, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Unknown_explicit_type_is_ignored() =>
+        Assert.That(DeserializeTransactionForRpc("""{"type":"0x7f","maxFeePerGas":"0x7"}"""), Is.TypeOf<EIP1559TransactionForRpc>());
+
+    // Optimism's L2Api reads signed block transactions back through this converter, so the fields must keep the type.
+    [TestCaseSource(nameof(Transactions))]
+    public void Serialized_signed_transaction_keeps_its_type(Transaction transaction)
+    {
+        string serialized = _serializer.Serialize(TransactionForRpc.FromTransaction(transaction, new(SomeChainId)));
+
+        Assert.That(DeserializeTransactionForRpc(serialized).Type, Is.EqualTo(transaction.Type));
+    }
+
+    [TestCase("""{"maxFeePerBlobGas":"0x1"}""", RpcTransactionErrors.BlobFeeCapWithoutBlobHashes)]
+    [TestCase("""{"maxFeePerBlobGas":"0x0","maxFeePerGas":"0x7"}""", RpcTransactionErrors.BlobFeeCapWithoutBlobHashes)]
+    [TestCase("""{"maxFeePerBlobGas":"0x1","blobVersionedHashes":[]}""", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
+    [TestCase("""{"blobVersionedHashes":[]}""", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
+    public void A_blob_fee_cap_without_blob_hashes_or_an_empty_list_names_a_blob_call_that_is_rejected(string json, string error)
+    {
+        TransactionForRpc call = DeserializeTransactionForRpc(json);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call, Is.TypeOf<BlobTransactionForRpc>());
+            Assert.That(call.ToTransaction().Error, Is.EqualTo(error));
+        }
+    }
+
+    // A frame transaction carries a blob fee cap without blob hashes, so frames keep selecting it.
+    [Test]
+    public void A_blob_fee_cap_with_frames_stays_a_frame_call() =>
+        Assert.That(DeserializeTransactionForRpc(
+            """{"frames":[{"mode":0,"flags":3,"executionGas":"0x186a0","value":"0x0","data":"0x"}],"maxFeePerBlobGas":"0x1"}"""),
+            Is.TypeOf<FrameTransactionForRpc>());
+
+    [Test]
+    public void A_blob_fee_cap_beside_an_authorization_list_is_rejected() =>
+        Assert.Throws<JsonException>(() => DeserializeTransactionForRpc(
+            """{"maxFeePerBlobGas":"0x0","authorizationList":[{"chainId":"0x1","address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","nonce":"0x0","yParity":"0x0","r":"0x1","s":"0x1"}]}"""));
+
+    [TestCase("""{"maxFeePerBlobGas":"0x0"}""", TxType.Legacy)]
+    [TestCase("""{"maxFeePerBlobGas":"0x0","maxFeePerGas":"0x7"}""", TxType.EIP1559)]
+    public void Simulation_reads_a_lone_blob_fee_cap_as_absent(string json, TxType beforeBerlin)
+    {
+        TransactionForRpc call = BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(DeserializeTransactionForRpc(json));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call, Is.TypeOf<EIP1559TransactionForRpc>());
+            // A defaulted type downgrades to legacy before Berlin; a type the fields chose stays.
+            Assert.That(call.ToTransaction(spec: Istanbul.Instance).Data?.Type, Is.EqualTo(beforeBerlin));
+        }
+    }
+
+    [Test]
+    public void Fields_no_single_transaction_type_carries_are_rejected(
+        [Values(
+            """{"blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000001"],"authorizationList":[]}""",
+            """{"frames":[],"authorizationList":[]}""")] string json) =>
+        Assert.Throws<JsonException>(() => DeserializeTransactionForRpc(json));
+
+    [TestCase("""{"gasPrice":"0x7"}""", TxType.Legacy)]
+    [TestCase("""{"type":"0x2","gasPrice":"0x7"}""", TxType.Legacy)]
+    [TestCase("""{"type":"0x1","gasPrice":"0x7"}""", TxType.Legacy)]
+    [TestCase("""{"type":"0x0","maxFeePerGas":"0x7","maxPriorityFeePerGas":"0x7"}""", TxType.EIP1559)]
+    [TestCase("""{"type":"0x2","gasPrice":"0x7","accessList":[]}""", TxType.AccessList)]
+    public void Signing_ignores_the_explicit_type(string fields, TxType expected)
+    {
+        string json = fields.Insert(1, "\"to\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"nonce\":\"0x1\",\"gas\":\"0x5208\",");
+        Result<Transaction> signable = DeserializeTransactionForRpc(json).ToSignableTransaction();
+
+        Assert.That(signable.Data?.Type, Is.EqualTo(expected), signable.Error);
+    }
+
+    [TestCase("""{"type":"0x3","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","maxFeePerGas":"0x9","maxPriorityFeePerGas":"0x7"}""", TxType.EIP1559)]
+    [TestCase("""{"type":"0x4","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","gasPrice":"0x7","accessList":[]}""", TxType.AccessList)]
+    public void Explicit_type_adds_no_requirement_to_a_call(string json, TxType expected) =>
+        Assert.That(ToTransaction(json).Type, Is.EqualTo(expected));
 
     [Test]
     public void Explicit_dynamic_fees_take_precedence_over_gasPrice()
@@ -111,10 +479,120 @@ public class TransactionForRpcTests
 
         Transaction tx = rpcTx.ToTransaction().Data!;
 
-        Assert.That(tx.Type, Is.EqualTo(TxType.EIP1559));
-        Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)2));
-        Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)1));
-        Assert.That(rpcTx.ToTransaction(validateUserInput: true).Error, Is.EqualTo(RpcTransactionErrors.GasPriceInEip1559));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.EIP1559));
+            Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)2));
+            Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)1));
+            Assert.That(rpcTx.ToTransaction(validateUserInput: true).Error, Is.EqualTo(RpcTransactionErrors.GasPriceInEip1559));
+        }
+    }
+
+    [TestCase("""{"type":"0x2","to":"0x0000000000000000000000000000000000000001","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x14"}""", "maxFeePerGas (10) < maxPriorityFeePerGas (20)", TestName = "Fee cap below the priority fee")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x14"}""", "maxFeePerGas (10) < maxPriorityFeePerGas (20)", TestName = "Fee cap order is checked before the missing contract data")]
+    [TestCase("""{"type":"0x2","to":"0x0000000000000000000000000000000000000001","gasPrice":"0x1","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x14"}""", RpcTransactionErrors.GasPriceInEip1559, TestName = "Gas price conflict is checked before the fee cap order")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0x14","maxPriorityFeePerGas":"0xa"}""", RpcTransactionErrors.ContractCreationWithoutData, TestName = "Ordered fees reach the missing contract data check")]
+    public void ToValidatedTransaction_rejects_a_fee_cap_below_the_priority_fee_where_it_always_did(string json, string expected) =>
+        Assert.That(DeserializeTransactionForRpc(json).ToValidatedTransaction().Error, Is.EqualTo(expected), "first failing check");
+
+    [Test]
+    public void Empty_creation_is_allowed_only_for_calls(
+        [Values("{}", """{"gasPrice":"0x1"}""", """{"accessList":[]}""", """{"maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}""")] string fields,
+        [Values] bool emptyInput)
+    {
+        TransactionForRpc rpc = DeserializeTransactionForRpc(fields);
+        LegacyTransactionForRpc legacy = (LegacyTransactionForRpc)rpc;
+        if (emptyInput) legacy.Input = [];
+        Result<Transaction> call = rpc.ToCallTransaction(Prague.Instance);
+        Assert.That(call.IsError, Is.False, call.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Data!.IsContractCreation, Is.True);
+            Assert.That(call.Data.Data.IsEmpty, Is.True);
+            Assert.That(rpc.ToValidatedTransaction().Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+            Assert.That(legacy.To, Is.Null);
+            Assert.That(legacy.Input, emptyInput ? Is.Empty : Is.Null);
+        }
+    }
+
+    [Test]
+    public void ToCallTransaction_preserves_recipient_checks_before_fork_and_fee_order(
+        [Values("0x", "0x00")] string input)
+    {
+        TransactionForRpc rpc = DeserializeTransactionForRpc(
+            $$"""{"authorizationList":[],"input":"{{input}}","maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x2"}""");
+        Assert.That(rpc.ToCallTransaction(Istanbul.Instance).Error,
+            Is.EqualTo(Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction));
+    }
+
+    [Test]
+    public void ToTransaction_with_input_validation_leaves_the_fee_cap_order_to_the_caller()
+    {
+        TransactionForRpc rpcTx = DeserializeTransactionForRpc(
+            """{"type":"0x2","to":"0x0000000000000000000000000000000000000001","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x14"}""");
+
+        Result<Transaction> result = rpcTx.ToTransaction(validateUserInput: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.False, result.Error);
+            Assert.That(result.Data!.MaxFeePerGas, Is.EqualTo((UInt256)10), "fee cap as requested");
+        }
+    }
+
+    /// <remarks>
+    /// A typed transaction's signature carries its y-parity offset by 27, as a decoded one does, so a <c>v</c> of 0 or 1, or a
+    /// <c>yParity</c> when <c>v</c> is left out, is that y-parity. A legacy y-parity <c>v</c> is protected for its chain id
+    /// (EIP-155), and so is one of a request whose fields select no type; any other <c>v</c> is taken as given.
+    /// </remarks>
+    [TestCase("\"accessList\":[],\"gasPrice\":\"0x1\",\"v\":\"0x0\"", 27UL)]
+    [TestCase("\"accessList\":[],\"gasPrice\":\"0x1\",\"v\":\"0x1\"", 28UL)]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"v\":\"0x1\",\"yParity\":\"0x1\"", 28UL)]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"yParity\":\"0x1\"", 28UL)]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"v\":\"0x1c\"", 28UL)]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"v\":\"0x1c\",\"yParity\":\"0x0\"", 28UL)]
+    [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x1\"", 38UL)]
+    [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x1c\"", 28UL)]
+    [TestCase("\"type\":\"0x0\",\"v\":\"0x1\"", 38UL)]
+    public void Signature_v_is_read_as_the_transaction_type_carries_it(string fields, ulong expectedV) =>
+        Assert.That(ToTransaction($$"""{"chainId":"0x1","r":"0x1","s":"0x2",{{fields}}}""").Signature?.V, Is.EqualTo(expectedV));
+
+    /// <remarks>A signature carries a <c>v</c> of 27 or more, so <c>r</c> or <c>s</c> without one is an error to report, not a signature to build.</remarks>
+    [TestCase("\"gasPrice\":\"0x1\"", TestName = "Legacy without v")]
+    [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x2\"", TestName = "Legacy with v 2")]
+    [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x1a\"", TestName = "Legacy with v 26")]
+    [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x1000000000000001b\"", TestName = "v above a ulong")]
+    [TestCase("\"accessList\":[],\"gasPrice\":\"0x1\"", TestName = "Access list without v or yParity")]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"yParity\":\"0x2\"", TestName = "Dynamic fee with yParity 2")]
+    [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"v\":\"0x2\",\"yParity\":\"0x1\"", TestName = "Dynamic fee with v 2 and yParity 1")]
+    [TestCase("\"yParity\":\"0x1\"", TestName = "No fee fields with yParity 1")]
+    [TestCase("\"gasPrice\":\"0x1\"", false, TestName = "r alone without v")]
+    public void Signature_without_a_usable_v_is_a_conversion_error(string fields, bool withS = true)
+    {
+        string signature = withS ? "\"r\":\"0x1\",\"s\":\"0x2\"" : "\"r\":\"0x1\"";
+        TransactionForRpc rpcTx = DeserializeTransactionForRpc($$"""{"chainId":"0x1",{{signature}},{{fields}}}""");
+
+        Assert.That(rpcTx.ToTransaction().Error, Is.EqualTo(RpcTransactionErrors.InvalidSignatureV));
+    }
+
+    // A y-parity v with no EIP-155 value for the chain id keeps its own error, which the check for an unusable v follows.
+    [Test]
+    public void Signature_v_with_no_EIP155_value_keeps_its_error() =>
+        Assert.That(DeserializeTransactionForRpc("""{"chainId":"0x7fffffffffffffff","gasPrice":"0x1","r":"0x1","s":"0x2","v":"0x1"}""").ToTransaction().Error,
+            Is.EqualTo(RpcTransactionErrors.NoEip155V(0x7fffffffffffffff)));
+
+    [TestCase("{}", null, TestName = "No signature")]
+    [TestCase("""{"r":"0x0","s":"0x0","v":"0x0"}""", null, TestName = "Zero signature, as an unsigned transaction is serialized")]
+    [TestCase("""{"r":"0x1","v":"0x1b"}""", 27UL, TestName = "r alone with v 27")]
+    public void Signature_is_built_from_r_or_s_only_with_a_usable_v(string json, ulong? expectedV)
+    {
+        Result<Transaction> result = DeserializeTransactionForRpc(json).ToTransaction();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Data?.Signature?.V, Is.EqualTo(expectedV));
+        }
     }
 
     private Transaction ToTransaction(string json)
@@ -165,10 +643,13 @@ public class TransactionForRpcTests
         using JsonDocument jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
 
-        Assert.That(json.GetProperty("hash").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{64}$"));
-        Assert.That(json.GetProperty("transactionIndex").GetString(), Is.Null.Or.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        Assert.That(json.GetProperty("blockHash").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{64}$"));
-        Assert.That(json.GetProperty("blockNumber").GetString(), Is.Null.Or.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.GetProperty("hash").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{64}$"));
+            Assert.That(json.GetProperty("transactionIndex").GetString(), Is.Null.Or.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("blockHash").GetString(), Is.Null.Or.Matches("^0x[0-9a-fA-F]{64}$"));
+            Assert.That(json.GetProperty("blockNumber").GetString(), Is.Null.Or.Matches("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        }
     }
 
     [Test]
@@ -197,8 +678,11 @@ public class TransactionForRpcTests
         LegacyTransactionForRpc legacyRpcTx = (LegacyTransactionForRpc)rpcTx;
 
         ulong? expectedChainId = tx.Signature.ChainId;
-        Assert.That(expectedChainId, Is.EqualTo(0xc72dd9d5e883eul));
-        Assert.That(legacyRpcTx.ChainId, Is.EqualTo(expectedChainId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedChainId, Is.EqualTo(0xc72dd9d5e883eul));
+            Assert.That(legacyRpcTx.ChainId, Is.EqualTo(expectedChainId));
+        }
     }
 
     [Test]

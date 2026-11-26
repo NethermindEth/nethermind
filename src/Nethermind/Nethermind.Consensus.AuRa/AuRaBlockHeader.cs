@@ -35,11 +35,7 @@ public sealed class AuRaBlockHeader(
 
     /// <inheritdoc/>
     public ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
-    {
-        KeccakRlpWriter writer = new();
-        _headerDecoder.Encode(ref writer, this, behaviors);
-        return writer.GetValueHash();
-    }
+        => _headerDecoder.ComputeValueHash(this, behaviors);
 
     public override BlockHeader CloneForProcessing()
     {
@@ -73,6 +69,8 @@ public sealed class AuRaBlockHeader(
             ReceiptsRoot = src.ReceiptsRoot,
             Bloom = src.Bloom,
             GasUsed = src.GasUsed,
+            // After GasUsed, whose setter drops the dimensions it summarises.
+            GasUsedPerDimension = src.GasUsedPerDimension,
             MixHash = src.MixHash,
             Nonce = src.Nonce,
             Hash = src.Hash,

@@ -5,6 +5,7 @@
     <!-- Emit transitive package assemblies (JetBrains.Profiler.Api + its deps) next to the plugin dll
          so `dotnet publish` on this project alone yields a self-contained drop-in plugin set. -->
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>

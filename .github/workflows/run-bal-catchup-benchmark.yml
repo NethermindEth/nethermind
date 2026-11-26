@@ -1,0 +1,112 @@
+name: Run BAL Catch-up Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Synthetic in-memory, synthetic RocksDB, or a prepared real-chain fixture
+        type: choice
+        options: [synthetic-memory, synthetic-disk, fixture]
+        default: synthetic-memory
+      blocks:
+        description: Blocks per segment (empty uses 64 or the whole fixture; synthetic-memory supports at most 128)
+        default: ''
+      fixture:
+        description: Runner directory containing segment.jsonl (fixture mode)
+        default: ''
+      database:
+        description: Stopped flat-node pre-state directory on the runner (fixture mode, read-only)
+        default: ''
+      chainspec:
+        description: Chainspec file on the runner (fixture mode)
+        default: ''
+      scratch:
+        description: Runner directory with room for a working copy of the pre-state
+        default: /mnt/sda
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bal-catchup-benchmark
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: reproducible-benchmarks
+    timeout-minutes: 120
+    env:
+      BENCHMARK_PROJECT: src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-dotnet
+        with:
+          global-json-file: global.json
+      - name: Set artifact directory
+        run: echo "ARTIFACTS=$RUNNER_TEMP/bal-catchup-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+      - name: Build benchmark
+        run: dotnet build "$BENCHMARK_PROJECT" -c Release
+      - name: Run BAL on/off comparison
+        shell: bash
+        env:
+          MODE: ${{ inputs.mode }}
+          BLOCKS: ${{ inputs.blocks }}
+          FIXTURE: ${{ inputs.fixture }}
+          DATABASE: ${{ inputs.database }}
+          CHAINSPEC: ${{ inputs.chainspec }}
+          SCRATCH: ${{ inputs.scratch }}
+          DOTNET_TieredCompilation: '0'
+        run: |
+          set -euo pipefail
+          if [[ -n "$BLOCKS" && ! "$BLOCKS" =~ ^[1-9][0-9]*$ ]]; then
+            echo '::error::blocks must be a positive integer'
+            exit 1
+          fi
+          mkdir -p "$ARTIFACTS"
+          work=$(mktemp -d "$SCRATCH/bal-catchup.XXXXXX")
+          trap 'rm -rf -- "$work"' EXIT
+          unset NETHERMIND_BALCATCHUP_DB NETHERMIND_BALCATCHUP_FIXTURE NETHERMIND_BALCATCHUP_CHAINSPEC
+          unset NETHERMIND_BALCATCHUP_BLOCKS NETHERMIND_BALCATCHUP_COLD NETHERMIND_BALCATCHUP_DROP_CACHES
+          export NETHERMIND_BALCATCHUP_WORKDIR="$work/working"
+          if [[ -n "$BLOCKS" ]]; then export NETHERMIND_BALCATCHUP_BLOCKS="$BLOCKS"; fi
+          case "$MODE" in
+            synthetic-memory) ;;
+            synthetic-disk)
+              export NETHERMIND_BALCATCHUP_DB="$work/pristine"
+              export NETHERMIND_BALCATCHUP_COLD=1
+              ;;
+            fixture)
+              test -f "$FIXTURE/segment.jsonl"
+              test -d "$DATABASE/flat"
+              test -f "$CHAINSPEC"
+              export NETHERMIND_BALCATCHUP_DB="$DATABASE"
+              export NETHERMIND_BALCATCHUP_FIXTURE="$FIXTURE"
+              export NETHERMIND_BALCATCHUP_CHAINSPEC="$CHAINSPEC"
+              export NETHERMIND_BALCATCHUP_COLD=1
+              ;;
+            *) echo '::error::Unknown benchmark mode'; exit 1 ;;
+          esac
+          {
+            echo "Commit: $GITHUB_SHA"
+            echo "Mode: $MODE; blocks: ${BLOCKS:-default}"
+            dotnet run -c Release --no-build --project "$BENCHMARK_PROJECT" -- \
+              --filter '*BalCatchUpBenchmark*' --exporters json markdown --artifacts "$ARTIFACTS"
+          } 2>&1 | tee "$ARTIFACTS/run.log"
+          expected_cases=12
+          if [[ "$MODE" == fixture ]]; then expected_cases=2; fi
+          DOTNET_TieredCompilation= dotnet run --file scripts/check-bal-catchup-results.cs -- "$ARTIFACTS" "$expected_cases"
+      - name: Publish summary
+        if: always()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for report in "$ARTIFACTS"/results/*-report-github.md; do
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Upload results and logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bal-catchup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.ARTIFACTS }}
+          retention-days: 30

@@ -66,8 +66,14 @@ namespace Nethermind.Facade.Filters
 
         private void OnElapsed(object? sender, EventArgs e)
         {
-            CleanupStaleFilters();
-            _timer.Enabled = true;
+            try
+            {
+                CleanupStaleFilters();
+            }
+            finally
+            {
+                _timer.Enabled = true;
+            }
         }
 
         private void CleanupStaleFilters()
@@ -129,10 +135,15 @@ namespace Nethermind.Facade.Filters
                 GetAddress(addresses),
                 GetTopicsFilter(topics));
 
-        public void RemoveFilter(int filterId)
+        public bool RemoveFilter(int filterId)
         {
-            _filters.TryRemove(filterId, out _);
+            if (!_filters.TryRemove(filterId, out _))
+            {
+                return false;
+            }
+
             FilterRemoved?.Invoke(this, new FilterEventArgs(filterId));
+            return true;
         }
 
         public event EventHandler<FilterEventArgs>? FilterRemoved;

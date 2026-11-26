@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
-using Nethermind.Trie;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 
 namespace Nethermind.Benchmarks.State;
@@ -63,20 +62,6 @@ internal sealed class NoTieredCompilationAttribute : JobMutatorConfigBaseAttribu
     }
 }
 
-/// <summary>Trie node cache that never caches — these benchmarks don't measure caching.</summary>
-internal sealed class NullTrieNodeCache : ITrieNodeCache
-{
-    public bool TryGet(Hash256 address, in TreePath path, Hash256 hash, out TrieNode node)
-    {
-        node = null;
-        return false;
-    }
-
-    public void Add(TransientResource transientResource) { }
-
-    public void Clear() { }
-}
-
 /// <summary>Commit target that only captures the snapshot a <see cref="FlatWorldStateScope"/> commit produces.</summary>
 internal sealed class CapturingCommitTarget : IFlatCommitTarget
 {
@@ -93,7 +78,7 @@ internal sealed class CapturingCommitTarget : IFlatCommitTarget
 /// <summary>Code DB stub — none of these benchmarks exercise contract code storage.</summary>
 internal sealed class NullCodeDb : IWorldStateScopeProvider.ICodeDb
 {
-    public byte[] GetCode(in ValueHash256 codeHash) => null;
+    public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => default;
 
     public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
         => NullCodeSetter.Instance;

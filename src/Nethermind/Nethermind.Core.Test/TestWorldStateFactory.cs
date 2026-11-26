@@ -14,15 +14,15 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null) =>
-        CreateForTest(UnavailableStateHeaderProvider.Instance, dbProvider, logManager);
+    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null, IKeyValueStoreWithBatching? codeDb = null) =>
+        CreateForTest(UnavailableStateHeaderProvider.Instance, dbProvider, logManager, codeDb);
 
-    public static IWorldState CreateForTest(IStateHeaderProvider stateHeaderProvider, IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static IWorldState CreateForTest(IStateHeaderProvider stateHeaderProvider, IDbProvider? dbProvider = null, ILogManager? logManager = null, IKeyValueStoreWithBatching? codeDb = null)
     {
         dbProvider ??= TestMemDbProvider.Init();
         logManager ??= LimboLogs.Instance;
         TestRawTrieStore trieStore = new(dbProvider.GetDb<IDb>(DbNames.State));
-        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, stateHeaderProvider, logManager), logManager);
+        return new WorldState(new TrieStoreScopeProvider(trieStore, codeDb ?? dbProvider.CodeDb, stateHeaderProvider, logManager), logManager);
     }
 
     public static (IWorldStateScopeProvider scopeProvider, IContainer container) CreateFlatScopeProvider(IStateHeaderProvider stateHeaderProvider)

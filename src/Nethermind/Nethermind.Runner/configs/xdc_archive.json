@@ -30,9 +30,6 @@
   "Merge": {
     "Enabled": false
   },
-  "TraceStore": {
-    "Enabled": false
-  },
   "FlatDb": {
     "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864

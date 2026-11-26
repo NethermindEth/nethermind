@@ -71,10 +71,13 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
-        // Should be 0 since it's not yet set
-        Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(0));
+            // Should be 0 since it's not yet set
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(0));
+        }
     }
 
     /// <summary>
@@ -98,8 +101,11 @@ internal class Eip1153Tests : VirtualMachineTestsBase
 
         long startTime = Stopwatch.GetTimestamp();
         TestAllTracerWithOutput result = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, Timestamp), blockGasLimit, code, blockGasLimit);
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(Stopwatch.GetElapsedTime(startTime).TotalMilliseconds < 5000, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(Stopwatch.GetElapsedTime(startTime).TotalMilliseconds < 5000, Is.True);
+        }
     }
 
     /// <summary>
@@ -116,9 +122,12 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
-        Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
+        }
     }
 
     private static readonly UInt256[] TransientValues =
@@ -250,9 +259,12 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
-        Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(0));
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(0));
+        }
     }
 
     /// <summary>

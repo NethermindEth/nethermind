@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Test;
 /// EIP-8141 APPROVE authorization scope. A SENDER frame reaches its target with the account as caller
 /// without invoking the account's own entrypoint, so what an account authorizes is decided entirely by
 /// its authorizing frame. These tests confirm that the authorizing frame can bind APPROVE to data it
-/// observes, either account storage or a declared recent-root reference, and that a scope of zero
+/// observes, either account storage or a root its recent-root verifier frame checked, and that a scope of zero
 /// withholds the approval and fails the transaction.
 /// </summary>
 [TestFixture]
@@ -71,8 +71,11 @@ public class FrameTxApproveAuthorizationTests
 
         TransactionResult result = Process(FrameTx(FrameTxTestFrames.SelfVerify(200_000), SenderFrameTo(Target)));
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
+        }
     }
 
     [TestCase(true, false, TestName = "observed storage set withholds the approval")]
@@ -99,8 +102,10 @@ public class FrameTxApproveAuthorizationTests
         Deploy(Target, TargetRecordsCaller(), UInt256.Zero);
         CommitRootEntry(sourceId, ReferenceSlot, committed);
 
-        Transaction tx = FrameTx(FrameTxTestFrames.SelfVerify(200_000), SenderFrameTo(Target));
-        tx.RecentRootReferences = [new RecentRootReference(sourceId, ReferenceSlot, committed)];
+        Transaction tx = FrameTx(
+            FrameTxTestFrames.RecentRootVerify(100_000, (sourceId, ReferenceSlot, committed)),
+            FrameTxTestFrames.SelfVerify(200_000),
+            SenderFrameTo(Target));
 
         AssertApproval(Process(tx, HeadSlot), expectedExecuted);
     }
@@ -109,8 +114,11 @@ public class FrameTxApproveAuthorizationTests
     {
         if (expectedExecuted)
         {
-            Assert.That(result.TransactionExecuted, Is.True);
-            Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.True);
+                Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
+            }
             return;
         }
 
@@ -137,7 +145,7 @@ public class FrameTxApproveAuthorizationTests
 
     private static byte[] ReferenceGatedApprove(ValueHash256 expectedRoot) =>
         Prepare.EvmCode
-            .PushData(0).PushData(2).Op(Instruction.RECENTROOTREFLOAD)
+            .PushData(0).PushData(40).Op(Instruction.FRAMEDATALOAD)
             .PushData(expectedRoot.Bytes.ToArray()).Op(Instruction.EQ)
             .PushData((byte)FrameFlags.ApproveExecutionAndPayment).Op(Instruction.MUL)
             .PushData(0).PushData(0)
@@ -163,7 +171,10 @@ public class FrameTxApproveAuthorizationTests
     private void CommitRootEntry(ValueHash256 sourceId, ulong slot, ValueHash256 root)
     {
         if (!_state.AccountExists(Eip8272Constants.RecentRootAddress))
+        {
             _state.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, 1);
+            _state.InsertCode(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode, Spec);
+        }
         _state.Set(RecentRootStore.ReferenceCell(sourceId, slot),
             RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256());
         _state.Commit(Spec);
@@ -190,7 +201,7 @@ public class FrameTxApproveAuthorizationTests
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 
     private TransactionResult Process(Transaction tx, ulong? slot = null)

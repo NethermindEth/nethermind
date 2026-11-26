@@ -4,12 +4,14 @@
 using System;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -22,15 +24,16 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
-using Nethermind.Evm.State;
+using Nethermind.Evm.Precompiles;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 
 namespace Nethermind.Init.Modules;
 
@@ -57,19 +60,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddFirst<IBlockPreprocessorStep>(static ctx => ctx.Resolve<RecoverSignatures>())
             // The prewarmer waits on the recovery this instance has in flight rather than polling the transactions.
             .Bind<ISenderRecoveryTracker, RecoverSignatures>()
+            .AddLast<IBlockPreprocessorStep, BlockAccessListRecoveryStep>()
 
             // Block processing components common between rpc, validation and production
-            .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
-            .AddScoped<ITransactionProcessor, EthereumTransactionProcessor>()
-            .AddSingleton<ITransactionProcessorFactory, TransactionProcessorFactory<EthereumGasPolicy>>()
-            .AddScoped<ICodeInfoRepository, CacheCodeInfoRepository>()
-                .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
-                .AddSingleton<ICodeCache>(StaticCodeCache.Instance)
-            .AddScoped<IWorldState, WorldState>()
-            .AddScoped<IVirtualMachine, EthereumVirtualMachine>()
-            .AddScoped<IBlockhashProvider, BlockhashProvider>()
-            .AddSingleton<IUnresolvedBlockhashPolicy>(ThrowingUnresolvedBlockhashPolicy.Instance)
-            .AddSingleton<IBlockhashCache, BlockhashCache>()
+            .AddModule(new TransactionProcessingModule())
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
             .AddScoped<IBranchProcessor, BranchProcessor>()
@@ -85,10 +79,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<ITransactionProcessorAdapter, ITransactionProcessor, TransactionProcessorAdapterFactory>(
                 static (transactionProcessor, adapterFactory) => adapterFactory(transactionProcessor))
             .AddScoped<BalTxProcessorFactory>()
+            .AddScoped<ZeroNonceStorageAccountsTransition>()
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()
-            .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP))
             .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
@@ -98,12 +92,15 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             // journals the process-wide cache, and the prefix is rolled back — including when it is rejected.
             .AddSingleton<IFrameTxPrefixSimulator, ILifetimeScope, IWorldStateManager, ISpecProvider, IBlockFinder, ITxPoolConfig, ILogManager>(
                 (lifetime, worldStateManager, specProvider, blockFinder, txPoolConfig, logManager) => new FrameTxPrefixSimulator(
-                    new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, shareCodeCache: false),
+                    new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, shareCodeCache: false),
                     blockFinder, specProvider, txPoolConfig, logManager))
             .Add<BlockchainProcessorFacade>()
 
-            .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
+            .AddSingleton<OverridableEnvFactory>()
+                .Bind<IOverridableEnvFactory, OverridableEnvFactory>()
+                .Bind<ITraceEnvFactory, OverridableEnvFactory>()
             .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
+            .AddSingleton<InvalidBlockDiagnostics>()
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
             // in a `IMainProcessingContext`.
@@ -113,7 +110,25 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .Map<IBlockProcessingPauseControl, MainProcessingContext>(ctx => (IBlockProcessingPauseControl)ctx.BlockchainProcessor)
             .Bind<IMainProcessingContext, MainProcessingContext>()
 
-            .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
+            .AddSingleton<INonceManager, IChainHeadInfoProvider, IStateHeaderProvider, IStateReader>((chainHeadInfoProvider, stateHeaderProvider, stateReader) =>
+                new NonceManager(chainHeadInfoProvider, stateHeaderProvider, stateReader))
+            .AddSingleton<ITransactionComparerProvider, ISpecProvider, IBlockTree>((specProvider, blockTree) =>
+                new TransactionComparerProvider(specProvider, blockTree.AsReadOnly()))
+            .AddSingleton<ITxPool>(static ctx => new TxPool.TxPool(
+                ctx.Resolve<IEthereumEcdsa>(),
+                ctx.Resolve<IBlobTxStorage>(),
+                ctx.Resolve<IChainHeadInfoProvider>(),
+                ctx.Resolve<ITxPoolConfig>(),
+                ctx.Resolve<ITxValidator>(),
+                ctx.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<ITransactionComparerProvider>().GetDefaultComparer(),
+                ctx.Resolve<FrameTxWidthLedger>(),
+                ctx.Resolve<ITxGossipPolicy>(),
+                frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+                stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>()))
+            .AddSingleton<ITxSender, ITxPool, IWallet, IChainHeadSpecProvider, ITimestamper, INonceManager, IEthereumEcdsa>((txPool, wallet, specProvider, timestamper, nonceManager, ecdsa) =>
+                new TxPoolSender(txPool, new TxSealer(new WalletTxSigner(wallet, specProvider.ChainId), timestamper), nonceManager, ecdsa, specProvider))
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider, ILogManager>((mainProcessingContext, chainHeadInfoProvider, logManager) => new BackgroundTaskScheduler(
                 mainProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
@@ -126,11 +141,13 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<IBlockValidationModule, StandardBlockValidationModule>()
 
             // Block production components
-            .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
+            .AddSingleton<IRewardCalculator>(NoBlockRewards.Instance)
             .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, SealEngine>()
             .AddSingleton<IBlockProducerTxSourceFactory, TxPoolTxSourceFactory>()
+            .AddSingleton<FrameTxWidthLedger>()
+                .Bind<IFrameTxWidthLedger, FrameTxWidthLedger>()
             .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
@@ -148,6 +165,18 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IGenesisBuilder, GenesisBuilder>()
             .AddScoped<IGenesisLoader, GenesisLoader>()
             ;
+
+        // Metering costs a virtual dispatch and an atomic per precompile call, so it is only installed
+        // when something is there to scrape it.
+        builder.AddDecorator<IPrecompileProvider>(static (ctx, inner) =>
+        {
+            IMetricsConfig metricsConfig = ctx.Resolve<IMetricsConfig>();
+            if (!metricsConfig.IsMonitoringEnabled()) return inner;
+
+            MeteredPrecompileProvider metered = new(inner);
+            ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(metered.PublishMetrics);
+            return metered;
+        });
 
         builder.AddSingleton<IMainStateBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>();
 

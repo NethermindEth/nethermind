@@ -5,11 +5,11 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Runtime.CompilerServices;
+using System.Reflection;
 using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Trie;
@@ -41,8 +41,11 @@ public class HashKeyedNodeStorageTests
 
         foreach (byte[] node in Nodes)
         {
-            Assert.That(storage.Get(null, TreePath.Empty, HashOf(node)), Is.EqualTo(node));
-            Assert.That(storage.KeyExists(null, TreePath.Empty, HashOf(node)), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.Get(null, TreePath.Empty, HashOf(node)), Is.EqualTo(node));
+                Assert.That(storage.KeyExists(null, TreePath.Empty, HashOf(node)), Is.True);
+            }
         }
     }
 
@@ -51,8 +54,11 @@ public class HashKeyedNodeStorageTests
     {
         HashKeyedNodeStorage storage = Storage(Nodes);
 
-        Assert.That(storage.Get(null, TreePath.Empty, UnknownHash), Is.Null);
-        Assert.That(storage.KeyExists(null, TreePath.Empty, UnknownHash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.Get(null, TreePath.Empty, UnknownHash), Is.Null);
+            Assert.That(storage.KeyExists(null, TreePath.Empty, UnknownHash), Is.False);
+        }
     }
 
     [Test]
@@ -60,9 +66,12 @@ public class HashKeyedNodeStorageTests
     {
         HashKeyedNodeStorage storage = Storage();
 
-        Assert.That(HashOf([128]), Is.EqualTo(Keccak.EmptyTreeHash.ValueHash256), "the seeded node must be the empty tree");
-        Assert.That(storage.Get(null, TreePath.Empty, Keccak.EmptyTreeHash.ValueHash256), Is.EqualTo(new byte[] { 128 }));
-        Assert.That(storage.KeyExists(null, TreePath.Empty, Keccak.EmptyTreeHash.ValueHash256), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HashOf([128]), Is.EqualTo(Keccak.EmptyTreeHash.ValueHash256), "the seeded node must be the empty tree");
+            Assert.That(storage.Get(null, TreePath.Empty, Keccak.EmptyTreeHash.ValueHash256), Is.EqualTo(new byte[] { 128 }));
+            Assert.That(storage.KeyExists(null, TreePath.Empty, Keccak.EmptyTreeHash.ValueHash256), Is.True);
+        }
     }
 
     [Test]
@@ -74,8 +83,11 @@ public class HashKeyedNodeStorageTests
 
         Write(storage, throughBatch, hash, node);
 
-        Assert.That(storage.Get(null, TreePath.Empty, hash), Is.EqualTo(node));
-        Assert.That(storage.KeyExists(null, TreePath.Empty, hash), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.Get(null, TreePath.Empty, hash), Is.EqualTo(node));
+            Assert.That(storage.KeyExists(null, TreePath.Empty, hash), Is.True);
+        }
     }
 
     [Test]
@@ -87,8 +99,11 @@ public class HashKeyedNodeStorageTests
 
         Write(storage, throughBatch, hash, null);
 
-        Assert.That(storage.Get(null, TreePath.Empty, hash), Is.Null);
-        Assert.That(storage.KeyExists(null, TreePath.Empty, hash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.Get(null, TreePath.Empty, hash), Is.Null);
+            Assert.That(storage.KeyExists(null, TreePath.Empty, hash), Is.False);
+        }
     }
 
     [Test]
@@ -112,8 +127,11 @@ public class HashKeyedNodeStorageTests
         storage.Set(null, TreePath.Empty, first, [0x01]);
         storage.Set(null, TreePath.Empty, second, [0x02]);
 
-        Assert.That(storage.Get(null, TreePath.Empty, first), Is.EqualTo(new byte[] { 0x01 }));
-        Assert.That(storage.Get(null, TreePath.Empty, second), Is.EqualTo(new byte[] { 0x02 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.Get(null, TreePath.Empty, first), Is.EqualTo(new byte[] { 0x01 }));
+            Assert.That(storage.Get(null, TreePath.Empty, second), Is.EqualTo(new byte[] { 0x02 }));
+        }
     }
 
     [Test]
@@ -129,6 +147,7 @@ public class HashKeyedNodeStorageTests
             if ((BitConverter.ToUInt32(HashOf(node).Bytes) & (uint)mask) == bucket) nodes[found++] = node;
         }
         HashKeyedNodeStorage storage = new(nodes.AsSpan(0, count));
+        Assert.That(OverflowedCount(storage), Is.EqualTo(count > 8 ? count : 0), "a bucket must overflow past eight entries, and only then");
 
         for (int phase = 0; phase < 2; phase++)
         {
@@ -144,8 +163,11 @@ public class HashKeyedNodeStorageTests
             storage.Set(null, TreePath.Empty, UnknownHash, [0x01]);
         }
         storage.Set(null, TreePath.Empty, HashOf(nodes[0]), null);
-        Assert.That(storage.Get(null, TreePath.Empty, HashOf(nodes[0])), Is.Null);
-        Assert.That(storage.KeyExists(null, TreePath.Empty, HashOf(nodes[0])), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.Get(null, TreePath.Empty, HashOf(nodes[0])), Is.Null);
+            Assert.That(storage.KeyExists(null, TreePath.Empty, HashOf(nodes[0])), Is.False);
+        }
     }
 
     [Test]
@@ -161,14 +183,50 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
+    public void Reads_the_same_as_the_MemDb_backed_store_it_replaces()
+    {
+        HashKeyedNodeStorage storage = Storage(Nodes);
+        INodeStorage reference = ReferenceStorage(Nodes);
+
+        foreach (byte[] node in Nodes)
+        {
+            ValueHash256 hash = HashOf(node);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.Get(null, TreePath.Empty, hash), Is.EqualTo(reference.Get(null, TreePath.Empty, hash)));
+                Assert.That(storage.KeyExists(null, TreePath.Empty, hash), Is.EqualTo(reference.KeyExists(null, TreePath.Empty, hash)));
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.Get(null, TreePath.Empty, UnknownHash), Is.EqualTo(reference.Get(null, TreePath.Empty, UnknownHash)));
+            Assert.That(storage.KeyExists(null, TreePath.Empty, UnknownHash), Is.EqualTo(reference.KeyExists(null, TreePath.Empty, UnknownHash)));
+        }
+    }
+
+    private static INodeStorage ReferenceStorage(params byte[][] state)
+    {
+        MemoryNodeStorage storage = new();
+        foreach (byte[] node in state) storage.Set(null, TreePath.Empty, HashOf(node), node);
+        return storage;
+    }
+
+    /// <summary>The entries the store moved to its overflow dictionary, which no read can tell apart from the bucketed ones.</summary>
+    private static int OverflowedCount(HashKeyedNodeStorage storage)
+    {
+        object overflow = typeof(HashKeyedNodeStorage).GetField("_overflow", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(storage)!;
+        return (int)overflow.GetType().GetProperty("Count")!.GetValue(overflow)!;
+    }
+
+    [Test]
     public void Host_witness_storage_supports_concurrent_reads_writes_and_deletes()
     {
         const int NodeCount = 4096;
         byte[][] nodes = new byte[NodeCount][];
         for (int i = 0; i < nodes.Length; i++) nodes[i] = [(byte)i, (byte)(i >> 8), 0xa5];
 
-        using IOwnedReadOnlyList<byte[]> witness = nodes.ToPooledList();
-        INodeStorage storage = WitnessNodeStorage.Create(witness);
+        INodeStorage storage = Storage(nodes);
         ValueHash256[] hashes = Array.ConvertAll(nodes, HashOf);
 
         Parallel.Invoke(

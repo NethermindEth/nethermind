@@ -23,7 +23,15 @@ public static class BloomSszVectorTypeConverter
         }
     }
 
-    public static void ToSpan(Span<byte> span, Bloom value) => value.Bytes.CopyTo(span);
+    /// <remarks>
+    /// The SSZ vector is fixed at 256 bytes and has no EIP-7668 form yet, so <see cref="Bloom.ZeroLength"/> is written as
+    /// zeros rather than leaving the pooled buffer's contents in place.
+    /// </remarks>
+    public static void ToSpan(Span<byte> span, Bloom value)
+    {
+        if (value.IsZeroLength) span[..Length].Clear();
+        else value.Bytes.CopyTo(span);
+    }
 
     public static void ToSpan(Span<byte> span, ReadOnlySpan<Bloom> values)
     {
@@ -35,7 +43,7 @@ public static class BloomSszVectorTypeConverter
 
     public static void Feed(ref Merkleizer merkleizer, Bloom value)
     {
-        Merkle.Merkleize(out UInt256 root, value.Bytes);
+        Merkle.Merkleize(out UInt256 root, value.IsZeroLength ? Bloom.Empty.Bytes : value.Bytes);
         merkleizer.Feed(root);
     }
 }

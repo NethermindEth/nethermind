@@ -21,8 +21,10 @@ public class TrieWarmerTests
 {
     private static readonly TestCaseData[] SlotJobCases =
     [
-        new TestCaseData(SlotPushMode.Spmc).SetName("PushSlotJob_CallsWarmUpStorageTrie"),
-        new TestCaseData(SlotPushMode.Mpmc).SetName("PushSlotJobMpmc_CallsWarmUpStorageTrie")
+        new TestCaseData(SlotPushMode.Spmc, false).SetName("PushSlotJob_CallsWarmUpStorageTrie"),
+        new TestCaseData(SlotPushMode.Mpmc, false).SetName("PushSlotJobMpmc_CallsWarmUpStorageTrie"),
+        new TestCaseData(SlotPushMode.Spmc, true).SetName("PushSlotJob_PassesTheDeleteFlagThrough"),
+        new TestCaseData(SlotPushMode.Mpmc, true).SetName("PushSlotJobMpmc_PassesTheDeleteFlagThrough")
     ];
 
     private ILogManager _logManager = null!;
@@ -52,7 +54,7 @@ public class TrieWarmerTests
     }
 
     [TestCaseSource(nameof(SlotJobCases))]
-    public async Task PushSlotJob_CallsWarmUpStorageTrie(SlotPushMode slotPushMode)
+    public async Task PushSlotJob_CallsWarmUpStorageTrie(SlotPushMode slotPushMode, bool isDelete)
     {
         TrieWarmer warmer = new(_logManager, _config);
 
@@ -60,11 +62,11 @@ public class TrieWarmerTests
         UInt256 index = 42;
 
         bool enqueued = slotPushMode == SlotPushMode.Spmc
-            ? warmer.PushSlotJob(storageWarmer, index, sequenceId: 5)
-            : warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: 5);
+            ? warmer.PushSlotJob(storageWarmer, index, sequenceId: 5, isDelete)
+            : warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: 5, isDelete);
 
         Assert.That(enqueued, Is.True);
-        await Eventually.AssertAsync<ReceivedCallsException>(() => storageWarmer.Received().WarmUpStorageTrie(index, 5));
+        await Eventually.AssertAsync<ReceivedCallsException>(() => storageWarmer.Received().WarmUpStorageTrie(index, 5, isDelete));
 
         await warmer.DisposeAsync();
     }
@@ -117,11 +119,14 @@ public class TrieWarmerTests
             for (int i = 0; i < JobCount; i++)
             {
                 UInt256 index = (uint)i;
-                Assert.That(warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: i), Is.True);
+                Assert.That(warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: i, isDelete: false), Is.True);
             }
 
-            Assert.That(storageWarmer.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
-            Assert.That(storageWarmer.MaxConcurrency, Is.GreaterThan(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storageWarmer.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(storageWarmer.MaxConcurrency, Is.GreaterThan(1));
+            }
             Assert.That(storageWarmer.MaxConcurrency, Is.LessThanOrEqualTo(WorkerCount));
 
             storageWarmer.Release();
@@ -145,11 +150,14 @@ public class TrieWarmerTests
 
         try
         {
-            Assert.That(warmer.PushSlotJobMpmc(storageWarmer, firstIndex, sequenceId: 1), Is.True);
-            Assert.That(storageWarmer.WaitForFirstCall(TimeSpan.FromSeconds(5)), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(warmer.PushSlotJobMpmc(storageWarmer, firstIndex, sequenceId: 1, isDelete: false), Is.True);
+                Assert.That(storageWarmer.WaitForFirstCall(TimeSpan.FromSeconds(5)), Is.True);
 
-            Assert.That(warmer.PushSlotJobMpmc(storageWarmer, secondIndex, sequenceId: 2), Is.True);
-            Assert.That(storageWarmer.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(warmer.PushSlotJobMpmc(storageWarmer, secondIndex, sequenceId: 2, isDelete: false), Is.True);
+                Assert.That(storageWarmer.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
+            }
         }
         finally
         {
@@ -169,12 +177,15 @@ public class TrieWarmerTests
         Address address = new("0x3333333333333333333333333333333333333333");
         UInt256 index = 44;
 
-        Assert.That(warmer.PushAddressJob(addressWarmer, address, sequenceId: 1), Is.False);
-        Assert.That(warmer.PushSlotJob(storageWarmer, index, sequenceId: 2), Is.False);
-        Assert.That(warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: 3), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.PushAddressJob(addressWarmer, address, sequenceId: 1), Is.False);
+            Assert.That(warmer.PushSlotJob(storageWarmer, index, sequenceId: 2, isDelete: false), Is.False);
+            Assert.That(warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: 3, isDelete: false), Is.False);
+        }
 
         addressWarmer.DidNotReceive().WarmUpStateTrie(Arg.Any<Address>(), Arg.Any<int>());
-        storageWarmer.DidNotReceive().WarmUpStorageTrie(Arg.Any<UInt256>(), Arg.Any<int>());
+        storageWarmer.DidNotReceive().WarmUpStorageTrie(Arg.Any<UInt256>(), Arg.Any<int>(), Arg.Any<bool>());
     }
 
     [Test]
@@ -184,14 +195,17 @@ public class TrieWarmerTests
         using BlockingStorageWarmer storageWarmer = new(parallelismTarget: 1);
         UInt256 index = 45;
 
-        Assert.That(warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: 1), Is.True);
+        Assert.That(warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: 1, isDelete: false), Is.True);
 
         Task disposeTask = warmer.DisposeAsync().AsTask();
 
         try
         {
-            Assert.That(storageWarmer.WaitForFirstCall(TimeSpan.FromSeconds(5)), Is.True);
-            Assert.That(disposeTask.IsCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storageWarmer.WaitForFirstCall(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(disposeTask.IsCompleted, Is.False);
+            }
             storageWarmer.Release();
             await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(storageWarmer.Calls, Is.EqualTo(1));
@@ -236,7 +250,7 @@ public class TrieWarmerTests
 
         public void Release() => _release.Set();
 
-        public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
+        public bool WarmUpStorageTrie(UInt256 index, int sequenceId, bool isDelete)
         {
             int currentConcurrency = Interlocked.Increment(ref _currentConcurrency);
             UpdateMaxConcurrency(currentConcurrency);
@@ -276,6 +290,18 @@ public class TrieWarmerTests
         Spmc,
         Mpmc
     }
+
+    [TestCase(1, 1)]
+    [TestCase(2, 3)]
+    [TestCase(4, 6)]
+    [TestCase(8, 12)]
+    [TestCase(12, 12)]
+    [TestCase(16, 12)]
+    [TestCase(20, 15)]
+    [TestCase(30, 22)]
+    [TestCase(64, 48)]
+    public void DefaultWorkerCount_FollowsProcessorCount(int processorCount, int expected) =>
+        Assert.That(TrieWarmer.DefaultWorkerCount(processorCount), Is.EqualTo(expected));
 
     private static async Task WaitForConditionAsync(Func<bool> condition, string message, int timeoutMs = 1000)
     {

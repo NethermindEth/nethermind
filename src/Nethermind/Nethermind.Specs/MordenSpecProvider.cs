@@ -27,5 +27,5 @@ public class MordenSpecProvider : ForkScheduleSpecProvider
     public override ulong NetworkId => BlockchainIds.Morden;
     public override ulong? BeaconChainGenesisTimestamp => null;
 
-    public static MordenSpecProvider Instance { get; } = new();
+    public static MordenSpecProvider Instance => field ??= new();
 }

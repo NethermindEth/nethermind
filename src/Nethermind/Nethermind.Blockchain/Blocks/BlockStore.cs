@@ -4,12 +4,17 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
@@ -17,8 +22,10 @@ namespace Nethermind.Blockchain.Blocks;
 public class BlockStore : IBlockStore, IClearableCache
 {
     public const int CacheSize = 128 + 32;
+    private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
 
     private readonly IDb _blockDb;
+    private readonly IHeaderDecoder _headerDecoder;
     private readonly BlockDecoder _blockDecoder;
     // A block body is a re-execution input, so the persistence barrier must make it durable before state. Null when off.
     // Holds a sanitized header+body snapshot (not the live block, not encoded bytes): the body RLP depends only
@@ -35,7 +42,8 @@ public class BlockStore : IBlockStore, IClearableCache
         IStatePersistenceBarrier? persistenceBarrier = null)
     {
         _blockDb = blockDb;
-        _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
+        _headerDecoder = headerDecoder ?? new HeaderDecoder();
+        _blockDecoder = new(_headerDecoder);
 
         if (deferredWriter is { Enabled: true })
         {
@@ -74,6 +82,28 @@ public class BlockStore : IBlockStore, IClearableCache
         _blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
     }
 
+    /// <inheritdoc/>
+    /// <remarks>The body is written as it is, so its transactions are not decoded.</remarks>
+    public void Insert(BlockHeader header, ReadOnlySpan<byte> body, WriteFlags writeFlags = WriteFlags.None)
+    {
+        if (header.Hash is null)
+        {
+            throw new InvalidOperationException("An attempt to store a block with a null hash.");
+        }
+
+        RlpReader reader = new(body);
+        RlpReader bodyItems = reader.EnterSequence(out _);
+        ReadOnlySpan<byte> bodyContent = bodyItems.ReadRaw(bodyItems.Remaining);
+        int contentLength = _headerDecoder.GetLength(header, RlpBehaviors.None) + bodyContent.Length;
+        using ArrayPoolSpan<byte> rlp = new(Rlp.LengthOfSequence(contentLength));
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
+        RlpSequence sequence = writer.StartSequence(contentLength);
+        _headerDecoder.Encode(ref writer, header);
+        writer.WriteEncoded(bodyContent);
+        writer.EndSequence(sequence);
+        _blockDb.Set(header.Number, header.Hash, rlp, writeFlags);
+    }
+
     public void InsertDeferred(Block block)
     {
         if (_pending is null)
@@ -92,7 +122,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // solely on header/txs/uncles/withdrawals (none mutated after processing), so encoding defers to the consumer.
         // Carry the pre-encoded transactions (populated when built from an ExecutionPayload) so the consumer reuses
         // them instead of re-encoding every tx; the arrays are immutable encoded bytes, so sharing the reference is safe.
-        _pending.Publish(block.Number, block.Hash, new Block(block.Header, block.Body) { EncodedTransactions = block.EncodedTransactions });
+        _pending.Publish(block.Number, block.Hash, new Block(block.Header, block.Body) { EncodedTransactions = block.EncodedTransactions, EncodedSize = block.EncodedSize });
     }
 
     private void WriteBlock(ulong blockNumber, Hash256 blockHash, Block block)
@@ -136,11 +166,11 @@ public class BlockStore : IBlockStore, IClearableCache
         {
             if (_pending is not null)
             {
-                _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks"));
+                _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive));
             }
             else
             {
-                _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks");
+                _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
             }
 
             removedAny |= fromInclusive < toExclusive;
@@ -169,15 +199,13 @@ public class BlockStore : IBlockStore, IClearableCache
         }
 
         Block? block = _blockDb.Get(blockNumber, blockHash, _blockDecoder,
-            cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false)
+            cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors | RlpBehaviors.ExcludeHashes, shouldCache: false)
             ?? _blockDb.Get(blockHash, _blockDecoder,
-                cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false);
+                cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors | RlpBehaviors.ExcludeHashes, shouldCache: false);
+        if (block is null) return null;
 
-        if (shouldCache && block is not null)
-        {
-            _blockCache.Set(in cacheKey, block);
-        }
-
+        block.Header.Hash = blockHash;
+        if (shouldCache) _blockCache.Set(in cacheKey, block);
         return block;
     }
 
@@ -186,7 +214,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // Bytes are needed here, so encode the snapshot on demand - paid only on a rare read of a still-pending block.
         if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
-            return _blockDecoder.EncodeAsBytes(pendingBlock);
+            return _blockDecoder.Encode(pendingBlock);
         }
 
         Span<byte> dbKey = stackalloc byte[40];
@@ -195,6 +223,63 @@ public class BlockStore : IBlockStore, IClearableCache
         if (b is not null) return b;
         return _blockDb.Get(blockHash);
     }
+
+    /// <inheritdoc/>
+    /// <remarks>Reads the number-prefixed keys in one batch. Pending blocks are taken before the batch, as
+    /// <see cref="GetRlp"/> does, so a block whose write lands during the batch is not missed. A block missing from the
+    /// batch is read under its bare hash, as a database predating the block-number prefix stores it.</remarks>
+    public void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, PooledSegmentedBuffer destination, Span<ReadOnlyMemory<byte>?> rlps)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(rlps.Length, blocks.Length);
+        using ArrayPoolListRef<(int Index, ReadOnlyMemory<byte> Rlp)> pending = new(0);
+        if (_pending is not null)
+        {
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                if (_pending.TryGet(in blocks[i].Hash, out Block? pendingBlock))
+                {
+                    pending.Add((i, destination.Add(_blockDecoder.Encode(pendingBlock))));
+                }
+            }
+        }
+
+        using ArrayPoolSpan<byte> keys = new(blocks.Length * NumberPrefixedKeyLength);
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blocks[i].Number, blocks[i].Hash, keys.Slice(i * NumberPrefixedKeyLength, NumberPrefixedKeyLength));
+        }
+
+        _blockDb.GetMany(keys, NumberPrefixedKeyLength, rlps, new AddingDecoder(destination));
+        foreach ((int index, ReadOnlyMemory<byte> rlp) in pending.AsSpan()) rlps[index] = rlp;
+        for (int i = 0; i < rlps.Length; i++)
+        {
+            if (rlps[i] is null && _blockDb.Get(blocks[i].Hash.Bytes) is { Length: > 0 } rlp) rlps[i] = destination.Add(rlp);
+        }
+    }
+
+    /// <remarks>An empty value reads as missing, as <see cref="GetOwnedRlp"/> reads it.</remarks>
+    private readonly struct AddingDecoder(PooledSegmentedBuffer destination) : IValueDecoder<ReadOnlyMemory<byte>?>
+    {
+        public ReadOnlyMemory<byte>? Decode(ReadOnlySpan<byte> buffer) => buffer.IsEmpty ? (ReadOnlyMemory<byte>?)null : destination.Add(buffer);
+    }
+
+    /// <inheritdoc/>
+    public MemoryManager<byte>? GetOwnedRlp(ulong blockNumber, Hash256 blockHash)
+    {
+        if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
+        {
+            return ArrayMemoryManager.From(_blockDecoder.Encode(pendingBlock));
+        }
+
+        Span<byte> dbKey = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
+        return ReadBlockMemory(_blockDb, dbKey) ?? ReadBlockMemory(_blockDb, blockHash.Bytes);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Skips the prefetch when the last block is already cached.</remarks>
+    public void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks) =>
+        KeyValueStoreExtensions.PrefetchBlockNumPrefixed(_blockDb, blocks);
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
@@ -212,19 +297,69 @@ public class BlockStore : IBlockStore, IClearableCache
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
-        memoryOwner ??= _blockDb.GetOwnedMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = ReadBlockMemory(_blockDb, keyWithBlockNumber);
+        memoryOwner ??= ReadBlockMemory(_blockDb, blockHash.Bytes);
         if (memoryOwner is null) return null;
 
         ReceiptRecoveryBlock? block = null;
         try
         {
-            block = _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);
+            block = _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.ExcludeHashes);
+            if (block is not null) block.Value.Header.Hash = blockHash;
             return block;
         }
         finally
         {
             if (block is null) ((IMemoryOwner<byte>)memoryOwner).Dispose();
+        }
+    }
+
+    internal static MemoryManager<byte>? ReadBlockMemory(IDb blockDb, ReadOnlySpan<byte> key)
+    {
+        if (blockDb is not IReadOnlyNativeKeyValueStore native) return blockDb.GetOwnedMemory(key);
+
+        ReadOnlySpan<byte> bytes = native.GetNativeSlice(key, out nint handle);
+        try
+        {
+            if (bytes.IsEmpty) return null;
+            if (handle == 0) return ArrayMemoryManager.From(bytes.ToArray());
+
+            PinnedBlockMemory owner = new(native, handle, bytes);
+            handle = 0;
+            return owner;
+        }
+        finally
+        {
+            if (handle != 0) native.DangerousReleaseHandle(handle);
+        }
+    }
+
+    // A nonzero native lease keeps the pointer valid until disposal.
+    private sealed unsafe class PinnedBlockMemory(IReadOnlyNativeKeyValueStore db, nint handle, ReadOnlySpan<byte> bytes) : MemoryManager<byte>
+    {
+        private nint _handle = handle;
+        private readonly byte* _pointer = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(bytes));
+        private readonly int _length = bytes.Length;
+
+        public override Span<byte> GetSpan()
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _handle) == 0, this);
+            return new Span<byte>(_pointer, _length);
+        }
+
+        public override MemoryHandle Pin(int elementIndex = 0)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _handle) == 0, this);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)_length);
+            return new MemoryHandle(_pointer + elementIndex);
+        }
+
+        public override void Unpin() { }
+
+        protected override void Dispose(bool disposing)
+        {
+            nint released = Interlocked.Exchange(ref _handle, 0);
+            if (released != 0) db.DangerousReleaseHandle(released);
         }
     }
 
@@ -235,7 +370,7 @@ public class BlockStore : IBlockStore, IClearableCache
             ? pendingBlock
             // Cache a sanitized copy to avoid retaining large BAL/account-change structures without mutating
             // the original block, which downstream consumers may still use and dispose.
-            : new Block(block.Header, block.Body);
+            : new Block(block.Header, block.Body) { EncodedSize = block.EncodedSize };
 
         _blockCache.Set(in cacheKey, cachedBlock);
     }

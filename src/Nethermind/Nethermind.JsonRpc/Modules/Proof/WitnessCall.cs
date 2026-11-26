@@ -3,6 +3,7 @@
 
 using System.Threading;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -22,6 +23,7 @@ internal sealed class WitnessCall(
     IBlockFinder blockFinder,
     IBlockchainBridge blockchainBridge,
     ISpecProvider specProvider,
+    IPoSSwitcher poSSwitcher,
     IJsonRpcConfig jsonRpcConfig)
 {
     /// <summary>
@@ -30,7 +32,7 @@ internal sealed class WitnessCall(
     /// <c>eth_call</c>); in-VM failures (revert, out-of-gas, ...) are surfaced in the payload alongside
     /// the witness so a verifier can re-prove them.
     /// </summary>
-    public ResultWrapper<CallResultWithProof> Execute(TransactionForRpc callRequest, BlockParameter? blockParameter)
+    public ResultWrapper<CallResultWithProof> Execute(TransactionForRpc callRequest, BlockParameter? blockParameter, CancellationToken cancellationToken = default)
     {
         blockParameter ??= BlockParameter.Latest;
 
@@ -53,7 +55,7 @@ internal sealed class WitnessCall(
 
         // Pass spec so that on pre-Berlin chains type-defaulted transactions are downgraded to Legacy
         // — matches eth_call / trace_call / debug_traceCall.
-        Result<Transaction> txResult = callRequest.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(sourceHeader));
+        Result<Transaction> txResult = callRequest.ToCallTransaction(specProvider.GetSpec(sourceHeader), jsonRpcConfig.GasCap);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<CallResultWithProof>.Fail(error, ErrorCodes.InvalidInput);
@@ -66,7 +68,7 @@ internal sealed class WitnessCall(
         BlockHeader callHeader = sourceHeader.Clone();
         callHeader.GasUsed = 0;
         callHeader.MixHash = sourceHeader.MixHash;
-        callHeader.IsPostMerge = sourceHeader.Difficulty == 0;
+        poSSwitcher.RestorePostMergeForCall(callHeader);
 
         IReleaseSpec releaseSpec = specProvider.GetSpec(callHeader);
         if (!callRequest.ShouldSetBaseFee())
@@ -92,8 +94,7 @@ internal sealed class WitnessCall(
         // EVM then throws OperationCanceledException, which JsonRpcService maps to a Timeout error. A
         // MissingTrieNodeException from a reorg/prune between header lookup and witness execution is
         // likewise mapped (to ResourceNotFound) by JsonRpcService, so no local catch is needed here.
-        using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
-        SingleCallWitnessResult result = blockchainBridge.GenerateExecutionWitness(callHeader, tx, timeout.Token);
+        SingleCallWitnessResult result = blockchainBridge.GenerateExecutionWitness(callHeader, tx, cancellationToken);
         return CallResultWithProof.FromWitnessResult(result, tx.GasLimit);
     }
 }

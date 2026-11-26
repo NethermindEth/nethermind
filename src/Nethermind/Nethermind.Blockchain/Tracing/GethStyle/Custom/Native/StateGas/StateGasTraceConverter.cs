@@ -20,13 +20,13 @@ public class StateGasTraceConverter : JsonConverter<StateGasTrace>
 
             writer.WriteStartObject();
             writer.WritePropertyName("gasUsed"u8);
-            JsonSerializer.Serialize(writer, value.GasUsed, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.GasUsed, options);
             writer.WritePropertyName("regularGasUsed"u8);
-            JsonSerializer.Serialize(writer, value.RegularGasUsed, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.RegularGasUsed, options);
             writer.WritePropertyName("stateGasUsed"u8);
-            JsonSerializer.Serialize(writer, value.StateGasUsed, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.StateGasUsed, options);
             writer.WritePropertyName("gasRefund"u8);
-            JsonSerializer.Serialize(writer, value.GasRefund, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.GasRefund, options);
             writer.WriteEndObject();
         }
         finally

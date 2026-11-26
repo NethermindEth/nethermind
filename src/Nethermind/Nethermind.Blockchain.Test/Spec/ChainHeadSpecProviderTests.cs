@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,7 +9,9 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -145,16 +148,14 @@ public class ChainHeadSpecProviderTests
             tasks[w] = Task.Factory.StartNew(
                 () =>
                 {
-                    while (!cts.IsCancellationRequested)
+                    IReleaseSpec spec = provider.GetCurrentHeadSpec();
+                    using (Assert.EnterMultipleScope())
                     {
-                        IReleaseSpec spec = provider.GetCurrentHeadSpec();
                         Assert.That(spec, Is.Not.Null);
                         Assert.That(validSpecs.Contains(spec), Is.True);
                     }
-                },
-                CancellationToken.None,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default);
+                }
+            });
         }
 
         Task rotator = Task.Run(async () =>
@@ -176,6 +177,41 @@ public class ChainHeadSpecProviderTests
             await Task.WhenAll(tasks);
         }
     }
+
+    [Test]
+    public void Reads_genesis_state_unavailable_from_the_inner_provider(
+        [Values(nameof(ChainHeadSpecProvider), nameof(FixedForkActivationChainHeadSpecProvider))] string wrapper,
+        [Values] bool unavailable)
+    {
+        ChainSpec chainSpec = new() { GenesisStateUnavailable = unavailable };
+        ISpecProvider provider = Wrap(wrapper, new ChainSpecBasedSpecProvider(chainSpec));
+
+        bool before = provider.GenesisStateUnavailable;
+        chainSpec.GenesisStateUnavailable = !unavailable;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.EqualTo(unavailable));
+            Assert.That(provider.GenesisStateUnavailable, Is.EqualTo(!unavailable), "read on each call, not captured");
+        }
+    }
+
+    [Test]
+    public void Reads_seal_engine_from_the_inner_provider(
+        [Values(nameof(ChainHeadSpecProvider), nameof(FixedForkActivationChainHeadSpecProvider))] string wrapper)
+    {
+        ChainSpec chainSpec = new() { SealEngineType = SealEngineType.AuRa };
+        ISpecProvider provider = Wrap(wrapper, new ChainSpecBasedSpecProvider(chainSpec));
+
+        Assert.That(provider.SealEngine, Is.EqualTo(SealEngineType.AuRa));
+    }
+
+    private static ISpecProvider Wrap(string wrapper, ISpecProvider inner) => wrapper switch
+    {
+        nameof(ChainHeadSpecProvider) => new ChainHeadSpecProvider(inner, Substitute.For<IBlockFinder>()),
+        nameof(FixedForkActivationChainHeadSpecProvider) => new FixedForkActivationChainHeadSpecProvider(inner),
+        _ => throw new ArgumentOutOfRangeException(nameof(wrapper), wrapper, null)
+    };
 
     private static (ISpecProvider SpecProvider, IBlockFinder BlockFinder) SetupForSingleHeader(BlockHeader header, IReleaseSpec spec)
     {

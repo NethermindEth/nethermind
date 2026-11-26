@@ -12,7 +12,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
 
-public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
+public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 {
     static abstract TSelf FromULong(ulong value);
 
@@ -134,12 +134,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         where TEip8037 : struct, IFlag
         where TOpCreate : struct, EvmInstructions.IOpCreate
     {
-        ulong baseCost = spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
-            : TEip8037.IsActive ? GasCostOf.CreateExecution
-            : GasCostOf.Create;
+        ulong baseCost = CreateGasCost.Base<TOpCreate>(spec.IsEip8038Enabled, TEip8037.IsActive);
         ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
-        ulong create2HashCost = typeof(TOpCreate) == typeof(EvmInstructions.OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
-        return TSelf.UpdateGas(ref gas, baseCost + initCodeWordCost + create2HashCost);
+        return TSelf.UpdateGas(ref gas, baseCost + initCodeWordCost + CreateGasCost.InitCodeHashing<TOpCreate>(initCodeWords));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -204,20 +201,17 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract bool TryConsumeAccountAccessGasWithDelegation(ref TSelf gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         Address address,
         Address? delegated);
 
     static abstract bool TryConsumeAccountAccessGas(ref TSelf gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         Address address,
         AccountAccessKind kind = AccountAccessKind.Default);
 
     static abstract bool TryConsumeStorageAccessGas(ref TSelf gas,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec);
@@ -225,20 +219,20 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <summary>Charges storage access using the selected fork flags.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref TSelf gas,
-        ref readonly StackAccessTracker accessTracker, bool isTracingAccess,
+        ref readonly StackAccessTracker accessTracker,
         in StorageCell storageCell, StorageAccessType storageAccessType, IReleaseSpec spec)
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IFlag =>
-        TSelf.TryConsumeStorageAccessGas(ref gas, in accessTracker, isTracingAccess, in storageCell, storageAccessType, spec);
+        TSelf.TryConsumeStorageAccessGas(ref gas, in accessTracker, in storageCell, storageAccessType, spec);
 
     /// <summary>Charges account access using the selected fork flags.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref TSelf gas, IReleaseSpec spec,
-        ref readonly StackAccessTracker accessTracker, bool isTracingAccess, Address address,
+        ref readonly StackAccessTracker accessTracker, Address address,
         AccountAccessKind kind = AccountAccessKind.Default)
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IFlag =>
-        TSelf.TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, kind);
+        TSelf.TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, address, kind);
 
     /// <summary>Reserves CALL gas using the selected EIP-150 mode.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -347,7 +341,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         TSelf.CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
     static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit);
 
-    static abstract bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec, out TSelf available);
+    /// <param name="capExecutionGas">Whether EIP-8037 caps the execution gas at TX_MAX_GAS_LIMIT and moves the rest into the state gas reservoir.</param>
+    static abstract bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec, out TSelf available, bool capExecutionGas = true);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, ulong childExecutionGas) => TSelf.FromULong(childExecutionGas);

@@ -3,13 +3,15 @@
 
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using Nethermind.EthStats.Messages;
 using Nethermind.Logging;
 using Websocket.Client;
 
 namespace Nethermind.EthStats.Senders
 {
-    public class MessageSender(string instanceId, ILogManager logManager) : IMessageSender
+    public partial class MessageSender(string instanceId, ILogManager logManager) : IMessageSender
     {
         private readonly string _instanceId = instanceId;
         private readonly ILogger _logger = logManager.GetClassLogger<MessageSender>();
@@ -22,7 +24,7 @@ namespace Nethermind.EthStats.Senders
             }
 
             (EmitMessage? emitMessage, string? messageType) = CreateMessage(message, type);
-            string payload = JsonSerializer.Serialize(emitMessage, JsonSerializerOptions.Web);
+            string payload = JsonSerializer.Serialize(emitMessage, MessageJsonContext.Default.EmitMessage);
             if (_logger.IsTrace) _logger.Trace($"Sending ETH stats message '{messageType}': {payload}");
 
             client.Send(payload);
@@ -51,5 +53,19 @@ namespace Nethermind.EthStats.Senders
                 Emit.Add(message);
             }
         }
+
+        [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+        [JsonSerializable(typeof(EmitMessage))]
+        [JsonSerializable(typeof(string))]
+        [JsonSerializable(typeof(BlockMessage))]
+        [JsonSerializable(typeof(HelloMessage))]
+        [JsonSerializable(typeof(HistoryMessage))]
+        [JsonSerializable(typeof(LatencyMessage))]
+        [JsonSerializable(typeof(NodePingMessage))]
+        [JsonSerializable(typeof(NodePongMessage))]
+        [JsonSerializable(typeof(PendingMessage))]
+        [JsonSerializable(typeof(PingMessage))]
+        [JsonSerializable(typeof(StatsMessage))]
+        private partial class MessageJsonContext : JsonSerializerContext;
     }
 }

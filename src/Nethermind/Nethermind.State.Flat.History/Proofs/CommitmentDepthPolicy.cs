@@ -88,6 +88,11 @@ public sealed class CommitmentDepthPolicy
             throw new InvalidConfigurationException($"Composed account depths {accountComposedDepths:b} must lie strictly between the root and the exact depth {accountExactDepth}.", -1);
         }
 
+        if ((accountComposedDepths & (accountComposedDepths >> 1)) != 0)
+        {
+            throw new InvalidConfigurationException($"Composed account depths {accountComposedDepths:b} must not be adjacent: a composed node is built from the rows of its children, so they must have rows.", -1);
+        }
+
         if (epochLog2 < intervalLog2 || epochLog2 > MaxEpochLog2)
         {
             throw new InvalidConfigurationException($"The commitment epoch 2^{epochLog2} must span at least one checkpoint window (2^{intervalLog2}) and at most 2^{MaxEpochLog2} blocks.", -1);

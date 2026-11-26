@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,15 +18,20 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
 
 public class InclusionListTxSourceTests
 {
-    private static InclusionListTxSource CreateSource() => new(
+    private static InclusionListTxSource CreateSource() => CreateSource(new TxValidator(MainnetSpecProvider.Instance.ChainId));
+
+    private static InclusionListTxSource CreateSource(ITxValidator txValidator) => new(
         new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
         new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
+        txValidator,
         LimboLogs.Instance);
 
     private static PayloadAttributes Attributes(byte[][] inclusionList) => new() { InclusionListTransactions = inclusionList };
@@ -79,8 +85,11 @@ public class InclusionListTxSourceTests
         source.Set(ilA, Bogota.Instance);
         source.Set(ilB, Bogota.Instance);
 
-        Assert.That(GetTransactions(source, attrsA).Select(t => t.Nonce), Is.EqualTo([1ul]));
-        Assert.That(GetTransactions(source, attrsB).Select(t => t.Nonce), Is.EqualTo([2ul]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetTransactions(source, attrsA).Select(t => t.Nonce), Is.EqualTo([1ul]));
+            Assert.That(GetTransactions(source, attrsB).Select(t => t.Nonce), Is.EqualTo([2ul]));
+        }
     }
 
     [Test]
@@ -100,14 +109,18 @@ public class InclusionListTxSourceTests
     public void Set_defers_sender_recovery_to_the_first_request()
     {
         CountingEcdsa ecdsa = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId));
-        InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), LimboLogs.Instance);
-        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), new TxValidator(MainnetSpecProvider.Instance.ChainId), LimboLogs.Instance);
+        // A fresh signer, so the process-wide sender cache cannot answer before the counting ecdsa.
+        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
         byte[][] il = [Encode(tx)];
 
         source.Set(il, Bogota.Instance);
-        Assert.That(ecdsa.Recoveries, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ecdsa.Recoveries, Is.Zero);
 
-        Assert.That(GetTransactions(source, Attributes(il)), Is.Not.Empty);
+            Assert.That(GetTransactions(source, Attributes(il)), Is.Not.Empty);
+        }
         Assert.That(ecdsa.Recoveries, Is.EqualTo(1));
     }
 
@@ -143,13 +156,41 @@ public class InclusionListTxSourceTests
             Is.EqualTo([1ul]));
     }
 
+    public enum IllFormedChange { TipAboveFeeCap, OtherChainId }
+
+    [Test]
+    public void Ill_formed_transactions_are_filtered_out([Values] IllFormedChange change)
+    {
+        InclusionListTxSource source = CreateSource();
+        Transaction normal = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction illFormed = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithGasLimit(100_000)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(change == IllFormedChange.TipAboveFeeCap ? 2.GWei : 1.GWei)
+            .WithChainId(change == IllFormedChange.OtherChainId ? MainnetSpecProvider.Instance.ChainId + 1 : MainnetSpecProvider.Instance.ChainId)
+            .WithNonce(2)
+            .WithTo(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+        byte[][] il = [Encode(normal), Encode(illFormed)];
+        PayloadAttributes attrs = Attributes(il);
+
+        source.Set(il, Bogota.Instance);
+        Assert.That(
+            GetTransactions(source, attrs).Select(t => t.Nonce),
+            Is.EqualTo([1ul]));
+    }
+
     // A blob-carrying EIP-8141 frame transaction is type 6, so the type-3-only SupportsBlobs does not see it,
     // yet it reaches production without a sidecar just the same. The blob-free frame transaction is the
     // negative control: the filter must drop entries for carrying blobs, not for being frame transactions.
     [Test]
     public void Blob_carrying_frame_transactions_are_filtered_out()
     {
-        InclusionListTxSource source = CreateSource();
+        ITxValidator acceptAll = Substitute.For<ITxValidator>();
+        acceptAll.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(ValidationResult.Success);
+        InclusionListTxSource source = CreateSource(acceptAll);
         Transaction normal = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction blobFrameTx = FrameTx(nonce: 2, blobVersionedHashes: [new byte[32]]);
         Transaction plainFrameTx = FrameTx(nonce: 3, blobVersionedHashes: null!);
@@ -171,8 +212,8 @@ public class InclusionListTxSourceTests
         Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
         FrameSignatures = [],
         GasPrice = 1.GWei,
+        MaxFee = (UInt256)100_000 * 30.GWei,
         DecodedMaxFeePerGas = 30.GWei,
-        MaxFeePerBlobGas = blobVersionedHashes is null ? null : 1,
         BlobVersionedHashes = blobVersionedHashes,
     };
 
@@ -213,7 +254,7 @@ public class InclusionListTxSourceTests
             ]));
     }
 
-    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
     private sealed class CountingEcdsa(IEthereumEcdsa inner) : IEthereumEcdsa
     {

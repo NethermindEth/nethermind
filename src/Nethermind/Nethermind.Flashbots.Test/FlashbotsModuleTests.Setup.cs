@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -47,14 +49,17 @@ public partial class FlashbotsModuleTests
     }
 
     protected static async Task<EngineModuleTests.MergeTestBlockchain> CreateBlockChain(
-        IReleaseSpec? releaseSpec = null, IFlashbotsConfig? flashbotsConfig = null)
+        IReleaseSpec? releaseSpec = null, IFlashbotsConfig? flashbotsConfig = null, Action<ContainerBuilder>? configurer = null)
     {
         flashbotsConfig ??= new FlashbotsConfig();
         return await new EngineModuleTests.MergeTestBlockchain()
-            .BuildMergeTestBlockchain(configurer: (builder) => builder
-                .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance))
-                .AddSingleton(flashbotsConfig)
-                .AddModule(new FlashbotsModule(flashbotsConfig, new JsonRpcConfig()))
-            );
+            .BuildMergeTestBlockchain(configurer: (builder) =>
+            {
+                builder
+                    .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance))
+                    .AddSingleton(flashbotsConfig)
+                    .AddModule(new FlashbotsModule(flashbotsConfig, new JsonRpcConfig()));
+                configurer?.Invoke(builder);
+            });
     }
 }

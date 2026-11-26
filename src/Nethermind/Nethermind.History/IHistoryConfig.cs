@@ -14,16 +14,14 @@ public interface IHistoryConfig : IConfig
     PruningModes Pruning { get; set; }
 
     [ConfigItem(
-        Description = "The number of epochs to retain historical blocks and receipts when using 'Rolling' pruning mode. Must be at least the chain's minHistoryRetentionEpochs chainspec parameter.",
-        DefaultValue = "82125")]
-    uint RetentionEpochs { get; set; }
+        Description = "The number of epochs to retain historical blocks and receipts when using 'Rolling' pruning mode. Must be at least the chain's minHistoryRetentionEpochs chainspec parameter, which is the default: 33024 on Mainnet, 14299 on Sepolia.",
+        DefaultValue = "null")]
+    uint? RetentionEpochs { get; set; }
 
-    // Default matches the mainnet weak-subjectivity period — BALs older than that are not useful for state reconstruction during weak-subjectivity sync
     [ConfigItem(
-        Description = "The number of epochs to retain block access lists (BALs).",
-        DefaultValue = "3533",
-        HiddenFromDocs = true)]
-    uint BalRetentionEpochs { get; set; }
+        Description = "The number of epochs to retain block access lists (BALs). Must be at least the chain's minBalRetentionEpochs chainspec parameter. Defaults to that minimum, including on archive nodes. Set to 4294967295 to keep all BALs when history pruning is disabled.",
+        DefaultValue = "null")]
+    uint? BalRetentionEpochs { get; set; }
 
     // Set to 0 to prune every slot
     [ConfigItem(
@@ -35,6 +33,11 @@ public interface IHistoryConfig : IConfig
         Description = "Maximum time in seconds allowed for a single history pruning pass. Set to 0 to disable the timeout.",
         DefaultValue = "2")]
     uint PruningTimeoutSeconds { get; set; }
+
+    [ConfigItem(
+        Description = "Whether to run a store-wide compaction of the blocks database after pruning reclaims history up to the ancient bodies barrier, reclaiming stale RocksDB blob files that pruning alone leaves behind. Applies only to 'UseAncientBarriers' pruning and is ignored under 'Rolling', whose advancing cutoff would owe a new compaction on every pass. Expensive: heavy I/O that can take hours on a large database, so it runs once per barrier and again only after a raised barrier reclaims more history. It rewrites every retained body, and RocksDB deletes an old blob file only after all files that reference it are rewritten, so the compaction can temporarily need free disk space close to the size of the retained bodies. Only history reclaimed by this version or later arms it: a database whose pruning finished on an earlier version is not compacted. Most effective when history slices ('HistorySliceAddresses') retain scattered bodies across the pruned range, leaving partially-referenced blob files a plain compaction cannot reclaim; under a plain contiguous prune the reclamation is marginal.",
+        DefaultValue = "false")]
+    bool CompactBlocksOnPrune { get; set; }
 
     // This member needs to be a method instead of a property
     // not to be picked up by the configuration handler

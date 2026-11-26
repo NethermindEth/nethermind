@@ -39,6 +39,18 @@ namespace Nethermind.Core.Extensions
 
         /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static partial ulong MixAddress(ref byte b)
+        {
+            AssertSeeded();
+            ref ulong seeds = ref MemoryMarshal.GetArrayDataReference(AddressSeeds!);
+            return MixWords(
+                Unsafe.ReadUnaligned<ulong>(ref b),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)),
+                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)), 0, ref seeds);
+        }
+
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static partial ulong MultiplyFold(ulong a, ulong b)
         {
             ulong high = Math.BigMul(a, b, out ulong low);

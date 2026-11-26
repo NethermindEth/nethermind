@@ -44,7 +44,7 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
         if (request.ReceiptsRequests.Count > 0)
         {
             using ArrayPoolList<Hash256> receiptsHash = BuildHashList(request.ReceiptsRequests);
-            IOwnedReadOnlyList<TxReceipt[]?> ownedReceipts = await peerInfo.SyncPeer.GetReceipts(receiptsHash, cancellationToken);
+            IOwnedReadOnlyList<TxReceipt[]?> ownedReceipts = await peerInfo.SyncPeer.GetReceipts(receiptsHash, request.ExpectedReceiptCounts?.AsMemory() ?? Memory<int>.Empty, cancellationToken);
             request.Receipts = ownedReceipts;
         }
     }
@@ -52,7 +52,7 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
     private static ArrayPoolList<Hash256> BuildHashList(IOwnedReadOnlyList<BlockHeader> headers)
     {
         ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
-        ArrayPoolList<Hash256> hashes = new(headersSpan.Length);
+        ArrayPoolList<Hash256> hashes = [with(headersSpan.Length)];
         for (int i = 0; i < headersSpan.Length; i++)
         {
             hashes.Add(headersSpan[i].Hash!);

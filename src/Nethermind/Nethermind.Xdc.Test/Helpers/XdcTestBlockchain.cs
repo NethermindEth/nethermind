@@ -186,6 +186,7 @@ public class XdcTestBlockchain : TestBlockchain
                     new SpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId),
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockTree>()).GetDefaultComparer(),
+                    ctx.Resolve<FrameTxWidthLedger>(),
                     ctx.Resolve<ITxGossipPolicy>(),
                     [
                         new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>()),
@@ -543,9 +544,7 @@ public class XdcTestBlockchain : TestBlockchain
             newRoundWaitHandle.SetResult();
         void SignRandom(Vote vote)
         {
-            KeccakRlpWriter writer = new();
-            voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
-            ValueHash256 hash = writer.GetValueHash();
+            ValueHash256 hash = voteDecoder.ComputeValueHash(vote, RlpBehaviors.ForSealing);
             RandomSigner!.TrySign(in hash, out Signature signature);
             vote.Signature = signature;
             vote.Signer = RandomSigner.Address;
@@ -559,9 +558,9 @@ public class XdcTestBlockchain : TestBlockchain
         XdcBlockHeader head = (XdcBlockHeader)BlockTree.Head!.Header;
         IXdcReleaseSpec spec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
 
-        TaskCompletionSource newHeadWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource mainChainUpdated = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        BlockTree.NewHeadBlock += OnNewHead;
+        BlockTree.OnUpdateMainChain += OnMainChainUpdated;
         try
         {
             //by setting the correct signer the block producer runner should trigger trying to propose a block
@@ -570,17 +569,23 @@ public class XdcTestBlockchain : TestBlockchain
             Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
             ConsensusModule.StartRoundTask(head, XdcContext.CurrentRound);
 
-            Task waitingForHead = await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(10_000));
-            if (waitingForHead != newHeadWaitHandle.Task)
+            Task waitingForHead = await Task.WhenAny(mainChainUpdated.Task, Task.Delay(10_000));
+            if (waitingForHead != mainChainUpdated.Task)
                 Assert.Fail("Timed out waiting for new head after setting leader as signer.");
         }
         finally
         {
-            BlockTree.NewHeadBlock -= OnNewHead;
+            BlockTree.OnUpdateMainChain -= OnMainChainUpdated;
         }
 
-        void OnNewHead(object? sender, BlockEventArgs e) =>
-            newHeadWaitHandle.SetResult();
+        void OnMainChainUpdated(object? sender, OnUpdateMainChainArgs e)
+        {
+            if (e.WereProcessed && BlockTree.Head is { } newHead && newHead.Number > head.Number &&
+                e.Headers.Any(header => header.Hash == newHead.Hash))
+            {
+                mainChainUpdated.TrySetResult();
+            }
+        }
     }
 
     public void CreateAndCommitQC(XdcBlockHeader header)

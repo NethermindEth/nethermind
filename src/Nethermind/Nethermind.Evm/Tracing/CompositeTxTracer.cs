@@ -10,9 +10,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
+public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter, IFrameTxReceiptTracer, ITxOutputTracingFilter
 {
-    internal readonly IList<ITxTracer> _txTracers;
+    internal readonly ITxTracer[] _txTracers;
 
     public CompositeTxTracer(params ITxTracer[] txTracers) : this((IList<ITxTracer>)txTracers)
     {
@@ -20,10 +20,16 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public CompositeTxTracer(IList<ITxTracer> txTracers)
     {
-        _txTracers = txTracers;
-        for (int index = 0; index < txTracers.Count; index++)
+        if (txTracers is not ITxTracer[] tracers)
         {
-            ITxTracer t = txTracers[index];
+            tracers = new ITxTracer[txTracers.Count];
+            txTracers.CopyTo(tracers, 0);
+        }
+
+        _txTracers = tracers;
+        for (int index = 0; index < tracers.Length; index++)
+        {
+            ITxTracer t = tracers[index];
             IsCancelable |= t.IsCancelable;
             IsTracingState |= t.IsTracingState;
             IsTracingReceipt |= t.IsTracingReceipt;
@@ -34,8 +40,10 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
             IsTracingInstructions |= t.IsTracingInstructions;
             IsTracingRefunds |= t.IsTracingRefunds;
             IsTracingReturnData |= t.IsTracingReturnData;
+            IsTracingCallOutputMemory |= t.IsTracingCallOutputMemory;
             IsTracingCode |= t.IsTracingCode;
             IsTracingStack |= t.IsTracingStack;
+            IsTracingStackPushes |= t.IsTracingStackPushes;
             IsTracingBlockHash |= t.IsTracingBlockHash;
             IsTracingStorage |= t.IsTracingStorage;
             IsTracingAccess |= t.IsTracingAccess;
@@ -50,7 +58,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
     {
         get
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            for (int index = 0; index < _txTracers.Length; index++)
             {
                 if (_txTracers[index].IsCancelled) return true;
             }
@@ -69,8 +77,10 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
     public bool IsTracingInstructions { get; }
     public bool IsTracingRefunds { get; }
     public bool IsTracingReturnData { get; }
+    public bool IsTracingCallOutputMemory { get; }
     public bool IsTracingCode { get; }
     public bool IsTracingStack { get; private set; }
+    public bool IsTracingStackPushes { get; }
     public bool IsTracingBlockHash { get; }
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
@@ -81,7 +91,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         get
         {
             UInt256 mask = UInt256.Zero;
-            for (int index = 0; index < _txTracers.Count; index++)
+            for (int index = 0; index < _txTracers.Length; index++)
             {
                 ITxTracer tracer = _txTracers[index];
                 if (!tracer.IsTracingInstructions && !tracer.IsTracingStack && !tracer.IsTracingMemory && !tracer.IsTracingReturnData) continue;
@@ -92,9 +102,24 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Only the tracers that trace receipts get the output, so only they can read it.</remarks>
+    public bool IsTracingOutput
+    {
+        get
+        {
+            for (int index = 0; index < _txTracers.Length; index++)
+            {
+                ITxTracer tracer = _txTracers[index];
+                if (tracer.IsTracingReceipt && tracer is not ITxOutputTracingFilter { IsTracingOutput: false }) return true;
+            }
+            return false;
+        }
+    }
+
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingState)
@@ -104,9 +129,9 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
-    public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
+    public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingState)
@@ -118,7 +143,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingState)
@@ -130,7 +155,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportAccountRead(Address address)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingState)
@@ -142,7 +167,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingStorage)
@@ -154,7 +179,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportStorageClear(Address address)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingStorage) innerTracer.ReportStorageClear(address);
@@ -163,7 +188,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportStorageRestore(in StorageCell storageCell, byte[] value)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingStorage) innerTracer.ReportStorageRestore(storageCell, value);
@@ -172,7 +197,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportStorageRead(in StorageCell storageCell)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingStorage)
@@ -184,7 +209,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingReceipt)
@@ -196,7 +221,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingReceipt)
@@ -206,11 +231,39 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
+    void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingReceipt)
+            {
+                IFrameTxReceiptTracer.FindIn(innerTracer)?.ReportFrameTxReceipt(payer, frameReceipts);
+            }
+        }
+    }
+
+    void IFrameTxReceiptTracer.ReportFrameEnd(int frameIndex, EvmExceptionType? error)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            IFrameTxReceiptTracer.FindIn(_txTracers[index])?.ReportFrameEnd(frameIndex, error);
+        }
+    }
+
+    void IFrameTxReceiptTracer.ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            IFrameTxReceiptTracer.FindIn(_txTracers[index])?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
+        }
+    }
+
     public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         bool tracingMemory = false;
         bool tracingStack = false;
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
@@ -226,7 +279,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportOperationError(EvmExceptionType error)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
@@ -238,7 +291,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportOperationRemainingGas(ulong gas)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
@@ -250,7 +303,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportLog(LogEntry log)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingLogs)
@@ -262,7 +315,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void SetOperationStack(TraceStack stack)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingStack)
@@ -274,7 +327,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
@@ -286,7 +339,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportStackPush(byte stackItem)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
@@ -298,7 +351,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void SetOperationMemory(TraceMemory memoryTrace)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingMemory)
@@ -310,7 +363,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void SetOperationMemorySize(ulong newSize)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingMemory)
@@ -322,7 +375,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingReturnData)
@@ -334,7 +387,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
@@ -346,7 +399,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportMemoryChange(UInt256 offset, byte data)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
@@ -358,7 +411,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
@@ -370,7 +423,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingOpLevelStorage)
@@ -382,7 +435,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingOpLevelStorage)
@@ -394,7 +447,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingOpLevelStorage)
@@ -406,7 +459,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingOpLevelStorage)
@@ -418,7 +471,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
@@ -430,7 +483,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
@@ -442,7 +495,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
@@ -454,7 +507,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportActionError(EvmExceptionType evmExceptionType)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
@@ -464,9 +517,39 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error) => ReportActionErrorDetails(error, actionOnly: false);
+
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error, bool actionOnly)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
+            {
+                if (actionOnly)
+                    innerTracer.ReportActionErrorDetails(error, actionOnly: true);
+                else
+                    innerTracer.ReportActionErrorDetails(error);
+            }
+        }
+    }
+
+    /// <inheritdoc/>
+    public void ReportCodeDepositError(string error)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
+                innerTracer.ReportCodeDepositError(error);
+        }
+    }
+
     public void ReportActionRemainingGas(ulong gas)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
@@ -476,9 +559,34 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
+    public void ReportPrecompileAccountRead(Address address)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
+            {
+                innerTracer.ReportPrecompileAccountRead(address);
+            }
+        }
+    }
+
+    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
+            {
+                innerTracer.ReportRejectedAction(gas, gasLeft, value, from, to, input, callType, error, isPrecompileCall);
+            }
+        }
+    }
+
     public void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
@@ -490,7 +598,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
@@ -502,7 +610,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportBlockHash(Hash256 blockHash)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingBlockHash)
@@ -514,7 +622,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingCode)
@@ -526,7 +634,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
@@ -538,7 +646,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportRefund(long refund)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingRefunds)
@@ -550,7 +658,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportExtraGasPressure(ulong extraGasPressure)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingRefunds)
@@ -562,7 +670,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingAccess)
@@ -574,7 +682,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void ReportFees(UInt256 fees, UInt256 burntFees)
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingFees)
@@ -586,7 +694,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 
     public void Dispose()
     {
-        for (int index = 0; index < _txTracers.Count; index++)
+        for (int index = 0; index < _txTracers.Length; index++)
         {
             _txTracers[index].Dispose();
         }

@@ -9,179 +9,68 @@ namespace Nethermind.Core.Threading;
 
 public partial class ParallelUnbalancedWork
 {
-    public sealed partial class WorkerScope : IThreadPoolWorkItem
+    [ThreadStatic] private static WorkerContext _context;
+
+    private struct WorkerContext
     {
-        [ThreadStatic] private static WorkerContext _context;
+        internal WorkerScope? Scope;
+        internal WorkerScheduler? Scheduler;
+        internal WorkerScheduler? Runner;
+        internal WorkerScheduler? GroupRunner;
+        internal WorkerScheduler.WorkQueue? Operation;
+    }
 
-        private struct WorkerContext
+    internal static partial WorkerGroup? GetCurrentGroup() => WorkerScheduler.Current?.Group;
+
+    internal sealed partial class WorkerGroup
+    {
+        private WorkerScheduler _scheduler = null!;
+        private partial void Initialize() => _scheduler = new(Concurrency, group: this);
+        internal partial WorkerScope Enter() => new(_scheduler);
+        internal partial void Queue(IThreadPoolWorkItem work)
         {
-            internal WorkerScope? Scope;
-            internal WorkerScope? Runner;
+            using WorkerScope scope = Enter();
+            if (Concurrency == 1) work.Execute();
+            else _scheduler.Enqueue(new(), work);
         }
+    }
 
+    public sealed partial class WorkerScope
+    {
         internal static WorkerScope? Current => _context.Scope;
-        /// <summary>Whether operations other than <paramref name="own"/> have queued callbacks; a lock-free hint.</summary>
-        internal bool HasOtherReadyWork(WorkQueue own) =>
-            Volatile.Read(ref _root._first) is { } first && (!ReferenceEquals(first, own) || Volatile.Read(ref first.Next) is not null);
-        private readonly WorkerScope? _previous;
-        private readonly WorkerScope _root;
-        private readonly object _gate = new();
-        private readonly Action<IThreadPoolWorkItem> _schedule;
-        private WorkQueue? _first;
-        private WorkQueue? _last;
-        private int _pending;
-        private int _requested;
-        private int _runners;
+        private readonly WorkerContext _previous;
+        private readonly WorkerScope? _parentEntry;
+        private readonly bool _ownsCaller;
         private bool _disposed;
-        internal int Concurrency { get; }
+        internal WorkerScheduler Scheduler { get; }
 
-        internal WorkerScope(int concurrency, Action<IThreadPoolWorkItem>? schedule = null)
+        internal WorkerScope(int concurrency, Action<IThreadPoolWorkItem>? schedule = null, bool limitConcurrency = false)
+            : this(WorkerScheduler.Current is { } parent
+                ? limitConcurrency && concurrency < parent.Concurrency ? new(concurrency, parent: parent) : parent
+                : new(concurrency, schedule))
         {
-            ref WorkerContext context = ref _context;
-            _previous = context.Scope;
-            _root = _previous?._root ?? this;
-            Concurrency = _previous?.Concurrency ?? concurrency;
-            _schedule = schedule ?? QueueToThreadPool;
-            context.Scope = this;
         }
 
-        /// <summary>One operation's unstarted callbacks, all the same work item.</summary>
-        internal sealed class WorkQueue
+        internal WorkerScope(WorkerScheduler scheduler)
         {
-            // Cleared when the last callback is taken or withdrawn, so a drained queue keeps nothing alive.
-            internal IThreadPoolWorkItem? Work;
-            internal int Count;
-            internal WorkQueue? Previous;
-            internal WorkQueue? Next;
-        }
-
-        internal void Enqueue(WorkQueue queue, IThreadPoolWorkItem work, bool resuming = false, int count = 1)
-        {
-            if (count <= 0) return;
-            WorkerScope root = _root;
-            int schedule;
-            lock (root._gate)
+            _parentEntry = scheduler.Parent is not null && scheduler.Group is { } group && !ReferenceEquals(group, GetCurrentGroup())
+                ? group.Enter() : null;
+            _previous = _context;
+            Scheduler = scheduler;
+            _ownsCaller = (scheduler.Group is not null || scheduler.Parent is not null)
+                && !ReferenceEquals(_previous.Scheduler, scheduler)
+                && !ReferenceEquals(_previous.Runner, scheduler)
+                && !ReferenceEquals(_previous.GroupRunner, scheduler);
+            if (_ownsCaller) Monitor.Enter(scheduler.CallerGate);
+            _context.Scope = this;
+            _context.Scheduler = scheduler;
+            if (!ReferenceEquals(_previous.Scheduler, scheduler)) _context.Operation = null;
+            if (scheduler.IsGroup)
             {
-                Debug.Assert(queue.Count == 0 || ReferenceEquals(queue.Work, work), "A work queue holds a single work item.");
-                if (queue.Count == 0)
-                {
-                    queue.Work = work;
-                    root.AddReady(queue);
-                }
-                queue.Count += count;
-                root._pending += count;
-                // A yielding runner can drain its own next batch. Already requested runners also
-                // cover pending work, even before the thread pool starts their callbacks.
-                schedule = Math.Min(Concurrency - 1 - root._runners,
-                    root._pending - root._requested - (resuming && ReferenceEquals(_context.Runner, root) ? 1 : 0));
-                if (schedule > 0)
-                {
-                    root._runners += schedule;
-                    root._requested += schedule;
-                }
+                bool groupRunner = ReferenceEquals(_previous.GroupRunner, scheduler);
+                _context.Runner = ReferenceEquals(_previous.Runner, scheduler) || groupRunner ? scheduler : null;
+                _context.GroupRunner = groupRunner ? scheduler : null;
             }
-            for (int i = 0; i < schedule; i++) root._schedule(root);
-        }
-
-        internal bool TryExecute(WorkQueue queue)
-        {
-            IThreadPoolWorkItem work;
-            lock (_root._gate)
-            {
-                if (queue.Count == 0) return false;
-                work = _root.Take(queue);
-            }
-            Run(work);
-            return true;
-        }
-
-        /// <summary>Removes the queue's unstarted callbacks without running them.</summary>
-        /// <returns>The number of callbacks removed.</returns>
-        internal int Withdraw(WorkQueue queue)
-        {
-            lock (_root._gate)
-            {
-                int count = queue.Count;
-                if (count == 0) return 0;
-                queue.Count = 0;
-                queue.Work = null;
-                _root._pending -= count;
-                _root.Unlink(queue);
-                return count;
-            }
-        }
-
-        private void AddReady(WorkQueue queue)
-        {
-            queue.Previous = _last;
-            queue.Next = null;
-            if (_last is null) _first = queue;
-            else _last.Next = queue;
-            _last = queue;
-        }
-
-        private IThreadPoolWorkItem Take(WorkQueue queue)
-        {
-            IThreadPoolWorkItem work = queue.Work!;
-            if (--queue.Count == 0) queue.Work = null;
-            _pending--;
-            Unlink(queue);
-            // Rotate ready operations without moving their callbacks. Joining a specific operation uses
-            // this same constant-time removal and never executes unrelated callbacks.
-            if (queue.Count > 0) AddReady(queue);
-            return work;
-        }
-
-        private void Unlink(WorkQueue queue)
-        {
-            if (queue.Previous is null) _first = queue.Next;
-            else queue.Previous.Next = queue.Next;
-            if (queue.Next is null) _last = queue.Previous;
-            else queue.Next.Previous = queue.Previous;
-            queue.Previous = queue.Next = null;
-        }
-
-        private static void QueueToThreadPool(IThreadPoolWorkItem work)
-            => ThreadPool.UnsafeQueueUserWorkItem(work, preferLocal: false);
-
-        internal void Run(IThreadPoolWorkItem work)
-        {
-            ref WorkerContext context = ref _context;
-            WorkerScope? previous = context.Scope;
-            if (!ReferenceEquals(previous, _root)) context.Scope = _root;
-            try { work.Execute(); }
-            finally
-            {
-                if (!ReferenceEquals(context.Scope, previous)) context.Scope = previous;
-            }
-        }
-
-        void IThreadPoolWorkItem.Execute()
-        {
-            ref WorkerContext context = ref _context;
-            WorkerContext previous = context;
-            context = new() { Scope = this, Runner = this };
-            try
-            {
-                lock (_gate) _requested--;
-                while (true)
-                {
-                    IThreadPoolWorkItem work;
-                    lock (_gate)
-                    {
-                        // Enqueue and retirement share the gate: a producer either sees a live
-                        // drainer or reserves a replacement, so work cannot lose its wake-up.
-                        if (_first is null)
-                        {
-                            _runners--;
-                            return;
-                        }
-                        work = Take(_first);
-                    }
-                    Run(work);
-                }
-            }
-            finally { context = previous; }
         }
 
         public partial void Dispose()
@@ -189,20 +78,23 @@ public partial class ParallelUnbalancedWork
             if (_disposed) return;
             Debug.Assert(ReferenceEquals(_context.Scope, this), "Worker scopes must be disposed on their owning thread in reverse order.");
             _disposed = true;
-            _context.Scope = _previous;
+            _context = _previous;
+            if (_ownsCaller) Monitor.Exit(Scheduler.CallerGate);
+            _parentEntry?.Dispose();
         }
     }
 
     private static void QueueWorkers(BaseData data, IThreadPoolWorkItem work, int count)
     {
         if (count == 0) return;
-        if (WorkerScope.Current is { } scope)
+        if (WorkerScheduler.Current is { } scheduler)
         {
-            data.Scope = scope;
-            scope.Enqueue(data.Queue = new(), work, count: count);
+            data.Scheduler = scheduler;
+            scheduler.Enqueue(data.Queue = new(), work, count: count);
         }
         else
         {
+            data.SetUnstarted(count);
             for (int i = 0; i < count; i++)
                 ThreadPool.UnsafeQueueUserWorkItem(work, preferLocal: false);
         }
@@ -212,8 +104,11 @@ public partial class ParallelUnbalancedWork
     {
         // The caller has claimed the range, so unstarted workers would only retire; withdraw them in one step
         // rather than running each. Unrelated callbacks stay queued: they may depend on the caller's progress.
-        if (data.Scope?.Withdraw(data.Queue!) is > 0 and var withdrawn)
-            data.MarkThreadCompleted(withdrawn);
+        // Without a scope the callbacks stay in the thread pool, but they are withdrawn all the same: waiting
+        // for a free thread to dequeue them blocks this thread on the pool, and nested loops (a parallel
+        // BulkSet recursing into another) then park every pool thread on workers that cannot start.
+        int withdrawn = data.Scheduler is { } scheduler ? scheduler.Withdraw(data.Queue!) : data.WithdrawUnstarted();
+        if (withdrawn > 0) data.MarkThreadCompleted(withdrawn);
         if (data.ActiveThreads > 0) data.Event.Wait();
     }
 }

@@ -70,8 +70,8 @@ public class PseudoNethermindModuleTests
     }
 
     // Regeneration re-executes a block, so it must stay unreachable from everything that is not a read-only query:
-    // peer-facing serving, and consensus components that read receipts while processing (AuRa validator contract,
-    // Shutter). Those resolve the unkeyed registration, which must therefore never become the regenerating one.
+    // peer-facing serving, and consensus components that read receipts while processing (AuRa validator contract).
+    // Those resolve the unkeyed registration, which must therefore never become the regenerating one.
     [Test]
     public void Default_receipt_finder_is_never_the_regenerating_one([Values] bool deriveFromState)
     {
@@ -142,10 +142,14 @@ public class PseudoNethermindModuleTests
         if (registerOwnFlatDbConfig) builder.AddSingleton<IFlatDbConfig>(new FlatDbConfig());
         using IContainer container = builder.Build();
 
-        Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
-        Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
-        Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
-        Assert.That(container.Resolve<IFlatDbConfig>().EnableLongFinality, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
+            Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
+            Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
+            Assert.That(container.Resolve<IFlatDbConfig>().EnableLongFinality, Is.False);
+            Assert.That(container.Resolve<IFlatDbConfig>().Layout, Is.EqualTo(FlatLayout.Flat));
+        }
     }
 
     [Test]

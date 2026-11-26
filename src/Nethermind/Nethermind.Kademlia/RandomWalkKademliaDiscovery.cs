@@ -116,7 +116,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
         Task[] discoverTasks = new Task[concurrentDiscoveryJobs];
         for (int i = 0; i < discoverTasks.Length; i++)
         {
-            discoverTasks[i] = Task.Run(() => RunDiscoveryJob(channel.Writer, lookupResultLimit, admissions, discoveryToken));
+            discoverTasks[i] = Task.Run(() => RunDiscoveryJob(channel.Writer, lookupResultLimit, admissions, discoveryToken), CancellationToken.None);
         }
 
         Task discoverTask = Task.WhenAll(discoverTasks);

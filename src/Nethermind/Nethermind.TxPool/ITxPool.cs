@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Network.Contract.Messages;
@@ -24,7 +25,7 @@ namespace Nethermind.TxPool
         InvalidCells,
     }
 
-    public interface ITxPool
+    public interface ITxPool : IPendingTxsBySender
     {
         int GetPendingTransactionsCount();
         int GetPendingBlobTransactionsCount();
@@ -39,6 +40,19 @@ namespace Nethermind.TxPool
         IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default);
 
         /// <summary>
+        /// Non-blob txs grouped by sender address, limited to senders holding a non-frame transaction the next
+        /// block could include. Kept buckets come back whole, frame transactions included.
+        /// </summary>
+        /// <param name="baseFee">Base fee the next block will charge.</param>
+        /// <remarks>For a caller that discards EIP-8141 frame transactions anyway: judging a bucket's frames too
+        /// costs an EIP-8250 NONCE_MANAGER state read per nonce key they select, and hands back senders holding
+        /// nothing such a caller can use.
+        /// <para>The default body only approximates that: it falls back to the full readiness filter, so an
+        /// implementation that does not override it pays those reads and may return frame-only senders.</para></remarks>
+        IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256 baseFee) =>
+            GetPendingTransactionsBySender(filterToReadyTx: true, baseFee);
+
+        /// <summary>
         /// Blob txs light equivalences grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
@@ -51,20 +65,14 @@ namespace Nethermind.TxPool
             bool filterToReadyTx,
             UInt256 baseFee = default) => GetPendingLightBlobTransactionsBySender();
 
-        /// <summary>
-        /// from a specific sender, sorted by nonce and later tx pool sorting
-        /// </summary>
-        /// <returns></returns>
-        Transaction[] GetPendingTransactionsBySender(Address address);
-
-        /// <summary>
-        /// Blob txs light equivalences from a specific sender, sorted by nonce.
-        /// </summary>
-        Transaction[] GetPendingLightBlobTransactionsBySender(Address address) =>
+        Transaction[] IPendingTxsBySender.GetPendingLightBlobTransactionsBySender(Address address) =>
             GetPendingLightBlobTransactionsBySender().TryGetValue(address, out Transaction[]? txs) ? txs : [];
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
-        bool ContainsTx(Hash256 hash, TxType txType);
+
+        /// <summary>Removes the gossip registration owned by this peer connection.</summary>
+        void RemovePeer(ITxPoolPeer peer);
+
         AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         /// <summary>
@@ -76,6 +84,13 @@ namespace Nethermind.TxPool
         /// Allows a rejected sparse blob transaction to be retried with a different sidecar proof tuple.
         /// </summary>
         void ForgetRejectedBlobTransaction(Hash256 hash);
+        /// <summary>
+        /// Forgets <paramref name="hash"/> only if a copy of it was rejected in the current block for its sidecar
+        /// (<see cref="AcceptTxResult.InvalidBlobProofs"/>, or <see cref="AcceptTxResult.Invalid"/> for a sidecar
+        /// defect), so a copy carrying another sidecar can be judged.
+        /// </summary>
+        /// <returns><c>true</c> if the hash was forgotten.</returns>
+        bool ForgetInvalidBlobProofs(Hash256 hash);
         bool RemoveTransaction(Hash256? hash);
 
         /// <summary>
@@ -129,6 +144,26 @@ namespace Nethermind.TxPool
             transaction = default;
             return false;
         }
+
+        /// <summary>
+        /// Gets the cell availability mask of a pending blob transaction, as <see cref="TryGetPendingBlobCellMask"/> does,
+        /// and in the same lookup the network encoding of a type-3 transaction that holds every blob, read from
+        /// persistent storage without decoding it.
+        /// </summary>
+        /// <param name="hash">The transaction hash.</param>
+        /// <param name="availableMask">The cell availability mask.</param>
+        /// <param name="networkForm">
+        /// The encoding that <see cref="TryGetPendingTransaction"/> would give when encoded in the mempool form without
+        /// the typed envelope, or <see langword="null"/> when the transaction is not a full type-3 transaction or is held
+        /// in memory, so <see cref="TryGetPendingTransaction"/> is the cheaper read. The caller disposes it.
+        /// </param>
+        /// <returns><see langword="true"/> when the blob pool holds the transaction.</returns>
+        bool TryGetPendingBlobCellMaskAndNetworkForm(in ValueHash256 hash, out BlobCellMask availableMask, out IOwnedReadOnlyList<byte>? networkForm)
+        {
+            networkForm = null;
+            return TryGetPendingBlobCellMask(hash, out availableMask);
+        }
+
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
 
         /// <summary>
@@ -150,11 +185,8 @@ namespace Nethermind.TxPool
         bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof);
-        bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs);
         int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs);
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs);
         /// <summary>
         /// Gets the cell availability mask of a pending blob transaction without materializing blobs or cells.
         /// </summary>
@@ -193,9 +225,32 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[][]? proofs);
 
         /// <summary>
-        /// Verifies and merges newly received cells into a pending sparse blob transaction.
+        /// Gets locally available cells and V1 proofs for each of <paramref name="requestedBlobVersionedHashes"/>.
         /// </summary>
-        bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);
+        /// <remarks>
+        /// The output arrays are indexed as <paramref name="requestedBlobVersionedHashes"/>, and the entry of an unknown blob hash
+        /// is set to <see langword="null"/> in <paramref name="cells"/> and <paramref name="proofs"/>. Implementations can share
+        /// work between blobs of the same transaction; this default looks each hash up on its own.
+        /// </remarks>
+        /// <returns>The number of known blob hashes, including those for which none of the requested cells are available.</returns>
+        int TryGetBlobCellsAndProofsV1(
+            byte[][] requestedBlobVersionedHashes,
+            BlobCellMask requestedMask,
+            BlobCellMask[] availableMasks,
+            byte[][]?[] cells,
+            byte[][]?[] proofs)
+        {
+            int found = 0;
+            for (int i = 0; i < requestedBlobVersionedHashes.Length; i++)
+            {
+                if (TryGetBlobCellsAndProofsV1(requestedBlobVersionedHashes[i], requestedMask, out availableMasks[i], out cells[i], out proofs[i]))
+                {
+                    found++;
+                }
+            }
+
+            return found;
+        }
 
         /// <summary>
         /// Verifies and merges newly received cells and reports why the merge was rejected.
@@ -203,11 +258,9 @@ namespace Nethermind.TxPool
         /// <returns>The outcome of the merge attempt.</returns>
         BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);
         ulong GetLatestPendingNonce(Address address);
-        event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
         event EventHandler<TxEventArgs> EvictedPending;
-        public bool AcceptTxWhenNotSynced { get; set; }
         bool SupportsBlobs { get; }
         long PendingTransactionsAdded { get; }
 

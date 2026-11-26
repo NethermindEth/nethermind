@@ -4,11 +4,9 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DnsClient;
-using DotNetty.Buffers;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 [assembly: InternalsVisibleTo("Nethermind.Network.Dns.Test")]
@@ -36,62 +34,54 @@ public class EnrDiscovery : INodeSource
     {
         if (string.IsNullOrWhiteSpace(_domain)) yield break;
 
-        IByteBuffer buffer = NethermindBuffers.Default.Buffer();
         await using ConfiguredCancelableAsyncEnumerable<string>.Enumerator enumerator = _crawler.SearchTree(_domain, cancellationToken)
             .WithCancellation(cancellationToken)
             .GetAsyncEnumerator();
 
-        try
+        // Need to loop manually because of te exception handling
+        while (true)
         {
-            // Need to loop manually because of te exception handling
-            while (true)
+            cancellationToken.ThrowIfCancellationRequested();
+            bool hasNext = false;
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                bool hasNext = false;
-                try
-                {
-                    hasNext = await enumerator.MoveNextAsync();
-                }
-                catch (DnsResponseException dnsException)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Searching the tree of \"{_domain}\" had an error: {dnsException.DnsError}");
-                    yield break;
-                }
+                hasNext = await enumerator.MoveNextAsync();
+            }
+            catch (DnsResponseException dnsException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Searching the tree of \"{_domain}\" had an error: {dnsException.DnsError}");
+                yield break;
+            }
 
-                if (!hasNext)
-                {
-                    yield break;
-                }
+            if (!hasNext)
+            {
+                yield break;
+            }
 
-                string nodeRecordText = enumerator.Current;
-                Node? node = null;
-                try
+            string nodeRecordText = enumerator.Current;
+            Node? node = null;
+            try
+            {
+                NodeRecord nodeRecord = _parser.ParseRecord(nodeRecordText);
+                if (_forkInfo.IsNodeRecordForkCompatible(nodeRecord))
                 {
-                    NodeRecord nodeRecord = _parser.ParseRecord(nodeRecordText, buffer);
-                    if (_forkInfo.IsNodeRecordForkCompatible(nodeRecord))
-                    {
-                        node = CreateVerifiedNode(nodeRecord);
-                    }
-                    else if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Skipping DNS discovered ENR {nodeRecordText} with incompatible fork ID.");
-                    }
+                    node = CreateVerifiedNode(nodeRecord);
                 }
-                catch (Exception e)
+                else if (_logger.IsTrace)
                 {
-                    _logger.DebugError($"failed to parse enr record {nodeRecordText}", e);
-                }
-
-                if (node is not null)
-                {
-                    // here could add network info to the node
-                    yield return node;
+                    _logger.Trace($"Skipping DNS discovered ENR {nodeRecordText} with incompatible fork ID.");
                 }
             }
-        }
-        finally
-        {
-            buffer.Release();
+            catch (Exception e)
+            {
+                _logger.DebugError($"failed to parse enr record {nodeRecordText}", e);
+            }
+
+            if (node is not null)
+            {
+                // here could add network info to the node
+                yield return node;
+            }
         }
     }
 

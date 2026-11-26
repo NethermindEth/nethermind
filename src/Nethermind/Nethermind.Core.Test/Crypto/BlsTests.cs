@@ -22,7 +22,7 @@ public class BlsTests
         byte[] expected = [0xa5, 0xa0, 0x0d, 0xe9, 0x9d, 0x8f, 0xee, 0x7e, 0x28, 0x81, 0x1b, 0x2c, 0x08, 0xe0, 0xa7, 0xfc, 0x00, 0xa1, 0x10, 0x0c, 0x3d, 0x0f, 0x80, 0x51, 0x9d, 0x43, 0x24, 0x67, 0x1c, 0x29, 0x36, 0xb1, 0xe5, 0xa5, 0x87, 0x7d, 0x46, 0x7a, 0x6d, 0xc6, 0xf5, 0x92, 0xb2, 0x40, 0x7b, 0xcb, 0x12, 0x61, 0x0c, 0x18, 0x8a, 0x6c, 0xdf, 0x57, 0xd1, 0x77, 0x92, 0x00, 0x0f, 0xf7, 0x56, 0xf8, 0x0e, 0xbe, 0xd8, 0x00, 0x88, 0xab, 0x22, 0x9a, 0xa7, 0xe2, 0xc3, 0x24, 0x09, 0xec, 0xfe, 0x5a, 0x8d, 0x44, 0x73, 0xe9, 0x12, 0xfa, 0x19, 0x9e, 0xee, 0xa1, 0x8f, 0x3c, 0x79, 0x8d, 0xc5, 0x28, 0x64, 0x7d];
         Bls.SecretKey sk = new(SkBytes, Bls.ByteOrder.LittleEndian);
         BlsSigner.Signature s = BlsSigner.Sign(sk, MsgBytes);
-        Assert.That(s.Bytes.ToArray(), Is.EqualTo(expected));
+        Assert.That(s.Bytes, Is.SequenceEqualTo(expected));
     }
 
     [Test]
@@ -33,6 +33,37 @@ public class BlsTests
         G1 publicKey = new();
         publicKey.FromSk(sk);
         Assert.That(BlsSigner.Verify(publicKey.ToAffine(), s, MsgBytes));
+    }
+
+    [Test]
+    public void Rejects_identity_public_key_and_signature()
+    {
+        G1 publicKey = new();
+        BlsSigner.Signature signature = new();
+        Assert.That(BlsSigner.Verify(publicKey.ToAffine(), signature, MsgBytes), Is.False);
+    }
+
+    [Test]
+    public void Rejects_public_key_outside_the_prime_order_subgroup()
+    {
+        // ethereum/bls12-381-tests v0.1.2 deserialization_fails_not_in_G1.
+        byte[] encoded = Convert.FromHexString("8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        Bls.P1Affine outside = new();
+        Assert.That(outside.TryDecode(encoded, out _), Is.True);
+        byte[] subgroupOrder = Convert.FromHexString("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001");
+        Array.Reverse(subgroupOrder);
+        G1 torsion = new();
+        torsion.Add(outside);
+        torsion.Mult(subgroupOrder);
+        Bls.SecretKey key = new(SkBytes, Bls.ByteOrder.LittleEndian);
+        G1 point = new(key);
+        point.Add(torsion.ToAffine());
+        Bls.P1Affine publicKey = point.ToAffine();
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(torsion.IsInf(), Is.False);
+        Assert.That(publicKey.InGroup(), Is.False);
+        BlsSigner.Signature signature = BlsSigner.Sign(key, MsgBytes);
+        Assert.That(BlsSigner.Verify(publicKey, signature, MsgBytes), Is.False);
     }
 
     [Test]

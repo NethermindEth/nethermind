@@ -10,11 +10,18 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Synchronization.SnapSync;
 
 /// <summary>
-/// A wrapper to trie store that prevents committing boundary proof nodes and nodes whose subtree extends beyond
-/// the upper bound. This prevents double writes on partitioned snap ranges.
+/// A wrapper to trie store that prevent committing boundary proof node and nodes whose subtree extend beyond
+/// UpperBound or before LowerBound. This is to prevent double writes on partitioned snap ranges.
 /// </summary>
-public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrieStore
+/// <param name="baseTrieStore"></param>
+/// <param name="boundWholePath">
+/// Whether a leaf or an extension is bounded by its whole path, as a branch is, rather than by its keys. A node stands
+/// for every key under its path, so one reaching past the ranges downloaded at its root would hide the entries another
+/// root leaves there from healing.
+/// </param>
+public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore, bool boundWholePath) : IScopedTrieStore
 {
+    public ValueHash256 LowerBound = ValueKeccak.Zero;
     public ValueHash256 UpperBound = ValueKeccak.MaxValue;
 
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => baseTrieStore.FindCachedOrUnknown(in path, hash);
@@ -25,9 +32,10 @@ public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrie
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new NotSupportedException("Get storage trie node resolver not supported");
 
-    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new BoundedSnapCommitter(baseTrieStore.BeginCommit(root, writeFlags), UpperBound);
 
-    private sealed class BoundedSnapCommitter(ICommitter baseCommitter, ValueHash256 subtreeLimit) : ICommitter
+    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new BoundedSnapCommitter(baseTrieStore.BeginCommit(root, writeFlags), boundWholePath, LowerBound, UpperBound);
+
+    private sealed class BoundedSnapCommitter(ICommitter baseCommitter, bool boundWholePath, ValueHash256 subtreeLowerLimit, ValueHash256 subtreeLimit) : ICommitter
     {
         public void Dispose() => baseCommitter.Dispose();
 
@@ -35,8 +43,8 @@ public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrie
         {
             if (node.IsBoundaryProofNode) return node;
 
-            ValueHash256 subtreeUpperRange = node.IsBranch ? path.ToUpperBoundPath() : path.Append(node.Key).ToUpperBoundPath();
-            if (subtreeUpperRange > subtreeLimit) return node;
+            ValueHash256 subtreeUpperRange = node.IsBranch || boundWholePath ? path.ToUpperBoundPath() : path.Append(node.Key).ToUpperBoundPath();
+            if (subtreeUpperRange > subtreeLimit || path.ToLowerBoundPath() < subtreeLowerLimit) return node;
 
             node = baseCommitter.CommitNode(ref path, node);
             node.IsPersisted = true;

@@ -22,5 +22,7 @@ namespace Nethermind.Merge.Plugin
 
             return _beforeTheMerge.CalculateRewards(block);
         }
+
+        public bool MayReward(BlockHeader header) => !_poSSwitcher.IsPostMerge(header) && _beforeTheMerge.MayReward(header);
     }
 }

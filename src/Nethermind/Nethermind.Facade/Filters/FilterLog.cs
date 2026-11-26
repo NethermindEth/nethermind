@@ -3,10 +3,12 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Filters
 {
-    public class FilterLog(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, int transactionIndex, Hash256 transactionHash, Address address, byte[] data, Hash256[] topics, bool removed = false) : ILogEntry
+    [GenerateJsonWriter]
+    public class FilterLog(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, int transactionIndex, Hash256 transactionHash, Address address, byte[] data, Hash256[] topics, bool removed = false)
     {
         public Address Address { get; } = address;
         public Hash256 BlockHash { get; } = blockHash;

@@ -15,7 +15,8 @@ public class SocketClient<TStream>(
     string clientName,
     TStream stream,
     IJsonSerializer jsonSerializer,
-    int maxRequestSize = SocketClient<TStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
+    int maxRequestSize = SocketClient<TStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API,
+    bool processEmptyMessages = false)
     : ISocketsClient
     where TStream : Stream, IMessageBorderPreservingStream
 {
@@ -39,8 +40,8 @@ public class SocketClient<TStream>(
         if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
             string.IsNullOrWhiteSpace(message.Client))
         {
-            await _jsonSerializer.SerializeAsync(_stream, new { type = message.Type, client = ClientName, data = message.Data }, CancellationToken.None, indented: false, leaveOpen: true);
-            await _stream.WriteEndOfMessageAsync();
+            await _jsonSerializer.SerializeAsync(_stream, new SocketsMessage(message.Type, ClientName, message.Data), CancellationToken.None, indented: false, leaveOpen: true);
+            await _stream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
         }
     }
 
@@ -63,7 +64,7 @@ public class SocketClient<TStream>(
 
                 if (result.EndOfMessage)
                 {
-                    if (currentMessageLength > 0)
+                    if (currentMessageLength > 0 || processEmptyMessages)
                     {
                         await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength), cancellationToken);
                     }
@@ -80,11 +81,11 @@ public class SocketClient<TStream>(
                 else if (buffer.Length - currentMessageLength < standardBufferLength) // there is little room in current buffer
                 {
                     // grow the buffer 4x, but not more than max
-                    int newLength = Math.Min(buffer.Length * 4, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+                    int newLength = (int)Math.Min((long)buffer.Length * 4, maxRequestSize);
                     if (newLength > buffer.Length)
                     {
                         byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newLength);
-                        buffer.CopyTo(newBuffer, 0);
+                        buffer.AsSpan(0, currentMessageLength).CopyTo(newBuffer);
                         ArrayPool<byte>.Shared.Return(buffer);
                         buffer = newBuffer;
                     }
@@ -96,7 +97,6 @@ public class SocketClient<TStream>(
         }
         finally
         {
-            await _stream.DisposeAsync();
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }

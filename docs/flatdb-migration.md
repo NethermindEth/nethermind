@@ -1,7 +1,7 @@
 # FlatDB migration prototype
 
-This prototype always uses FlatDB for world state. The Hash and HalfPath state schemas are deprecated in the assumed
-Nethermind 2.1 compatibility release and are rejected before startup opens the state database. Init.StateDbKeyScheme
+This prototype always uses FlatDB for world state. Hash and HalfPath state schemas are rejected before startup opens
+the legacy state database; the compatibility release must still support completing their migration to FlatDB. Init.StateDbKeyScheme
 may be empty or Current (case insensitive); any other value is rejected.
 
 Before using this prototype, migrate with a compatibility binary that still supports the importer, then start this
@@ -12,8 +12,9 @@ directory and resync with FlatDB. Keep the old database until the new node has b
 FlatDb.Enabled=false is retained as a configuration tombstone and causes startup to fail with a migration message.
 FlatDb.ImportFromPruningTrieState was removed: this version cannot import a Hash or HalfPath database, so run the import
 with the compatibility binary (--FlatDb.ImportFromPruningTrieState=true) before upgrading. A fresh FlatDB database also
-refuses to start when legacy state files remain under the configured state path. A populated FlatDB takes precedence,
-so the old state directory can be removed after a successful migration and verification.
+refuses to start when legacy state files remain under the configured state path. A populated FlatDB takes precedence only after migration is complete,
+so the old state directory can be removed after a successful migration and verification. An unfinished migration cursor
+is rejected even when the FlatDB already has a state pointer: that database still needs the legacy backend.
 
 The old pruning controls were removed because FlatDB has no legacy trie pruning path. The following Pruning.* keys are
 no longer supported:

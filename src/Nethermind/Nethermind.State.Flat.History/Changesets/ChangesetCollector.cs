@@ -15,19 +15,39 @@ namespace Nethermind.State.Flat.History.Changesets;
 internal sealed class ChangesetCollector
 {
     private const int MaxRetainedEntries = 512;
+    // An account change is a struct of about 112 B kept inline, so this keeps the retained list near 14 KB.
+    private const int MaxRetainedAccounts = 128;
     private const int MaxRetainedPacked = 64 * 1024;
 
-    private readonly Dictionary<AddressAsKey, AccountChange> _accounts = [];
+    // The changes live in one reusable list, found through their index, so a transaction allocates none and every
+    // change is updated in place.
+    private readonly Dictionary<AddressAsKey, int> _accountIndexes = [];
+    private readonly List<AccountChange> _accounts = [];
     private readonly Dictionary<StorageCell, byte[]> _storage = [];
     private byte[] _packed = [];
 
     public bool IsEmpty => _accounts.Count == 0 && _storage.Count == 0;
 
-    public void Balance(Address address, in UInt256 after) => ChangeFor(address).Balance = after;
+    public void Balance(Address address, in UInt256 after)
+    {
+        ref AccountChange change = ref ChangeFor(address);
+        change.Balance = after;
+        change.HasBalance = true;
+    }
 
-    public void Nonce(Address address, in UInt256 after) => ChangeFor(address).Nonce = after;
+    public void Nonce(Address address, in UInt256 after)
+    {
+        ref AccountChange change = ref ChangeFor(address);
+        change.Nonce = after;
+        change.HasNonce = true;
+    }
 
-    public void Code(Address address, byte[] after) => ChangeFor(address).CodeHash = after.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(after);
+    public void Code(Address address, ReadOnlySpan<byte> after)
+    {
+        ref AccountChange change = ref ChangeFor(address);
+        change.CodeHash = after.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(after);
+        change.HasCodeHash = true;
+    }
 
     public void Deleted(Address address) => ChangeFor(address).IsDeleted = true;
 
@@ -48,14 +68,14 @@ internal sealed class ChangesetCollector
         int position = 0;
         Span<byte> balance = stackalloc byte[Hash256.Size];
         Span<byte> nonce = stackalloc byte[Hash256.Size];
-        foreach ((AddressAsKey address, AccountChange change) in _accounts)
+        foreach (ref readonly AccountChange change in CollectionsMarshal.AsSpan(_accounts))
         {
             position += ChangesetCodec.WriteAccount(
                 _packed.AsSpan(position),
-                address.Value,
-                Trim(change.Balance, balance),
-                Trim(change.Nonce, nonce),
-                change.CodeHash is null ? [] : change.CodeHash.Bytes,
+                change.Address,
+                change.HasBalance ? Trim(change.Balance, balance) : [],
+                change.HasNonce ? Trim(change.Nonce, nonce) : [],
+                change.HasCodeHash ? change.CodeHash.Bytes : [],
                 change.IsDeleted,
                 change.IsStorageCleared);
         }
@@ -70,21 +90,27 @@ internal sealed class ChangesetCollector
         return _packed.AsSpan(0, position);
     }
 
-    private static ReadOnlySpan<byte> Trim(in UInt256? value, Span<byte> buffer)
+    private static ReadOnlySpan<byte> Trim(in UInt256 value, Span<byte> buffer)
     {
-        if (value is not { } number) return [];
-
-        number.ToBigEndian(buffer);
+        value.ToBigEndian(buffer);
         return buffer.WithoutLeadingZeros();
     }
 
-    /// <summary>Clears the collector, keeping its dictionaries warm for the next transaction in this position. What
-    /// grew past what a transaction normally writes is let go of instead: the capture lives as long as the process and
-    /// holds one collector per position, so retaining every position's high-water mark would be unbounded in practice.</summary>
+    /// <summary>Clears the collector, keeping its list and dictionaries warm for the next transaction in this position.
+    /// What grew past what a transaction normally writes is let go of instead: the capture lives as long as the process
+    /// and holds one collector per position, so retaining every position's high-water mark would be unbounded in
+    /// practice.</summary>
     public void Reset()
     {
+        _accountIndexes.Clear();
         _accounts.Clear();
-        if (_accounts.EnsureCapacity(0) > MaxRetainedEntries) _accounts.TrimExcess();
+        // One check for both: the index grows through primes and the list doubles, so separate checks would trim the
+        // index at an account count the list still keeps.
+        if (_accounts.Capacity > MaxRetainedAccounts)
+        {
+            _accountIndexes.TrimExcess();
+            _accounts.TrimExcess();
+        }
         _storage.Clear();
         if (_storage.EnsureCapacity(0) > MaxRetainedEntries) _storage.TrimExcess();
         if (_packed.Length <= MaxRetainedPacked) return;
@@ -102,23 +128,28 @@ internal sealed class ChangesetCollector
         _packed = [];
     }
 
-    private AccountChange ChangeFor(Address address)
+    private ref AccountChange ChangeFor(Address address)
     {
-        ref AccountChange? change = ref CollectionsMarshal.GetValueRefOrAddDefault(_accounts, address, out bool existed);
-        if (!existed) change = new AccountChange();
-        return change!;
+        ref int index = ref CollectionsMarshal.GetValueRefOrAddDefault(_accountIndexes, address, out bool existed);
+        if (!existed)
+        {
+            index = _accounts.Count;
+            _accounts.Add(new AccountChange { Address = address });
+        }
+
+        return ref CollectionsMarshal.AsSpan(_accounts)[index];
     }
 
-    private sealed class AccountChange
+    private struct AccountChange
     {
-        public UInt256? Balance { get; set; }
-
-        public UInt256? Nonce { get; set; }
-
-        public Hash256? CodeHash { get; set; }
-
-        public bool IsDeleted { get; set; }
-
-        public bool IsStorageCleared { get; set; }
+        public Address Address;
+        public UInt256 Balance;
+        public UInt256 Nonce;
+        public ValueHash256 CodeHash;
+        public bool HasBalance;
+        public bool HasNonce;
+        public bool HasCodeHash;
+        public bool IsDeleted;
+        public bool IsStorageCleared;
     }
 }

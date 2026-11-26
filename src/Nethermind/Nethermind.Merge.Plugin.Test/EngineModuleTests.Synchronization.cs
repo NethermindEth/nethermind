@@ -36,6 +36,66 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [Test]
+    public async Task Canonical_head_stays_known_when_it_advances_during_level_recalculation([Values] bool advanceHead)
+    {
+        ILogManager manager = Substitute.For<ILogManager>();
+        manager.GetLogger(Arg.Any<string>()).Returns(LimboLogs.Instance.GetLogger("PointerControl"));
+        InterfaceLogger underlying = Substitute.For<InterfaceLogger>();
+        underlying.IsInfo.Returns(true);
+        ILogger blockTreeLogger = new(underlying);
+        manager.GetClassLogger<Nethermind.Blockchain.BlockTree>().Returns(blockTreeLogger);
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddSingleton<ILogManager>(manager));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+        ExecutionPayload next = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), Address.Zero);
+        TaskCompletionSource searchCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim allowPublication = new(false);
+        int hookFired = 0;
+        underlying.When(logger => logger.Info(Arg.Is<string>(message => message.StartsWith("Numbers resolved,", StringComparison.Ordinal))))
+            .Do(_ =>
+            {
+                if (Interlocked.CompareExchange(ref hookFired, 1, 0) != 0) return;
+                searchCompleted.SetResult();
+                Assert.That(allowPublication.Wait(TimeSpan.FromSeconds(10)), Is.True, "the test must release progress publication");
+            });
+        Task recalculate = Task.Run(chain.BlockTree.RecalculateTreeLevels);
+        try
+        {
+            await searchCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            if (advanceHead)
+            {
+                PayloadStatusV1 payload = (await rpc.engine_newPayloadV1(next)).Data;
+                Assert.That(payload.Status, Is.EqualTo(PayloadStatus.Valid));
+                ForkchoiceUpdatedV1Result forkchoice = (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(next.BlockHash, Keccak.Zero, Keccak.Zero))).Data;
+                Assert.That(forkchoice.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            }
+        }
+        finally
+        {
+            allowPublication.Set();
+            await recalculate;
+        }
+        BlockHeader head = chain.BlockTree.Head!.Header;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hookFired, Is.EqualTo(1), "LoadBestKnown must reach the search-publication boundary");
+            Assert.That(head.Number, Is.EqualTo(advanceHead ? 3 : 2));
+            Assert.That(chain.BlockTree.IsKnownBlock(head.Number, head.Hash!), Is.True, "a current canonical head remains a usable producer parent after concurrent recalculation");
+        }
+        ForkchoiceUpdatedV1Result build = (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(head.Hash!, Keccak.Zero, Keccak.Zero), new Nethermind.Consensus.Producers.PayloadAttributes
+        {
+            Timestamp = head.Timestamp + 12,
+            PrevRandao = TestItem.KeccakB,
+            SuggestedFeeRecipient = Address.Zero
+        })).Data;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(build.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(build.PayloadId, Is.Not.Null);
+        }
+    }
+
+    [Test]
     public async Task forkChoiceUpdatedV1_unknown_block_initiates_syncing()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
@@ -115,8 +175,11 @@ public partial class EngineModuleTests
             .WithPostMergeFlag(true)
             .TestObject;
         // sync has not started yet
-        Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
-        Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
+            Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
+        }
 
         ISyncPeer peerWithoutHeader = Substitute.For<ISyncPeer>();
         peerWithoutHeader
@@ -167,8 +230,11 @@ public partial class EngineModuleTests
             .WithPostMergeFlag(true)
             .TestObject;
         // sync has not started yet
-        Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
-        Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
+            Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
+        }
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer
@@ -182,9 +248,12 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
-        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+            Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+        }
     }
 
     [Test]
@@ -305,11 +374,14 @@ public partial class EngineModuleTests
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(nextUnconnectedBlock));
         forkchoiceStateV1 = new(nextUnconnectedBlock.Hash!, startingHead, startingHead);
         forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
-        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
-        Assert.That(chain.BeaconSync.IsBeaconSyncHeadersFinished(), Is.False);
-        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(nextUnconnectedBlock.Hash!)?.Header), Is.False);
+            Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
+            Assert.That(chain.BeaconSync.IsBeaconSyncHeadersFinished(), Is.False);
+            Assert.That(chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(nextUnconnectedBlock.Hash!)?.Header), Is.False);
+        }
         AssertBeaconPivotValues(chain.BeaconPivot, nextUnconnectedBlock.Header);
 
         nextUnconnectedBlock.Header.TotalDifficulty = 0;
@@ -403,8 +475,11 @@ public partial class EngineModuleTests
             newBlock!.Header.GasLimit = long.MaxValue; // incorrect gas limit
             newBlock.Header.Hash = newBlock.CalculateHash();
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock));
-            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Invalid).ToUpper()));
-            Assert.That(payloadStatus.Data.LatestValidHash, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Invalid).ToUpper()));
+                Assert.That(payloadStatus.Data.LatestValidHash, Is.Null);
+            }
         }
     }
 
@@ -570,8 +645,11 @@ public partial class EngineModuleTests
 
         Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
         ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock2));
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-        Assert.That(chain.BeaconPivot.BeaconPivotExists(), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(chain.BeaconPivot.BeaconPivotExists(), Is.True);
+        }
     }
 
 
@@ -606,8 +684,11 @@ public partial class EngineModuleTests
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock2));
 
         await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newBlock2.Hash!, newBlock2.Hash!, newBlock2.Hash!), null);
-        Assert.That(chain.BlockTree.FindLevel(10)!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.None));
-        Assert.That(chain.BlockTree.FindLevel(newBlock2.Number)!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconMainChain | BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.FindLevel(10)!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.None));
+            Assert.That(chain.BlockTree.FindLevel(newBlock2.Number)!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconMainChain | BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody));
+        }
     }
 
 
@@ -645,8 +726,11 @@ public partial class EngineModuleTests
         Block? block = chain.BlockTree.FindBlock(newBlock2.GetOrCalculateHash(), BlockTreeLookupOptions.None);
         Assert.That(block?.TotalDifficulty, Is.Not.EqualTo((UInt256)0));
         BlockInfo? blockInfo = chain.BlockTree.FindLevel(newBlock2.Number!)?.BlockInfos[0];
-        Assert.That(blockInfo!.TotalDifficulty, Is.Not.EqualTo(UInt256.Zero));
-        Assert.That(blockInfo?.Metadata, Is.EqualTo(BlockMetadata.None));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockInfo!.TotalDifficulty, Is.Not.EqualTo(UInt256.Zero));
+            Assert.That(blockInfo?.Metadata, Is.EqualTo(BlockMetadata.None));
+        }
     }
 
     [Test]
@@ -945,8 +1029,11 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload prePivotRequest = ExecutionPayload.Create(blockBeforePivot);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
-        Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
-        Assert.That(chain.BlockTree.FindBlock(prePivotRequest.BlockHash), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
+            Assert.That(chain.BlockTree.FindBlock(prePivotRequest.BlockHash), Is.Null);
+        }
     }
 
     [Test]
@@ -977,8 +1064,11 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload prePivotRequest = ExecutionPayload.Create(blockBeforePivot);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
-        Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatus.Valid).ToUpper()));
-        Assert.That(chain.BlockTree.FindBlock(prePivotRequest.BlockHash), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatus.Valid).ToUpper()));
+            Assert.That(chain.BlockTree.FindBlock(prePivotRequest.BlockHash), Is.Not.Null);
+        }
     }
 
     [Test]

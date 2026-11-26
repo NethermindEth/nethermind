@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -15,7 +14,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct EvmPooledMemory
+public partial struct EvmPooledMemory
 {
     public const int WordSize = 32;
     // Matches the minimum rental tier, avoiding an earlier spill boundary for small frames.
@@ -30,6 +29,14 @@ public struct EvmPooledMemory
     private EvmFrameMemory? _inlineMemoryManager;
     private byte[]? _memory;
     public ulong Size { get; private set; }
+
+    /// <summary>Whether the memory keeps its bytes in the layout <see cref="SwizzledMemory"/> describes.</summary>
+    /// <remarks>
+    /// Then every byte this type takes or hands out is in natural order, converted at the boundary; only the references
+    /// to the memory itself, which the guest's handlers read and write in place, see the layout. See
+    /// <c>EvmPooledMemory.std.cs</c> and <c>.zkevm.cs</c>.
+    /// </remarks>
+    internal static partial bool IsSwizzled { get; }
 
     internal EvmPooledMemory(EvmFrameMemory inlineMemoryManager, bool isFresh = false)
     {
@@ -51,7 +58,10 @@ public struct EvmPooledMemory
         EvmWord word1 = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         UpdateSize(newLength);
         ref byte memory = ref GetBackingReference();
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
+        if (IsSwizzled)
+            SwizzledMemory.Write(ref Unsafe.Add(ref memory, offset), word);
+        else
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
         return true;
     }
 
@@ -62,7 +72,8 @@ public struct EvmPooledMemory
 
         int offset = TruncateToInt32(location.u0);
         UpdateSize(newLength);
-        Unsafe.Add(ref GetBackingReference(), offset) = value;
+        ref byte at = ref Unsafe.Add(ref GetBackingReference(), offset);
+        (IsSwizzled ? ref SwizzledMemory.ByteAt(ref at) : ref at) = value;
         return true;
     }
 
@@ -145,7 +156,10 @@ public struct EvmPooledMemory
         Debug.Assert(location.u0 + (ulong)length <= Size);
         int intLocation = TruncateToInt32(location.u0);
         ulong preparedInitializedSize = PrepareOverwriteAfterGas(location.u0, (ulong)length, location.u0);
-        value.CopyTo(GetBackingSpan(intLocation, length));
+        if (IsSwizzled)
+            SwizzledMemory.Write(ref MemoryMarshal.GetReference(GetBackingSpan(intLocation, length)), value);
+        else
+            Bytes.Copy(value, GetBackingSpan(intLocation, length));
         CommitOverwrite(preparedInitializedSize);
     }
 
@@ -153,12 +167,15 @@ public struct EvmPooledMemory
     /// Copies a source range to memory and fills any bytes beyond the source with zeroes.
     /// The caller must have already charged for and expanded the destination range.
     /// </summary>
+    /// <param name="sourceInMemoryLayout">Whether <paramref name="source"/> is laid out as memory, as a call's input is in
+    /// swizzled memory (see <see cref="LoadInputAfterGas"/>), rather than in natural order.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void CopyFromZeroExtendedAfterGas(
         in UInt256 destination,
         ReadOnlySpan<byte> source,
         in UInt256 sourceOffset,
-        int length)
+        int length,
+        bool sourceInMemoryLayout = false)
     {
         if (length == 0)
         {
@@ -174,12 +191,21 @@ public struct EvmPooledMemory
         {
             int intSourceOffset = TruncateToInt32(sourceOffset.u0);
             copiedLength = Math.Min(source.Length - intSourceOffset, length);
-            source.Slice(intSourceOffset, copiedLength).CopyTo(target);
+            if (IsSwizzled && sourceInMemoryLayout)
+                SwizzledMemory.Copy(ref MemoryMarshal.GetReference(target),
+                    ref Unsafe.Add(ref MemoryMarshal.GetReference(source), intSourceOffset), copiedLength);
+            else if (IsSwizzled)
+                SwizzledMemory.Write(ref MemoryMarshal.GetReference(target), source.Slice(intSourceOffset, copiedLength));
+            else
+                Bytes.Copy(source.Slice(intSourceOffset, copiedLength), target);
         }
 
         if (copiedLength != length)
         {
-            target[copiedLength..].Clear();
+            if (IsSwizzled)
+                SwizzledMemory.Clear(ref Unsafe.Add(ref MemoryMarshal.GetReference(target), copiedLength), length - copiedLength);
+            else
+                target[copiedLength..].Clear();
         }
 
         CommitOverwrite(preparedInitializedSize);
@@ -234,7 +260,7 @@ public struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        data = GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+        data = Natural(GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0)));
         return true;
     }
 
@@ -283,7 +309,7 @@ public struct EvmPooledMemory
         }
 
         ClearForTracing((ulong)largeSize);
-        return GetBackingMemory((int)location, (int)length);
+        return Natural(GetBackingMemory((int)location, (int)length));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -343,7 +369,7 @@ public struct EvmPooledMemory
             }
             else if (_memory is null && _inlineMemoryManager is not null && overwriteEnd <= InlineCapacity)
             {
-                GetInlineSpan().Slice((int)initializedSize, (int)(location.u0 - initializedSize)).Clear();
+                GetInlineSpan().Slice((int)initializedSize, (int)(GroupEnd(location.u0) - initializedSize)).Clear();
                 preparedInitializedSize = overwriteEnd;
             }
             else
@@ -353,6 +379,13 @@ public struct EvmPooledMemory
         }
         ref byte destination = ref Unsafe.Add(ref GetBackingReference(), TruncateToInt32(location.u0));
         ref byte source = ref MemoryMarshal.GetReference(word);
+        if (IsSwizzled)
+        {
+            SwizzledMemory.StoreNativeWord(ref destination, ref source);
+            CommitOverwrite(preparedInitializedSize);
+            return;
+        }
+
         Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
         Unsafe.WriteUnaligned(ref destination, swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 24))));
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8), swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 16))));
@@ -372,6 +405,12 @@ public struct EvmPooledMemory
     internal void StoreWordAfterGas(in UInt256 location, ReadOnlySpan<byte> word)
     {
         Debug.Assert(location.IsUint64);
+        if (IsSwizzled)
+        {
+            SaveAfterGas(in location, word);
+            return;
+        }
+
         int offset = TruncateToInt32(location.u0);
         ulong overwriteEnd = location.u0 + WordSize;
         byte[]? memory = _memory;
@@ -430,6 +469,13 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         ulong overwriteEnd = location.u0 + 1;
+        if (IsSwizzled)
+        {
+            PrepareAccessAfterGas(overwriteEnd);
+            SwizzledMemory.ByteAt(ref Unsafe.Add(ref GetBackingReference(), offset)) = value;
+            return;
+        }
+
         byte[]? memory = _memory;
         if (memory is not null && overwriteEnd <= _initializedSize)
         {
@@ -478,7 +524,86 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + WordSize);
-        return ref Unsafe.Add(ref GetBackingReference(), offset);
+        ref byte word = ref Unsafe.Add(ref GetBackingReference(), offset);
+        if (!IsSwizzled) return ref word;
+
+        // The word in natural order, in a buffer of its own: the guest runs one frame at a time.
+        byte[] natural = s_naturalWord ??= new byte[WordSize];
+        SwizzledMemory.Read(ref word, natural);
+        return ref MemoryMarshal.GetArrayDataReference(natural);
+    }
+
+    private static byte[]? s_naturalWord;
+
+    /// <summary>
+    /// Returns the 32 bytes at <paramref name="offset"/> when they lie inside both the active and the initialized memory,
+    /// or a null reference when they do not.
+    /// </summary>
+    /// <param name="offset">
+    /// The start of the word, which the caller must keep at most <see cref="uint.MaxValue"/>: the bound is asserted only
+    /// in debug builds, and a larger offset wraps the bounds check and reaches outside the memory.
+    /// </param>
+    /// <remarks>
+    /// A word there needs no expansion gas and no initialization, so reading it in place is the whole access.
+    /// The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
+    /// </remarks>
+    [Experimental("NMEVM0001")]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ref byte GetActiveInitializedWord(ulong offset)
+    {
+        Debug.Assert(offset <= uint.MaxValue);
+        ulong end = offset + WordSize;
+        if (end > Size || end > _initializedSize) return ref Unsafe.NullRef<byte>();
+        return ref Unsafe.Add(ref GetBackingReference(), (nint)offset);
+    }
+
+    /// <summary>
+    /// The expansion gas an overwrite of the 32 bytes at <paramref name="offset"/> needs when they need no clearing and
+    /// no new backing, or <see cref="ulong.MaxValue"/>, which no gas covers, when they do.
+    /// </summary>
+    /// <param name="offset">
+    /// The start of the word, which the caller must keep at most <see cref="uint.MaxValue"/>: the bound is asserted only
+    /// in debug builds, and a larger offset wraps the bounds check and reaches outside the memory.
+    /// </param>
+    /// <remarks>
+    /// A word that starts inside the initialized memory leaves no gap to clear below it, so it may extend the
+    /// initialized memory up to the backing's capacity, as <see cref="StoreWordAfterGas"/> lets it. Nothing changes;
+    /// <see cref="CommitWordOverwrite"/> does that once the cost has been charged.
+    /// </remarks>
+    [Experimental("NMEVM0001")]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ulong GetWordOverwriteCost(ulong offset)
+    {
+        Debug.Assert(offset <= uint.MaxValue);
+        ulong end = offset + WordSize;
+        ulong initializedSize = _initializedSize;
+        if ((end > initializedSize && (offset > initializedSize || end > GetBackingCapacity())) ||
+            (IsSwizzled && (offset & GroupMask) != 0))
+            return ulong.MaxValue;
+
+        Debug.Assert(end <= MaxMemorySize, "The backing never reaches past the largest addressable size.");
+        ulong size = Size;
+        return end > size ? ExpansionCost(size >> 5, (end + (WordSize - 1UL)) >> 5) : 0;
+    }
+
+    /// <summary>
+    /// Makes the 32 bytes at <paramref name="offset"/> active and initialized, and returns them to be overwritten.
+    /// </summary>
+    /// <param name="offset">
+    /// The start of the word, at most <see cref="uint.MaxValue"/>, whose <see cref="GetWordOverwriteCost"/> has been charged.
+    /// </param>
+    /// <remarks>
+    /// The caller must write all 32 bytes. The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
+    /// </remarks>
+    [Experimental("NMEVM0001")]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ref byte CommitWordOverwrite(ulong offset)
+    {
+        ulong end = offset + WordSize;
+        if (end > Size) Size = (end + (WordSize - 1UL)) & ~(WordSize - 1UL);
+        if (end > _initializedSize) _initializedSize = end;
+        // The offset rederived rather than held through the updates, where it would take a callee-saved register.
+        return ref Unsafe.Add(ref GetBackingReference(), (nint)(end - WordSize));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -488,7 +613,72 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         int intLength = TruncateToInt32(length);
         PrepareAccessAfterGas(location.u0 + length);
-        return GetBackingSpan(offset, intLength);
+        return Natural(GetBackingSpan(offset, intLength));
+    }
+
+    /// <summary>
+    /// Variant of <see cref="TryLoadSpan(in UInt256, in UInt256, out Span{byte})"/> requiring the caller to have
+    /// already charged memory expansion for exactly this range; a zero length yields an empty span at any location.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal Span<byte> LoadSpanAfterGas(in UInt256 location, in UInt256 length)
+    {
+        if (length.IsZero)
+        {
+            return [];
+        }
+
+        Debug.Assert(length.IsUint64);
+        return LoadSpanAfterGas(in location, length.u0);
+    }
+
+    /// <summary><see cref="LoadSpanAfterGas(in UInt256, in UInt256)"/> as the memory holds the bytes: swizzled where
+    /// <see cref="IsSwizzled"/>, for a caller that converts them as it copies them out.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal Span<byte> LoadLaidOutSpanAfterGas(in UInt256 location, in UInt256 length)
+    {
+        if (length.IsZero)
+        {
+            return [];
+        }
+
+        Debug.Assert(location.IsUint64 && length.IsUint64);
+        PrepareAccessAfterGas(location.u0 + length.u0);
+        return GetBackingSpan(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+    }
+
+    /// <summary>
+    /// Variant of <see cref="TryLoad"/> requiring the caller to have already charged memory expansion for exactly
+    /// this range; a zero length yields an empty result at any location.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ReadOnlyMemory<byte> LoadAfterGas(in UInt256 location, in UInt256 length)
+    {
+        if (length.IsZero)
+        {
+            return default;
+        }
+
+        Debug.Assert(location.IsUint64);
+        Debug.Assert(length.IsUint64);
+        PrepareAccessAfterGas(location.u0 + length.u0);
+        return Natural(GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0)));
+    }
+
+    /// <summary><see cref="LoadAfterGas"/> for the input of a call, in the layout a call's input takes.</summary>
+    /// <remarks>
+    /// In swizzled memory the input keeps the memory's layout, laid out from its own start: a range starting on a group
+    /// boundary is handed over as it lies, without a copy, and any other is laid out again in a new array.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ReadOnlyMemory<byte> LoadInputAfterGas(in UInt256 location, in UInt256 length)
+    {
+        if (!IsSwizzled) return LoadAfterGas(in location, in length);
+        if (length.IsZero) return default;
+
+        PrepareAccessAfterGas(location.u0 + length.u0);
+        ReadOnlyMemory<byte> input = GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+        return (location.u0 & GroupMask) == 0 ? input : SwizzledMemory.Realign(input.Span);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -504,17 +694,21 @@ public struct EvmPooledMemory
         Debug.Assert(destination.u0 + length <= Size);
         Debug.Assert(source.u0 + length <= Size);
         ulong sourceEnd = source.u0 + length;
+        if (IsSwizzled)
+        {
+            CopySwizzledAfterGas(in destination, in source, length, sourceEnd);
+            return;
+        }
+
         ulong destinationEnd = destination.u0 + length;
         ulong initializedSize = _initializedSize;
-        byte[]? memory = _memory;
-        if (memory is not null
-            && sourceEnd <= initializedSize
-            && destinationEnd <= (ulong)memory.Length
+        if (sourceEnd <= initializedSize
+            && destinationEnd <= GetBackingCapacity()
             && destination.u0 <= initializedSize)
         {
             int intLength = TruncateToInt32(length);
-            memory.AsSpan(TruncateToInt32(source.u0), intLength)
-                .CopyTo(memory.AsSpan(TruncateToInt32(destination.u0), intLength));
+            GetBackingSpan(TruncateToInt32(source.u0), intLength)
+                .CopyTo(GetBackingSpan(TruncateToInt32(destination.u0), intLength));
             if (destinationEnd > initializedSize)
             {
                 _initializedSize = destinationEnd;
@@ -524,6 +718,21 @@ public struct EvmPooledMemory
         }
 
         CopyAfterGasSlow(in destination, in source, length, sourceEnd);
+    }
+
+    /// <summary><see cref="CopyAfterGas"/> in swizzled memory.</summary>
+    /// <remarks>Initializes the source first, so its unwritten bytes read as the zeroes they stand for.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void CopySwizzledAfterGas(in UInt256 destination, in UInt256 source, ulong length, ulong sourceEnd)
+    {
+        PrepareAccessAfterGas(sourceEnd);
+        ulong preparedInitializedSize = PrepareOverwriteAfterGas(destination.u0, length, sourceEnd);
+        ref byte memory = ref GetBackingReference();
+        SwizzledMemory.Move(
+            ref Unsafe.Add(ref memory, TruncateToInt32(destination.u0)),
+            ref Unsafe.Add(ref memory, TruncateToInt32(source.u0)),
+            TruncateToInt32(length));
+        CommitOverwrite(preparedInitializedSize);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -549,7 +758,7 @@ public struct EvmPooledMemory
             length,
             sourceEnd);
         Span<byte> target = GetBackingSpan(TruncateToInt32(destination.u0), intLength);
-        GetBackingSpan(TruncateToInt32(source.u0), intLength).CopyTo(target);
+        Bytes.Copy(GetBackingSpan(TruncateToInt32(source.u0), intLength), target);
         CommitOverwrite(preparedInitializedSize);
     }
 
@@ -614,14 +823,15 @@ public struct EvmPooledMemory
         // Full Yellow Paper memory cost is bounded above by ~8.8e12 gas, which fits comfortably
         // in ulong -- so the outOfGas propagation that older revisions carried is unreachable.
         // newActiveWords >= activeWords by the caller's gating condition, so the subtractions are safe.
-        ulong cost = (newActiveWords - activeWords) * GasCostOf.Memory +
-            ((newActiveWords * newActiveWords) >> 9) -
-            ((activeWords * activeWords) >> 9);
-
-        return cost;
+        return ExpansionCost(activeWords, newActiveWords);
     }
 
-    private static readonly TraceMemory EmptyTraceMemory = new(0, default);
+    /// <summary>The Yellow Paper memory cost of growing from <paramref name="activeWords"/> to <paramref name="newActiveWords"/> words.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ExpansionCost(ulong activeWords, ulong newActiveWords) =>
+        (newActiveWords - activeWords) * GasCostOf.Memory +
+        ((newActiveWords * newActiveWords) >> 9) -
+        ((activeWords * activeWords) >> 9);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public TraceMemory GetTrace()
@@ -637,7 +847,7 @@ public struct EvmPooledMemory
             return new(size, default);
 
         int visible = (int)Math.Min(size, capacity);
-        return new(size, GetBackingMemory(0, visible));
+        return new(size, Natural(GetBackingMemory(0, visible)));
     }
 
     public void Dispose()
@@ -676,8 +886,19 @@ public struct EvmPooledMemory
     private Span<byte> LoadSpan(ulong newLength, int offset, int length)
     {
         UpdateSize(newLength);
-        return GetBackingSpan(offset, length);
+        return Natural(GetBackingSpan(offset, length));
     }
+
+    /// <summary><paramref name="span"/> of the memory as it lies, or a copy of its bytes in natural order where the memory
+    /// is swizzled.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Span<byte> Natural(Span<byte> span) =>
+        IsSwizzled ? SwizzledMemory.ToArray(ref MemoryMarshal.GetReference(span), span.Length) : span;
+
+    /// <inheritdoc cref="Natural(Span{byte})"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlyMemory<byte> Natural(ReadOnlyMemory<byte> memory) =>
+        IsSwizzled ? SwizzledMemory.ToArray(ref MemoryMarshal.GetReference(memory.Span), memory.Length) : memory;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PrepareAccessAfterGas(ulong newLength)
@@ -717,9 +938,32 @@ public struct EvmPooledMemory
     {
         if (preparedInitializedSize != 0)
         {
-            _initializedSize = preparedInitializedSize;
+            _initializedSize = CompleteGroup(preparedInitializedSize);
         }
     }
+
+    /// <summary>The end the initialized prefix takes for one ending at <paramref name="end"/>.</summary>
+    /// <remarks>
+    /// In swizzled memory the next group boundary, the rest of the group zeroed: every clear starts where the prefix ends,
+    /// and one starting inside a group would clear bytes the prefix holds and miss bytes it should clear.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ulong CompleteGroup(ulong end)
+    {
+        if (!IsSwizzled || (end & GroupMask) == 0) return end;
+
+        ulong groupEnd = GroupEnd(end);
+        ref byte memory = ref GetBackingReference();
+        for (ulong at = end; at < groupEnd; at++)
+            SwizzledMemory.ByteAt(ref Unsafe.Add(ref memory, (nint)at)) = 0;
+        return groupEnd;
+    }
+
+    /// <summary><paramref name="offset"/> rounded up to a group boundary in swizzled memory, as a clear up to it must be.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong GroupEnd(ulong offset) => IsSwizzled ? (offset + GroupMask) & ~GroupMask : offset;
+
+    private const ulong GroupMask = sizeof(uint) - 1;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EnsureRented(ulong requiredEnd)
@@ -732,9 +976,7 @@ public struct EvmPooledMemory
     }
 
     private const int MinRentSize = 1_024;
-    // Above this, a cache miss rents from the shared pool instead of allocating (pow2 sizes from
-    // here up are LOH-sized).
-    private const int MaxNewAllocLength = 1 << 16;
+    private const int InlineZeroChunk = 256;
     // Buffers up to this stay in the per-thread cache. Frames zero-extend their buffer on growth
     // (RentSlow), and a buffer that round-tripped through the shared pool between frames comes
     // back cold and coherence-invalidated under concurrent load — so those zeroing stores stall.
@@ -808,50 +1050,6 @@ public struct EvmPooledMemory
         }
     }
 
-#if ZK_EVM
-    private static byte[] RentLarge(int minLength, out ulong initializedSize)
-    {
-        byte[] array = SafeArrayPool<byte>.Shared.Rent(minLength, out bool isFresh);
-        initializedSize = isFresh ? (ulong)array.Length : 0;
-        return array;
-    }
-
-    private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
-#else
-    private const int MaxSharedArrayLength = 1 << 20;
-    // Buffers above this limit are allocated directly and are never returned to a pool.
-    private const int MaxLargePooledArrayLength = 1 << 22;
-    private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
-        System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
-
-    private static byte[] RentLarge(int minLength, out ulong initializedSize)
-    {
-        if (minLength > MaxLargePooledArrayLength)
-        {
-            byte[] fresh = new byte[ArrayPoolUtilities.GetPowerOfTwoCapacity(minLength)];
-            initializedSize = (ulong)fresh.Length;
-            return fresh;
-        }
-
-        initializedSize = 0;
-        return minLength > MaxSharedArrayLength
-            ? _largeArrayPool.Rent(minLength)
-            : SafeArrayPool<byte>.Shared.Rent(minLength);
-    }
-
-    private static void ReturnLarge(byte[] array)
-    {
-        if (array.Length > MaxLargePooledArrayLength)
-        {
-            return;
-        }
-
-        if (array.Length > MaxSharedArrayLength)
-            _largeArrayPool.Return(array);
-        else
-            SafeArrayPool<byte>.Shared.Return(array);
-    }
-#endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow(ulong requiredEnd)
@@ -861,8 +1059,11 @@ public struct EvmPooledMemory
             ulong initializedSize = _initializedSize;
             if (requiredEnd > initializedSize)
             {
-                GetInlineSpan().Slice((int)initializedSize).Clear();
-                _initializedSize = InlineCapacity;
+                // Zero to the next chunk boundary rather than the whole inline tier, so a spill copies only
+                // the prefix the frame touched; InlineCapacity is a multiple of the chunk.
+                ulong target = (requiredEnd + (InlineZeroChunk - 1)) & ~(InlineZeroChunk - 1UL);
+                GetInlineSpan().Slice((int)initializedSize, (int)(target - initializedSize)).Clear();
+                _initializedSize = target;
             }
 
             return;
@@ -881,8 +1082,11 @@ public struct EvmPooledMemory
         {
             // Over-zero to a chunk boundary so sequential MSTORE growth stays amortized; size the window from
             // requiredEnd rather than the expansion delta to limit wasted clearing for small frames.
-            ulong zeroChunk = Math.Min(4 * 1024UL, Math.Max(256UL, BitOperations.RoundUpToPowerOf2(requiredEnd) >> 3));
-            ulong target = Math.Min((ulong)memory.Length, (requiredEnd + (zeroChunk - 1)) & ~(zeroChunk - 1));
+            // requiredEnd fits in the backing array. Shifting 61 set bits by clz(end - 1) gives chunk - 1;
+            // forcing bit 10 and masking to 12 bits implements the 256–4096 byte clamp.
+            ulong value = (requiredEnd - 1) | 1024UL;
+            ulong zeroMask = (0x1fff_ffff_ffff_ffffUL >> Bytes.LeadingZeroBits(value)) & 0xfffUL;
+            ulong target = Math.Min((ulong)memory.Length, (requiredEnd + zeroMask) & ~zeroMask);
             Array.Clear(memory, (int)initializedSize, (int)(target - initializedSize));
             initializedSize = target;
         }
@@ -900,18 +1104,18 @@ public struct EvmPooledMemory
         {
             if (overwriteStart > initializedSize)
             {
-                GetInlineSpan().Slice((int)initializedSize, (int)(overwriteStart - initializedSize)).Clear();
+                GetInlineSpan().Slice((int)initializedSize, (int)(GroupEnd(overwriteStart) - initializedSize)).Clear();
             }
 
             return Math.Max(initializedSize, overwriteEnd);
         }
 
-        ulong preservedSize = Math.Min(initializedSize, Math.Max(overwriteStart, preservedEnd));
+        ulong preservedSize = GroupEnd(Math.Min(initializedSize, Math.Max(overwriteStart, preservedEnd)));
         byte[] memory = EnsureCapacity(overwriteEnd, preservedSize, ref initializedSize);
 
         if (overwriteStart > initializedSize)
         {
-            Array.Clear(memory, (int)initializedSize, (int)(overwriteStart - initializedSize));
+            Array.Clear(memory, (int)initializedSize, (int)(GroupEnd(overwriteStart) - initializedSize));
         }
 
         return Math.Max(initializedSize, overwriteEnd);

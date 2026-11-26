@@ -63,6 +63,20 @@ not calls to `ExecuteOpcode`. Compare unprofiled timings separately before
 assuming unchanged throughput; identical IL semantics do not guarantee identical
 JIT layout or tiering behavior.
 
+## Guest tail dispatch
+
+Guest-specific handlers express transfers as `return TailDispatch(...)`, with the
+handler's eight arguments followed by the target pointer. Before cloning opcode
+handlers, the weaver replaces these marker calls with `tail. calli` and `ret` in
+the caller. The pointer is last to match the evaluation stack expected by `calli`;
+there is no runtime forwarding method or dependency on JIT inlining.
+
+The marker must match the guest dispatch template, and every use must be a direct
+call from a matching handler in `RawCalliHelper`, outside exception handlers, with
+its result returned unchanged. Both direct returns and the compiler's debug
+return-local epilogue are accepted. Unsupported uses fail weaving, and the marker
+is removed after all references have been rewritten. The existing exact-code
+checks on table entries still apply.
 ## Measured scope
 
 A Windows x64 Release build on SDK 10.0.400 produces a 487,424-byte managed

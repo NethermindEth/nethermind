@@ -24,6 +24,7 @@ public class SeedFlatHistoryGenesisTests
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private HistoryWriter _writer = null!;
     private HistoryReader _reader = null!;
+    private PivotHistoryImageWriter _image = null!;
 
     [SetUp]
     public void SetUp()
@@ -35,11 +36,13 @@ public class SeedFlatHistoryGenesisTests
         HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, config);
         _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
         _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
+        _image = new PivotHistoryImageWriter(_db, _historyColumns, config, availability, rowFormat, new Lazy<IPivotStateSource>(Substitute.For<IPivotStateSource>()), LimboLogs.Instance);
     }
 
     [TearDown]
     public void TearDown()
     {
+        _image.Dispose();
         _db.Dispose();
         _historyColumns.Dispose();
     }

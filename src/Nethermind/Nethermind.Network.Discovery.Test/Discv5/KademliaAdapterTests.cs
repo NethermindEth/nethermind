@@ -15,6 +15,7 @@ using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Kademlia;
+using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
@@ -100,6 +101,69 @@ public class KademliaAdapterTests
         }
 
         Assert.That(adapter.TryAcceptChallenge(endpoint), Is.False);
+    }
+
+    [Test]
+    public void AddressBurstLimiter_AllocatesFiltersAsBurstGrows()
+    {
+        const int filterSize = 8192;
+        const int burst = 16;
+        TimeSpan window = TimeSpan.FromHours(1);
+        IPAddress address = IPAddress.Parse("192.0.2.1");
+        _ = NodeFilter.CreateExact(filterSize, window).TryAccept(address);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        NodeFilter filter = NodeFilter.CreateExact(filterSize, window);
+        long filterBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        GC.KeepAlive(filter);
+
+        before = GC.GetAllocatedBytesForCurrentThread();
+        AddressBurstLimiter limiter = new(burst, filterSize, window);
+        long constructionBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.That(constructionBytes, Is.InRange(filterBytes, filterBytes * 2));
+
+        for (int i = 0; i < burst; i++)
+        {
+            before = GC.GetAllocatedBytesForCurrentThread();
+            bool accepted = limiter.TryAccept(address);
+            long acceptanceBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accepted, Is.True);
+                Assert.That(acceptanceBytes, i == 0 ? Is.LessThan(filterBytes) : Is.InRange(filterBytes, filterBytes * 2));
+            }
+        }
+
+        before = GC.GetAllocatedBytesForCurrentThread();
+        bool rejected = !limiter.TryAccept(address);
+        long rejectionBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected, Is.True);
+            Assert.That(rejectionBytes, Is.LessThan(filterBytes));
+        }
+    }
+
+    [Test]
+    public void AddressBurstLimiter_ConcurrentFirstUsePreservesBurstPerAddress([Values(1, 8, 16)] int burst)
+    {
+        AddressBurstLimiter limiter = new(burst, 8192, TimeSpan.FromHours(1));
+        IPAddress[] addresses = [IPAddress.Parse("192.0.2.1"), IPAddress.Parse("192.0.2.2")];
+        IPAddress[] mappedAddresses = [addresses[0].MapToIPv6(), addresses[1].MapToIPv6()];
+        int[] accepted = new int[addresses.Length];
+
+        Parallel.For(0, 256, i =>
+        {
+            int addressIndex = i % addresses.Length;
+            IPAddress address = i % 4 < 2 ? addresses[addressIndex] : mappedAddresses[addressIndex];
+            if (limiter.TryAccept(address))
+            {
+                Interlocked.Increment(ref accepted[addressIndex]);
+            }
+        });
+
+        Assert.That(accepted, Is.All.EqualTo(burst));
     }
 
     [Test]
@@ -319,8 +383,11 @@ public class KademliaAdapterTests
             localIp: IPAddress.Parse(localIp),
             node: out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node!.Host, Is.EqualTo(expectedIp));
@@ -330,31 +397,101 @@ public class KademliaAdapterTests
         }
     }
 
-    [Test]
-    public void TryGetAcceptableNode_PreservesPreferredIpv6FamilyWhenEndpointChanges()
+    [TestCase("[fe80::1]:30304", "fe80::1")]
+    [TestCase("[fe80::1%3]:30304", "fe80::1")]
+    [TestCase("8.8.8.8:30304", "8.8.8.8")]
+    [TestCase("[::ffff:8.8.8.8]:30304", "8.8.8.8")]
+    [TestCase("[fe80::1]:40404", null)]
+    [TestCase("1.1.1.1:30304", null)]
+    // A special-use source is not an acceptable endpoint, and the record's endpoint in the other family was never verified.
+    [TestCase("[2002:c000:204::1]:30304", null, "8.8.8.8", "2002:c000:204::1")]
+    [TestCase("[2001:0:4136:e378:8000:63bf:3fff:fdd2]:30304", null, "8.8.8.8", "2001:0:4136:e378:8000:63bf:3fff:fdd2")]
+    [TestCase("[64:ff9b::808:808]:30304", null, "8.8.8.8", "64:ff9b::808:808")]
+    [TestCase("198.18.0.1:30304", null, "198.18.0.1", "2606:4700:4700::1111")]
+    [TestCase("[::ffff:198.18.0.1]:30304", null, "198.18.0.1", "2606:4700:4700::1111")]
+    [TestCase("[2002:c000:204::1]:30304", null, "8.8.8.8", "2002:c000:204::1", false)]
+    public void TryGetAcceptableNode_RequiresRecordToAdvertiseSourceEndpoint(
+        string source,
+        string? expectedHost,
+        string recordIp = "8.8.8.8",
+        string recordIp6 = "fe80::1",
+        bool allowNonRoutable = true)
     {
-        IPAddress ip6 = IPAddress.Parse("2606:4700:4700::1111");
         NodeRecord record = TestEnrBuilder.BuildSigned(
             TestItem.PrivateKeyB,
-            IPAddress.Parse("8.8.8.8"),
+            IPAddress.Parse(recordIp),
             tcpPort: 30303,
             udpPort: 30304,
-            configureExtras: enr => enr.SetEntry(new Ip6Entry(ip6)));
+            configureExtras: enr => enr.SetEntry(new Ip6Entry(IPAddress.Parse(recordIp6))));
 
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
-            allowNonRoutable: false,
+            allowNonRoutable,
             localIp: IPAddress.IPv6Any,
-            preferredEndpoint: new IPEndPoint(ip6, 40404),
+            sourceEndpoint: IPEndPoint.Parse(source),
             node: out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node!.Host, Is.EqualTo(ip6.ToString()));
-            Assert.That(node.Port, Is.EqualTo(30303));
-            Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
+            Assert.That(result, Is.EqualTo(expectedHost is not null));
+            Assert.That(node?.Host, Is.EqualTo(expectedHost));
+            Assert.That(node?.DiscoveryPort, Is.EqualTo(expectedHost is null ? null : 30304));
+        }
+    }
+
+    [Test]
+    public async Task Handshake_StoresRecordOnlyWhenItAdvertisesPacketSource([Values] bool advertisesSource)
+    {
+        IPEndPoint source = IPEndPoint.Parse("8.8.8.8:30304");
+        NodeRecord remoteRecord = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            advertisesSource ? source.Address : IPAddress.Parse("1.1.1.1"),
+            tcpPort: null,
+            udpPort: source.Port);
+        TaskCompletionSource<Node> admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _kademlia.When(kademlia => kademlia.AddOrRefresh(Arg.Any<Node>())).Do(call => admitted.TrySetResult(call.Arg<Node>()));
+        TaskCompletionSource<byte[]> firstSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IDatagramSocket socket = Substitute.For<IDatagramSocket>();
+        socket.SendToAsync(Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<IPEndPoint>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                firstSent.TrySetResult(call.Arg<ReadOnlyMemory<byte>>().ToArray());
+                return ValueTask.CompletedTask;
+            });
+        DiscoveryV5Transport transport = new(LimboLogs.Instance);
+        transport.BindSocket(socket);
+        KademliaAdapter adapter = CreateAdapter(transport: transport);
+        using PacketCodec remoteCodec = new(new InsecureProtectedPrivateKey(TestItem.PrivateKeyB), new CryptoRandom(), new EthereumEcdsa(0));
+        using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(10));
+        Task run = adapter.RunAsync(cancellation.Token);
+
+        using (PingMsg ping = new(RequestId.From([1]), remoteRecord.EnrSequence))
+        {
+            transport.Receive(PooledUdpReceiveResult.Copy(remoteCodec.EncodeOrdinary(TestItem.PublicKeyA, new byte[16], ping, new byte[PacketCodec.NonceSize]), source));
+        }
+
+        byte[] whoAreYou = await firstSent.Task.WaitAsync(cancellation.Token);
+        Assert.That(PacketCodec.TryDecode(whoAreYou, TestItem.PublicKeyB.Hash.Bytes, out Packet challengePacket), Is.True);
+        byte[] handshake;
+        using (challengePacket)
+        using (Challenge challenge = remoteCodec.DecodeWhoAreYou(in challengePacket))
+        using (PingMsg ping = new(RequestId.From([2]), remoteRecord.EnrSequence))
+        {
+            handshake = remoteCodec.EncodeHandshake(TestItem.PublicKeyA, challenge, ping, remoteRecord, out Session session);
+            session.Dispose();
+        }
+
+        transport.Receive(PooledUdpReceiveResult.Copy(handshake, source));
+        Node node = await admitted.Task.WaitAsync(cancellation.Token);
+        await cancellation.CancelAsync();
+        await run;
+        await adapter.DisposeAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.DiscoveryAddress, Is.EqualTo(source));
+            Assert.That(node.Enr?.ToString(), Is.EqualTo(advertisesSource ? remoteRecord.ToString() : null));
+            Assert.That(node.HighestObservedEnrSequence, Is.EqualTo(remoteRecord.EnrSequence));
         }
     }
 
@@ -381,8 +518,11 @@ public class KademliaAdapterTests
             localIp: IPAddress.Parse(localIp),
             node: out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+        }
         Assert.That(node!.Host, Is.EqualTo(expectedIp));
     }
 
@@ -402,8 +542,11 @@ public class KademliaAdapterTests
             localIp: IPAddress.Parse(localIp),
             node: out Node? node);
 
-        Assert.That(result, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -476,7 +619,7 @@ public class KademliaAdapterTests
         }
     }
 
-    private KademliaAdapter CreateAdapter(Node? currentNode = null, IPAddress? localIp = null)
+    private KademliaAdapter CreateAdapter(Node? currentNode = null, IPAddress? localIp = null, DiscoveryV5Transport? transport = null)
     {
         currentNode ??= CreateNode(TestItem.PublicKeyA, 1);
         INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
@@ -493,7 +636,7 @@ public class KademliaAdapterTests
         return new(
             new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
             _routingTable,
-            new NettyDiscoveryV5Handler(LimboLogs.Instance),
+            transport ?? new DiscoveryV5Transport(LimboLogs.Instance),
             _packetCodec,
             nodeRecordProvider,
             new DiscoveryConfig(),

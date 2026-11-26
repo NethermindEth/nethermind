@@ -6,7 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Consensus.Validators;
 
-public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
+public interface IBlockValidator : IHeaderValidator
 {
     bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error);
     /// <param name="validateHashes">
@@ -24,5 +24,9 @@ public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
     /// </param>
     bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true);
     bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error);
+    /// <remarks>
+    /// The body can come from <c>BlockBodyDecoder.DecodeWithEncodedTransactions</c>, where each transaction holds only
+    /// its type and encoding. Check only what those give, such as the transaction root, and not other transaction fields.
+    /// </remarks>
     bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error);
 }

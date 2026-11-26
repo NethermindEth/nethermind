@@ -55,6 +55,7 @@ namespace Nethermind.Init.Steps
 
         private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
+            KeptStateResumer.Resume(blockTree, worldStateManager.GlobalStateReader, logManager);
             using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager.GlobalStateReader, logManager);
             await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
             {
@@ -66,18 +67,25 @@ namespace Nethermind.Init.Steps
                 {
                     if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
                 }
-            });
+            }, CancellationToken.None);
 
             blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
-            if (!blockProcessingQueue.IsEmpty) // Just in case the queue got empty before we subscribed
+            try
             {
-                await _blocksProcessedTaskSource.Task.WaitAsync(cancellationToken);
+                if (!blockProcessingQueue.IsEmpty) // Just in case the queue got empty before we subscribed
+                {
+                    await _blocksProcessedTaskSource.Task.WaitAsync(cancellationToken);
+                }
             }
-            blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
+            finally
+            {
+                blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
+            }
         }
 
         private readonly TaskCompletionSource _blocksProcessedTaskSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        private void OnProcessingQueueEmpty(object? sender, EventArgs e) => _blocksProcessedTaskSource.SetResult();
+        // Raised after every dequeued block and batch, possibly again before the continuation above unsubscribes.
+        private void OnProcessingQueueEmpty(object? sender, EventArgs e) => _blocksProcessedTaskSource.TrySetResult();
     }
 }

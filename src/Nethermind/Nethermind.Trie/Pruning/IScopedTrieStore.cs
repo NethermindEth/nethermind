@@ -27,6 +27,8 @@ public interface ICommitter : IDisposable
     /// <returns></returns>
     TrieNode CommitNode(ref TreePath path, TrieNode node);
 
-    bool TryRequestConcurrentQuota() => false;
-    void ReturnConcurrencyQuota() { }
+    /// <summary>Prepares this committer for concurrent calls to <see cref="CommitNode"/>.</summary>
+    /// <remarks>Call on the owning thread before dispatching any commit work.</remarks>
+    /// <returns>Whether concurrent commits are supported.</returns>
+    bool TryEnableParallelCommit() => false;
 }

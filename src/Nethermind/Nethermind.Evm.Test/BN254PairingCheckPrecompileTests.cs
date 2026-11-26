@@ -1,9 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -116,4 +123,203 @@ public class BN254PairingCheckPrecompileTests : PrecompileTests<BN254PairingChec
     [Test]
     public void Pairing_with_leading_infinity_pair_is_skipped_and_result_unchanged() =>
         RunTest(InfinityPairs(1) + TwoPairsProductOne, ResultOne, true);
+
+    private const string G1Generator = "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002";
+    private const string G1Infinity = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+    // on the twist but outside the r-torsion subgroup
+    internal const string G2NotInSubgroup = "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010d1271953ed9ea0836846e70a1934187998c7f790cb4d7511b7f8da82de048a42869111d5381f072f8e2728fdb825a51aadd70e52c9830e9ab4b871c0531f1bb";
+    // on the twist with order 10069, a factor of the cofactor 2p - r
+    internal const string G2OfOrder10069 = "1e886f363bc5e215dc6e408aab8084dab5b267715c653f8da73bf2caf7a62117006e57a4170f1712829fe5d637187aedc7d122ce488b136622891b1cec682a0b1aa2cdb3379ca38a1731bfb68796529aa11e51cc06a704a6d6064f14268a5a542762ba11a4e39fec3e3c3d90b9c6c1b3ab89dd3e73f64d6d586f76b9b641b946";
+    // a G2 point plus G2OfOrder10069
+    private const string G2ShiftedByOrder10069 = "252c343b5e7de6fa12fef1c7997741bf1fcfdde22f5863a50a55605eb5aacca42dd604a01c34df59d1ccee9a7f05479eb498bea85faf140be0e5ff032ca1c92814b98c3e05bd4ed14ce3d708c8206ffc5ddc1d7745b31321f044b06eaf722af50341fbb86de9391b67dbd746d8e2d9f4404cb20b722d065e503034cd66101d56";
+
+    // The reasons go-ethereum gives for these inputs.
+    // G1 (1, 3) with the G2 generator
+    [TestCase("00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000003198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c21800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa", "point is not on curve")]
+    // 193 bytes
+    [TestCase("00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c21800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa00", "bad elliptic curve pairing size")]
+    // a G2 point on the twist outside the r-torsion subgroup
+    [TestCase(G1Generator + G2NotInSubgroup, "point is not in correct subgroup")]
+    // x.im of the G2 point is the field modulus
+    [TestCase("0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000230644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "invalid fp.Element encoding")]
+    // the G2 generator with y.re incremented, so off the twist
+    [TestCase(G1Generator + "198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c21800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7dab", "point is not on curve")]
+    // the subgroup check must not be skipped when the paired G1 point is at infinity, nor in the multi-pair path
+    [TestCase(G1Infinity + G2NotInSubgroup, "point is not in correct subgroup")]
+    [TestCase(TwoPairsProductOne + G1Generator + G2NotInSubgroup, "point is not in correct subgroup")]
+    [TestCase(G1Generator + G2OfOrder10069, "point is not in correct subgroup")]
+    [TestCase(G1Generator + G2ShiftedByOrder10069, "point is not in correct subgroup")]
+    public void Rejects_input_with_the_go_ethereum_reason(string input, string error) => RunFailureTest(input, error);
+
+    [TestCase(TwoPairsProductOne, ResultOne)]
+    [TestCase(OnePairNotOne, ResultNotOne)]
+    [TestCase(OnePairNotOne + TwoPairsProductOne, ResultNotOne)]
+    [TestCase(G1Infinity + "198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c21800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa" + TwoPairsProductOne, ResultOne)]
+    public void Repeated_g2_points_give_the_same_result(string input, string output)
+    {
+        for (int i = 0; i < 3; i++)
+            RunTest(input, output, true);
+    }
+
+    [TestCase(G1Generator + G2NotInSubgroup)]
+    [TestCase(G1Infinity + G2NotInSubgroup)]
+    [TestCase(G1Generator + G2OfOrder10069)]
+    [TestCase(TwoPairsProductOne + G1Generator + G2ShiftedByOrder10069)]
+    public void Invalid_g2_point_stays_rejected_on_repeat(string input)
+    {
+        for (int i = 0; i < 3; i++)
+            RunFailureTest(input, "point is not in correct subgroup");
+    }
+
+    [Test]
+    public void Concurrent_callers_get_the_same_results()
+    {
+        (byte[] Input, byte[]? Output)[] cases =
+        [
+            (Convert.FromHexString(TwoPairsProductOne), Convert.FromHexString(ResultOne)),
+            (Convert.FromHexString(OnePairNotOne), Convert.FromHexString(ResultNotOne)),
+            (Convert.FromHexString(TwoPairsProductOne + OnePairNotOne + InfinityPairs(1)), Convert.FromHexString(ResultNotOne)),
+            (Convert.FromHexString(G1Generator + G2NotInSubgroup), null),
+            (Convert.FromHexString(OnePairNotOne + G1Generator + G2OfOrder10069), null),
+        ];
+
+        int mismatches = 0;
+        Parallel.For(0, 2048, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount) }, i =>
+        {
+            (byte[] input, byte[]? output) = cases[i % cases.Length];
+            Result<byte[]> result = Instance.Run(input, Prague.Instance);
+            bool matches = output is null
+                ? !result.IsSuccess
+                : result.IsSuccess && result.Data.AsSpan().SequenceEqual(output);
+            if (!matches)
+                Interlocked.Increment(ref mismatches);
+        });
+
+        Assert.That(mismatches, Is.Zero);
+    }
+
+    private const string G2Generator = "198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c21800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa";
+    private const string G1NotOnCurve = "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000003";
+
+    private static readonly BigInteger GroupOrder = BigInteger.Parse("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+    private static readonly BigInteger FieldModulus = BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208583");
+
+    [TestCase(TwoPairsProductOne, ResultOne)]
+    [TestCase(OnePairNotOne, ResultNotOne)]
+    [TestCase(TwoPairsProductOne + OnePairNotOne, ResultNotOne)]
+    [TestCase(G1Generator + G2Generator + OnePairNotOne + G1Infinity + G2Generator, ResultNotOne)]
+    public void Repeated_pairs_give_the_same_result(string input, string output)
+    {
+        for (int i = 0; i < 5; i++)
+            RunTest(input, output, true);
+    }
+
+    [Test]
+    public void Repeated_pairs_combine_with_other_pairs()
+    {
+        for (int i = 0; i < 3; i++)
+            RunTest(TwoPairsProductOne, ResultOne, true);
+
+        RunTest(TwoPairsProductOne + OnePairNotOne, ResultNotOne, true);
+        RunTest(OnePairNotOne + TwoPairsProductOne, ResultNotOne, true);
+        RunTest(InfinityPairs(1) + TwoPairsProductOne + InfinityPairs(1), ResultOne, true);
+        RunTest(Repeat(TwoPairsProductOne, 17), ResultOne, true);
+        RunTest(Repeat(TwoPairsProductOne, 16) + OnePairNotOne, ResultNotOne, true);
+    }
+
+    [TestCase(G1NotOnCurve + G2Generator, "point is not on curve")]
+    [TestCase(TwoPairsProductOne + G1NotOnCurve + G2Generator, "point is not on curve")]
+    [TestCase(G1Generator + G2NotInSubgroup, "point is not in correct subgroup")]
+    [TestCase(TwoPairsProductOne + G1Generator + G2OfOrder10069, "point is not in correct subgroup")]
+    public void Invalid_pair_stays_rejected_on_repeat(string input, string error)
+    {
+        for (int i = 0; i < 5; i++)
+            RunFailureTest(input, error);
+    }
+
+    [Test]
+    public void Concurrent_callers_mixing_repeated_and_new_pairs_get_the_same_results()
+    {
+        byte[] g2 = Convert.FromHexString(G2Generator);
+        byte[] productOne = Convert.FromHexString(TwoPairsProductOne);
+        byte[] notOne = Convert.FromHexString(OnePairNotOne);
+        byte[] one = Convert.FromHexString(ResultOne);
+        byte[] zero = Convert.FromHexString(ResultNotOne);
+
+        int mismatches = 0;
+        Parallel.For(1, 1025, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount) }, k =>
+        {
+            byte[] newPairs = [.. G1Multiple(k), .. g2, .. G1Multiple(GroupOrder - k), .. g2];
+            bool expectOne = (k & 1) == 0;
+            byte[] input = expectOne ? [.. newPairs, .. productOne] : [.. productOne, .. newPairs, .. notOne];
+            Result<byte[]> result = Instance.Run(input, Prague.Instance);
+            if (!result.IsSuccess || !result.Data.AsSpan().SequenceEqual(expectOne ? one : zero))
+                Interlocked.Increment(ref mismatches);
+        });
+
+        Assert.That(mismatches, Is.Zero);
+    }
+
+    [Test]
+    public void Concurrent_callers_repeating_pairs_that_share_cache_slots_get_the_same_results()
+    {
+        const int slotMask = 1023;
+        const int sharedSlots = 4;
+        const int poolSize = 64;
+
+        byte[] g1 = Convert.FromHexString(G1Generator);
+        byte[] g2 = Convert.FromHexString(G2Generator);
+        byte[] notOne = Convert.FromHexString(OnePairNotOne);
+        byte[] one = Convert.FromHexString(ResultOne);
+        byte[] zero = Convert.FromHexString(ResultNotOne);
+
+        List<(byte[] Pair, byte[] Inverse)> pool = [];
+        byte[] point = g1;
+        while (pool.Count < poolSize)
+        {
+            byte[] pair = [.. point, .. g2];
+            if ((new ReadOnlySpan<byte>(pair).FastHash() & slotMask) < sharedSlots)
+            {
+                byte[] inverse = [.. point.AsSpan(0, 32), .. Negate(point.AsSpan(32, 32)), .. g2];
+                pool.Add((pair, inverse));
+            }
+
+            byte[] sum = [.. point, .. g1];
+            point = BN254AddPrecompile.Instance.Run(sum, Prague.Instance).Data;
+        }
+
+        int mismatches = 0;
+        Parallel.For(0, 8192, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount) }, i =>
+        {
+            (byte[] pair, byte[] inverse) = pool[i * 37 % poolSize];
+            byte[] input = (i % 3) switch
+            {
+                0 => [.. pair, .. inverse],
+                1 => [.. pair, .. inverse, .. notOne],
+                _ => pair
+            };
+            byte[] expected = i % 3 == 0 ? one : zero;
+            Result<byte[]> result = Instance.Run(input, Prague.Instance);
+            if (!result.IsSuccess || !result.Data.AsSpan().SequenceEqual(expected))
+                Interlocked.Increment(ref mismatches);
+        });
+
+        Assert.That(mismatches, Is.Zero);
+    }
+
+    private static byte[] Negate(ReadOnlySpan<byte> y)
+    {
+        byte[] result = new byte[32];
+        BigInteger negated = FieldModulus - new BigInteger(y, isUnsigned: true, isBigEndian: true);
+        negated.TryWriteBytes(result.AsSpan(32 - negated.GetByteCount(isUnsigned: true)), out _, isUnsigned: true, isBigEndian: true);
+        return result;
+    }
+
+    private static byte[] G1Multiple(BigInteger scalar)
+    {
+        byte[] input = new byte[96];
+        Convert.FromHexString(G1Generator).CopyTo(input, 0);
+        scalar.TryWriteBytes(input.AsSpan(96 - scalar.GetByteCount(isUnsigned: true)), out _, isUnsigned: true, isBigEndian: true);
+        return BN254MulPrecompile.Instance.Run(input, Prague.Instance).Data;
+    }
 }

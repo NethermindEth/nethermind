@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm.State;
-using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -14,13 +13,19 @@ public interface IWorldStateManager
 {
     IWorldStateScopeProvider GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
-    ISnapStateServer SnapStateServer { get; }
+    IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
     /// <returns></returns>
     IWorldStateScopeProvider CreateResettableWorldState();
+
+    /// <summary>
+    /// Like <see cref="CreateResettableWorldState"/>, for read-only queries whose results never feed block processing.
+    /// A backend may tune its reads for them.
+    /// </summary>
+    IWorldStateScopeProvider CreateReadOnlyQueryWorldState() => CreateResettableWorldState();
 
     IOverridableWorldScope CreateOverridableWorldScope();
 

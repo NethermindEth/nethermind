@@ -7,6 +7,8 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.Trie;
@@ -195,6 +197,25 @@ internal static class NodeViews
         return isLeaf ? NodeView.Leaf(path, payload) : NodeView.Extension(path, payload);
     }
 
+    /// <summary>Splits a leaf or extension node into the nibble its path starts with and the node that path continues
+    /// as one level down. False for an extension of one nibble, whose child is the node it references.</summary>
+    internal static bool TryDescend(ReadOnlySpan<byte> rlp, out int nibble, out NodeView child)
+    {
+        Span<byte> nibbles = stackalloc byte[MaxNibbles];
+        bool isLeaf = DecodeShortNode(rlp, nibbles, out int nibbleCount, out ReadOnlySpan<byte> payload);
+        if (nibbleCount == 0 || (!isLeaf && nibbleCount == 1))
+        {
+            nibble = nibbleCount == 0 ? -1 : nibbles[0];
+            child = NodeView.Empty;
+            return false;
+        }
+
+        nibble = nibbles[0];
+        ReadOnlySpan<byte> rest = nibbles[1..nibbleCount];
+        child = isLeaf ? NodeView.Leaf(rest, payload) : NodeView.Extension(rest, payload);
+        return true;
+    }
+
     private static NodeView AsBranch(ReadOnlySpan<byte> rlp, Hash256? knownHash)
     {
         ChildVector children = ChildVector.Rent();
@@ -211,11 +232,28 @@ internal static class NodeViews
         return NodeView.Branch(children, rlp, knownHash?.ValueHash256);
     }
 
+    public static bool TryReadExtensionPath(ReadOnlySpan<byte> rlp, Span<byte> nibbles, out int nibbleCount)
+    {
+        nibbleCount = 0;
+        RlpReader reader = new RlpReader(rlp).EnterSequence<OffFlag>(out _);
+        return CountUpToThreeItems(reader) == 2 && !DecodeShortNode(rlp, nibbles, out nibbleCount, out _);
+    }
+
+    private static int CountUpToThreeItems(RlpReader reader)
+    {
+        int count = 0;
+        for (; count < 3 && reader.HasNext; count++)
+        {
+            reader.SkipItem<OffFlag>();
+        }
+
+        return count;
+    }
+
     private static bool DecodeShortNode(ReadOnlySpan<byte> rlp, Span<byte> nibbles, out int nibbleCount, out ReadOnlySpan<byte> payload)
     {
-        RlpReader reader = new(rlp);
-        reader.ReadSequenceLength();
-        ReadOnlySpan<byte> hexPrefix = reader.DecodeByteArraySpan();
+        RlpReader reader = new RlpReader(rlp).EnterSequence<OffFlag>(out _);
+        ReadOnlySpan<byte> hexPrefix = reader.ReadBytes<OffFlag>();
         bool isLeaf = (hexPrefix[0] & 0x20) != 0;
         nibbleCount = 0;
         if ((hexPrefix[0] & 0x10) != 0) nibbles[nibbleCount++] = (byte)(hexPrefix[0] & 0x0F);
@@ -227,18 +265,17 @@ internal static class NodeViews
 
         if (isLeaf)
         {
-            payload = reader.DecodeByteArraySpan();
+            payload = reader.ReadBytes<OffFlag>();
             return true;
         }
 
-        if (reader.IsSequenceNext())
+        if (reader.IsNextSequence)
         {
-            (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
-            payload = reader.Read(prefixLength + contentLength);
+            payload = reader.ReadEncodedItem<OffFlag>();
             return false;
         }
 
-        payload = reader.DecodeByteArraySpan();
+        payload = reader.ReadBytes<OffFlag>();
         return false;
     }
 }

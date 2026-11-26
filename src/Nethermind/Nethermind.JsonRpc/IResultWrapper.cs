@@ -11,6 +11,7 @@ namespace Nethermind.JsonRpc
         public Result Result { get; }
         public int ErrorCode { get; }
         public bool IsTemporary { get; }
+        public bool IsRequestError { get; }
         public bool HasErrorData { get; }
     }
 }

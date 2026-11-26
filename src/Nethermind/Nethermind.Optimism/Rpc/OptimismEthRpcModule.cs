@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -16,6 +17,7 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -38,6 +40,8 @@ namespace Nethermind.Optimism.Rpc;
 public class OptimismEthRpcModule(
     IJsonRpcConfig rpcConfig,
     IBlockchainBridge blockchainBridge,
+    FilterStore filterStore,
+    FilterManager filterManager,
     IBlockFinder blockFinder,
     IBlockTree blockTree,
     IReceiptFinder receiptFinder,
@@ -59,9 +63,12 @@ public class OptimismEthRpcModule(
     IOptimismSpecHelper opSpecHelper,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
-    IBlockForRpcFactory blockForRpcFactory)
+    IBlockForRpcFactory blockForRpcFactory,
+    ForwardedNonceTracker nonceTracker)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
+        filterStore,
+        filterManager,
         blockFinder,
         blockTree,
         receiptFinder,
@@ -81,45 +88,91 @@ public class OptimismEthRpcModule(
         capabilitiesProvider,
         blockForRpcFactory), IOptimismEthRpcModule
 {
-    public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
+    internal ForwardedNonceTracker NonceTracker => nonceTracker;
+
+    public override ResultWrapper<IEnumerable<ReceiptForRpc>?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<ReceiptForRpc[]?>.Success(null);
+            return GetBlockSearchErrorResult<IEnumerable<ReceiptForRpc>?>(searchResult);
         }
 
         Block? block = searchResult.Object!;
-        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
+        Transaction[] transactions = block.Transactions;
+        TxReceipt[] receipts = _receiptFinder.Get(block);
+        if (receipts.Length != transactions.Length)
+        {
+            return GetMissingReceiptsResult(_blockFinder, block);
+        }
+
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
         L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
+        UInt256? feePerBlobGas = null;
 
-        OptimismReceiptForRpc[]? result = [.. receipts
-                .Zip(block.Transactions, (receipt, tx) =>
-                    receipt is OptimismTxReceipt optimismTxReceipt
-                        ? new OptimismReceiptForRpc(
-                            tx.Hash!,
-                            optimismTxReceipt,
-                            block.Timestamp,
-                            tx.GetGasInfo(spec, block.Header),
-                            l1BlockGasInfo.GetTxGasInfo(tx),
-                            receipts.GetBlockLogFirstIndex(receipt.Index))
-                        : new OptimismReceiptForRpc(
-                            tx.Hash!,
-                            receipt,
-                            block.Timestamp,
-                            tx.GetGasInfo(spec, block.Header),
-                            receipts.GetBlockLogFirstIndex(receipt.Index)))];
-        return ResultWrapper<ReceiptForRpc[]?>.Success(result);
+        // EIP-8116: logIndex counts within the receipt.
+        ReceiptsForRpc<OptimismReceiptForRpc> result = new(receipts, transactions, spec.IsEip8116Enabled, (target, receipt, tx, logIndexStart) =>
+            target.Populate(
+                tx.Hash!,
+                receipt,
+                block.Timestamp,
+                tx.GetGasInfo(spec, block.Header, ref feePerBlobGas),
+                receipt is OptimismTxReceipt ? l1BlockGasInfo.GetTxGasInfo(tx) : null,
+                logIndexStart));
+
+        return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
     }
 
-    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
+    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx) =>
+        ReportUnknownAccountFirst(rpcTx, await SignAndForwardTransaction(rpcTx));
+
+    private async Task<ResultWrapper<Hash256>> SignAndForwardTransaction(SignableTransactionForRpc rpcTx)
     {
-        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
+        if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
+            return sendError;
+
+        if (rpcTx is not LegacyTransactionForRpc { From: { } from } legacy)
+            return (await SignAndSend(rpcTx)).Result;
+
+        // Sends from one account run one at a time: the next fills its nonce after this one is in the pool or with the sequencer.
+        using IDisposable senderLock = await nonceTracker.LockSenderAsync(from);
+
+        // A node that forwards to the sequencer has no pool (NullTxPool), so the tracker stands in for it.
+        ulong? nextNonce = sequencerRpcClient is null ? null : GetNextForwardedNonce(from, legacy.Nonce is not null);
+        ulong nonce = legacy.Nonce ??= nextNonce ?? _txPool.GetLatestPendingNonce(from);
+
+        (ResultWrapper<Hash256> result, bool signedByNode) = await SignAndSend(rpcTx);
+        // Only a transaction this node signed is counted: a request that brings its own signature keeps it, so its from need
+        // not be the account that signed it. Nor is a nonce other than the one the tracker gave: a replacement below it, or a
+        // nonce past a gap, which waits at the sequencer.
+        if (signedByNode && nonce == nextNonce && result.Result.ResultType == ResultType.Success)
+            nonceTracker.OnForwarded(from, nonce);
+
+        return result;
+    }
+
+    private ulong? GetNextForwardedNonce(Address from, bool hasNonce)
+    {
+        try
+        {
+            return nonceTracker.GetNextNonce(from);
+        }
+        // The next nonce is read only to count the forward. A request that has its nonce does not need it, so it is forwarded
+        // uncounted whatever stops the read: missing or corrupt state, a flat snapshot that cannot be gathered, a closing store.
+        catch (Exception e) when (hasNonce)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Forwarding a transaction of {from} uncounted, as its next nonce cannot be read: {e.Message}");
+            return null;
+        }
+    }
+
+    private async Task<(ResultWrapper<Hash256> Result, bool SignedByNode)> SignAndSend(SignableTransactionForRpc rpcTx)
+    {
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
-            return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
+            return (ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput), false);
         }
 
         tx.ChainId = _blockchainBridge.GetChainId();
@@ -127,16 +180,19 @@ public class OptimismEthRpcModule(
         {
             if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
             {
-                return ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected);
+                return (ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected), false);
             }
 
             tx.SenderAddress = senderAddress;
         }
 
+        // The sealer keeps a signature the request brought; it signs with the wallet only a transaction without one.
+        bool unsigned = tx.Signature is null;
         if (!sealer.TrySeal(tx, TxHandlingOptions.None))
-            return ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
+            return (ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked), false);
 
-        return await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+        bool signedByNode = unsigned && tx.Signature is not null;
+        return (await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping)), signedByNode);
     }
 
     public override async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
@@ -146,13 +202,19 @@ public class OptimismEthRpcModule(
             return await base.eth_sendRawTransaction(transaction);
         }
 
+        // Like op-geth, reject bytes that are not a transaction here instead of waiting on the sequencer for the answer.
+        if (DecodeRawTransaction(transaction) is null)
+        {
+            return InvalidRawTransaction();
+        }
+
         string? response = await sequencerRpcClient.Post(nameof(eth_sendRawTransaction), transaction);
         JsonRpcResponse<Hash256>? forwarded = null;
         if (!string.IsNullOrWhiteSpace(response))
         {
             try
             {
-                forwarded = JsonSerializer.Deserialize<JsonRpcResponse<Hash256>>(response, EthereumJsonSerializer.JsonOptions);
+                forwarded = TypeInfoJsonSerializer.Deserialize<JsonRpcResponse<Hash256>>(response, EthereumJsonSerializer.JsonOptions);
             }
             catch (JsonException e)
             {
@@ -160,7 +222,8 @@ public class OptimismEthRpcModule(
             }
         }
 
-        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it.
+        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it. It keeps its WARN:
+        // a sequencer also answers -32000 for its own failures, so the code does not tell them apart from rejections.
         if (forwarded?.Error is { } error)
         {
             return ResultWrapper<Hash256>.Fail(error.Message ?? "Sequencer rejected the transaction", error.Code);
@@ -169,18 +232,43 @@ public class OptimismEthRpcModule(
         return forwarded?.Result is { } result ? ResultWrapper<Hash256>.Success(result) : ResultWrapper<Hash256>.Fail("Failed to forward transaction");
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A node that forwards to the sequencer has no pool (<c>NullTxPool</c>), whose pending nonce is always 0. On such
+    /// a node the pending nonce is the head nonce raised past the forwards of <c>eth_sendTransaction</c> that the
+    /// sequencer accepted and the head does not include yet; a send still at the sequencer counts once answered.
+    /// </remarks>
+    public override ResultWrapper<UInt256> eth_getTransactionCount(Address address, BlockParameter? blockParameter) =>
+        sequencerRpcClient is not null && blockParameter == BlockParameter.Pending
+            ? ResultWrapper<UInt256>.Success(nonceTracker.GetPendingNonce(address))
+            : base.eth_getTransactionCount(address, blockParameter);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The base fill keeps an explicit nonce and takes a missing one from the pool, which a node that forwards to the
+    /// sequencer does not have. Such a node fills a missing nonce with the pending nonce of <c>from</c>, reading a
+    /// missing <c>from</c> as the zero address, as the base fill does.
+    /// </remarks>
+    public override async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(SignableTransactionForRpc rpcTx)
+    {
+        if (sequencerRpcClient is not null && rpcTx is LegacyTransactionForRpc { Nonce: null } legacy)
+            legacy.Nonce = nonceTracker.GetPendingNonce(legacy.From ?? Address.Zero);
+
+        return await base.eth_fillTransaction(rpcTx);
+    }
+
     public override ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
     {
         (TxReceipt? receipt, ulong blockTimestamp, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
-            return ResultWrapper<ReceiptForRpc?>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         SearchResult<Block> foundBlock = _blockFinder.SearchForBlock(new(receipt.BlockHash!));
         if (foundBlock.Object is null)
         {
-            return ResultWrapper<ReceiptForRpc?>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         Block block = foundBlock.Object;
@@ -241,9 +329,9 @@ public class OptimismEthRpcModule(
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
-        RecoverTxSenderIfNeeded(transaction);
-
         TxReceipt? receipt = TryGetMatchingReceipt(_receiptFinder.Get(block), transaction, (int)positionIndex);
+        transaction.SenderAddress ??= receipt?.Sender;
+        RecoverTxSenderIfNeeded(transaction);
 
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction,
@@ -254,6 +342,7 @@ public class OptimismEthRpcModule(
                 txIndex: (int)positionIndex,
                 blockTimestamp: block.Timestamp,
                 baseFee: block.BaseFeePerGas,
+                spec: _specProvider.GetSpec(block.Header),
                 receipt: receipt));
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
@@ -292,6 +381,7 @@ public class OptimismEthRpcModule(
                 TxReceipt[] receipts = _receiptFinder.Get(block);
                 Transaction[] transactions = block.Transactions;
                 TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = transactions[i];
@@ -305,6 +395,7 @@ public class OptimismEthRpcModule(
                             txIndex: i,
                             blockTimestamp: block.Timestamp,
                             baseFee: block.BaseFeePerGas,
+                            spec: spec,
                             receipt: receipt));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)

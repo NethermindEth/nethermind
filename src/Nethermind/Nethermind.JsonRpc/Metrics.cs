@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Threading;
 using Nethermind.Core.Attributes;
@@ -27,6 +29,12 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcOverloadRejections => _jsonRpcOverloadRejections;
         private static long _jsonRpcOverloadRejections;
         internal static void IncrementJsonRpcOverloadRejections() => Interlocked.Increment(ref _jsonRpcOverloadRejections);
+
+        [CounterMetric]
+        [Description("Number of JSON RPC requests abandoned while queued for a module because their client went away. They are counted as neither successes nor errors.")]
+        public static long JsonRpcAbandonedRequests => _jsonRpcAbandonedRequests;
+        private static long _jsonRpcAbandonedRequests;
+        internal static void IncrementJsonRpcAbandonedRequests() => Interlocked.Increment(ref _jsonRpcAbandonedRequests);
 
         [CounterMetric]
         [Description("Number of JSON RPC requests processed with errors.")]
@@ -75,10 +83,24 @@ namespace Nethermind.JsonRpc
         public static IMetricObserver JsonRpcCallDurationMicros = NoopMetricObserver.Instance;
     }
 
-    internal sealed class JsonRpcMetricLabels(string method, bool success) : IMetricLabels
+    /// <summary>The method and status labels of <see cref="Metrics.JsonRpcCallDurationMicros"/>.</summary>
+    /// <remarks>
+    /// Instances are cached per method for the process lifetime, which stays bounded because calls are reported
+    /// under resolved method names or <see cref="RpcReport.UnknownMethod"/>.
+    /// </remarks>
+    internal sealed class JsonRpcMetricLabels : IStableMetricLabels
     {
-        private readonly string[] _labels = [method, success ? "success" : "fail"];
+        private static readonly ConcurrentDictionary<string, (JsonRpcMetricLabels Success, JsonRpcMetricLabels Fail)> _cache = new(StringComparer.Ordinal);
 
-        public string[] Labels => _labels;
+        private JsonRpcMetricLabels(string method, string status) => Labels = [method, status];
+
+        public string[] Labels { get; }
+
+        public static JsonRpcMetricLabels Get(string method, bool success)
+        {
+            (JsonRpcMetricLabels Success, JsonRpcMetricLabels Fail) labels =
+                _cache.GetOrAdd(method, static m => (new JsonRpcMetricLabels(m, "success"), new JsonRpcMetricLabels(m, "fail")));
+            return success ? labels.Success : labels.Fail;
+        }
     }
 }

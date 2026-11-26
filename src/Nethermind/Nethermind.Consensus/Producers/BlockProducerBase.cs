@@ -46,6 +46,7 @@ namespace Nethermind.Consensus.Producers
         protected internal ITxSource TxSource { get; set; }
         protected readonly int BlockProductionTimeoutMs;
         protected readonly SemaphoreSlim _producingBlockLock = new(1);
+        private CancellationToken _abandonToken;
         protected ILogger Logger { get; }
         protected readonly IBlocksConfig _blocksConfig;
 
@@ -77,17 +78,22 @@ namespace Nethermind.Consensus.Producers
             BlockProductionTimeoutMs = _blocksConfig.BlockProductionTimeoutMs;
         }
 
-        public async Task<Block?> BuildBlock(BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null,
-            PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken token = default)
+        public Task<Block?> BuildBlock(BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null,
+            PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken token = default) =>
+            BuildBlock(parentHeader, blockTracer, payloadAttributes, flags, token, default);
+
+        public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer,
+            PayloadAttributes? payloadAttributes, IBlockProducer.Flags flags, CancellationToken token, CancellationToken abandonToken)
         {
             Block? block = null;
             if (await _producingBlockLock.WaitAsync(BlockProductionTimeoutMs, token))
             {
+                _abandonToken = abandonToken;
                 try
                 {
                     block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes, flags);
                 }
-                catch (Exception e) when (e is not TaskCanceledException)
+                catch (Exception e) when (e is not OperationCanceledException)
                 {
                     if (Logger.IsError) Logger.Error("Failed to produce block", e);
                     Metrics.FailedBlockSeals++;
@@ -95,6 +101,7 @@ namespace Nethermind.Consensus.Producers
                 }
                 finally
                 {
+                    _abandonToken = default;
                     _producingBlockLock.Release();
                 }
             }
@@ -132,9 +139,10 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            if (StateProvider.HasStateForBlock(parent))
+            BlockToProduce block = PrepareBlock(parent, payloadAttributes, flags);
+            block.AbandonToken = _abandonToken;
+            if (StateProvider.HasStateForTargetBlock(block.Header))
             {
-                Block block = PrepareBlock(parent, payloadAttributes, flags);
                 if (PreparedBlockCanBeMined(block))
                 {
                     Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);

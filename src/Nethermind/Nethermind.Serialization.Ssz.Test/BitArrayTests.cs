@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 using NUnit.Framework;
@@ -56,7 +57,7 @@ namespace Nethermind.Serialization.Ssz.Test
             root.ToLittleEndian(hashTreeRoot);
 
             // Assert
-            Assert.That(hashTreeRoot.ToArray(), Is.EqualTo(expectedHashTreeRoot));
+            Assert.That(hashTreeRoot, Is.SequenceEqualTo(expectedHashTreeRoot));
         }
 
         [TestCaseSource(nameof(GetBitlistData))]
@@ -100,7 +101,7 @@ namespace Nethermind.Serialization.Ssz.Test
             root.ToLittleEndian(hashTreeRoot);
 
             // Assert
-            Assert.That(hashTreeRoot.ToArray(), Is.EqualTo(expectedHashTreeRoot));
+            Assert.That(hashTreeRoot, Is.SequenceEqualTo(expectedHashTreeRoot));
         }
 
         public static IEnumerable<TestCaseData> GetBitvectorData()

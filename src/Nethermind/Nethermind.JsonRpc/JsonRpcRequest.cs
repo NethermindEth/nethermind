@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -39,7 +41,9 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        internal ReadOnlyMemory<byte> ParamsUtf8 { get; set; }
+        /// <summary>The UTF-8 JSON of the request's <c>params</c> as read from the transport; empty when <see cref="Params"/> was set instead.</summary>
+        /// <remarks>Borrows the transport's buffer: valid only until the request's processing completes; copy it to retain it.</remarks>
+        public ReadOnlyMemory<byte> ParamsUtf8 { get; internal set; }
         internal JsonValueKind ParamsKind { get; set; }
 
         internal void DisposeParsedParamsDocument()
@@ -58,6 +62,34 @@ namespace Nethermind.JsonRpc
 
         internal ref readonly JsonRpcId IdRef => ref _id;
 
-        public override string ToString() => $"Id:{Id}, {Method}({Params})";
+        internal string MethodForLogging => EncodeLogText(Method);
+
+        internal static string EncodeLogText(string? value)
+        {
+            if (value is null) return string.Empty;
+
+            StringBuilder? escaped = null;
+            int start = 0;
+            for (int i = 0; i < value.Length; i++)
+            {
+                char character = value[i];
+                if (!char.IsControl(character) && character is not ('\u2028' or '\u2029')) continue;
+
+                escaped ??= new(value.Length);
+                escaped.Append(value.AsSpan(start, i - start));
+                switch (character)
+                {
+                    case '\r': escaped.Append(@"\r"); break;
+                    case '\n': escaped.Append(@"\n"); break;
+                    case '\t': escaped.Append(@"\t"); break;
+                    default: escaped.Append(CultureInfo.InvariantCulture, $@"\u{(ushort)character:X4}"); break;
+                }
+                start = i + 1;
+            }
+
+            return escaped?.Append(value.AsSpan(start)).ToString() ?? value;
+        }
+
+        public override string ToString() => $"Id:{Id}, {MethodForLogging}(params omitted)";
     }
 }

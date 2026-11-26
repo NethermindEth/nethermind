@@ -4,7 +4,9 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
@@ -109,44 +111,69 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        nint fusedOpCodeCount = 0;
+        return InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, ref vm, ref programCounter, ref fusedOpCodeCount);
+    }
+
+    /// <typeparam name="TCallSub">Whether an untraced EIP-7979 <c>CALLSUB</c> after the push runs fused with it.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
+    internal static EvmExceptionType InstructionPush2Core<TGasPolicy, TTracingInst, TUseVmCounter, TCallSub>(ref EvmStack stack, ref TGasPolicy gas, ref VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        where TUseVmCounter : struct, IFlag
+        where TCallSub : struct, IFlag
+    {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        // Retrieve the code segment containing immediate data.
+        // Retrieve the code segment containing immediate data. Untraced code is padded, so the immediate and
+        // the next opcode are readable even past the end: a truncated immediate reads zeros and is followed by STOP.
         ref byte bytes = ref stack.Code;
         nint remainingCode = stack.CodeLength - programCounter;
         Instruction nextInstruction;
-        if (!TTracingInst.IsActive)
+        // A following jump or implicit STOP does not exempt PUSH2 from the stack limit.
+        if (!TTracingInst.IsActive && stack.Head >= EvmStack.MaxStackSize - 1)
         {
-            // A following jump or implicit STOP does not exempt PUSH2 from the stack limit.
-            if (stack.Head >= EvmStack.MaxStackSize - 1)
-            {
-                programCounter += Size;
-                return EvmExceptionType.StackOverflow;
-            }
-            if (remainingCode <= Size)
-            {
-                // Implicit STOP discards the stack, and no tracer or subsequent opcode can observe this push.
-                programCounter += Size;
-                return EvmExceptionType.None;
-            }
+            programCounter += Size;
+            return EvmExceptionType.StackOverflow;
         }
         if (!TTracingInst.IsActive &&
-            ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size))
-                is Instruction.JUMP or Instruction.JUMPI))
+            (TCallSub.IsActive
+                // Non-short-circuit so the common unfused case takes one branch. The flag-off arm stays short-circuit,
+                // which the JIT compiles to tighter code there.
+                ? ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI)
+                    | nextInstruction == Instruction.CALLSUB
+                : (nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI))
         {
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
-            ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
+            ushort destination = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref bytes, programCounter));
             destination = BinaryPrimitives.ReverseEndianness(destination);
+            // With lazy analysis the destination may not be analyzed yet, and analyzing it here would put a call into
+            // this handler, so unless a JUMPI will not be taken, and so never validates it, the push and the jump run
+            // unfused and the jump handler does the analysis. Either way the gas, the stack and the outcome are the
+            // same.
+            if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination)
+                && !(nextInstruction == Instruction.JUMPI && stack.PeekUInt256IsZero()))
+                goto Unfused;
 
             if (nextInstruction == Instruction.JUMP)
             {
-                vm.OpCodeCount++;
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+            }
+            else if (TCallSub.IsActive && nextInstruction == Instruction.CALLSUB)
+            {
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
+                if (!TGasPolicy.UpdateGas<CallSubGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+                // The return address is the instruction after CALLSUB.
+                programCounter += Size + 1;
+                return CallSubTo<TGasPolicy, OnFlag, TUseVmCounter>(
+                    ref stack, ref gas, vm, JumpDestination((int)destination, ref stack), ref programCounter, ref fusedOpCodeCount);
             }
             else
             {
-                vm.OpCodeCount++;
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
                 if (!stack.EnsureDepth(1)) goto StackUnderflow;
                 if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
@@ -158,18 +185,19 @@ public static partial class EvmInstructions
             }
 
             // Validate the jump destination and update the program counter if valid.
-            nint jumpTarget = JumpDestination((int)destination, ref stack);
+            // With lazy analysis it was validated before fusing.
+            nint jumpTarget = EvmStack.AnalyzesJumpDestinationsLazily ? destination : JumpDestination((int)destination, ref stack);
             if (jumpTarget < 0)
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
             programCounter = jumpTarget + 1;
-            PrefetchCodeAtDestination(ref stack, programCounter);
-            vm.OpCodeCount++;
+            IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
             if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
             goto Success;
         }
 
+    Unfused:
         ref byte start = ref Unsafe.Add(ref bytes, programCounter);
         EvmExceptionType result;
         if (!TTracingInst.IsActive || remainingCode >= Size)
@@ -195,6 +223,20 @@ public static partial class EvmInstructions
         return EvmExceptionType.InvalidJumpDestination;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref VirtualMachine<TGasPolicy> vm, ref nint fusedOpCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TUseVmCounter : struct, IFlag
+    {
+        if (DispatchFlags.CountOpcodes)
+        {
+            if (TUseVmCounter.IsActive)
+                vm.OpCodeCount++;
+            else
+                fusedOpCodeCount++;
+        }
     }
 
     /// <summary>
@@ -1054,6 +1096,14 @@ public static partial class EvmInstructions
             : stack.Exchange<TTracingInst>(n, m);
     }
 
+    /// <summary>Whether <paramref name="immediate"/> is a valid EIP-8024 <c>DUPN</c>/<c>SWAPN</c> immediate; 0x5b-0x7f are disallowed.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsValidEip8024SingleImmediate(byte immediate) => (uint)(immediate - 0x5B) > 0x24;
+
+    /// <summary>Whether <paramref name="immediate"/> is a valid EIP-8024 <c>EXCHANGE</c> immediate; 0x52-0x7f are disallowed.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsValidEip8024PairImmediate(byte immediate) => (uint)(immediate - 0x52) > 0x2D;
+
     // EIP-8024 specifies that a missing immediate beyond end of code evaluates to zero.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte ReadEip8024ImmediateOrZero(ref byte code, nint codeLength, nint programCounter)
@@ -1074,7 +1124,7 @@ public static partial class EvmInstructions
         byte imm = ReadEip8024ImmediateOrZero(ref stack.Code, stack.CodeLength, programCounter);
         depth = (imm + 145) & 0xFF;
 
-        if ((uint)(imm - 0x5B) <= 0x24)
+        if (!IsValidEip8024SingleImmediate(imm))
             return false;
 
         programCounter++;
@@ -1107,7 +1157,7 @@ public static partial class EvmInstructions
         n = ((q & mask) | (r & ~mask)) + 2;
         m = (((r + 1) & mask) | ((29 - q) & ~mask)) + 1;
 
-        if ((uint)(imm - 0x52) <= 0x2D)
+        if (!IsValidEip8024PairImmediate(imm))
             return false;
 
         programCounter++;
@@ -1136,13 +1186,27 @@ public static partial class EvmInstructions
     {
         VmState<TGasPolicy> vmState = vm.VmState;
         // Logging is not permitted in static call contexts.
-        if (vmState.IsStatic) goto StaticCallViolation;
+        if (vmState.IsStatic)
+        {
+            // Geth raises write protection while executing LOG, after a step that carries no error and prices it.
+            // Geth checks the stack first, but a static LOG missing operands halts with write protection here, as REVM does:
+            // Taiko's zk gas (RevmFailedStepGas) charges a static violation REVM's static gas, and an underflow the LOG body.
+            if (stack.Head < 2 + TOpCount.Count)
+                vm.TraceOperationReady(0);
+            else if (DispatchFlags.ConstTracing && (vm.IsTracingOperationGasCost || vm.IsTracingOperationStart))
+                TraceStaticLogGasCost<TGasPolicy, TOpCount>(vm, in stack);
+            goto StaticCallViolation;
+        }
 
         // Pop memory offset and length for the log data.
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length)) goto StackUnderflow;
 
         // The number of topics is defined by the generic parameter.
         ulong topicsCount = (ulong)TOpCount.Count;
+        ulong emissionCost = GasCostOf.Log + topicsCount * GasCostOf.LogTopic;
+        if (DispatchFlags.ConstTracing && (vm.IsTracingOperationGasCost || vm.IsTracingOperationStart)
+            && length <= (ulong.MaxValue - emissionCost) / GasCostOf.LogData)
+            vm.TraceMemoryOperationGasCost(in position, in length, emissionCost + (ulong)length * GasCostOf.LogData);
 
         // Ensure that the memory expansion for the log data is accounted for.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, ref vmState.Memory)) goto OutOfGas;
@@ -1153,29 +1217,33 @@ public static partial class EvmInstructions
         if (vm.TxExecutionContext.SuppressLogs)
         {
             // Instruction tracers can inspect the expanded memory even when they do not collect logs.
-            if (DispatchFlags.ConstTracing && vm.TxExecutionContext.MaterializeLogMemory
-                && !vmState.Memory.TryLoad(in position, length, out _)) goto OutOfGas;
+            if (DispatchFlags.ConstTracing && vm.TxExecutionContext.MaterializeLogMemory)
+                vmState.Memory.LoadSpanAfterGas(in position, in length);
             for (int i = 0; i < TOpCount.Count; i++)
-                if (!stack.PopLimbo()) goto StackUnderflow;
+                if (!stack.PopLimbo()) return TopicStackUnderflow(ref stack, i);
             return EvmExceptionType.None;
         }
 
-        // Load the log data from memory.
-        if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))
-            goto OutOfGas;
+        // Load the log data from memory, as the memory holds it: it is copied out below.
+        Span<byte> data = vmState.Memory.LoadLaidOutSpanAfterGas(in position, in length);
 
         // Prepare the topics array by popping the corresponding number of words from the stack.
         Hash256[] topics = topicsCount == 0 ? [] : new Hash256[topicsCount];
-        for (int i = 0; i < topics.Length; i++)
+        // Written through a span: an element store to a reference array checks its type at run time.
+        Span<Hash256> topicsSpan = topics;
+        for (int i = 0; i < topicsSpan.Length; i++)
         {
-            if (!stack.PopWord256(out Span<byte> topic)) goto StackUnderflow;
-            topics[i] = new Hash256(topic);
+            if (!stack.PopWord256(out Span<byte> topic)) return TopicStackUnderflow(ref stack, i);
+            // Topic 0 is the event signature, which repeats across logs, so its instance is shared.
+            topicsSpan[i] = i == 0 ? LogTopicCache.Get(topic) : new Hash256(topic);
         }
 
         // Create a new log entry with the executing account, log data, and topics.
         LogEntry logEntry = new(
             vmState.Env.ExecutingAccount,
-            data.Length == 0 ? [] : data.ToArray(),
+            data.Length == 0 ? []
+                : EvmPooledMemory.IsSwizzled ? SwizzledMemory.ToArray(ref MemoryMarshal.GetReference(data), data.Length)
+                : data.ToArray(),
             topics);
 
         vm.AddLog(logEntry);
@@ -1188,5 +1256,30 @@ public static partial class EvmInstructions
         return EvmExceptionType.StaticCallViolation;
     OutOfGas:
         return EvmExceptionType.OutOfGas;
+    }
+
+    /// <summary>Restores the depth a LOG started with when a topic is missing, so underflow diagnostics report it.</summary>
+    /// <remarks>A topic pop fails only on an empty stack, after the data position and length and <paramref name="topicIndex"/> topics.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static EvmExceptionType TopicStackUnderflow(ref EvmStack stack, int topicIndex)
+    {
+        stack.Head = 2 + topicIndex;
+        return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>Reports a static LOG's cost from the step, as Geth's dynamic gas function prices it before write protection.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceStaticLogGasCost<TGasPolicy, TOpCount>(VirtualMachine<TGasPolicy> vm, in EvmStack stack)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCount : struct, IOpCount
+    {
+        // Reads a copy, so the stack keeps its operands; the caller checked they are all there.
+        EvmStack operands = stack;
+        if (!operands.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
+            return;
+
+        ulong emissionCost = GasCostOf.Log + (ulong)TOpCount.Count * GasCostOf.LogTopic;
+        if (length <= (ulong.MaxValue - emissionCost) / GasCostOf.LogData)
+            vm.TraceMemoryOperationGasCost(in position, in length, emissionCost + (ulong)length * GasCostOf.LogData);
     }
 }

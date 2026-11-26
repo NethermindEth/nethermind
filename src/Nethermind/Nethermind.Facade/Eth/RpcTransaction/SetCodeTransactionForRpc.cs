@@ -3,10 +3,14 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
+[GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<SetCodeTransactionForRpc>
 {
     public new static TxType TxType => TxType.SetCode;
@@ -20,7 +24,13 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
     public SetCodeTransactionForRpc() { }
 
     public SetCodeTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData) => AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
+    {
+        base.Populate(transaction, extraData);
+        AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
+    }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
@@ -36,6 +46,13 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
 
         return tx;
     }
+
+    internal override string? GetTraceCallUnsupportedField(IReleaseSpec spec) =>
+        base.GetTraceCallUnsupportedField(spec)
+        ?? (!spec.IsEip7702Enabled && AuthorizationList is not null ? "setcode" : null);
+
+    internal override string? GetTraceCallRecipientError() =>
+        To is null && AuthorizationList is not null ? TxErrorMessages.NotAllowedCreateTransaction : null;
 
     public new static SetCodeTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);

@@ -298,6 +298,11 @@ public class ForkInfoTests
     // fork) at block 7279999, before Shanghai. Local is incompatible.
     [TestCase(19999999ul, 1667999999ul, "0xf0afd0e3", 1667999999ul, ValidationResult.IncompatibleOrStale, true)]
 
+    // Local is mainnet Petersburg. Remote is Byzantium and announces Petersburg at a wrong block that local has
+    // not reached yet. Remote fork hash is a subset of local forks with a mismatched next: EIP-2124 rule 2
+    // rejects it as stale (geth: ErrRemoteStale).
+    [TestCase(7_300_000ul, 0ul, "0xa00bc324", 7_500_000ul, ValidationResult.RemoteStale)]
+
     //----------------------
     // Timestamp based tests
     //----------------------
@@ -401,10 +406,13 @@ public class ForkInfoTests
         ChainSpec spec = loader.Load(memoryStream);
         ChainSpecBasedSpecProvider provider = new(spec);
 
-        Assert.That(spec.ChainId, Is.EqualTo(expectedChainId));
-        Assert.That(spec.NetworkId, Is.EqualTo(expectedNetworkId));
-        Assert.That(provider.ChainId, Is.EqualTo(expectedChainId));
-        Assert.That(provider.NetworkId, Is.EqualTo(expectedNetworkId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.ChainId, Is.EqualTo(expectedChainId));
+            Assert.That(spec.NetworkId, Is.EqualTo(expectedNetworkId));
+            Assert.That(provider.ChainId, Is.EqualTo(expectedChainId));
+            Assert.That(provider.NetworkId, Is.EqualTo(expectedNetworkId));
+        }
     }
 
     public static void Test(ulong head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
@@ -431,20 +439,29 @@ public class ForkInfoTests
         ForkInfo forkInfo = new(specProvider, syncServer);
         ForkId forkId = forkInfo.GetForkId(head, headTimestamp);
 
-        Assert.That(forkId.Next, Is.EqualTo(next));
-        Assert.That(forkId.ForkHash, Is.EqualTo(expectedForkHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkId.Next, Is.EqualTo(next));
+            Assert.That(forkId.ForkHash, Is.EqualTo(expectedForkHash));
+        }
 
         // Validate fork info summary
         BlockHeader header = Build.A.BlockHeader.WithNumber(head).WithTimestamp(headTimestamp).TestObject;
         ForkActivationsSummary forkActivationsSummary = forkInfo.GetForkActivationsSummary(header);
 
-        Assert.That(forkActivationsSummary.Current.Id.ForkHash, Is.EqualTo(expectedForkHash));
-        Assert.That(forkActivationsSummary.Current.Id.Next, Is.EqualTo(next));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkActivationsSummary.Current.Id.ForkHash, Is.EqualTo(expectedForkHash));
+            Assert.That(forkActivationsSummary.Current.Id.Next, Is.EqualTo(next));
+        }
 
         if (next is 0)
         {
-            Assert.That(forkActivationsSummary.Next, Is.Null);
-            Assert.That(forkActivationsSummary.Last, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(forkActivationsSummary.Next, Is.Null);
+                Assert.That(forkActivationsSummary.Last, Is.Null);
+            }
             return;
         }
 

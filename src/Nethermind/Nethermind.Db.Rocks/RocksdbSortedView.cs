@@ -7,11 +7,15 @@ using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
 
-internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : ISortedView
+internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : ISeekableSortedView, IReverseSortedView
 {
     private readonly Iterator _iterator = iterator;
     private readonly ReadOptions _readOptions = readOptions;
     private bool _started = false;
+
+    protected ReadOptions ReadOptions => _readOptions;
+
+    protected void Restart() => _started = false;
 
     // The read options own the iterate-bound buffers, so the iterator must go first.
     public void Dispose()
@@ -26,7 +30,7 @@ internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : I
             throw new InvalidOperationException($"{nameof(StartBefore)} can only be called before starting iteration.");
 
         _iterator.SeekForPrev(value);
-        return _started = _iterator.Valid();
+        return _started = IsValidOrThrow();
     }
 
     public bool MoveNext()
@@ -40,6 +44,27 @@ internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : I
         {
             _iterator.Next();
         }
+        return _iterator.Valid();
+    }
+
+    public bool MovePrevious()
+    {
+        if (!_started || !IsValidOrThrow()) return false;
+        _iterator.Prev();
+        return IsValidOrThrow();
+    }
+
+    private bool IsValidOrThrow()
+    {
+        if (_iterator.Valid()) return true;
+        _iterator.ThrowIfError();
+        return false;
+    }
+
+    public bool SeekTo(ReadOnlySpan<byte> key)
+    {
+        _iterator.Seek(key);
+        _started = true;
         return _iterator.Valid();
     }
 

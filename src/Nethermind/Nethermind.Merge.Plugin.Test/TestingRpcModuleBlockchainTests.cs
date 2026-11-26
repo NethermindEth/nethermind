@@ -76,7 +76,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .TestObject;
-            byte[] txRlp = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] txRlp = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
             ResultWrapper<Hash256> result = await testingRpcModule.testing_commitBlockV1(
                 NextPayloadAttributes(head), [txRlp], []);
@@ -88,8 +88,11 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
         // Each transfer executed on the previous commit's post-state: nonces 0..N-1 were
         // accepted in order and the recipient balance accumulated across commits.
         BlockHeader finalHead = chain.BlockTree.Head!.Header;
-        Assert.That(chain.StateReader.TryGetAccount(finalHead, TestItem.AddressF, out AccountStruct recipient), Is.True);
-        Assert.That(recipient.Balance, Is.EqualTo(transferValue * CommitCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.StateReader.TryGetAccount(finalHead, TestItem.AddressF, out AccountStruct recipient), Is.True);
+            Assert.That(recipient.Balance, Is.EqualTo(transferValue * CommitCount));
+        }
     }
 
     [Test]
@@ -110,7 +113,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
             .WithMaxPriorityFeePerGas(1.GWei)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
-        byte[] txRlp = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] txRlp = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
         ResultWrapper<Hash256> result = await testingRpcModule.testing_commitBlockV1(
             NextPayloadAttributes(head), [txRlp], []);

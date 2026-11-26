@@ -65,6 +65,13 @@ jobs:
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
+      - name: Upload Nethermind Windows arm64 package
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.PACKAGE_PREFIX }}-windows-arm64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-arm64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+
       - name: Upload Nethermind Windows x64 package
         uses: actions/upload-artifact@v7
         with:

@@ -13,6 +13,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
@@ -28,6 +29,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private ReadOnlyBlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
     private IWorldState? _parentReader;
+    private WorldState? _parentWorldState;
     private FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
     private uint _blockAccessIndex = 0;
     private Address? _contextAccount;
@@ -75,12 +77,14 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         }
 
         _parentReader = parentReader;
+        _parentWorldState = parentReader as WorldState;
     }
 
     public void ClearParentReader()
     {
         _readCoverage = null;
         _parentReader = null;
+        _parentWorldState = null;
         _suggestedBlockAccessList = null;
         _suggestedBlockHeader = null;
         _codeChangesByHash = null;
@@ -104,10 +108,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     /// earlier transaction already removed is reported as still existing. Distinguishing that from the
     /// first touch of the same account is not possible from the BAL, which declares both identically, and
     /// this arm favours the first touch. The result is only read by the EIP-161 RIPEMD-160 exception in
-    /// <c>VirtualMachine.RunPrecompile</c>, so a divergence needs an account at the RIPEMD-160 address that
-    /// is empty yet physically present in the pre-block state and touched twice in one block. No block can
-    /// produce that pre-state — a touched empty account is deleted at the end of its transaction and CREATE
-    /// sets nonce 1 — so it would have to come from a genesis allocation.
+    /// <c>VirtualMachine.RunPrecompile</c>, which credits a value-less call only to an account that is
+    /// present and empty. Here <see cref="AccountExists"/> means non-empty, so that exception never
+    /// reaches this method and the divergence has no effect.
     /// </remarks>
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
@@ -124,7 +127,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         }
 
         // An unchanged empty parent account still physically exists, despite being logically dead.
-        return _parentReader is WorldState parent
+        return _parentWorldState is { } parent
             ? ReadParentAccount(parent, address) is null
             : !_parentReader!.AccountExists(address);
     }
@@ -153,7 +156,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                 return;
             }
 
-            if (slotChanges is null && ReadDeclaredStorageSlow(_parentReader!, in storageCell, out value)) return;
+            if (slotChanges is null && ReadDeclaredStorageSlow(in storageCell, out value)) return;
             _parentReader!.Get(in storageCell, out value);
             return;
         }
@@ -181,7 +184,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                 return;
             }
 
-            if (slotChanges is null && ReadDeclaredStorageSlow(_parentReader!, in storageCell, out value)) return;
+            if (slotChanges is null && ReadDeclaredStorageSlow(in storageCell, out value)) return;
             _parentReader!.GetOriginal(in storageCell, out value);
             return;
         }
@@ -189,6 +192,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         ThrowMissingStorage(storageCell);
         value = default;
     }
+
+    /// <remarks>Writes do not reach this state, so its balance is the one at the start of the transaction.</remarks>
+    public override UInt256 GetOriginalBalance(Address address) => GetBalance(address);
 
     public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce) => oldNonce = GetNonce(address);
 
@@ -209,10 +215,10 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private bool ReadDeclaredStorageSlow(IWorldState parentReader, in StorageCell cell, out UInt256 value)
+    private bool ReadDeclaredStorageSlow(in StorageCell cell, out UInt256 value)
     {
         value = default;
-        if (parentReader is not WorldState worldState) return false;
+        if (_parentWorldState is not { } worldState) return false;
         ref UInt256 cached = ref CollectionsMarshal.GetValueRefOrAddDefault(_pureReadValues, cell, out bool exists);
         // The concrete parent reads its own caches and cannot resize this worker's dictionary.
         if (!exists) worldState.GetPureReadStorage(in cell, out cached);
@@ -238,6 +244,11 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => true;
 
+    public override void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec) { }
+
+    public override bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        => true;
+
     public override void Set(in StorageCell storageCell, in UInt256 newValue) { }
 
     public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue) { }
@@ -251,7 +262,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
             _scratchBalance = balanceChange.Value;
             return ref _scratchBalance;
         }
-        if (_parentReader is WorldState worldState)
+        if (_parentWorldState is { } worldState)
         {
             Account? account = ReadParentAccount(worldState, address);
             _scratchBalance = account?.Balance ?? UInt256.Zero;
@@ -266,7 +277,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
         return accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonceChange)
             ? nonceChange.Value
-            : _parentReader is WorldState worldState
+            : _parentWorldState is { } worldState
                 ? ReadParentAccount(worldState, address)?.Nonce ?? 0
                 : _parentReader!.GetNonce(address);
     }
@@ -280,7 +291,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
             _scratchCodeHash = codeChange.CodeHash;
             return ref _scratchCodeHash;
         }
-        if (_parentReader is WorldState worldState)
+        if (_parentWorldState is { } worldState)
         {
             Account? account = ReadParentAccount(worldState, address);
             _scratchCodeHash = account?.CodeHash.ValueHash256 ?? Keccak.OfAnEmptyString.ValueHash256;
@@ -289,19 +300,20 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return ref _parentReader!.GetCodeHash(address);
     }
 
-    public override byte[]? GetCode(Address address)
+    public override ReadOnlyMemory<byte> GetCode(Address address)
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
         return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
-            ? codeChange.Code
-            : _parentReader is WorldState worldState
-                ? ReadParentAccount(worldState, address) is { } account ? _parentReader!.GetCode(account.CodeHash.ValueHash256) : []
+            ? codeChange.IsAdopted ? GetAdoptedCode(codeChange.CodeHash) : codeChange.Code
+            : _parentWorldState is { } worldState
+                ? ReadParentAccount(worldState, address) is { } account ? worldState.GetCode(account.CodeHash.ValueHash256) : Array.Empty<byte>()
                 : _parentReader!.GetCode(address);
     }
 
-    public override byte[]? GetCode(in ValueHash256 codeHash)
-        => TryGetDeclaredCode(in codeHash, out byte[]? code) ? code : null;
+    /// <returns>Declared code, or <c>default</c> for code the block does not declare, so callers read by address.</returns>
+    public override ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
+        => TryGetDeclaredCode(in codeHash, out byte[]? code) ? code : default;
 
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) => oldBalance = GetBalance(address);
 
@@ -316,7 +328,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
         bool exists;
-        if (_parentReader is WorldState worldState)
+        if (_parentWorldState is { } worldState)
         {
             account = (ReadParentAccount(worldState, address) ?? Account.TotallyEmpty).ToStruct();
             exists = !account.IsTotallyEmpty;
@@ -346,7 +358,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         if (accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange))
         {
             codeHash = codeChange.CodeHash;
-            hasPriorChange |= codeChange.Code.Length != 0;
+            hasPriorChange |= codeChange.IsAdopted || codeChange.Code.Length != 0;
         }
 
         if (!exists && !hasPriorChange)
@@ -395,7 +407,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         ReadOnlyAccountChanges changes = ResolveContext(address);
         if (changes.TryGetLastBalanceChangeBefore(_blockAccessIndex, out BalanceChange balance)
             ? !balance.Value.IsZero
-            : _parentReader is WorldState balanceParent
+            : _parentWorldState is { } balanceParent
                 ? !(ReadParentAccount(balanceParent, address)?.Balance ?? UInt256.Zero).IsZero
                 : !_parentReader!.GetBalance(address).IsZero)
         {
@@ -404,7 +416,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
         if (changes.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonce)
             ? nonce.Value != 0
-            : _parentReader is WorldState nonceParent
+            : _parentWorldState is { } nonceParent
                 ? (ReadParentAccount(nonceParent, address)?.Nonce ?? 0) != 0
                 : _parentReader!.GetNonce(address) != 0)
         {
@@ -413,12 +425,18 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
         return changes.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange code)
             ? code.CodeHash != Keccak.OfAnEmptyString
-            : _parentReader is WorldState codeParent
+            : _parentWorldState is { } codeParent
                 ? (ReadParentAccount(codeParent, address)?.CodeHash.ValueHash256 ?? Keccak.OfAnEmptyString.ValueHash256) != Keccak.OfAnEmptyString
                 : _parentReader!.GetCodeHash(address) != Keccak.OfAnEmptyString;
     }
 
     public override void ClearStorage(Address address) { }
+
+    public override bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+    {
+        value = default;
+        return false;
+    }
 
     // BAL-backed mutations do not own MPT changes; CommitTree still delegates to commit the parent tree.
     public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true) { }
@@ -432,17 +450,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override ArrayPoolList<AddressAsKey> GetAccountChanges()
     {
         CheckInitialized();
-
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts = _suggestedBlockAccessList.AccountChanges.AsSpan();
-        ArrayPoolList<AddressAsKey> result = new(accounts.Length);
-        foreach (ReadOnlyAccountChanges accountChanges in accounts)
-        {
-            if (accountChanges.HasStateChanges)
-            {
-                result.Add(new AddressAsKey(accountChanges.Address));
-            }
-        }
-        return result;
+        return _suggestedBlockAccessList.GetStateChangedAddresses();
     }
 
     public override void GetTransientState(in StorageCell storageCell, out UInt256 value)
@@ -513,6 +521,29 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return accountChanges;
     }
 
+    /// <remarks>
+    /// EIP-8298: adopted bytecode is declared at a lower block access index or is in the pre-block state.
+    /// A hash found in neither is a malformed BAL, so it must surface as <see cref="InvalidBlockLevelAccessListException"/>
+    /// so the block is rejected as invalid, not as the code database's <see cref="InvalidOperationException"/>.
+    /// </remarks>
+    private ReadOnlyMemory<byte> GetAdoptedCode(in ValueHash256 codeHash)
+    {
+        if (TryGetDeclaredCode(in codeHash, out byte[]? code)) return code;
+
+        IWorldState parentReader = GetParentReader();
+        ReadOnlyMemory<byte> parentCode;
+        try
+        {
+            parentCode = parentReader.GetCode(in codeHash);
+        }
+        catch (InvalidOperationException)
+        {
+            parentCode = default;
+        }
+
+        return parentCode.IsNull() ? ThrowMissingAdoptedCode(in codeHash) : parentCode;
+    }
+
     private bool TryGetDeclaredCode(in ValueHash256 codeHash, [NotNullWhen(true)] out byte[]? code)
     {
         code = null;
@@ -538,6 +569,10 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingAccount(Address address)
         => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private ReadOnlyMemory<byte> ThrowMissingAdoptedCode(in ValueHash256 codeHash)
+        => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Adopted code {codeHash} at index {_blockAccessIndex} is neither declared at a lower index nor in the parent state.");
 
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingStorage(in StorageCell storageCell)

@@ -38,10 +38,12 @@
     <Project Path="../../src/Nethermind/Nethermind.Logging.Microsoft/Nethermind.Logging.Microsoft.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Logging.NLog/Nethermind.Logging.NLog.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Logging/Nethermind.Logging.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Mcp.Plugin/Nethermind.Mcp.Plugin.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Merge.AuRa/Nethermind.Merge.AuRa.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Monitoring/Nethermind.Monitoring.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Network.Core/Nethermind.Network.Core.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Discovery/Nethermind.Network.Discovery.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
@@ -58,7 +60,6 @@
     <Project Path="../../src/Nethermind/Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
-    <Project Path="../../src/Nethermind/Nethermind.Shutter/Nethermind.Shutter.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Sockets/Nethermind.Sockets.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Specs/Nethermind.Specs.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.State.Flat.History/Nethermind.State.Flat.History.csproj" />
@@ -74,5 +75,6 @@
     <Project Path="../../src/Nethermind/Nethermind.Wallet/Nethermind.Wallet.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Xdc/Nethermind.Xdc.csproj" />
   </Folder>
-  <Project Path="DocGen.csproj" />
+  <Project Path="DocGen/DocGen.csproj" />
+  <Project Path="DocGen.Test/Nethermind.DocGen.Test.csproj" />
 </Solution>

@@ -49,26 +49,49 @@ public class DepositTransactionForRpcTests
         ValidateSchema(json);
     }
 
+    // L2Api reads block transactions back through the polymorphic converter, where only `type` identifies a deposit.
+    [TestCaseSource(nameof(Transactions))]
+    public void Serialized_deposit_keeps_its_type(Transaction transaction)
+    {
+        string serialized = _serializer.Serialize(TransactionForRpc.FromTransaction(transaction));
+
+        Assert.That(_serializer.Deserialize<TransactionForRpc>(serialized), Is.TypeOf<DepositTransactionForRpc>());
+    }
+
+    [Test]
+    public void Explicit_deposit_type_rejects_a_field_a_deposit_lacks() =>
+        Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>(
+            """{"type":"0x7e","maxFeePerGas":"0x1","gas":"0x1234","sourceHash":"0x0000000000000000000000000000000000000000000000000000000000000000","from":"0x0000000000000000000000000000000000000001"}"""));
+
     private static void ValidateSchema(JsonElement json)
     {
-        Assert.That(json.GetProperty("type").GetString(), Does.Match("^0x7[eE]$"));
-        Assert.That(json.GetProperty("sourceHash").GetString(), Does.Match("^0x[0-9a-fA-F]{64}$"));
-        Assert.That(json.GetProperty("from").GetString(), Does.Match("^0x[0-9a-fA-F]{40}$"));
-        Assert.That(json.GetProperty("to").GetString(), Does.Match("^0x[0-9a-fA-F]{40}$"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.GetProperty("type").GetString(), Does.Match("^0x7[eE]$"));
+            Assert.That(json.GetProperty("sourceHash").GetString(), Does.Match("^0x[0-9a-fA-F]{64}$"));
+            Assert.That(json.GetProperty("from").GetString(), Does.Match("^0x[0-9a-fA-F]{40}$"));
+            Assert.That(json.GetProperty("to").GetString(), Does.Match("^0x[0-9a-fA-F]{40}$"));
+        }
         bool hasMint = json.TryGetProperty("mint", out JsonElement mint);
         if (hasMint)
         {
             Assert.That(mint.GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         }
-        Assert.That(json.GetProperty("value").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
-        Assert.That(json.GetProperty("gas").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.GetProperty("value").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+            Assert.That(json.GetProperty("gas").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        }
         bool hasIsSystemTx = json.TryGetProperty("isSystemTx", out JsonElement isSystemTx);
         if (hasIsSystemTx)
         {
             isSystemTx.GetBoolean();
         }
-        Assert.That(json.GetProperty("input").GetString(), Does.Match("^0x[0-9a-f]*$"));
-        Assert.That(json.GetProperty("nonce").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.GetProperty("input").GetString(), Does.Match("^0x[0-9a-f]*$"));
+            Assert.That(json.GetProperty("nonce").GetString(), Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
+        }
     }
 
     private static readonly IEnumerable<(string, string)> MalformedJsonTransactions = [

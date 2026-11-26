@@ -4,7 +4,6 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
@@ -18,7 +17,7 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 /// </summary>
 /// <param name="currentNode"></param>
 /// <param name="bootNodes"></param>
-public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(currentNode, bootNodes, DbNames.DiscoveryNodes)
+public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(currentNode, bootNodes, DiscoveryStorageKeys.V4)
 {
     protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
             // This two class contains the actual `INodeSource` logic. As in finding nodes within the network.
@@ -28,6 +27,6 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
             .AddSingleton<IKademliaAdapter, KademliaAdapter>()
             .Bind<IDiscoveryMsgListener, IKademliaAdapter>()
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()
-            .AddSingleton<NettyDiscoveryHandler>()
+            .AddSingleton<DiscoveryHandler>()
             ;
 }

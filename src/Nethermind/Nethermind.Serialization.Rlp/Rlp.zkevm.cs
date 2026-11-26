@@ -4,18 +4,55 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp;
 
 public partial class Rlp
 {
+    /// <summary>Writes <paramref name="hash"/> to the 32 bytes at <paramref name="destination"/>.</summary>
+    /// <remarks>
+    /// Where <see cref="StrictAlignmentFlag"/> is on, a 32-byte copy to a misaligned destination is 32 byte loads and
+    /// stores, so <see cref="Core.Extensions.Bytes.WriteMisalignedWords"/> writes it. A hash is a field of its object, so its words
+    /// are aligned. Where the flag is off, the store stays unaligned: the destination can be misaligned, and a guest
+    /// that traps on misaligned access gets the byte-wise form only from an unaligned store. See <c>Rlp.std.cs</c> for
+    /// the host form.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void WriteHash(ref byte destination, Hash256 hash)
+    {
+        if (StrictAlignmentFlag.IsActive && ((nuint)Unsafe.AsPointer(ref destination) & (sizeof(ulong) - 1)) != 0)
+            Core.Extensions.Bytes.WriteMisalignedWords((byte*)Unsafe.AsPointer(ref destination), (ulong*)Unsafe.AsPointer(ref Unsafe.AsRef(in hash.ValueHash256)));
+        else
+            Unsafe.WriteUnaligned(ref destination, hash.ValueHash256);
+    }
+
+    private static Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder
+    {
+        get
+        {
+            if (field is null)
+            {
+                field = [];
+                RegisterDefaultDecoders();
+            }
+
+            return field;
+        }
+    }
+
+    private static Lock _decoderLock => field ??= new();
+
+    private static ILogger _logger => Static.LogManager.GetClassLogger(typeof(Rlp));
+
     private static Dictionary<RlpDecoderKey, IRlpDecoder>? _decodersSnapshot;
 
     public static Dictionary<RlpDecoderKey, IRlpDecoder> Decoders
@@ -33,14 +70,16 @@ public partial class Rlp
         Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
         if (snapshot is null)
         {
-            snapshot = new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
+            snapshot = [with(_decoderBuilder)];
             Volatile.Write(ref _decodersSnapshot, snapshot);
         }
 
         return snapshot;
     }
 
-    public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)
+    public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders) => RegisterDefaultDecoders();
+
+    private static bool RegisterDefaultDecoders()
     {
         // Under zkEVM/bflat AOT we cannot rely on reflection-based auto-discovery of decoders
         // (CustomAttribute instantiation can trigger TypeLoader failures).
@@ -69,6 +108,7 @@ public partial class Rlp
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), new ReceiptStorageDecoder());
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), CompactReceiptStorageDecoder.Instance);
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Trie), new ReceiptMessageDecoder());
+        return true;
     }
 }
 

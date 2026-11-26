@@ -17,7 +17,7 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history, Commi
     private readonly CommitmentStore _accountStore = new(history.GetColumnDb(FlatHistoryColumns.AccountCommitments), policy, 0);
     private readonly CommitmentStore _storageStore = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
 
-    public NodeSeriesState ReadStart(in SeriesKey key, ulong from)
+    public NodeSeriesState ReadStart(in SeriesKey key, ulong from, CancellationToken token)
     {
         NodeSeriesState state = new();
         Span<byte> prefix = stackalloc byte[SeriesKey.MaxKeyLength];
@@ -26,7 +26,7 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history, Commi
         using CommitmentStore.RowChain chain = key.Scratch ? store.OpenScratchAtOrBelow(prefix[..prefixLength], from) : store.OpenAtOrBelow(prefix[..prefixLength], from);
         try
         {
-            if (chain.MoveNext()) state.MaterializeStart(chain);
+            if (chain.MoveNext()) state.MaterializeStart(chain, token);
         }
         catch
         {
@@ -61,7 +61,7 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history, Commi
 
         private readonly RowArena _arena = new();
         private readonly int _maxRows = Math.Max(MinRowsBuffered, maxRowsBuffered);
-        private readonly ArrayPoolList<(ulong Block, int Offset, int Length)> _window = new(Math.Min(Math.Max(MinRowsBuffered, maxRowsBuffered), 4096));
+        private readonly ArrayPoolList<(ulong Block, int Offset, int Length)> _window = [with(Math.Min(Math.Max(MinRowsBuffered, maxRowsBuffered), 4096))];
         private ulong _nextLow = fromExclusive + 1;
         private ulong _windowSize = Window;
         private int _position = -1;

@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -146,11 +147,11 @@ namespace Nethermind.Core
             /// checked before the empty-range guard, so an empty range is a side-effect-free probe for a caller with
             /// something irreversible to do first.</summary>
             [SkipLocalsInit]
-            public void DeleteBlockNumberRange(ulong fromInclusive, ulong toExclusive, string columnName)
+            public void DeleteBlockNumberRange(ulong fromInclusive, ulong toExclusive)
             {
                 if (db is not IRangeRemovableKeyValueStore rangeRemovable)
                 {
-                    throw new NotSupportedException($"The {columnName} database ({db.GetType().Name}) cannot remove a key range.");
+                    throw new NotSupportedException($"The database ({db.GetType().Name}) cannot remove a key range.");
                 }
 
                 if (fromInclusive >= toExclusive) return;
@@ -179,12 +180,31 @@ namespace Nethermind.Core
             public void Set(long key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
 
             public void Set(ulong key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
+
+            public void PutSpan(long key, ReadOnlySpan<byte> value) => db.PutSpan(key.ToBigEndianSpanWithoutLeadingZeros(out _), value);
         }
 
         public static void GetBlockNumPrefixedKey(ulong blockNumber, ValueHash256 blockHash, Span<byte> output)
         {
             blockNumber.WriteBigEndian(output);
             blockHash!.Bytes.CopyTo(output[8..]);
+        }
+
+        /// <summary>Starts reading the values keyed by <see cref="GetBlockNumPrefixedKey"/> of <paramref name="blocks"/>, when <paramref name="db"/> can read ahead.</summary>
+        /// <remarks>Skips the prefetch when the value of the last block is already cached.</remarks>
+        public static void PrefetchBlockNumPrefixed(IReadOnlyKeyValueStore db, ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks)
+        {
+            const int keyLength = 40;
+            if (blocks.IsEmpty || db is not IReadPrefetcher prefetcher) return;
+
+            using ArrayPoolSpan<byte> keys = new(blocks.Length * keyLength);
+            Span<byte> keySpan = keys;
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                GetBlockNumPrefixedKey(blocks[i].Number, blocks[i].Hash, keySpan.Slice(i * keyLength, keyLength));
+            }
+
+            if (!prefetcher.IsCached(keySpan[^keyLength..])) prefetcher.Prefetch(keySpan, keyLength);
         }
     }
 }

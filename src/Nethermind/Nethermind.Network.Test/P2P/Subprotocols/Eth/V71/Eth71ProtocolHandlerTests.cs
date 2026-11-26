@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -18,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
@@ -29,6 +31,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -62,6 +65,7 @@ public class Eth71ProtocolHandlerTests
         _syncManager = Substitute.For<ISyncServer>();
         _transactionPool = Substitute.For<ITxPool>();
         _specProvider = Substitute.For<IChainHeadSpecProvider>();
+        _syncManager.ServeReceipts(_specProvider);
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
@@ -174,6 +178,82 @@ public class Eth71ProtocolHandlerTests
         }
     }
 
+    [Test]
+    public void Should_stop_BAL_response_after_soft_limit([Values] bool oversizedFirstEntry)
+    {
+        const int softLimit = 2 * MemorySizes.MiB;
+        Hash256[] hashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
+        byte[][] entries =
+        [
+            RlpTestHelper.EncodeSequence([Rlp.Encode(new byte[oversizedFirstEntry ? softLimit + 1 : softLimit / 2 + 1])]),
+            RlpTestHelper.EncodeSequence([Rlp.Encode(new byte[softLimit / 2])]),
+            RlpTestHelper.EncodeSequence([Rlp.Encode(new byte[1024])])
+        ];
+        for (int i = 0; i < entries.Length; i++)
+        {
+            _syncManager.GetBlockAccessListRlp(hashes[i]).Returns(ArrayMemoryManager.From(entries[i]));
+        }
+        BlockAccessListsMessage? response = null;
+        _session.When(s => s.DeliverMessage(Arg.Any<BlockAccessListsMessage>())).Do(call => response = (BlockAccessListsMessage)call[0]);
+        HandleIncomingStatusMessage();
+        using GetBlockAccessListsMessage request = new(333, hashes.ToPooledList(hashes.Length));
+
+        HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
+
+        Assert.That(response, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response!.RequestId, Is.EqualTo(333));
+            Assert.That(response.BlockAccessLists, Has.Count.EqualTo(oversizedFirstEntry ? 1 : 2));
+            Assert.That(response.BlockAccessLists[0], Is.EqualTo(entries[0]));
+        }
+    }
+
+    [Test]
+    public void Serves_full_BAL_response_as_the_stored_lists([Values(1, 3, 20)] int unavailable)
+    {
+        const int count = 20;
+        Hash256[] hashes = [.. Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString()))];
+        byte[]?[] entries = new byte[]?[count];
+        for (int i = 0; i < count; i++)
+        {
+            if (i < unavailable)
+            {
+                _syncManager.GetBlockAccessListRlp(hashes[i]).Returns((MemoryManager<byte>?)null);
+                continue;
+            }
+
+            byte[] payload = new byte[200_000 + i];
+            new Random(i).NextBytes(payload);
+            entries[i] = RlpTestHelper.EncodeSequence([Rlp.Encode(payload)]);
+            _syncManager.GetBlockAccessListRlp(hashes[i]).Returns(ArrayMemoryManager.From(entries[i]!));
+        }
+
+        BlockAccessListsMessageSerializer serializer = new();
+        byte[]? response = null;
+        int servedCount = 0;
+        _session.When(s => s.DeliverMessage(Arg.Any<BlockAccessListsMessage>())).Do(call =>
+        {
+            BlockAccessListsMessage message = (BlockAccessListsMessage)call[0];
+            servedCount = message.BlockAccessLists.Count;
+            response = new byte[serializer.GetLength(message)];
+            serializer.Serialize(response, message);
+        });
+        HandleIncomingStatusMessage();
+
+        using GetBlockAccessListsMessage request = new(1111, hashes.ToPooledList(count));
+        HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
+
+        using BlockAccessListsMessage expectedMessage = new(1111, entries[..servedCount].ToPooledList());
+        byte[] expected = new byte[serializer.GetLength(expectedMessage)];
+        serializer.Serialize(expected, expectedMessage);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected, Has.Length.GreaterThan(unavailable < count ? 2 * MemorySizes.MiB : count));
+            Assert.That(response, Is.EqualTo(expected));
+        }
+    }
+
     [TestCaseSource(nameof(BlockAccessListsRequestCases))]
     public async Task Can_request_and_handle_block_access_lists(bool viaSyncPeerInterface)
     {
@@ -222,6 +302,13 @@ public class Eth71ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_reject_unrequested_block_access_lists_before_decoding()
+    {
+        HandleIncomingStatusMessage();
+        UndecodableResponse.AssertRejectedAsUnrequested(_handler.HandleMessage, Eth71MessageCode.BlockAccessLists);
+    }
+
+    [Test]
     public async Task Should_return_empty_list_when_requesting_zero_hashes()
     {
         HandleIncomingStatusMessage();
@@ -258,14 +345,14 @@ public class Eth71ProtocolHandlerTests
 
         IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
         statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
-    private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
     {
         IByteBuffer packet = _svc.ZeroSerialize(msg);
         packet.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)messageCode });
     }
 
     private static TestCaseData[] BlockAccessListsResponseCases =>

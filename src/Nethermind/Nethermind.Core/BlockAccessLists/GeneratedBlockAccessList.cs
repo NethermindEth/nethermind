@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Collections;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -17,7 +19,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </remarks>
 public class GeneratedBlockAccessList
 {
-    private readonly Dictionary<AddressAsKey, GeneratedAccountChanges> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
+    private readonly Dictionary<AddressAsKey, GeneratedAccountChanges> _accountChanges = [with(GenericEqualityComparer.GetOptimized<AddressAsKey>())];
 
     /// <summary>
     /// Insertion-ordered view over the BAL's accounts.
@@ -55,22 +57,48 @@ public class GeneratedBlockAccessList
     }
 
     /// <summary>
+    /// Number of items <see cref="Merge"/> would add to <see cref="ItemCount"/> for <paramref name="other"/>,
+    /// without merging it.
+    /// </summary>
+    /// <remarks>Walks only <paramref name="other"/>, so the cost is independent of the size of this list.</remarks>
+    public int CountNewItems(BlockAccessListAtIndex other)
+    {
+        int count = 0;
+        foreach (AccountChangesAtIndex sourceAccount in other.AccountChanges)
+        {
+            _accountChanges.TryGetValue(sourceAccount.Address, out GeneratedAccountChanges? target);
+            if (target is null) count++;
+
+            foreach (KeyValuePair<UInt256, StorageChange> change in sourceAccount.StorageChanges)
+            {
+                if (target is null || !target.HasStorageKey(change.Key)) count++;
+            }
+
+            foreach (UInt256 key in sourceAccount.StorageReads)
+            {
+                if (!sourceAccount.HasStorageChange(key) && (target is null || !target.HasStorageKey(key))) count++;
+            }
+        }
+        return count;
+    }
+
+    /// <summary>
     /// Merge a per-tx contribution into this block-level accumulator.
     /// </summary>
     public void Merge(BlockAccessListAtIndex other)
     {
         foreach (AccountChangesAtIndex sourceAccount in other.AccountChanges)
         {
-            if (!_accountChanges.TryGetValue(sourceAccount.Address, out GeneratedAccountChanges? target))
-            {
-                target = new GeneratedAccountChanges(sourceAccount.Address);
-                _accountChanges.Add(sourceAccount.Address, target);
-            }
+            GeneratedAccountChanges target = CollectionsMarshal.GetValueRefOrAddDefault(_accountChanges, sourceAccount.Address, out _)
+                ??= new GeneratedAccountChanges(sourceAccount.Address);
             target.Merge(sourceAccount);
         }
     }
 
     public void Clear() => _accountChanges.ClearAndTrim();
+
+    /// <summary>Makes room for <paramref name="accounts"/> accounts without growing the account map as they merge in.</summary>
+    internal void EnsureCapacity(int accounts) => _accountChanges.EnsureCapacity(accounts);
     public void Reset() => Clear();
 
     /// <summary>

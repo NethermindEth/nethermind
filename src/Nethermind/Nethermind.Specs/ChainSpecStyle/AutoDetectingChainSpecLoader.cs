@@ -21,7 +21,7 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
 
     private readonly ILogger _logger = logManager.GetClassLogger<AutoDetectingChainSpecLoader>();
     private readonly ChainSpecLoader _parityLoader = new(serializer, logManager);
-    private readonly GethGenesisLoader _gethLoader = new(serializer);
+    private readonly GethGenesisLoader _gethLoader = new(serializer, logManager);
 
     public ChainSpec Load(Stream streamData)
     {

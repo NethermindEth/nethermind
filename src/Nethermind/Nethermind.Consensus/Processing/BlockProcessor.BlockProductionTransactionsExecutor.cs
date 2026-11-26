@@ -2,16 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
@@ -31,6 +37,14 @@ namespace Nethermind.Consensus.Processing
             : IBlockProductionTransactionsExecutor
         {
             private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
+            private IReleaseSpec? _spec;
+
+            // Items added to the end-of-block reserve after a build on _learnedItemReserveParent overshot the block access
+            // list item limit, for end-of-block work the reserve does not model (e.g. a withdrawal contract instead of
+            // balance credits). Scoped to that parent so one unusual block does not shrink the budget of later ones.
+            // Builds of one producer env are serialized, so the fields need no synchronization.
+            private long _learnedItemReserve;
+            private Hash256? _learnedItemReserveParent;
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
@@ -44,6 +58,14 @@ namespace Nethermind.Consensus.Processing
             {
                 transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
                 balManager.SetBlockExecutionContext(blockExecutionContext);
+                _spec = blockExecutionContext.Spec;
+            }
+
+            public void ReportItemLimitExceeded(long excessItems)
+            {
+                if (excessItems <= 0) return;
+                _learnedItemReserve += excessItems;
+                if (_logger.IsWarn) _logger.Warn($"Produced block exceeded the block access list item limit by {excessItems} items; reserving {_learnedItemReserve} more items in later builds on parent {_learnedItemReserveParent}.");
             }
 
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
@@ -62,14 +84,15 @@ namespace Nethermind.Consensus.Processing
 
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
-                HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
-                int i = 0;
+                HashSet<Transaction> consideredTx = [with(ByHashTxComparer.Instance)];
+                HashSet<Transaction>? executedAndSkippedTx = null;
+                BlockAccessListItemBudget itemBudget = CreateItemBudget(block);
                 foreach (Transaction currentTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
+                    TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, out bool executed);
                     if (action == TxAction.Stop) break;
 
                     consideredTx.Add(currentTx);
@@ -81,6 +104,108 @@ namespace Nethermind.Consensus.Processing
                             blockToProduce.TxByteLength += currentTx.GetLength(false);
                         }
                     }
+                    else if (executed && blockToProduce?.InclusionList is { Length: > 0 })
+                    {
+                        (executedAndSkippedTx ??= [with(ByHashTxComparer.Instance)]).Add(currentTx);
+                    }
+                }
+
+                CancellationToken reofferToken = blockToProduce is { AbandonToken.CanBeCanceled: true } ? blockToProduce.AbandonToken : token;
+                if (blockToProduce?.InclusionList is { Length: > 0 } inclusionList && !reofferToken.IsCancellationRequested)
+                {
+                    consideredTx.Clear();
+                    foreach (Transaction tx in includedTx.AsSpan()) consideredTx.Add(tx);
+                    if (executedAndSkippedTx is not null) consideredTx.UnionWith(executedAndSkippedTx);
+
+                    int[] pending = ArrayPool<int>.Shared.Rent(inclusionList.Length);
+                    try
+                    {
+                        int pendingCount = 0;
+                        for (int i = 0; i < inclusionList.Length; i++)
+                        {
+                            Transaction tx = inclusionList[i];
+                            if (!tx.SupportsFrames && tx.SenderAddress is not null && !consideredTx.Contains(tx)) pending[pendingCount++] = i;
+                        }
+
+                        if (pendingCount > 0)
+                        {
+                            ulong[] nonceAtSkip = ArrayPool<ulong>.Shared.Rent(inclusionList.Length);
+                            UInt256[] balanceAtSkip = ArrayPool<UInt256>.Shared.Rent(inclusionList.Length);
+                            try
+                            {
+                                bool firstPass = true;
+                                bool added = true;
+                                while (added && pendingCount > 0 && !reofferToken.IsCancellationRequested)
+                                {
+                                    added = false;
+                                    int kept = 0;
+                                    for (int k = 0; k < pendingCount; k++)
+                                    {
+                                        if (reofferToken.IsCancellationRequested)
+                                        {
+                                            added = false;
+                                            break;
+                                        }
+
+                                        int index = pending[k];
+                                        Transaction currentTx = inclusionList[index];
+                                        Address sender = currentTx.SenderAddress!;
+                                        ulong nonce = stateProvider.GetNonce(sender);
+                                        UInt256 balance = stateProvider.GetBalance(sender);
+                                        if (!firstPass && nonce == nonceAtSkip[k] && balance == balanceAtSkip[k])
+                                        {
+                                            pending[kept] = index;
+                                            nonceAtSkip[kept] = nonceAtSkip[k];
+                                            balanceAtSkip[kept] = balanceAtSkip[k];
+                                            kept++;
+                                            continue;
+                                        }
+
+                                        TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, out bool executed);
+                                        if (action == TxAction.Stop)
+                                        {
+                                            added = false;
+                                            break;
+                                        }
+
+                                        if (action == TxAction.Add)
+                                        {
+                                            added = true;
+                                            consideredTx.Add(currentTx);
+                                            includedTx.Add(currentTx);
+                                            blockToProduce.TxByteLength += currentTx.GetLength(false);
+                                        }
+                                        else if (!executed)
+                                        {
+                                            pending[kept] = index;
+                                            nonceAtSkip[kept] = nonce;
+                                            balanceAtSkip[kept] = balance;
+                                            kept++;
+                                        }
+                                    }
+
+                                    pendingCount = kept;
+                                    firstPass = false;
+                                }
+                            }
+                            finally
+                            {
+                                ArrayPool<ulong>.Shared.Return(nonceAtSkip);
+                                ArrayPool<UInt256>.Shared.Return(balanceAtSkip);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        ArrayPool<int>.Shared.Return(pending);
+                    }
+                }
+
+                if (blockToProduce?.RequiredTransactions is { } required &&
+                    (includedTx.Count < required.Length || !includedTx.AsSpan()[..required.Length].SequenceEqual(required)))
+                {
+                    token.ThrowIfCancellationRequested();
+                    throw new InvalidBlockException(block, "Could not include all required payload transactions in order.");
                 }
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
@@ -91,14 +216,39 @@ namespace Nethermind.Consensus.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
+            /// <summary>
+            /// EIP-7928: the items transactions may add to the block access list, so that the end-of-block steps still fit
+            /// under <c>block_gas_limit / ITEM_COST</c>. Disabled when no block access list is built.
+            /// </summary>
+            private BlockAccessListItemBudget CreateItemBudget(Block block)
+            {
+                if (!balManager.Enabled || _spec is null) return default;
+
+                if (block.Header.ParentHash != _learnedItemReserveParent)
+                {
+                    _learnedItemReserveParent = block.Header.ParentHash;
+                    _learnedItemReserve = 0;
+                }
+
+                GeneratedBlockAccessList blockAccessList = balManager.GeneratedBlockAccessList;
+                long limit = (long)(block.Header.GasLimit / Eip7928Constants.ItemCost);
+                long reserve = BlockAccessListItemReserve.Calculate(block, _spec, stateProvider, blockAccessList)
+                    + _learnedItemReserve;
+                // Only the pre-execution system calls are merged at this point, so the count is cheap.
+                return new BlockAccessListItemBudget(limit - reserve - blockAccessList.ItemCount);
+            }
+
             private TxAction ProcessTransaction(
                 Block block,
                 Transaction currentTx,
                 int index,
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions,
-                HashSet<Transaction> transactionsInBlock)
+                HashSet<Transaction> transactionsInBlock,
+                ref BlockAccessListItemBudget itemBudget,
+                out bool executed)
             {
+                executed = false;
                 AddingTxEventArgs args = txPicker.CanAddTransaction(
                     block,
                     currentTx,
@@ -113,10 +263,22 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
+                    executed = true;
                     ITransactionProcessorAdapter processor = balManager.Enabled ? balManager.GetTxProcessor() : transactionProcessor;
+                    Snapshot snapshot = itemBudget.Enabled ? stateProvider.TakeSnapshot() : Snapshot.Empty;
+                    int receiptsSnapshot = receiptsTracer.TakeSnapshot();
                     TransactionResult result = processor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
-                    if (result)
+                    if (result && itemBudget.Enabled && !itemBudget.TryConsume(balManager.CountPendingTransactionItems()))
+                    {
+                        // Leave the executed transaction out: undo its state, its slice and its receipt.
+                        stateProvider.Restore(snapshot);
+                        balManager.Rollback();
+                        receiptsTracer.DiscardLastTx();
+                        args.Set(TxAction.Skip, "Block access list item limit reached");
+                        if (_logger.IsDebug) DebugSkipReason(currentTx, args);
+                    }
+                    else if (result)
                     {
                         _transactionProcessed?.Invoke(this,
                             new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
@@ -124,6 +286,9 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
+                        // Drop any receipt/header gas the failed tx left behind. The processor's own running block
+                        // gas is not reset here, but the next receipt rewrites the header's gas used from receipts kept.
+                        receiptsTracer.Restore(receiptsSnapshot);
                         balManager.Rollback();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
                         EvictUnpaidFrameTx(currentTx, result);
@@ -135,6 +300,20 @@ namespace Nethermind.Consensus.Processing
                 [MethodImpl(MethodImplOptions.NoInlining)]
                 void DebugSkipReason(Transaction currentTx, AddingTxEventArgs args)
                     => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
+            }
+
+            /// <summary>Block access list items left for transactions; a disabled budget admits everything.</summary>
+            private struct BlockAccessListItemBudget(long remaining)
+            {
+                public readonly bool Enabled = true;
+                private long _remaining = remaining;
+
+                public bool TryConsume(int items)
+                {
+                    if (items > _remaining) return false;
+                    _remaining -= items;
+                    return true;
+                }
             }
 
             /// <summary>Evicts a frame transaction whose frames approved no payment; nothing else evicts it, so every

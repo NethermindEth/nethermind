@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -40,6 +41,68 @@ public class AccountChangesAtIndexTests
     }
 
     [Test]
+    public void Storage_changes_list_only_changed_slots_among_those_holding_a_prestate()
+    {
+        BlockAccessListAtIndex slice = new();
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)1, before: UInt256.Zero, after: (UInt256)5);
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)2, before: (UInt256)7, after: (UInt256)8);
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)2, before: (UInt256)8, after: (UInt256)7);
+        AccountChangesAtIndex account = slice.GetAccountChanges(TestItem.AddressA)!;
+        account.SeedPreTxStorage((UInt256)3, (UInt256)9);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.StorageChangeCount, Is.EqualTo(1));
+            Assert.That(account.StorageChanges.Select(static change => change.Key), Is.EqualTo(new[] { (UInt256)1 }));
+            Assert.That(account.StorageChanges[(UInt256)1], Is.EqualTo(new StorageChange(0, (UInt256)5)));
+            Assert.That(account.HasStorageChange((UInt256)2), Is.False);
+            Assert.That(account.StorageReads, Does.Contain((UInt256)2));
+            Assert.That(account.TryGetPreTxStorage((UInt256)2, out UInt256 written), Is.True);
+            Assert.That(written, Is.EqualTo((UInt256)7));
+            Assert.That(account.TryGetPreTxStorage((UInt256)3, out UInt256 seeded), Is.True);
+            Assert.That(seeded, Is.EqualTo((UInt256)9));
+        }
+
+        account.ClearStorageChanges();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.StorageChangeCount, Is.Zero);
+            Assert.That(account.StorageChanges, Is.Empty);
+            Assert.That(account.TryGetPreTxStorage((UInt256)1, out UInt256 cleared), Is.True);
+            Assert.That(cleared, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    /// <remarks>Repeated and interleaved writes resolve their slot through the last-slot shortcut and through the index.
+    /// A slot that shares slot 1's low limb must miss the shortcut on its full key.</remarks>
+    [Test]
+    public void Interleaved_writes_keep_each_slots_prestate_and_latest_value()
+    {
+        UInt256 sameLowLimb = new(1, 1, 0, 0);
+        BlockAccessListAtIndex slice = new();
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)1, before: (UInt256)10, after: (UInt256)11);
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)1, before: (UInt256)11, after: (UInt256)12);
+        slice.AddStorageChange(TestItem.AddressA, sameLowLimb, before: (UInt256)30, after: (UInt256)31);
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)2, before: (UInt256)20, after: (UInt256)21);
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)1, before: (UInt256)12, after: (UInt256)13);
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)2, before: (UInt256)21, after: (UInt256)22);
+        AccountChangesAtIndex account = slice.GetAccountChanges(TestItem.AddressA)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.StorageChanges[(UInt256)1].Value, Is.EqualTo((UInt256)13));
+            Assert.That(account.StorageChanges[(UInt256)2].Value, Is.EqualTo((UInt256)22));
+            Assert.That(account.TryGetPreTxStorage((UInt256)1, out UInt256 first), Is.True);
+            Assert.That(first, Is.EqualTo((UInt256)10));
+            Assert.That(account.TryGetPreTxStorage((UInt256)2, out UInt256 second), Is.True);
+            Assert.That(second, Is.EqualTo((UInt256)20));
+            Assert.That(account.StorageChanges[sameLowLimb].Value, Is.EqualTo((UInt256)31));
+            Assert.That(account.TryGetPreTxStorage(sameLowLimb, out UInt256 third), Is.True);
+            Assert.That(third, Is.EqualTo((UInt256)30));
+        }
+    }
+
+    [Test]
     public void Clear_trims_oversized_account_changes_before_pooling()
     {
         const int EntryCount = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1;
@@ -52,10 +115,11 @@ public class AccountChangesAtIndexTests
             UInt256 slot = (UInt256)i;
             accountChanges.SetStorageChange(slot, storageChange);
             accountChanges.AddStorageRead(slot);
-            accountChanges.GetOrCapturePreTxStorage(slot, UInt256.One, 0, out _);
+            accountChanges.SeedPreTxStorage(slot, UInt256.One);
         }
 
         int changesCapacityBeforeClear = accountChanges.StorageChanges.Capacity;
+        int slotIndexCapacityBeforeClear = accountChanges.StorageSlotIndexCapacity;
         int readsCapacityBeforeClear = accountChanges.StorageReads.Capacity;
 
         blockAccessList.Clear();
@@ -66,6 +130,7 @@ public class AccountChangesAtIndexTests
             Assert.That(accountChanges.StorageChanges, Is.Empty);
             Assert.That(accountChanges.StorageChanges.Capacity, Is.GreaterThan(0));
             Assert.That(accountChanges.StorageChanges.Capacity, Is.LessThan(changesCapacityBeforeClear));
+            Assert.That(accountChanges.StorageSlotIndexCapacity, Is.LessThan(slotIndexCapacityBeforeClear));
             Assert.That(accountChanges.StorageReads, Is.Empty);
             Assert.That(accountChanges.StorageReads.Capacity, Is.GreaterThan(0));
             Assert.That(accountChanges.StorageReads.Capacity, Is.LessThan(readsCapacityBeforeClear));
@@ -78,9 +143,15 @@ public class AccountChangesAtIndexTests
             Assert.That(reused.Address, Is.EqualTo(TestItem.AddressB));
         }
 
-        Assert.That(reused.GetOrCapturePreTxStorage(UInt256.Zero, (UInt256)77, 0, out UInt256 original), Is.True);
-        Assert.That(original, Is.EqualTo((UInt256)77));
-        Assert.That(reused.GetOrCapturePreTxStorage(UInt256.Zero, (UInt256)99, 0, out original), Is.False);
-        Assert.That(original, Is.EqualTo((UInt256)77));
+        // The reused entry holds no prestate from its previous account: the first write captures it, later ones keep it.
+        Assert.That(reused.TryGetPreTxStorage(UInt256.Zero, out _), Is.False);
+        blockAccessList.AddStorageChange(TestItem.AddressB, UInt256.Zero, before: 77, after: 1);
+        blockAccessList.AddStorageChange(TestItem.AddressB, UInt256.Zero, before: 1, after: 99);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reused.TryGetPreTxStorage(UInt256.Zero, out UInt256 original), Is.True);
+            Assert.That(original, Is.EqualTo((UInt256)77));
+            Assert.That(reused.StorageChanges[UInt256.Zero].Value, Is.EqualTo((UInt256)99));
+        }
     }
 }

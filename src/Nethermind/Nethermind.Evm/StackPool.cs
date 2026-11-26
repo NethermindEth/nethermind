@@ -20,5 +20,8 @@ internal static partial class StackPool
 
     public static partial void ReturnStacks(byte[] dataStack);
 
+    /// <summary>Returns <paramref name="dataStack"/> to the tier every thread rents from, not the calling thread's own.</summary>
+    public static partial void ReturnStacksShared(byte[] dataStack);
+
     public static partial byte[] RentStacks();
 }

@@ -14,8 +14,6 @@ public partial class BN254PairingCheckPrecompile : IPrecompile<BN254PairingCheck
 {
     public static BN254PairingCheckPrecompile Instance { get; } = new();
 
-    public static Address Address { get; } = Address.FromNumber(8);
-
     /// <see href="https://eips.ethereum.org/EIPS/eip-7910" />
     public string Name => "BN254_PAIRING";
 

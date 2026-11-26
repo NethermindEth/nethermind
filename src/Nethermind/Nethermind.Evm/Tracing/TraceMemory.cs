@@ -44,13 +44,26 @@ public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
     public byte[] ToRawWordBytes()
     {
         if (Size == 0) return Array.Empty<byte>();
-        int wordCount = (int)((Size + EvmPooledMemory.WordSize - 1) / EvmPooledMemory.WordSize);
-        byte[] raw = new byte[wordCount * EvmPooledMemory.WordSize];
+        byte[] raw = new byte[RawWordByteLength];
         int copyLength = Math.Min((int)Size, _memory.Length);
         if (copyLength > 0)
             _memory.Span.Slice(0, copyLength).CopyTo(raw);
         // remainder is zero-initialised by the array constructor
         return raw;
+    }
+
+    /// <summary>Length in bytes of <see cref="ToRawWordBytes"/>: <see cref="Size"/> rounded up to whole 32-byte words.</summary>
+    public int RawWordByteLength => (int)((Size + EvmPooledMemory.WordSize - 1) / EvmPooledMemory.WordSize) * EvmPooledMemory.WordSize;
+
+    /// <summary>Writes the same bytes as <see cref="ToRawWordBytes"/> into the first <see cref="RawWordByteLength"/> bytes of <paramref name="destination"/>.</summary>
+    /// <remarks>The padding is cleared explicitly, so <paramref name="destination"/> can be a reused buffer.</remarks>
+    public void CopyRawWordBytesTo(Span<byte> destination)
+    {
+        int length = RawWordByteLength;
+        ArgumentOutOfRangeException.ThrowIfLessThan(destination.Length, length, nameof(destination));
+        int copyLength = Math.Min((int)Size, _memory.Length);
+        _memory.Span.Slice(0, copyLength).CopyTo(destination);
+        destination.Slice(copyLength, length - copyLength).Clear();
     }
 
     private const int MemoryPadLimit = MemorySizes.MiB;

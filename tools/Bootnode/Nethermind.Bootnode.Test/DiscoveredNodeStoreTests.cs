@@ -307,9 +307,12 @@ public class DiscoveredNodeStoreTests
         ];
         Array.Sort(expectedOrder, StringComparer.Ordinal);
 
-        Assert.That(secondNode, Has.Length.EqualTo(1));
-        Assert.That(secondActiveNode, Has.Length.EqualTo(1));
-        Assert.That(allNodes, Has.Length.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondNode, Has.Length.EqualTo(1));
+            Assert.That(secondActiveNode, Has.Length.EqualTo(1));
+            Assert.That(allNodes, Has.Length.EqualTo(3));
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Array.ConvertAll(allNodes, static node => node.IdHash), Is.EqualTo(expectedOrder));

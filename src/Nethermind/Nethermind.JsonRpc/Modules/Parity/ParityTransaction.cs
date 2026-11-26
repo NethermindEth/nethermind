@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Serialization.Json;
@@ -17,26 +18,26 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public Hash256 Hash { get; set; }
         public UInt256? Nonce { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Hash256 BlockHash { get; set; }
+        public Hash256? BlockHash { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public UInt256? BlockNumber { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public UInt256? TransactionIndex { get; set; }
         public Address From { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Address To { get; set; }
+        public Address? To { get; set; }
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
         public ulong? Gas { get; set; }
         public byte[] Input { get; set; }
         public byte[] Raw { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Address Creates { get; set; }
+        public Address? Creates { get; set; }
         [JsonConverter(typeof(PublicKeyConverter))]
         public PublicKey PublicKey { get; set; }
         public ulong? ChainId { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public object Condition { get; set; }
+        public object? Condition { get; set; }
         public Memory<byte> R { get; set; }
         public Memory<byte> S { get; set; }
         public UInt256 V { get; set; }
@@ -53,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         /// <see cref="ChainId"/> comes from the explicit field the signed payload carries.
         /// </remarks>
         public ParityTransaction(Transaction transaction, byte[] raw, PublicKey publicKey,
-            Hash256 blockHash = null, UInt256? blockNumber = null, UInt256? txIndex = null)
+            Hash256 blockHash = null, UInt256? blockNumber = null, UInt256? txIndex = null, IReleaseSpec? pendingSpec = null)
         {
             Hash = transaction.Hash;
             Nonce = transaction.Nonce;
@@ -64,7 +65,9 @@ namespace Nethermind.JsonRpc.Modules.Parity
             To = transaction.IsContractCreation ? null : transaction.To;
             Value = transaction.Value;
             GasPrice = transaction.GasPrice;
-            Gas = transaction.GasLimit;
+            Gas = pendingSpec is not null && transaction.Frames is not null && FrameTxValidation.TryCalculateGasBudget(transaction, pendingSpec, out _, out _, out ulong frameGas)
+                ? frameGas
+                : transaction.GasLimit;
             Raw = raw;
             Input = transaction.Data.AsArray();
             PublicKey = publicKey;

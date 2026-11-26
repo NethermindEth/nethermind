@@ -59,7 +59,15 @@ namespace Nethermind.JsonRpc
         /// The execution-apis block access list methods use a dedicated code while keeping
         /// <c>Resource not found</c> as the error message.
         /// </remarks>
-        public const int BlockAccessListResourceNotFound = -32001;
+        public const int BlockAccessListResourceNotFound = StandardResourceNotFound;
+
+        /// <summary>
+        /// Requested resource not found, with the code EIP-1474 and the execution-apis specification assign
+        /// </summary>
+        /// <remarks>
+        /// <see cref="ResourceNotFound"/> keeps <see cref="Default"/> for the methods that already return it.
+        /// </remarks>
+        public const int StandardResourceNotFound = -32001;
 
         /// <summary>
         /// Transaction creation failed
@@ -189,7 +197,7 @@ namespace Nethermind.JsonRpc
         /// <see cref="InvalidParams"/>) and the application guard rails (<see cref="ResourceUnavailable"/>,
         /// <see cref="LimitExceeded"/>, <see cref="PrunedHistoryUnavailable"/>).
         /// <para>
-        /// The code alone is not always enough: <see cref="InvalidRequest"/> is also returned for a namespace that
+        /// The code alone is not always enough: <see cref="MethodNotFound"/> is also returned for a namespace that
         /// is disabled for the requested URL or endpoint, which is a condition of this node. Those errors set
         /// <c>Error.OperatorActionable</c> and callers of this helper must honour it.
         /// </para>

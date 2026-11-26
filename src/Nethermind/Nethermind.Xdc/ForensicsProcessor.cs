@@ -12,7 +12,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Xdc.RLP;
 
@@ -386,7 +385,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
     private IReadOnlyList<string> GetQcSignerAddresses(QuorumCertificate quorumCert)
     {
         Signature[] signatures = quorumCert.Signatures ?? [];
-        List<string> signerList = new(signatures.Length);
+        List<string> signerList = [with(signatures.Length)];
         Vote signVote = new(quorumCert.ProposedBlockInfo, quorumCert.GapNumber);
         ValueHash256 signHash = VoteHash(signVote);
         for (int i = 0; i < signatures.Length; i++)
@@ -424,12 +423,8 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         return true;
     }
 
-    private ValueHash256 VoteHash(Vote vote)
-    {
-        KeccakRlpWriter writer = new();
-        _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
-        return writer.GetValueHash();
-    }
+    private ValueHash256 VoteHash(Vote vote) =>
+        _voteDecoder.ComputeValueHash(vote, RlpBehaviors.ForSealing);
 
     private bool IsExtendingFromAncestor(BlockRoundInfo currentBlock, BlockRoundInfo ancestorBlock)
     {
@@ -577,7 +572,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         {
             Id = GenerateForensicsId(ancestorHash, lowerRoundQc, higherRoundQc),
             ForensicsType = "QC",
-            Content = JsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions)
+            Content = TypeInfoJsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions)
         };
 
         if (_logger.IsInfo) _logger.Info($"Forensics proof generated: {forensicsProof.Content}");
@@ -606,7 +601,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         {
             Id = GenerateVoteEquivocationId(signer, smallerRoundVote.ProposedBlockInfo.Round, largerRoundVote.ProposedBlockInfo.Round),
             ForensicsType = "Vote",
-            Content = JsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions)
+            Content = TypeInfoJsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions)
         };
 
         if (_logger.IsInfo) _logger.Info($"Forensics vote-equivocation proof generated: {forensicsProof.Content}");

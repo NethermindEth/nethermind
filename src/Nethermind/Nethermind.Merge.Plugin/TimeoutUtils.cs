@@ -13,8 +13,10 @@ public static class TimeoutUtils
 {
     public static async Task<T> TimeoutOn<T>(this Task<T> task, Task timeoutTask, CancellationTokenSource? tcs = null)
     {
-        Task firstToComplete = await Task.WhenAny(timeoutTask, task);
-        if (firstToComplete == timeoutTask)
+        // WhenAny picks the first of its arguments when both are done, so a result already in hand wins over a timeout
+        // that elapsed meanwhile.
+        Task firstToComplete = await Task.WhenAny(task, timeoutTask);
+        if (firstToComplete != task)
         {
             ThrowTimeout();
         }

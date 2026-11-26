@@ -4,9 +4,9 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie;
@@ -58,9 +58,12 @@ public partial class PatriciaTree
     {
         if (entries.Count == 0)
             return;
-#if ZK_EVM
-        flags |= Flags.DoNotParallelize;
-#endif
+        AdjustBulkSetFlags(ref flags);
+
+        using ParallelUnbalancedWork.WorkerScope? workers = !Core.Cpu.RuntimeInformation.IsSingleProcessor
+            && entries.Count >= MinEntriesToParallelizeThreshold && (flags & Flags.DoNotParallelize) == 0
+            ? ParallelUnbalancedWork.BeginWorkerScope(Core.Cpu.RuntimeInformation.ProcessorCount)
+            : null;
 
         TraverseStack traverseStack = GetTraverseStack();
 
@@ -118,7 +121,76 @@ public partial class PatriciaTree
         ReturnTraverseStack(traverseStack);
     }
 
+    /// <summary>Lets the build adjust the flags of a bulk set; the guest never parallelizes one.</summary>
+    partial void AdjustBulkSetFlags(ref Flags flags);
+
     private readonly record struct Context(BulkSetEntry[] OriginalEntriesArray, BulkSetEntry[] OriginalSortBufferArray);
+
+    private void BulkSetParallelJobs(
+        in Context ctx,
+        ArrayPoolList<(int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)> jobs,
+        Span<BulkSetEntry> entries,
+        ref TreePath path,
+        TrieNode node,
+        ReadOnlySpan<int> indexes,
+        int nibMask,
+        int flipCount,
+        Flags flags)
+    {
+        Context closureCtx = ctx;
+        BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
+        BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
+        TrieNode.ChildIterator childIterator = node.CreateChildIterator();
+
+        while (nibMask != 0)
+        {
+            int nib = BitOperations.TrailingZeroCount(nibMask);
+            nibMask &= nibMask - 1;
+            int startRange = indexes[nib];
+
+            int endRange = nibMask != 0 ? indexes[BitOperations.TrailingZeroCount(nibMask)] : entries.Length;
+
+            Span<BulkSetEntry> jobEntry = entries.Slice(startRange, endRange - startRange);
+
+            TreePath childPath = path.Append(nib);
+            TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
+            jobs[nib] = (jobEntry.OffsetIn(originalEntriesArray), jobEntry.Length, nib, childPath, child, null);
+        }
+
+        ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
+            GetTraverseStack,
+            (i, workerTraverseStack) =>
+            {
+                (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
+
+                Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
+                Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
+
+                TrieNode? newChild = BulkSet(
+                    in closureCtx,
+                    workerTraverseStack,
+                    jobEntries,
+                    bufferEntries,
+                    ref childPath,
+                    child,
+                    flipCount,
+                    flags & ~Flags.DoNotParallelize); // A nested level with enough entries under a full branch parallelizes too.
+
+                jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
+
+                return workerTraverseStack;
+            },
+            ReturnJobTraverseStack
+        );
+    }
+
+    /// <summary>Returns a worker's stack to its thread empty, also when one of its jobs threw part way through a walk.</summary>
+    /// <remarks>The loop runs this after an exception too, and the next write on the thread takes the stack as it finds it.</remarks>
+    private static void ReturnJobTraverseStack(TraverseStack stack)
+    {
+        stack.Clear();
+        ReturnTraverseStack(stack);
+    }
 
     /// <param name="ctx">Just to reduce the param count</param>
     /// <param name="traverseStack">Stack used in set. Parallel call use different stack.</param>
@@ -209,51 +281,9 @@ public partial class PatriciaTree
                 TrieNode? newChild
                 )> jobs = new(TrieNode.BranchesCount, TrieNode.BranchesCount);
 
-            Context closureCtx = ctx;
-            BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
-            BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
-            TrieNode.ChildIterator childIterator = node.CreateChildIterator();
-
-            while (nibMask != 0)
-            {
-                int nib = BitOperations.TrailingZeroCount(nibMask);
-                nibMask &= nibMask - 1;
-                int startRange = indexes[nib];
-
-                int endRange = nibMask != 0 ? indexes[BitOperations.TrailingZeroCount(nibMask)] : entries.Length;
-
-                Span<BulkSetEntry> jobEntry = entries.Slice(startRange, endRange - startRange);
-
-                TreePath childPath = path.Append(nib);
-                TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
-                jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
-            }
-
-            ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
-                GetTraverseStack,
-                (i, workerTraverseStack) =>
-                {
-                    (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
-
-                    Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
-                    Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
-
-                    TrieNode? newChild = BulkSet(
-                        in closureCtx,
-                        workerTraverseStack,
-                        jobEntries,
-                        bufferEntries,
-                        ref childPath,
-                        child,
-                        flipCount,
-                        flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
-
-                    jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
-
-                    return workerTraverseStack;
-                },
-                ReturnTraverseStack
-            );
+            // Kept separate: its lambda captures parameters, whose closure would otherwise be allocated on every
+            // recursive BulkSet call.
+            BulkSetParallelJobs(in ctx, jobs, entries, ref path, node, indexes, nibMask, flipCount, flags);
 
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
@@ -269,7 +299,7 @@ public partial class PatriciaTree
                     nonNullChildCount++;
 
                 if (node.IsSealed)
-                    node = node.Clone();
+                    node = node.Unseal();
 
                 node.SetChild(i, newChild);
             }
@@ -317,7 +347,7 @@ public partial class PatriciaTree
                     nonNullChildCount++;
 
                 if (node.IsSealed)
-                    node = node.Clone();
+                    node = node.Unseal();
 
                 node.SetChild(nib, newChild);
             }
@@ -688,13 +718,5 @@ public partial class PatriciaTree
         }
 
         return usedMask;
-    }
-
-    private static int GetSpanOffset<T>(T[] array, Span<T> span)
-    {
-        ref T spanRef = ref MemoryMarshal.GetReference(span);
-        ref T arrRef = ref MemoryMarshal.GetArrayDataReference(array);
-
-        return (int)(Unsafe.ByteOffset(ref arrRef, ref spanRef) / Unsafe.SizeOf<T>());
     }
 }

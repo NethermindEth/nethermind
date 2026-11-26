@@ -1,74 +1,71 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
+using System.Buffers;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class BlockBodiesMessageSerializer(BlockBodyDecoder blockBodyDecoder = null) : IZeroInnerMessageSerializer<BlockBodiesMessage>
+    /// <remarks>
+    /// The bodies are not decoded here: each stays encoded until a consumer decodes it, so a consumer that only
+    /// stores bodies does not decode their transactions.
+    /// </remarks>
+    public class BlockBodiesMessageSerializer(BlockBodyDecoder blockBodyDecoder = null) : IMessageSerializer<BlockBodiesMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(BlockBodiesMessage.Bodies));
         private readonly BlockBodyDecoder _blockBodyDecoder = blockBodyDecoder ?? BlockBodyDecoder.Instance;
 
-        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
+        public int Serialize(Span<byte> destination, BlockBodiesMessage message)
         {
-            int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
-            foreach (BlockBody? body in message.Bodies.Bodies)
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(MessageSequence.GetContentLength(destination.Length));
+            OwnedBlockBodies bodies = message.Bodies;
+            for (int i = 0; i < bodies.Count; i++)
             {
-                if (body is null)
-                {
-                    writer.Encode(Rlp.OfEmptyList);
-                }
-                else
-                {
-                    _blockBodyDecoder.Encode(ref writer, body);
-                }
+                writer.WriteEncoded(bodies.GetEncoded(i).Span);
             }
+
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
-        public int GetLength(BlockBodiesMessage message, out int contentLength)
+        public int GetLength(BlockBodiesMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+        private static int GetContentLength(BlockBodiesMessage message)
         {
+            OwnedBlockBodies bodies = message.Bodies;
             int length = 0;
-            foreach (BlockBody? body in message.Bodies.Bodies)
+            for (int i = 0; i < bodies.Count; i++)
             {
-                length += body switch
-                {
-                    null => Rlp.OfEmptyList.Length,
-                    _ => Rlp.LengthOfSequence(_blockBodyDecoder.GetBodyLength(body))
-                };
+                length += bodies.GetEncoded(i).Length;
             }
 
-            contentLength = length;
-            return Rlp.LengthOfSequence(length);
+            return length;
         }
 
-        public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
+        public BlockBodiesMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startingPosition = ctx.Position;
-            try
+            RlpReader ctx = new(data);
+            RlpReader items = ctx.EnterSequence(out int itemLength);
+            int itemsStart = itemLength - items.Remaining;
+            Range[] encodedBodies = new Range[items.CountItems(RlpLimit)];
+            for (int i = 0; i < encodedBodies.Length; i++)
             {
-                BlockBody?[] bodies = ctx.DecodeNullableArray(_blockBodyDecoder, false, limit: RlpLimit);
-                OwnedBlockBodies ownedBodies = new(bodies, memoryOwner, ownsPooledTransactions: true);
-                memoryOwner = null;
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
+                if (!items.IsNextSequence) throw new RlpReaderException($"Block body {i} is not a sequence");
+                int start = itemsStart + items.BytesRead;
+                encodedBodies[i] = new Range(start, start + items.ReadEncodedItem().Length);
+            }
 
-                return new() { Bodies = ownedBodies };
-            }
-            catch
-            {
-                memoryOwner?.Dispose();
-                throw;
-            }
+            ctx.ExitSequence(items, itemLength);
+            ctx.CheckEnd();
+
+            IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(data.Length);
+            data.CopyTo(memory.Memory.Span);
+            return new() { Bodies = new OwnedBlockBodies(memory, encodedBodies, _blockBodyDecoder) };
         }
     }
 }

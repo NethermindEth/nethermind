@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -17,6 +19,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
@@ -111,12 +114,12 @@ public class Snap1ProtocolHandlerTests
 
                         IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
                         {
-                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero, Account.TotallyEmpty) },
+                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero, AccountStruct.TotallyEmpty) },
                             RequestId = accountRangeMessage.RequestId,
                         });
                         buffer.ReadByte(); // Need to skip adaptive type
 
-                        ZeroPacket packet = new(buffer);
+                        NettyBufferPacket packet = new(buffer);
 
                         packet.PacketType = Snap1MessageCode.AccountRange;
                         Snap1ProtocolHandler.HandleMessage(packet);
@@ -177,6 +180,134 @@ public class Snap1ProtocolHandlerTests
     }
 
     [Test]
+    public async Task Storage_request_releases_decoded_accounts([Values("served", "rejected", "canceled")] string outcome)
+    {
+        using CancellationTokenSource cancellation = new();
+        if (outcome == "canceled") cancellation.Cancel();
+        StorageRequestScheduler scheduler = new(outcome == "rejected", cancellation.Token);
+        ISession session = Substitute.For<ISession>();
+        session.IsClosing.Returns(outcome == "canceled");
+        session.When(peer => peer.DeliverMessage(Arg.Any<StorageRangeMessage>()))
+            .Do(call => call.Arg<StorageRangeMessage>().Dispose());
+        ISnapServer snapServer = Substitute.For<ISnapServer>();
+        snapServer.CanServe.Returns(true);
+        snapServer.GetStorageRanges(Arg.Any<Hash256>(), Arg.Any<IReadOnlyList<PathWithAccount>>(),
+                Arg.Any<ValueHash256?>(), Arg.Any<ValueHash256?>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                call.Arg<CancellationToken>().ThrowIfCancellationRequested();
+                return (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty, EmptyByteArrayList.Instance);
+            });
+        IMessageSerializationService serializer = new MessageSerializationService(SerializerInfo.Create(new GetStorageRangesMessageSerializer()));
+        IMessageSerializationService recordingSerializer = Substitute.For<IMessageSerializationService>();
+        IOwnedReadOnlyList<PathWithAccount>? decodedAccounts = null;
+        recordingSerializer.Deserialize<GetStorageRangeMessage>(Arg.Any<ZeroPacket>()).Returns(call =>
+        {
+            GetStorageRangeMessage decoded = serializer.Deserialize<GetStorageRangeMessage>(call.Arg<ZeroPacket>());
+            decodedAccounts = decoded.StorageRange.Accounts;
+            return decoded;
+        });
+        using Snap1ProtocolHandler handler = new(session, Substitute.For<INodeStatsManager>(), recordingSerializer,
+            scheduler, LimboLogs.Instance, new SyncConfig(), snapServer);
+        using GetStorageRangeMessage request = new()
+        {
+            RequestId = 42,
+            StorageRange = new()
+            {
+                RootHash = TestItem.KeccakB,
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakA, default) }
+            },
+            ResponseBytes = 1000
+        };
+
+        Deliver(handler, serializer, request);
+        await scheduler.Completion;
+
+        Assert.That(decodedAccounts, Is.Not.Null);
+        Assert.That(() => decodedAccounts!.AsSpan().Length, Throws.InstanceOf<ObjectDisposedException>());
+        session.Received(outcome == "served" ? 1 : 0).DeliverMessage(Arg.Any<StorageRangeMessage>());
+        session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task GetStorageRange_retains_caller_accounts_when_sent_request_is_disposed()
+    {
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetStorageRangesMessageSerializer()),
+            SerializerInfo.Create(new StorageRangesMessageSerializer()));
+        Context context = new() { MessageSerializationService = serializer };
+        using Snap1ProtocolHandler handler = context.Snap1ProtocolHandler;
+        PathWithAccount[] expectedAccounts = [new(TestItem.KeccakA, default), new(TestItem.KeccakB, default)];
+        using StorageRange range = new()
+        {
+            RootHash = TestItem.KeccakC,
+            Accounts = new ArrayPoolList<PathWithAccount>(expectedAccounts)
+        };
+        PathWithStorageSlot[] slots = [new(TestItem.KeccakD, [1]), new(TestItem.KeccakE, [2])];
+        context.Session.When(peer => peer.DeliverMessage(Arg.Any<GetStorageRangeMessage>())).Do(call =>
+        {
+            GetStorageRangeMessage request = call.Arg<GetStorageRangeMessage>();
+            try
+            {
+                using DisposableByteBuffer encoded = serializer.ZeroSerialize(request).AsDisposable();
+                Assert.That(encoded.ReadableBytes, Is.GreaterThan(0));
+            }
+            finally
+            {
+                request.Dispose();
+            }
+            using StorageRangeMessage response = new()
+            {
+                RequestId = request.RequestId,
+                Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
+                {
+                    new ArrayPoolList<PathWithStorageSlot>(slots)
+                },
+                Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { new byte[] { 3, 4 } })
+            };
+            Deliver(handler, serializer, response);
+        });
+
+        using SlotsAndProofs result = await handler.GetStorageRange(range, CancellationToken.None);
+
+        Assert.That((result.PathsAndSlots.Count, result.Proofs.Count), Is.EqualTo((1, 1)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(range.Accounts.AsSpan().ToArray(), Is.EqualTo(expectedAccounts));
+            Assert.That(result.PathsAndSlots[0], Is.EqualTo(slots));
+            Assert.That(result.Proofs[0].ToArray(), Is.EqualTo(new byte[] { 3, 4 }));
+        }
+    }
+
+    private sealed class StorageRequestScheduler(bool rejected, CancellationToken token) : IBackgroundTaskScheduler
+    {
+        public Task Completion { get; private set; } = Task.CompletedTask;
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
+        {
+            if (rejected) return false;
+            Completion = fulfillFunc(request, token);
+            return true;
+        }
+    }
+
+    private static void Deliver<T>(Snap1ProtocolHandler handler, IMessageSerializationService serializer, T message) where T : P2PMessage
+    {
+        using DisposableByteBuffer buffer = serializer.ZeroSerialize(message).AsDisposable();
+        buffer.ReadByte();
+        NettyBufferPacket packet = new(buffer.RetainedDuplicate()) { PacketType = (byte)message.PacketType };
+        try
+        {
+            handler.HandleMessage(packet);
+        }
+        finally
+        {
+            ReferenceCountUtil.Release(packet);
+        }
+    }
+
+    [Test]
     public void GetPathGroups_rejects_missing_account_path()
     {
         using AccountsToRefreshRequest request = new()
@@ -222,7 +353,7 @@ public class Snap1ProtocolHandlerTests
         try
         {
             buffer.ReadByte();
-            ZeroPacket packet = new(buffer) { PacketType = Snap1MessageCode.GetTrieNodes };
+            NettyBufferPacket packet = new(buffer) { PacketType = Snap1MessageCode.GetTrieNodes };
             buffer = null;
             try
             {
@@ -239,6 +370,62 @@ public class Snap1ProtocolHandlerTests
         }
 
         snapServer.Received(1).GetTrieNodes(Arg.Any<IReadOnlyList<PathGroup>>(), request.RootHash, request.Bytes, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public void Should_reject_unrequested_response_before_decoding(
+        [Values(Snap1MessageCode.AccountRange, Snap1MessageCode.StorageRanges, Snap1MessageCode.ByteCodes, Snap1MessageCode.TrieNodes)] int messageCode)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        Snap1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            new MessageSerializationService(
+                SerializerInfo.Create(new AccountRangeMessageSerializer()),
+                SerializerInfo.Create(new StorageRangesMessageSerializer()),
+                SerializerInfo.Create(new ByteCodesMessageSerializer()),
+                SerializerInfo.Create(new TrieNodesMessageSerializer())),
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            new SyncConfig(),
+            Substitute.For<ISnapServer>());
+
+        UndecodableResponse.AssertRejectedAsUnrequested(handler.HandleMessage, messageCode);
+    }
+
+    [Test]
+    public async Task Should_discard_expired_undecodable_account_range_before_decoding()
+    {
+        Context ctx = new();
+        ctx.Session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        Snap1ProtocolHandler handler = ctx.Snap1ProtocolHandler;
+        GetAccountRangeMessage? request = null;
+        ctx.Session.When(session => session.DeliverMessage(Arg.Any<GetAccountRangeMessage>()))
+            .Do(callInfo => request = (GetAccountRangeMessage)callInfo[0]);
+
+        Task responseTask = handler.GetAccountRange(
+            new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
+        Assert.That(SpinWait.SpinUntil(() => request is not null, 1000), Is.True);
+        MessageDictionary<GetAccountRangeMessage, AccountRangeMessage> dictionary = GetAccountRangeDictionary(handler);
+        Expire(dictionary, request!.RequestId);
+
+        using PooledBufferLeakDetector detector = new();
+        HandleUndecodableResponse(handler, detector, request.RequestId);
+        Assert.That(() => HandleUndecodableResponse(handler, detector, request.RequestId), Throws.TypeOf<SubprotocolException>());
+        Assert.That(() => HandleUndecodableResponse(handler, detector, request.RequestId + 1), Throws.TypeOf<SubprotocolException>());
+
+        Exception? responseException = null;
+        try
+        {
+            await responseTask;
+        }
+        catch (Exception exception)
+        {
+            responseException = exception;
+        }
+
+        Assert.That(responseException, Is.TypeOf<TimeoutException>());
     }
 
     [Test]
@@ -260,5 +447,27 @@ public class Snap1ProtocolHandlerTests
         ctx.RealTimeStall = TimeSpan.Zero; // The read value is the request down, but it is adjusted on above request
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldDecrease();
+    }
+
+    private static MessageDictionary<GetAccountRangeMessage, AccountRangeMessage> GetAccountRangeDictionary(Snap1ProtocolHandler handler)
+    {
+        FieldInfo field = typeof(Snap1ProtocolHandler).GetField("_getAccountRangeRequests", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return (MessageDictionary<GetAccountRangeMessage, AccountRangeMessage>)field.GetValue(handler)!;
+    }
+
+    private static void Expire(MessageDictionary<GetAccountRangeMessage, AccountRangeMessage> dictionary, long requestId)
+    {
+        FieldInfo thresholdField = typeof(MessageDictionary<GetAccountRangeMessage, AccountRangeMessage>)
+            .GetField("_oldRequestThreshold", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        thresholdField.SetValue(dictionary, TimeSpan.Zero);
+        Assert.That(SpinWait.SpinUntil(() => dictionary.TryExpireRequest(requestId), TimeSpan.FromSeconds(1)), Is.True);
+    }
+
+    private static void HandleUndecodableResponse(Snap1ProtocolHandler handler, PooledBufferLeakDetector detector, long requestId)
+    {
+        using DisposableByteBuffer source = UndecodableResponse.Create(requestId).AsDisposable();
+        using DisposableByteBuffer content = detector.Allocator.Buffer(source.ReadableBytes).AsDisposable();
+        content.WriteBytes(source, source.ReaderIndex, source.ReadableBytes);
+        handler.HandleMessage(new NettyBufferPacket(content) { PacketType = Snap1MessageCode.AccountRange });
     }
 }

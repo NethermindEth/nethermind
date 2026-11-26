@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.Persistence;
@@ -125,7 +126,7 @@ internal sealed class HistoryRowScanner(
             byte[]? nextLower = null;
             StorageGroup? group = null;
             StorageRowCollector? collector = null;
-            bool overflow = false;
+            ScanOutcome outcome = ScanOutcome.Fits;
 
             try
             {
@@ -144,7 +145,7 @@ internal sealed class HistoryRowScanner(
                         List<ClearRecord> clears = ScanClears(prefix, to);
                         StoragePartitionRows rows = new();
                         collector = new StorageRowCollector(rows, clears, from, to, maxRows, rowFormat);
-                        group = new StorageGroup(prefix.ToArray(), rows, clears, Overflow: false);
+                        group = new StorageGroup(prefix.ToArray(), rows, clears, ScanOutcome.Fits);
                     }
                     else if (!prefix.SequenceEqual(group.Prefix))
                     {
@@ -153,8 +154,13 @@ internal sealed class HistoryRowScanner(
                         break;
                     }
 
-                    if (overflow) continue;
-                    if (!collector!.TryAdd(key, view.CurrentValue)) overflow = true;
+                    if (!collector!.TryAdd(key, view.CurrentValue))
+                    {
+                        outcome = collector.DistinctKeys == 1 ? ScanOutcome.SinglePathOverflow : ScanOutcome.Split;
+                        group.Rows.Reset();
+                        nextLower = NextGroupLower(group.Prefix);
+                        break;
+                    }
                 }
             }
             catch
@@ -165,7 +171,7 @@ internal sealed class HistoryRowScanner(
 
             if (group is null) return;
 
-            onGroup(overflow ? group with { Overflow = true } : group);
+            onGroup(outcome == ScanOutcome.Fits ? group : group with { Outcome = outcome });
             if (nextLower is null) return;
 
             lower = nextLower;
@@ -236,7 +242,7 @@ internal sealed class HistoryRowScanner(
         if (accountRow.IsEmpty) return Keccak.EmptyTreeHash.ValueHash256;
 
         RlpReader reader = new(accountRow);
-        if (!AccountDecoder.Slim.TryDecodeStruct(ref reader, out AccountStruct account))
+        if (!AccountDecoder.Slim.TryDecodeStruct<OffFlag>(ref reader, out AccountStruct account))
         {
             throw new InvalidOperationException("An account history row failed to decode; the column is corrupt.");
         }
@@ -287,6 +293,16 @@ internal sealed class HistoryRowScanner(
         storageRowKey[..StoragePrefixLength].CopyTo(bytes);
         storageRowKey.Slice(IdentitySuffixOffset, IdentitySuffixLength).CopyTo(bytes[StoragePrefixLength..]);
         return identity;
+    }
+
+    private static byte[]? NextGroupLower(byte[] groupPrefix)
+    {
+        uint prefix = BinaryPrimitives.ReadUInt32BigEndian(groupPrefix);
+        if ((prefix & 0x00FF_FFFF) == 0x00FF_FFFF) return null;
+
+        byte[] lower = new byte[StorageRowKeyLength];
+        BinaryPrimitives.WriteUInt32BigEndian(lower, prefix + 1);
+        return lower;
     }
 
     private static void FinishPath(StorageRootMoveCheck check, in ValueHash256 path, ulong block, in ValueHash256 root)

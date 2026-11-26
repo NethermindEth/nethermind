@@ -3,9 +3,7 @@
 
 #nullable enable
 
-using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -40,22 +38,6 @@ internal class FrameTxCalldataStatsFilterTests
         }
     }
 
-    // One reference of all-0xff hashes and a one-byte slot encodes to 71 bytes with no zero among them.
-    [Test]
-    public void Accept_MeasuresTheRecentRootReferenceCalldataOfALocallyBuiltTransaction()
-    {
-        Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
-        tx.RecentRootReferences = [Reference()];
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tx.ReferenceCalldataStats, Is.EqualTo((ZeroBytes: 0, NonZeroBytes: 0)),
-                "a field-built transaction starts unmeasured, or the case proves nothing");
-            Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(tx.ReferenceCalldataStats, Is.EqualTo((ZeroBytes: 0, NonZeroBytes: 71)));
-        }
-    }
-
     // The decoder measures off the wire. A transaction built field by field must reach the same reading,
     // or the pool and the processor price the same transaction differently.
     [Test]
@@ -64,7 +46,6 @@ internal class FrameTxCalldataStatsFilterTests
         Transaction built = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
         built.ChainId = TestBlockchainIds.ChainId;
         built.NonceKeys = [UInt256.One, (UInt256)0x0100];
-        built.RecentRootReferences = [Reference()];
 
         Transaction decoded = TxDecoderRoundtrip.Roundtrip(built);
         Accept(built);
@@ -73,7 +54,6 @@ internal class FrameTxCalldataStatsFilterTests
         {
             Assert.That(decoded.FrameCalldataStats.NonZeroBytes, Is.GreaterThan(0), "the decoder must have measured something");
             Assert.That(built.FrameCalldataStats, Is.EqualTo(decoded.FrameCalldataStats));
-            Assert.That(built.ReferenceCalldataStats, Is.EqualTo(decoded.ReferenceCalldataStats));
         }
     }
 
@@ -84,43 +64,24 @@ internal class FrameTxCalldataStatsFilterTests
         // the transaction does not carry.
         Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
 
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(tx.FrameCalldataStats, Is.EqualTo((ZeroBytes: 0, NonZeroBytes: 0)));
     }
 
-    // Both sets reach this filter straight off an RPC-built transaction the decoder never bounded, and the
-    // measurement refuses an out-of-range length rather than sizing a buffer by it. Left unmeasured here,
-    // MalformedTxFilter rejects them for the same bound further down.
-    [TestCase(true, TestName = "Accept_LeavesAnOverLongNonceKeySetUnmeasured")]
-    [TestCase(false, TestName = "Accept_LeavesAnOverLongRecentRootReferenceSetUnmeasured")]
-    public void Accept_LeavesAnOverLongCalldataSetUnmeasured(bool nonceKeys)
+    [Test]
+    public void Accept_LeavesAnOverLongNonceKeySetUnmeasured()
     {
-        // The set that is not over-long carries a measurable value either way, so each bound is read
-        // against a measurement that did happen rather than against a field left null.
         Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
-        if (nonceKeys)
-        {
-            // Full-width keys, or the over-long set still measures inside the bound and proves nothing.
-            UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
-            for (int i = 0; i < keys.Length; i++) keys[i] = UInt256.MaxValue - (UInt256)i;
-            tx.NonceKeys = keys;
-            tx.RecentRootReferences = [Reference()];
-        }
-        else
-        {
-            RecentRootReference[] references = new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1];
-            Array.Fill(references, new RecentRootReference(ValueKeccak.MaxValue, slot: ulong.MaxValue, ValueKeccak.MaxValue));
-            tx.RecentRootReferences = references;
-            tx.NonceKeys = [UInt256.One];
-        }
+        UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
+        for (int i = 0; i < keys.Length; i++) keys[i] = UInt256.MaxValue - (UInt256)i;
+        tx.NonceKeys = keys;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(tx.FrameCalldataStats,
-                Is.EqualTo(nonceKeys ? (ZeroBytes: 0, NonZeroBytes: 0) : (ZeroBytes: 0, NonZeroBytes: 3)));
-            Assert.That(tx.ReferenceCalldataStats,
-                Is.EqualTo(nonceKeys ? (ZeroBytes: 0, NonZeroBytes: 71) : (ZeroBytes: 0, NonZeroBytes: 0)));
+            Assert.That(tx.FrameCalldataStats, Is.EqualTo((ZeroBytes: 0, NonZeroBytes: 0)));
         }
     }
 
@@ -128,10 +89,12 @@ internal class FrameTxCalldataStatsFilterTests
     public void Accept_LeavesANonFrameTransactionAlone()
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithSenderAddress(TestItem.AddressA).TestObject;
-        tx.RecentRootReferences = [Reference()];
+        tx.NonceKeys = [UInt256.One];
 
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(tx.ReferenceCalldataStats, Is.EqualTo((ZeroBytes: 0, NonZeroBytes: 0)));
+#pragma warning restore NUnit2045
+        Assert.That(tx.FrameCalldataStats, Is.EqualTo((ZeroBytes: 0, NonZeroBytes: 0)));
     }
 
     [Test]
@@ -141,21 +104,18 @@ internal class FrameTxCalldataStatsFilterTests
         // be memoized and every derived bound would under-count.
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.IsEip8250Enabled.Returns(true);
-        spec.IsEip8272Enabled.Returns(true);
         Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
         tx.NonceKeys = [UInt256.One];
-        tx.RecentRootReferences = [Reference()];
 
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong unmeasured, out _, out _), Is.True);
         Accept(tx);
 
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong measured, out _, out _), Is.True);
-        Assert.That(measured, Is.GreaterThan(unmeasured));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong measured, out _, out _), Is.True);
+            Assert.That(measured, Is.GreaterThan(unmeasured));
+        }
     }
-
-    /// <summary>A reference whose every byte is non-zero, so its encoded length is its non-zero count.</summary>
-    private static RecentRootReference Reference() =>
-        new(ValueKeccak.MaxValue, slot: 1, ValueKeccak.MaxValue);
 
     private static AcceptTxResult Accept(Transaction tx)
     {

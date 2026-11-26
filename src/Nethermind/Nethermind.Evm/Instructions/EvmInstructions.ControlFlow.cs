@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
@@ -38,26 +37,6 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Marks a valid jump destination.
-    /// This instruction only deducts the jump destination gas cost without modifying the stack.
-    /// </summary>
-    /// <param name="vm">The virtual machine instance.</param>
-    /// <param name="stack">The execution stack.</param>
-    /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <returns>
-    /// <see cref="EvmExceptionType.None"/> on success.
-    /// </returns>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        // Deduct the gas cost specific for a jump destination marker.
-        if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-
-        return EvmExceptionType.None;
-    }
-
-    /// <summary>
     /// Executes an unconditional jump.
     /// Pops a jump destination from the stack and validates it.
     /// If the destination is valid, updates the program counter; otherwise, returns an error.
@@ -73,7 +52,10 @@ public static partial class EvmInstructions
     [SkipLocalsInit]
     public static OpcodeResult InstructionJump<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        => InstructionJump<TGasPolicy, OffFlag>(ref stack, ref gas, vm, programCounter);
+    {
+        nint jumpOpCodeCount = 0;
+        return InstructionJump<TGasPolicy, OffFlag, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref jumpOpCodeCount);
+    }
 
     /// <summary>
     /// <see cref="InstructionJump{TGasPolicy}"/> for non-traced tables: a valid taken jump also
@@ -83,13 +65,43 @@ public static partial class EvmInstructions
     [SkipLocalsInit]
     internal static OpcodeResult InstructionJumpAndSkipJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        => InstructionJump<TGasPolicy, OnFlag>(ref stack, ref gas, vm, programCounter);
+    {
+        nint jumpOpCodeCount = 0;
+        return InstructionJump<TGasPolicy, OnFlag, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref jumpOpCodeCount);
+    }
+
+    /// <summary>
+    /// Executes an untraced JUMP while carrying the landed JUMPDEST count in the
+    /// dispatch frame. The <typeparamref name="TUseVmCounter"/> specialization keeps the hot
+    /// host path independent of the VM when the counter is flushed by the caller.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType InstructionJumpCore<TGasPolicy, TUseVmCounter>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        VirtualMachine<TGasPolicy> vm,
+        ref nint programCounter,
+        ref nint jumpOpCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TUseVmCounter : struct, IFlag
+    {
+        OpcodeResult result = InstructionJump<TGasPolicy, OnFlag, TUseVmCounter>(
+            ref stack, ref gas, vm, ref programCounter, ref jumpOpCodeCount);
+        return result.Exception;
+    }
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static OpcodeResult InstructionJump<TGasPolicy, TSkipJumpDest>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+    private static OpcodeResult InstructionJump<TGasPolicy, TSkipJumpDest, TUseVmCounter>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        VirtualMachine<TGasPolicy> vm,
+        ref nint programCounter,
+        ref nint jumpOpCodeCount)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TSkipJumpDest : struct, IFlag
+        where TUseVmCounter : struct, IFlag
     {
         // Deduct the gas cost for performing a jump.
         if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
@@ -98,7 +110,8 @@ public static partial class EvmInstructions
         // Validate the jump destination and update the program counter if valid.
         nint destination = JumpDestination(ref stack.PopBytesByRefUnchecked(), ref stack);
         if (destination < 0) goto InvalidJumpDestination;
-        if (!SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination, out programCounter))
+        if (!SkipJumpDest<TGasPolicy, TSkipJumpDest, TUseVmCounter>(
+                vm, ref gas, destination, ref jumpOpCodeCount, out programCounter))
             return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
         PrefetchCodeAtDestination(ref stack, programCounter);
 
@@ -140,14 +153,52 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         => InstructionJumpIf<TGasPolicy, OnFlag>(ref stack, ref gas, vm, programCounter);
 
+    /// <summary>
+    /// <see cref="InstructionJumpIfAndSkipJumpDest{TGasPolicy}"/> inlined into untraced dispatch, counting the
+    /// landed <c>JUMPDEST</c> in the dispatch counter.
+    /// </summary>
+    /// <remarks>
+    /// Inlined, the handler has no call to save its arguments around, so gas, counter and program counter stay in
+    /// registers and the taken jump does not write the machine's counter through memory.
+    /// </remarks>
+    /// <param name="programCounter">Past <c>JUMPI</c> on entry; the destination, past its <c>JUMPDEST</c>, after a taken jump.</param>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType InstructionJumpIfCore<TGasPolicy>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        ref nint programCounter,
+        ref nint jumpOpCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionJumpIf<TGasPolicy, OnFlag, OffFlag>(ref stack, ref gas, null!, ref programCounter, ref jumpOpCodeCount);
+
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static OpcodeResult InstructionJumpIf<TGasPolicy, TSkipJumpDest>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TSkipJumpDest : struct, IFlag
     {
+        nint jumpOpCodeCount = 0;
+        EvmExceptionType exceptionType = InstructionJumpIf<TGasPolicy, TSkipJumpDest, OnFlag>(
+            ref stack, ref gas, vm, ref programCounter, ref jumpOpCodeCount);
+        return new OpcodeResult(programCounter, exceptionType);
+    }
+
+    /// <param name="programCounter">Past <c>JUMPI</c> on entry; unchanged on failure before the destination is reached.</param>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType InstructionJumpIf<TGasPolicy, TSkipJumpDest, TUseVmCounter>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        VirtualMachine<TGasPolicy> vm,
+        ref nint programCounter,
+        ref nint jumpOpCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipJumpDest : struct, IFlag
+        where TUseVmCounter : struct, IFlag
+    {
         // Deduct the high gas cost for a conditional jump.
-        if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+        if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // The condition sits directly below the destination, so one depth check covers both.
         if (!stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte condition = ref stack.Pop2BytesByRefUnchecked();
@@ -157,35 +208,133 @@ public static partial class EvmInstructions
         {
             nint destination = JumpDestination(ref Unsafe.Add(ref condition, EvmStack.WordSize), ref stack);
             if (destination < 0) goto InvalidJumpDestination;
-            if (!SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination, out programCounter))
-                return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+            if (!SkipJumpDest<TGasPolicy, TSkipJumpDest, TUseVmCounter>(vm, ref gas, destination, ref jumpOpCodeCount, out programCounter))
+                return EvmExceptionType.OutOfGas;
             PrefetchCodeAtDestination(ref stack, programCounter);
         }
 
-        return new OpcodeResult(programCounter, EvmExceptionType.None);
+        return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
+        return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
-        return new OpcodeResult(programCounter, EvmExceptionType.InvalidJumpDestination);
+        return EvmExceptionType.InvalidJumpDestination;
     }
 
     /// <summary>Steps past a landed-on <c>JUMPDEST</c> and returns whether its gas charge succeeded.</summary>
+    /// <remarks>An EIP-7979 <c>CALLDEST</c> is priced as a <c>JUMPDEST</c>, so this also steps past one.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool SkipJumpDest<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, nint destination, out nint programCounter)
+    private static bool SkipJumpDest<TGasPolicy, TSkipJumpDest, TUseVmCounter>(
+        VirtualMachine<TGasPolicy> vm,
+        ref TGasPolicy gas,
+        nint destination,
+        ref nint jumpOpCodeCount,
+        out nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TSkipJumpDest : struct, IFlag
+        where TUseVmCounter : struct, IFlag
     {
         programCounter = destination;
         if (TSkipJumpDest.IsActive)
         {
             // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
-            vm.OpCodeCount++;
+            if (DispatchFlags.CountOpcodes)
+            {
+                if (TUseVmCounter.IsActive)
+                    vm.OpCodeCount++;
+                else
+                    jumpOpCodeCount++;
+            }
             programCounter++;
             return TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas);
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// EIP-7979 <c>CALLSUB</c>: pops a destination, which must be a <c>CALLDEST</c>, pushes the position of the
+    /// next instruction onto the frame's return stack and jumps to the destination.
+    /// </summary>
+    /// <param name="programCounter">The program counter, already past <c>CALLSUB</c>; the destination is returned rather than written back.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> on success; <see cref="EvmExceptionType.OutOfGas"/>, <see cref="EvmExceptionType.StackUnderflow"/>,
+    /// <see cref="EvmExceptionType.InvalidJumpDestination"/> or <see cref="EvmExceptionType.ReturnStackOverflow"/> on failure.
+    /// </returns>
+    [SkipLocalsInit]
+    public static OpcodeResult InstructionCallSub<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionCallSub<TGasPolicy, OffFlag>(ref stack, ref gas, vm, programCounter);
+
+    /// <summary>
+    /// <see cref="InstructionCallSub{TGasPolicy}"/> for non-traced tables: a valid call also counts and charges
+    /// the target <c>CALLDEST</c> and leaves PC on the instruction after it, eliminating the marker's dispatch.
+    /// </summary>
+    [SkipLocalsInit]
+    internal static OpcodeResult InstructionCallSubAndSkipCallDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionCallSub<TGasPolicy, OnFlag>(ref stack, ref gas, vm, programCounter);
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static OpcodeResult InstructionCallSub<TGasPolicy, TSkipCallDest>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipCallDest : struct, IFlag
+    {
+        if (!TGasPolicy.UpdateGas<CallSubGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+        if (!stack.EnsureDepth(1)) return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
+        nint callOpCodeCount = 0;
+        EvmExceptionType result = CallSubTo<TGasPolicy, TSkipCallDest, OnFlag>(
+            ref stack, ref gas, vm, JumpDestination(ref stack.PopBytesByRefUnchecked(), ref stack), ref programCounter, ref callOpCodeCount);
+        return new OpcodeResult(programCounter, result);
+    }
+
+    /// <summary>
+    /// Completes an EIP-7979 <c>CALLSUB</c> whose gas is charged: checks that <paramref name="destination"/> is a
+    /// <c>CALLDEST</c>, pushes the return address and moves to the destination.
+    /// </summary>
+    /// <param name="destination">The destination as <see cref="JumpDestination(ref byte, ref EvmStack)"/> returns it.</param>
+    /// <param name="programCounter">The return address on entry; the destination, or past its <c>CALLDEST</c>, on success.</param>
+    /// <remarks>
+    /// Requires <see cref="EvmStack.UseCallDestinations"/>, whose bitmap marks both markers; the code byte tells
+    /// them apart. A marked position is inside the code, so the byte read is in bounds.
+    /// </remarks>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType CallSubTo<TGasPolicy, TSkipCallDest, TUseVmCounter>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        VirtualMachine<TGasPolicy> vm,
+        nint destination,
+        ref nint programCounter,
+        ref nint opCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipCallDest : struct, IFlag
+        where TUseVmCounter : struct, IFlag
+    {
+        if (destination < 0 || Unsafe.Add(ref stack.Code, destination) != (byte)Instruction.CALLDEST)
+            return EvmExceptionType.InvalidJumpDestination;
+        if (!vm.VmState.TryPushReturnAddress((int)programCounter)) return EvmExceptionType.ReturnStackOverflow;
+        if (!SkipJumpDest<TGasPolicy, TSkipCallDest, TUseVmCounter>(vm, ref gas, destination, ref opCodeCount, out programCounter))
+            return EvmExceptionType.OutOfGas;
+        PrefetchCodeAtDestination(ref stack, programCounter);
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>EIP-7979 <c>RETURNSUB</c>: resumes at the position popped off the frame's return stack.</summary>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> on success; <see cref="EvmExceptionType.OutOfGas"/> or
+    /// <see cref="EvmExceptionType.ReturnStackUnderflow"/> on failure.
+    /// </returns>
+    /// <remarks>The popped position needs no check: only <c>CALLSUB</c> pushes, and at most one past the end of the code.</remarks>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionReturnSub<TGasPolicy>(ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        if (!TGasPolicy.UpdateGas<ReturnSubGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        if (!vm.VmState.TryPopReturnAddress(out int returnAddress)) return EvmExceptionType.ReturnStackUnderflow;
+        programCounter = returnAddress;
+        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -203,8 +352,9 @@ public static partial class EvmInstructions
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionRevert<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    public static EvmExceptionType InstructionRevert<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
     {
         // Attempt to pop memory offset and length; if either fails, signal a stack underflow.
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
@@ -213,13 +363,15 @@ public static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
-            !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
+        if (DispatchFlags.ConstTracing && TTracingInst.IsActive)
+            vm.TraceMemoryOperationGasCost(in position, in length);
+
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory))
         {
             goto OutOfGas;
         }
 
-        vm.StageReturnData(returnData.Span);
+        vm.StageReturnData(vm.VmState.Memory.LoadLaidOutSpanAfterGas(in position, in length), isRevert: true, EvmPooledMemory.IsSwizzled);
 
         return EvmExceptionType.Revert;
         // Jump forward to be unpredicted by the branch predictor.
@@ -230,13 +382,14 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Executes the SELFDESTRUCT opcode.
+    /// Executes the SELFDESTRUCT opcode (SENDALL under EIP-4758).
     /// This method handles gas adjustments, account balance transfers,
-    /// and marks the executing account for destruction.
+    /// and marks the executing account for destruction where the fork still allows it.
     /// </summary>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708, TSpec>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    internal static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TTracingInst, TEip8037, TEip7708, TSpec>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
         where TSpec : struct, ISelfDestructSpec
@@ -247,12 +400,8 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
 
-        // SELFDESTRUCT is forbidden during static calls.
-        if (vmState.IsStatic)
-            goto StaticCallViolation;
-
-        // If Shanghai DDoS protection is active, charge the appropriate gas cost.
-        if (TSpec.UseShanghaiDDosProtection)
+        // From Berlin, Geth charges the 5000 as constant gas, before its gas function checks write protection.
+        if (TSpec.UseShanghaiDDosProtection && TSpec.UseHotAndColdStorage)
         {
             if (!TGasPolicy.TryConsumeSelfDestructGas(ref gas))
                 goto OutOfGas;
@@ -261,17 +410,47 @@ public static partial class EvmInstructions
         // Pop the inheritor address from the stack; signal underflow if missing.
         Address? inheritor = stack.PopAddress(vm.AddressCache);
         if (inheritor is null)
+        {
+            if (DispatchFlags.ConstTracing && vm.IsTracingActions) vm.TraceActionErrorDetails("stack underflow (0 <=> 1)");
             goto StackUnderflow;
+        }
+
+        // SELFDESTRUCT is forbidden during static calls.
+        if (vmState.IsStatic)
+        {
+            // Geth's gas function raises write protection after the constant charge and reports it as out of gas.
+            if (TTracingInst.IsActive) vm.TraceOperationReady(SelfDestructConstantGas<TSpec>(), "out of gas: write protection");
+            goto StaticCallViolation;
+        }
+
+        // Before Berlin, Geth prices the 5000 in its gas function, after write protection.
+        if (TSpec.UseShanghaiDDosProtection && !TSpec.UseHotAndColdStorage && !TGasPolicy.TryConsumeSelfDestructGas(ref gas))
+        {
+            if (TTracingInst.IsActive) TraceSelfDestructBaseOutOfGas<TGasPolicy, TEip8037, TSpec>(vm, inheritor);
+            goto OutOfGas;
+        }
 
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
+        ulong traceAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, inheritor, AccountAccessKind.SelfDestructBeneficiary))
+        {
+            // Geth's gas function stops on a cold beneficiary it cannot pay for, and only its EIP-8038 form keeps that charge.
+            if (TTracingInst.IsActive)
+                vm.TraceOperationReady(SelfDestructGas<TSpec>() + (TSpec.IsEip8038Enabled ? spec.GasCosts.ColdAccountAccessCost : 0), "out of gas: out of gas");
+            goto OutOfGas;
+        }
+        if (TTracingInst.IsActive) traceAccessCost -= TGasPolicy.GetRemainingGas(in gas);
+
+        // EIP-8279: the beneficiary enters the block access list on the transaction's first touch.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(inheritor))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
-        bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
-        bool selfdestructOnlyOnSameTx = TSpec.SelfdestructOnlyOnSameTransaction;
-        // Mark the executing account for destruction if allowed.
-        if (!selfdestructOnlyOnSameTx || createInSameTx)
+        // Mark the executing account for destruction if allowed: always before EIP-6780, only when created in this
+        // transaction under it, and never under EIP-4758 (SENDALL), which only moves the balance.
+        bool destroys = !TSpec.IsEip4758Enabled
+            && (!TSpec.SelfdestructOnlyOnSameTransaction || vmState.AccessTracker.CreateList.Contains(executingAccount));
+        if (destroys)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
@@ -282,19 +461,52 @@ public static partial class EvmInstructions
 
         // Charge gas if transferring to a dead or non-existent account.
         bool inheritorAccountExists = state.AccountExists(inheritor);
-        bool chargesNewAccount = TSpec.ClearEmptyAccountWhenTouched switch
-        {
-            true => !result.IsZero && state.IsDeadAccount(inheritor),
-            false => !inheritorAccountExists && TSpec.UseShanghaiDDosProtection,
-        };
+        bool chargesNewAccount = ChargesNewAccount<TSpec>(state, inheritor, in result, inheritorAccountExists);
 
         // EIP-8038 adds an ACCOUNT_WRITE execution charge on top of the NEW_ACCOUNT state gas;
         // charge execution first so an execution-gas OOG does not spill state gas.
-        bool outOfGas = chargesNewAccount &&
+        if (chargesNewAccount &&
             !((!TSpec.IsEip8038Enabled || TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite))
-              && TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas));
+              && TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas)))
+        {
+            if (TTracingInst.IsActive) TraceSelfDestructReady<TGasPolicy, TEip8037, TSpec>(vm, traceAccessCost, chargesNewAccount, 0, "out of gas");
+            goto OutOfGas;
+        }
 
-        if (outOfGas) goto OutOfGas;
+        // EIP-8360: price the balance changes of TCREATE accounts on either side of the transfer. A self-targeting
+        // SELFDESTRUCT moves no value; a pre-EIP-8246 burn happens at tx finalization, outside the tables.
+        ulong traceTransientCreateCost = 0;
+        if (TSpec.IsEip8360Enabled && vmState.AccessTracker.TransientCreates is not null && !result.IsZero && !inheritor.Equals(executingAccount))
+        {
+            if (vmState.IsTransientCreateContext
+                && vmState.AccessTracker.IsTransientCreate(state, executingAccount, out UInt256 original))
+            {
+                if (TTracingInst.IsActive) traceTransientCreateCost += TransientCreateBalanceWriteCost<TSpec>(in original, in result);
+                if (!vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in result, UInt256.Zero))
+                {
+                    if (TTracingInst.IsActive) TraceSelfDestructReady<TGasPolicy, TEip8037, TSpec>(vm, traceAccessCost, chargesNewAccount, traceTransientCreateCost, "out of gas");
+                    goto OutOfGas;
+                }
+            }
+
+            if (vmState.AccessTracker.IsTransientCreate(state, inheritor, out original))
+            {
+                UInt256 inheritorBalance = state.GetBalance(inheritor);
+                if (TTracingInst.IsActive) traceTransientCreateCost += TransientCreateBalanceWriteCost<TSpec>(in original, in inheritorBalance);
+                if (!vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in inheritorBalance, inheritorBalance + result))
+                {
+                    if (TTracingInst.IsActive) TraceSelfDestructReady<TGasPolicy, TEip8037, TSpec>(vm, traceAccessCost, chargesNewAccount, traceTransientCreateCost, "out of gas");
+                    goto OutOfGas;
+                }
+            }
+        }
+
+        if (TTracingInst.IsActive) TraceSelfDestructReady<TGasPolicy, TEip8037, TSpec>(vm, traceAccessCost, chargesNewAccount, traceTransientCreateCost, null);
+
+        // EIP-8279: a sweep to another account puts both post balances in the block access list.
+        if (TSpec.IsEip8279Enabled && !result.IsZero && !inheritor.Equals(executingAccount)
+            && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))
+            goto OutOfGas;
 
         // Transfer the self-destruct balance without creating an empty beneficiary.
         if (!inheritorAccountExists)
@@ -306,9 +518,10 @@ public static partial class EvmInstructions
             state.AddToBalance(inheritor, result, spec);
         }
 
-        // Self-targeting SELFDESTRUCT moves no ETH and emits no log: a pure no-op for the EIP-6780
-        // case (not in the destroy list), while EIP-8246 still finalizes but preserves the balance.
-        if (inheritor.Equals(executingAccount) && (TSpec.RemoveSelfdestructBurn || (selfdestructOnlyOnSameTx && !createInSameTx)))
+        // Self-targeting SELFDESTRUCT moves no ETH and emits no log: a pure no-op for a surviving account (EIP-6780
+        // outside the creation transaction, or always under EIP-4758), while EIP-8246 still finalizes but preserves
+        // the balance.
+        if (inheritor.Equals(executingAccount) && (TSpec.RemoveSelfdestructBurn || !destroys))
             goto Stop;
 
         vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
@@ -325,6 +538,59 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
+    }
+
+    /// <summary>SELFDESTRUCT's base charge, which EIP-150 adds.</summary>
+    private static ulong SelfDestructGas<TSpec>() where TSpec : struct, ISelfDestructSpec =>
+        TSpec.UseShanghaiDDosProtection ? GasCostOf.SelfDestructEip150 : 0;
+
+    /// <summary>The part of SELFDESTRUCT's cost Geth charges as constant gas: the base charge from Berlin, nothing before.</summary>
+    internal static ulong SelfDestructConstantGas<TSpec>() where TSpec : struct, ISelfDestructSpec =>
+        TSpec.UseHotAndColdStorage ? SelfDestructGas<TSpec>() : 0;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ChargesNewAccount<TSpec>(IWorldState state, Address inheritor, in UInt256 balance, bool inheritorAccountExists)
+        where TSpec : struct, ISelfDestructSpec => TSpec.ClearEmptyAccountWhenTouched switch
+        {
+            true => !balance.IsZero && state.IsDeadAccount(inheritor),
+            false => !inheritorAccountExists && TSpec.UseShanghaiDDosProtection,
+        };
+
+    /// <summary>The ACCOUNT_WRITE execution gas EIP-8360 charges when a TCREATE account first moves away from its original balance.</summary>
+    /// <remarks>SELFDESTRUCT calls this only for a non-zero transfer, so the balance always changes.</remarks>
+    private static ulong TransientCreateBalanceWriteCost<TSpec>(in UInt256 original, in UInt256 current) where TSpec : struct, ISelfDestructSpec =>
+        TSpec.IsEip8038Enabled && current == original ? Eip8038Constants.AccountWrite : 0;
+
+    /// <summary>Reports SELFDESTRUCT's cost from the step after its last gas charge and before it moves the balance, as Geth charges it before executing.</summary>
+    /// <remarks>
+    /// The cost holds execution gas alone, as Geth's <c>OnOpcode</c> reports it, so state gas (EIP-8037's new account,
+    /// EIP-8360's balance changes) counts only through the out of gas it may cause.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceSelfDestructReady<TGasPolicy, TEip8037, TSpec>(VirtualMachine<TGasPolicy> vm, ulong accessCost, bool chargesNewAccount,
+        ulong transientCreateCost, string? error)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TEip8037 : struct, IFlag
+        where TSpec : struct, ISelfDestructSpec
+    {
+        ulong newAccountCost = !chargesNewAccount ? 0
+            : (TSpec.IsEip8038Enabled ? Eip8038Constants.AccountWrite : 0) + (TEip8037.IsActive ? 0 : GasCostOf.NewAccount);
+        ulong gasCost = SelfDestructGas<TSpec>() + accessCost + newAccountCost + transientCreateCost;
+        // EIP-8037: as in Geth, a step that runs costs its execution charge; state gas spilled into gas_left shows only in the remaining gas.
+        if (TEip8037.IsActive && error is null) vm.TraceOperationGasCost(gasCost);
+        vm.TraceOperationReady(gasCost, error);
+    }
+
+    /// <summary>Reports a SELFDESTRUCT before Berlin that cannot pay its base charge, at the cost Geth's gas function prices with the new-account charge.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceSelfDestructBaseOutOfGas<TGasPolicy, TEip8037, TSpec>(VirtualMachine<TGasPolicy> vm, Address inheritor)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TEip8037 : struct, IFlag
+        where TSpec : struct, ISelfDestructSpec
+    {
+        IWorldState state = vm.WorldState;
+        bool chargesNewAccount = ChargesNewAccount<TSpec>(state, inheritor, state.GetBalance(vm.VmState.Env.ExecutingAccount), state.AccountExists(inheritor));
+        TraceSelfDestructReady<TGasPolicy, TEip8037, TSpec>(vm, 0, chargesNewAccount, 0, "out of gas");
     }
 
     /// <summary>

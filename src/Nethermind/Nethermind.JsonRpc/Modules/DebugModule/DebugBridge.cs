@@ -22,12 +22,12 @@ using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.TxPool;
 using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -37,6 +37,7 @@ public class DebugBridge : IDebugBridge
     private readonly BlockTreeMutationLock _mutationLock;
     private readonly IBlockProcessingPauseControl _pauseControl;
     private readonly IBlockProcessingQueue _processingQueue;
+    private readonly BlockProcessingTracker _processingTracker;
     private readonly ILogger _logger;
     private readonly IConfigProvider _configProvider;
     private readonly IGethStyleTracer _tracer;
@@ -51,6 +52,7 @@ public class DebugBridge : IDebugBridge
     private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
     private readonly IWorldStateManager _worldStateManager;
+    private readonly ITxPool _txPool;
     private readonly Dictionary<string, IDb> _dbMappings;
 
     public DebugBridge(
@@ -70,13 +72,17 @@ public class DebugBridge : IDebugBridge
         BlockTreeMutationLock mutationLock,
         IBlockProcessingPauseControl pauseControl,
         IBlockProcessingQueue processingQueue,
+        BlockProcessingTracker processingTracker,
         ISyncProgressResolver syncProgressResolver,
-        ISyncPointers syncPointers)
+        ISyncPointers syncPointers,
+        ITxPool txPool)
     {
         _logger = logManager.GetClassLogger<DebugBridge>();
+        _txPool = txPool;
         _mutationLock = mutationLock;
         _pauseControl = pauseControl;
         _processingQueue = processingQueue;
+        _processingTracker = processingTracker;
         _syncProgressResolver = syncProgressResolver;
         _syncPointers = syncPointers;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
@@ -115,7 +121,10 @@ public class DebugBridge : IDebugBridge
 
     public IEnumerable<Block> GetBadBlocks() => _badBlockStore.GetAll();
 
-    public byte[] GetDbValue(string dbName, byte[] key) => _dbMappings[dbName][key];
+    public byte[] GetDbValue(string dbName, byte[] key) =>
+        _dbMappings.TryGetValue(dbName, out IDb? db)
+            ? db[key]
+            : throw new ArgumentException($"Unknown database, expected one of: {string.Join(", ", _dbMappings.Keys)}");
 
     public ChainLevelInfo GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
 
@@ -147,10 +156,17 @@ public class DebugBridge : IDebugBridge
         if (replacesPivot && HasHistoricalProgressAbove(target!.Number))
             return ResultWrapper<int>.Fail("Historical sync progress is above the replacement head; rewind less deeply before deleting chain levels.", ErrorCodes.ResourceUnavailable);
 
+        bool replacesPreForkAccessListProgress = target is not null &&
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber >= startNumber &&
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber <= endNumber &&
+            LowestRequiredBlockAccessListNumber is null;
         int deleted = _blockTree.DeleteChainSlice(startNumber, endNumber, force);
         // Completed history remains contiguous from its retained floors to target, below the deleted range.
         // Relocate only after deletion succeeds so a rejected deletion leaves the pivot unchanged.
         if (replacesPivot) _blockTree.SyncPivot = (target!.Number, target.Hash!);
+        // Deletion removes the header proving this floor predates EIP-7928; retain that proof at the new head.
+        if (deleted > 0 && replacesPreForkAccessListProgress)
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber = target!.Number;
         return ResultWrapper<int>.Success(deleted);
 
         static ResultWrapper<int> NotDrained() =>
@@ -180,7 +196,7 @@ public class DebugBridge : IDebugBridge
         return IsDeleted(_blockTree.LowestInsertedHeader?.Number) ||
                IsDeleted(_syncPointers.LowestInsertedBodyNumber) ||
                IsDeleted(_syncPointers.LowestInsertedReceiptBlockNumber) ||
-               IsDeleted(_syncPointers.LowestInsertedBlockAccessListBlockNumber)
+               IsDeleted(LowestRequiredBlockAccessListNumber)
             ? ResultWrapper<int>.Fail("Historical sync progress lies in the deletion range; choose a higher startNumber.", ErrorCodes.ResourceUnavailable)
             : null;
 
@@ -242,7 +258,34 @@ public class DebugBridge : IDebugBridge
         _blockTree.LowestInsertedHeader?.Number > number ||
         _syncPointers.LowestInsertedBodyNumber > number ||
         _syncPointers.LowestInsertedReceiptBlockNumber > number ||
-        _syncPointers.LowestInsertedBlockAccessListBlockNumber > number;
+        LowestRequiredBlockAccessListNumber > number;
+
+    /// <summary>
+    /// Gets the lowest block access list sync progress, or <see langword="null"/> when every block at or below it predates EIP-7928.
+    /// </summary>
+    /// <remarks>
+    /// Blocks before EIP-7928 activation have no access lists, so the sync stops at the activation and the progress it
+    /// leaves there does not bound how deep the chain can be rewound or deleted.
+    /// </remarks>
+    private ulong? LowestRequiredBlockAccessListNumber
+    {
+        get
+        {
+            ulong? progress = _syncPointers.LowestInsertedBlockAccessListBlockNumber;
+            if (progress is not { } lowest || lowest == 0) return progress;
+            if (_blockTree.FindHeader(lowest, BlockTreeLookupOptions.RequireCanonical) is { } canonical)
+                return canonical.BlockAccessListHash is null ? null : progress;
+
+            // Rewind clears canonical markers above the head; every retained candidate must prove the floor is pre-fork.
+            if (_blockTree.Head is not { } head || lowest <= head.Number ||
+                _blockTree.FindLevel(lowest)?.BlockInfos is not { Length: > 0 } candidates)
+                return progress;
+            foreach (BlockInfo candidate in candidates)
+                if (_blockTree.FindHeader(candidate.BlockHash, blockNumber: lowest) is not { BlockAccessListHash: null })
+                    return progress;
+            return null;
+        }
+    }
 
     private bool CanRewindChain()
     {
@@ -254,7 +297,7 @@ public class DebugBridge : IDebugBridge
 
     private bool CanMutateChain()
     {
-        if (_pauseControl.IsPaused && _processingQueue.IsEmpty && !_blockTree.IsProcessingBlock) return true;
+        if (_pauseControl.IsPaused && _processingQueue.IsEmpty && !_processingTracker.IsProcessingBlock) return true;
         if (_logger.IsWarn) _logger.Warn("Cannot mutate the chain: pause block processing and wait for it to drain.");
         return false;
     }
@@ -285,19 +328,16 @@ public class DebugBridge : IDebugBridge
 
     public GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
-    public TxReceipt[]? GetReceiptsForBlock(BlockParameter blockParam)
-    {
-        SearchResult<Block> searchResult = _blockTree.SearchForBlock(blockParam);
-        if (searchResult.IsError)
-        {
-            throw new InvalidDataException(searchResult.Error);
-        }
 
-        Block block = searchResult.Object;
-        return _receiptFinder.Get(block);
-    }
+    public GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+        _tracer.Trace(blockHash, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
-    public Transaction? GetTransactionFromHash(Hash256 txHash)
+    public TxReceipt[] GetReceiptsForBlock(Block block) => _receiptFinder.Get(block);
+
+    public Transaction? GetTransactionFromHash(Hash256 txHash) =>
+        GetMinedTransaction(txHash) ?? (_txPool.TryGetPendingTransaction(txHash, out Transaction? pending) ? pending : null);
+
+    private Transaction? GetMinedTransaction(Hash256 txHash)
     {
         Hash256 blockHash = _receiptStorage.FindBlockHash(txHash);
         if (blockHash is null)
@@ -308,8 +348,8 @@ public class DebugBridge : IDebugBridge
             throw new InvalidDataException(searchResult.Error);
         }
         Block block = searchResult.Object;
-        TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
-        return block?.Transactions[txReceipt.Index];
+        int index = block.GetTransactionIndex(txHash.ValueHash256);
+        return index < 0 ? null : block.Transactions[index];
     }
 
     [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
@@ -319,7 +359,7 @@ public class DebugBridge : IDebugBridge
     public GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
-    public GethLikeTxTrace? GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+    public GethLikeTxTrace? GetTransactionTrace(byte[] blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
     public GethLikeTxTrace? GetTransactionTrace(Block block, Hash256 txHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
@@ -331,7 +371,7 @@ public class DebugBridge : IDebugBridge
     public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.TraceBlock(blockParameter, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
-    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(byte[] blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
     public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
@@ -339,6 +379,9 @@ public class DebugBridge : IDebugBridge
 
     public IReadOnlyCollection<Hash256> GetBlockIntermediateRoots(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlockIntermediateRoots(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public StorageRangeVisitor GetStorageRange(Block block, int txIndex, Address address, in ValueHash256 startKey, int limit, CancellationToken cancellationToken) =>
+        _tracer.StorageRangeAt(block, txIndex, address, startKey, limit, cancellationToken);
 
     public byte[]? GetBlockRlp(BlockParameter parameter)
     {
@@ -385,7 +428,8 @@ public class DebugBridge : IDebugBridge
     public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
     {
         BlockHeader? header = _blockTree.FindHeader(blockParameter);
-        IReleaseSpec? spec = header is null ? null : _specProvider.GetSpec(header);
+        // Bundles without their own block overrides run on the header with the trace options' overrides applied.
+        IReleaseSpec? spec = header is null ? null : _specProvider.GetSpec(gethTraceOptions?.BlockOverrides?.ApplyTo(header) ?? header);
         foreach (TransactionBundle bundle in bundles)
         {
             yield return GetBundleTrace(bundle, blockParameter, gasCap, spec, cancellationToken, gethTraceOptions);
@@ -397,7 +441,7 @@ public class DebugBridge : IDebugBridge
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
             GethLikeTxTrace? trace;
-            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: gasCap, spec: spec);
+            Result<Transaction> txResult = txForRpc.ToCallTransaction(spec, gasCap);
             if (txResult.IsError)
             {
                 trace = CreateFailTrace(txForRpc.Gas);

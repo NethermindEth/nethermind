@@ -9,8 +9,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Test.IO;
+using Nethermind.Era1.Exceptions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.State.Proofs;
 using NSubstitute;
 
 namespace Nethermind.Era1.Test;
@@ -23,7 +26,7 @@ internal class EraReaderTests
         public string FilePath => _tmpFile.Path;
         public List<(Block, TxReceipt[])> AddedContents { get; }
 
-        public static async Task<PopulatedTestFile> Create(Transaction? transaction = null)
+        public static async Task<PopulatedTestFile> Create(Transaction? transaction = null, ulong secondBlockNumber = 1)
         {
             TempPath tmpFile = TempPath.GetTempFile();
             using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
@@ -34,7 +37,7 @@ internal class EraReaderTests
             {
                 Hash256 root = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, MainnetSpecProvider.Instance.GetSpec(block.Header), block.ReceiptsRoot);
                 block.Header.ReceiptsRoot = root;
-                block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
+                block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header));
                 addedContents.Add((block, receipts));
                 await builder.Add(block, receipts);
             }
@@ -47,7 +50,7 @@ internal class EraReaderTests
                 [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
 
             await AddBlock(
-                Build.A.Block.WithNumber(1)
+                Build.A.Block.WithNumber(secondBlockNumber)
                     .WithDifficulty(0)
                     .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
                 [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
@@ -73,13 +76,44 @@ internal class EraReaderTests
     }
 
     [Test, NonParallelizable]
+    public void Archive_body_with_uncles_not_in_canonical_encoding_is_rejected([Values] BodyForm form)
+    {
+        // A trailing item decodes, but the header encoder leaves it out, so the uncles hash does not cover these bytes.
+        byte[] uncle = RlpTestHelper.WithTrailingItem(new HeaderDecoder().Encode(Build.A.BlockHeader.TestObject));
+        byte[] transaction = Rlp.Encode(Build.A.Transaction.Signed().TestObject);
+        byte[] body = RlpTestHelper.EncodeSequence(RlpTestHelper.EncodeSequence([transaction]), RlpTestHelper.EncodeSequence([uncle]));
+
+        Assert.Throws<RlpReaderException>(() => ArchiveBodyDecoder.Decode(body, form, BlockBodyDecoder.Instance));
+    }
+
+    [Test, NonParallelizable]
+    public async Task VerifyContent_returns_transactions_when_validation_fails([Values] bool throwFromValidator)
+    {
+        Transaction source = Build.A.Transaction.WithType(TxType.EIP1559).Signed().TestObject;
+        using PopulatedTestFile file = await PopulatedTestFile.Create(source);
+        Transaction? decoded = null;
+        IBlockValidator validator = Substitute.For<IBlockValidator>();
+        validator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(call =>
+            {
+                decoded = call.Arg<BlockBody>().Transactions[0];
+                if (throwFromValidator) throw new OperationCanceledException();
+                return false;
+            });
+
+        using EraReader reader = new(file.FilePath);
+        Assert.That(() => reader.VerifyContent(Substitute.For<ISpecProvider>(), validator, verifyConcurrency: 1, validateTransactions: false),
+            throwFromValidator ? Throws.InstanceOf<OperationCanceledException>() : Throws.TypeOf<EraVerificationException>());
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Type, Is.EqualTo(TxType.Legacy), "Returning to the pool resets the transaction type.");
+    }
+
+    [Test, NonParallelizable]
     public async Task Imported_transactions_do_not_consume_the_network_pool()
     {
         Transaction source = Build.A.Transaction.Signed().TestObject;
         using PopulatedTestFile file = await PopulatedTestFile.Create(source);
-        HashSet<Transaction> pooled = new(ReferenceEqualityComparer.Instance);
-        for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
-        foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
+        HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 
         using EraReader reader = new(file.FilePath);
         (Block block, _) = await reader.GetBlockByNumber(0);
@@ -138,13 +172,46 @@ internal class EraReaderTests
     }
 
     [Test]
+    public async Task VerifyContent_DecodesTransactionsOnlyToValidateThem([Values] bool validateTransactions)
+    {
+        using PopulatedTestFile tmpFile = await PopulatedTestFile.Create(Build.A.Transaction.Signed().TestObject);
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        // The root is computed while the call runs, as the transactions of an encoded body go back to the pool after it.
+        blockValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(call => TxTrie.CalculateRoot(call.Arg<BlockBody>().Transactions) == call.Arg<BlockHeader>().TxRoot);
+        blockValidator.ValidateOrphanedBlock(Arg.Any<Block>(), out Arg.Any<string?>()).Returns(true);
+
+        using EraReader sut = new(tmpFile.FilePath);
+        await sut.VerifyContent(Substitute.For<ISpecProvider>(), blockValidator, validateTransactions: validateTransactions);
+
+        blockValidator.Received(validateTransactions ? tmpFile.AddedContents.Count : 0).ValidateOrphanedBlock(Arg.Any<Block>(), out Arg.Any<string?>());
+    }
+
+    [Test]
+    public async Task VerifyContent_HeaderNumberDiffersFromSlot_ThrowsEraVerificationException([Values(0UL, 2UL, 3UL)] ulong secondBlockNumber)
+    {
+        using PopulatedTestFile tmpFile = await PopulatedTestFile.Create(secondBlockNumber: secondBlockNumber);
+
+        using EraReader sut = new(tmpFile.FilePath);
+        Assert.That(() => sut.VerifyContent(Substitute.For<ISpecProvider>(), Always.Valid), Throws.TypeOf<EraVerificationException>());
+    }
+
+    [Test]
+    public async Task CalculateAccumulator_MainnetFile_MatchesStoredAccumulator(
+        [Values("mainnet-00000-5ec1ffb8.era1", "mainnet-00001-a5364e9a.era1", "mainnet-00002-98cbd8a9.era1")] string fileName)
+    {
+        using EraReader sut = new(Path.Combine("testdata/mainnet", fileName));
+        Assert.That(await sut.CalculateAccumulator(), Is.EqualTo(sut.ReadAccumulator()));
+    }
+
+    [Test]
     public void DecodeReceipts_EmptyListReceipt_Throws()
     {
         byte[] receiptsWithEmptyListItem = [0xc1, 0xc0];
 
         Assert.That(
             () => DecodeReceipts(receiptsWithEmptyListItem),
-            Throws.TypeOf<RlpException>());
+            Throws.TypeOf<RlpReaderException>());
     }
 
     private static TxReceipt[] DecodeReceipts(byte[] bytes)

@@ -4,6 +4,7 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -14,11 +15,17 @@ namespace Nethermind.JsonRpc
 {
     public class ResultWrapper<T> : JsonRpcResponse, IResultWrapper
     {
+        private int _responseContextClaimed;
+
         object? IResultWrapper.Data => Data;
         public T Data { get; init; }
         public Result Result { get; init; } = Result.Success;
         public int ErrorCode { get; init; }
         public bool IsTemporary { get; init; }
+
+        /// <summary>The error is a fault in the request (see <see cref="Error.RequestError"/>).</summary>
+        public bool IsRequestError { get; init; }
+
         public virtual bool HasErrorData { get; init; }
 
         protected ResultWrapper()
@@ -34,8 +41,13 @@ namespace Nethermind.JsonRpc
         public static ResultWrapper<T> Fail(string error, int errorCode, T outputData) =>
             new() { Result = Result.Fail(error), ErrorCode = errorCode, Data = outputData, HasErrorData = true };
 
-        public static ResultWrapper<T> Fail(string error, int errorCode, bool isTemporary = false) =>
-            new() { Result = Result.Fail(error), ErrorCode = errorCode, IsTemporary = isTemporary };
+        // Keeps the signature compiled plugins bind to. It has no default, so Fail(error, errorCode) still resolves to
+        // the overload below, and a positional bool resolves here rather than to outputData when T is bool.
+        public static ResultWrapper<T> Fail(string error, int errorCode, bool isTemporary) =>
+            Fail(error, errorCode, isTemporary, isRequestError: false);
+
+        public static ResultWrapper<T> Fail(string error, int errorCode, bool isTemporary = false, bool isRequestError = false) =>
+            new() { Result = Result.Fail(error), ErrorCode = errorCode, IsTemporary = isTemporary, IsRequestError = isRequestError };
 
         public static ResultWrapper<T> Success(T data) =>
             new() { Data = data, Result = Result.Success };
@@ -51,6 +63,7 @@ namespace Nethermind.JsonRpc
             Result = source.Result,
             ErrorCode = source.ErrorCode,
             IsTemporary = source.IsTemporary,
+            IsRequestError = source.IsRequestError,
             HasErrorData = source.HasErrorData,
         };
 
@@ -62,7 +75,14 @@ namespace Nethermind.JsonRpc
 
         internal override JsonRpcResponse WithResponseContext(in JsonRpcId id, Action? disposableAction)
         {
+            // Modules may return the same (cached) instance from many requests, so only its first use can take it in place.
+            if (Volatile.Read(ref _responseContextClaimed) == 0 && Interlocked.Exchange(ref _responseContextClaimed, 1) == 0)
+            {
+                return base.WithResponseContext(in id, disposableAction);
+            }
+
             ResultWrapper<T> response = (ResultWrapper<T>)MemberwiseClone();
+            response.ClearResponseContext();
             response._id = id;
             if (disposableAction is not null) response.AddDisposable(disposableAction);
             return response;
@@ -80,7 +100,8 @@ namespace Nethermind.JsonRpc
             {
                 Code = ErrorCode,
                 Message = Result.Error,
-                SuppressWarning = IsTemporary
+                SuppressWarning = IsTemporary,
+                RequestError = IsRequestError
             };
             return true;
         }

@@ -3,9 +3,12 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -18,8 +21,8 @@ public class RlpDecoderTests
     public void Setup()
     {
         _decoder = TxDecoder.Instance;
-        _decoder.RegisterDecoder(new OptimismTxDecoder<Transaction>());
-        _decoder.RegisterDecoder(new OptimismLegacyTxDecoder());
+        _decoder.RegisterDecoder(new OptimismTxDecoder());
+        _decoder.RegisterDecoder(new LegacyTxDecoder(allowEmptySignature: true));
     }
 
     // Derived with pyrlp: rlp(0x7e || rlp([sourceHash, from, to, mint, value, gas, isSystemTx, data])).
@@ -35,7 +38,7 @@ public class RlpDecoderTests
         Transaction tx = BuildDepositTx();
 
         byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(rlp);
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
         _decoder.Encode(ref writer, tx);
 
         Assert.That(rlp.ToHexString(), Is.EqualTo(DepositTxRlpHex));
@@ -52,7 +55,7 @@ public class RlpDecoderTests
         Transaction tx = BuildDepositTx();
 
         byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(rlp);
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
         _decoder.Encode(ref writer, tx);
 
         Transaction? decodedTx = Rlp.Decode<Transaction?>(rlp);
@@ -66,7 +69,7 @@ public class RlpDecoderTests
         Transaction tx = BuildDepositTransaction(to: null);
 
         byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(rlp);
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
         _decoder.Encode(ref writer, tx);
 
         RlpReader ctx = new(rlp);
@@ -103,7 +106,7 @@ public class RlpDecoderTests
             Assert.That(transaction.To, Is.EqualTo(new Address("0x4200000000000000000000000000000000000007")));
             Assert.That(transaction.Value, Is.EqualTo(UInt256.Zero));
             Assert.That(transaction.Data.Length, Is.EqualTo(420));
-            Assert.That(transaction.Data[..4].ToArray(), Is.EqualTo(Bytes.FromHexString("cbd4ece9")));
+            Assert.That(transaction.Data[..4], Is.SequenceEqualTo(Bytes.FromHexString("cbd4ece9")));
             // A pre-Bedrock unsigned tx has empty v, r and s. The decoder must return a null signature and must not throw.
             Assert.That(transaction.Signature, Is.Null);
         }
@@ -139,7 +142,7 @@ public class RlpDecoderTests
             Assert.That(decoded.Value, Is.EqualTo(expected.Value));
             Assert.That(decoded.GasLimit, Is.EqualTo(expected.GasLimit));
             Assert.That(decoded.IsOPSystemTransaction, Is.EqualTo(expected.IsOPSystemTransaction));
-            Assert.That(decoded.Data.ToArray(), Is.EqualTo(expected.Data.ToArray()));
+            Assert.That(decoded.Data, Is.SequenceEqualTo(expected.Data));
         }
     }
 }

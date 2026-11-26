@@ -9,13 +9,12 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Crypto;
 
 // The public SecP256k1.Ecdh API returns the default ECDH secret, while discv5 needs the compressed shared EC point.
-internal static unsafe class SecP256k1Ecdh
+internal static unsafe partial class SecP256k1Ecdh
 {
     private const uint ContextNone = 1;
     private const int ParsedPublicKeyLength = 64;
     private const int CoordinateLength = 32;
 
-    private static readonly EcdhHashFunction CompressedPointHashFunction = WriteCompressedPoint;
     private static readonly SecP256k1ContextHandle Context = new();
 
     [SkipLocalsInit]
@@ -39,7 +38,7 @@ internal static unsafe class SecP256k1Ecdh
                 throw new ArgumentException("Invalid secp256k1 public key.", nameof(publicKey));
             }
 
-            if (secp256k1_ecdh(Context, outputPtr, parsedPublicKeyPtr, privateKeyPtr, CompressedPointHashFunction, IntPtr.Zero) != 1)
+            if (secp256k1_ecdh(Context, outputPtr, parsedPublicKeyPtr, privateKeyPtr, &WriteCompressedPoint, IntPtr.Zero) != 1)
             {
                 throw new ArgumentException("Invalid secp256k1 private key.", nameof(privateKey));
             }
@@ -50,6 +49,7 @@ internal static unsafe class SecP256k1Ecdh
 
     // The unmanaged callback receives libsecp256k1-owned 32-byte coordinates for the shared point and writes
     // the compressed EC point form required by the devp2p discv5 key agreement.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static int WriteCompressedPoint(byte* output, byte* x32, byte* y32, IntPtr data)
     {
         output[0] = (byte)(2 | (y32[CoordinateLength - 1] & 1));
@@ -57,29 +57,26 @@ internal static unsafe class SecP256k1Ecdh
         return 1;
     }
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate int EcdhHashFunction(byte* output, byte* x32, byte* y32, IntPtr data);
+    [LibraryImport("secp256k1")]
+    private static partial IntPtr secp256k1_context_create(uint flags);
 
-    [DllImport("secp256k1", CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr secp256k1_context_create(uint flags);
+    [LibraryImport("secp256k1")]
+    private static partial void secp256k1_context_destroy(IntPtr context);
 
-    [DllImport("secp256k1", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void secp256k1_context_destroy(IntPtr context);
-
-    [DllImport("secp256k1", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int secp256k1_ec_pubkey_parse(
+    [LibraryImport("secp256k1")]
+    private static partial int secp256k1_ec_pubkey_parse(
         SecP256k1ContextHandle context,
         byte* publicKey,
         byte* input,
         nuint inputLength);
 
-    [DllImport("secp256k1", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int secp256k1_ecdh(
+    [LibraryImport("secp256k1")]
+    private static partial int secp256k1_ecdh(
         SecP256k1ContextHandle context,
         byte* output,
         byte* publicKey,
         byte* privateKey,
-        EcdhHashFunction hashFunction,
+        delegate* unmanaged[Cdecl]<byte*, byte*, byte*, IntPtr, int> hashFunction,
         IntPtr data);
 
     private sealed class SecP256k1ContextHandle : SafeHandle

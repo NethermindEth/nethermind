@@ -2,17 +2,34 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Consensus.Tracing;
+using Nethermind.Core.Container;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 using Testably.Abstractions.Testing;
 using Nethermind.Core;
@@ -21,6 +38,533 @@ namespace Nethermind.Evm.Test.Tracing;
 
 public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
 {
+    [TestCase(0)]
+    [TestCase(1)]
+    public async Task Bad_file_trace_validates_the_bad_store_body_signed_nonce(int nonceDelta)
+    {
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder.AddSingleton<IFileSystem>(fileSystem));
+        Block parent = chain.BlockTree.Head!;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent.Header, TestItem.AddressA);
+        Block canonical = await chain.AddBlock();
+        Transaction transaction = Build.A.Transaction.WithNonce(nonce + (ulong)nonceDelta).WithValue(1)
+            .WithCode(Prepare.EvmCode.STOP().Done).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block bad = new(canonical.Header.Clone(), [transaction], canonical.Uncles, canonical.Withdrawals);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(canonical.Transactions, Is.Empty);
+            Assert.That(bad.Hash, Is.EqualTo(canonical.Hash));
+        }
+        chain.Container.Resolve<IBadBlockStore>().Insert(bad);
+        IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
+        using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
+            .AddModule(validation)
+            .AddModule(new TransactionTraceModule(validation))
+            .AddModule(env)
+            .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
+            .AddScoped<TransactionProcessorAdapterFactory, ChangeableTransactionProcessorAdapter>(static adapter => adapter.ForProcessor));
+        IGethStyleTracer tracer = scope.Resolve<IGethStyleTracer>();
+        try
+        {
+            if (nonceDelta == 0)
+            {
+                string[] files = tracer.TraceBadBlockToFile(bad.Hash!, GethTraceOptions.Default, CancellationToken.None).ToArray();
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
+                Assert.That(files, Has.Length.EqualTo(1), "the empty canonical body must not replace the full bad-store body");
+#pragma warning restore NUnit2045
+                Assert.That(fileSystem.File.ReadAllText(files[0]), Does.Contain("\"opName\":\"STOP\""));
+            }
+            else
+            {
+                InvalidTransactionException? error = Assert.Throws<InvalidTransactionException>(() =>
+                    tracer.TraceBadBlockToFile(bad.Hash!, GethTraceOptions.Default, CancellationToken.None).ToArray());
+                Assert.That(error!.Message, Does.Contain("nonce too high"));
+            }
+        }
+        finally
+        {
+            string[] writtenFiles = fileSystem.Directory.GetFiles(fileSystem.Path.GetTempPath(), "block_*.jsonl");
+            Assert.That(writtenFiles, Has.Length.EqualTo(1));
+            foreach (string file in writtenFiles)
+            {
+                using FileSystemStream ownedRead = fileSystem.File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            }
+            Assert.That(chain.WorldStateManager.GlobalStateReader.GetNonce(canonical.Header, TestItem.AddressA), Is.EqualTo(nonce));
+        }
+    }
+
+    [Test]
+    public void File_summary_uses_unprefixed_output_and_line_feed([Values] bool returnsData)
+    {
+        byte[] code = returnsData
+            ? Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done
+            : [];
+        string file = TraceFile(code);
+        string output = returnsData ? new string('0', 62) + "2a" : "";
+        string gasUsed = returnsData ? "0x12" : "0x0";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(file, Does.EndWith($"{{\"output\":\"{output}\",\"gasUsed\":\"{gasUsed}\"}}\n"));
+            Assert.That(file, Does.Not.Contain("\r"));
+        }
+    }
+
+    [TestCase("revert", "0x6", "execution reverted")]
+    [TestCase("return", "0x6", null)]
+    [TestCase("badJump", "0x13498", "invalid jump destination")]
+    [TestCase("underflow", "0x13498", "stack underflow (1 \\u003c=\\u003e 2)")]
+    [TestCase("overflow", "0x13498", "stack limit reached 1024 (1023)")]
+    [TestCase("undefined", "0x13498", "invalid opcode: opcode 0xc not defined")]
+    public void File_summary_reports_execution_gas_and_error_after_top_level_action(string scenario, string gasUsed, string? error)
+    {
+        byte[] code = scenario switch
+        {
+            "revert" => Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done,
+            "return" => Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.RETURN).Done,
+            "badJump" => Prepare.EvmCode.PushData(255).Op(Instruction.JUMP).Done,
+            "underflow" => Prepare.EvmCode.PushData(7).Op(Instruction.ADD).Done,
+            "overflow" => Enumerable.Repeat(Prepare.EvmCode.PushData(0).Done, 1025).SelectMany(push => push).ToArray(),
+            "undefined" => Prepare.EvmCode.Op((Instruction)0x0c).Done,
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null)
+        };
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string errorField = error is null ? "" : $",\"error\":\"{error}\"";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records[^1], Is.EqualTo($"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\"{errorField}}}"));
+            Assert.That(records[^2], Does.Not.Contain("\\u003C").And.Not.Contain("\\u003E"), "Geth escapes HTML characters with lowercase hex");
+        }
+    }
+
+    [Test]
+    public void Child_error_detail_does_not_reach_parent_exit()
+    {
+        PrepareNestedCall("underflow");
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.POP).PushData(255).Op(Instruction.JUMP).Done;
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.That(records[^1], Is.EqualTo("{\"output\":\"\",\"gasUsed\":\"0x13498\",\"error\":\"invalid jump destination\"}"));
+    }
+
+    [TestCase(Instruction.REVERT, "execution reverted", "0x6")]
+    [TestCase(Instruction.RETURN, null, "0x6")]
+    [TestCase(Instruction.INVALID, "invalid opcode: INVALID", "0x13498")]
+    public void Top_level_fault_is_repeated_with_error_before_summary(Instruction exit, string? error, string gasUsed)
+    {
+        byte[] code = Prepare.EvmCode.PushData(0).PushData(0).Op(exit).Done;
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string step = records[2];
+        string errorField = error is null ? "" : $",\"error\":\"{error}\"";
+        string summary = $"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\"{errorField}}}";
+        string fault = exit == Instruction.REVERT ? step.Replace("\"stack\":[\"0x0\",\"0x0\"]", "\"stack\":[]") : step;
+        string[] expected = error is null ? [summary] : [fault[..^1] + errorField + "}", summary];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(step, Does.Contain($"\"gasCost\":\"0x0\",").And.Contain($"\"opName\":\"{exit}\"").And.Not.Contain("\"error\""));
+            Assert.That(records[3..], Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Revert_fault_record_shows_popped_operands_and_expanded_memory([Values] bool enableMemory)
+    {
+        byte[] code = Prepare.EvmCode.PushData(7).PushData(32).PushData(64).Op(Instruction.REVERT).Done;
+        string[] records = TraceFile(code, enableMemory: enableMemory).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        using JsonDocument step = JsonDocument.Parse(records[3]);
+        using JsonDocument fault = JsonDocument.Parse(records[4]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(step.RootElement.GetProperty("stack").EnumerateArray().Select(item => item.GetString()), Is.EqualTo(new[] { "0x7", "0x20", "0x40" }));
+            Assert.That(step.RootElement.GetProperty("memSize").GetInt32(), Is.Zero);
+            Assert.That(fault.RootElement.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            Assert.That(fault.RootElement.GetProperty("stack").EnumerateArray().Select(item => item.GetString()), Is.EqualTo(new[] { "0x7" }));
+            Assert.That(fault.RootElement.GetProperty("memSize").GetInt32(), Is.EqualTo(96));
+            if (enableMemory)
+                Assert.That(fault.RootElement.GetProperty("memory").GetString(), Is.EqualTo("0x" + new string('0', 192)));
+            else
+                Assert.That(fault.RootElement.TryGetProperty("memory", out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void File_summary_preserves_output_at_buffer_boundaries([Values(127, 128, 257, 1023, 1024)] int outputLength)
+    {
+        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(outputLength, 0).Done;
+        string file = TraceFile(code);
+        string summary = file.Split('\n', StringSplitOptions.RemoveEmptyEntries)[^1];
+        using JsonDocument json = JsonDocument.Parse(summary);
+        Assert.That(json.RootElement.GetProperty("output").GetString(),
+            Is.EqualTo(new string('0', 62) + "2a" + new string('0', (outputLength - 32) * 2)),
+            "the file summary must retain every output byte without adding a prefix or trimming leading zeros");
+    }
+
+    [TestCase("negative", 0)]
+    [TestCase("unlimited", 5)]
+    [TestCase("oneByte", 1)]
+    [TestCase("beforeFirstLineFeed", 1)]
+    [TestCase("afterFirstLineFeed", 2)]
+    [TestCase("insideSecondRecord", 2)]
+    [TestCase("beforeSummary", 4)]
+    [TestCase("atSummary", 5)]
+    public void File_limit_counts_complete_records_including_line_feeds(string boundary, int expectedRecords)
+    {
+        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Op(Instruction.STOP).Done;
+        string unlimited = TraceFile(code);
+        string[] records = unlimited.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        long firstRecordBytes = Encoding.UTF8.GetByteCount(records[0]) + 1;
+        long beforeSummaryBytes = Encoding.UTF8.GetByteCount(string.Join('\n', records[..^1])) + 1;
+        long limit = boundary switch
+        {
+            "negative" => -1,
+            "unlimited" => 0,
+            "oneByte" => 1,
+            "beforeFirstLineFeed" => firstRecordBytes - 1,
+            "afterFirstLineFeed" => firstRecordBytes,
+            "insideSecondRecord" => firstRecordBytes + 1,
+            "beforeSummary" => beforeSummaryBytes - 1,
+            "atSummary" => beforeSummaryBytes,
+            _ => throw new AssertionException("Unknown boundary")
+        };
+        string expected = expectedRecords == 0 ? "" : string.Join('\n', records[..expectedRecords]) + "\n";
+
+        Assert.That(TraceFile(code, limit), Is.EqualTo(expected));
+    }
+
+    [TestCase(-1)]
+    [TestCase(1)]
+    public void File_limit_resets_for_each_transaction(long limit)
+    {
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        Transaction[] transactions = [Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject, Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject];
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+        using GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default with { Limit = limit }, fileSystem, Spec);
+        IBlockTracer blockTracer = tracer;
+        blockTracer.StartNewBlockTrace(block);
+        foreach (Transaction transaction in transactions)
+        {
+            ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
+            txTracer.ReportAction(100, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
+            txTracer.ReportActionEnd(90, new byte[] { 42 });
+            GasConsumed gas = new(21_010, 10);
+            txTracer.MarkAsSuccess(TestItem.AddressB, in gas, [42], []);
+            blockTracer.EndTxTrace();
+        }
+        blockTracer.EndBlockTrace();
+        Assert.That(tracer.FileNames, Has.Count.EqualTo(2));
+        foreach (string fileName in tracer.FileNames)
+            Assert.That(fileSystem.File.ReadAllText(fileName), Is.EqualTo(limit < 0 ? "" : "{\"output\":\"2a\",\"gasUsed\":\"0xa\"}\n"));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void File_stack_distinguishes_empty_populated_and_disabled(bool disableStack)
+    {
+        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.POP).Op(Instruction.POP).Op(Instruction.STOP).Done;
+        string[] records = TraceFile(code, disableStack: disableStack).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] expectedStacks = ["[]", "[\"0x2a\"]", "[\"0x2a\",\"0x0\"]", "[\"0x2a\"]", "[]"];
+        Assert.That(records, Has.Length.EqualTo(expectedStacks.Length + 1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < expectedStacks.Length; i++)
+            {
+                using JsonDocument record = JsonDocument.Parse(records[i]);
+                bool hasStack = record.RootElement.TryGetProperty("stack", out JsonElement stack);
+                Assert.That(hasStack, Is.True, $"opcode record {i} must include stack");
+                if (hasStack)
+                    Assert.That(stack.GetRawText(), Is.EqualTo(disableStack ? "null" : expectedStacks[i]), $"opcode record {i}");
+            }
+        }
+    }
+
+    [Test]
+    public void File_limit_stops_stack_and_memory_capture([Values(-1, 1)] long limit, [Values] bool nestedSummary)
+    {
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        Transaction transaction = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+        Block block = Build.A.Block.WithTransactions([transaction]).TestObject;
+        using GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default with { Limit = limit, EnableMemory = true }, fileSystem, Spec);
+        IBlockTracer blockTracer = tracer;
+        ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
+        if (nestedSummary)
+        {
+            txTracer.ReportAction(100, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
+            txTracer.ReportAction(50, UInt256.Zero, TestItem.AddressB, TestItem.AddressC, default, ExecutionType.CALL);
+            txTracer.ReportActionEnd(50, ReadOnlyMemory<byte>.Empty);
+        }
+        else
+        {
+            txTracer.StartOperation(0, Instruction.STOP, 100, environment);
+            txTracer.StartOperation(1, Instruction.STOP, 100, environment);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txTracer.IsTracingStack, Is.False);
+            Assert.That(txTracer.IsTracingMemory, Is.False);
+        }
+        blockTracer.EndTxTrace();
+        Assert.That(fileSystem.File.ReadAllText(tracer.FileNames.Single()).Split('\n', StringSplitOptions.RemoveEmptyEntries),
+            Has.Length.EqualTo(limit < 0 ? 0 : 1));
+    }
+
+    [Test]
+    public void File_return_data_follows_call_results([Values] bool enableReturnData, [Values(Instruction.RETURN, Instruction.REVERT)] Instruction exit)
+    {
+        byte[] code = PrepareReturningCalls(exit);
+        string[] records = TraceFile(code, enableReturnData: enableReturnData).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        using JsonDocument trace = JsonDocument.Parse("[" + string.Join(',', records) + "]");
+        JsonElement[] opcodes = trace.RootElement.EnumerateArray().Where(record => record.TryGetProperty("opName", out _)).ToArray();
+        int firstReturnData = Array.FindIndex(opcodes, record => record.GetProperty("opName").GetString() == "RETURNDATASIZE");
+        int lastReturnData = Array.FindLastIndex(opcodes, record => record.GetProperty("opName").GetString() == "CALL");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstReturnData, Is.GreaterThan(0));
+            Assert.That(lastReturnData, Is.GreaterThan(firstReturnData));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < opcodes.Length; i++)
+            {
+                bool expected = enableReturnData && i >= firstReturnData && i <= lastReturnData;
+                bool present = opcodes[i].TryGetProperty("returnData", out JsonElement returnData);
+                Assert.That(present, Is.EqualTo(expected), $"opcode record {i}");
+                if (present)
+                    Assert.That(returnData.GetString(), Is.EqualTo("0x" + new string('0', 62) + "2a"), $"opcode record {i}");
+            }
+        }
+    }
+
+    [Test]
+    public void File_limit_counts_return_data_bytes([Values(-1, 0)] int offset)
+    {
+        byte[] code = PrepareReturningCalls(Instruction.RETURN);
+        string[] records = TraceFile(code, enableReturnData: true).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int firstReturnData = Array.FindIndex(records, record => record.Contains("\"returnData\""));
+        Assert.That(firstReturnData, Is.GreaterThan(0));
+        long boundary = Encoding.UTF8.GetByteCount(string.Join('\n', records[..(firstReturnData + 1)])) + 1;
+        int expectedRecords = firstReturnData + (offset < 0 ? 1 : 2);
+        string expected = string.Join('\n', records[..expectedRecords]) + "\n";
+
+        Assert.That(TraceFile(code, boundary + offset, enableReturnData: true), Is.EqualTo(expected));
+    }
+
+    [TestCase("return", "0x12", null)]
+    [TestCase("revert", "0x12", "execution reverted")]
+    [TestCase("badJump", "0xc350", "invalid jump destination")]
+    [TestCase("invalid", "0xc350", "invalid opcode: INVALID")]
+    [TestCase("empty", "0x0", null)]
+    [TestCase("identity", "0xf", null)]
+    [TestCase("identity", "0xe", "out of gas", 14)]
+    [TestCase("return", "0x11", "out of gas", 17)]
+    [TestCase("underflow", "0xc350", "stack underflow (1 \\u003c=\\u003e 2)")]
+    public void Nested_exit_precedes_parent_resume(string scenario, string gasUsed, string? error, long gasLimit = 50_000)
+    {
+        byte[] code = PrepareNestedCall(scenario, gasLimit);
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int childExit = Array.FindIndex(records, record => record.StartsWith("{\"output\""));
+        Assert.That(childExit, Is.InRange(1, records.Length - 2));
+        string output = (scenario is "return" or "revert") && error != "out of gas" ? new string('0', 62) + "2a" : "";
+        string errorField = error is null ? "" : $",\"error\":\"{error}\"";
+        using JsonDocument resumed = JsonDocument.Parse(records[childExit + 1]);
+        using JsonDocument trace = JsonDocument.Parse("[" + string.Join(',', records) + "]");
+        string?[] opcodes = trace.RootElement.EnumerateArray().Where(record => record.TryGetProperty("opName", out _))
+            .Select(record => record.GetProperty("opName").GetString()).ToArray();
+        string[] childOpcodes = scenario switch
+        {
+            "return" when gasLimit == 17 => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1"],
+            "return" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", "RETURN"],
+            "revert" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", "REVERT", "REVERT"],
+            "badJump" => ["PUSH1", "JUMP"],
+            "underflow" => ["PUSH1", "ADD"],
+            "invalid" => ["INVALID", "INVALID"],
+            _ => []
+        };
+        string[] expectedOpcodes = ["PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH20", gasLimit > 255 ? "PUSH2" : "PUSH1", "CALL", .. childOpcodes, "POP", "STOP"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(opcodes, Is.EqualTo(expectedOpcodes), "each deferred opcode must be emitted exactly once");
+            Assert.That(records[childExit], Is.EqualTo($"{{\"output\":\"{output}\",\"gasUsed\":\"{gasUsed}\"{errorField}}}"));
+            if (scenario is "revert" or "invalid")
+                Assert.That(records[childExit - 1], Does.Contain("\"depth\":2").And.Contain($"\"error\":\"{error}\""));
+            Assert.That(resumed.RootElement.GetProperty("opName").GetString(), Is.EqualTo("POP"));
+            Assert.That(resumed.RootElement.GetProperty("depth").GetInt32(), Is.EqualTo(1));
+            Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(2));
+            Assert.That(records[^1], Does.StartWith("{\"output\":\"\",\"gasUsed\":"));
+        }
+    }
+
+    [Test]
+    public void Nested_exit_handles_call_variants([Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction call)
+    {
+        PrepareNestedCall("return");
+        Prepare code = call switch
+        {
+            Instruction.CALL => Prepare.EvmCode.Call(TestItem.AddressC, 50_000),
+            Instruction.CALLCODE => Prepare.EvmCode.CallCode(TestItem.AddressC, 50_000),
+            Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(TestItem.AddressC, 50_000),
+            _ => Prepare.EvmCode.StaticCall(TestItem.AddressC, 50_000)
+        };
+        string file = TraceFile(code.Op(Instruction.POP).Op(Instruction.STOP).Done);
+        Assert.That(file, Does.Contain($"{{\"output\":\"{new string('0', 62)}2a\",\"gasUsed\":\"0x12\"}}\n"));
+    }
+
+    [Test]
+    public void Nested_exits_preserve_sibling_and_parent_gas()
+    {
+        PrepareNestedCall("return");
+        ReadOnlyMemory<byte> leaf = TestState.GetCode(TestItem.AddressC);
+        TestState.CreateAccount(TestItem.AddressE, 1.Ether);
+        TestState.InsertCode(TestItem.AddressE, leaf, Spec);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Call(TestItem.AddressE, 10_000)
+            .Op(Instruction.POP).Op(Instruction.STOP).Done, Spec);
+        TestState.Commit(Spec);
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.POP)
+            .Call(TestItem.AddressE, 10_000).Op(Instruction.POP).Op(Instruction.STOP).Done;
+        string[] summaries = TraceFile(code).Split('\n').Where(record => record.StartsWith("{\"output\"")).ToArray();
+        string leafSummary = $"{{\"output\":\"{new string('0', 62)}2a\",\"gasUsed\":\"0x12\"}}";
+        Assert.That(summaries, Is.EqualTo(new[]
+        {
+            leafSummary,
+            "{\"output\":\"\",\"gasUsed\":\"0x2e5\"}",
+            leafSummary,
+            "{\"output\":\"\",\"gasUsed\":\"0x89d\"}"
+        }));
+    }
+
+    [Test]
+    public void Nested_exit_handles_call_stipend()
+    {
+        PrepareNestedCall("return");
+        byte[] code = Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, UInt256.One)
+            .Op(Instruction.POP).Op(Instruction.STOP).Done;
+        Assert.That(TraceFile(code), Does.Contain($"{{\"output\":\"{new string('0', 62)}2a\",\"gasUsed\":\"0x12\"}}\n"));
+    }
+
+    [Test]
+    public void Nested_exit_includes_creation_code_deposit()
+    {
+        byte[] init = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(1, 31).Done;
+        string file = TraceFile(Prepare.EvmCode.Create(init, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        Assert.That(file, Does.Contain("{\"output\":\"2a\",\"gasUsed\":\"0xda\"}\n"));
+    }
+
+    [Test]
+    public void Nested_exit_limits_include_summary_bytes([Values(-1, 0)] int offset, [Values] bool afterSummary)
+    {
+        byte[] code = PrepareNestedCall("return");
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int childExit = Array.FindIndex(records, record => record.StartsWith("{\"output\""));
+        Assert.That(childExit, Is.InRange(1, records.Length - 2));
+        int boundaryRecords = childExit + (afterSummary ? 1 : 0);
+        long boundary = Encoding.UTF8.GetByteCount(string.Join('\n', records[..boundaryRecords])) + 1;
+        int expectedRecords = boundaryRecords + (offset == 0 ? 1 : 0);
+        Assert.That(TraceFile(code, boundary + offset), Is.EqualTo(string.Join('\n', records[..expectedRecords]) + "\n"));
+    }
+
+    [TestCase(Instruction.CALL, "0x0", "insufficient balance for transfer")]
+    [TestCase(Instruction.CREATE, "0x0", "insufficient balance for transfer")]
+    [TestCase(Instruction.CREATE, "0xb4a5", "contract address collision")]
+    [TestCase(Instruction.CREATE, "0x0", "nonce uint64 overflow")]
+    public void Rejected_action_exit_follows_its_opcode(Instruction operation, string gasUsed, string error)
+    {
+        bool collides = error == "contract address collision";
+        if (collides)
+        {
+            TestState.CreateAccount(ContractAddress.From(Recipient, 0), 0, nonce: 1);
+            TestState.Commit(Spec);
+        }
+        else if (error == "nonce uint64 overflow")
+        {
+            TestState.CreateAccount(Recipient, 100.Ether, nonce: ulong.MaxValue);
+            TestState.Commit(Spec);
+        }
+
+        UInt256 value = error == "insufficient balance for transfer" ? UInt256.MaxValue : UInt256.Zero;
+        Prepare code = operation == Instruction.CALL
+            ? Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, value)
+            : Prepare.EvmCode.Create([(byte)Instruction.STOP], value);
+        string[] records = TraceFile(code.Op(Instruction.POP).Op(Instruction.STOP).Done).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int operationRecord = Array.FindIndex(records, record => record.Contains($"\"opName\":\"{operation}\""));
+        Assert.That(operationRecord, Is.InRange(0, records.Length - 3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records[operationRecord], Does.Not.Contain("\"error\""));
+            Assert.That(records[operationRecord + 1], Is.EqualTo($"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\",\"error\":\"{error}\"}}"));
+            Assert.That(records[operationRecord + 2], Does.Contain("\"opName\":\"POP\""));
+            Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(2));
+        }
+    }
+
+    /// <summary>
+    /// The program of <see cref="VirtualMachineTests.Call_at_max_depth_reports_depth_error"/>: at depth 1025 its
+    /// self-call, its two identity precompile calls and its creation all fail the depth precheck.
+    /// </summary>
+    [Test]
+    public void Depth_rejected_actions_exit_without_an_opcode_error()
+    {
+        byte[] code = Bytes.FromHexString("0x60006000600060006000306102005a03f1603c576000600060006000600060046000f1506000600060006000600160046000f150600060006000f0505b00");
+        (Block block, Transaction transaction) = PrepareTx((ForkActivation)MainnetSpecProvider.HomesteadBlockNumber, 2_000_000, code);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        using GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default with { DisableStack = true }, fileSystem, spec);
+        IBlockTracer blockTracer = tracer;
+        blockTracer.StartNewBlockTrace(block);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), blockTracer.StartNewTxTrace(transaction));
+        blockTracer.EndTxTrace();
+        blockTracer.EndBlockTrace();
+
+        string[] records = fileSystem.File.ReadAllText(tracer.FileNames.Single()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        const string depthExit = "{\"output\":\"\",\"gasUsed\":\"0x0\",\"error\":\"max call depth exceeded\"}";
+        string?[] rejected = Enumerable.Range(1, records.Length - 1).Where(i => records[i] == depthExit).Select(i => OpName(records[i - 1])).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected, Is.EqualTo(new[] { "CALL", "CALL", "CALL", "CREATE" }));
+            Assert.That(records.Where(record => record.Contains("\"opName\":\"CALL\"") || record.Contains("\"opName\":\"CREATE\"")), Has.None.Contains("\"error\""));
+        }
+
+        static string? OpName(string record)
+        {
+            using JsonDocument document = JsonDocument.Parse(record);
+            return document.RootElement.GetProperty("opName").GetString();
+        }
+    }
+
+    [TestCase("root", true)]
+    [TestCase("nested", true)]
+    [TestCase("outOfGas", false)]
+    [TestCase("static", false)]
+    public void SelfDestruct_exit_follows_completed_opcode(string scenario, bool completes)
+    {
+        byte[] selfDestruct = Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, selfDestruct, Spec);
+        TestState.Commit(Spec);
+        Prepare caller = scenario switch
+        {
+            "nested" => Prepare.EvmCode.Call(TestItem.AddressC, 50_000),
+            "outOfGas" => Prepare.EvmCode.Call(TestItem.AddressC, 10_000),
+            _ => Prepare.EvmCode.StaticCall(TestItem.AddressC, 50_000)
+        };
+        byte[] code = scenario == "root" ? selfDestruct : caller.Op(Instruction.POP).Op(Instruction.STOP).Done;
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int selfDestructRecord = Array.FindIndex(records, record => record.Contains("\"opName\":\"SELFDESTRUCT\""));
+        Assert.That(selfDestructRecord, Is.InRange(0, records.Length - 2));
+        const string selfDestructExit = "{\"output\":\"\",\"gasUsed\":\"0x0\"}";
+        int frames = scenario == "root" ? 1 : 2;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records[selfDestructRecord + 1], completes ? Is.EqualTo(selfDestructExit) : Is.Not.EqualTo(selfDestructExit));
+            Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(frames + (completes ? 1 : 0)));
+        }
+    }
+
     [Test]
     public void Requires_active_specification()
     {
@@ -31,7 +575,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Should_have_file_names_matching_block_and_transactions()
+    public void Should_have_file_names_matching_block_and_transactions([Values] bool zeroTxHash)
     {
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
@@ -43,7 +587,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             })
             .TestObject;
 
-        GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default, fileSystem, Spec);
+        GethTraceOptions options = zeroTxHash ? GethTraceOptions.Default with { TxHash = Hash256.Zero } : GethTraceOptions.Default;
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, Spec);
         IBlockTracer blockTracer = (IBlockTracer)tracer;
 
         for (int i = 0; i < block.Transactions.Length; i++)
@@ -58,6 +603,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             Assert.That(fileName, Does.Contain($"block_{block.Hash.Bytes[..4].ToHexString(true)}-{i}-{tx.Hash.Bytes[..4].ToHexString(true)}-"));
             Assert.That(fileName, Does.EndWith(".jsonl"));
         }
+
+        Assert.That(tracer.FileNames, Has.Count.EqualTo(block.Transactions.Length));
     }
 
     [Test]
@@ -90,10 +637,15 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
 
             anyMemory = true;
             string value = memory.GetString();
-            Assert.That(value, Does.StartWith("0x"));
-            Assert.That(value, Does.Not.StartWith("0x0x"), "memory must not have a doubled 0x prefix");
-            // After the single 0x prefix, the blob is contiguous hex with no embedded prefixes.
-            Assert.That(value!.IndexOf("0x", 2), Is.EqualTo(-1), "memory blob must not contain embedded 0x prefixes");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value, Does.StartWith("0x"));
+                Assert.That(value, Does.Not.StartWith("0x0x"), "memory must not have a doubled 0x prefix");
+                // After the single 0x prefix, the blob is contiguous hex with no embedded prefixes.
+                Assert.That(value!.IndexOf("0x", 2), Is.EqualTo(-1), "memory blob must not contain embedded 0x prefixes");
+                Assert.That(line.IndexOf("\"memory\":", StringComparison.Ordinal), Is.LessThan(line.IndexOf("\"memSize\":", StringComparison.Ordinal)),
+                    "Geth writes memory before memSize");
+            }
         }
 
         Assert.That(anyMemory, Is.True, "expected at least one entry to carry a memory blob");
@@ -126,7 +678,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         using JsonDocument summary = JsonDocument.Parse(fileSystem.File.ReadAllText(tracer.FileNames.Single()));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(summary.RootElement.GetProperty("output").GetString(), Is.EqualTo("0x"));
+            Assert.That(summary.RootElement.GetProperty("output").GetString(), Is.EqualTo(""));
             Assert.That(summary.RootElement.GetProperty("gasUsed").GetString(), Is.EqualTo($"0x{gasLimit - standardIntrinsicGas:x}"));
         }
     }
@@ -163,5 +715,45 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         Assert.That(() => blockTracer.StartNewTxTrace(transaction), Throws.Nothing);
 
         blockTracer.EndTxTrace();
+    }
+
+    private byte[] PrepareNestedCall(string scenario, long gasLimit = 50_000)
+    {
+        Address address = scenario == "identity" ? IdentityPrecompile.Address : TestItem.AddressC;
+        byte[] callee = scenario switch
+        {
+            "return" or "revert" => Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE)
+                .PushData(32).PushData(0).Op(scenario == "return" ? Instruction.RETURN : Instruction.REVERT).Done,
+            "badJump" => Prepare.EvmCode.PushData(255).Op(Instruction.JUMP).Done,
+            "underflow" => Prepare.EvmCode.PushData(7).Op(Instruction.ADD).Done,
+            "invalid" => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+            _ => []
+        };
+        TestState.CreateAccount(address, 1.Ether);
+        TestState.InsertCode(address, callee, Spec);
+        TestState.Commit(Spec);
+        return Prepare.EvmCode.Call(address, gasLimit).Op(Instruction.POP).Op(Instruction.STOP).Done;
+    }
+
+    private byte[] PrepareReturningCalls(Instruction exit)
+    {
+        byte[] callee = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).PushData(0).Op(exit).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, callee, Spec);
+        TestState.CreateAccount(TestItem.AddressE, 1.Ether);
+        TestState.InsertCode(TestItem.AddressE, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        TestState.Commit(Spec);
+        return Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.RETURNDATASIZE)
+            .Op(Instruction.POP).Call(TestItem.AddressE, 50_000).Op(Instruction.STOP).Done;
+    }
+
+    private string TraceFile(byte[] code, long limit = 0, bool disableStack = false, bool enableReturnData = false, bool enableMemory = false)
+    {
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { Limit = limit, DisableStack = disableStack, EnableReturnData = enableReturnData, EnableMemory = enableMemory }, fileSystem, Spec);
+        ExecuteBlock(tracer, code);
+        return fileSystem.File.ReadAllText(tracer.FileNames.Single());
     }
 }

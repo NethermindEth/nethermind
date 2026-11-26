@@ -1,0 +1,103 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Ethereum.Test.Base;
+using Evm.T8n.JsonTypes;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Int256;
+using Nethermind.Specs;
+
+namespace Evm.T8n;
+
+public class T8nTest(IReleaseSpec spec, ISpecProvider specProvider, Address currentCoinbase)
+{
+    public IReleaseSpec Spec { get; set; } = spec;
+    public ISpecProvider SpecProvider { get; set; } = specProvider;
+    public Dictionary<Address, AccountState> Alloc { get; set; } = [];
+    public Transaction[] Transactions { get; set; } = [];
+
+    public Address CurrentCoinbase { get; set; } = currentCoinbase;
+    public UInt256? CurrentDifficulty { get; set; }
+    public UInt256? CurrentBaseFee { get; set; }
+    public ulong CurrentGasLimit { get; set; }
+    public ulong CurrentNumber { get; set; }
+    public ulong CurrentTimestamp { get; set; }
+    public Hash256? CurrentRandom { get; set; }
+    public ulong? CurrentExcessBlobGas { get; set; }
+    public ulong? ParentBlobGasUsed { get; set; }
+    public ulong? ParentExcessBlobGas { get; set; }
+    public Withdrawal[]? Withdrawals { get; set; }
+    public ulong ParentTimestamp { get; set; }
+    public UInt256? ParentDifficulty { get; set; }
+    public Hash256? ParentUncleHash { get; set; }
+    public Hash256? ParentBeaconBlockRoot { get; set; }
+    public UInt256? ParentBaseFee { get; set; }
+    public ulong ParentGasUsed { get; set; }
+    public ulong ParentGasLimit { get; set; }
+    public Dictionary<ulong, Hash256>? BlockHashes { get; set; }
+    public Ommer[] Ommers { get; set; } = [];
+    public ulong StateChainId { get; set; } = MainnetSpecProvider.Instance.ChainId;
+    public GethTraceOptions GethTraceOptions { get; set; } = GethTraceOptions.Default;
+    public bool IsTraceEnabled { get; set; } = false;
+    public bool AreRewardsEnabled { get; set; } = true;
+
+    private BlockHeader ConstructBlockHeader()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(CurrentTimestamp)
+            .WithGasLimit(CurrentGasLimit)
+            .WithDifficulty(CurrentDifficulty ?? UInt256.Zero)
+            .WithBeneficiary(CurrentCoinbase)
+            .WithNumber(CurrentNumber)
+            .TestObject;
+
+        if (CurrentRandom is not null) header.MixHash = CurrentRandom;
+        if (CurrentBaseFee.HasValue) header.BaseFeePerGas = CurrentBaseFee.Value;
+        if (BlockHashes is not null) header.ParentHash = BlockHashes.GetValueOrDefault(CurrentNumber - 1, Keccak.Zero);
+        header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        if (CurrentExcessBlobGas.HasValue)
+        {
+            header.ExcessBlobGas = CurrentExcessBlobGas;
+        }
+        else if (ParentExcessBlobGas.HasValue && ParentBlobGasUsed.HasValue)
+        {
+            BlockHeader parentHeader = Build.A.BlockHeader
+                .WithTimestamp(ParentTimestamp)
+                .WithBaseFee(ParentBaseFee ?? UInt256.Zero)
+                .WithExcessBlobGas(ParentExcessBlobGas.Value)
+                .WithBlobGasUsed(ParentBlobGasUsed.Value)
+                .TestObject;
+            header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Spec);
+        }
+        header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(Transactions);
+        header.IsPostMerge = SpecProvider.TerminalTotalDifficulty?.IsZero ?? false;
+        header.Hash = header.CalculateHash();
+
+        return header;
+    }
+
+    public Block ConstructBlock()
+    {
+
+        BlockHeader[] uncles = Ommers
+            .Select(ommer => Build.A.BlockHeader
+                .WithNumber(CurrentNumber - ommer.Delta)
+                .WithBeneficiary(ommer.Address)
+                .TestObject)
+            .ToArray();
+
+        BlockHeader header = ConstructBlockHeader();
+        return Build.A.Block
+            .WithHeader(header)
+            .WithTransactions(Transactions)
+            .WithWithdrawals(Withdrawals)
+            .WithUncles(uncles)
+            .TestObject;
+    }
+}

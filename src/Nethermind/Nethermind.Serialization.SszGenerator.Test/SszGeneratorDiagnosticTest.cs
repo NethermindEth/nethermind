@@ -18,6 +18,38 @@ public class SszGeneratorDiagnosticTest
 {
     private const int ProgressiveContainerStackAllocationLimit = 32;
 
+    [TestCase("public static int Length() ", "=> 4;", "=> 8;", "")]
+    [TestCase("public static int Length() ", "{ return 4; }", "=> 8;", "")]
+    [TestCase("public static int Length() ", "=> 4;", "{ return 8; }", "")]
+    [TestCase("public static int Value { get ", "=> 4;", "{ return 8; }", "} public static int Length() => Value;")]
+    [TestCase("static int four = 4, eight = 8; public static ref readonly int Value { get ", "=> ref four;", "{ return ref eight; }", "} public static int Length() => Value;")]
+    [TestCase("public struct Holder { public int Value; public Holder(bool _) ", "=> Value = 4;", "{ Value = 8; }", "} public static int Length() => new Holder(true).Value;")]
+    public void Preset_selection_preserves_expression_and_block_bodies(string member, string defaultBody, string alternateBody, string rest)
+    {
+        string declaration = "public static class Preset { public static bool Alternate; " + member;
+        rest += "}";
+        MethodInfo select = CreateSszGenerator().GetType().GetMethod("SelectPresetBodies", BindingFlags.NonPublic | BindingFlags.Static)!;
+        string generated = (string)select.Invoke(null, [declaration + defaultBody + rest, declaration + alternateBody + rest, "Alternate"])!;
+        CSharpCompilation compilation = CSharpCompilation.Create("Preset" + Guid.NewGuid().ToString("N"),
+            [CSharpSyntaxTree.ParseText(generated)], BuildMetadataReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using MemoryStream stream = new();
+        Microsoft.CodeAnalysis.Emit.EmitResult result = compilation.Emit(stream);
+        Assert.That(result.Success, Is.True, string.Join(Environment.NewLine, result.Diagnostics));
+        Type preset = Assembly.Load(stream.ToArray()).GetType("Preset")!;
+        Assert.That(preset.GetMethod("Length")!.Invoke(null, null), Is.EqualTo(4));
+        preset.GetField("Alternate")!.SetValue(null, true);
+        Assert.That(preset.GetMethod("Length")!.Invoke(null, null), Is.EqualTo(8));
+    }
+
+    [Test]
+    public void Preset_selection_rejects_mismatched_signatures()
+    {
+        MethodInfo select = CreateSszGenerator().GetType().GetMethod("SelectPresetBodies", BindingFlags.NonPublic | BindingFlags.Static)!;
+        TargetInvocationException exception = Assert.Throws<TargetInvocationException>(() => select.Invoke(null,
+            ["class C { int Length() => 4; }", "class C { int Other() => 8; }", "true"]))!;
+        Assert.That(exception.InnerException, Is.TypeOf<InvalidOperationException>().With.Message.Contains("signatures differ"));
+    }
+
     [TestCase(0, false)]
     [TestCase(3, false)]
     [TestCase(4, false)]
@@ -25,19 +57,22 @@ public class SszGeneratorDiagnosticTest
     [TestCase(33, false)]
     [TestCase(32, true)]
     [TestCase(33, true)]
-    public void Generated_scratch_boundaries_preserve_roots(int fieldCount, bool progressive)
+    [TestCase(1, true, 31)]
+    [TestCase(1, true, 32)]
+    public void Generated_scratch_boundaries_preserve_roots(int fieldCount, bool progressive, int leadingGap = 0)
     {
         StringBuilder members = new();
         for (int i = 0; i < fieldCount; i++)
         {
-            if (progressive) members.AppendLine($"[SszField({i})]");
+            if (progressive) members.AppendLine($"[SszField({leadingGap + i})]");
             members.AppendLine($"public ulong Field{i} {{ get; set; }} = {i + 1};");
         }
         string source = $$"""
             using System;
             using Nethermind.Int256;
             using Nethermind.Serialization.Ssz;
-            [SszContainer]
+            // Without locals init, stale stack memory would show up in the root.
+            [SszContainer, System.Runtime.CompilerServices.SkipLocalsInit]
             public partial class BoundaryContainer
             {
                 {{members}}
@@ -52,21 +87,21 @@ public class SszGeneratorDiagnosticTest
             }
             """;
         CSharpParseOptions options = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
-        RunGenerator(source, options, $"ScratchBoundary{fieldCount}{progressive}", out Compilation compilation);
+        RunGenerator(source, options, $"ScratchBoundary{fieldCount}{progressive}{leadingGap}", out Compilation compilation);
         using MemoryStream stream = new();
         Microsoft.CodeAnalysis.Emit.EmitResult emitted = compilation.Emit(stream);
         Assert.That(emitted.Success, Is.True, string.Join(Environment.NewLine, emitted.Diagnostics));
         Assembly assembly = Assembly.Load(stream.ToArray());
         (UInt256 actual, long allocated) = ((UInt256, long))assembly.GetType("BoundaryContainer")!.GetMethod("Measure")!.Invoke(null, null)!;
 
-        UInt256[] fields = new UInt256[fieldCount];
-        for (int i = 0; i < fieldCount; i++) fields[i] = (ulong)(i + 1);
+        UInt256[] fields = new UInt256[leadingGap + fieldCount];
+        for (int i = 0; i < fieldCount; i++) fields[leadingGap + i] = (ulong)(i + 1);
         UInt256 expected;
         if (progressive)
         {
             Merkle.MerkleizeProgressive(out expected, fields);
-            byte[] activeFields = new byte[(fieldCount + 7) / 8];
-            for (int i = 0; i < fieldCount; i++) activeFields[i / 8] |= (byte)(1 << (i % 8));
+            byte[] activeFields = new byte[(fields.Length + 7) / 8];
+            for (int i = leadingGap; i < fields.Length; i++) activeFields[i / 8] |= (byte)(1 << (i % 8));
             Merkle.MixInActiveFields(ref expected, activeFields);
         }
         else
@@ -76,7 +111,7 @@ public class SszGeneratorDiagnosticTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.EqualTo(expected));
-            Assert.That(allocated, progressive && fieldCount > ProgressiveContainerStackAllocationLimit ? Is.GreaterThan(0) : Is.Zero);
+            Assert.That(allocated, progressive && fields.Length > ProgressiveContainerStackAllocationLimit ? Is.GreaterThan(0) : Is.Zero);
         }
     }
 
@@ -373,6 +408,59 @@ public class SszGeneratorDiagnosticTest
         }
     }
 
+    [Test]
+    public void Converter_backed_type_named_byte_outside_system_merkleizes_through_its_converter()
+    {
+        const string source = """
+            using System;
+            using Nethermind.Serialization.Ssz;
+            using Nethermind.Serialization.Ssz.Merkleization;
+
+            [SszContainer]
+            public partial struct CustomByteContainer
+            {
+                [SszList(4)]
+                public Custom.Byte[]? Items { get; set; }
+            }
+
+            namespace Custom
+            {
+                public readonly struct Byte
+                {
+                }
+
+                [SszBasicTypeConverter<Byte>]
+                public static class ByteConverter
+                {
+                    public const int Length = 1;
+
+                    public static Byte FromSpan(ReadOnlySpan<byte> span) => default;
+
+                    public static void FromSpan(ReadOnlySpan<byte> span, Span<Byte> values)
+                    {
+                    }
+
+                    public static void ToSpan(Span<byte> span, Byte value)
+                    {
+                    }
+
+                    public static void ToSpan(Span<byte> span, ReadOnlySpan<Byte> values)
+                    {
+                    }
+
+                    public static void Feed(ref Merkleizer merkleizer, Byte value)
+                    {
+                    }
+                }
+            }
+            """;
+
+        CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        string generated = GetGeneratedSource(source, parseOptions, nameof(Converter_backed_type_named_byte_outside_system_merkleizes_through_its_converter), "Serialization.SszCodec.CustomByteContainer.cs");
+
+        Assert.That(generated, Does.Contain("MerkleizeBasicListWithConverter<Byte>(container.Items"));
+    }
+
     private static Diagnostic GetSsz003Diagnostic(string source, CSharpParseOptions parseOptions, string assemblyName)
     {
         GeneratorDriverRunResult result = RunGenerator(source, parseOptions, assemblyName);
@@ -405,6 +493,77 @@ public class SszGeneratorDiagnosticTest
         return string.Empty;
     }
 
+    [Test]
+    public void Json_shapes_preserve_field_order_and_original_partial_declaration_position([Values] bool reversed)
+    {
+        const string source = """
+            using System.Text.Json;
+            namespace Nethermind.Core.Crypto
+            {
+                public class Hash256 { public byte[] Bytes { get; set; } = [1]; }
+            }
+            namespace Nethermind.BeaconChain.Types
+            {
+                public class ArrayEntry { public Nethermind.Core.Crypto.Hash256[] Proof { get; set; } = [new()]; }
+                public class Item
+                {
+                    public ulong First { get; set; }
+                    public ulong Second { get; set; }
+                    public ArrayEntry[] Deposits { get; set; } = [new()];
+                }
+            }
+            namespace Nethermind.BeaconChain.Api.Common
+            {
+                internal static partial class BeaconJsonWriter
+                {
+                    public static void Before() { }
+                    public static partial void WriteItem(Utf8JsonWriter w, Nethermind.BeaconChain.Types.Item item);
+                    private static partial void WriteDeposits(Utf8JsonWriter w, Nethermind.BeaconChain.Types.ArrayEntry[] itemArrayEntry);
+                    public static void After() { }
+                    private static void WriteHexValue(Utf8JsonWriter w, byte[] value) => w.WriteStringValue(System.Convert.ToHexString(value));
+                    private static void WriteUInt(Utf8JsonWriter w, string name, ulong value) => w.WriteString(name, value.ToString());
+                }
+            }
+            """;
+        string fields = reversed ? "Second=second First=first Deposits=deposits" : "First=first Second=second Deposits=deposits";
+        CSharpCompilation input = CSharpCompilation.Create("JsonShapeContract", [CSharpSyntaxTree.ParseText(source)],
+            BuildMetadataReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        GeneratorDriver driver = CSharpGeneratorDriver.Create([new BeaconJsonShapeGenerator().AsSourceGenerator()],
+            additionalTexts: [new JsonSchema("ArrayEntry Proof=proof\nItem " + fields + "\nmethod public WriteItem Item item - object\nmethod private WriteDeposits ArrayEntry itemArrayEntry deposits array")]);
+        driver = driver.RunGeneratorsAndUpdateCompilation(input, out Compilation output, out _);
+        string generated = driver.GetRunResult().Results[0].GeneratedSources[0].SourceText.ToString();
+        if (reversed)
+        {
+            Assert.That(generated, Does.Contain("#error Beacon JSON generation failed: Unknown or reordered property"));
+            return;
+        }
+
+        using MemoryStream image = new();
+        Microsoft.CodeAnalysis.Emit.EmitResult result = output.Emit(image);
+        Assert.That(result.Success, Is.True, string.Join(Environment.NewLine, result.Diagnostics));
+        Assembly assembly = Assembly.Load(image.ToArray());
+        MethodInfo[] methods = assembly.GetType("Nethermind.BeaconChain.Api.Common.BeaconJsonWriter")!
+            .GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+        Array.Sort(methods, static (a, b) => a.MetadataToken.CompareTo(b.MetadataToken));
+        Assert.That(Array.ConvertAll(methods, static m => m.Name), Is.EqualTo(new[] { "Before", "WriteItem", "WriteDeposits", "After", "WriteHexValue", "WriteUInt" }));
+        using MemoryStream json = new();
+        using (System.Text.Json.Utf8JsonWriter writer = new(json))
+        {
+            object item = Activator.CreateInstance(assembly.GetType("Nethermind.BeaconChain.Types.Item")!)!;
+            item.GetType().GetProperty("First")!.SetValue(item, 7UL);
+            item.GetType().GetProperty("Second")!.SetValue(item, 9UL);
+            methods[1].Invoke(null, [writer, item]);
+        }
+        Assert.That(Encoding.UTF8.GetString(json.ToArray()), Is.EqualTo("{\"first\":\"7\",\"second\":\"9\",\"deposits\":[{\"proof\":[\"01\"]}]}"));
+    }
+
+    private sealed class JsonSchema(string text) : AdditionalText
+    {
+        public override string Path => "Contract.beacon-json";
+        public override Microsoft.CodeAnalysis.Text.SourceText GetText(System.Threading.CancellationToken cancellationToken = default) =>
+            Microsoft.CodeAnalysis.Text.SourceText.From(text);
+    }
+
     private static GeneratorDriverRunResult RunGenerator(string source, CSharpParseOptions parseOptions, string assemblyName)
         => RunGenerator(source, parseOptions, assemblyName, out _);
 
@@ -415,7 +574,7 @@ public class SszGeneratorDiagnosticTest
             assemblyName,
             [syntaxTree],
             BuildMetadataReferences(),
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
 
         GeneratorDriver driver = CSharpGeneratorDriver.Create(CreateSszGenerator())
             .WithUpdatedParseOptions(parseOptions);
@@ -424,7 +583,7 @@ public class SszGeneratorDiagnosticTest
         return driver.GetRunResult();
     }
 
-    private static IIncrementalGenerator CreateSszGenerator()
+    private static IIncrementalGenerator CreateSszGenerator(string name = "SszGenerator")
     {
         DirectoryInfo configurationDirectory = new(AppContext.BaseDirectory);
         DirectoryInfo artifactsBinDirectory = configurationDirectory.Parent?.Parent
@@ -436,7 +595,7 @@ public class SszGeneratorDiagnosticTest
             "Nethermind.Serialization.SszGenerator.dll");
 
         Assembly assembly = Assembly.LoadFrom(generatorAssemblyPath);
-        Type generatorType = assembly.GetType("SszGenerator", throwOnError: true)!;
+        Type generatorType = assembly.GetType(name, throwOnError: true)!;
         return (IIncrementalGenerator)Activator.CreateInstance(generatorType)!;
     }
 

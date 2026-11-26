@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 /// struct-log entries are streamed and never accumulated on the heap.
 /// </summary>
 [JsonConverter(typeof(GethLikeTxTraceStreamingSingleResultConverter))]
-public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IStreamableResult
+public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IDeferredExecutionResult
 {
     private readonly Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> _runTrace;
     private readonly CancellationToken _timeoutToken;
@@ -52,7 +52,7 @@ public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IStr
     internal void WriteAsJson(Utf8JsonWriter writer) => EmitContent(writer, null, _timeoutToken);
 
     private void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken) =>
-        StructLogEnvelopeWriter.EmitTraceObject(writer, pipeWriter, cancellationToken, _runTrace, _logger);
+        StructLogEnvelopeWriter.EmitTraceObject(writer, pipeWriter, cancellationToken, _runTrace, _logger, isSingleResult: true);
 }
 
 internal sealed class GethLikeTxTraceStreamingSingleResultConverter : JsonConverter<GethLikeTxTraceStreamingSingleResult>

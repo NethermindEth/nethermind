@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
 using Nethermind.Core;
+using Nethermind.Logging;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -36,10 +39,32 @@ namespace Nethermind.State
             return account.CodeHash;
         }
 
+        public static TrieStats CollectStats(this IStateReader stateProvider, BlockHeader? baseBlock, IKeyValueStore codeStorage, ILogManager logManager, CancellationToken cancellationToken = default)
+        {
+            TrieStatsCollector collector = new(codeStorage, logManager, cancellationToken);
+            stateProvider.RunTreeVisitor(collector, baseBlock, new VisitingOptions
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount,
+            }, diagnostics: null);
+            collector.Finish();
+            return collector.Stats;
+        }
+
+        /// <summary>
+        /// Collects up to <paramref name="limit"/> storage slots of <paramref name="address"/> at <paramref name="baseBlock"/>,
+        /// in hashed-key order from the hashed key <paramref name="startKey"/>.
+        /// </summary>
+        public static StorageRangeVisitor CollectStorageRange(this IStateReader stateReader, BlockHeader? baseBlock, Address address, in ValueHash256 startKey, int limit)
+        {
+            StorageRangeVisitor visitor = new(address, startKey, limit);
+            stateReader.RunTreeVisitor(visitor, baseBlock, visitingOptions: null, diagnostics: null);
+            return visitor;
+        }
+
         public static string DumpState(this IStateReader stateReader, BlockHeader? baseBlock)
         {
             TreeDumper dumper = new();
-            stateReader.RunTreeVisitor(dumper, baseBlock);
+            stateReader.RunTreeVisitor(dumper, baseBlock, visitingOptions: null, diagnostics: null);
             return dumper.ToString();
         }
     }

@@ -22,6 +22,8 @@ internal static partial class StackPool
 
     public static partial void ReturnStacks(byte[] dataStack) => _stackPool.Enqueue(new(dataStack));
 
+    public static partial void ReturnStacksShared(byte[] dataStack) => _stackPool.EnqueueShared(new(dataStack));
+
     public static partial byte[] RentStacks()
     {
         if (_stackPool.TryDequeue(out StackItem result))

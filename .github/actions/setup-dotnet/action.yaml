@@ -1,0 +1,171 @@
+name: Set up .NET
+description: >-
+  Runs actions/setup-dotnet, retrying up to 3 attempts with growing pauses: the dotnet-install
+  script sometimes crashes on hosted runners (e.g. "Internal CLR error" on windows-11-arm).
+  If all attempts fail, installs the SDK directly from the .NET CDN.
+  Run after actions/checkout, as this action is local.
+
+inputs:
+  dotnet-version:
+    description: SDK version(s) to install, as for actions/setup-dotnet. Defaults to global.json.
+    required: false
+    default: ''
+  global-json-file:
+    description: Path to a global.json file, as for actions/setup-dotnet.
+    required: false
+    default: ''
+  cache:
+    description: Cache the NuGet global-packages folder, as for actions/setup-dotnet. The CDN fallback skips it.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Set up .NET
+      id: attempt1
+      continue-on-error: true
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+        global-json-file: ${{ inputs.global-json-file }}
+        cache: ${{ inputs.cache }}
+
+    - name: Wait before attempt 2
+      if: steps.attempt1.outcome == 'failure'
+      shell: bash
+      run: sleep 5
+
+    - name: Set up .NET (attempt 2)
+      id: attempt2
+      if: steps.attempt1.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+        global-json-file: ${{ inputs.global-json-file }}
+        cache: ${{ inputs.cache }}
+
+    - name: Wait before attempt 3
+      if: steps.attempt2.outcome == 'failure'
+      shell: bash
+      run: sleep 15
+
+    - name: Set up .NET (attempt 3)
+      id: attempt3
+      if: steps.attempt2.outcome == 'failure'
+      continue-on-error: true
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+        global-json-file: ${{ inputs.global-json-file }}
+        cache: ${{ inputs.cache }}
+
+    # For a channel, dotnet-install downloads only the aka.ms redirect target (the origin storage)
+    # and never tries the CDN. An exact version makes it use the feed that we pass.
+    - name: Set up .NET from the CDN
+      if: steps.attempt3.outcome == 'failure'
+      shell: bash
+      env:
+        DOTNET_VERSION_INPUT: ${{ inputs.dotnet-version }}
+        GLOBAL_JSON_FILE: ${{ inputs.global-json-file }}
+        FEED: https://builds.dotnet.microsoft.com/dotnet
+      run: |
+        set -euo pipefail
+
+        # As setup-dotnet, rollForward widens sdk.version to a channel. The CDN has no feature-band
+        # channels, so latestPatch keeps the exact version, which global.json also accepts.
+        # Self-hosted runners can lack jq, and jq rejects the comments that setup-dotnet accepts.
+        # The sed form takes the first match, so it needs "sdk" first.
+        sdk_field() {
+          if command -v jq > /dev/null && jq empty "$1" 2> /dev/null; then
+            jq -r ".sdk.$2 // empty" "$1"
+          else
+            sed -E "s#^[[:space:]]*//.*##; s#/[*].*[*]/##" "$1" | sed -nE "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/p" | head -n1
+          fi
+        }
+
+        version_from_global_json() {
+          local version roll
+          # Native jq.exe on Windows writes CRLF.
+          version=$(sdk_field "$1" version | tr -d '\r')
+          [[ -n $version ]] || echo "::error::No usable sdk.version in '$1'." >&2
+          roll=$(sdk_field "$1" rollForward | tr -d '\r')
+          if [[ -n $roll && $version != *-* ]]; then
+            case $roll in
+              latestFeature) version=${version%.*} ;;
+              latestMinor) version=${version%%.*} ;;
+              latestMajor) version='' ;;
+            esac
+          fi
+          echo "$version"
+        }
+
+        resolve_version() {
+          local channel
+          if [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            echo "$1"
+            return
+          elif [[ $1 =~ ^([0-9]+)(\.[xX*])?$ ]]; then
+            channel="${BASH_REMATCH[1]}.0"
+          elif [[ $1 =~ ^([0-9]+\.[0-9]+)(\.[xX*])?$ ]]; then
+            channel=${BASH_REMATCH[1]}
+          else
+            echo "::error::The CDN fallback does not support the .NET version '$1'." >&2
+            return 1
+          fi
+          curl -fsSL --retry 5 --retry-connrefused "$FEED/Sdk/$channel/latest.version" | tr -d '\r' | sed '/^$/d' | tail -n1
+        }
+
+        versions=()
+        while read -r line; do
+          if [[ -n $line ]]; then versions+=("$line"); fi
+        done <<< "$DOTNET_VERSION_INPUT"
+        if [[ -n $GLOBAL_JSON_FILE ]]; then
+          versions+=("$(version_from_global_json "$GLOBAL_JSON_FILE")")
+        elif [[ ${#versions[@]} -eq 0 && -f global.json ]]; then
+          versions+=("$(version_from_global_json global.json)")
+        fi
+        if [[ ${#versions[@]} -eq 0 ]]; then
+          echo "::error::No .NET version to install: set dotnet-version or add global.json."
+          exit 1
+        fi
+
+        if [[ $RUNNER_OS == Windows ]]; then
+          script_name=dotnet-install.ps1
+          script="$RUNNER_TEMP\\$script_name"
+          default_dir="$PROGRAMFILES\\dotnet"
+        else
+          script_name=dotnet-install.sh
+          script="$RUNNER_TEMP/$script_name"
+          default_dir=/usr/share/dotnet
+          if [[ $RUNNER_OS == macOS ]]; then default_dir="$HOME/.dotnet"; fi
+        fi
+        install_dir=${DOTNET_INSTALL_DIR:-$default_dir}
+        curl -fsSL --retry 5 --retry-connrefused -o "$script" "$FEED/scripts/v1/$script_name"
+
+        run_install() {
+          if [[ $RUNNER_OS == Windows ]]; then
+            pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -File "$script" \
+              -Version "$1" -AzureFeed "$FEED" -InstallDir "$install_dir" -SkipNonVersionedFiles
+          else
+            bash "$script" --version "$1" --azure-feed "$FEED" --install-dir "$install_dir" --skip-non-versioned-files
+          fi
+        }
+
+        for requested in "${versions[@]}"; do
+          version=$(resolve_version "$requested")
+          if [[ -z $version ]]; then
+            echo "::error::Could not resolve an SDK version for '$requested' from $FEED."
+            exit 1
+          fi
+          echo "Installing .NET SDK $version (requested '$requested') from $FEED"
+          for attempt in 1 2 3; do
+            if run_install "$version"; then break; fi
+            if [[ $attempt -eq 3 ]]; then exit 1; fi
+            sleep 10
+          done
+        done
+
+        echo "DOTNET_ROOT=$install_dir" >> "$GITHUB_ENV"
+        echo "$install_dir" >> "$GITHUB_PATH"

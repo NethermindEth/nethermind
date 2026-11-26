@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Test.Threading;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
@@ -14,16 +15,26 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class NodeFilterTests
 {
+    /// <remarks>
+    /// Reports the cheapest of several identical measurement windows: a per-touch cost survives the minimum,
+    /// while a one-off chunk the runtime charges to this thread lands in one window only.
+    /// </remarks>
     [Test]
     public void Touch_existing_address_does_not_allocate([Values] bool exactMatchOnly)
     {
+        const int Iterations = 1000;
+        const int Windows = 5;
         NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly);
         IPAddress address = IPAddress.Parse("203.0.113.1");
-        for (int i = 0; i < 1000; i++) filter.Touch(address);
+        for (int i = 0; i < Iterations; i++) filter.Touch(address);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1000; i++) filter.Touch(address);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = long.MaxValue;
+        for (int window = 0; window < Windows; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < Iterations; i++) filter.Touch(address);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -41,14 +52,16 @@ public class NodeFilterTests
         filter.Touch(first);
         filter.Touch(second);
         filter.Touch(first);
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryAccept(first), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(filter.TryAccept(second), Is.True);
     }
 
     private static NodeFilter CreateFilter(int size = 100, bool exactMatchOnly = false,
-        IPAddress? currentIp = null, long timeoutMs = 0) =>
+        IPAddress? currentIp = null, long timeoutMs = 0, TimeProvider? timeProvider = null) =>
         timeoutMs > 0
-            ? new NodeFilter(size, exactMatchOnly, currentIp, timeoutMs)
+            ? new NodeFilter(size, exactMatchOnly, currentIp, timeoutMs, timeProvider)
             : new NodeFilter(size, exactMatchOnly, currentIp);
 
     [TestCase("192.0.2.1", Description = "IPv4 exact match blocks same address")]
@@ -69,7 +82,9 @@ public class NodeFilterTests
         IPAddress ip1 = IPAddress.Parse("192.0.2.1");
         IPAddress ip2 = IPAddress.Parse("192.0.2.2");
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryAccept(ip1), Is.True, "first address should be accepted");
+#pragma warning restore NUnit2045
         Assert.That(filter.TryAccept(ip2), Is.True, "different address should be accepted");
     }
 
@@ -93,7 +108,9 @@ public class NodeFilterTests
     public void TryAccept_FiltersSecondAddress(string first, string second, bool secondAccepted)
     {
         NodeFilter filter = CreateFilter();
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryAccept(IPAddress.Parse(first)), Is.True, "first address should be accepted");
+#pragma warning restore NUnit2045
         Assert.That(filter.TryAccept(IPAddress.Parse(second)), Is.EqualTo(secondAccepted));
     }
 
@@ -104,8 +121,11 @@ public class NodeFilterTests
         IPAddress first = IPAddress.Parse("2001:db8::1");
         IPAddress sameSubnet = IPAddress.Parse("2001:db8::2");
 
-        Assert.That(filter.WouldAccept(first), Is.True);
-        Assert.That(filter.WouldAccept(sameSubnet), Is.True, "a read-only probe must not consume filter capacity");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.WouldAccept(first), Is.True);
+            Assert.That(filter.WouldAccept(sameSubnet), Is.True, "a read-only probe must not consume filter capacity");
+        }
 
         filter.Touch(first);
 
@@ -150,35 +170,51 @@ public class NodeFilterTests
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentSetCallsSameAddress()
+    public async Task ThreadSafety_ConcurrentAcceptsSameKey([Values] bool exactMatchOnly, [Values] bool expired)
     {
-        NodeFilter filter = CreateFilter(exactMatchOnly: true);
-        IPAddress ip = IPAddress.Parse("192.0.2.1");
-        int threadCount = 10;
-        int attemptsPerThread = 10;
-
-        int acceptedCount = 0;
-        List<Task> tasks = [];
-
-        for (int t = 0; t < threadCount; t++)
+        const int ThreadCount = 16;
+        const int Rounds = 100;
+        ManualTimeProvider clock = new();
+        NodeFilter filter = CreateFilter(size: Rounds, exactMatchOnly: exactMatchOnly, timeoutMs: 5000, timeProvider: clock);
+        IPAddress[][] addresses = new IPAddress[ThreadCount][];
+        for (int t = 0; t < ThreadCount; t++)
         {
-            tasks.Add(Task.Run(() =>
+            addresses[t] = new IPAddress[Rounds];
+            for (int round = 0; round < Rounds; round++)
             {
-                for (int i = 0; i < attemptsPerThread; i++)
-                {
-                    if (filter.TryAccept(ip))
-                    {
-                        Interlocked.Increment(ref acceptedCount);
-                    }
-                }
-            }));
+                addresses[t][round] = IPAddress.Parse($"8.1.{round}.{(exactMatchOnly ? 1 : t + 1)}");
+            }
         }
 
-        Task.WaitAll([.. tasks]);
+        if (expired)
+        {
+            foreach (IPAddress address in addresses[0]) filter.Touch(address);
+            clock.Advance(TimeSpan.FromSeconds(5.5));
+        }
 
-        // At least one call should succeed, but not all attempts should be accepted for the same IP
-        Assert.That(acceptedCount, Is.GreaterThan(0), "at least one concurrent attempt should be accepted");
-        Assert.That(acceptedCount, Is.LessThan(threadCount * attemptsPerThread), "not all concurrent attempts should be accepted for the same address");
+        int[] acceptedCounts = new int[Rounds];
+        using Barrier barrier = new(ThreadCount);
+        Task[] tasks = new Task[ThreadCount];
+        for (int t = 0; t < ThreadCount; t++)
+        {
+            int threadIndex = t;
+            tasks[t] = Task.Factory.StartNew(() =>
+            {
+                for (int round = 0; round < Rounds; round++)
+                {
+                    if (!barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
+                    {
+                        throw new TimeoutException("Concurrent filter callers did not reach the barrier.");
+                    }
+                    if (filter.TryAccept(addresses[threadIndex][round]))
+                        Interlocked.Increment(ref acceptedCounts[round]);
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        }
+
+        await Task.WhenAll(tasks);
+
+        Assert.That(acceptedCounts, Is.All.EqualTo(1), "each key should be accepted exactly once within the timeout");
     }
 
     [Test]
@@ -189,7 +225,9 @@ public class NodeFilterTests
         IPAddress ip2 = IPAddress.Parse("192.0.2.2");
         IPAddress ip3 = IPAddress.Parse("192.0.2.3");
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryAccept(ip1), Is.True, "first address should be accepted");
+#pragma warning restore NUnit2045
         Assert.That(filter.TryAccept(ip2), Is.True, "second address should be accepted");
         Assert.That(filter.TryAccept(ip3), Is.True, "third address should be accepted");
 
@@ -214,6 +252,24 @@ public class NodeFilterTests
     {
         NodeFilter filter = NodeFilter.Create(50, filterEnabled: false, subnetBucketing: true, currentIp: null);
         Assert.That(filter, Is.SameAs(NodeFilter.AcceptAll));
+    }
+
+    [Test]
+    public void Create_keeps_recent_connections_when_peer_target_is_zero()
+    {
+        NodeFilter filter = NodeFilter.Create(0, filterEnabled: true, subnetBucketing: false, currentIp: null);
+        IPAddress[] addresses =
+        [
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("192.0.2.2"),
+            IPAddress.Parse("192.0.2.3"),
+            IPAddress.Parse("192.0.2.4"),
+        ];
+        List<bool> accepted = [];
+        foreach (IPAddress address in addresses) accepted.Add(filter.TryAccept(address));
+        foreach (IPAddress address in addresses) accepted.Add(filter.TryAccept(address));
+
+        Assert.That(accepted, Is.EqualTo(new[] { true, true, true, true, false, false, false, false }));
     }
 
     [TestCase("127.0.0.1", true, Description = "IPv4 loopback")]
@@ -277,51 +333,60 @@ public class NodeFilterTests
 
         if (expectEqual)
         {
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(filter.TryAccept(IPAddress.Parse(remote1)), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(filter.TryAccept(IPAddress.Parse(remote2)), Is.False);
         }
         else
         {
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(filter.TryAccept(IPAddress.Parse(remote1)), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(filter.TryAccept(IPAddress.Parse(remote2)), Is.True);
         }
     }
 
     [TestCase(true, "192.0.2.1", "192.0.2.1", Description = "Exact match reaccepts after timeout")]
     [TestCase(false, "203.0.113.1", "203.0.113.50", Description = "Subnet bucket reaccepts after timeout")]
-    public async Task TimeoutExpiry_ReacceptsAfterTimeout(bool exactMatchOnly, string first, string second)
+    public void TimeoutExpiry_ReacceptsAfterTimeout(bool exactMatchOnly, string first, string second)
     {
-        NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly, timeoutMs: 100);
+        ManualTimeProvider clock = new();
+        NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly, timeoutMs: 100, timeProvider: clock);
         IPAddress ip1 = IPAddress.Parse(first);
         IPAddress ip2 = IPAddress.Parse(second);
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryAccept(ip1), Is.True, "first attempt should be accepted");
+#pragma warning restore NUnit2045
         Assert.That(filter.TryAccept(ip2), Is.False, "second attempt within timeout should be rejected");
 
-        await Task.Delay(500);
+        clock.Advance(TimeSpan.FromMilliseconds(500));
 
         Assert.That(filter.TryAccept(ip2), Is.True, "attempt after timeout expiry should be accepted again");
     }
 
     [TestCase(true, "192.0.2.1", "192.0.2.1", Description = "Touch refreshes exact match timeout")]
     [TestCase(false, "203.0.113.1", "203.0.113.50", Description = "Touch refreshes subnet bucket timeout")]
-    public async Task Touch_RefreshesTimeout(bool exactMatchOnly, string firstAddr, string touchAddr)
+    public void Touch_RefreshesTimeout(bool exactMatchOnly, string firstAddr, string touchAddr)
     {
-        NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly, timeoutMs: 2000);
+        // The middle check comes after the first window has expired, so only the Touch can make it reject.
+        ManualTimeProvider clock = new();
+        NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly, timeoutMs: 5000, timeProvider: clock);
         IPAddress ip1 = IPAddress.Parse(firstAddr);
         IPAddress ip2 = IPAddress.Parse(touchAddr);
 
         Assert.That(filter.TryAccept(ip1), Is.True, "first attempt should be accepted");
 
-        await Task.Delay(500);
+        clock.Advance(TimeSpan.FromSeconds(4));
 
         filter.Touch(ip2);
 
-        await Task.Delay(1000);
+        clock.Advance(TimeSpan.FromSeconds(2));
 
         Assert.That(filter.TryAccept(ip1), Is.False, "touch should refresh the timeout window");
 
-        await Task.Delay(1500);
+        clock.Advance(TimeSpan.FromSeconds(3.5));
 
         Assert.That(filter.TryAccept(ip1), Is.True, "address should be accepted again after the refreshed timeout expires");
     }

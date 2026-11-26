@@ -20,12 +20,15 @@ jobs:
       matrix:
         language: ['csharp', 'actions']
     steps:
+      # Private repositories (nethermind-sec) get the smaller hosted runner, whose root disk this build fills.
       - name: Free up disk space
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
+        if: github.event.repository.private
+        # It starts with ~15 GB free and a full build needs ~33 GB; these hold over 25 GB the job never uses.
+        # /opt/hostedtoolcache/CodeQL stays: codeql-action/init uses that bundle and would download it again.
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/local/.ghcup /opt/ghc /usr/share/swift /usr/local/share/powershell /usr/lib/jvm /opt/az /usr/local/share/chromium /opt/google
+          docker image prune -af > /dev/null
+          df -h /
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -34,11 +37,11 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          queries: security-and-quality
+          queries: ${{ matrix.language == 'actions' && 'security-and-quality' || 'security-extended' }}
           packs: githubsecuritylab/codeql-csharp-queries
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Build Nethermind
         working-directory: src/Nethermind

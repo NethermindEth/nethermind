@@ -91,7 +91,7 @@ public static class EnrTreeParser
             return text.Substring(index + key.Length, length);
         }
 
-        static int ExtractSequence(string text)
+        static ulong ExtractSequence(string text)
         {
             int index = text.IndexOf("seq=", StringComparison.Ordinal);
             if (index < 0)
@@ -111,7 +111,7 @@ public static class EnrTreeParser
                 throw new FormatException("Malformed enrtree-root: 'seq=' field is not terminated.");
             }
 
-            if (!int.TryParse(text.AsSpan(start, end - start), out int sequence))
+            if (!ulong.TryParse(text.AsSpan(start, end - start), out ulong sequence))
             {
                 throw new FormatException("Malformed enrtree-root: 'seq=' value is not a valid number.");
             }

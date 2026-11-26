@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -39,10 +40,15 @@ namespace Nethermind.Core.Crypto
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
+        /// <exception cref="FormatException"><paramref name="hex"/> is not valid hex or does not decode to exactly 32 bytes.</exception>
         public ValueHash256(string hex)
         {
             byte[] bytes = Extensions.Bytes.FromHexString(hex);
-            Debug.Assert(bytes.Length == ValueHash256.MemorySize);
+            if (bytes.Length != MemorySize)
+            {
+                ThrowInvalidHexLength(bytes.Length);
+            }
+
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
@@ -52,8 +58,12 @@ namespace Nethermind.Core.Crypto
         public ValueHash256(ReadOnlySpan<byte> bytes)
         {
             Debug.Assert(bytes.Length == MemorySize);
-            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
+            _bytes = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidHexLength(int length) =>
+            throw new FormatException($"{nameof(ValueHash256)} must be {MemorySize} bytes and was {length} bytes");
 
         public override bool Equals(object? obj) => obj is ValueHash256 keccak && Equals(keccak);
 
@@ -136,7 +146,7 @@ namespace Nethermind.Core.Crypto
     public sealed class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
     {
         public const int Size = 32;
-        public static readonly Hash256 Zero = new("0x0000000000000000000000000000000000000000000000000000000000000000");
+        public static readonly Hash256 Zero = new(default(ValueHash256));
 
         public const int MemorySize =
             MemorySizes.ObjectHeaderMethodTable +
@@ -161,7 +171,7 @@ namespace Nethermind.Core.Crypto
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Hash256)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
+                ThrowInvalidLength(bytes.Length, nameof(bytes));
             }
 
             _hash256 = new ValueHash256(bytes);
@@ -171,11 +181,15 @@ namespace Nethermind.Core.Crypto
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Hash256)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
+                ThrowInvalidLength(bytes.Length, nameof(bytes));
             }
 
             _hash256 = new ValueHash256(bytes);
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidLength(int length, string paramName) =>
+            throw new ArgumentException($"{nameof(Hash256)} must be {Size} bytes and was {length} bytes", paramName);
 
         public static Hash256 FromBytesWithPadding(ReadOnlySpan<byte> bytes)
         {

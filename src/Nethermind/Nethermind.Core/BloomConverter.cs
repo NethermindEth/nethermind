@@ -20,11 +20,14 @@ public class BloomConverter : JsonConverter<Bloom>
         Span<byte> bytes = stackalloc byte[Bloom.ByteLength];
         if (ByteArrayConverter.TryConvertToSpan(ref reader, bytes, out int bytesWritten))
         {
-            return new Bloom(bytes[..bytesWritten]);
+            return Create(bytes[..bytesWritten]);
         }
 
         byte[]? bytesArray = ByteArrayConverter.Convert(ref reader);
-        return bytesArray is null ? null : new Bloom(bytesArray);
+        return bytesArray is null ? null : Create(bytesArray);
+
+        // EIP-7668: "0x" is the zero-length bloom.
+        static Bloom Create(ReadOnlySpan<byte> bytes) => bytes.IsEmpty ? Bloom.ZeroLength : new Bloom(bytes);
     }
 
     public override void Write(

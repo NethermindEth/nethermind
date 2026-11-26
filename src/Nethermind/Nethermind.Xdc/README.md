@@ -368,7 +368,7 @@ exactly `eth/100`, `eth/164` and `eth/165` — one per registered handler. A pee
 
 [`XdcDiscoveryApp`](Discovery/XdcDiscoveryApp.cs) overrides the default Discv4 app: XDC does not implement the
 ENR request/response messages, so [`XdcKademliaAdapter`](Discovery/XdcKademliaAdapter.cs) disables remote ENR
-refresh and [`XdcNettyDiscoveryHandler`](Discovery/XdcNettyDiscoveryHandler.cs) plus
+refresh and [`XdcDiscoveryHandler`](Discovery/XdcDiscoveryHandler.cs) plus
 [`XdcPingMsgSerializer`](Discovery/XdcPingMsgSerializer.cs) adjust wire compatibility.
 
 ---
@@ -382,9 +382,6 @@ those blocks. XDC therefore rebuilds them as part of state sync:
   reachable epoch switch and the pivot.
 - [`XdcStateSyncPivot`](XdcStateSyncPivot.cs) walks those gap blocks as intermediate sync targets, storing each
   snapshot as its state becomes available, before finalising on the real pivot.
-- [`XdcStateSyncDownloader`](P2P/XdcStateSyncDownloader.cs) and
-  [`XdcStateSyncAllocationStrategyFactory`](XdcStateSyncAllocationStrategyFactory.cs) adapt peer allocation to
-  that multi-target flow.
 - [`XdcBeaconSyncStrategy`](XdcBeaconSyncStrategy.cs) neutralises the merge/beacon code paths and reports the
   configured pivot as the sync target.
 
@@ -491,6 +488,12 @@ The methods are named `XDPoS_*`, but the module is registered as `Xdc` — that 
 | `XDPoS_getBlockInfoByV2EpochNum(epoch)` | Epoch-switch block for a V2 epoch |
 | `XDPoS_calculateBlockInfoByV1EpochNum(epoch)` | Epoch-switch block for a V1 epoch |
 | `XDPoS_getBlockInfoByEpochNum(epoch)` | Epoch-switch block, V1 or V2 |
+
+On XDC chains a block number argument given as a plain string also accepts the `committed` tag, an alias for
+`finalized`: the latest block committed by the three-chain rule. Of the methods above, `XDPoS_getMasternodesByNumber`,
+`XDPoS_getV2BlockByNumber` and `XDPoS_getMissedRoundsInEpochByBlockNum` resolve it, as in the reference client. The tag
+is not accepted by the log filter bounds of `eth_getLogs` and `eth_newFilter`, by `trace_filter`, or inside the
+`{"blockNumber": ...}` object form.
 
 ### `eth` extensions — [`IXdcExtendedEthRpcModule`](RPC/IXdcExtendedEthRpcModule.cs)
 
@@ -768,11 +771,12 @@ dotnet run --project src/Nethermind/Nethermind.Runner -c release -- --config ./x
 - A relative `ChainSpecPath` resolves against the executable's directory, so either drop the chainspec into
   the build output's `chainspec/` folder or give an absolute path. Embedded chainspecs are probed before the
   filesystem — even for an absolute path — so give the file a name that doesn't collide with a shipped one
-  (`xdc.json`, `xdc-testnet.json`, …), or the embedded copy is loaded instead. `--config` needs a path
-  (`./file.json`); a bare name is looked up among the built-in configs.
+  (`xdc.json`, `xdc-testnet.json`, …), or the embedded copy is loaded instead. `--config` takes a path
+  to a file (`./file.json`); a value that is not an existing file is looked up among the built-in configs.
 - `Mining.Enabled` gates both block production and the signer — without it the node follows the chain but
-  never proposes or votes. The signing key is `KeyStore.BlockAuthorAccount` from the keystore, falling back to
-  the node key, which `KeyStore.TestNodeKey` overrides with a plaintext key (dev only; it doubles as the
+  never proposes or votes. The signing key is `KeyStore.BlockAuthorAccount` from the keystore; startup fails
+  if that key cannot be loaded. When the account is unset, the node key is used, which
+  `KeyStore.TestNodeKey` overrides with a plaintext key (dev only; it doubles as the
   node's enode key). Its address has to be in the committee for the node's blocks and votes to count.
 - Per node: `Network.Bootnodes` (running a dedicated bootnode and leaving the chainspec's `nodes` array empty
   keeps the chain description free of deployment detail — `Network.StaticPeers` works instead when there is no

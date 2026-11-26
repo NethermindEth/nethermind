@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
@@ -26,16 +27,16 @@ public class ChainSpecHardforkLabelTests
     // "label set to genesis"; hex so it round-trips identically through chainspec JSON.
     private const ulong ActivationValue = 0x65687fd0;
 
-    // chainID=1 lets the EIP-6110 deposit-contract fallback resolve when a Prague-bearing label is expanded.
-    private static ChainSpec Load(string paramsJson)
+    // chainID defaults to 1, which lets the EIP-6110 deposit-contract fallback resolve when a Prague-bearing label is expanded.
+    private static ChainSpec Load(string paramsJson, ulong chainId = BlockchainIds.Mainnet)
     {
         string json = $$"""
             {
               "name": "Test",
               "engine": { "NethDev": {} },
               "params": {
-                "networkID": "0x1",
-                "chainID": "0x1",
+                "networkID": "0x{{chainId:x}}",
+                "chainID": "0x{{chainId:x}}",
                 {{paramsJson}}
               },
               "genesis": { "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } }, "difficulty": "0x1", "author": "0x0000000000000000000000000000000000000000", "timestamp": "0x0", "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000", "extraData": "0x", "gasLimit": "0x1388" },
@@ -184,6 +185,34 @@ public class ChainSpecHardforkLabelTests
             Assert.That(genesis.Header.WithdrawalsRoot, Is.Not.Null);
             Assert.That(genesis.Header.ParentBeaconBlockRoot, Is.Not.Null);
             Assert.That(genesis.Header.RequestsHash, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void Prague_label_resolves_the_deposit_contract_like_the_explicit_field()
+    {
+        ChainSpec explicitSpec = Load("\"eip6110TransitionTimestamp\": \"0x100\"");
+        ChainSpec labelSpec = Load("\"prague\": \"0x100\"");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(labelSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(0x100));
+            Assert.That(explicitSpec.Parameters.DepositContractAddress, Is.EqualTo(Eip6110Constants.MainnetDepositContractAddress));
+            Assert.That(labelSpec.Parameters.DepositContractAddress, Is.EqualTo(Eip6110Constants.MainnetDepositContractAddress));
+        }
+    }
+
+    [Test]
+    public void Prague_label_without_deposit_contract_off_mainnet_throws_like_the_explicit_field(
+        [Values("\"eip6110TransitionTimestamp\": \"0x100\"", "\"prague\": \"0x100\"")] string paramsJson)
+    {
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() => Load(paramsJson, chainId: 0x100))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.InnerException, Is.TypeOf<InvalidConfigurationException>());
+            Assert.That((exception.InnerException as InvalidConfigurationException)?.ExitCode, Is.EqualTo(ExitCodes.MissingChainspecEipConfiguration));
+            Assert.That(exception.InnerException?.Message, Does.Contain(nameof(ChainParameters.DepositContractAddress)));
         }
     }
 

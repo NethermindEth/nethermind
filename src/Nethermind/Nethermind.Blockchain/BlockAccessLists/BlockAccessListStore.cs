@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -19,6 +20,9 @@ namespace Nethermind.Blockchain.BlockAccessLists;
 public class BlockAccessListStore : IBlockAccessListStore
 {
     private const int KeyLength = 40;
+
+    /// <inheritdoc/>
+    public Lock WriteLock { get; } = new();
 
     private readonly IDb _balDb;
     private readonly BlockAccessListDecoder _balDecoder;
@@ -79,7 +83,7 @@ public class BlockAccessListStore : IBlockAccessListStore
         // Reuse the block's owned encoding. The fallback must also be owned because the overlay and its
         // non-owning read views can outlive this call, so a pool-rented buffer could be returned too early.
         byte[]? rlp = block.EncodedBlockAccessList is { } encoded ? encoded
-            : block.BlockAccessList is { } bal ? BlockAccessListDecoder.EncodeToBytes(bal)
+            : block.BlockAccessList is { } bal && !Exists(block.Number, blockHash) ? BlockAccessListDecoder.EncodeToBytes(bal)
             : null;
 
         block.GeneratedBlockAccessList = null;
@@ -104,6 +108,46 @@ public class BlockAccessListStore : IBlockAccessListStore
         return _balDb.GetOwnedMemory(key);
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Reads the lists that are not pending in one batch.</remarks>
+    public void AppendRlps(ReadOnlySpan<ulong> blockNumbers, ReadOnlySpan<ValueHash256> blockHashes, ArrayPoolList<byte> destination, Span<Range?> ranges)
+    {
+        using ArrayPoolSpan<byte> keys = new(blockHashes.Length * KeyLength);
+        using ArrayPoolSpan<int> stored = new(blockHashes.Length);
+        int count = 0;
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            if (_pending is not null && _pending.TryGet(in blockHashes[i], out byte[] pendingRlp))
+            {
+                ranges[i] = new AppendingDecoder(destination).Decode(pendingRlp);
+                continue;
+            }
+
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumbers[i], blockHashes[i], keys.Slice(count * KeyLength, KeyLength));
+            stored[count++] = i;
+        }
+
+        using ArrayPoolSpan<Range?> storedRanges = new(count);
+        _balDb.GetMany<Range?, AppendingDecoder>(keys.Slice(0, count * KeyLength), KeyLength, storedRanges, new(destination));
+        for (int j = 0; j < count; j++)
+        {
+            ranges[stored[j]] = storedRanges[j];
+        }
+    }
+
+    /// <remarks>An empty value reads as missing, as <see cref="IReadOnlyKeyValueStore.GetOwnedMemory"/> reads it.</remarks>
+    private readonly struct AppendingDecoder(ArrayPoolList<byte> destination) : IValueDecoder<Range?>
+    {
+        public Range? Decode(ReadOnlySpan<byte> buffer)
+        {
+            if (buffer.IsEmpty) return null;
+
+            int start = destination.Count;
+            destination.AddRange(buffer);
+            return new Range(start, destination.Count);
+        }
+    }
+
     [SkipLocalsInit]
     public bool Exists(ulong blockNumber, Hash256 blockHash)
     {
@@ -117,7 +161,7 @@ public class BlockAccessListStore : IBlockAccessListStore
     public ReadOnlyBlockAccessList? Get(ulong blockNumber, Hash256 blockHash)
     {
         using MemoryManager<byte>? rlp = GetRlp(blockNumber, blockHash);
-        return rlp is null ? null : _balDecoder.Decode(rlp.Memory.Span);
+        return rlp is null ? null : _balDecoder.Decode(rlp.Memory.Span, RlpBehaviors.TrustedInput);
     }
 
     [SkipLocalsInit]
@@ -137,13 +181,16 @@ public class BlockAccessListStore : IBlockAccessListStore
     /// deferred overlay for the range under its own lock so a queued write cannot resurrect one.</summary>
     public void DeleteRange(ulong fromInclusive, ulong toExclusive)
     {
-        if (_pending is not null)
+        lock (WriteLock)
         {
-            _pending.RemoveRange(fromInclusive, toExclusive, () => _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list"));
-        }
-        else
-        {
-            _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list");
+            if (_pending is not null)
+            {
+                _pending.RemoveRange(fromInclusive, toExclusive, () => _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive));
+            }
+            else
+            {
+                _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
+            }
         }
 
         _balDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);

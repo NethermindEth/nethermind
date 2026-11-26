@@ -17,7 +17,7 @@ namespace Nethermind.Init.Steps;
 /// It is resolved lazily so the failure surfaces from <see cref="Execute"/> rather than from step construction,
 /// and unwrapped from Autofac's <see cref="DependencyResolutionException"/> so the configuration exit code is kept.
 /// </remarks>
-[RunnerStepDependencies(typeof(ApplyMemoryHint))]
+[RunnerStepDependencies(typeof(ConfigureMemoryAllocators))]
 public sealed class ValidateFlatState(Lazy<FlatStateActivationPolicy> policy) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)

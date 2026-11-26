@@ -2,13 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
@@ -50,19 +56,94 @@ public class BlockStoreTests
     }
 
     [Test]
+    public void Test_insert_of_encoded_body_stores_the_encoded_block([Values] bool withWithdrawals)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions(Build.A.Transaction.Signed().TestObjectNTimes(2))
+            .WithUncles(Build.A.BlockHeader.TestObject)
+            .WithWithdrawals(withWithdrawals ? [Build.A.Withdrawal.TestObject] : null)
+            .TestObject;
+
+        store.Insert(block.Header, BlockBodyDecoder.Instance.Encode(block.Body), WriteFlags.DisableWAL);
+
+        byte[] expected = new BlockDecoder().Encode(block);
+        using MemoryManager<byte>? owned = store.GetOwnedRlp(block.Number, block.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.GetRlp(block.Number, block.Hash!), Is.EqualTo(expected));
+            Assert.That(owned?.Memory.ToArray(), Is.EqualTo(expected));
+        }
+        db.KeyWasWrittenWithFlags(Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray()), WriteFlags.DisableWAL);
+    }
+
+    [Test]
     public void Test_can_get_block_that_was_stored_with_hash([Values] bool cached)
     {
         TestMemDb db = new();
         BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block);
 
         // Probe before the read so the cached case cannot be satisfied by an entry Get itself populated.
         Assert.That(store.HasBlock(block.Number, block.Hash!), Is.True);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
         Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
+    }
+
+    [Test]
+    public async Task GetRlps_reads_each_block_as_GetRlp_does([Values] bool batching, [Values(16, 1024 * 1024)] int segmentSize)
+    {
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        MemDb db = batching ? new BatchReadMemDb() : new MemDb();
+        BlockStore store = new(db, deferredWriter: writer);
+        BlockDecoder decoder = new();
+        Block stored = Build.A.Block.WithNumber(1).TestObject;
+        Block hashKeyed = Build.A.Block.WithNumber(2).TestObject;
+        Block pending = Build.A.Block.WithNumber(3).TestObject;
+        Block missing = Build.A.Block.WithNumber(4).TestObject;
+        store.Insert(stored);
+        db[hashKeyed.Hash!.Bytes] = decoder.Encode(hashKeyed);
+        store.InsertDeferred(pending);
+
+        using PooledSegmentedBuffer destination = new(segmentSize);
+        ReadOnlyMemory<byte>?[] found = new ReadOnlyMemory<byte>?[5];
+        store.GetRlps(
+            [(missing.Number, missing.Hash!.ValueHash256), (stored.Number, stored.Hash!.ValueHash256), (pending.Number, pending.Hash!.ValueHash256), (hashKeyed.Number, hashKeyed.Hash!.ValueHash256), (stored.Number, stored.Hash!.ValueHash256)],
+            destination,
+            found);
+        byte[]?[] rlps = Array.ConvertAll(found, rlp => rlp?.ToArray());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlps, Is.EqualTo(new[] { null, decoder.Encode(stored), decoder.Encode(pending), decoder.Encode(hashKeyed), decoder.Encode(stored) }));
+            if (db is BatchReadMemDb batch) Assert.That(batch.BatchReads, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void GetRlps_reads_an_empty_value_as_missing_as_GetOwnedRlp_does([Values] bool batching, [Values] bool hashKeyed)
+    {
+        MemDb db = batching ? new BatchReadMemDb() : new MemDb();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        byte[] encoded = new BlockDecoder().Encode(block);
+        db[Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray())] = [];
+        db[block.Hash!.Bytes] = hashKeyed ? encoded : [];
+
+        using PooledSegmentedBuffer destination = new(1024);
+        ReadOnlyMemory<byte>?[] found = new ReadOnlyMemory<byte>?[1];
+        store.GetRlps([(block.Number, block.Hash!.ValueHash256)], destination, found);
+        using MemoryManager<byte>? owned = store.GetOwnedRlp(block.Number, block.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found[0]?.ToArray(), Is.EqualTo(hashKeyed ? encoded : null));
+            Assert.That(owned?.Memory.ToArray(), Is.EqualTo(found[0]?.ToArray()));
+        }
     }
 
     [Test]
@@ -77,8 +158,42 @@ public class BlockStoreTests
         // The cache is a bounded read accelerator, so a hit there says the block can be read right now, not that
         // it is stored. Callers deciding whether they still have to download a body key off HasBlock, and an
         // eviction after a true answer loses the body for good.
-        Assert.That(store.Get(block.Number, block.Hash!), Is.Not.Null);
-        Assert.That(store.HasBlock(block.Number, block.Hash!), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(block.Number, block.Hash!), Is.Not.Null);
+            Assert.That(store.HasBlock(block.Number, block.Hash!), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Get_WhenBlockIsCachedOrPending_PreservesEncodedSize([Values] bool deferred)
+    {
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new TestNethermindModule());
+        builder.RegisterInstance(writer).As<IDeferredBlockDataWriter>().ExternallyOwned();
+        using IContainer container = builder.Build();
+        IBlockStore store = container.Resolve<IBlockStore>();
+        Block block = Build.A.Block.WithNumber(1).WithEncodedSize(1234).TestObject;
+
+        if (deferred)
+        {
+            store.InsertDeferred(block);
+        }
+        else
+        {
+            store.Cache(block);
+        }
+
+        Block? retrieved = store.Get(block.Number, block.Hash!);
+
+        Assert.That(retrieved, Is.Not.Null, "The stored snapshot must be available before a deferred write is flushed.");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrieved, Is.Not.SameAs(block), "The store must return a snapshot rather than the live block.");
+            Assert.That(retrieved!.EncodedSize, Is.EqualTo(1234), "The snapshot must retain the size computed before storage.");
+            Assert.That(writer.QueuedCount, Is.EqualTo(deferred ? 1 : 0), "The pending block must remain queued until the writer is pumped.");
+        }
     }
 
     [Test]
@@ -114,40 +229,221 @@ public class BlockStoreTests
     }
 
     [Test]
-    public void Test_getReceiptRecoveryBlock_produce_same_transaction_as_normal_get()
+    public void Test_getReceiptRecoveryBlock_produce_same_transaction_as_normal_get([Values] bool native, [Values] bool legacy)
     {
-        TestMemDb db = new();
+        using TestMemDb db = native ? new PinnedTestDb() : new TestMemDb();
         BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1)
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
 
-        store.Insert(block);
+        if (legacy) db[block.Hash!.Bytes] = new BlockDecoder().Encode(block);
+        else store.Insert(block);
 
         ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
-
-        Assert.That(retrieved.Header, Is.EqualTo(block.Header).UsingBlockHeaderComparer());
-        Assert.That(retrieved.TransactionCount, Is.EqualTo(block.Transactions.Length));
-
-        for (int i = 0; i < retrieved.TransactionCount; i++)
+        try
         {
-            block.Transactions[i].Data = Array.Empty<byte>();
-            Assert.That(retrieved.GetNextTransaction(), Is.EqualTo(block.Transactions[i]).UsingTransactionComparer());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retrieved.Header, Is.EqualTo(block.Header).UsingBlockHeaderComparer());
+                Assert.That(retrieved.TransactionCount, Is.EqualTo(block.Transactions.Length));
+            }
+
+            for (int i = 0; i < retrieved.TransactionCount; i++)
+            {
+                block.Transactions[i].Data = Array.Empty<byte>();
+                Assert.That(retrieved.GetNextTransaction(), Is.EqualTo(block.Transactions[i]).UsingTransactionComparer());
+            }
+        }
+        finally
+        {
+            retrieved.Dispose();
+            retrieved.Dispose();
+        }
+        if (db is PinnedTestDb pinned)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.NativeReads, Is.EqualTo(legacy ? 2 : 1));
+                Assert.That(pinned.Released, Is.EqualTo(1));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
         }
     }
 
     [Test]
-    public void Test_getReceiptRecoveryBlock_returns_null_when_block_not_in_db()
+    public void Test_getOwnedRlp_returns_the_stored_block_and_releases_it([Values] bool native, [Values] bool legacy)
     {
-        TestMemDb db = new();
+        using TestMemDb db = native ? new PinnedTestDb() : new TestMemDb();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions(3, MainnetSpecProvider.Instance)
+            .TestObject;
+        byte[] expected = new BlockDecoder().Encode(block);
+
+        if (legacy) db[block.Hash!.Bytes] = expected;
+        else store.Insert(block);
+
+        using (MemoryManager<byte>? owned = store.GetOwnedRlp(block.Number, block.Hash!))
+        {
+            Assert.That(owned?.Memory.ToArray(), Is.EqualTo(expected));
+        }
+
+        if (db is PinnedTestDb pinned)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.NativeReads, Is.EqualTo(legacy ? 2 : 1));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public void Test_getReceiptRecoveryBlock_returns_null_when_block_not_in_db([Values] bool native, [Values] bool empty)
+    {
+        using TestMemDb db = native ? new PinnedTestDb() : new TestMemDb();
         BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
 
+        if (empty)
+        {
+            db[NumberedKey(block)] = [];
+            db[block.Hash!.Bytes] = [];
+        }
         ReceiptRecoveryBlock? result = store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
 
         Assert.That(result, Is.Null);
+        if (db is PinnedTestDb pinned)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.NativeReads, Is.EqualTo(2));
+                Assert.That(pinned.Released, Is.EqualTo(empty ? 2 : 0));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public void Recovery_empty_numbered_value_releases_its_handle_before_legacy_fallback()
+    {
+        using PinnedTestDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        db[NumberedKey(block)] = [];
+        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block);
+        ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash)!.Value;
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recovery.Hash, Is.EqualTo(block.Hash));
+                Assert.That(db.Released, Is.EqualTo(1));
+                Assert.That(db.LiveHandles, Is.EqualTo(1));
+            }
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+        Assert.That(db.LiveHandles, Is.Zero);
+    }
+
+    [Test]
+    public void Recovery_transaction_is_owned_after_the_block_lease_ends([Values] bool zeroHandle)
+    {
+        using TestMemDb db = zeroHandle ? new NativeTestMemDb() : new PinnedTestDb();
+        BlockStore store = new(db);
+        Transaction tx = Build.A.Transaction.WithData([1, 2, 3]).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+        byte[] expected = TxDecoder.Instance.Encode(tx);
+        store.Insert(block);
+        ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
+        Transaction escaped;
+        try
+        {
+            // A zero-handle native store lends a movable array; recovery must own a copy, not its pointer.
+            foreach (byte[] value in db.Values) value.AsSpan().Fill(0);
+            escaped = recovery.GetTransaction(0);
+        }
+        finally
+        {
+            recovery.Dispose();
+            recovery.Dispose();
+        }
+        Assert.That(TxDecoder.Instance.Encode(escaped), Is.EqualTo(expected));
+        if (db is PinnedTestDb pinned)
+        {
+            Assert.That(() => recovery.GetTransaction(0), Throws.InstanceOf<ObjectDisposedException>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.Released, Is.EqualTo(1));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public void Recovery_decode_failure_releases_the_native_handle([Values] bool nullBlock)
+    {
+        using PinnedTestDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        db[NumberedKey(block)] = nullBlock ? [0xc0] : [0x01];
+
+        if (nullBlock) Assert.That(store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Is.Null);
+        else Assert.That(() => store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Throws.InstanceOf<RlpReaderException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Released, Is.EqualTo(1));
+            Assert.That(db.LiveHandles, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Recovery_cache_and_pending_paths_do_not_acquire_native_handles([Values] bool pending)
+    {
+        using PinnedTestDb db = new();
+        StatePersistenceBarrier barrier = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter(barrier);
+        BlockStore store = new(db, deferredWriter: writer, persistenceBarrier: barrier);
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        if (pending) store.InsertDeferred(block);
+        else store.Cache(block);
+
+        ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recovery.GetTransaction(0), Is.SameAs(block.Transactions[0]));
+                Assert.That(db.NativeReads, Is.Zero);
+                Assert.That(db.LiveHandles, Is.Zero);
+            }
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+    }
+
+    private static byte[] NumberedKey(Block block) => Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
+
+    [Test]
+    public void Prefetch_reads_the_numbered_keys_unless_the_last_block_is_cached([Values] bool lastCached)
+    {
+        using PrefetchingTestDb db = new();
+        BlockStore store = new(db);
+        Block first = Build.A.Block.WithNumber(3).TestObject;
+        Block last = Build.A.Block.WithNumber(7).TestObject;
+        if (lastCached) db.CachedKeys.Add(NumberedKey(last));
+
+        store.Prefetch([(first.Number, first.Hash!.ValueHash256), (last.Number, last.Hash!.ValueHash256)]);
+
+        Assert.That(db.Prefetches, lastCached ? Is.Empty : Is.EqualTo(new[] { new[] { NumberedKey(first), NumberedKey(last) } }));
     }
 
     [Test]

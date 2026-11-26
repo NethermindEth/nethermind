@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -28,9 +29,35 @@ namespace Nethermind.Merge.Plugin
         protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash)
         {
             error = null;
-            return poSSwitcher.IsPostMerge(header)
-                ? ValidateTheMergeChecks(header) && base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash)
-                : ValidatePoWTotalDifficulty(header) && (
+            // Archive imports omit TD; the local parent still constrains the consensus transition (EIP-3675).
+            if (header.Difficulty != 0 && parent is not null)
+            {
+                (bool isTerminalParent, bool isPostMergeParent) = poSSwitcher.GetBlockConsensusInfo(parent);
+                if (isTerminalParent || isPostMergeParent)
+                {
+                    error = "A proof-of-work block cannot follow a terminal or proof-of-stake parent.";
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - {error}");
+                    return false;
+                }
+            }
+
+            // EIP-3675: a proof-of-stake block must follow a terminal or proof-of-stake block, i.e. a parent at or above
+            // TTD (any parent when TTD is zero). The header's own TD is not always known when it is validated, so the
+            // parent's known TD decides.
+            if (header.Difficulty.IsZero && parent is not null
+                && poSSwitcher.TerminalTotalDifficulty is { IsZero: false } terminalTotalDifficulty
+                && GetKnownTotalDifficulty(parent) is { } parentTotalDifficulty
+                && parentTotalDifficulty < terminalTotalDifficulty)
+            {
+                error = "A proof-of-stake block cannot follow a non-terminal proof-of-work parent.";
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - {error}");
+                return false;
+            }
+
+            (bool isTerminal, bool isPostMerge) = poSSwitcher.GetBlockConsensusInfo(header);
+            return isPostMerge
+                ? ValidateTheMergeChecks(header, isTerminal) && base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash)
+                : ValidatePoWTotalDifficulty(header, ref error) && (
                     typeof(TOrphaned) == typeof(OnFlag)
                         ? preMergeHeaderValidator.ValidateOrphaned(header, out error)
                         : preMergeHeaderValidator.Validate(header, parent!, isUncle, out error, validateHash)
@@ -40,10 +67,24 @@ namespace Nethermind.Merge.Plugin
         protected override bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error) =>
             poSSwitcher.IsPostMerge(header) || base.ValidateTotalDifficulty(header, parent, ref error);
 
-        private bool ValidatePoWTotalDifficulty(BlockHeader header)
+        /// <summary>
+        /// Returns the total difficulty of <paramref name="header"/> from the header itself, or else from its stored chain
+        /// level; <c>null</c> when neither knows it.
+        /// </summary>
+        /// <remarks>Zero counts as unknown: headers can be stored before their total difficulty is computed.</remarks>
+        private UInt256? GetKnownTotalDifficulty(BlockHeader header)
+        {
+            if (header.TotalDifficulty is { IsZero: false } totalDifficulty) return totalDifficulty;
+            if (header.Hash is null) return null;
+            UInt256? stored = _blockTree.GetInfo(header.Number, header.Hash).Info?.TotalDifficulty;
+            return stored is { IsZero: false } ? stored : null;
+        }
+
+        private bool ValidatePoWTotalDifficulty(BlockHeader header, ref string? error)
         {
             if (header.Difficulty == 0)
             {
+                error = "A proof-of-work block cannot have zero difficulty.";
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - zero difficulty for PoW block.");
                 return false;
             }
@@ -51,12 +92,10 @@ namespace Nethermind.Merge.Plugin
             return true;
         }
 
-        private bool ValidateTheMergeChecks(BlockHeader header)
+        private bool ValidateTheMergeChecks(BlockHeader header, bool isTerminal)
         {
-            (bool isTerminal, bool isPostMerge) = poSSwitcher.GetBlockConsensusInfo(header);
             bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, isTerminal);
-            bool valid = !isPostMerge ||
-                        ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty))
+            bool valid = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty))
                         && ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce))
                         && ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash));
 
@@ -111,7 +150,7 @@ namespace Nethermind.Merge.Plugin
 
         private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
         {
-            if (!Equals(value, expected))
+            if (!EqualityComparer<T>.Default.Equals(value, expected))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Full)} - the {name} is incorrect expected {expected}, got {value}. TransitionFinished: {poSSwitcher.TransitionFinished}, TTD: {_specProvider.TerminalTotalDifficulty}, IsTerminal: {header.IsTerminalBlock(_specProvider)}");
                 return false;

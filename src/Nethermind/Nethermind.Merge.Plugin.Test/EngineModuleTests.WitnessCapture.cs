@@ -3,19 +3,25 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Microsoft.AspNetCore.Http;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -23,7 +29,12 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Merge.Plugin.SszRest;
+using Nethermind.Merge.Plugin.SszRest.Handlers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Specs.Forks;
@@ -43,15 +54,21 @@ public partial class EngineModuleTests
         Headers = new ArrayPoolList<byte[]>(0),
     };
 
-    private sealed class WitnessHandlerBuilder
+    private static class WitnessHandlerBuilder
     {
-        public IEngineRpcModule EngineModule { get; set; }
-            = SucceedingEngineModule(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
+        public static IContainer CreateContainer(Func<IEngineRpcModule> engineModule, WitnessRendezvous rendezvous, IBlockFinder? blockFinder = null)
+        {
+            ContainerBuilder builder = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(Amsterdam.Instance))
+                .AddSingleton<IEngineRpcModule>(_ => engineModule())
+                .AddSingleton<WitnessRendezvous>(rendezvous)
+                .AddSingleton<BlockWitnessGenerator>()
+                .AddSingleton<NewPayloadWithWitnessHandler>();
 
-        public WitnessRendezvous Rendezvous { get; set; } = new();
+            if (blockFinder is not null) builder.AddSingleton<IBlockFinder>(blockFinder);
 
-        public NewPayloadWithWitnessHandler Build() =>
-            new(new Lazy<IEngineRpcModule>(() => EngineModule), Rendezvous);
+            return builder.Build();
+        }
 
         public static IEngineRpcModule SucceedingEngineModule(PayloadStatusV1 status)
         {
@@ -96,7 +113,8 @@ public partial class EngineModuleTests
             .Returns(status);
         module.ClearReceivedCalls();
 
-        NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(() => module), new WitnessRendezvous());
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(() => module, new WitnessRendezvous());
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
         using ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await HandleWitnessPayloadAsync(handler, version, []);
@@ -124,7 +142,8 @@ public partial class EngineModuleTests
             .Returns(status);
         module.ClearReceivedCalls();
 
-        NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(() => module), new WitnessRendezvous());
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(() => module, new WitnessRendezvous());
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
         using ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await HandleWitnessPayloadAsync(handler, version, null);
@@ -173,10 +192,13 @@ public partial class EngineModuleTests
 
         request.Dispose();
 
-        Assert.That(rendezvous.HasPendingRequest(hash), Is.False,
-            "disposing the registration must clear the slot");
-        Assert.That(request.Task.IsCanceled, Is.True,
-            "disposing must cancel the task so any awaiter gets OperationCanceledException");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rendezvous.HasPendingRequest(hash), Is.False,
+                "disposing the registration must clear the slot");
+            Assert.That(request.Task.IsCanceled, Is.True,
+                "disposing must cancel the task so any awaiter gets OperationCanceledException");
+        }
     }
 
     [Test]
@@ -199,12 +221,15 @@ public partial class EngineModuleTests
         using WitnessRequest first = rendezvous.RequestWitness(hash);
         using WitnessRequest second = rendezvous.RequestWitness(hash);
 
-        Assert.That(first.Task.IsCompleted, Is.False, "the outstanding request stays pending");
-        Assert.That(second.Task.IsCompletedSuccessfully, Is.True,
-            "a second request while one is outstanding is declined: it completes immediately with no witness");
-        Assert.That(second.Task.Result, Is.Null);
-        Assert.That(rendezvous.HasPendingRequest(hash), Is.True,
-            "the original request still owns the slot");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Task.IsCompleted, Is.False, "the outstanding request stays pending");
+            Assert.That(second.Task.IsCompletedSuccessfully, Is.True,
+                "a second request while one is outstanding is declined: it completes immediately with no witness");
+            Assert.That(second.Task.Result, Is.Null);
+            Assert.That(rendezvous.HasPendingRequest(hash), Is.True,
+                "the original request still owns the slot");
+        }
     }
 
     [Test]
@@ -260,8 +285,11 @@ public partial class EngineModuleTests
         using WitnessRequest req2 = rendezvous.RequestWitness(p2.BlockHash!);
         await rpc.engine_newPayloadV5(p2, [], TestItem.KeccakE, r2 ?? []);
 
-        Assert.That(req1.Task.IsCompletedSuccessfully, Is.True, "block-1 task was completed during block-1");
-        Assert.That(req2.Task.IsCompletedSuccessfully, Is.True, "block-2 task must be completed during block-2");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(req1.Task.IsCompletedSuccessfully, Is.True, "block-1 task was completed during block-1");
+            Assert.That(req2.Task.IsCompletedSuccessfully, Is.True, "block-2 task must be completed during block-2");
+        }
 
         using Witness? w2 = await req2.Task;
         Assert.That(w2, Is.Not.Null, "block 2 must produce a valid witness");
@@ -314,29 +342,106 @@ public partial class EngineModuleTests
         return module;
     }
 
-    [TestCase(true, TestName = "Handler_returns_witness_from_rendezvous_on_valid_status")]
-    [TestCase(false, TestName = "Handler_valid_status_with_null_witness_yields_null_witness")]
-    public async Task Handler_returns_rendezvous_witness_on_valid_status(bool withWitness)
+    [Test]
+    public async Task Handler_returns_witness_from_rendezvous_on_valid_status()
     {
-        using Witness? expectedWitness = withWitness ? MakeStubWitness() : null;
+        using Witness expectedWitness = MakeStubWitness();
         WitnessRendezvous rendezvous = new();
 
-        NewPayloadWithWitnessHandler handler = new(
-            new Lazy<IEngineRpcModule>(() => PublishingEngineModule(
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(
+            () => PublishingEngineModule(
                 rendezvous,
                 expectedWitness,
-                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA })),
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
             rendezvous);
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        if (withWitness)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(result.Data.ExecutionWitness, Is.SameAs(expectedWitness));
-        else
-            Assert.That(result.Data.ExecutionWitness, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Handler_fails_when_VALID_block_has_no_captured_witness_and_cannot_be_re_executed(
+        [Values] bool blockKnownWithoutParentState)
+    {
+        WitnessRendezvous rendezvous = new();
+        Hash256 blockHash = TestItem.KeccakA;
+        IBlockFinder? blockFinder = null;
+
+        if (blockKnownWithoutParentState)
+        {
+            BlockHeader parent = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakB).TestObject;
+            Block block = Build.A.Block.WithParent(parent).TestObject;
+            blockHash = block.Hash!;
+
+            blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(blockHash).Returns(block);
+            blockFinder.FindHeader(parent.Hash!).Returns(parent);
+        }
+
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(
+            () => PublishingEngineModule(
+                rendezvous,
+                null,
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = blockHash }),
+            rendezvous,
+            blockFinder);
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
+
+        using ResultWrapper<NewPayloadWithWitnessV1Result> result =
+            await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = blockHash }, [], TestItem.KeccakA, []));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure),
+                "a VALID response must carry a witness, so the handler fails when it cannot generate one");
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
+    }
+
+    [Test]
+    public async Task Handler_returns_recent_witness_for_resent_payload_without_re_executing()
+    {
+        WitnessRendezvous rendezvous = new();
+        Witness? toPublish = MakeStubWitness();
+        IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
+        module
+            .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(call =>
+            {
+                // Only the first submission executes; a resent known block publishes nothing.
+                if (rendezvous.TryClaim(call.Arg<ExecutionPayloadV4>().BlockHash!, out TaskCompletionSource<Witness?>? tcs))
+                    tcs!.SetResult(Interlocked.Exchange(ref toPublish, null));
+                return ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
+            });
+
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(() => module, rendezvous);
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
+        ExecutionPayloadParams<ExecutionPayloadV4> request = new(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
+
+        byte[][] capturedState;
+        using (ResultWrapper<NewPayloadWithWitnessV1Result> first = await handler.HandleAsync(request))
+            capturedState = first.Data.ExecutionWitness!.State.ToArray();
+
+        // The block is not in the block tree, so only the cache can supply this witness; disposing one
+        // cached response must not affect the next.
+        for (int i = 0; i < 2; i++)
+        {
+            using ResultWrapper<NewPayloadWithWitnessV1Result> resent = await handler.HandleAsync(request);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resent.Result.ResultType, Is.EqualTo(ResultType.Success));
+                Assert.That(resent.Data.ExecutionWitness!.State.ToArray(), Is.EqualTo(capturedState));
+            }
+        }
     }
 
     private static IEnumerable<TestCaseData> NonValidOutcomes()
@@ -357,7 +462,8 @@ public partial class EngineModuleTests
     {
         WitnessRendezvous rendezvous = new();
 
-        NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(moduleFactory), rendezvous);
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(moduleFactory, rendezvous);
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
         await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
 
@@ -370,10 +476,11 @@ public partial class EngineModuleTests
     {
         WitnessRendezvous rendezvous = new();
 
-        NewPayloadWithWitnessHandler handler = new(
-            new Lazy<IEngineRpcModule>(() => WitnessHandlerBuilder.SucceedingEngineModule(
-                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA })),
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(
+            () => WitnessHandlerBuilder.SucceedingEngineModule(
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
             rendezvous);
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
         ExecutionPayloadV4 payload = new()
         {
@@ -382,9 +489,12 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(payload, [], TestItem.KeccakA, []));
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure),
-            "a null blockHash is a malformed payload — return InvalidParams instead of forwarding");
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure),
+                "a null blockHash is a malformed payload — return InvalidParams instead of forwarding");
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
     }
 
     [Test]
@@ -408,8 +518,11 @@ public partial class EngineModuleTests
             payload, [], payload.ParentBeaconBlockRoot, []);
         using Witness? witness = result.Data.ExecutionWitness;
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(witness, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(witness, Is.Not.Null);
+        }
         Assert.That(witness!.State.Count, Is.GreaterThan(0),
             "witness State must contain at least the state root proof node");
     }
@@ -425,12 +538,8 @@ public partial class EngineModuleTests
             "witness State must contain at least the state root proof node");
     }
 
-    [Test]
-    public async Task E2E_block_with_ETH_transfer_produces_multi_node_witness()
-    {
-        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-
-        Transaction tx = Build.A.Transaction
+    private static Transaction BuildWitnessTransfer(MergeTestBlockchain chain) =>
+        Build.A.Transaction
             .WithValue(UInt256.One)
             .WithTo(TestItem.AddressB)
             .WithMaxFeePerGas(20.GWei)
@@ -438,6 +547,13 @@ public partial class EngineModuleTests
             .WithType(TxType.EIP1559)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
+
+    [Test]
+    public async Task E2E_block_with_ETH_transfer_produces_multi_node_witness()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+
+        Transaction tx = BuildWitnessTransfer(chain);
 
         using Witness witness = await ProduceWitnessedBlock(chain, tx);
 
@@ -455,11 +571,11 @@ public partial class EngineModuleTests
         foreach (byte[] node in witness.State)
         {
             Assert.That(node, Is.Not.Empty, "every state node must be a non-empty RLP blob");
-            Assert.That(node.Length, Is.LessThanOrEqualTo(1_048_576),
-                "each state element must not exceed MAX_WITNESS_ITEM_BYTES");
+            Assert.That(node.Length, Is.LessThanOrEqualTo(SszRestLimits.MaxBytesPerWitnessNode),
+                "each state element must not exceed MAX_BYTES_PER_WITNESS_NODE");
         }
 
-        Assert.That(witness.State.Count, Is.LessThanOrEqualTo(1_048_576),
+        Assert.That(witness.State.Count, Is.LessThanOrEqualTo(SszRestLimits.MaxWitnessItems),
             "State list must not exceed MAX_WITNESS_ITEMS");
     }
 
@@ -479,16 +595,97 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> res2 =
             await rpc.engine_newPayloadWithWitnessV5(p2, [], TestItem.KeccakE, r2 ?? []);
 
-        Assert.That(res1.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(res2.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res1.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(res2.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
 
         using Witness? w1 = res1.Data.ExecutionWitness;
         using Witness? w2 = res2.Data.ExecutionWitness;
 
-        Assert.That(w1, Is.Not.Null);
-        Assert.That(w2, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(w1, Is.Not.Null);
+            Assert.That(w2, Is.Not.Null);
+        }
         Assert.That(w1, Is.Not.SameAs(w2),
             "each block produces its own Witness instance; shared reference indicates a tracking bug");
+    }
+
+    [Test]
+    public async Task E2E_already_known_payload_returns_the_same_witness([Values] bool fromRecentWitnesses)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        Transaction tx = BuildWitnessTransfer(chain);
+        chain.AddTransactions(tx);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, 1);
+        ExecutionPayloadParams<ExecutionPayloadV4> request = new(payload, [], TestItem.KeccakE, requests ?? []);
+
+        using ResultWrapper<NewPayloadWithWitnessV1Result> first =
+            await rpc.engine_newPayloadWithWitnessV5(payload, [], TestItem.KeccakE, requests ?? []);
+
+        // A fresh handler has no recent witnesses, so it must re-execute the block.
+        using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder =>
+        {
+            if (!fromRecentWitnesses) builder.RegisterType<NewPayloadWithWitnessHandler>().AsSelf().SingleInstance();
+        });
+        using ResultWrapper<NewPayloadWithWitnessV1Result> repeated =
+            await scope.Resolve<NewPayloadWithWitnessHandler>().HandleAsync(request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(repeated.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
+        Witness? captured = first.Data.ExecutionWitness;
+        Witness? generated = repeated.Data.ExecutionWitness;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(captured, Is.Not.Null);
+            Assert.That(generated, Is.Not.Null,
+                "newPayload skips a known block, so the handler must supply the witness itself");
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generated!.State.ToArray(), Is.EqualTo(captured!.State.ToArray()));
+            Assert.That(generated.Codes.ToArray(), Is.EqualTo(captured.Codes.ToArray()));
+            Assert.That(generated.Headers.ToArray(), Is.EqualTo(captured.Headers.ToArray()));
+            Assert.That(generated.Keys.ToArray(), Is.EqualTo(captured.Keys.ToArray()));
+        }
+    }
+
+    [Test]
+    public async Task E2E_built_payload_witness_equals_the_witness_of_submitting_the_payload()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        chain.AddTransactions(BuildWitnessTransfer(chain));
+        byte[] payloadId = await StartAmsterdamPayload(chain, expectedTxCount: 1);
+
+        DefaultHttpContext ctx = new() { Response = { Body = new MemoryStream() } };
+        await new GetPayloadWithWitnessSszHandler(rpc, chain.Container.Resolve<BlockWitnessGenerator>())
+            .HandleAsync(ctx, EngineApiVersions.GetPayload.V6, payloadId.ToHexString(true).AsMemory(), default);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        BuiltPayloadWithWitnessV6Wire.Decode(((MemoryStream)ctx.Response.Body).ToArray(), out BuiltPayloadWithWitnessV6Wire wire);
+
+        GetPayloadV6Result built = (await rpc.engine_getPayloadV6(payloadId)).Data!;
+        using ResultWrapper<NewPayloadWithWitnessV1Result> submitted = await rpc.engine_newPayloadWithWitnessV5(
+            built.ExecutionPayload, [], TestItem.KeccakE, built.ExecutionRequests ?? []);
+        Witness submittedWitness = submitted.Data.ExecutionWitness!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(submitted.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(wire.BuiltPayload.ExecutionPayload.Transactions, Has.Length.EqualTo(1),
+                "the witness must belong to the snapshot carrying the submitted transaction");
+            Assert.That(wire.Witness.State!.Select(static n => n.Bytes), Is.EqualTo(submittedWitness.State.ToArray()));
+            Assert.That(wire.Witness.Codes!.Select(static c => c.Bytes), Is.EqualTo(submittedWitness.Codes.ToArray()));
+            Assert.That(wire.Witness.Headers!.Select(static h => h.Bytes), Is.EqualTo(submittedWitness.Headers.ToArray()));
+        }
     }
 
     [Test]
@@ -512,24 +709,21 @@ public partial class EngineModuleTests
                 "JSON uses witness DATA only");
         }
 
-        RlpReader reader = new(Nethermind.Core.Extensions.Bytes.FromHexString(result.GetProperty("witness").GetString()!));
-        reader.ReadSequenceLength();
-        int headersLength = reader.ReadSequenceLength();
-        int headersEnd = reader.Position + headersLength;
+        RlpReader reader = new RlpReader(Nethermind.Core.Extensions.Bytes.FromHexString(result.GetProperty("witness").GetString()!)).EnterSequence(out _);
+        RlpReader headers = reader.EnterSequence(out int headersLength);
 
         HeaderDecoder headerDecoder = new();
         BlockHeader? lastHeader = null;
-        while (reader.Position < headersEnd)
-            lastHeader = headerDecoder.Decode(ref reader);
+        while (headers.HasNext)
+            lastHeader = headerDecoder.Decode(ref headers);
 
-        int headersPosition = reader.Position;
+        reader.ExitSequence(headers, headersLength);
         byte[][] codes = reader.DecodeByteArrays();
         byte[][] state = reader.DecodeByteArrays();
         reader.CheckEnd();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(headersPosition, Is.EqualTo(headersEnd));
             Assert.That(codes.All(static code => code.Length > 0), Is.True);
             Assert.That(state, Is.Not.Empty);
             Assert.That(state.All(static node => node.Length > 0), Is.True);
@@ -572,14 +766,17 @@ public partial class EngineModuleTests
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await chain.EngineRpcModule.engine_newPayloadWithWitnessV5(bad, [], TestItem.KeccakE, requests ?? []);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
-            "non-VALID status must still yield HTTP 200 / RPC success per the spec");
-        Assert.That(result.Data.Status, Is.Not.EqualTo(PayloadStatus.Valid));
-        Assert.That(result.Data.ExecutionWitness, Is.Null,
-            "spec: witness must be None when status is not VALID");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
+                "non-VALID status must still yield HTTP 200 / RPC success per the spec");
+            Assert.That(result.Data.Status, Is.Not.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.ExecutionWitness, Is.Null,
+                "spec: witness must be None when status is not VALID");
 
-        Assert.That(rendezvous.HasPendingRequest(Keccak.Zero), Is.False,
-            "the handler must cancel the rendezvous entry on non-VALID outcomes");
+            Assert.That(rendezvous.HasPendingRequest(Keccak.Zero), Is.False,
+                "the handler must cancel the rendezvous entry on non-VALID outcomes");
+        }
     }
 
     [Test]
@@ -587,25 +784,29 @@ public partial class EngineModuleTests
     {
         int processCount = 0;
 
+        using MergeTestBlockchain producer = await CreateBlockchain(Amsterdam.Instance);
         using MergeTestBlockchain chain = await CreateBlockchain(
             Amsterdam.Instance,
             configurer: builder =>
                 builder.AddDecorator<IBranchProcessor>((_, inner) =>
                     new CountingBranchProcessorDecorator(inner, () => Interlocked.Increment(ref processCount))));
 
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(producer);
         processCount = 0;
 
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await chain.EngineRpcModule.engine_newPayloadWithWitnessV5(
                 payload, [], TestItem.KeccakE, requests ?? []);
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(result.Data.ExecutionWitness, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.ExecutionWitness, Is.Not.Null);
 
-        Assert.That(processCount, Is.EqualTo(1),
-            "Option A must execute the block exactly once; " +
-            "a count of 2 means the old double-execution bug has regressed");
+            Assert.That(processCount, Is.EqualTo(1),
+                "Option A must execute the block exactly once; " +
+                "a count of 2 means the old double-execution bug has regressed");
+        }
     }
 
     [Test]
@@ -620,10 +821,13 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> result =
             await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid),
-            "the witness infrastructure must be completely transparent to the normal path");
-        Assert.That(rendezvous.HasPendingRequest(hash), Is.False,
-            "no rendezvous entry should exist for a plain engine_newPayloadV5 call");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid),
+                "the witness infrastructure must be completely transparent to the normal path");
+            Assert.That(rendezvous.HasPendingRequest(hash), Is.False,
+                "no rendezvous entry should exist for a plain engine_newPayloadV5 call");
+        }
     }
 
     [Test]
@@ -640,8 +844,8 @@ public partial class EngineModuleTests
         foreach (byte[] header in witness.Headers)
         {
             Assert.That(header, Is.Not.Empty, "each header entry must be an RLP-encoded block header");
-            Assert.That(header.Length, Is.LessThanOrEqualTo(1_048_576),
-                "each header must fit within MAX_WITNESS_ITEM_BYTES per execution-apis#773");
+            Assert.That(header.Length, Is.LessThanOrEqualTo(SszRestLimits.MaxBytesPerHeader),
+                "each header must fit within MAX_BYTES_PER_HEADER");
         }
     }
 
@@ -699,6 +903,89 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
+    /// A witness replay is a local query: when it does not reproduce the block, the request fails, but the canonical
+    /// block and its descendants stay valid for the Engine API.
+    /// </summary>
+    [Test]
+    public async Task Witness_replay_that_diverges_from_the_header_fails_and_leaves_the_chain_valid()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        BlockHeader beforeTransfer = chain.BlockTree.Head!.Header;
+        await ProduceCanonicalBlock(chain, BuildWitnessTransfer(chain));
+        await ProduceCanonicalBlock(chain);
+        Block block = chain.BlockTree.Head!;
+
+        // Replaying on the state before the transfer stands in for a node-local fault: execution matches the block
+        // up to the post-state root, which cannot match the header.
+        using IWitnessGeneratingBlockProcessingEnvScope scope = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>().CreateScope();
+        InvalidBlockException? failure = Assert.Throws<InvalidBlockException>(() =>
+            scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(beforeTransfer, block));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure!.Message, Does.StartWith("InvalidStateRoot"));
+            Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(block.Hash!, out _), Is.False,
+                "a failed witness replay must not be recorded as an invalid block");
+        }
+
+        // The next payload builds on the block, so the Engine API must still answer VALID for it and its forkchoice.
+        await ProduceCanonicalBlock(chain);
+        Assert.That(chain.BlockTree.Head!.ParentHash, Is.EqualTo(block.Hash));
+    }
+
+    /// <summary>
+    /// Import releases a block's access-list encoding once stored, and trusted inputs serialize that encoding, so a
+    /// witness generation that reproduces the block restores it.
+    /// </summary>
+    [Test]
+    public async Task Witness_of_a_block_whose_access_list_encoding_was_released_restores_it()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        await ProduceCanonicalBlock(chain, BuildWitnessTransfer(chain));
+        Block block = chain.BlockTree.Head!;
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!)!;
+        block.EncodedBlockAccessList = null;
+
+        using IWitnessGeneratingBlockProcessingEnvScope scope = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>().CreateScope();
+        using Witness witness = scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block);
+
+        Assert.That(block.EncodedBlockAccessList is null ? null : Keccak.Compute(block.EncodedBlockAccessList),
+            Is.EqualTo(block.Header.BlockAccessListHash));
+    }
+
+    /// <summary>
+    /// The header hash does not commit to the EIP-7928 item limit, so a replay that reproduces a block over its limit
+    /// still fails, as validating the processed block would, whether or not the block carries its access list.
+    /// </summary>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Witness_of_a_reproduced_block_over_the_access_list_item_limit_fails(bool withAccessList)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        await ProduceCanonicalBlock(chain);
+        Block block = chain.BlockTree.Head!;
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!)!;
+        IWitnessGeneratingBlockProcessingEnvFactory envFactory = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>();
+        // Import may release the access-list encoding once the block is stored; a replay that reproduces it restores it.
+        using (IWitnessGeneratingBlockProcessingEnvScope replayScope = envFactory.CreateScope())
+        using (replayScope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block)) { }
+        Assert.That(block.EncodedBlockAccessList, Is.Not.Null, "precondition: the replay restores the access-list encoding");
+
+        // An empty block executes no transaction, so its outcome does not depend on the gas limit, while its system
+        // contract calls put it over a one-item limit.
+        BlockHeader header = block.Header.Clone();
+        header.GasLimit = Eip7928Constants.ItemCost;
+        header.Hash = header.CalculateHash();
+        Block overLimit = new(header, block.Body, withAccessList ? BlockAccessListDecoder.Instance.Decode(block.EncodedBlockAccessList!) : null);
+
+        using IWitnessGeneratingBlockProcessingEnvScope scope = envFactory.CreateScope();
+        InvalidBlockException? failure = Assert.Throws<InvalidBlockException>(() =>
+            scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, overLimit));
+
+        Assert.That(failure!.Message, Does.StartWith("BlockAccessListGasLimitExceeded"));
+    }
+
+    /// <summary>
     /// Builds one Amsterdam block on the current head (including <paramref name="txs"/>), submits it via
     /// <c>engine_newPayloadWithWitnessV5</c>, asserts the block is VALID, and returns the produced witness.
     /// </summary>
@@ -724,7 +1011,10 @@ public partial class EngineModuleTests
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, txs.Length);
         Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
             "the built payload must contain exactly the submitted transactions");
-        await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
+        ResultWrapper<PayloadStatusV1> newPayloadResult = await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
+        Assert.That(newPayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the block must be accepted before the forkchoice");
+        // VALID comes before the commit, which the forkchoice waits for only a bounded time before answering SYNCING.
+        await chain.WaitForCommitted(payload.BlockHash!);
 
         Task txPoolHeadWait = chain.WaitForTxPoolHead(payload.BlockHash!);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
@@ -746,7 +1036,7 @@ public partial class EngineModuleTests
         stateReader.RunTreeVisitor(collector, parent);
         AccountProof proof = collector.BuildResult();
 
-        HashSet<ValueHash256> witnessNodes = new(witness.State.Count);
+        HashSet<ValueHash256> witnessNodes = [with(witness.State.Count)];
         foreach (byte[] node in witness.State)
             witnessNodes.Add(ValueKeccak.Compute(node));
 
@@ -772,6 +1062,18 @@ public partial class EngineModuleTests
     private static async Task<(ExecutionPayloadV4 Payload, byte[][]? ExecutionRequests)>
         BuildAmsterdamPayload(MergeTestBlockchain chain, int expectedTxCount = 0)
     {
+        byte[] payloadIdBytes = await StartAmsterdamPayload(chain, expectedTxCount);
+        ResultWrapper<GetPayloadV6Result?> getPayload = await chain.EngineRpcModule.engine_getPayloadV6(payloadIdBytes);
+        Assert.That(getPayload.Data, Is.Not.Null);
+        Assert.That(getPayload.Data!.ExecutionPayload.Transactions, Has.Length.AtLeast(expectedTxCount),
+            "payload must carry the submitted transactions");
+
+        return (getPayload.Data!.ExecutionPayload, getPayload.Data!.ExecutionRequests);
+    }
+
+    /// <summary>Starts an Amsterdam build on the head and returns its payload id once the build has improved.</summary>
+    private static async Task<byte[]> StartAmsterdamPayload(MergeTestBlockchain chain, int expectedTxCount)
+    {
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block head = chain.BlockTree.Head!;
 
@@ -796,13 +1098,7 @@ public partial class EngineModuleTests
 
         await improvementWait;
 
-        byte[] payloadIdBytes = Nethermind.Core.Extensions.Bytes.FromHexString(fcuResult.Data.PayloadId!);
-        ResultWrapper<GetPayloadV6Result?> getPayload = await rpc.engine_getPayloadV6(payloadIdBytes);
-        Assert.That(getPayload.Data, Is.Not.Null);
-        Assert.That(getPayload.Data!.ExecutionPayload.Transactions, Has.Length.AtLeast(expectedTxCount),
-            "payload must carry the submitted transactions");
-
-        return (getPayload.Data!.ExecutionPayload, getPayload.Data!.ExecutionRequests);
+        return Nethermind.Core.Extensions.Bytes.FromHexString(fcuResult.Data.PayloadId!);
     }
 
     private sealed class CountingBranchProcessorDecorator(IBranchProcessor inner, Action onProcess)

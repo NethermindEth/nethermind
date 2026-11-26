@@ -46,6 +46,7 @@ public class HiveModule : Module
         .AddDecorator<ITxPoolConfig>((_, txPoolConfig) =>
         {
             txPoolConfig.ProofsTranslationEnabled = true;
+            txPoolConfig.AcceptTxWhenNotSynced = true;
             return txPoolConfig;
         })
         .AddDecorator<IFlatDbConfig>((_, flatDbConfig) =>
@@ -62,6 +63,7 @@ public class HiveModule : Module
         {
             // A Hive container processes a handful of blocks and exits, so the warm-up never pays back.
             initConfig.EvmWarmupEnabled = false;
+            initConfig.PipelineWarmupEnabled = false;
             return initConfig;
         })
         .AddDecorator<IKeyStoreConfig>((_, keyStoreConfig) =>

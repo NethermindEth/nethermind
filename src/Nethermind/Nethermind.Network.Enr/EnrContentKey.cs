@@ -45,6 +45,12 @@ namespace Nethermind.Network.Enr
         public static ReadOnlySpan<byte> SecP256k1U8 => "secp256k1"u8;
 
         /// <summary>
+        /// Snap protocol support, a list of served snap versions; empty means snap/1 only
+        /// </summary>
+        public const string Snap = "snap";
+        public static ReadOnlySpan<byte> SnapU8 => "snap"u8;
+
+        /// <summary>
         /// TCP port, big endian integer
         /// </summary>
         public const string Tcp = "tcp";
@@ -55,6 +61,18 @@ namespace Nethermind.Network.Enr
         /// </summary>
         public const string Tcp6 = "tcp6";
         public static ReadOnlySpan<byte> Tcp6U8 => "tcp6"u8;
+
+        /// <summary>
+        /// IPv4 libp2p QUIC port, big endian integer
+        /// </summary>
+        public const string Quic = "quic";
+        public static ReadOnlySpan<byte> QuicU8 => "quic"u8;
+
+        /// <summary>
+        /// IPv6-specific libp2p QUIC port, big endian integer
+        /// </summary>
+        public const string Quic6 = "quic6";
+        public static ReadOnlySpan<byte> Quic6U8 => "quic6"u8;
 
         /// <summary>
         /// UDP port, big endian integer

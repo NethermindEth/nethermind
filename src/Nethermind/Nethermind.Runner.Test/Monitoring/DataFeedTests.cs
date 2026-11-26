@@ -18,7 +18,10 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring;
 using Nethermind.Specs.Forks;
@@ -86,12 +89,53 @@ public class DataFeedTests
         Assert.That(async () => await subscription.WaitAsync(TimeSpan.FromSeconds(1)), Throws.Nothing);
     }
 
+    [Test]
+    public void Fork_choice_receipt_preserves_status_fees_and_logs([Values] bool legacy)
+    {
+        TxReceipt receipt = new()
+        {
+            GasUsed = 21_000,
+            EffectiveGasPrice = 5,
+            ContractAddress = TestItem.AddressA,
+            StatusCode = 1,
+            PostTransactionState = legacy ? TestItem.KeccakA : null,
+            Logs = legacy ? null : [new LogEntry(TestItem.AddressB, [1], [TestItem.KeccakB])]
+        };
+        TxGasInfo gas = legacy ? default : new TxGasInfo(7, 11, 13);
+
+        DataFeed.ReceiptForWeb result = DataFeed.ReceiptForWeb.FromReceipt(receipt, gas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GasUsed, Is.EqualTo(receipt.GasUsed));
+            Assert.That(result.ContractAddress, Is.EqualTo(receipt.ContractAddress));
+            Assert.That(result.Status, Is.EqualTo(legacy ? (long?)null : 1));
+            Assert.That(result.EffectiveGasPrice, Is.EqualTo(gas.EffectiveGasPrice ?? receipt.EffectiveGasPrice));
+            Assert.That(result.BlobGasPrice, Is.EqualTo(gas.BlobGasPrice ?? UInt256.Zero));
+            Assert.That(result.BlobGasUsed, Is.EqualTo(gas.BlobGasUsed ?? 0));
+            Assert.That(result.Logs, Has.Length.EqualTo(legacy ? 0 : 1));
+            if (!legacy)
+            {
+                LogEntry expected = receipt.Logs![0];
+                Assert.That(result.Logs[0].Address, Is.EqualTo(expected.Address));
+                Assert.That(result.Logs[0].Data, Is.EqualTo(expected.Data));
+                Assert.That(result.Logs[0].Topics, Is.EqualTo(expected.Topics));
+            }
+        }
+    }
+
     [TestCase("?events=processed", false)]
     [TestCase(null, true)]
     [CancelAfter(30_000)]
     public async Task Event_subscriptions_only_prepare_requested_data(string? query, bool expectForkChoice, CancellationToken cancellationToken)
     {
         await using FeedHarness harness = await FeedHarness.OpenAsync(query, cancellationToken);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.BlockTree.Head!.Number, Is.Zero, "feed readiness must not depend on mining blocks");
+            Assert.That(harness.ResponseBody.EventCount("event: processed"), Is.EqualTo(1));
+        }
 
         Block head = harness.BlockTree.Head!;
         object forkChoiceBeforeRaise = harness.ForkChoiceCompletion;
@@ -161,11 +205,10 @@ public class DataFeedTests
         ConsoleHelpers.LineWritten -= handler;
     }
 
-    /// <summary>A data feed over the production modules, with the receipt finder as the only substitute, opened as an SSE subscription.</summary>
+    /// <summary>A data feed over the production modules, with substituted receipts and processing statistics, opened as an SSE subscription.</summary>
     private sealed class FeedHarness : IAsyncDisposable
     {
-        private const int MaxReadinessBlocks = 30;
-
+        private readonly IProcessingStats _processingStats = Substitute.For<IProcessingStats>();
         private readonly LineInterceptingTextWriter? _installedConsoleWriter = InstallConsoleWriterIfMissing();
         private readonly IContainer _container;
         private readonly CancellationTokenSource _lifetime = new();
@@ -180,6 +223,7 @@ public class DataFeedTests
             _container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(Cancun.Instance))
                 .AddSingleton<IReceiptFinder>(ReceiptFinder)
+                .AddSingleton<IProcessingStats>(_processingStats)
                 .Build();
             BlockTree = _container.Resolve<IBlockTree>();
             BlockchainUtil = _container.Resolve<TestBlockchainUtil>();
@@ -262,14 +306,10 @@ public class DataFeedTests
             await _container.Resolve<PseudoNethermindRunner>().StartBlockProcessing(cancellationToken);
             _feed = DataFeed.ProcessingFeedAsync(_httpContext, _feedCancellation.Token);
 
-            // Processing statistics are reported at most once a second, so blocks are added until a report reaches the feed.
-            for (int attempt = 0; !ResponseBody.ProcessedWritten.Task.IsCompleted; attempt++)
-            {
-                Assert.That(attempt, Is.LessThan(MaxReadinessBlocks), "no processed event reached the feed");
-                Assert.That(_feed.IsCompleted, Is.False, "the feed ended before a processed event reached it");
-                await BlockchainUtil.AddBlockAndWaitForHead(false, cancellationToken);
-                await Task.WhenAny(ResponseBody.ProcessedWritten.Task, Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken));
-            }
+            // The in-memory response writes complete synchronously, so the feed has subscribed before returning.
+            Assert.That(_feed.IsCompleted, Is.False, "the feed ended before a processed event reached it");
+            _processingStats.NewProcessingStatistics += Raise.Event<EventHandler<BlockStatistics>>(this, new BlockStatistics());
+            await ResponseBody.ProcessedWritten.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
         }
     }
 

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Encoding;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
@@ -61,8 +63,8 @@ public class SyncInfoDecoderTests
     {
         SyncInfoDecoder decoder = new();
 
-        Rlp encoded = decoder.Encode(syncInfo);
-        RlpReader decoderContext = new(encoded.Bytes);
+        byte[] encoded = decoder.Encode(syncInfo);
+        RlpReader decoderContext = new(encoded);
         SyncInfo decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcComparer());
@@ -86,7 +88,7 @@ public class SyncInfoDecoderTests
 
         SyncInfoDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(syncInfo, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         decoder.Encode(ref writer, syncInfo);
 
         RlpReader decoderContext = new(bytes);
@@ -112,10 +114,10 @@ public class SyncInfoDecoderTests
         );
 
         SyncInfoDecoder decoder = new();
-        Rlp encoded = decoder.Encode(syncInfo);
+        byte[] encoded = decoder.Encode(syncInfo);
 
         int expectedTotal = decoder.GetLength(syncInfo, RlpBehaviors.None);
-        Assert.That(encoded.Bytes.Length, Is.EqualTo(expectedTotal),
+        Assert.That(encoded.Length, Is.EqualTo(expectedTotal),
             "Encoded total length should match GetLength().");
     }
 
@@ -124,16 +126,16 @@ public class SyncInfoDecoderTests
     {
         SyncInfoDecoder decoder = new();
 
-        Rlp encoded = decoder.Encode((SyncInfo)null!);
+        byte[] encoded = decoder.Encode((SyncInfo)null!);
 
-        Assert.That(encoded, Is.EqualTo(Rlp.OfEmptyList));
+        Assert.That(encoded, Is.EqualTo(RlpTestHelper.OfEmptyList));
     }
 
     [Test]
     public void Decode_Null_ReturnsNull()
     {
         SyncInfoDecoder decoder = new();
-        RlpReader context = new(Rlp.OfEmptyList.Bytes);
+        RlpReader context = new(RlpTestHelper.OfEmptyList);
         SyncInfo? decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);
@@ -143,7 +145,7 @@ public class SyncInfoDecoderTests
     public void Decode_EmptyByteArray_RlpReader_ReturnsNull()
     {
         SyncInfoDecoder decoder = new();
-        RlpReader decoderContext = new(Rlp.OfEmptyList.Bytes);
+        RlpReader decoderContext = new(RlpTestHelper.OfEmptyList);
 
         SyncInfo? decoded = decoder.Decode(ref decoderContext);
 

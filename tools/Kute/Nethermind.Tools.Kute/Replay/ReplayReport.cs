@@ -4,6 +4,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Nethermind.Tools.Kute.Replay;
 
@@ -88,38 +89,38 @@ public static class ReplayReport
     /// <summary>Formats a sweep as JSON, one object per concurrency level.</summary>
     public static string Json(IReadOnlyList<LevelResult> results)
     {
-        object[] levels = new object[results.Count];
+        JsonNode[] levels = new JsonNode[results.Count];
         for (int i = 0; i < results.Count; i++)
         {
             LevelResult result = results[i];
-            levels[i] = new
+            levels[i] = new JsonObject
             {
-                concurrency = result.Concurrency,
-                requests = result.Total,
-                succeeded = result.Succeeded,
-                rpcErrors = result.RpcErrors,
-                httpErrors = result.HttpErrors,
-                transportErrors = result.TransportErrors,
-                failureRate = result.FailureRate,
-                elapsedSeconds = result.Elapsed.TotalSeconds,
-                requestsPerSecond = result.RequestsPerSecond,
-                requestMib = result.RequestBytes / (double)(1 << 20),
-                rewritten = result.Rewritten,
-                feesStripped = result.FeesStripped,
-                untagged = result.Untagged,
-                latencyMs = new
+                ["concurrency"] = result.Concurrency,
+                ["requests"] = result.Total,
+                ["succeeded"] = result.Succeeded,
+                ["rpcErrors"] = result.RpcErrors,
+                ["httpErrors"] = result.HttpErrors,
+                ["transportErrors"] = result.TransportErrors,
+                ["failureRate"] = result.FailureRate,
+                ["elapsedSeconds"] = result.Elapsed.TotalSeconds,
+                ["requestsPerSecond"] = result.RequestsPerSecond,
+                ["requestMib"] = result.RequestBytes / (double)(1 << 20),
+                ["rewritten"] = result.Rewritten,
+                ["feesStripped"] = result.FeesStripped,
+                ["untagged"] = result.Untagged,
+                ["latencyMs"] = new JsonObject
                 {
-                    mean = result.Mean.TotalMilliseconds,
-                    min = result.Min.TotalMilliseconds,
-                    p50 = result.P50.TotalMilliseconds,
-                    p90 = result.P90.TotalMilliseconds,
-                    p99 = result.P99.TotalMilliseconds,
-                    max = result.Max.TotalMilliseconds,
+                    ["mean"] = result.Mean.TotalMilliseconds,
+                    ["min"] = result.Min.TotalMilliseconds,
+                    ["p50"] = result.P50.TotalMilliseconds,
+                    ["p90"] = result.P90.TotalMilliseconds,
+                    ["p99"] = result.P99.TotalMilliseconds,
+                    ["max"] = result.Max.TotalMilliseconds,
                 },
             };
         }
 
-        return JsonSerializer.Serialize(new { levels }, new JsonSerializerOptions { WriteIndented = true });
+        return new JsonObject { ["levels"] = new JsonArray(levels) }.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
     private static void AppendFailureBreakdown(StringBuilder builder, IReadOnlyList<LevelResult> results)

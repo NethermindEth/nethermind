@@ -35,7 +35,7 @@ public static partial class KzgPolynomialCommitments
     {
         try
         {
-            return Ckzg.VerifyKzgProof(commitment, z, y, proof, _ckzgSetup);
+            return Ckzg.VerifyKzgProof(commitment, z, y, proof, CkzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {

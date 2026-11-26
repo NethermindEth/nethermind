@@ -47,8 +47,11 @@ public class BeaconRequestsTests
 
         (byte[][]? requests, string? error) = FromBody(block, $$"""{ "deposits": [{{Deposit}}], "withdrawals": [{{Withdrawal}}], "consolidations": [{{Consolidation}}] }""");
 
-        Assert.That(error, Is.Null);
-        Assert.That(requests, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error, Is.Null);
+            Assert.That(requests, Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -59,8 +62,11 @@ public class BeaconRequestsTests
 
         (byte[][]? requests, string? error) = FromBody(block, $$"""{ "deposits": [], "withdrawals": [], "consolidations": [{{Consolidation}}] }""");
 
-        Assert.That(error, Is.Null);
-        Assert.That(requests, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error, Is.Null);
+            Assert.That(requests, Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -71,8 +77,11 @@ public class BeaconRequestsTests
 
         (byte[][]? requests, string? error) = FromBody(block, $$"""{ "consolidations": [{{Consolidation}}], "withdrawals": [{{Withdrawal}}], "deposits": [{{Deposit}}] }""");
 
-        Assert.That(error, Is.Null);
-        Assert.That(requests, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error, Is.Null);
+            Assert.That(requests, Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -82,8 +91,11 @@ public class BeaconRequestsTests
 
         (byte[][]? requests, string? error) = FromBody(block, $$"""{ "deposits": [{{Deposit}}], "withdrawals": [{{Withdrawal}}], "consolidations": [] }""");
 
-        Assert.That(requests, Is.Null);
-        Assert.That(error, Does.Contain("requests hash to"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requests, Is.Null);
+            Assert.That(error, Does.Contain("requests hash to"));
+        }
     }
 
     [Test]
@@ -94,8 +106,11 @@ public class BeaconRequestsTests
 
         (byte[][]? requests, string? error) = FromBody(block, $$"""{ "consolidations": [{{Consolidation}}] }""", TestItem.KeccakH);
 
-        Assert.That(requests, Is.Null);
-        Assert.That(error, Does.Contain("holds execution block"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requests, Is.Null);
+            Assert.That(error, Does.Contain("holds execution block"));
+        }
     }
 
     [Test]
@@ -106,8 +121,11 @@ public class BeaconRequestsTests
 
         (byte[][]? requests, string? error) = FromBody(block, $$"""{ "consolidations": [{{Consolidation}}], "builder_exits": [] }""");
 
-        Assert.That(requests, Is.Null);
-        Assert.That(error, Does.Contain("builder_exits"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requests, Is.Null);
+            Assert.That(error, Does.Contain("builder_exits"));
+        }
     }
 
     [Test]
@@ -123,8 +141,11 @@ public class BeaconRequestsTests
 
         (byte[][]? requests, string? error) = await BeaconRequests.TryFetch(BeaconUrl, block, CancellationToken.None, client);
 
-        Assert.That(error, Is.Null);
-        Assert.That(requests, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error, Is.Null);
+            Assert.That(requests, Is.EqualTo(expected));
+        }
     }
 
     [TestCase("""{ "data": { "SECONDS_PER_SLOT": "0" } }""", "SECONDS_PER_SLOT = 0", TestName = "Zero seconds per slot")]
@@ -138,8 +159,11 @@ public class BeaconRequestsTests
 
         (byte[][]? requests, string? error) = await BeaconRequests.TryFetch(BeaconUrl, block, CancellationToken.None, client);
 
-        Assert.That(requests, Is.Null);
-        Assert.That(error, expectedError is null ? Is.Not.Null.And.Not.Empty : Does.Contain(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requests, Is.Null);
+            Assert.That(error, expectedError is null ? Is.Not.Null.And.Not.Empty : Does.Contain(expectedError));
+        }
     }
 
     [Test]
@@ -150,18 +174,21 @@ public class BeaconRequestsTests
 
         (byte[][]? requests, string? error) = await BeaconRequests.TryFetch(BeaconUrl, block, CancellationToken.None, client);
 
-        Assert.That(requests, Is.Null);
-        Assert.That(error, Is.Not.Null.And.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requests, Is.Null);
+            Assert.That(error, Is.Not.Null.And.Not.Empty);
+        }
     }
 
     [Test]
-    public void Propagates_caller_cancellation()
+    public async Task Propagates_caller_cancellation()
     {
         Block block = Build.A.Block.WithTimestamp(GenesisTime + 12).WithRequestsHash(ExpectedHash([ExpectedConsolidations()])).TestObject;
         using HttpClient client = new(new HangingHandler());
         using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(100));
 
-        Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), () => BeaconRequests.TryFetch(BeaconUrl, block, cts.Token, client));
+        await Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), () => BeaconRequests.TryFetch(BeaconUrl, block, cts.Token, client));
     }
 
     private const ulong GenesisTime = 1_606_824_023;

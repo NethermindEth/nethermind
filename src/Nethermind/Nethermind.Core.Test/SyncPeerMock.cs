@@ -61,6 +61,7 @@ namespace Nethermind.Core.Test
 
         public Node Node { get; }
         public byte ProtocolVersion { get; } = default;
+        public bool CanGetNodeData => true;
         public string ProtocolCode { get; } = null!;
         public string ClientId => Node.ClientId ?? string.Empty;
         public Hash256 HeadHash { get; set; }
@@ -149,7 +150,7 @@ namespace Nethermind.Core.Test
 
         public PublicKey Id => Node.Id;
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
+        public void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx) { }
 
         public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
         {

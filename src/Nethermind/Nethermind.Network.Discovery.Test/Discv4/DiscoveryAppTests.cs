@@ -86,7 +86,9 @@ public class DiscoveryAppTests
     public void Should_reconstruct_signed_enr_before_rejecting_generic_endpoint()
     {
         NodeRecord record = CreateAsymmetricDualStackRecord();
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(Node.TryFromEnr(record, out Node? genericNode), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(genericNode!.HasDiscoveryEndpoint, Is.False);
         genericNode.IsBootnode = true;
         genericNode.SetVerifiedEnr(record);
@@ -97,8 +99,11 @@ public class DiscoveryAppTests
             IPAddress.Parse("2001:db8::5"),
             out Node? reachableNode);
 
-        Assert.That(result, Is.True);
-        Assert.That(reachableNode, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(reachableNode, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reachableNode!.Host, Is.EqualTo("2001:db8::1"));
@@ -125,8 +130,11 @@ public class DiscoveryAppTests
         };
         bool result = DiscoveryApp.TryCreateReachableNode(callerNode, IPAddress.Any, out Node? reachableNode);
 
-        Assert.That(result, Is.True);
-        Assert.That(reachableNode, Is.SameAs(callerNode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(reachableNode, Is.SameAs(callerNode));
+        }
     }
 
     [Test]
@@ -140,8 +148,11 @@ public class DiscoveryAppTests
 
         bool result = DiscoveryApp.TryCreateReachableNode(callerNode, IPAddress.Any, out Node? reachableNode);
 
-        Assert.That(result, Is.False);
-        Assert.That(reachableNode, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(reachableNode, Is.Null);
+        }
     }
 
     [Test]

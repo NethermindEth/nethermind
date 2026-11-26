@@ -58,17 +58,23 @@ public class KademliaSimulation
         node1.AddOrRefresh(new TestNode(node2Hash));
         node2.AddOrRefresh(new TestNode(node3Hash));
 
-        Assert.That(node1.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray(), Is.EquivalentTo(new[] { node1Hash, node2Hash }));
-        Assert.That(node2.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray(), Is.EquivalentTo(new[] { node2Hash, node3Hash }));
-        Assert.That(node3.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray(), Is.EquivalentTo(new[] { node3Hash }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node1.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray(), Is.EquivalentTo(new[] { node1Hash, node2Hash }));
+            Assert.That(node2.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray(), Is.EquivalentTo(new[] { node2Hash, node3Hash }));
+            Assert.That(node3.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray(), Is.EquivalentTo(new[] { node3Hash }));
+        }
 
         // await node2.Bootstrap(cts.Token);
         // node2.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToHashSet().Should().BeEquivalentTo([node2Hash, node3Hash]);
 
         await node1.Bootstrap(cts.Token);
 
-        Assert.That(node1.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToHashSet(), Is.EquivalentTo(new[] { node1Hash, node2Hash, node3Hash }));
-        Assert.That(node2.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToHashSet(), Is.EquivalentTo(new[] { node1Hash, node2Hash, node3Hash }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node1.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToHashSet(), Is.EquivalentTo(new[] { node1Hash, node2Hash, node3Hash }));
+            Assert.That(node2.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToHashSet(), Is.EquivalentTo(new[] { node1Hash, node2Hash, node3Hash }));
+        }
         // node3.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToHashSet().Should().BeEquivalentTo([node1Hash, node2Hash, node3Hash]);
     }
 
@@ -101,11 +107,13 @@ public class KademliaSimulation
 
         await fabric.Bootstrap(cts.Token);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(
             (await node1.LookupNodesClosest(node2Hash, cts.Token))
             .Select(n => n.Hash)
             .ToArray(),
             Is.EquivalentTo(new[] { node1Hash, node2Hash, node3Hash }));
+#pragma warning restore NUnit2045
 
         Assert.That((await node1.LookupNodesClosest(node3Hash, cts.Token, 1)).First().Hash, Is.EqualTo(node3Hash));
     }

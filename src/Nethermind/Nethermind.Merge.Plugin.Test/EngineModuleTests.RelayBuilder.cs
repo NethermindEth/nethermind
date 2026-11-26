@@ -33,7 +33,7 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [Test]
-    public void Boost_relay_rejects_null_payload_attributes()
+    public async Task Boost_relay_rejects_null_payload_attributes()
     {
         const string relayUrl = "http://localhost";
         MockHttpMessageHandler mockHttp = new();
@@ -48,7 +48,7 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = Address.Zero
         };
 
-        Assert.ThrowsAsync<HttpRequestException>(async () =>
+        await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await relay.GetPayloadAttributes(payloadAttributes, CancellationToken.None));
     }
 
@@ -102,11 +102,14 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
-        Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
-        Assert.That(executionPayloadV1.GasLimit, Is.EqualTo(10_000_000L));
-        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(executionPayloadV1)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(sentItem!.Block))).Using(JToken.EqualityComparer));
-        Assert.That(sentItem.Profit, Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
+            Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(executionPayloadV1.GasLimit, Is.EqualTo(10_000_000L));
+            Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(executionPayloadV1)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(sentItem!.Block))).Using(JToken.EqualityComparer));
+            Assert.That(sentItem.Profit, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [TestCase(
@@ -201,8 +204,11 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
-        Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
+            Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
+        }
 
         mockHttp.VerifyNoOutstandingExpectation();
     }

@@ -21,7 +21,7 @@ public class NettyBufferMemoryOwnerTests
         Assert.That(memoryOwner.Memory.Length, Is.EqualTo(10));
         memoryOwner.Memory.Span.Fill(1);
 
-        Assert.That(buffer.AsSpan().ToArray(), Is.EqualTo(Enumerable.Repeat((byte)1, 10).ToArray()));
+        Assert.That(buffer.AsSpan(), Is.SequenceEqualTo(Enumerable.Repeat((byte)1, 10).ToArray()));
     }
 
     [Test]

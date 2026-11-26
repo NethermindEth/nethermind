@@ -22,6 +22,7 @@
     <PackageReference Include="Microsoft.ClearScript.V8.Native.linux-x64" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.osx-arm64" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.osx-x64" />
+    <PackageReference Include="Microsoft.ClearScript.V8.Native.win-arm64" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.win-x64" />
   </ItemGroup>
   <ItemGroup>

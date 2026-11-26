@@ -11,6 +11,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.Rpc;
@@ -38,6 +39,11 @@ public class OptimismPayloadAttributes : PayloadAttributes
     /// </remarks>
     public byte[]? EIP1559Params { get; set; }
 
+    /// <remarks>
+    /// See <see href="https://specs.optimism.io/protocol/jovian/exec-engine.html#minimum-base-fee-in-payloadattributesv3"/>
+    /// </remarks>
+    public ulong? MinBaseFee { get; set; }
+
     private int TransactionsLength => Transactions?.Length ?? 0;
 
     private Transaction[]? _transactions;
@@ -53,9 +59,9 @@ public class OptimismPayloadAttributes : PayloadAttributes
             {
                 return TxRlpDecoder.DecodeCompleteNotNull(t, RlpBehaviors.SkipTypedWrapping);
             }
-            catch (RlpException e)
+            catch (RlpReaderException e)
             {
-                throw new RlpException($"Transaction {i} is not valid", e);
+                throw new RlpReaderException($"Transaction {i} is not valid", e);
             }
         }).ToArray();
 
@@ -65,9 +71,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
     /// <param name="transactions">An array of transactions to encode.</param>
     public void SetTransactions(params Transaction[] transactions)
     {
-        Transactions = transactions
-            .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
-            .ToArray();
+        Transactions = Array.ConvertAll(transactions, static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping));
         _transactions = transactions;
     }
 
@@ -76,7 +80,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
         + sizeof(bool) // noTxPool
         + (Keccak.Size * TransactionsLength) // Txs
         + sizeof(ulong) // gasLimit
-        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0); // eip1559Params
+        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0) // eip1559Params
+        + (MinBaseFee is null ? 0 : sizeof(ulong)); // minBaseFee
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
@@ -104,6 +109,12 @@ public class OptimismPayloadAttributes : PayloadAttributes
             offset += EIP1559Params.Length;
         }
 
+        if (MinBaseFee is { } minBaseFee)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(offset, sizeof(ulong)), minBaseFee);
+            offset += sizeof(ulong);
+        }
+
         return offset;
     }
 
@@ -122,32 +133,24 @@ public class OptimismPayloadAttributes : PayloadAttributes
             error = $"{nameof(EIP1559Params)} should be null before Holocene";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        if (releaseSpec.IsOpHoloceneEnabled)
+        if (releaseSpec.IsOpJovianEnabled != MinBaseFee.HasValue)
         {
-            if (!this.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out string? decodeError))
-            {
-                error = decodeError;
-                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-            }
-
-            (int version, string reason) versionCheck = parameters switch
-            {
-                // Newer forks should be added on top
-                _ when releaseSpec.IsOpJovianEnabled => (1, "since Jovian"),
-                _ => (0, "before Jovian")
-            };
-            if (versionCheck.version != parameters.Version)
-            {
-                error = $"{nameof(EIP1559Params)} version should be {versionCheck.version} {versionCheck.reason}";
-                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-            }
+            error = releaseSpec.IsOpJovianEnabled
+                ? $"{nameof(MinBaseFee)} should be set since Jovian"
+                : $"{nameof(MinBaseFee)} should be null before Jovian";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+        if (releaseSpec.IsOpHoloceneEnabled && !this.TryDecodeEIP1559Parameters(out _, out string? decodeError))
+        {
+            error = decodeError;
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
         try
         {
             GetTransactions();
         }
-        catch (RlpException e)
+        catch (RlpReaderException e)
         {
             error = $"Error decoding transactions: {e}";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
@@ -163,7 +166,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
             .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}, ")
             .Append($"{nameof(GasLimit)}: {GasLimit}, ")
             .Append($"{nameof(NoTxPool)}: {NoTxPool}, ")
-            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}")
+            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}, ")
+            .Append($"{nameof(MinBaseFee)}: {MinBaseFee}, ")
             .Append($"{nameof(Transactions)}: {Transactions?.Length ?? 0}");
 
         if (Withdrawals is not null)

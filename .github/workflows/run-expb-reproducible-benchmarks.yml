@@ -79,6 +79,8 @@ on:
           --FlatDb.PersistenceWriteBufferFloor. Keeps small-CompactSize persistence batches from
           shrinking RocksDB memtables (decouples write amplification from CompactSize). Set empty to
           disable. Ignored for non-flat layouts and when additional_extra_flags already sets it.
+          The same switch pins --FlatDb.CompactionOffset=0 (#11756), so every run compacts at the
+          same blocks: the snapshots store no offset, and each node start would draw a random one.
           SET THIS EMPTY when benchmarking an image built before 2026-06-16 (#11936 added the flag):
           older clients reject an unknown argument by printing CLI usage and exiting, which looks
           like a workflow failure rather than a flag mismatch.
@@ -147,7 +149,7 @@ on:
           resolves both managed frames (via the runtime's perf map) and native frames (via the
           container's shared objects), so time inside RocksDB, the allocator and the GC is attributed
           instead of collapsing into dotTrace's single '[Native or optimized code]' node. Produces
-          a folded-stack perf.folded readable with scripts/perf-report.sh.
+          a folded-stack perf.folded readable with scripts/perf-report.cs.
           Independent of the dottrace input; enabling both samples the process twice, which perturbs
           timings - use perf runs for attribution, not for A/B numbers.
         required: false
@@ -236,7 +238,7 @@ jobs:
       retrospective_last: ${{ steps.resolve.outputs.retrospective_last }}
       retrospective_step: ${{ steps.resolve.outputs.retrospective_step }}
       state_layout: ${{ steps.resolve.outputs.state_layout }}
-      payload_sets: ${{ steps.resolve.outputs.payload_sets }}
+      cells: ${{ steps.resolve.outputs.cells }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
       perf: ${{ steps.resolve.outputs.perf }}
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
@@ -297,6 +299,11 @@ jobs:
           # Default FlatDb write-buffer floor (bytes) for flat layout; overridden by the dispatch input.
           flat_write_buffer_floor="67108864"
           expb_env=""
+          # Every PR-label and master-push run benchmarks fusaka in two cells: 1000 payloads back to back, as in
+          # sync or catch-up, and 100 payloads a second apart, which leaves the node idle between blocks as at the
+          # chain head. A cell is the unit the benchmark matrix, the artifacts and the cached master baselines are
+          # keyed by; the first cell keeps the id the single fusaka run always had.
+          automated_cells='[{"id":"fusaka","payload_set":"fusaka","amount":"1000","delay_seconds":"0"},{"id":"fusaka-delay1s","payload_set":"fusaka","amount":"100","delay_seconds":"1"}]'
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             branch="${PUSH_BRANCH}"
             client="${DISPATCH_CLIENT:-nethermind}"
@@ -325,7 +332,17 @@ jobs:
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
             run_count="${DISPATCH_RUN_COUNT:-1}"
-            payload_sets="[\"${payload_set}\"]"
+            # The cell values are interpolated into JSON and the rendered config, so they must be plain tokens.
+            if ! [[ "${delay_seconds}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+              echo "::error::delay_seconds must be a non-negative number of seconds, e.g. 1 or 0.25 (got '${delay_seconds}')."
+              exit 1
+            fi
+            if ! [[ "${amount}" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::amount must be a positive whole number of payloads (got '${amount}')."
+              exit 1
+            fi
+            # A dispatch is one cell named after its payload set, so its artifact names stay as they were.
+            cells="[{\"id\":\"${payload_set}\",\"payload_set\":\"${payload_set}\",\"amount\":\"${amount}\",\"delay_seconds\":\"${delay_seconds}\"}]"
 
             # Determine mode: multi-image if docker_images or retrospective is enabled
             docker_images="${DISPATCH_DOCKER_IMAGES:-}"
@@ -406,13 +423,14 @@ jobs:
             fi
             branch="${PR_HEAD_BRANCH}"
             state_layout="flat"
-            payload_set="superblocks"
-            payload_sets='["superblocks","realblocks","fusaka"]'
+            payload_set="fusaka"
+            cells="${automated_cells}"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             arch="amd64"
+            # Per-cell amount and delay come from cells; these describe the first cell.
             delay_seconds="0"
-            amount=""
+            amount="1000"
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
@@ -431,13 +449,14 @@ jobs:
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
-            payload_set="superblocks"
-            payload_sets='["superblocks","realblocks","fusaka"]'
+            payload_set="fusaka"
+            cells="${automated_cells}"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             arch="amd64"
+            # Per-cell amount and delay come from cells; these describe the first cell.
             delay_seconds="0"
-            amount=""
+            amount="1000"
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
@@ -565,6 +584,12 @@ jobs:
                 additional_extra_flags="${floor_flag}"
               fi
             fi
+            # Pin the compaction schedule. The snapshots store no compaction offset, so each node start would draw a
+            # random one and compact at different blocks, moving compaction work between blocks from run to run.
+            # Tied to the floor switch: #11756 added the setting before #11936, so any image that takes one takes both.
+            if ! printf '%s' "${additional_extra_flags}" | grep -qi "CompactionOffset"; then
+              additional_extra_flags="${additional_extra_flags}, --FlatDb.CompactionOffset=0"
+            fi
           fi
 
           branch="${branch#refs/heads/}"
@@ -664,7 +689,7 @@ jobs:
             echo "retrospective_last=${retrospective_last:-100}"
             echo "retrospective_step=${retrospective_step:-10}"
             echo "state_layout=${state_layout}"
-            echo "payload_sets=${payload_sets}"
+            echo "cells=${cells}"
             echo "dottrace=${dottrace}"
             echo "perf=${perf:-false}"
             echo "dottrace_mode=${dottrace_mode}"
@@ -719,6 +744,9 @@ jobs:
             "build-config": "release"
             }'
 
+      - name: Set up .NET for CI scripts
+        uses: actions/setup-dotnet@v5
+
       - name: Wait for publish-docker.yml to complete
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
         id: wait-publish-docker
@@ -746,8 +774,7 @@ jobs:
             echo "::error::The dispatch step produced no runId; refusing to fall back to run discovery."
             exit 1
           fi
-          chmod +x scripts/wait-for-workflow.sh
-          ./scripts/wait-for-workflow.sh
+          dotnet run --file scripts/wait-for-workflow.cs
           publish_head_sha=$(curl -sf \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: token ${GITHUB_TOKEN}" \
@@ -860,14 +887,20 @@ jobs:
             exit 1
           fi
 
-          inspect_output="$(docker buildx imagetools inspect "${IMAGE_LABEL}")"
+          # Concurrent master pushes overwrite :master in whatever order their builds finish, so resolve the
+          # per-commit tag publish-docker adds on master pushes instead of racing the moving one.
+          resolve_label="${IMAGE_LABEL}"
+          if [[ "${IMAGE_LABEL}" == "nethermindeth/nethermind:master" && -n "${EXPECTED_REVISION}" ]]; then
+            resolve_label="${IMAGE_LABEL}-${EXPECTED_REVISION:0:7}"
+          fi
+          inspect_output="$(docker buildx imagetools inspect "${resolve_label}")"
           image_digest="$(printf '%s\n' "${inspect_output}" | awk '$1 == "Digest:" { print $2; exit }')"
           if ! [[ "${image_digest}" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
-            echo "::error::Could not resolve an immutable multiarch digest for ${IMAGE_LABEL}."
+            echo "::error::Could not resolve an immutable multiarch digest for ${resolve_label}."
             exit 1
           fi
           image="${IMAGE_LABEL%%@*}@${image_digest}"
-          echo "Resolved ${IMAGE_LABEL} to ${image}."
+          echo "Resolved ${resolve_label} to ${image}."
 
           docker pull "${image}"
           version_status=0
@@ -898,13 +931,13 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
   benchmark:
-    name: benchmark (${{ matrix.payload_set }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
+    name: benchmark (${{ matrix.cell.id }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
     needs: [resolve, prepare-docker]
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
     strategy:
       matrix:
         run: ${{ fromJson(needs.resolve.outputs.run_indices) }}
-        payload_set: ${{ fromJson(needs.resolve.outputs.payload_sets) }}
+        cell: ${{ fromJson(needs.resolve.outputs.cells) }}
       max-parallel: 1
       fail-fast: false
     runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
@@ -920,14 +953,30 @@ jobs:
       CLIENT: ${{ needs.resolve.outputs.client }}
       MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
     steps:
+      - name: Check out profiling validation scripts
+        if: needs.resolve.outputs.perf == 'true'
+        uses: actions/checkout@v6
+        with:
+          path: expb-ci-tools
+          sparse-checkout: |
+            .github/actions/setup-dotnet
+            scripts
+          persist-credentials: false
+
+      - name: Set up .NET for profiling validation
+        if: needs.resolve.outputs.perf == 'true'
+        uses: ./expb-ci-tools/.github/actions/setup-dotnet
+        with:
+          global-json-file: expb-ci-tools/global.json
+
       - name: Resolve benchmark config for payload set
         id: resolve-config
         shell: bash
         env:
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
-          PAYLOAD_SET: ${{ matrix.payload_set }}
+          PAYLOAD_SET: ${{ matrix.cell.payload_set }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          DELAY_SECONDS: ${{ matrix.cell.delay_seconds }}
           RUN: ${{ matrix.run }}
           RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
           CLIENT: ${{ needs.resolve.outputs.client }}
@@ -952,14 +1001,16 @@ jobs:
         run: |
           echo "Event: ${{ github.event_name }}"
           echo "Runner: ${{ needs.resolve.outputs.runner_label }}"
-          echo "Payload set: ${{ matrix.payload_set }}"
+          echo "Cell: ${{ matrix.cell.id }}"
+          echo "Payload set: ${{ matrix.cell.payload_set }}"
+          echo "Payload amount: ${{ matrix.cell.amount }}"
           echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Docker image revision: ${IMAGE_REVISION}"
           echo "Client: ${CLIENT}"
           echo "Measurement source: ${MEASUREMENT_SOURCE}"
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
-          echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
+          echo "Delay placeholder value: ${{ matrix.cell.delay_seconds }}"
           echo "Rebuild docker requested: ${{ needs.resolve.outputs.rebuild_docker }}"
           echo "Publish docker workflow triggered: ${{ needs.resolve.outputs.should_trigger_publish_docker }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
@@ -976,16 +1027,6 @@ jobs:
             run_as_root systemctl start docker || run_as_root service docker start
           fi
           docker version
-
-      - name: Restore cached master metrics
-        id: restore-master-metrics
-        if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@v5
-        with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            expb-master-metrics-v4-${{ matrix.payload_set }}-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -1006,9 +1047,10 @@ jobs:
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config.yaml
           DOCKER_TAG: ${{ needs.prepare-docker.outputs.image }}
           IMAGE_REVISION: ${{ needs.prepare-docker.outputs.image_revision }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
-          AMOUNT: ${{ needs.resolve.outputs.amount }}
-          PAYLOAD_SET: ${{ matrix.payload_set }}
+          DELAY_SECONDS: ${{ matrix.cell.delay_seconds }}
+          AMOUNT: ${{ matrix.cell.amount }}
+          PAYLOAD_SET: ${{ matrix.cell.payload_set }}
+          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
@@ -1204,6 +1246,17 @@ jobs:
           "${YQ}" '.resources' "${RENDERED_CONFIG_FILE}"
 
           expected_amount="$("${YQ}" -r ".scenarios.\"${scenario_key}\".amount // \"\"" "${RENDERED_CONFIG_FILE}")"
+          snapshot_source="$(SK="${scenario_key}" "${YQ}" -r '.scenarios.[strenv(SK)].snapshot_source // ""' "${RENDERED_CONFIG_FILE}")"
+          startup_block=""
+          if [[ "${CLIENT}" == "nethermind" && "${PAYLOAD_SET}" == "fusaka" && "${STATE_LAYOUT}" == "flat" && -n "${FLAT_SNAPSHOT_BLOCK_DIR}" && "${snapshot_source}" == "${FLAT_SNAPSHOT_BLOCK_DIR}" ]]; then
+            startup_block="${FLAT_SNAPSHOT_BLOCK_DIR##*/}"
+            startup_block="${startup_block#nethermind-flat-}"
+            if ! [[ "${startup_block}" =~ ^(0|[1-9][0-9]*)$ ]]; then
+              echo "::error::Snapshot fixture '${FLAT_SNAPSHOT_BLOCK_DIR}' has no numeric block suffix."
+              exit 1
+            fi
+          fi
+          echo "startup_block=${startup_block}" >> "${GITHUB_OUTPUT}"
           echo "expected_amount=${expected_amount}" >> "${GITHUB_OUTPUT}"
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
@@ -1214,6 +1267,7 @@ jobs:
           EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
           PERF: ${{ needs.resolve.outputs.perf }}
           MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
+          STARTUP_BLOCK: ${{ steps.render-config.outputs.startup_block }}
         run: |
           set -euo pipefail
 
@@ -1238,6 +1292,7 @@ jobs:
           requested_flags=()
           if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
           if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then requested_flags+=(--no-client-metrics); fi
+          if [[ -n "${STARTUP_BLOCK:-}" ]]; then requested_flags+=(--startup-block "${STARTUP_BLOCK}"); fi
           if [[ "${#requested_flags[@]}" -gt 0 ]]; then
             if ! capability_output="$(NO_COLOR=1 "${expb_bin}" execute-scenarios "${requested_flags[@]}" --help 2>&1)"; then
               echo "::error::Installed expb from ${expb_source} does not support requested capability flag(s): ${requested_flags[*]}."
@@ -1277,9 +1332,9 @@ jobs:
           #
           # This body is duplicated verbatim in arm-runner-maintenance.yml and in both benchmark jobs of
           # run-expb-reproducible-benchmarks.yml. Sharing it would take a composite action and therefore
-          # actions/checkout, which none of the three jobs has and which arm-runner-maintenance.yml must
+          # actions/checkout, which arm-runner-maintenance.yml must
           # not depend on - it is the workflow you dispatch when the disk is full.
-          # scripts/ci/test_reap_stale_overlays.py asserts the three copies are byte-identical and drives
+          # scripts/ci/test-reap-stale-overlays.cs asserts the three copies are byte-identical and drives
           # this body against synthetic mount tables.
           # Positional, not an env var: GitHub invokes a `run:` block with no arguments after the
           # script path, so only that test can point this at a table it wrote.
@@ -1365,6 +1420,22 @@ jobs:
           done
           exit 0
 
+      - name: Reclaim Docker disk and pull the client image
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Each master run leaves a digest-pinned image on this box. expb's own pull drops the daemon's error, so
+          # once they fill the disk the run fails later with a bare ImageNotFound. With the overlay2 store, digest-only
+          # images count as dangling; keep this run's image when an earlier matrix cell already pulled it.
+          keep="$(docker image inspect --format '{{.Id}}' "${NETHERMIND_IMAGE}" 2>/dev/null || true)"
+          docker container prune -f >/dev/null || true
+          docker images -q --no-trunc --filter dangling=true | grep -vxF "${keep:-none}" | xargs -r docker rmi >/dev/null 2>&1 || true
+          docker builder prune -af >/dev/null || true
+          echo "Storage driver: $(docker info --format '{{.Driver}}')"
+          docker system df || true
+          df -h / "$(docker info --format '{{.DockerRootDir}}')"
+          docker pull "${NETHERMIND_IMAGE}"
+
       - name: Run expb scenarios
         id: run-expb
         continue-on-error: true
@@ -1379,6 +1450,7 @@ jobs:
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
           MEASUREMENT_MODE: ${{ needs.resolve.outputs.measurement_mode }}
           MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
+          STARTUP_BLOCK: ${{ steps.render-config.outputs.startup_block }}
         run: |
           set -euo pipefail
           expb_pid=""
@@ -1464,6 +1536,12 @@ jobs:
           # Marker for profiling artifact collection — only files newer than this
           touch "${RUNNER_TEMP}/.expb-run-marker"
 
+          startup_flags=()
+          if [[ -n "${STARTUP_BLOCK:-}" ]]; then
+            startup_flags+=(--startup-block "${STARTUP_BLOCK}")
+            echo "Waiting for the snapshot checkpoint at block ${STARTUP_BLOCK} before payload delivery."
+          fi
+
           fifo="${RUNNER_TEMP}/expb-pipe"
           mkfifo "${fifo}"
           tee "${RAW_RUN_LOG}" < "${fifo}" &
@@ -1474,6 +1552,7 @@ jobs:
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
+            ${startup_flags[@]+"${startup_flags[@]}"} \
             ${measurement_flags[@]+"${measurement_flags[@]}"} \
             ${profiling_flags[@]+"${profiling_flags[@]}"} \
             > "${fifo}" 2>&1 &
@@ -1530,6 +1609,7 @@ jobs:
         shell: bash
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+          RUN_OUTCOME: ${{ steps.run-expb.outcome }}
           MEASUREMENT_MODE: ${{ needs.resolve.outputs.measurement_mode }}
           MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
           EXPECTED_AMOUNT: ${{ steps.render-config.outputs.expected_amount }}
@@ -1549,6 +1629,42 @@ jobs:
           fi
 
           sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${RAW_RUN_LOG}" > "${clean_log}"
+
+          grep -in "Exception" "${clean_log}" > "${exception_lines}" || true
+          exception_found="false"
+          if [[ -s "${exception_lines}" ]]; then
+            exception_found="true"
+            echo "Found Exception lines in benchmark output:"
+            head -n 40 "${exception_lines}"
+          fi
+
+          grep -Ein "invalid[[:space:]_-]*block" "${clean_log}" > "${invalid_block_lines}" || true
+          invalid_block_found="false"
+          if [[ -s "${invalid_block_lines}" ]]; then
+            invalid_block_found="true"
+            echo "Found invalid block lines in benchmark output:"
+            head -n 40 "${invalid_block_lines}"
+          fi
+
+          {
+            echo "exception_found=${exception_found}"
+            echo "exception_lines_file=${exception_lines}"
+            echo "invalid_block_found=${invalid_block_found}"
+            echo "invalid_block_lines_file=${invalid_block_lines}"
+          } >> "${GITHUB_OUTPUT}"
+
+          if [[ "${RUN_OUTCOME}" != "success" ]]; then
+            echo "::error::EXPB did not finish successfully; its timings are not valid measurements."
+            exit 1
+          fi
+
+          engine_errors="${RUNNER_TEMP}/expb-engine-errors.log"
+          grep -En '^time="[^"]+" level=error msg="\[engine\] (newPayload|forkchoiceUpdated) idx=[0-9]+ ' "${clean_log}" > "${engine_errors}" || true
+          if [[ -s "${engine_errors}" ]]; then
+            echo "::error::Engine API responses failed payload validation; refusing benchmark metrics."
+            head -c 12000 "${engine_errors}"
+            exit 1
+          fi
 
           warmup_status="not-requested"
           if [[ "${MEASUREMENT_MODE}" == "compute-warm" ]]; then
@@ -1572,22 +1688,6 @@ jobs:
               warmup_status="missing"
               echo "Missing successful warmup records for measured payload indices: ${missing_warmups}"
             fi
-          fi
-
-          grep -in "Exception" "${clean_log}" > "${exception_lines}" || true
-          exception_found="false"
-          if [[ -s "${exception_lines}" ]]; then
-            exception_found="true"
-            echo "Found Exception lines in benchmark output:"
-            head -n 40 "${exception_lines}"
-          fi
-
-          grep -Ein "invalid[[:space:]_-]*block" "${clean_log}" > "${invalid_block_lines}" || true
-          invalid_block_found="false"
-          if [[ -s "${invalid_block_lines}" ]]; then
-            invalid_block_found="true"
-            echo "Found invalid block lines in benchmark output:"
-            head -n 40 "${invalid_block_lines}"
           fi
 
           # Flag additional severe runtime signals (warn, don't hard-fail)
@@ -1632,17 +1732,18 @@ jobs:
             echo "Could not extract any processing_ms data from benchmark output."
             exit 1
           fi
-          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
-            if [[ "${EXPECTED_AMOUNT}" =~ ^[0-9]+$ ]]; then
-              if [[ "${count}" -ne "${EXPECTED_AMOUNT}" ]]; then
-                echo "Expected ${EXPECTED_AMOUNT} K6 TTFB samples, extracted ${count}; refusing a partial engine-api measurement."
-                exit 1
-              fi
-            else
-              # The config carries no usable `amount`, so nothing can say whether the run is complete -
-              # and a partial cross-client run biases the comparison it was dispatched to make.
-              echo "::warning::No usable amount ('${EXPECTED_AMOUNT}') in the rendered config; the engine-api completeness check is disabled for this run."
+          if [[ "${EXPECTED_AMOUNT}" =~ ^[1-9][0-9]*$ ]]; then
+            request_ids="${RUNNER_TEMP}/expb-request-ids.txt"
+            awk -F'|' '/^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ { id = $2; gsub(/[[:space:]]/, "", id); print id }' "${clean_log}" > "${request_ids}"
+            request_count=$(wc -l < "${request_ids}")
+            unique_requests=$(sort -u "${request_ids}" | wc -l)
+            if (( request_count != EXPECTED_AMOUNT || unique_requests != EXPECTED_AMOUNT )); then
+              echo "::error::Expected ${EXPECTED_AMOUNT} distinct payloads, found ${request_count} rows and ${unique_requests} distinct IDs; refusing an incomplete benchmark."
+              exit 1
             fi
+          else
+            echo "::error::No usable amount ('${EXPECTED_AMOUNT}') in the rendered config; benchmark completeness cannot be checked."
+            exit 1
           fi
 
           compute_percentiles() {
@@ -1746,7 +1847,7 @@ jobs:
             request_count="${request_count//[[:space:]]/}"
             # The prefix pairing holds only while the feed is complete or lacks just its last record; any
             # other gap sits mid-run and would shear every value after it. Same rule as collect_metrics in
-            # scripts/expb/sequential_driver.py.
+            # scripts/expb/sequential-driver.cs.
             if (( paired_count == request_count || paired_count == request_count - 1 )); then
               emit_mgas_s "" "${client_ms}" "${paired_count}"
               emit_mgas_s "TTFB_" "${ttfb_ms}" "${paired_count}"
@@ -1804,10 +1905,6 @@ jobs:
 
           # Populate GITHUB_OUTPUT
           {
-            echo "exception_found=${exception_found}"
-            echo "exception_lines_file=${exception_lines}"
-            echo "invalid_block_found=${invalid_block_found}"
-            echo "invalid_block_lines_file=${invalid_block_lines}"
             echo "warmup_status=${warmup_status}"
             echo "metrics_file=${metrics_file}"
             while IFS= read -r line; do
@@ -1817,30 +1914,8 @@ jobs:
             done < "${metrics_file}"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Upload metrics artifact
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: expb-single-metrics-${{ matrix.payload_set }}-run${{ matrix.run }}
-          path: ${{ steps.analyze.outputs.metrics_file }}
-          retention-days: 30
-
-      - name: Prepare master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}"
-          cp "${{ steps.analyze.outputs.metrics_file }}" "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}/master-metrics.env"
-
-      - name: Save master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.run_id }}
-
       - name: Enforce run quality gates
+        id: quality
         if: always()
         shell: bash
         run: |
@@ -1848,6 +1923,11 @@ jobs:
 
           if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
             echo "expb execute-scenarios did not finish successfully."
+            exit 1
+          fi
+
+          if [[ "${{ steps.analyze.outcome }}" != "success" ]]; then
+            echo "Benchmark analysis did not produce valid, complete metrics."
             exit 1
           fi
 
@@ -1872,12 +1952,35 @@ jobs:
             exit 1
           fi
 
+      - name: Upload metrics artifact
+        if: steps.quality.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: expb-single-metrics-${{ matrix.cell.id }}-run${{ matrix.run }}
+          path: ${{ steps.analyze.outputs.metrics_file }}
+          retention-days: 30
+
+      - name: Prepare master metrics cache
+        if: github.event_name == 'push' && github.ref_name == 'master' && steps.quality.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "/tmp/expb-master-metrics-cache-${{ matrix.cell.id }}"
+          cp "${{ steps.analyze.outputs.metrics_file }}" "/tmp/expb-master-metrics-cache-${{ matrix.cell.id }}/master-metrics.env"
+
+      - name: Save master metrics cache
+        if: github.event_name == 'push' && github.ref_name == 'master' && steps.quality.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/expb-master-metrics-cache-${{ matrix.cell.id }}
+          key: expb-master-metrics-v7-${{ matrix.cell.id }}-run-${{ github.run_id }}
+
       - name: Collect and upload profiling artifacts
         id: collect-profiling
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         shell: bash
         env:
-          ARTIFACT_SUFFIX: ${{ matrix.payload_set }}-run${{ matrix.run }}
+          ARTIFACT_SUFFIX: ${{ matrix.cell.id }}-run${{ matrix.run }}
           MARKER: ${{ runner.temp }}/.expb-run-marker
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           PERF: ${{ needs.resolve.outputs.perf }}
@@ -1927,7 +2030,7 @@ jobs:
             mapfile -t folded_profiles < <(find "${profiling_dirs[@]}" -type f -name 'perf.folded' -newer "${MARKER}" 2>/dev/null)
             valid_folded_profiles=()
             for folded_profile in "${folded_profiles[@]}"; do
-              if bash scripts/validate-folded-profile.sh "${folded_profile}"; then
+              if dotnet run --file expb-ci-tools/scripts/validate-folded-profile.cs -- "${folded_profile}"; then
                 valid_folded_profiles+=("${folded_profile}")
               else
                 echo "::warning::Ignoring invalid perf.folded profile: ${folded_profile}"
@@ -1966,7 +2069,7 @@ jobs:
           METRICS_FILE: ${{ steps.analyze.outputs.metrics_file }}
           RENDERED_CONFIG_FILE: ${{ steps.render-config.outputs.rendered_config_file }}
           YQ_BIN: ${{ runner.temp }}/yq
-          LOG_ARTIFACT_DIR: ${{ runner.temp }}/expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
+          LOG_ARTIFACT_DIR: ${{ runner.temp }}/expb-single-logs-${{ matrix.cell.id }}-run${{ matrix.run }}
         run: |
           set -euo pipefail
           mkdir -p "${LOG_ARTIFACT_DIR}"
@@ -1984,7 +2087,10 @@ jobs:
           {
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "event=${{ github.event_name }}"
-            echo "payload_set=${{ matrix.payload_set }}"
+            echo "cell=${{ matrix.cell.id }}"
+            echo "payload_set=${{ matrix.cell.payload_set }}"
+            echo "amount=${{ matrix.cell.amount }}"
+            echo "delay_seconds=${{ matrix.cell.delay_seconds }}"
             echo "run=${{ matrix.run }}"
             echo "run_count=${{ needs.resolve.outputs.run_count }}"
             echo "measurement_mode=${{ needs.resolve.outputs.measurement_mode }}"
@@ -1995,8 +2101,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
-          path: ${{ runner.temp }}/expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
+          name: expb-single-logs-${{ matrix.cell.id }}-run${{ matrix.run }}
+          path: ${{ runner.temp }}/expb-single-logs-${{ matrix.cell.id }}-run${{ matrix.run }}
           retention-days: 30
           if-no-files-found: warn
 
@@ -2028,64 +2134,56 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Download all metrics artifacts
+        if: needs.benchmark.result == 'success'
         uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/all-metrics
           pattern: expb-single-metrics-*
 
-      - name: Restore master metrics (superblocks)
-        id: restore-master-superblocks
-        continue-on-error: true
-        uses: actions/cache/restore@v5
-        with:
-          path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v4-superblocks-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            expb-master-metrics-v4-superblocks-
-
-      - name: Restore master metrics (realblocks)
-        id: restore-master-realblocks
-        continue-on-error: true
-        uses: actions/cache/restore@v5
-        with:
-          path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v4-realblocks-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            expb-master-metrics-v4-realblocks-
-
+      # One restore per cell of the PR-label run (see automated_cells in the resolver).
       - name: Restore master metrics (fusaka)
+        if: needs.benchmark.result == 'success'
         id: restore-master-fusaka
         continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-fusaka
-          key: expb-master-metrics-v4-fusaka-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v7-fusaka-run-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v4-fusaka-
+            expb-master-metrics-v7-fusaka-run-
+
+      - name: Restore master metrics (fusaka-delay1s)
+        if: needs.benchmark.result == 'success'
+        id: restore-master-fusaka-delay1s
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/expb-master-metrics-cache-fusaka-delay1s
+          key: expb-master-metrics-v7-fusaka-delay1s-run-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v7-fusaka-delay1s-run-
 
       - name: Build PR comparison comment
         id: pr-comment
         shell: bash
         env:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
-          MASTER_SUPERBLOCKS: /tmp/expb-master-metrics-cache-superblocks/master-metrics.env
-          MASTER_REALBLOCKS: /tmp/expb-master-metrics-cache-realblocks/master-metrics.env
-          MASTER_FUSAKA: /tmp/expb-master-metrics-cache-fusaka/master-metrics.env
-          PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          MASTER_CACHE_ROOT: /tmp
+          CELLS: ${{ needs.resolve.outputs.cells }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           IMAGE: ${{ needs.prepare-docker.outputs.image }}
           IMAGE_REVISION: ${{ needs.prepare-docker.outputs.image_revision }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           CLIENT: ${{ needs.resolve.outputs.client }}
+          BENCHMARK_RESULT: ${{ needs.benchmark.result }}
         run: |
           set -euo pipefail
 
           marker="<!-- expb-reproducible-benchmark-report -->"
           comment_file="${RUNNER_TEMP}/expb-pr-comment.md"
           : > "${comment_file}"
-          if ! [[ "${IMAGE_REVISION}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+          if [[ "${BENCHMARK_RESULT}" == "success" ]] && ! [[ "${IMAGE_REVISION}" =~ ^[0-9a-fA-F]{40}$ ]]; then
             echo "::error::No valid revision was reported by the pinned benchmark image; refusing to publish a misleading benchmark comment."
             exit 1
           fi
@@ -2162,16 +2260,21 @@ jobs:
           }
 
           build_table() {
-            local payload_set="$1"
+            local cell_json="$1"
             local current_metrics="$2"
             local master_metrics="$3"
-            local scenario_name="${CLIENT}-${STATE_LAYOUT}-${payload_set}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+            local cell_id payload_set amount delay
+            cell_id="$(jq -r '.id' <<< "${cell_json}")"
+            payload_set="$(jq -r '.payload_set' <<< "${cell_json}")"
+            amount="$(jq -r '.amount' <<< "${cell_json}")"
+            delay="$(jq -r '.delay_seconds' <<< "${cell_json}")"
+            local scenario_name="${CLIENT}-${STATE_LAYOUT}-${payload_set}-${CLEAN_BRANCH}-delay${delay}s"
 
             local metrics=("MIN" "AVG" "MEDIAN" "P90" "P99" "MAX")
             local labels=("Min" "Avg" "P50" "P90" "P99" "Max")
 
             append_blank
-            append_line "#### ${payload_set}"
+            append_line "#### ${payload_set}: ${amount} payloads, ${delay} s delay"
             append_blank
 
             if [[ ! -f "${current_metrics}" ]]; then
@@ -2182,7 +2285,7 @@ jobs:
             append_line "Scenario: \`${scenario_name}\`"
 
             if [[ ! -f "${master_metrics}" ]]; then
-              append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
+              append_line "No cached master baseline for \`${cell_id}\`. A baseline will be created from the next successful \`master\` push run."
             fi
 
             # The request time is what the consensus client waits for; the processing time isolates EVM
@@ -2250,28 +2353,29 @@ jobs:
           }
 
           append_line "${marker}"
-          append_line "Tested image: \`${IMAGE}\`"
-          append_line "Tested against commit: ${IMAGE_REVISION}"
+          if [[ "${BENCHMARK_RESULT}" == "success" ]]; then
+            append_line "Tested image: \`${IMAGE}\`"
+            append_line "Tested against commit: ${IMAGE_REVISION}"
+          fi
           append_line "### EXPB Benchmark Comparison"
           append_blank
           append_line "Run: [View workflow run](${RUN_URL})"
+          append_blank
+          append_line "_0 s delay sends the payloads back to back, as in sync or catch-up; 1 s delay leaves the node idle between them, as at the chain head._"
 
-          # Iterate over each payload_set from the matrix
-          mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
-
-          for ps in "${payload_sets[@]}"; do
-            # Find the PR metrics artifact (run 1 by default)
-            current_metrics="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
-
-            # Master metrics from cache
-            case "${ps}" in
-              superblocks) master_metrics="${MASTER_SUPERBLOCKS}" ;;
-              fusaka) master_metrics="${MASTER_FUSAKA}" ;;
-              *) master_metrics="${MASTER_REALBLOCKS}" ;;
-            esac
-
-            build_table "${ps}" "${current_metrics}" "${master_metrics}"
-          done
+          # One table per cell of the matrix, each against the cached master run of the same cell.
+          if [[ "${BENCHMARK_RESULT}" == "success" ]]; then
+            mapfile -t cells < <(echo "${CELLS}" | jq -c '.[]')
+            for cell_json in "${cells[@]}"; do
+              cell_id="$(jq -r '.id' <<< "${cell_json}")"
+              current_metrics="${METRICS_DIR}/expb-single-metrics-${cell_id}-run1/expb-metrics.env"
+              master_metrics="${MASTER_CACHE_ROOT}/expb-master-metrics-cache-${cell_id}/master-metrics.env"
+              build_table "${cell_json}" "${current_metrics}" "${master_metrics}"
+            done
+          else
+            append_blank
+            append_line "**Invalid benchmark run:** one or more samples failed, were cancelled or did not finish. No timing, throughput or comparison results are published. Inspect the workflow logs before rerunning."
+          fi
 
           {
             echo "body<<EOF"
@@ -2318,7 +2422,7 @@ jobs:
             });
 
   # ---------------------------------------------------------------------------
-  # Single-image summary: aggregates all runs × payload_sets into GITHUB_STEP_SUMMARY
+  # Single-image summary: aggregates all runs × cells into GITHUB_STEP_SUMMARY
   # ---------------------------------------------------------------------------
 
   single-summary:
@@ -2327,6 +2431,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all metrics artifacts
+        if: needs.benchmark.result == 'success'
         uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/all-metrics
@@ -2336,13 +2441,13 @@ jobs:
         shell: bash
         env:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
-          PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          CELLS: ${{ needs.resolve.outputs.cells }}
           RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           CLIENT: ${{ needs.resolve.outputs.client }}
+          BENCHMARK_RESULT: ${{ needs.benchmark.result }}
         run: |
           set -euo pipefail
 
@@ -2370,22 +2475,34 @@ jobs:
             printf '%s' "${source:-unknown}"
           }
 
-          mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
-
           {
             echo "## EXPB Benchmark Results"
             echo ""
-            echo "Branch: \`${CLEAN_BRANCH}\` | Layout: \`${STATE_LAYOUT}\` | Delay: \`${DELAY_SECONDS}s\` | Runs: \`${run_count}\`"
+            echo "Branch: \`${CLEAN_BRANCH}\` | Layout: \`${STATE_LAYOUT}\` | Runs: \`${run_count}\`"
             echo ""
             echo "Run: [View workflow run](${RUN_URL})"
           } > "${summary_file}"
 
-          for ps in "${payload_sets[@]}"; do
-            scenario_name="${CLIENT}-${STATE_LAYOUT}-${ps}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+          if [[ "${BENCHMARK_RESULT}" != "success" ]]; then
+            echo "Invalid benchmark run: one or more samples failed, were cancelled or did not finish. No timing or throughput results are published." >> "${summary_file}"
+            cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          mapfile -t cells < <(echo "${CELLS}" | jq -c '.[]')
+
+          for cell_json in "${cells[@]}"; do
+            cell_id="$(jq -r '.id' <<< "${cell_json}")"
+            cell_payload_set="$(jq -r '.payload_set' <<< "${cell_json}")"
+            cell_amount="$(jq -r '.amount' <<< "${cell_json}")"
+            cell_delay="$(jq -r '.delay_seconds' <<< "${cell_json}")"
+            scenario_name="${CLIENT}-${STATE_LAYOUT}-${cell_payload_set}-${CLEAN_BRANCH}-delay${cell_delay}s"
 
             {
               echo ""
-              echo "### ${ps}"
+              echo "### ${cell_id}"
+              echo ""
+              echo "Payloads: \`${cell_amount}\` | Delay: \`${cell_delay}s\`"
               echo ""
               echo "Scenario: \`${scenario_name}\`"
               echo ""
@@ -2394,7 +2511,7 @@ jobs:
             # Detect metrics source from first available run
             source_label=""
             for (( r=1; r<=run_count; r++ )); do
-              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+              mf="${METRICS_DIR}/expb-single-metrics-${cell_id}-run${r}/expb-metrics.env"
               if [[ -f "${mf}" ]]; then
                 if [[ "$(metrics_source "${mf}")" == "sse" ]]; then
                   source_label="SSE"
@@ -2422,7 +2539,7 @@ jobs:
               valid_runs=0
 
               for (( r=1; r<=run_count; r++ )); do
-                mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+                mf="${METRICS_DIR}/expb-single-metrics-${cell_id}-run${r}/expb-metrics.env"
                 if [[ ! -f "${mf}" ]]; then
                   echo "| ${r} | - | - | - | - | - | - | - | - |" >> "${summary_file}"
                   continue
@@ -2478,7 +2595,7 @@ jobs:
               fi
             else
               # Single run — simple table
-              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
+              mf="${METRICS_DIR}/expb-single-metrics-${cell_id}-run1/expb-metrics.env"
               if [[ ! -f "${mf}" ]]; then
                 echo "No metrics were produced." >> "${summary_file}"
               else
@@ -2812,9 +2929,9 @@ jobs:
           #
           # This body is duplicated verbatim in arm-runner-maintenance.yml and in both benchmark jobs of
           # run-expb-reproducible-benchmarks.yml. Sharing it would take a composite action and therefore
-          # actions/checkout, which none of the three jobs has and which arm-runner-maintenance.yml must
+          # actions/checkout, which arm-runner-maintenance.yml must
           # not depend on - it is the workflow you dispatch when the disk is full.
-          # scripts/ci/test_reap_stale_overlays.py asserts the three copies are byte-identical and drives
+          # scripts/ci/test-reap-stale-overlays.cs asserts the three copies are byte-identical and drives
           # this body against synthetic mount tables.
           # Positional, not an env var: GitHub invokes a `run:` block with no arguments after the
           # script path, so only that test can point this at a table it wrote.
@@ -2965,11 +3082,15 @@ jobs:
           chmod +x "${yq}"
           yq_version="$("${yq}" --version)"
           [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
+      - name: Set up .NET for CI scripts
+        uses: ./.github/actions/setup-dotnet
+
       - name: Run sequential EXPB campaign
         id: run-campaign
         continue-on-error: true
         shell: bash
         env:
+          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           EXPB_IMAGES_JSON: ${{ needs.resolve-images.outputs.images }}
           # An explicit `docker_images` dispatch is an A/B: one bad arm invalidates the comparison, so
           # the campaign stops. A retrospective sweep bisects across many master builds and its other
@@ -3007,7 +3128,7 @@ jobs:
           if [[ -n "${CLIENT_SNAPSHOT_DIR}" ]]; then echo "Client snapshot: ${CLIENT_SNAPSHOT_DIR} (mount ${SNAPSHOT_MOUNT_PATH})"; fi
           mkdir -p "${EXPB_CAMPAIGN_DIR}"
           touch "${RUNNER_TEMP}/.expb-run-marker"
-          python3 "${GITHUB_WORKSPACE}/scripts/expb/sequential_driver.py"
+          dotnet run --file "${GITHUB_WORKSPACE}/scripts/expb/sequential-driver.cs"
       - name: Upload campaign artifact
         id: upload-campaign
         if: always()
@@ -3105,7 +3226,7 @@ jobs:
               profile_ok=false
               mapfile -t folded_profiles < <(find "${perf_dir}" -type f -name perf.folded -newer "${MARKER}" 2>/dev/null)
               for folded_profile in "${folded_profiles[@]}"; do
-                if bash scripts/validate-folded-profile.sh "${folded_profile}"; then
+                if dotnet run --file scripts/validate-folded-profile.cs -- "${folded_profile}"; then
                   profile_ok=true
                   break
                 fi

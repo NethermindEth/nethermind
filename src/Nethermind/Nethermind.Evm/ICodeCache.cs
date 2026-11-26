@@ -15,6 +15,13 @@ namespace Nethermind.Evm;
 public interface ICodeCache
 {
     CodeInfo? Get(in ValueHash256 codeHash);
+    /// <summary>Stores <paramref name="codeInfo"/> under <paramref name="codeHash"/>.</summary>
+    /// <remarks>
+    /// A cache that stores must stamp <paramref name="codeHash"/> on <paramref name="codeInfo"/>
+    /// (<see cref="CodeInfo.StampCodeHash"/>): <see cref="CacheCodeInfoRepository"/>'s last-resolved memo matches on it.
+    /// One that stores nothing, like <see cref="NoopCodeCache"/>, must not, or the memo would serve code without reading
+    /// it through the world state.
+    /// </remarks>
     void Set(in ValueHash256 codeHash, CodeInfo codeInfo);
     void Clear();
 }

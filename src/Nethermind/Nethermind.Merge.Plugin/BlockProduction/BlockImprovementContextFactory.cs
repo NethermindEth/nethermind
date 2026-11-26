@@ -14,7 +14,7 @@ public class BlockImprovementContextFactory(IBlockProducer blockProducer, TimeSp
     : IBlockImprovementContextFactory
 {
     public IBlockImprovementContext StartBlockImprovementContext(
-        Block currentBestBlock,
+        Block? currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,

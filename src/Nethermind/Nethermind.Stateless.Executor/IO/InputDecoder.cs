@@ -10,7 +10,7 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Stateless.Execution.IO;
 
-internal static class InputDecoder
+internal static partial class InputDecoder
 {
     /// <summary>The schema revision selecting the SSZ <c>StatelessInput</c> payload encoding.</summary>
     internal const byte Revision1 = 0x01;
@@ -20,6 +20,9 @@ internal static class InputDecoder
 
     /// <summary>The schema id of an Amsterdam block.</summary>
     internal const ushort AmsterdamSchemaId = ((ushort)ProtocolFork.Amsterdam << 8) | Revision1;
+
+    /// <summary>Where an encoded <c>StatelessInput</c> holds the offset of its witness: past that of its new payload request.</summary>
+    internal const int WitnessOffsetPosition = sizeof(uint);
 
     /// <summary>Decodes a stateless input into the payload the run executes.</summary>
     /// <remarks>
@@ -43,6 +46,7 @@ internal static class InputDecoder
         ReadOnlySpan<byte> data, ushort schemaId, ProtocolFork protocolFork)
         where TExecutionPayload : SszExecutionPayload, ISszCodec<TExecutionPayload>, new()
     {
+        PlaceWitnessNodesInInput(data);
         StatelessInput<TExecutionPayload>.Decode(data, out StatelessInput<TExecutionPayload> input);
         NewPayloadRequest<TExecutionPayload>.Merkleize(input.NewPayloadRequest, out UInt256 root);
 
@@ -62,10 +66,13 @@ internal static class InputDecoder
             EncodedTransactions: executionPayload.AsExecutionPayload().Transactions,
             ChainId: input.ChainId,
             SchemaId: schemaId,
-            PublicKeys: input.PublicKeys,
             VersionedHashes: input.NewPayloadRequest.VersionedHashes,
             NewPayloadRequestRoot: new Hash256(root.ToLittleEndian()),
             SpecProvider: specProvider
         );
     }
+
+    /// <summary>Lets the witness state nodes the decoding of <paramref name="data"/> holds stay in it.</summary>
+    /// <remarks>See <c>InputDecoder.zkevm.cs</c>.</remarks>
+    static partial void PlaceWitnessNodesInInput(ReadOnlySpan<byte> data);
 }

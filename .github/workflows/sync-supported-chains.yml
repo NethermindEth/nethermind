@@ -66,6 +66,11 @@ jobs:
           path: nethermind
           ref: ${{ github.ref_name || 'master' }}
 
+      - name: Set up .NET for CI scripts
+        uses: ./nethermind/.github/actions/setup-dotnet
+        with:
+          global-json-file: nethermind/global.json
+
       - name: Set Matrix
         id: set-matrix
         env:
@@ -75,7 +80,7 @@ jobs:
         run: |
           matrix=$(cat nethermind/scripts/config/testnet-matrix.json)
 
-          matrix=$(echo "$matrix" | nethermind/scripts/sync/select-networks.sh "$NETWORK_FILTER")
+          matrix=$(echo "$matrix" | dotnet run --file nethermind/scripts/sync/select-networks.cs -- "$NETWORK_FILTER")
 
           matrix=$(echo "$matrix" | jq \
             --arg run_id "$GITHUB_RUN_ID" \
@@ -88,8 +93,8 @@ jobs:
                  provisioning_model: (
                    if $model == "Spot" then "SPOT"
                    elif $model == "Standard" then "STANDARD"
-                   elif $config.spot then "SPOT"
-                   else "STANDARD"
+                   elif $config.spot == false then "STANDARD"
+                   else "SPOT"
                    end
                  ),
                  max_run_duration: ((($config.timeout + 60) | tostring) + "m")
@@ -102,6 +107,8 @@ jobs:
             echo "network_filter '$NETWORK_FILTER' matched no networks"
             exit 1
           fi
+
+          matrix=$(echo "$matrix" | dotnet run --file nethermind/scripts/sync/check-runner-shapes.cs)
 
           echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
 

@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Logging;
 
-#pragma warning disable NETH003 // Build variant: only one of ILogger.std.cs / ILogger.zkevm.cs is compiled per build
 /// <summary>zkEVM no-op <see cref="ILogger"/>: all flags literal <c>false</c>, all log methods empty + inlined.</summary>
 public readonly struct ILogger(InterfaceLogger logger) : IEquatable<ILogger>
 {
@@ -38,6 +37,10 @@ public readonly struct ILogger(InterfaceLogger logger) : IEquatable<ILogger>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Debug(string text) { }
 
+    /// <inheritdoc cref="Debug(string)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Debug([InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler) { }
+
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Equals(ILogger other) => UnderlyingLogger == other.UnderlyingLogger;
@@ -46,17 +49,33 @@ public readonly struct ILogger(InterfaceLogger logger) : IEquatable<ILogger>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Error(string text, Exception? ex = null) { }
 
+    /// <inheritdoc cref="Error(string, Exception?)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Error([InterpolatedStringHandlerArgument("")] ref ErrorInterpolatedStringHandler handler, Exception? ex = null) { }
+
     /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Info(string text) { }
+
+    /// <inheritdoc cref="Info(string)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Info([InterpolatedStringHandlerArgument("")] ref InfoInterpolatedStringHandler handler) { }
 
     /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Trace(string text) { }
 
+    /// <inheritdoc cref="Trace(string)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Trace([InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler) { }
+
     /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Warn(string text) { }
+
+    /// <inheritdoc cref="Warn(string)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Warn([InterpolatedStringHandlerArgument("")] ref WarnInterpolatedStringHandler handler) { }
 
     /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

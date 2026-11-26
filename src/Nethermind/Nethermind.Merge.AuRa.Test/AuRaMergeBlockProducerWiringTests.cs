@@ -54,7 +54,9 @@ public class AuRaMergeBlockProducerWiringTests
         IBlockProducer blockProducer = container.Resolve<IBlockProducerFactory>().InitBlockProducer();
         IBlockProducerRunner runner = container.Resolve<IBlockProducerRunnerFactory>().InitBlockProducerRunner(blockProducer);
 
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
         Assert.That(blockProducer, Is.InstanceOf<MergeBlockProducer>());
+#pragma warning restore NUnit2045
         Assert.That(((MergeBlockProducer)blockProducer).PreMergeBlockProducer, Is.InstanceOf<AuRaBlockProducer>());
         Assert.That(runner, Is.InstanceOf<MergeBlockProducerRunner>());
     }

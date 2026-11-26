@@ -16,17 +16,18 @@
 //
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.Trie;
 
-public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
+public class RangeQueryVisitor : INodeRecordVisitor<TreePathContext>, IDisposable
 {
     private bool _skipStarthashComparison = false;
     private TreePath _startHash;
@@ -35,11 +36,12 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     private long _currentBytesCount;
     private long _currentLeafCount;
     private bool _lastNodeFound = false;
+    private bool _disposed;
     private readonly ILeafValueCollector _valueCollector;
 
     // For determining proofs
-    private readonly TrieNode?[] _leftmostNodes = new TrieNode?[65];
-    private readonly TrieNode?[] _rightmostNodes = new TrieNode?[65];
+    private readonly BoundaryNode[] _leftmostNodes = RentBoundaryNodes();
+    private readonly BoundaryNode[] _rightmostNodes = RentBoundaryNodes();
 
     private readonly int _nodeLimit;
     private readonly long _byteLimit;
@@ -112,29 +114,26 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public ArrayPoolList<byte[]> GetProofs()
     {
-        HashSet<byte[]> proofs = [];
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        HashSet<byte[]> proofs = [with(Bytes.EqualityComparer)];
 
         AddToProof(_leftmostNodes);
         AddToProof(_rightmostNodes);
 
         return proofs.ToPooledList();
 
-        void AddToProof(IReadOnlyList<TrieNode?> boundaryNodes)
+        void AddToProof(BoundaryNode[] boundaryNodes)
         {
             int i = 0;
             while (true)
             {
-                TrieNode? node = boundaryNodes[i];
-                if (node is null) break;
+                BoundaryNode node = boundaryNodes[i];
+                if (node.IsEmpty) break;
 
-                proofs.Add(node.FullRlp.ToArray() ?? throw new TrieException("A visited trie node must have encoded RLP."));
+                proofs.Add(node.ToArray());
 
-                if (node.IsBranch)
-                    i++;
-                else if (node.IsExtension)
-                    i += (node.Key ?? throw new TrieException("A resolved extension node must have a key.")).Length;
-                else
-                    break;
+                if (node.ChildDepthOffset == 0) break;
+                i += node.ChildDepthOffset;
             }
         }
     }
@@ -146,24 +145,16 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public void VisitMissingNode(in TreePathContext ctx, in ValueHash256 nodeHash) => throw new TrieException($"Missing node {ctx.Path} {nodeHash}");
 
-    public void VisitBranch(in TreePathContext ctx, TrieNode node)
-    {
-        _leftmostNodes[ctx.Path.Length] ??= node;
-        _rightmostNodes[ctx.Path.Length] = node;
-    }
+    public void VisitBranch(in TreePathContext ctx, NodeRecordRef node) => TrackBoundary(ctx.Path.Length, node, 1);
 
-    public void VisitExtension(in TreePathContext ctx, TrieNode node)
-    {
-        _leftmostNodes[ctx.Path.Length] ??= node;
-        _rightmostNodes[ctx.Path.Length] = node;
-    }
+    public void VisitExtension(in TreePathContext ctx, NodeRecordRef node) => TrackBoundary(ctx.Path.Length, node, node.KeyLength(0));
 
-    public void VisitLeaf(in TreePathContext ctx, TrieNode node)
+    public void VisitLeaf(in TreePathContext ctx, NodeRecordRef node)
     {
-        _leftmostNodes[ctx.Path.Length] ??= node;
-        _rightmostNodes[ctx.Path.Length] = node;
+        TrackBoundary(ctx.Path.Length, node, 0);
 
-        byte[] key = node.Key ?? throw new TrieException("A resolved leaf node must have a key.");
+        Span<byte> key = stackalloc byte[node.KeyLength(0)];
+        node.CopyKey(0, key);
         TreePath path = ctx.Path.Append(key);
         if (!ShouldVisit(path))
         {
@@ -178,17 +169,23 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             _lastNodeFound = true;
         }
 
-        CollectNode(path, node.Value);
+        CollectNode(path, node.LeafValue);
 
         // We found at least one leaf, don't compare with startHash anymore
         _skipStarthashComparison = true;
     }
 
-    public void VisitAccount(in TreePathContext nodeContext, TrieNode node, in AccountStruct accountStruct)
+    public void VisitAccount(in TreePathContext nodeContext, NodeRecordRef node, in AccountStruct accountStruct)
     {
     }
 
-    private void CollectNode(in TreePath path, CappedArray<byte> value)
+    private void TrackBoundary(int depth, NodeRecordRef node, int childDepthOffset)
+    {
+        if (_leftmostNodes[depth].IsEmpty) _leftmostNodes[depth].Set(node.Rlp, childDepthOffset);
+        _rightmostNodes[depth].Set(node.Rlp, childDepthOffset);
+    }
+
+    private void CollectNode(in TreePath path, ReadOnlySpan<byte> value)
     {
         int encodedSize = _valueCollector.Collect(path.Path, value);
         _currentBytesCount += encodedSize;
@@ -197,10 +194,62 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+        ReturnBoundaryNodes(_leftmostNodes);
+        ReturnBoundaryNodes(_rightmostNodes);
+    }
+
+    private static BoundaryNode[] RentBoundaryNodes()
+    {
+        BoundaryNode[] nodes = ArrayPool<BoundaryNode>.Shared.Rent(65);
+        Array.Clear(nodes);
+        return nodes;
+    }
+
+    private static void ReturnBoundaryNodes(BoundaryNode[] nodes)
+    {
+        for (int i = 0; i < nodes.Length; i++) nodes[i].Return();
+        ArrayPool<BoundaryNode>.Shared.Return(nodes);
     }
 
     public interface ILeafValueCollector
     {
-        int Collect(in ValueHash256 path, CappedArray<byte> value);
+        int Collect(in ValueHash256 path, ReadOnlySpan<byte> value);
+    }
+
+    /// <summary>A visited node's RLP, copied because its record does not outlive the visit.</summary>
+    private struct BoundaryNode
+    {
+        private byte[]? _rlp;
+        private int _length;
+
+        /// <summary>The depth from this node to the next node on its boundary path; 0 for a leaf, which ends the path.</summary>
+        public int ChildDepthOffset { get; private set; }
+
+        public readonly bool IsEmpty => _rlp is null;
+
+        public readonly byte[] ToArray() => _rlp.AsSpan(0, _length).ToArray();
+
+        /// <remarks>Reuses the copy's buffer, as the rightmost node at a depth changes on every visit there.</remarks>
+        public void Set(ReadOnlySpan<byte> rlp, int childDepthOffset)
+        {
+            if (_rlp is null || _rlp.Length < rlp.Length)
+            {
+                Return();
+                _rlp = ArrayPool<byte>.Shared.Rent(rlp.Length);
+            }
+
+            rlp.CopyTo(_rlp);
+            _length = rlp.Length;
+            ChildDepthOffset = childDepthOffset;
+        }
+
+        public void Return()
+        {
+            if (_rlp is null) return;
+            ArrayPool<byte>.Shared.Return(_rlp);
+            _rlp = null;
+        }
     }
 }

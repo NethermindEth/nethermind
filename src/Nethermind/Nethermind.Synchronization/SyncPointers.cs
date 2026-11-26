@@ -1,64 +1,43 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Synchronization;
 
 public class SyncPointers : ISyncPointers
 {
-    private readonly IDb _metadataDb;
-    private readonly IDb _defaultReceiptDbColumn;
-
     private static readonly byte[] LegacyLowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
 
-    private ulong? _lowestInsertedBodyNumber;
+    private readonly PersistedPointer _lowestInsertedBody;
+    private readonly PersistedPointer _lowestInsertedReceipt;
+    private readonly PersistedPointer _lowestInsertedBlockAccessList;
+
     public ulong? LowestInsertedBodyNumber
     {
-        get => _lowestInsertedBodyNumber;
-        set
-        {
-            _lowestInsertedBodyNumber = value;
-            if (value.HasValue) _metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(value.Value).Bytes);
-        }
+        get => _lowestInsertedBody.Value;
+        set => _lowestInsertedBody.Value = value;
     }
-
-    private ulong? _lowestInsertedReceiptBlock;
 
     public ulong? LowestInsertedReceiptBlockNumber
     {
-        get => _lowestInsertedReceiptBlock;
-        set
-        {
-            _lowestInsertedReceiptBlock = value;
-            if (value.HasValue)
-            {
-                _defaultReceiptDbColumn.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
-            }
-        }
+        get => _lowestInsertedReceipt.Value;
+        set => _lowestInsertedReceipt.Value = value;
     }
-
-    private ulong? _lowestInsertedBlockAccessListBlock;
 
     public ulong? LowestInsertedBlockAccessListBlockNumber
     {
-        get => _lowestInsertedBlockAccessListBlock;
-        set
-        {
-            _lowestInsertedBlockAccessListBlock = value;
-            if (value.HasValue)
-            {
-                _metadataDb.Set(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber, Rlp.Encode(value.Value).Bytes);
-            }
-        }
+        get => _lowestInsertedBlockAccessList.Value;
+        set => _lowestInsertedBlockAccessList.Value = value;
     }
-
 
     public SyncPointers(
         [KeyFilter(DbNames.Blocks)] IDb blocksDb,
@@ -66,36 +45,29 @@ public class SyncPointers : ISyncPointers
         [KeyFilter(DbNames.Metadata)] IDb metadataDb,
         IReceiptConfig receiptConfig)
     {
-        _metadataDb = metadataDb;
-        _defaultReceiptDbColumn = receiptsDb.GetColumnDb(ReceiptsColumns.Default);
+        _lowestInsertedBody = new PersistedPointer(metadataDb, MetadataKey(MetadataDbKeys.LowestInsertedBodyNumber));
+        _lowestInsertedReceipt = new PersistedPointer(receiptsDb.GetColumnDb(ReceiptsColumns.Default), PersistentReceiptStorage.LowestInsertedReceiptBlockKey.BytesToArray());
+        _lowestInsertedBlockAccessList = new PersistedPointer(metadataDb, MetadataKey(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber));
 
-        _lowestInsertedBodyNumber = ReadPointer(_metadataDb, MetadataDbKeys.LowestInsertedBodyNumber);
-        if (_lowestInsertedBodyNumber is null)
+        if (_lowestInsertedBody.Value is null)
         {
             MigrateLegacyLowestInsertedBodyNumber(blocksDb);
         }
 
-        byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
-        _lowestInsertedReceiptBlock = lowestBytes is null ? (ulong?)null : new RlpReader(lowestBytes).DecodeULong();
-
-        _lowestInsertedBlockAccessListBlock =
-            ReadPointer(_metadataDb, MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber);
-
         // When not storing receipt, set the lowest inserted receipt to 0 so that old receipt will finish immediately
         if (!receiptConfig.StoreReceipts)
         {
-            _lowestInsertedReceiptBlock = 0;
+            _lowestInsertedReceipt.SetWithoutWriting(0);
         }
     }
 
-    private static ulong? ReadPointer(IDb sourceDb, int metadataKey)
-    {
-        byte[]? pointerBytes = sourceDb.Get(metadataKey);
-        return pointerBytes is null ? null : DecodePointer(pointerBytes);
-    }
+    private static byte[] MetadataKey(int metadataKey) => ((long)metadataKey).ToBigEndianByteArrayWithoutLeadingZeros();
 
-    private static ulong DecodePointer(byte[] pointerBytes) =>
-        new RlpReader(pointerBytes).DecodeULong();
+    private static ulong DecodePointer(byte[] pointerBytes)
+    {
+        RlpReader reader = new(pointerBytes);
+        return reader.DecodeULong<OffFlag>();
+    }
 
     private void MigrateLegacyLowestInsertedBodyNumber(IDb blocksDb)
     {
@@ -107,5 +79,47 @@ public class SyncPointers : ISyncPointers
 
         LowestInsertedBodyNumber = DecodePointer(pointerBytes);
         blocksDb.Remove(LegacyLowestInsertedBodyNumberDbEntryAddress);
+    }
+
+    private sealed class PersistedPointer
+    {
+        private readonly IDb _db;
+        private readonly byte[] _key;
+        private readonly Lock _lock = new();
+        private ulong? _value;
+        private ulong? _storedValue;
+
+        public PersistedPointer(IDb db, byte[] key)
+        {
+            _db = db;
+            _key = key;
+            byte[]? pointerBytes = db.Get(key);
+            _value = pointerBytes is null ? null : DecodePointer(pointerBytes);
+            _storedValue = _value;
+        }
+
+        public ulong? Value
+        {
+            get
+            {
+                lock (_lock) return _value;
+            }
+            [SkipLocalsInit]
+            set
+            {
+                lock (_lock)
+                {
+                    _value = value;
+                    if (!value.HasValue || value == _storedValue) return;
+                    _db.PutSpan(_key, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
+                    _storedValue = value;
+                }
+            }
+        }
+
+        public void SetWithoutWriting(ulong value)
+        {
+            lock (_lock) _value = value;
+        }
     }
 }

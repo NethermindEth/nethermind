@@ -58,6 +58,9 @@ namespace Nethermind.Blockchain
         public AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None, BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags blockWriteFlags = WriteFlags.None) =>
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
+        public AddBlockResult Insert(BlockHeader header, ReadOnlySpan<byte> body, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None, BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None) =>
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
+
         public void Insert(IEnumerable<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
         public void UpdateHeadBlock(Hash256 blockHash) =>
@@ -96,6 +99,12 @@ namespace Nethermind.Blockchain
         public BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) => _wrapped.FindHeader(blockHash, options, blockNumber: blockNumber);
 
         public BlockHeader FindHeader(ulong blockNumber, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockNumber, options);
+
+        public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
+            _wrapped.FindCanonicalHeaderIfBloomMatches(blockNumber, bloomMatches, out found);
+
+        public void FindCanonicalHeadersIfBloomMatches(ulong firstBlockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, Memory<BlockHeader?> headers, Memory<bool> found) =>
+            _wrapped.FindCanonicalHeadersIfBloomMatches(firstBlockNumber, bloomMatches, headers, found);
         public Hash256 FindBlockHash(ulong blockNumber) => _wrapped.FindBlockHash(blockNumber);
 
         public bool IsMainChain(BlockHeader blockHeader) => _wrapped.IsMainChain(blockHeader);
@@ -107,6 +116,8 @@ namespace Nethermind.Blockchain
         public Block FindBlock(ulong blockNumber, BlockTreeLookupOptions options) => _wrapped.FindBlock(blockNumber, options);
 
         public void DeleteInvalidBlock(Block invalidBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteInvalidBlock)} calls");
+
+        public void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteBranchWithoutBadBlockReport)} calls");
 
         public void ReportBadBlock(Block badBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ReportBadBlock)} calls");
 
@@ -202,8 +213,6 @@ namespace Nethermind.Blockchain
             get => _wrapped.SyncPivot;
             set { }
         }
-
-        public bool IsProcessingBlock { get => _wrapped.IsProcessingBlock; set { } }
 
         public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(TryUpdateMainChain)} calls");
 

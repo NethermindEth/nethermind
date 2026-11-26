@@ -5,6 +5,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
@@ -53,10 +54,10 @@ public class SnapMessageLimitsTests
         const int count = 40_000;
         AccountRangeMessageSerializer serializer = new();
 
-        ArrayPoolList<PathWithAccount> accounts = new(count);
+        ArrayPoolList<PathWithAccount> accounts = [with(count)];
         for (int i = 0; i < count; i++)
         {
-            accounts.Add(new PathWithAccount(TestItem.KeccakA, Build.An.Account.WithBalance(1).TestObject));
+            accounts.Add(new PathWithAccount(TestItem.KeccakA, Build.An.Account.WithBalance(1).TestObject.ToStruct()));
         }
 
         using AccountRangeMessage msg = new()
@@ -66,7 +67,7 @@ public class SnapMessageLimitsTests
             Proofs = EmptyByteArrayList.Instance,
         };
 
-        byte[] serialized = serializer.Serialize(msg);
+        byte[] serialized = serializer.SerializeToArray(msg);
         using AccountRangeMessage deserialized = serializer.Deserialize(serialized);
 
         Assert.That(deserialized.PathsWithAccounts.Count, Is.EqualTo(count));
@@ -78,10 +79,10 @@ public class SnapMessageLimitsTests
         const int slotCount = 50_000;
         StorageRangesMessageSerializer serializer = new();
 
-        ArrayPoolList<PathWithStorageSlot> slots = new(slotCount);
+        ArrayPoolList<PathWithStorageSlot> slots = [with(slotCount)];
         for (int i = 0; i < slotCount; i++)
         {
-            slots.Add(new PathWithStorageSlot(TestItem.KeccakA, Rlp.Encode(new byte[] { 0x01 }).Bytes));
+            slots.Add(new PathWithStorageSlot(TestItem.KeccakA, Rlp.Encode(new byte[] { 0x01 })));
         }
 
         using StorageRangeMessage msg = new()
@@ -91,7 +92,7 @@ public class SnapMessageLimitsTests
             Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()),
         };
 
-        byte[] serialized = serializer.Serialize(msg);
+        byte[] serialized = serializer.SerializeToArray(msg);
         using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
 
         Assert.That(deserialized.Slots[0].Count, Is.EqualTo(slotCount));

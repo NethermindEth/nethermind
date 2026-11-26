@@ -31,7 +31,8 @@ namespace Nethermind.Core.Extensions
         /// <see href="https://github.com/eth-act/zkevm-standards/issues/41">eth-act/zkevm-standards#41</see>.
         /// <para>
         /// Install the entire seed before creating hash-keyed containers;
-        /// reseeding invalidates stored hashes. Not synchronised against concurrent hashing.
+        /// reseeding invalidates stored hashes, including those an <see cref="Address"/> keeps for itself
+        /// once hashed without AES. Not synchronised against concurrent hashing.
         /// In release guests, unseeded scalar hashing of 32-byte and other inputs longer than 16 bytes
         /// (except 20-byte addresses) silently uses a zero seed; address and short-input hashing access
         /// uninitialised seed arrays. Missing seeding is not guaranteed to fail immediately.
@@ -78,6 +79,10 @@ namespace Nethermind.Core.Extensions
         private static Vector128<byte> PairRound3 => Vector128.Create(0x94D049BB133111EBUL, 0x2545F4914F6CDD1DUL).AsByte();
         private static Vector128<byte> PairRound4 => Vector128.Create(0xD6E8FEB86659FD93UL, 0xA0761D6478BD642FUL).AsByte();
         private static Vector128<byte> PairRound5 => Vector128.Create(0xE7037ED1A0B428DBUL, 0x8EBC6AF09C88C6E3UL).AsByte();
+
+        /// <summary>The index in <paramref name="array"/> at which <paramref name="span"/>, a slice of it, starts.</summary>
+        public static int OffsetIn<T>(this Span<T> span, T[] array) =>
+            (int)(Unsafe.ByteOffset(ref MemoryMarshal.GetArrayDataReference(array), ref MemoryMarshal.GetReference(span)) / Unsafe.SizeOf<T>());
 
         public static string ToHexString(this in Memory<byte> memory, bool withZeroX = false) =>
             memory.Span.ToHexString(withZeroX, false, false);
@@ -191,6 +196,10 @@ namespace Nethermind.Core.Extensions
         public static bool IsNull<T>(this in Span<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
         public static bool IsNullOrEmpty<T>(this in ReadOnlySpan<T> span) => span.Length == 0;
         public static bool IsNull<T>(this in ReadOnlySpan<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
+
+        /// <summary>Whether <paramref name="memory"/> has no backing store, as <c>default</c> or a converted <c>null</c> array does.</summary>
+        /// <remarks>Unlike an empty span of a real array, which is empty but not null. Compares fields without materialising the span.</remarks>
+        public static bool IsNull<T>(this in ReadOnlyMemory<T> memory) => memory.Equals(default);
 
         public static ArrayPoolList<T> ToPooledList<T>(this in ReadOnlySpan<T> span)
         {
@@ -677,16 +686,9 @@ namespace Nethermind.Core.Extensions
             return (int)(hash ^ (hash >> 32));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong MixAddress(ref byte b)
-        {
-            AssertSeeded();
-            ref ulong seeds = ref MemoryMarshal.GetArrayDataReference(AddressSeeds!);
-            return MixWords(
-                Unsafe.ReadUnaligned<ulong>(ref b),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)),
-                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)), 0, ref seeds);
-        }
+        /// <summary>Mixes a 20-byte address into one 64-bit hash.</summary>
+        /// <remarks>The construction differs by build: see the <c>std</c> and <c>zkevm</c> partials.</remarks>
+        private static partial ulong MixAddress(ref byte b);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static long FastHash64For32BytesFallback(ref byte start)

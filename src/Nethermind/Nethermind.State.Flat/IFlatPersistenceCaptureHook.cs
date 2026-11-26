@@ -25,4 +25,14 @@ public interface IFlatPersistenceCaptureHook
     /// cancellation the implementation must throw — never return silently, or the caller would persist and prune
     /// the uncaptured sources.</param>
     void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether the persisted flat state must not move yet. True while the state of a snap-sync pivot is being
+    /// written as history rows from the persisted flat columns: a persist past the pivot would change what is read.
+    /// Block processing goes on meanwhile; its snapshots wait in memory and in the persisted-snapshot tier.
+    /// </summary>
+    bool HoldsFlatPersist { get; }
+
+    /// <summary>Completes when <see cref="HoldsFlatPersist"/> turns false; already complete when it is false.</summary>
+    Task FlatPersistReleased { get; }
 }

@@ -7,15 +7,19 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
+using Nethermind.Facade;
 using Nethermind.Flashbots.Data;
 using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
+using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Test;
@@ -43,8 +47,11 @@ public partial class FlashbotsModuleTests
 
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
         Assert.That(result, Is.Not.Null);
-        Assert.That(result.Result.Error, Is.EqualTo(expectedError));
-        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.Error, Is.EqualTo(expectedError));
+            Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
+        }
 
         string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", request);
         JsonRpcSuccessResponse? jsonResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -62,11 +69,14 @@ public partial class FlashbotsModuleTests
 
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
 
-        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
-        Assert.That(result.Result.Error, Does.StartWith("HeaderGasUsedMismatch"),
-            "the default configuration must not report a block with a bogus header as valid");
-        Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(block.Hash!, out _), Is.False,
-            "a rejected submission must not be recorded as an invalid block for the Engine API");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
+            Assert.That(result.Result.Error, Does.StartWith("HeaderGasUsedMismatch"),
+                "the default configuration must not report a block with a bogus header as valid");
+            Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(block.Hash!, out _), Is.False,
+                "a rejected submission must not be recorded as an invalid block for the Engine API");
+        }
     }
 
     [Test]
@@ -92,8 +102,51 @@ public partial class FlashbotsModuleTests
 
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
 
-        Assert.That(result.Result.Error, Is.Null);
-        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.Error, Is.Null);
+            Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Valid));
+        }
+    }
+
+    [Test]
+    public async Task ValidateBuilderSubmissionV3_DoesNotRunOnAReadOnlyQueryModule()
+    {
+        FrameOfferProbe probe = new();
+        using BaseEngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance,
+            flashbotsConfig: new FlashbotsConfig { UseBalanceDiffProfit = true },
+            configurer: builder => builder.AddSingleton<IReadOnlyQueryModule>(probe.ModuleFor(ReadOnlyQueryKind.All)));
+        IFlashbotsRpcModule rpc = chain.Container.Resolve<IRpcModuleFactory<IFlashbotsRpcModule>>().Create();
+
+        // The block's beacon root system call runs the EIP-4788 contract in production and again in validation.
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Hash256 parentBeaconBlockRoot = TestItem.KeccakE;
+        PayloadAttributes attributes = new()
+        {
+            Timestamp = parent.Timestamp + 12,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = TestKeysAndAddress!.TestBuilderAddr,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = parentBeaconBlockRoot
+        };
+        string payloadId = chain.PayloadPreparationService.StartPreparingPayload(parent, attributes)!;
+        GetPayloadV3Result payload = (await chain.EngineRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!;
+        Block block = payload.ExecutionPayload.TryGetBlock().Data!;
+
+        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(
+            BuildRequest(block, payload.BlobsBundle, expectedProfit: UInt256.Zero, parentBeaconBlockRoot));
+        int afterValidation = probe.Offers;
+        CallOutput call = chain.Container.Resolve<IBlockchainBridge>().Call(chain.BlockTree.Head!.Header,
+            Build.A.Transaction.WithCode(Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done)
+                .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Valid), result.Result.Error);
+            Assert.That(afterValidation, Is.Zero, "building and validating a block must not run on a query module's runner");
+            Assert.That(call.Error, Is.Null);
+            Assert.That(probe.Offers, Is.GreaterThan(0), "precondition: the module is loaded into the query environments");
+        }
     }
 
     private BuilderBlockValidationRequest BuildRequest(Block block, BlobsBundleV1 bundle, UInt256? expectedProfit = null, Hash256? parentBeaconBlockRoot = null) =>

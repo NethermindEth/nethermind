@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
@@ -15,7 +16,8 @@ namespace Nethermind.Consensus.Tracing
         BlockchainProcessorFacade traceProcessor,
         BlockchainProcessorFacade executeProcessor,
         ProcessingOptions executeOptions = TraceProcessingOptions.ReadOnlyReplay,
-        ProcessingOptions traceOptions = TraceProcessingOptions.ReadOnlyReplay)
+        ProcessingOptions traceOptions = TraceProcessingOptions.ReadOnlyReplay,
+        ProcessingOptions executeSignedOptions = TraceProcessingOptions.ReadOnlySigned)
         : ITracer
     {
         private void Process(Block block, IBlockTracer blockTracer, BlockchainProcessorFacade processor, ProcessingOptions options)
@@ -30,7 +32,12 @@ namespace Nethermind.Consensus.Tracing
 
         public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, traceProcessor, traceOptions);
 
+        public TxReceipt[] TraceReceipts(Block block) =>
+            traceProcessor.ProcessWithReceipts(block, traceOptions | ProcessingOptions.ForceSequentialBlockAccessList, NullBlockTracer.Instance).Receipts;
+
         public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, executeOptions);
+
+        public void ExecuteSigned(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, executeSignedOptions);
 
         public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>
         {

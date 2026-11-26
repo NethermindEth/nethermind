@@ -5,7 +5,7 @@ using System.Net;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 
@@ -74,6 +74,17 @@ public class EnrDiscoveryCreateNodeTests
     }
 
     [Test]
+    public void Parser_accepts_record_with_or_without_base64_padding([Values] bool padded)
+    {
+        const string record = "enr:-IS4QHCYrYZbAKWCBRlAy5zzaDZXJBGkcnh4MHcBFZntXNFrdvJjX04jRzjzCBOonrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8";
+        NodeRecordSigner signer = new(new EthereumEcdsa(0), TestItem.PrivateKeyA);
+
+        NodeRecord parsed = new EnrRecordParser(signer).ParseRecord(padded ? record + "=" : record);
+
+        Assert.That(parsed.ToString(), Is.EqualTo(record));
+    }
+
+    [Test]
     public void Parser_rejects_signature_from_different_identity()
     {
         NodeRecordSigner signer = new(new EthereumEcdsa(0), TestItem.PrivateKeyB);
@@ -82,7 +93,7 @@ public class EnrDiscoveryCreateNodeTests
 
         Assert.That(
             () => new EnrRecordParser(signer).ParseRecord(record.ToString()),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Invalid ENR signature."));
+            Throws.TypeOf<RlpReaderException>().With.Message.EqualTo("Invalid ENR signature."));
     }
 
     private static NodeRecord CreateNodeRecord(int? tcpPort, int? udpPort)

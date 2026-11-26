@@ -13,6 +13,7 @@ namespace Nethermind.Sockets;
 public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMessageBorderPreservingStream
 {
     private const byte Delimiter = (byte)'\n';
+    private static readonly byte[] EndOfMessage = [Delimiter];
     private static readonly SearchValues<byte> Whitespace = SearchValues.Create(" \n\r\t"u8);
 
     private PooledBuffer _overflow = new();
@@ -134,10 +135,11 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         base.Dispose(disposing);
     }
 
-    public ValueTask<int> WriteEndOfMessageAsync()
+    public async ValueTask<int> WriteEndOfMessageAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
-        WriteByte(Delimiter);
-        return ValueTask.FromResult(1);
+        if (!data.IsEmpty) await WriteAsync(data, cancellationToken);
+        await WriteAsync(EndOfMessage, cancellationToken);
+        return 1;
     }
 
     private readonly record struct JsonParseState(JsonReaderState ReaderState = default, int BytesConsumed = 0, int StartOffset = -1)

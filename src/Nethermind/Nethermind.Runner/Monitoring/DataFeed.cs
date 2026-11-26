@@ -19,7 +19,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring.TransactionPool;
 using Nethermind.Serialization.Json;
@@ -392,9 +391,13 @@ public class DataFeed
         Block head = choice.Head;
         Transaction[] txs = head.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(head.Header);
-        ReceiptForRpc[] receipts = _receiptFinder.Get(head)
-            .Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header)))
-            .ToArray();
+        UInt256? feePerBlobGas = null;
+        TxReceipt[] txReceipts = _receiptFinder.Get(head);
+        ReceiptForWeb[] receipts = txReceipts.Length == 0 ? [] : new ReceiptForWeb[txReceipts.Length];
+        for (int i = 0; i < txReceipts.Length; i++)
+        {
+            receipts[i] = ReceiptForWeb.FromReceipt(txReceipts[i], txs[i].GetGasInfo(spec, head.Header, ref feePerBlobGas));
+        }
         forkChoice.TrySetResult(
             JsonSerializer.SerializeToUtf8Bytes(
                 new ForkData
@@ -428,21 +431,7 @@ public class DataFeed
                             Blobs = t.BlobVersionedHashes?.Length ?? 0,
                             Method = t.DataLength >= 4 ? [.. t.Data.Span[..4]] : []
                         })],
-                        Receipts = [.. receipts.Select(r => new ReceiptForWeb
-                        {
-                            GasUsed = r.GasUsed,
-                            EffectiveGasPrice = r.EffectiveGasPrice ?? UInt256.Zero,
-                            ContractAddress = r.ContractAddress,
-                            Logs = [.. r.Logs.Select(l => new LogEntryForWeb
-                            {
-                                Address = l.Address,
-                                Data = l.Data,
-                                Topics = l.Topics
-                            })],
-                            Status = r.Status,
-                            BlobGasPrice = r.BlobGasPrice ?? UInt256.Zero,
-                            BlobGasUsed = r.BlobGasUsed ?? 0,
-                        })]
+                        Receipts = receipts
                     },
                     Safe = choice.Safe,
                     Finalized = choice.Finalized
@@ -452,14 +441,14 @@ public class DataFeed
         );
     }
 
-    private class ForkData
+    internal class ForkData
     {
         public BlockForWeb Head { get; set; }
         public ulong Safe { get; set; }
         public ulong Finalized { get; set; }
     }
 
-    private class BlockForWeb
+    internal class BlockForWeb
     {
         public byte[] ExtraData { get; set; }
         public ulong GasLimit { get; set; }
@@ -476,8 +465,21 @@ public class DataFeed
         public ReceiptForWeb[] Receipts { get; set; }
         public ReceiptForWeb[] Withdrawals { get; set; }
     }
-    private class ReceiptForWeb
+    internal class ReceiptForWeb
     {
+        public static ReceiptForWeb FromReceipt(TxReceipt receipt, in TxGasInfo gasInfo) => new()
+        {
+            GasUsed = receipt.GasUsed,
+            EffectiveGasPrice = gasInfo.EffectiveGasPrice ?? receipt.EffectiveGasPrice,
+            ContractAddress = receipt.ContractAddress,
+            Logs = receipt.Logs is { Length: > 0 } logs
+                ? Array.ConvertAll(logs, static log => new LogEntryForWeb { Address = log.Address, Data = log.Data, Topics = log.Topics })
+                : [],
+            Status = receipt.PostTransactionState is null ? receipt.StatusCode : null,
+            BlobGasPrice = gasInfo.BlobGasPrice ?? UInt256.Zero,
+            BlobGasUsed = gasInfo.BlobGasUsed ?? 0,
+        };
+
         public ulong GasUsed { get; set; }
         public UInt256 EffectiveGasPrice { get; set; }
         public Address? ContractAddress { get; set; }
@@ -486,13 +488,13 @@ public class DataFeed
         public UInt256 BlobGasPrice { get; set; }
         public ulong BlobGasUsed { get; set; }
     }
-    private class LogEntryForWeb
+    internal class LogEntryForWeb
     {
         public Address Address { get; set; }
         public byte[] Data { get; set; }
         public Hash256[] Topics { get; set; }
     }
-    private class TransactionForWeb
+    internal class TransactionForWeb
     {
         public Hash256 Hash { get; set; }
         public Address From { get; set; }
@@ -508,7 +510,7 @@ public class DataFeed
         public int Blobs { get; set; }
         public byte[] Method { get; set; }
     }
-    private class WithdrawalForWeb
+    internal class WithdrawalForWeb
     {
 
     }

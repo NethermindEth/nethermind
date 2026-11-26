@@ -1,22 +1,38 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
+using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 
 namespace Nethermind.State.SnapServer;
 
-public class PathWithStorageCollector : RangeQueryVisitor.ILeafValueCollector
+/// <summary>Collects storage leaves as the encoded <c>[path, slot value]</c> entries of a storage range response.</summary>
+/// <param name="slots">The list that receives the entries.</param>
+public class PathWithStorageCollector(EncodedSnapEntries<PathWithStorageSlot> slots) : RangeQueryVisitor.ILeafValueCollector
 {
-    public ArrayPoolList<PathWithStorageSlot> Slots { get; } = new(0);
+    public EncodedSnapEntries<PathWithStorageSlot> Slots { get; } = slots;
 
-    public int Collect(in ValueHash256 path, CappedArray<byte> value)
+    public int Collect(in ValueHash256 path, ReadOnlySpan<byte> value)
     {
-        byte[] slotRlpValue = value.ToArray() ?? throw new TrieException("A storage leaf must have an encoded value.");
-        Slots.Add(new PathWithStorageSlot(in path, slotRlpValue));
+        int contentLength = Rlp.LengthOfKeccakRlp + Rlp.LengthOf(value);
+        RlpWriter writer = RlpWriter.ContentWriter(Slots.Add(Rlp.LengthOfSequence(contentLength)));
+        RlpSequence entry = writer.StartSequence(contentLength);
+        writer.Encode(path);
+        writer.Write(value);
+        writer.EndSequence(entry);
         return 32 + value.Length;
+    }
+
+    internal static PathWithStorageSlot DecodeEntry(scoped ref RlpReader reader)
+    {
+        RlpReader entry = reader.EnterSequence(out int length);
+        ValueHash256 path = entry.DecodeValueKeccakNonNull();
+        byte[] value = entry.DecodeByteArray();
+        reader.ExitSequence(entry, length);
+        return new PathWithStorageSlot(in path, value);
     }
 }

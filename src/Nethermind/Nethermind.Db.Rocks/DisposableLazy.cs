@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 
 namespace Nethermind.Db.Rocks;
@@ -13,7 +14,7 @@ namespace Nethermind.Db.Rocks;
 /// Reading an already or newly created value skips the lock, so a value which creation started before disposal is still handed out after it.
 /// Callers that must reject using object after disposal need their own check.
 /// </remarks>
-public sealed class DisposableLazy<T>(Func<T> factory) : IDisposable where T : class, IDisposable
+public sealed class DisposableLazy<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] T>(Func<T> factory) : IDisposable where T : class, IDisposable
 {
     private readonly Lazy<T> _lazy = new(factory, LazyThreadSafetyMode.ExecutionAndPublication);
     private readonly Lock _lock = new();

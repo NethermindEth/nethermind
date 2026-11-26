@@ -56,9 +56,8 @@ public partial class EthRpcModuleTests
         blockFinder.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
                   .Returns(ci => blocks[((Hash256)ci[0]).Bytes[^1]]);
 
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Cancun.Instance);
-        FeeHistoryOracle oracle = new(blockFinder, receiptStorage, specProvider);
+        FeeHistoryOracle oracle = new(blockFinder, NullReceiptStorage.Instance, specProvider, new JsonRpcConfig());
 
         using ResultWrapper<FeeHistoryResults> result = oracle
             .GetFeeHistory((ulong)excessBlobGas.Length, new BlockParameter((ulong)(blocks.Length - 1)), [0.0, 1.0]);

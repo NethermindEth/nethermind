@@ -91,11 +91,14 @@ public class ArenaManagerForgetOnAdviseTests
 
         reservation.AdviseDontNeed();
 
-        Assert.That(manager.PageTracker.ContainsPage(arenaId, 0), Is.True, "page 0 partially covered");
-        Assert.That(manager.PageTracker.ContainsPage(arenaId, 1), Is.False);
-        Assert.That(manager.PageTracker.ContainsPage(arenaId, 2), Is.False);
-        Assert.That(manager.PageTracker.ContainsPage(arenaId, 3), Is.True, "page 3 partially covered");
-        Assert.That(manager.PageTracker.ContainsPage(arenaId, 4), Is.True, "page 4 outside range");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.PageTracker.ContainsPage(arenaId, 0), Is.True, "page 0 partially covered");
+            Assert.That(manager.PageTracker.ContainsPage(arenaId, 1), Is.False);
+            Assert.That(manager.PageTracker.ContainsPage(arenaId, 2), Is.False);
+            Assert.That(manager.PageTracker.ContainsPage(arenaId, 3), Is.True, "page 3 partially covered");
+            Assert.That(manager.PageTracker.ContainsPage(arenaId, 4), Is.True, "page 4 outside range");
+        }
     }
 
     [Test]

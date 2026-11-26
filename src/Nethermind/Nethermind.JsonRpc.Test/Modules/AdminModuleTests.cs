@@ -4,9 +4,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -14,7 +17,10 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -25,10 +31,12 @@ using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -67,9 +75,10 @@ public class AdminModuleTests
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
-        _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager);
+        _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager, MainnetSpecProvider.Instance);
         _stateReader = Substitute.For<IStateReader>();
-        _networkConfig = new NetworkConfig();
+        // Distinct ports, so a result that swaps them shows.
+        _networkConfig = new NetworkConfig { DiscoveryPort = 30301 };
 
         IPeerPool peerPool = Substitute.For<IPeerPool>();
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
@@ -89,7 +98,7 @@ public class AdminModuleTests
 
         SubscriptionFactory subscriptionFactory = new();
         subscriptionFactory.RegisterPeerEventsSubscription(_logManager, _peerPool, _rlpxPeer);
-        _subscriptionManager = new SubscriptionManager(subscriptionFactory, _logManager);
+        _subscriptionManager = new SubscriptionManager(subscriptionFactory, new JsonRpcConfig(), _logManager);
 
         _adminRpcModule = new AdminRpcModule(
             _blockTree,
@@ -164,6 +173,26 @@ public class AdminModuleTests
         }
     }
 
+    [TestCase("127.0.0.1", "127.0.0.1:30303")]
+    [TestCase("[::1]", "[::1]:30303")]
+    public async Task AdminNodeInfo_SerializesGethKeyNames(string enodeHost, string expectedListenAddr)
+    {
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(enode: _enodeString.Replace("127.0.0.1", enodeHost));
+
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_nodeInfo");
+
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement result = document.RootElement.GetProperty("result");
+        JsonElement eth = result.GetProperty("protocols").GetProperty("eth");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TryGetProperty("listenAddr", out JsonElement listenAddr) ? listenAddr.GetString() : null, Is.EqualTo(expectedListenAddr));
+            Assert.That(eth.TryGetProperty("genesis", out JsonElement genesis) ? genesis.GetString() : null, Is.EqualTo(_blockTree.GenesisHash!.ToString()));
+            Assert.That(eth.TryGetProperty("head", out JsonElement head) ? head.GetString() : null, Is.EqualTo(_blockTree.HeadHash!.ToString()));
+            Assert.That(eth.TryGetProperty("network", out JsonElement network) ? network.GetString() : null, Is.EqualTo("0x" + _blockTree.NetworkId.ToString("x")));
+        }
+    }
+
     [Test]
     public async Task AdminDataDir_OnDefaultModule_ReturnsConfiguredPath()
     {
@@ -171,6 +200,50 @@ public class AdminModuleTests
 
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         Assert.That(response.Result!.ToString(), Is.EqualTo(_exampleDataDir), "admin_dataDir reflects the path passed at module construction");
+    }
+
+    [TestCase("admin-datadir-test/node", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirRelative_ReturnsDataDirUnderExecutingDirectory")]
+    [TestCase("/admin-datadir-test/node", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirRooted_ReturnsDataDir")]
+    [TestCase(null, TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirNull_ReturnsExecutingDirectory")]
+    [TestCase("", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirEmpty_ReturnsExecutingDirectory")]
+    [NonParallelizable]
+    public async Task AdminDataDir_ResolvedThroughDiWiring_ReturnsAbsoluteDataDir(string? dataDir)
+    {
+        const string baseDbPath = "nethermind_db/mainnet";
+        using TempPath workingDirectory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(workingDirectory.Path);
+        string originalDirectory = Directory.GetCurrentDirectory();
+
+        string expected;
+        string? result;
+        Directory.SetCurrentDirectory(workingDirectory.Path);
+        try
+        {
+            expected = Path.GetFullPath(Path.Combine(PathUtils.ExecutingDirectory, dataDir ?? string.Empty));
+            result = await ResolveAdminDataDir(new InitConfig { BaseDbPath = baseDbPath, DataDir = dataDir });
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Not.EqualTo(baseDbPath), "the DB subdirectory is not the data directory");
+            Assert.That(result, Is.EqualTo(expected), "the node stores its data relative to the executable directory, not the working directory");
+        }
+    }
+
+    private async Task<string?> ResolveAdminDataDir(InitConfig initConfig)
+    {
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new PseudoNethermindModule(new ChainSpec(), new ConfigProvider(initConfig), LimboLogs.Instance))
+            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, nameof(AdminModuleTests)))
+            .Build();
+
+        IAdminRpcModule adminModule = container.Resolve<IAdminRpcModule>();
+        string serialized = await RpcTest.TestSerializedRequest(adminModule, "admin_dataDir");
+        return _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!.Result?.ToString();
     }
 
     [TestCase(false, TestName = "AdminIsStateRootAvailable_WhenStateMissing_ReturnsFalse")]
@@ -207,6 +280,10 @@ public class AdminModuleTests
     [TestCase("admin_addPeer", "enode://badhex@127.0.0.1:30303", TestName = "AdminAddPeer_WhenEnodePublicKeyInvalid_ReturnsInvalidParamsError")]
     [TestCase("admin_removePeer", "not-an-enode", TestName = "AdminRemovePeer_WhenEnodeSchemeInvalid_ReturnsInvalidParamsError")]
     [TestCase("admin_removePeer", "enode://badhex@127.0.0.1:30303", TestName = "AdminRemovePeer_WhenEnodePublicKeyInvalid_ReturnsInvalidParamsError")]
+    [TestCase("admin_addPeer", "enr:-A", TestName = "AdminAddPeer_WhenEnrIsTruncatedListPrefix_ReturnsInvalidParamsError")]
+    [TestCase("admin_addPeer", "enr:wA", TestName = "AdminAddPeer_WhenEnrIsEmptyList_ReturnsInvalidParamsError")]
+    [TestCase("admin_removePeer", "enr:-A", TestName = "AdminRemovePeer_WhenEnrIsTruncatedListPrefix_ReturnsInvalidParamsError")]
+    [TestCase("admin_removePeer", "enr:wA", TestName = "AdminRemovePeer_WhenEnrIsEmptyList_ReturnsInvalidParamsError")]
     [TestCase("admin_addTrustedPeer", "not-an-enode", TestName = "AdminAddTrustedPeer_WhenEnodeSchemeInvalid_ReturnsInvalidParamsError")]
     [TestCase("admin_addTrustedPeer", "enode://badhex@127.0.0.1:30303", TestName = "AdminAddTrustedPeer_WhenEnodePublicKeyInvalid_ReturnsInvalidParamsError")]
     [TestCase("admin_removeTrustedPeer", "not-an-enode", TestName = "AdminRemoveTrustedPeer_WhenEnodeSchemeInvalid_ReturnsInvalidParamsError")]
@@ -307,6 +384,46 @@ public class AdminModuleTests
     }
 
     [Test]
+    public async Task AdminPeerMethods_ReturnTimeoutSourceToPool(
+        [Values("admin_addPeer", "admin_removePeer", "admin_addTrustedPeer", "admin_removeTrustedPeer")] string method)
+    {
+        TaskCompletionSource<bool> write = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
+        staticNodesManager.AddAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        staticNodesManager.RemoveAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        trustedNodesManager.RemoveAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(write.Task);
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(staticNodesManager, trustedNodesManager);
+
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        try
+        {
+            Task<ResultWrapper<bool>> call = method switch
+            {
+                "admin_addPeer" => adminRpcModule.admin_addPeer(_enodeString),
+                "admin_removePeer" => adminRpcModule.admin_removePeer(_enodeString),
+                "admin_addTrustedPeer" => adminRpcModule.admin_addTrustedPeer(_enodeString),
+                _ => adminRpcModule.admin_removeTrustedPeer(_enodeString),
+            };
+
+            Assert.That(TimeoutTestHelper.WasReturned(timeout), Is.False, "the pending write still holds the token");
+            write.SetResult(true);
+            await call;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(timeout.DisposeCount, Is.Zero);
+                Assert.That(TimeoutTestHelper.WasReturned(timeout), Is.True);
+            }
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
     public async Task AdminUnsubscribe_AfterSubscribe_ReturnsTrue()
     {
         string serializedSub = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "peerEvents");
@@ -329,12 +446,61 @@ public class AdminModuleTests
     }
 
     [Test]
+    public async Task AdminSubscribe_WithUnknownName_ReturnsMethodNotFound()
+    {
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "bogusType");
+
+        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32601,\"message\":\"no \\\"bogusType\\\" subscription in admin namespace\"},\"id\":67}";
+        Assert.That(serialized, Is.EqualTo(expectedResult));
+    }
+
+    [Test]
+    public async Task AdminSubscribe_WithArgumentException_ReturnsInvalidParamsWithReason()
+    {
+        _subscriptionManager = Substitute.For<ISubscriptionManager>();
+        _subscriptionManager.AddSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
+            .Throws(new ArgumentException("bad subscription argument"));
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith();
+        adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
+
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_subscribe", "peerEvents");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"bad subscription argument"},"id":67}"""));
+    }
+
+    [Test]
+    public void AdminSubscribe_AboveTheConnectionLimit_ReturnsLimitExceeded()
+    {
+        SubscriptionFactory subscriptionFactory = new();
+        subscriptionFactory.RegisterPeerEventsSubscription(_logManager, _peerPool, _rlpxPeer);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new JsonRpcConfig { MaxSubscriptionsPerConnection = 1 }))
+            .AddSingleton<ISubscriptionFactory>(subscriptionFactory)
+            .Build();
+        using ILifetimeScope scope = container.BeginLifetimeScope();
+        _subscriptionManager = scope.Resolve<ISubscriptionManager>();
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith();
+        adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
+
+        ResultWrapper<string> first = adminRpcModule.admin_subscribe("peerEvents");
+        ResultWrapper<string> refused = adminRpcModule.admin_subscribe("peerEvents");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(refused.ErrorCode, Is.EqualTo(ErrorCodes.LimitExceeded));
+            Assert.That(refused.Result.Error, Is.EqualTo("Too many subscriptions. The connection limit is 1."));
+            Assert.That(refused.IsTemporary, Is.True);
+        }
+    }
+
+    [Test]
     public async Task AdminSubscribe_WithTooLongStringArgs_ReturnsInvalidParams()
     {
         string args = new('a', 1_000_001);
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "peerEvents", args);
 
-        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
+        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
         Assert.That(expectedResult, Is.EqualTo(serialized), "oversized string args should be rejected before subscription creation");
     }
 
@@ -402,6 +568,21 @@ public class AdminModuleTests
         Assert.That(expectedResult, Is.EqualTo(serialized), $"a {expectedType} event must serialize with type '{expectedType}'");
     }
 
+    // An inbound session raises its message events with its node only once something has read it.
+    [TestCase(true, TestName = "PeerEvents_OnMsgReceivedWithoutNode_SendsNothing")]
+    [TestCase(false, TestName = "PeerEvents_OnMsgDeliveredWithoutNode_SendsNothing")]
+    public void PeerEventsSubscription_OnMessageEventWithoutNode_DoesNotThrowAndSendsNothing(bool isReceived)
+    {
+        PeerEventArgs peerEventArgs = new(null!, "BitTorrent", 1, 2);
+        ISession session = _existingSession1;
+        Action raise = isReceived
+            ? () => session.MsgReceived += Raise.EventWith(new object(), peerEventArgs)
+            : () => session.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
+
+        RaisePeerEventAndCapture(() => Assert.That(() => raise(), Throws.Nothing, "the handler runs on the p2p path"), out _,
+            disposeSubscription: true, shouldReceive: false);
+    }
+
     [TestCase(true, "msgrecv", TestName = "PeerEvents_OnMsgReceivedAcrossExistingSessions_NotifiesEach")]
     [TestCase(false, "msgsend", TestName = "PeerEvents_OnMsgDeliveredAcrossExistingSessions_NotifiesEach")]
     public void PeerEventsSubscription_OnMessageEventAcrossMultipleSessions_NotifiesEach(bool isReceived, string expectedType)
@@ -416,7 +597,9 @@ public class AdminModuleTests
                 : () => _existingSession1.MsgDelivered += Raise.EventWith(new object(), peerEventArgs),
             out string firstSubscriptionId,
             disposeSubscription: true);
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(firstResult.Response, Is.Not.Null, "the subscription must notify on the first existing session");
+#pragma warning restore NUnit2045
         Assert.That(
             BuildExpectedMessageNotification(firstSubscriptionId, expectedType, peerHash),
             Is.EqualTo(RpcTest.SerializeResponse(firstResult.Response)),
@@ -428,7 +611,9 @@ public class AdminModuleTests
                 : () => _existingSession2.MsgDelivered += Raise.EventWith(new object(), peerEventArgs),
             out string secondSubscriptionId,
             disposeSubscription: true);
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(secondResult.Response, Is.Not.Null, "the subscription must also notify on the second existing session");
+#pragma warning restore NUnit2045
         Assert.That(
             BuildExpectedMessageNotification(secondSubscriptionId, expectedType, peerHash),
             Is.EqualTo(RpcTest.SerializeResponse(secondResult.Response)),
@@ -483,6 +668,77 @@ public class AdminModuleTests
         _existingSession1.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
 
         Assert.That(manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)), Is.False, "after disconnect the session is unhooked and must not raise further notifications");
+    }
+
+    [Test]
+    public async Task PeerEventsSubscription_OnEveryEventTypeBehindAPendingSend_SendsAndTracesThemInOrder()
+    {
+        Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
+        PeerEventArgs peerEventArgs = new(new Peer(node));
+        PeerEventArgs messageEventArgs = new(node, "BitTorrent", 1, 2);
+        TimeSpan timeout = TimeSpan.FromSeconds(30);
+        ConcurrentQueue<string> sent = new();
+        ConcurrentQueue<string> traces = new();
+        int tracedWhilePending = 0;
+        TaskCompletionSource firstSendStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<int> firstSendGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource allTraced = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _jsonRpcDuplexClient.SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            sent.Enqueue(RpcTest.SerializeResponse(call.Arg<JsonRpcResult>().Response));
+            if (sent.Count > 1) return Task.FromResult(0);
+            firstSendStarted.TrySetResult();
+            return firstSendGate.Task;
+        });
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsTrace.Returns(true);
+        PeerEventsSubscription subscription = new(_jsonRpcDuplexClient, new OneLoggerLogManager(new ILogger(logger)), _peerPool, _rlpxPeer);
+        // Recorded from here on, past the constructor's own trace line.
+        logger.When(l => l.Trace(Arg.Any<string>())).Do(call =>
+        {
+            if (!firstSendGate.Task.IsCompleted) Interlocked.Increment(ref tracedWhilePending);
+            traces.Enqueue(call.Arg<string>());
+            if (traces.Count == 4) allTraced.TrySetResult();
+        });
+
+        try
+        {
+            _peerPool.PeerAdded += Raise.EventWith(new object(), peerEventArgs);
+            await firstSendStarted.Task.WaitAsync(timeout);
+            _existingSession1.MsgReceived += Raise.EventWith(new object(), messageEventArgs);
+            _existingSession1.MsgDelivered += Raise.EventWith(new object(), messageEventArgs);
+            _peerPool.PeerRemoved += Raise.EventWith(new object(), peerEventArgs);
+            int sentWhileHeld = sent.Count;
+            firstSendGate.TrySetResult(0);
+            await allTraced.Task.WaitAsync(timeout);
+
+            string id = subscription.Id;
+            string peerHash = TestItem.PublicKeyA.Hash.ToString(false);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sentWhileHeld, Is.EqualTo(1), "the events raised during a pending send wait in the queue behind it");
+                Assert.That(tracedWhilePending, Is.Zero, "a send is traced only after it completes");
+                Assert.That(sent, Is.EqualTo(new[]
+                {
+                    BuildExpectedPeerLifecycleNotification(id, "add", peerHash),
+                    BuildExpectedMessageNotification(id, "msgrecv", peerHash),
+                    BuildExpectedMessageNotification(id, "msgsend", peerHash),
+                    BuildExpectedPeerLifecycleNotification(id, "drop", peerHash),
+                }), "each event is sent once, in the order raised");
+                Assert.That(traces, Is.EqualTo(new[]
+                {
+                    $"admin_subscription {id} printed new peer.",
+                    $"admin_subscription {id} printed message received.",
+                    $"admin_subscription {id} printed message sent.",
+                    $"admin_subscription {id} printed dropped peer.",
+                }), "each event type keeps its own trace text");
+            }
+        }
+        finally
+        {
+            firstSendGate.TrySetResult(0);
+            subscription.Dispose();
+        }
     }
 
     [Test]
@@ -550,6 +806,35 @@ public class AdminModuleTests
         }
     }
 
+    [Test]
+    public void AdminPeers_ReportsThisNodeEndpointAsLocalAddress([Values] bool isInbound)
+    {
+        int remotePort = isInbound ? 45678 : 30303;
+        Peer peer = new(new Node(TestItem.PublicKeyA, "94.237.54.114", 30303));
+        ISession session = Substitute.For<ISession>();
+        session.RemoteHost.Returns("94.237.54.114");
+        session.RemotePort.Returns(remotePort);
+        session.LocalPort.Returns(30304);
+        session.IsNetworkIdMatched.Returns(true);
+        if (isInbound)
+        {
+            peer.InSession = session;
+        }
+        else
+        {
+            peer.OutSession = session;
+        }
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
+
+        NetworkInfo network = module.admin_peers().Data[0].Network;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(network.LocalAddress, Is.EqualTo("127.0.0.1:30304"), "local address is this node's enode IP with the session's local port");
+            Assert.That(network.RemoteAddress, Is.EqualTo($"94.237.54.114:{remotePort}"));
+        }
+    }
+
     [TestCase(68, "Nethermind/v1.25.4+2bf8a789/linux-x64/dotnet8.0.8", TestName = "AdminPeers_WithEthOnlyV68Peer_DoesNotIncludeSnap")]
     [TestCase(66, "Geth/v1.10.0-stable/linux-amd64/go1.16.15", TestName = "AdminPeers_WithLegacyEthV66Peer_DoesNotIncludeSnap")]
     public void AdminPeers_WithEthOnlyPeer_DoesNotIncludeSnapProtocol(int ethVersion, string clientId)
@@ -579,8 +864,11 @@ public class AdminModuleTests
         ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         PeerInfo peerInfo = result.Data[0];
-        Assert.That(peerInfo.Protocols, Does.ContainKey("eth").And.ContainKey("snap"), "both protocols are advertised");
-        Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(68), "fallback protocol info should use the highest advertised eth capability");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerInfo.Protocols, Does.ContainKey("eth").And.ContainKey("snap"), "both protocols are advertised");
+            Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(68), "fallback protocol info should use the highest advertised eth capability");
+        }
     }
 
     [Test]
@@ -593,8 +881,11 @@ public class AdminModuleTests
         ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         PeerInfo peerInfo = result.Data[0];
-        Assert.That(peerInfo.Protocols, Does.ContainKey("eth").And.ContainKey("snap"), "both protocols are advertised");
-        Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(72), "an active eth handler exposes the negotiated protocol version");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerInfo.Protocols, Does.ContainKey("eth").And.ContainKey("snap"), "both protocols are advertised");
+            Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(72), "an active eth handler exposes the negotiated protocol version");
+        }
     }
 
     [Test]
@@ -620,7 +911,7 @@ public class AdminModuleTests
 
         Assert.That(peerInfo.Id, Is.Not.Null, "a hashed-id PeerInfo JSON must still produce a non-null id");
         Assert.That(peerInfo.Id.Bytes.Length, Is.EqualTo(64), "the public key payload retains its 64-byte length even when the JSON only carried the 32-byte hash");
-        Assert.That(peerInfo.Id.Bytes.AsSpan(32, 32).ToArray(), Is.EqualTo(expectedHashBytes), "the hash bytes from the JSON must occupy the last 32 bytes of the public key payload");
+        Assert.That(peerInfo.Id.Bytes.AsSpan(32, 32), Is.SequenceEqualTo(expectedHashBytes), "the hash bytes from the JSON must occupy the last 32 bytes of the public key payload");
     }
 
     [TestCase(true, TestName = "pause delegates to Pause")]
@@ -700,21 +991,66 @@ public class AdminModuleTests
         Assert.That(nodeInfo.Enr, Is.Null, "the ENR is unavailable when discovery is disabled");
     }
 
+    // Calls run concurrently and each response is serialized after its call returns, so no call may change another's result.
+    [Test]
+    public async Task AdminNodeInfo_EachCall_ReturnsAResultOfItsOwn()
+    {
+        Block firstHead = _blockTree.Head!;
+        NodeInfo first = (await _adminRpcModule.admin_nodeInfo()).Data;
+        string firstSerialized = _serializer.Serialize(first);
+        Block next = Build.A.Block.WithParent(firstHead).TestObject;
+        _blockTree.SuggestBlock(next);
+        _blockTree.TryUpdateMainChain(next.Header, wereProcessed: true, forceUpdateHeadBlock: true, next);
+
+        NodeInfo second = (await _adminRpcModule.admin_nodeInfo()).Data;
+
+        Assert.That(second.Protocols["eth"].HeadHash, Is.EqualTo(next.Hash), "precondition: the second call sees the new head");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Protocols["eth"].HeadHash, Is.EqualTo(firstHead.Hash), "the first result keeps its head");
+            Assert.That(_serializer.Serialize(first), Is.EqualTo(firstSerialized), "the first result serializes as it did");
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second.Ports, Is.Not.SameAs(first.Ports));
+            Assert.That(second.Protocols, Is.Not.SameAs(first.Protocols));
+            Assert.That(second.Protocols["eth"], Is.Not.SameAs(first.Protocols["eth"]));
+        }
+    }
+
+    // One read of the head gives both its hash and its total difficulty: a second read could see another head.
+    [Test]
+    public async Task AdminNodeInfo_PairsTheHeadHashWithItsTotalDifficulty()
+    {
+        Block head = Build.A.Block.WithNumber(7).WithDifficulty(5).WithTotalDifficulty(42L).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(head);
+        blockTree.HeadHash.Returns(TestItem.KeccakA);
+
+        NodeInfo nodeInfo = (await BuildAdminRpcModuleWith(blockTree: blockTree).admin_nodeInfo()).Data;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeInfo.Protocols["eth"].HeadHash, Is.EqualTo(head.Hash), "the hash of the head read");
+            Assert.That(nodeInfo.Protocols["eth"].Difficulty, Is.EqualTo(head.TotalDifficulty), "that head's total difficulty");
+        }
+    }
+
     private IAdminRpcModule BuildAdminRpcModuleWith(
         IStaticNodesManager? staticNodesManager = null,
         ITrustedNodesManager? trustedNodesManager = null,
         IPeerPool? peerPool = null,
         IBlockProcessingPauseControl? blockProcessingPauseControl = null,
-        INodeRecordProvider? nodeRecordProvider = null)
+        INodeRecordProvider? nodeRecordProvider = null,
+        string enode = _enodeString,
+        IBlockTree? blockTree = null)
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
         return new AdminRpcModule(
-            _blockTree,
+            blockTree ?? _blockTree,
             _networkConfig,
             peerPool ?? Substitute.For<IPeerPool>(),
             staticNodesManager ?? Substitute.For<IStaticNodesManager>(),
             Substitute.For<IStateReader>(),
-            new Enode(_enodeString),
+            new Enode(enode),
             _exampleDataDir,
             chainSpec.Parameters,
             trustedNodesManager ?? Substitute.For<ITrustedNodesManager>(),

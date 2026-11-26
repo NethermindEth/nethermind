@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -56,6 +57,45 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
             $"Expected {expectedOutput.ToHexString(true)}, got {actualOutput.ToHexString(true)}");
     }
 
+    /// <remarks>
+    /// The trusted input carries the stateless input's block and witness but not its engine API envelope, the claimed
+    /// block hash and the versioned hashes, so it must reach the same verdict unless the envelope alone decided it.
+    /// </remarks>
+    [NonParallelizable]
+    [TestCaseSource(nameof(LoadStatelessTests))]
+    public void TrustedInputVerdictMatchesFixture(PyspecStatelessRef testRef)
+    {
+        (string inputBytes, string expectedOutputBytes) = PyspecLoader.LoadZkEvmStatelessBytes(testRef);
+        byte[] statelessInput = Convert.FromHexString(inputBytes[2..]);
+        StatelessValidationResult.Decode(Convert.FromHexString(expectedOutputBytes[2..]), out StatelessValidationResult expected);
+
+        byte[] trustedInput;
+        Block block;
+        StatelessPayload payload;
+        try
+        {
+            payload = InputDecoder.Decode(statelessInput);
+            block = payload.GetBlock();
+            trustedInput = TrustedInput.FromStatelessInput(statelessInput);
+        }
+        catch (Exception) when (!expected.IsSuccess)
+        {
+            // A block that does not decode has no trusted input.
+            return;
+        }
+
+        StatelessValidationResult.Decode(StatelessExecutor.ExecuteTrusted(trustedInput), out StatelessValidationResult actual);
+        Hash256 headerHash = block.Header.CalculateHash();
+        bool decidedByEnvelope = headerHash != block.Hash
+            || !StatelessExecutor.BlobVersionedHashesMatch(block.Transactions, payload.VersionedHashes.Span);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (expected.IsSuccess || !decidedByEnvelope) Assert.That(actual.IsSuccess, Is.EqualTo(expected.IsSuccess));
+            Assert.That(actual.NewPayloadRequestRoot, Is.EqualTo(headerHash));
+        }
+    }
+
     private static IEnumerable<TestCaseData> LoadWitnessTests() =>
         PyspecLoader.LoadCases<BlockchainTest>(_strategy, TestsDir);
 
@@ -87,75 +127,6 @@ public class StatelessSchemaTests
             Assert.That(payload.ChainId, Is.EqualTo(ChainId));
             Assert.That(payload.GetBlock().Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.EmptyRequestsHash));
         }
-    }
-
-    /// <summary>
-    /// Pins the wire bytes a non-empty public-key list produces, and that they decode back unchanged.
-    /// </summary>
-    /// <remarks>
-    /// The write-side assertion is the guard that matters: a round-trip alone passes when
-    /// <see cref="SszPublicKeyVectorTypeConverter"/>'s write and read sides are perturbed together.
-    /// It is expressed against the region under test rather than a hash of the whole input, so
-    /// unrelated schema churn cannot send a reader off to re-derive a baseline.
-    /// </remarks>
-    [Test]
-    public void Public_key_vector_encoding_is_pinned()
-    {
-        SszPublicKey[] publicKeys = DeterministicPublicKeys(5);
-
-        byte[] encoded = EncodeInput(new SszExecutionPayload(), InputDecoder.CurrentForkSchemaId, publicKeys: publicKeys);
-        ReadOnlySpan<SszPublicKey> decoded = InputDecoder.Decode(encoded).PublicKeys.Span;
-
-        // PublicKeys is the container's last variable-size field and a list of fixed-size items is a
-        // bare concatenation, so the keys occupy exactly the trailing count * 65 bytes.
-        byte[] expectedTail = new byte[publicKeys.Length * SszPublicKey.PublicKeyLength];
-        for (int i = 0; i < publicKeys.Length; i++)
-            publicKeys[i].AsSpan().CopyTo(expectedTail.AsSpan(i * SszPublicKey.PublicKeyLength));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(encoded[^expectedTail.Length..], Is.EqualTo(expectedTail));
-            Assert.That(decoded.Length, Is.EqualTo(publicKeys.Length));
-        }
-
-        for (int i = 0; i < publicKeys.Length; i++)
-            Assert.That(decoded[i].AsSpan().ToArray(), Is.EqualTo(publicKeys[i].AsSpan().ToArray()));
-    }
-
-    /// <remarks>
-    /// The inherited <see cref="ValueType"/> members throw on <c>[InlineArray]</c>-backed structs,
-    /// so equality has to be declared for <see cref="SszPublicKey"/> to be usable as a value.
-    /// </remarks>
-    [Test]
-    public void Public_keys_compare_by_value()
-    {
-        SszPublicKey[] publicKeys = DeterministicPublicKeys(2);
-        SszPublicKey copy = SszPublicKey.FromSpan(publicKeys[0].AsSpan());
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(copy, Is.EqualTo(publicKeys[0]));
-            Assert.That(copy.GetHashCode(), Is.EqualTo(publicKeys[0].GetHashCode()));
-            Assert.That(publicKeys[1], Is.Not.EqualTo(publicKeys[0]));
-        }
-    }
-
-    private static SszPublicKey[] DeterministicPublicKeys(int count)
-    {
-        SszPublicKey[] publicKeys = new SszPublicKey[count];
-
-        for (int i = 0; i < count; i++)
-        {
-            byte[] bytes = new byte[SszPublicKey.PublicKeyLength];
-            bytes[0] = 0x04;
-
-            for (int j = 1; j < bytes.Length; j++)
-                bytes[j] = (byte)(i * 31 + j);
-
-            publicKeys[i] = SszPublicKey.FromSpan(bytes);
-        }
-
-        return publicKeys;
     }
 
     /// <summary>
@@ -290,6 +261,33 @@ public class StatelessSchemaTests
         }
     }
 
+    /// <remarks>The list is grown past the cap in the encoding itself, as the encoder refuses to write it.</remarks>
+    [Test]
+    public void Versioned_hashes_are_capped_at_the_blob_commitment_limit([Values(4096, 4097)] int count)
+    {
+        const int Cap = 4096;
+        NewPayloadRequest<SszExecutionPayload> request = new()
+        {
+            ExecutionPayload = new SszExecutionPayload(),
+            VersionedHashes = new Hash256[Cap],
+            ParentBeaconBlockRoot = Hash256.Zero,
+            ExecutionRequests = new() { Deposits = [], Withdrawals = [], Consolidations = [], BuilderDeposits = [], BuilderExits = [] }
+        };
+        Array.Fill(request.VersionedHashes, Hash256.Zero);
+        byte[] encoded = NewPayloadRequest<SszExecutionPayload>.Encode(request);
+
+        // The fixed part holds the payload's and the hashes' offsets, the parent beacon block root, then the requests' offset,
+        // which is where the hashes end.
+        const int RequestsOffsetPosition = 2 * sizeof(uint) + Hash256.Size;
+        int hashesEnd = (int)BinaryPrimitives.ReadUInt32LittleEndian(encoded.AsSpan(RequestsOffsetPosition));
+        int extraBytes = (count - Cap) * Hash256.Size;
+        byte[] grown = [.. encoded.AsSpan(0, hashesEnd), .. new byte[extraBytes], .. encoded.AsSpan(hashesEnd)];
+        BinaryPrimitives.WriteUInt32LittleEndian(grown.AsSpan(RequestsOffsetPosition), (uint)(hashesEnd + extraBytes));
+
+        Assert.That(() => NewPayloadRequest<SszExecutionPayload>.Decode(grown, out NewPayloadRequest<SszExecutionPayload> _),
+            count > Cap ? Throws.TypeOf<InvalidDataException>() : Throws.Nothing);
+    }
+
     [TestCaseSource(nameof(BlobVersionedHashCases))]
     public bool Blob_versioned_hashes_must_match_in_payload_order(Transaction[] transactions, Hash256[] expected) =>
         StatelessExecutor.BlobVersionedHashesMatch(transactions, expected);
@@ -343,8 +341,7 @@ public class StatelessSchemaTests
     private static SszProgressiveBytes[] MalformedTransaction => [new() { Bytes = [0xff, 0xff] }];
 
     private static byte[] EncodeInput<TExecutionPayload>(
-        TExecutionPayload executionPayload, ushort schemaId, SszProgressiveBytes[] transactions = null,
-        SszPublicKey[] publicKeys = null)
+        TExecutionPayload executionPayload, ushort schemaId, SszProgressiveBytes[] transactions = null)
         where TExecutionPayload : SszExecutionPayload, ISszCodec<TExecutionPayload>, new()
     {
         executionPayload.BlockNumber = BlockNumber;
@@ -375,8 +372,7 @@ public class StatelessSchemaTests
                 Codes = [],
                 Headers = []
             },
-            ChainId = ChainId,
-            PublicKeys = publicKeys ?? []
+            ChainId = ChainId
         };
         byte[] payload = StatelessInput<TExecutionPayload>.Encode(input);
         byte[] encoded = new byte[sizeof(ushort) + payload.Length];

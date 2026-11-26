@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -44,6 +48,25 @@ public class ReceiptMessageDecoderTests
         Assert.That(DecodeReceipt(encoded).Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
     }
 
+    [TestCase(5)]
+    [TestCase(31)]
+    [TestCase(33)]
+    [TestCase(34)]
+    public void Decode_normalizes_invalid_post_state_length_to_rlp_exception(int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
+
+        Assert.That(() => DecodeReceipt(encoded), Throws.TypeOf<RlpReaderException>());
+    }
+
+    [Test]
+    public void Decode_accepts_valid_post_state_length([Values(0, 32)] int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
+
+        Assert.That(DecodeReceipt(encoded).PostTransactionState, Is.EqualTo(length == 0 ? null : Keccak.Zero));
+    }
+
     internal static TxReceipt DecodeReceipt(byte[] bytes)
     {
         RlpReader ctx = new(bytes);
@@ -83,11 +106,31 @@ public class ReceiptMessageDecoderTests
         if (underDeclare)
         {
             encoded[headerIndex]--;
-            Assert.That(() => Decode(decoder, encoded), Throws.InstanceOf<RlpException>());
+            Assert.That(() => Decode(decoder, encoded), Throws.InstanceOf<RlpReaderException>());
         }
         else
         {
             Assert.That(Decode(decoder, encoded).Logs, Has.Length.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Decode_TypedReceiptWrapperLengthMustMatchItsContent([Values(-1, 0, 1)] int lengthDelta)
+    {
+        TxReceipt receipt = new() { TxType = TxType.EIP1559, StatusCode = 1, GasUsedTotal = 21_000, Bloom = new Bloom(), Logs = [] };
+        ReceiptMessageDecoder decoder = new();
+        // A trailing byte keeps an over-declared wrapper inside the buffer, so only the wrapper check can reject it.
+        byte[] encoded = [.. decoder.EncodeNew(receipt, RlpBehaviors.Eip658Receipts), 0x00];
+        (int wrapperPrefixLength, _) = RlpTestHelper.PrefixAndContentLength(encoded);
+        encoded[wrapperPrefixLength - 1] = (byte)(encoded[wrapperPrefixLength - 1] + lengthDelta);
+
+        if (lengthDelta == 0)
+        {
+            Assert.That(Decode(decoder, encoded).TxType, Is.EqualTo(TxType.EIP1559));
+        }
+        else
+        {
+            Assert.That(() => Decode(decoder, encoded), Throws.TypeOf<RlpReaderException>());
         }
     }
 
@@ -97,14 +140,19 @@ public class ReceiptMessageDecoderTests
     /// wrong reason; the header assertion catches any drift in that layout.</remarks>
     private static int LogsHeaderIndex(byte[] encoded, TxType txType, int logsContentLength)
     {
-        RlpReader locator = new(encoded);
+        int payloadStart = 0;
+        ReadOnlySpan<byte> payload = encoded;
         if (txType != TxType.Legacy)
         {
-            locator.SkipLength();
-            locator.ReadByte();
+            RlpReader wrapper = new(encoded);
+            ReadOnlySpan<byte> envelope = wrapper.ReadBytes();
+            payloadStart = wrapper.BytesRead - envelope.Length + 1;
+            payload = envelope[1..];
         }
 
-        int payloadEnd = locator.ReadSequenceLength() + locator.Position;
+        RlpReader locator = new(payload);
+        locator.EnterSequence(out int payloadLength);
+        int payloadEnd = payloadStart + payloadLength;
         int headerIndex = payloadEnd - logsContentLength - 1;
         Assert.That(encoded[headerIndex], Is.EqualTo((byte)(ShortSequenceHeaderBase + logsContentLength)),
             "the logs list header is not where the payload layout puts it");
@@ -147,6 +195,27 @@ public class ReceiptLogCountLimitTests
         RlpLimit.InitMaxBlockGas(maxBlockGas);
 
         Assert.That(RlpLimit.ReceiptLogs.Limit, Is.EqualTo(expectedLimit));
+    }
+
+    [Test]
+    public void Network_reader_enforces_log_count_limit_during_traversal([Values(0, TwoLogBlockGasLimit, TwoLogBlockGasLimit + 1)] int logCount)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(
+            ReceiptRlpBuilder.Repeat(logCount, ReceiptRlpBuilder.MinimalLog()));
+        RlpLimit.InitMaxBlockGas(TwoLogBlockGas);
+        RlpReader reader = new(encoded);
+
+        Assert.That(NetworkReceipt.TryRead(ref reader, withBloom: true, out _), Is.EqualTo(logCount <= TwoLogBlockGasLimit));
+    }
+
+    [Test]
+    public void Network_reader_leaves_log_data_above_the_limit_to_the_decoder([Values(0, 1)] int overLimit)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(
+            [new LogEntry(Address.Zero, new byte[(int)16.MB + overLimit], [])]);
+        RlpReader reader = new(encoded);
+
+        Assert.That(NetworkReceipt.TryRead(ref reader, withBloom: true, out _), Is.EqualTo(overLimit == 0));
     }
 
     [Test]

@@ -99,18 +99,21 @@ public class RecreateStateFromAccountRangesTests
 
         tree.RootRef = nodes[0];
 
-        tree.Set(TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths[0].Account);
-        tree.Set(TestItem.Tree.AccountsWithPaths[1].Path, TestItem.Tree.AccountsWithPaths[1].Account);
-        tree.Set(TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2].Account);
-        tree.Set(TestItem.Tree.AccountsWithPaths[3].Path, TestItem.Tree.AccountsWithPaths[3].Account);
-        tree.Set(TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4].Account);
-        tree.Set(TestItem.Tree.AccountsWithPaths[5].Path, TestItem.Tree.AccountsWithPaths[5].Account);
+        tree.Set(TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths[0].Account.ToAccount());
+        tree.Set(TestItem.Tree.AccountsWithPaths[1].Path, TestItem.Tree.AccountsWithPaths[1].Account.ToAccount());
+        tree.Set(TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2].Account.ToAccount());
+        tree.Set(TestItem.Tree.AccountsWithPaths[3].Path, TestItem.Tree.AccountsWithPaths[3].Account.ToAccount());
+        tree.Set(TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4].Account.ToAccount());
+        tree.Set(TestItem.Tree.AccountsWithPaths[5].Path, TestItem.Tree.AccountsWithPaths[5].Account.ToAccount());
 
         tree.Commit();
 
-        Assert.That(tree.RootHash, Is.EqualTo(_inputTree.RootHash));
-        Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
-        Assert.That(db.KeyExists(rootHash), Is.False); // the root node is a part of the proof nodes
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.RootHash, Is.EqualTo(_inputTree.RootHash));
+            Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
+            Assert.That(db.KeyExists(rootHash), Is.False); // the root node is a part of the proof nodes
+        }
     }
 
     [Test]
@@ -127,9 +130,12 @@ public class RecreateStateFromAccountRangesTests
 
         AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
-        Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
-        Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        }
     }
 
     [Test]
@@ -146,9 +152,12 @@ public class RecreateStateFromAccountRangesTests
 
         AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
-        Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
-        Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        }
     }
 
     [Test]
@@ -162,9 +171,12 @@ public class RecreateStateFromAccountRangesTests
 
         AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
-        Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
-        Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False); // the root node is NOT a part of the proof nodes
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
+            Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False); // the root node is NOT a part of the proof nodes
+        }
     }
 
     [TestCase("ffffffff", TestName = "undecodable RLP")]
@@ -215,11 +227,14 @@ public class RecreateStateFromAccountRangesTests
 
         AddRangeResult result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
-        Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(helper.CountTrieNodes(), Is.EqualTo(8));  // we persist proof nodes (boundary nodes) via stitching
-        Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(helper.CountTrieNodes(), Is.EqualTo(8));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        }
     }
 
     [Test]
@@ -248,11 +263,14 @@ public class RecreateStateFromAccountRangesTests
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
         AddRangeResult result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
-        Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(helper.CountTrieNodes(), Is.EqualTo(8));  // we persist proof nodes (boundary nodes) via stitching
-        Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(helper.CountTrieNodes(), Is.EqualTo(8));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        }
     }
 
     [Test]
@@ -281,11 +299,14 @@ public class RecreateStateFromAccountRangesTests
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
         AddRangeResult result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
-        Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(helper.CountTrieNodes(), Is.EqualTo(8));  // we persist proof nodes (boundary nodes) via stitching
-        Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(helper.CountTrieNodes(), Is.EqualTo(8));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        }
     }
 
     [Test]
@@ -322,12 +343,15 @@ public class RecreateStateFromAccountRangesTests
 
         AddRangeResult result4 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
-        Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(result4, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
-        Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result4, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(helper.CountTrieNodes(), Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        }
     }
 
     [Test]
@@ -352,10 +376,13 @@ public class RecreateStateFromAccountRangesTests
             return moreChildrenToRight;
         }
 
-        Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[1].Path), Is.False);
-        Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[2].Path), Is.True); //expect leaves exactly at limit path to be included
-        Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[3].Path), Is.True);
-        Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[4].Path), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[1].Path), Is.False);
+            Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[2].Path), Is.True); //expect leaves exactly at limit path to be included
+            Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[3].Path), Is.True);
+            Assert.That(HasMoreChildren(TestItem.Tree.AccountsWithPaths[4].Path), Is.True);
+        }
 
         UInt256 between1and2 = new(TestItem.Tree.AccountsWithPaths[1].Path.Bytes, true);
         between1and2 += 5;
@@ -373,13 +400,13 @@ public class RecreateStateFromAccountRangesTests
     {
         StateTree tree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
 
-        PathWithAccount ac1 = new(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
-        PathWithAccount ac2 = new(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
-        PathWithAccount ac3 = new(Keccak.MaxValue, Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount ac1 = new(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject.ToStruct());
+        PathWithAccount ac2 = new(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject.ToStruct());
+        PathWithAccount ac3 = new(Keccak.MaxValue, Build.An.Account.WithBalance(2).TestObject.ToStruct());
 
-        tree.Set(ac1.Path, ac1.Account);
-        tree.Set(ac2.Path, ac2.Account);
-        tree.Set(ac3.Path, ac3.Account);
+        tree.Set(ac1.Path, ac1.Account.ToAccount());
+        tree.Set(ac2.Path, ac2.Account.ToAccount());
+        tree.Set(ac3.Path, ac3.Account.ToAccount());
         tree.Commit();
 
         Hash256 rootHash = tree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
@@ -401,16 +428,22 @@ public class RecreateStateFromAccountRangesTests
             return moreChildrenToRight;
         }
 
-        Assert.That(HasMoreChildren(ac1.Path), Is.False);
-        Assert.That(HasMoreChildren(ac2.Path), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasMoreChildren(ac1.Path), Is.False);
+            Assert.That(HasMoreChildren(ac2.Path), Is.False);
+        }
 
         UInt256 between2and3 = new(ac2.Path.Bytes, true);
         between2and3 += 5;
 
-        Assert.That(HasMoreChildren(new Hash256(between2and3.ToBigEndian())), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasMoreChildren(new Hash256(between2and3.ToBigEndian())), Is.False);
 
-        // The special case
-        Assert.That(HasMoreChildren(Keccak.MaxValue), Is.True);
+            // The special case
+            Assert.That(HasMoreChildren(Keccak.MaxValue), Is.True);
+        }
     }
 
     [Test]
@@ -429,7 +462,7 @@ public class RecreateStateFromAccountRangesTests
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
             Account acc = Build.An.Account.WithBalance((UInt256)i).TestObject;
-            allAccounts.Add(new PathWithAccount(path, acc));
+            allAccounts.Add(new PathWithAccount(path, acc.ToStruct()));
         }
         allAccounts.Sort((a, b) => a.Path.CompareTo(b.Path));
 
@@ -455,8 +488,11 @@ public class RecreateStateFromAccountRangesTests
         // Root hash verification inside AddAccountRange validates that the keccak-only leaf
         // reference produces a correct root hash — if leaves were handled incorrectly,
         // the computed root would differ from expectedRootHash
-        Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+        }
     }
 
     [Test]
@@ -473,7 +509,7 @@ public class RecreateStateFromAccountRangesTests
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
             Account acc = Build.An.Account.WithBalance((UInt256)i).TestObject;
-            allAccounts.Add(new PathWithAccount(path, acc));
+            allAccounts.Add(new PathWithAccount(path, acc.ToStruct()));
         }
         allAccounts.Sort((a, b) => a.Path.CompareTo(b.Path));
 
@@ -508,7 +544,7 @@ public class RecreateStateFromAccountRangesTests
         {
             Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
             Account acc = Build.An.Account.WithBalance((UInt256)i).TestObject;
-            allAccounts.Add(new PathWithAccount(path, acc));
+            allAccounts.Add(new PathWithAccount(path, acc.ToStruct()));
         }
         allAccounts.Sort((a, b) => a.Path.CompareTo(b.Path));
 
@@ -569,10 +605,13 @@ public class RecreateStateFromAccountRangesTests
 
         AddRangeResult result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof!.Length + lastProof!.Length, firstProof!.Concat(lastProof!))));
 
-        Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
-        Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(helper.CountTrieNodes(), Is.EqualTo(6));
-        Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(helper.CountTrieNodes(), Is.EqualTo(6));
+            Assert.That(helper.TrieNodeKeyExists(rootHash), Is.False);
+        }
     }
 }

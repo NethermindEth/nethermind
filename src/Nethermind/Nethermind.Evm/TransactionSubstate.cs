@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -14,7 +16,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Evm;
 
-public readonly ref struct TransactionSubstate
+public readonly ref partial struct TransactionSubstate
 {
     private readonly ILogger _logger;
 
@@ -24,11 +26,11 @@ public readonly ref struct TransactionSubstate
     private const int RevertPrefix = 4;
     private const int WordSize = EvmPooledMemory.WordSize;
 
-    public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
-    public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
+    public static byte[] ErrorFunctionSelector => field ??= Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
+    public static byte[] PanicFunctionSelector => field ??= Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
 
-    private static readonly FrozenDictionary<ulong, string> PanicReasons = new Dictionary<ulong, string>
+    private static FrozenDictionary<ulong, string> PanicReasons => field ??= new Dictionary<ulong, string>
     {
         { 0x00, "generic panic" },
         { 0x01, "assert(false)" },
@@ -43,7 +45,7 @@ public readonly ref struct TransactionSubstate
     }.ToFrozenDictionary();
 
     private readonly JournalSet<Address>? _destroyList;
-    private readonly JournalCollection<LogEntry> _logs;
+    private readonly JournalCollection<LogEntry>? _logs;
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
@@ -52,7 +54,7 @@ public readonly ref struct TransactionSubstate
     public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public JournalCollection<LogEntry> Logs => _logs;
+    public JournalCollection<LogEntry>? Logs => _logs;
     public JournalSet<Address>? DestroyList => _destroyList;
     internal bool ShouldRestoreRipemdTouch { get; init; }
 
@@ -64,8 +66,7 @@ public readonly ref struct TransactionSubstate
         EvmExceptionType = exceptionType;
         Refund = 0;
         _destroyList = null;
-        // Real list, not a shared empty sentinel: EIP-7708 SELFDESTRUCT appends a transfer log and this readonly struct can't reassign later.
-        _logs = [];
+        _logs = null;
         ShouldRevert = false;
     }
 
@@ -82,7 +83,7 @@ public readonly ref struct TransactionSubstate
         Output = bytes;
         Refund = refund;
         _destroyList = destroyList;
-        _logs = logs ?? [];
+        _logs = logs;
         ShouldRevert = shouldRevert;
         EvmExceptionType = evmExceptionType;
 
@@ -94,7 +95,7 @@ public readonly ref struct TransactionSubstate
 
         Error = Revert;
 
-        if (!isTracerConnected)
+        if (!DecodesRevertReason || !isTracerConnected)
             return;
 
         if (Output.IsEmpty)
@@ -104,9 +105,9 @@ public readonly ref struct TransactionSubstate
         if (TryGetErrorMessage(span) is { } decoded) Error = decoded;
     }
 
-    public bool DestroyListContains(Address? address) => address is not null && _destroyList?.Contains(address) == true;
+    public bool DestroyListContains(Address? address) => address is not null && _destroyList is { Count: > 0 } destroyList && destroyList.Contains(address);
 
-    public LogEntry[] LogsToArray() => _logs.ToArray();
+    public LogEntry[] LogsToArray() => _logs is null ? [] : _logs.ToArray();
 
     public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
     {
@@ -114,6 +115,26 @@ public readonly ref struct TransactionSubstate
             return span.ToHexString(true);
 
         return Encoding.ASCII.GetString(span);
+    }
+
+    /// <summary>Decodes an <c>Error(string)</c> reason as UTF-8, replacing each invalid byte with U+FFFD.</summary>
+    /// <remarks>
+    /// Matches Geth, which keeps the raw string and lets <c>encoding/json</c> replace every invalid byte, rather
+    /// than .NET's replacement of each maximal invalid subsequence.
+    /// </remarks>
+    private static string DecodeErrorString(ReadOnlySpan<byte> span)
+    {
+        if (Utf8.IsValid(span)) return Encoding.UTF8.GetString(span);
+
+        StringBuilder decoded = new(span.Length);
+        while (!span.IsEmpty)
+        {
+            if (Rune.DecodeFromUtf8(span, out Rune rune, out int consumed) != OperationStatus.Done) consumed = 1;
+            decoded.Append(rune.ToString());
+            span = span[consumed..];
+        }
+
+        return decoded.ToString();
     }
 
     public static string? GetErrorMessage(ReadOnlySpan<byte> span)
@@ -128,7 +149,7 @@ public readonly ref struct TransactionSubstate
             UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (!panicCode.IsUint64 || !PanicReasons.TryGetValue(panicCode.u0, out string? panicReason))
             {
-                return $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})";
+                return $"unknown panic code: {panicCode.ToHexString(skipLeadingZeros: true)}";
             }
 
             return panicReason;
@@ -138,14 +159,16 @@ public readonly ref struct TransactionSubstate
         {
             if (span.Length < WordSize * 2) return null;
 
-            UInt256 start = new(span.TakeAndMove(WordSize), isBigEndian: true);
-            if (start != WordSize) return null;
+            // Like Geth's ABI decoder, accept the string at any in-bounds offset, not only right after the head.
+            UInt256 start = new(span[..WordSize], isBigEndian: true);
+            if (start > (ulong)(span.Length - WordSize)) return null;
+            span = span[(int)start..];
 
             UInt256 length = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (length > span.Length) return null;
 
             ReadOnlySpan<byte> binaryMessage = span.TakeAndMove((int)length);
-            return EncodeErrorMessage(binaryMessage);
+            return DecodeErrorString(binaryMessage);
         }
 
         // Unknown selector — not Error(string) or Panic(uint256). Return null so the caller

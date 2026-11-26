@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -14,8 +15,6 @@ namespace Nethermind.Api
     public interface INethermindApi : IApiWithNetwork
     {
         public T Config<T>() where T : IConfig => ConfigProvider.GetConfig<T>();
-
-        (IApiWithNetwork GetFromApi, INethermindApi SetInApi) ForRpc => (this, this);
     }
 
     public static class NethermindApiExtensions
@@ -32,7 +31,7 @@ namespace Nethermind.Api
         /// <param name="api">The Nethermind API receiving the registrations.</param>
         /// <param name="decoder">The decoder for the transaction type.</param>
         /// <param name="validator">The full validator for the transaction type.</param>
-        public static void RegisterTxType<T>(this INethermindApi api, ITxDecoder decoder, ITxValidator validator) where T : TransactionForRpc, IFromTransaction<T>
+        public static void RegisterTxType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(this INethermindApi api, ITxDecoder decoder, ITxValidator validator) where T : TransactionForRpc, IFromTransaction<T>
         {
             ArgumentNullException.ThrowIfNull(api.TxValidator);
             if (decoder.Type != T.TxType) throw new ArgumentException($"TxType mismatch decoder: {decoder.Type}, RPC: {T.TxType}");

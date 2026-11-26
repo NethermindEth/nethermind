@@ -7,6 +7,7 @@ using System.Threading.Channels;
 using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -24,7 +25,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly IPersistenceManager _persistenceManager;
     private readonly ISnapshotCompactor _snapshotCompactor;
     private readonly ISnapshotRepository _snapshotRepository;
-    private readonly ITrieNodeCache _trieNodeCache;
+    private readonly INodeRecordBuffer _nodeRecordBuffer;
     private readonly IResourcePool _resourcePool;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
@@ -34,12 +35,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _compactorTask;
     private readonly Channel<StateId> _compactorJobs;
 
-    // The node cache is kinda important for performance, so we want it populated as quickly as possible.
-    private readonly Task _populateTrieNodeCacheTask;
-    private readonly Channel<TransientResource> _populateTrieNodeCacheJobs;
-
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
+
+    private StateId _lastClearedPersistedStateId = StateId.PreGenesis;
+    private long _lastClearedRemovedBaseSnapshotCount;
 
     // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
     private readonly Task _clearBundleCacheTask;
@@ -53,11 +53,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
+    private readonly double _inMemorySlotFilterBitsPerKey;
 
     public FlatDbManager(
         IResourcePool resourcePool,
         IProcessExitSource processExitSource,
-        ITrieNodeCache trieNodeCache,
+        INodeRecordBuffer nodeRecordBuffer,
         ISnapshotCompactor snapshotCompactor,
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,
@@ -67,18 +68,21 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         ILogManager logManager,
         bool enableDetailedMetrics)
     {
-        _trieNodeCache = trieNodeCache;
+        _nodeRecordBuffer = nodeRecordBuffer;
         _snapshotCompactor = snapshotCompactor;
         _snapshotRepository = snapshotRepository;
         _resourcePool = resourcePool;
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
+        _inMemorySlotFilterBitsPerKey = config.InMemorySnapshotBloomBitsPerKey;
 
         // Must run before any background worker or read can access the persisted tier.
         persistedSnapshotLoader.Load();
 
         config.ValidateCompactSize();
+        // Also before any worker starts, so the first reads see the compacted tier.
+        CompactReloadedSnapshots(processExitSource.Token);
         _compactSize = (int)config.CompactSize;
 
         // We assume that the state must be able to be persisted in half the slot time at the very
@@ -96,13 +100,34 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _cancelTokenSource = new();
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
-        _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(1);
         _persistenceJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
 
         _compactorTask = RunCompactor(_cancelTokenSource.Token);
-        _populateTrieNodeCacheTask = RunTrieCachePopulator(_cancelTokenSource.Token);
         _persistenceTask = RunPersistence(_cancelTokenSource.Token);
         _clearBundleCacheTask = RunClearBundleCache(_cancelTokenSource.Token);
+    }
+
+    /// <summary>
+    /// Compacts the persisted snapshots the last run left one per block before anything reads them. Best-effort: they
+    /// only shorten reads, and the reloaded ones serve every state without them.
+    /// </summary>
+    private void CompactReloadedSnapshots(CancellationToken cancellationToken)
+    {
+        long start = Stopwatch.GetTimestamp();
+        try
+        {
+            int compacted = _persistenceManager.CompactReloadedSnapshots(cancellationToken);
+            if (compacted > 0 && _logger.IsInfo)
+                _logger.Info($"Compacted the state kept from the last run into {compacted} persisted snapshots in {Stopwatch.GetElapsedTime(start).TotalMilliseconds:N0} ms.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Stopping. What is left is read one snapshot per block, as before.
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Could not compact the persisted snapshots kept from the last run; reads walk one snapshot per block until they are persisted.", e);
+        }
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)
@@ -132,21 +157,19 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
     }
 
-    private async Task RunCompactJobSync(StateId stateId, TransientResource transientResource, CancellationToken cancellationToken)
-    {
-        PopulateTrieNodeCache(transientResource);
-        await RunCompactJob(stateId, cancellationToken);
-    }
-
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
+        // Built in the compactor job; readers probe the dictionaries until the filters are published.
+        if (_snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
+        {
+            using Snapshot _ = snapshot;
+            snapshot.BuildFilters();
+        }
+
         // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
 
-        if (_snapshotCompactor.DoCompactSnapshot(stateId))
-        {
-            ClearReadOnlyBundleCache();
-        }
+        _snapshotCompactor.DoCompactSnapshot(stateId);
 
         // Trigger persistence job.
         await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
@@ -184,46 +207,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
-        ClearReadOnlyBundleCache();
-    }
-
-    private async Task RunTrieCachePopulator(CancellationToken cancellationToken)
-    {
-        try
+        long removedBaseSnapshotCount = _snapshotRepository.RemovedBaseSnapshotCount;
+        if (currentPersistedStateId != _lastClearedPersistedStateId
+            || removedBaseSnapshotCount != _lastClearedRemovedBaseSnapshotCount)
         {
-            await foreach (TransientResource cachedResource in _populateTrieNodeCacheJobs.Reader.ReadAllAsync(cancellationToken))
-            {
-                await NotifyWhenSlow("Populating trie node cache", () =>
-                {
-                    PopulateTrieNodeCache(cachedResource);
-                    return Task.CompletedTask;
-                });
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            _cancelTokenSource.Cancel();
-        }
-        catch
-        {
-            _cancelTokenSource.Cancel();
-            throw;
-        }
-        finally
-        {
-            _populateTrieNodeCacheJobs.Writer.TryComplete();
-        }
-    }
-
-    private void PopulateTrieNodeCache(TransientResource transientResource)
-    {
-        try
-        {
-            _trieNodeCache.Add(transientResource);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
+            _lastClearedPersistedStateId = currentPersistedStateId;
+            _lastClearedRemovedBaseSnapshotCount = removedBaseSnapshotCount;
+            ClearReadOnlyBundleCache();
         }
     }
 
@@ -268,18 +258,28 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await jobTask;
     }
 
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
+        GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads: false);
+
+    /// <remarks>
+    /// A <see cref="ResourcePool.Usage.ReadOnlyProcessingEnv"/> bundle (block building, read-only queries) never hands its
+    /// snapshots to the repository, so its trie nodes go to a private buffer freed with the bundle. Written to the global
+    /// buffer, they would stay there for as long as any in-memory snapshot taken before them is retained.
+    /// </remarks>
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
         return new SnapshotBundle(
             GatherReadOnlySnapshotBundle(baseBlock),
-            _trieNodeCache,
+            _nodeRecordBuffer,
             _resourcePool,
-            usage: usage);
+            usage: usage,
+            filterInMemorySlotReads: filterInMemorySlotReads,
+            privateNodeRecords: usage == ResourcePool.Usage.ReadOnlyProcessingEnv);
     }
 
-    private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
-    private static readonly StringLabel _depthPersistedLabel = new("persisted");
+    private static readonly StableStringLabel _depthInMemoryLabel = StableStringLabel.Get("in_memory");
+    private static readonly StableStringLabel _depthPersistedLabel = StableStringLabel.Get("persisted");
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
         GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
@@ -298,11 +298,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // PreGenesis is a sentinel; Nethermind always generates genesis, so this path is always transient.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotStack.Empty(_enableDetailedMetrics));
+            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotStack.Empty(_enableDetailedMetrics), bufferPin: null);
         }
 
         long sw = 0;
         int attempt = 0;
+        bool persistedAtBase = false;
         while (true)
         {
             // Fastpath: Share a recently created ReadOnlySnapshotBundle
@@ -342,7 +343,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 assembled.Dispose();
                 persistenceReader.Dispose();
 
-                if (!HasStateForBlock(baseBlock))
+                // Persistence publishes its pointer only once the write is readable, so while the pointer stays at
+                // baseBlock, a reader leased after it got there reads baseBlock. One that doesn't means the pointer is
+                // stale against the database (e.g. after the snap-sync wipe), which no retry can fix either.
+                bool wasPersistedAtBase = persistedAtBase;
+                persistedAtBase = _persistenceManager.GetCurrentPersistedStateId() == baseBlock;
+                if (!HasStateForBlock(baseBlock) || (wasPersistedAtBase && persistedAtBase))
                 {
                     throw new StateNotRetainedException($"No state available for block {baseBlock.BlockNumber} with state root {baseBlock.StateRoot}");
                 }
@@ -355,8 +361,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReportBundleMetrics(assembled);
 
+            // Flagged bundles are one-off full scans (trie verification, snap range serving) that never read through the slot filter, so
+            // only shared bundles get bits per key. Nothing is built here: the first filtered read builds the filter.
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
-                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics));
+                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics), _nodeRecordBuffer.PinAll(),
+                slotFilterBitsPerKey: shareable ? _inMemorySlotFilterBitsPerKey : 0);
 
             if (!shareable) return res;
 
@@ -416,18 +425,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // The latest block the main processing scope committed; used as the head for forced persists.
         _snapshotRepository.SetLastCommittedStateId(endBlock);
 
+        // The final release resets the block's warmed nodes, which is slow, so it is kept off the committing block thread.
+        ThreadPool.UnsafeQueueUserWorkItem(static resource => resource.ReleaseLease(), transientResource, preferLocal: false);
         if (_inlineCompaction)
         {
-            RunCompactJobSync(endBlock, transientResource, _processExitToken).Wait();
+            RunCompactJob(endBlock, _processExitToken).Wait();
         }
         else
         {
-            if (!_populateTrieNodeCacheJobs.Writer.TryWrite(transientResource))
-            {
-                // Queue full, return to pool instead of leaking
-                transientResource.ReleaseLease();
-            }
-
             if (!_compactorJobs.Writer.TryWrite(endBlock))
             {
                 if (_processExitToken.IsCancellationRequested) return; // When cancelled the queue stop
@@ -511,16 +516,45 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (persistedState == StateId.PreGenesis) return;
 
         ClearReadOnlyBundleCache();
-        _trieNodeCache.Clear();
 
         if (_logger.IsInfo) _logger.Info($"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
     }
 
+    /// <summary>How long a clean shutdown may spend converting the in-memory tail.</summary>
+    /// <remarks>
+    /// Spent before the databases close, so a supervisor's stop grace period (Docker's default is 10 s) should leave
+    /// room for it. The budget is checked between blocks; an in-flight flush or conversion may run past it.
+    /// </remarks>
+    internal static readonly TimeSpan ShutdownTailBudget = TimeSpan.FromSeconds(10);
+
+    private void PersistInMemoryTail()
+    {
+        // Only after a clean drain: a worker that stopped early may have left the queue mid-persist.
+        if (_cancelTokenSource.IsCancellationRequested) return;
+
+        long start = Stopwatch.GetTimestamp();
+        try
+        {
+            using CancellationTokenSource budget = new(ShutdownTailBudget);
+            int converted = _persistenceManager.PersistInMemoryTailForShutdown(budget.Token);
+            if (converted > 0 && _logger.IsInfo)
+                _logger.Info($"Kept the state of the last {converted} blocks for the next start in {Stopwatch.GetElapsedTime(start).TotalMilliseconds:N0} ms.");
+        }
+        catch (Exception e)
+        {
+            // Best-effort conversion must not interrupt database disposal; the missing tail is replayed.
+            if (_logger.IsWarn) _logger.Warn($"Could not keep the in-memory state for the next start; it will be re-executed. {e}");
+        }
+    }
+
     public bool HasStateForBlock(in StateId stateId)
     {
-        if (_snapshotRepository.HasState(stateId)) return true;
-        if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;
-        return false;
+        StateId persistedState = _persistenceManager.GetCurrentPersistedStateId();
+        if (stateId == persistedState) return true;
+        // The signed order places the PreGenesis and Sync sentinels before block zero.
+        if ((long)stateId.BlockNumber <= (long)persistedState.BlockNumber) return false;
+        // Persistence publishes its new state before removing the in-memory snapshot.
+        return _snapshotRepository.HasState(stateId) || _persistenceManager.GetCurrentPersistedStateId() == stateId;
     }
 
     public void DropStateNotReachableFrom(in StateId head)
@@ -536,7 +570,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     /// Drains the queues in feed order — the compactor writes into the persistence queue, so it has to
     /// drain first — before cancelling, so in-flight finality-driven persistence is not lost. It does not
     /// <see cref="FlushCache"/>: that would persist the unfinalized tail and break reorgs across the
-    /// restart. The in-memory tier is re-executed from the persisted-snapshot tier on the next start.
+    /// restart. Instead the in-memory tail is converted to the persisted-snapshot tier, within
+    /// <see cref="ShutdownTailBudget"/>, so the next start resumes from the head; whatever is left is re-executed.
     /// If a worker stops before draining, sibling waits are cancelled instead; a failed job does not stop a worker.
     /// </remarks>
     public async ValueTask DisposeAsync()
@@ -552,12 +587,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             _persistenceJobs.Writer.TryComplete();
             await _persistenceTask;
+
+            PersistInMemoryTail();
         }
         finally
         {
             _compactorJobs.Writer.TryComplete();
             _persistenceJobs.Writer.TryComplete();
-            _populateTrieNodeCacheJobs.Writer.TryComplete();
             _cancelTokenSource.Cancel();
 
             try
@@ -565,13 +601,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 await Task.WhenAll(
                     _compactorTask,
                     _persistenceTask,
-                    _populateTrieNodeCacheTask,
                     _clearBundleCacheTask);
             }
             finally
             {
-                while (_populateTrieNodeCacheJobs.Reader.TryRead(out TransientResource? cachedResource))
-                    cachedResource.ReleaseLease();
                 _cancelTokenSource.Dispose();
             }
         }

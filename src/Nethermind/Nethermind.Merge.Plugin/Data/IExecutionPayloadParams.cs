@@ -15,6 +15,19 @@ public interface IExecutionPayloadParams
     byte[][]? ExecutionRequests { get; set; }
     byte[][]? InclusionListTransactions { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
+
+    /// <summary>Validates request parameters and bounds the transaction count before decoding when supported.</summary>
+    /// <remarks>The default preserves validation behavior for existing plugin implementations.</remarks>
+    /// <param name="latestValidHash">The latest valid ancestor known when the guard rejects the payload; otherwise <c>null</c>.</param>
+    internal ValidationResult ValidateParams(IReleaseSpec spec, int version, PayloadTransactionCountGuard? transactionCountGuard, out string? error, out Hash256? latestValidHash)
+    {
+        latestValidHash = null;
+        ValidationResult result = ValidateParams(spec, version, out error);
+        return result == ValidationResult.Success && transactionCountGuard is not null &&
+            !transactionCountGuard.IsWithinParentGasLimit(ExecutionPayload, spec, out error, out latestValidHash)
+            ? ValidationResult.Invalid
+            : result;
+    }
 }
 
 public enum ValidationResult : byte { Success, Fail, Invalid };
@@ -111,8 +124,13 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
     public Hash256? ParentBeaconBlockRoot => parentBeaconBlockRoot;
 
-    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
+    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error) =>
+        ((IExecutionPayloadParams)this).ValidateParams(spec, version, null, out error, out _);
+
+    /// <inheritdoc/>
+    ValidationResult IExecutionPayloadParams.ValidateParams(IReleaseSpec spec, int version, PayloadTransactionCountGuard? transactionCountGuard, out string? error, out Hash256? latestValidHash)
     {
+        latestValidHash = null;
         ValidationResult result = ValidateInitialParams(spec, out error);
         if (result != ValidationResult.Success)
         {
@@ -123,6 +141,19 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         if (result != ValidationResult.Success)
         {
             return result;
+        }
+
+        if (parentBeaconBlockRoot is null)
+        {
+            error = "Parent beacon block root must be set";
+            return ValidationResult.Fail;
+        }
+
+        bool isParentUnknown = false;
+        ulong boundedGasLimit = executionPayload.GasLimit;
+        if (transactionCountGuard is not null && !transactionCountGuard.IsWithinParentGasLimit(executionPayload, spec, out error, out latestValidHash, out isParentUnknown, out boundedGasLimit))
+        {
+            return ValidationResult.Invalid;
         }
 
         bool isEmptyPreForkV4 = version == EngineApiVersions.NewPayload.V4 &&
@@ -140,11 +171,15 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                     return ValidationResult.Invalid;
                 }
 
+                bool isOverItemLimit = false;
                 bool decoded = executionPayload is ExecutionPayloadV4 executionPayloadV4
-                    ? executionPayloadV4.TryDecodeBlockAccessList(out _, out error)
-                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, out _, out error);
+                    ? isParentUnknown
+                        ? executionPayloadV4.TryDeferBlockAccessListDecode(out error)
+                        : executionPayloadV4.TryDecodeBlockAccessList(boundedGasLimit, out _, out error, out isOverItemLimit)
+                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, boundedGasLimit, out _, out error, out isOverItemLimit);
                 if (!decoded)
                 {
+                    if (isOverItemLimit) latestValidHash = transactionCountGuard?.GetLatestValidHashOfInvalidChild(executionPayload.ParentHash);
                     return ValidationResult.Invalid;
                 }
             }
@@ -163,12 +198,6 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Invalid;
         }
 
-        if (parentBeaconBlockRoot is null)
-        {
-            error = "Parent beacon block root must be set";
-            return ValidationResult.Fail;
-        }
-
         executionPayload.ParentBeaconBlockRoot = parentBeaconBlockRoot;
 
         if (isEmptyPreForkV4)
@@ -180,7 +209,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 return ValidationResult.Invalid;
             }
 
-            if (reconstructedBlock.Data.CalculateHash() == executionPayload.BlockHash)
+            if (reconstructedBlock.Data.Header.CalculateValueHash() == executionPayload.BlockHash)
             {
                 error = "Block access list must not be set before engine_newPayloadV5";
                 return ValidationResult.Fail;
@@ -242,6 +271,13 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         if (spec.IsEip7843Enabled && executionPayload.SlotNumber is null)
         {
             error = "Slot number must be set";
+            return ValidationResult.Fail;
+        }
+
+        // Runs after the fork checks above, which also guard payloads not bound from JSON and keep their messages.
+        if (executionPayload.HasUnboundField)
+        {
+            error = executionPayload.UnboundFieldError;
             return ValidationResult.Fail;
         }
 

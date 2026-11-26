@@ -87,17 +87,20 @@ public interface IXdcRpcModule : IRpcModule
     /// Gets block information by V2 epoch number
     /// </summary>
     [JsonRpcMethod(Description = "Gets block information by V2 epoch number")]
-    ResultWrapper<EpochNumInfo> XDPoS_getBlockInfoByV2EpochNum(ulong epochNumber);
+    ResultWrapper<EpochNumInfo> XDPoS_getBlockInfoByV2EpochNum(
+        [JsonRpcParameter(ConverterType = typeof(XdcEpochNumberConverter))] ulong epochNumber);
 
     /// <summary>
     /// Calculates block information by V1 epoch number
     /// </summary>
     [JsonRpcMethod(Description = "Calculates block information by V1 epoch number")]
-    ResultWrapper<EpochNumInfo> XDPoS_calculateBlockInfoByV1EpochNum(ulong targetEpochNum);
+    ResultWrapper<EpochNumInfo> XDPoS_calculateBlockInfoByV1EpochNum(
+        [JsonRpcParameter(ConverterType = typeof(XdcEpochNumberConverter))] ulong targetEpochNum);
 
     /// <summary>
     /// Gets block information by epoch number (supports both V1 and V2)
     /// </summary>
     [JsonRpcMethod(Description = "Gets block information by epoch number (supports both V1 and V2)")]
-    ResultWrapper<EpochNumInfo> XDPoS_getBlockInfoByEpochNum(ulong epochNumber);
+    ResultWrapper<EpochNumInfo> XDPoS_getBlockInfoByEpochNum(
+        [JsonRpcParameter(ConverterType = typeof(XdcEpochNumberConverter))] ulong epochNumber);
 }

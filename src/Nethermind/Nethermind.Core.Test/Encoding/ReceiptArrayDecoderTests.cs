@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 #pragma warning disable 618
@@ -20,7 +23,7 @@ namespace Nethermind.Core.Test.Encoding
                 ? [ReceiptArrayStorageDecoder.CompactEncoding, Rlp.EmptyListByte, Rlp.EmptyListByte]
                 : [0xc1, Rlp.EmptyListByte];
             ReceiptArrayStorageDecoder decoder = new(compactEncoding);
-            Span<byte> encodedSpan = encoded;
+            ReadOnlySpan<byte> encodedSpan = encoded;
             TxReceipt?[] receipts = decoder.DecodeAllowingMissing(in encodedSpan);
 
             Assert.That(receipts, Is.EqualTo(new TxReceipt?[] { null }));
@@ -31,7 +34,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             byte[] encoded = [0xc1, Rlp.EmptyListByte];
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: false);
-            Span<byte> encodedSpan = encoded;
+            ReadOnlySpan<byte> encodedSpan = encoded;
 
             Assert.That(decoder.Decode(in encodedSpan), Is.Empty);
         }
@@ -41,7 +44,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             byte[] encoded = [ReceiptArrayStorageDecoder.CompactEncoding, Rlp.EmptyListByte, Rlp.EmptyListByte];
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
-            Span<byte> encodedSpan = encoded;
+            ReadOnlySpan<byte> encodedSpan = encoded;
 
             Assert.That(decoder.Decode(in encodedSpan), Is.Empty);
         }
@@ -52,8 +55,8 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt first = Build.A.Receipt.WithLogs().TestObject;
             TxReceipt afterGap = Build.A.Receipt.WithLogs().TestObject;
             ReceiptArrayStorageDecoder decoder = new(compactEncoding);
-            byte[] encoded = decoder.EncodeAsBytes([first, null!, afterGap], RlpBehaviors.Storage);
-            Span<byte> encodedSpan = encoded;
+            byte[] encoded = decoder.Encode([first, null!, afterGap], RlpBehaviors.Storage);
+            ReadOnlySpan<byte> encodedSpan = encoded;
 
             TxReceipt[] decoded = decoder.Decode(in encodedSpan);
 
@@ -71,7 +74,7 @@ namespace Nethermind.Core.Test.Encoding
                 0x01
             ];
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
-            Span<byte> encodedSpan = encoded;
+            ReadOnlySpan<byte> encodedSpan = encoded;
 
             Assert.That(decoder.DecodeAllowingMissing(in encodedSpan), Is.EqualTo(new TxReceipt?[] { null }));
         }
@@ -87,10 +90,10 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt[] receipts = new TxReceipt[boundaryContentLength - finalReceiptLength + 1];
             receipts[^1] = finalReceipt;
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
-            byte[] encoded = decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage);
+            byte[] encoded = decoder.Encode(receipts, RlpBehaviors.Storage);
             Array.Resize(ref encoded, encoded.Length + 1);
             encoded[^1] = Rlp.EmptyListByte;
-            Span<byte> encodedSpan = encoded;
+            ReadOnlySpan<byte> encodedSpan = encoded;
 
             TxReceipt?[] decoded = decoder.DecodeAllowingMissing(in encodedSpan);
 
@@ -108,12 +111,102 @@ namespace Nethermind.Core.Test.Encoding
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
             int encodedLength = decoder.GetLength(receipts, RlpBehaviors.Storage);
             byte[] encoded = new byte[encodedLength];
-            RlpWriter writer = new(encoded);
+            RlpWriter writer = RlpWriter.ContentWriter(encoded);
 
             decoder.Encode(ref writer, receipts, RlpBehaviors.Storage);
 
-            Assert.That(writer.Position, Is.EqualTo(encodedLength));
+            Assert.That(writer.Length, Is.EqualTo(encodedLength));
         }
+
+        [Test]
+        public void Compact_storage_writes_the_transaction_hashes_when_every_receipt_has_one([Values(1, 2, 3)] int count)
+        {
+            TxReceipt[] receipts = BuildReceipts(count);
+            ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
+
+            byte[] encoded = decoder.Encode(receipts, RlpBehaviors.Storage);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes));
+                Assert.That(encoded, Has.Length.EqualTo(decoder.GetLength(receipts, RlpBehaviors.Storage)));
+            }
+
+            RlpReader reader = new(encoded);
+            Assert.That(ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    Assert.That(txHashes.Slice(i * Hash256.Size, Hash256.Size).ToArray(), Is.EqualTo(receipts[i].TxHash!.BytesToArray()));
+                }
+            }
+        }
+
+        [Test]
+        public void Compact_storage_keeps_the_plain_marker_when_a_receipt_has_no_transaction_hash()
+        {
+            TxReceipt[] receipts = BuildReceipts(2);
+            receipts[1].TxHash = null;
+
+            byte[] encoded = new ReceiptArrayStorageDecoder(compactEncoding: true).Encode(receipts, RlpBehaviors.Storage);
+
+            Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncoding));
+        }
+
+        [Test]
+        public void Compact_storage_without_transaction_hashes_keeps_the_plain_marker_when_every_receipt_has_one()
+        {
+            TxReceipt[] receipts = BuildReceipts(2);
+
+            byte[] encoded = ReceiptArrayStorageDecoder.WithoutTxHashes.Encode(receipts, RlpBehaviors.Storage);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncoding));
+                Assert.That(encoded, Has.Length.EqualTo(ReceiptArrayStorageDecoder.WithoutTxHashes.GetLength(receipts, RlpBehaviors.Storage)));
+                Assert.That(encoded, Is.EqualTo(ReceiptArrayStorageDecoder.Instance.Encode(WithoutTxHashes(receipts), RlpBehaviors.Storage)));
+            }
+        }
+
+        [Test]
+        public void Compact_values_with_and_without_transaction_hashes_decode_to_the_same_receipts()
+        {
+            TxReceipt[] receipts = BuildReceipts(3);
+            ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
+            byte[] withHashes = decoder.Encode(receipts, RlpBehaviors.Storage);
+            byte[] withoutHashes = decoder.Encode(WithoutTxHashes(receipts), RlpBehaviors.Storage);
+
+            decoder.Decode(withHashes).AssertEquivalentTo(decoder.Decode(withoutHashes));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoder.DecodeAllowingMissing(withHashes), Has.Length.EqualTo(receipts.Length));
+                Assert.That(ReceiptArrayStorageDecoder.IsCompactEncoding(withHashes), Is.True);
+                Assert.That(ReceiptArrayStorageDecoder.IsCompactEncodingWithoutTxHashes(withHashes), Is.False);
+                Assert.That(ReceiptArrayStorageDecoder.IsCompactEncodingWithoutTxHashes(withoutHashes), Is.True);
+            }
+        }
+
+        [Test]
+        public void Adding_transaction_hashes_to_a_compact_value_gives_the_bytes_of_a_direct_write([Values(1, 2, 3)] int count)
+        {
+            TxReceipt[] receipts = BuildReceipts(count);
+            ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
+            byte[] withoutHashes = decoder.Encode(WithoutTxHashes(receipts), RlpBehaviors.Storage);
+            byte[] txHashes = receipts.SelectMany(static r => r.TxHash!.BytesToArray()).ToArray();
+
+            byte[] migrated = ReceiptArrayStorageDecoder.AddTxHashes(withoutHashes, txHashes);
+
+            Assert.That(migrated, Is.EqualTo(decoder.Encode(receipts, RlpBehaviors.Storage)));
+        }
+
+        private static TxReceipt[] BuildReceipts(int count) =>
+            Enumerable.Range(0, count)
+                .Select(static i => Build.A.Receipt.WithAllFieldsFilled.WithTransactionHash(Keccak.Compute([(byte)i])).WithCalculatedBloom().TestObject)
+                .ToArray();
+
+        private static TxReceipt[] WithoutTxHashes(TxReceipt[] receipts) =>
+            receipts.Select(static r => new TxReceipt(r) { TxHash = null }).ToArray();
 
         [Test]
         public void Can_do_roundtrip_storage(

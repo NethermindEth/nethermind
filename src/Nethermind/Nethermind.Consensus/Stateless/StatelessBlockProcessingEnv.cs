@@ -20,13 +20,12 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie;
 
 [assembly: InternalsVisibleTo("Nethermind.Stateless.Executor")]
 
 namespace Nethermind.Consensus.Stateless;
 
-public class StatelessBlockProcessingEnv(
+public partial class StatelessBlockProcessingEnv(
     Witness witness,
     ISpecProvider specProvider,
     ISealValidator sealValidator,
@@ -35,41 +34,49 @@ public class StatelessBlockProcessingEnv(
     private IBlockProcessor? _blockProcessor;
     private IWorldState? _worldState;
     private readonly StatelessBlockTree? _blockTree;
+    private readonly IBlockValidator? _blockValidator;
 
     internal StatelessBlockProcessingEnv(
         Witness witness,
         ISpecProvider specProvider,
         ISealValidator sealValidator,
         ILogManager logManager,
-        StatelessBlockTree blockTree) : this(witness, specProvider, sealValidator, logManager)
-        => _blockTree = blockTree;
+        StatelessBlockTree blockTree,
+        IBlockValidator blockValidator) : this(witness, specProvider, sealValidator, logManager)
+    {
+        _blockTree = blockTree;
+        _blockValidator = blockValidator;
+    }
     // Per-block: StaticCodeCache.Instance would leak code across blocks and mask deliberately missing
     // witness code. The first fetch of each hash still reads through the world state.
-    private readonly StaticCodeCache _codeCache = new(CodeCacheCapacity);
+    private readonly ICodeCache _codeCache = CreateCodeCache();
 
     // A block touches a few hundred distinct hashes; MemoryAllowance.CodeCacheSize would round up to
-    // ~0.4 MB zeroed per block (LOH on the host). Overflow only costs a re-read.
+    // ~0.4 MB zeroed per block (LOH on the host). On the host overflow only costs a re-read; the guest's
+    // map takes this as its initial size and grows past it.
     private const int CodeCacheCapacity = 512;
-
-    /// <summary>Controls whether replay records derived requests or preserves the supplied requests hash.</summary>
-    public IExecutionRequestsProcessorFactory ExecutionRequestsProcessorFactory { get; init; } = StatelessExecutionRequestsProcessorFactory.Instance;
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
-    public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
-        new WorldState(
-            new TrieStoreScopeProvider(
-                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
-            ),
-            logManager
-        )
+    public IWorldState WorldState => _worldState ??= CreateWorldState(
+        new TrieStoreScopeProvider(
+            // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
+            WitnessNodeStorage.CreateTrieStore(witness.State), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
+        ),
+        logManager
     );
+
+    /// <summary>Creates the world state over the witness, where a bytecode access fails when the witness lacks the code.</summary>
+    private static partial IWorldState CreateWorldState(IWorldStateScopeProvider scopeProvider, ILogManager logManager);
+
+    /// <summary>Creates the block's code cache, sized for <see cref="CodeCacheCapacity"/> codes.</summary>
+    private static partial ICodeCache CreateCodeCache();
 
     private BlockProcessor GetProcessor()
     {
         using ArrayPoolList<BlockHeader>? readOnlyCollection = _blockTree is null ? witness.DecodeHeaders() : null;
         StatelessBlockTree statelessBlockTree = _blockTree ?? new(readOnlyCollection!);
-        BlockhashProvider blockhashProvider = new(statelessBlockTree, WorldState, logManager);
+        BlockhashProvider blockhashProvider = new(statelessBlockTree, logManager);
         EthereumTransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
         BlockAccessListManager blockAccessListManager = new(
             WorldState,
@@ -82,7 +89,7 @@ public class StatelessBlockProcessingEnv(
             new WithdrawalProcessorFactory(logManager),
             new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
                 codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache)),
-            executionRequestsProcessorFactory: ExecutionRequestsProcessorFactory
+            zeroNonceStorageAccountsTransition: new ZeroNonceStorageAccountsTransition(specProvider, statelessBlockTree)
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -95,18 +102,9 @@ public class StatelessBlockProcessingEnv(
             logManager
         );
 
-        HeaderValidator headerValidator = new(statelessBlockTree, sealValidator, specProvider, logManager);
-        BlockValidator blockValidator = new(
-            new TxValidator(specProvider.ChainId),
-            headerValidator,
-            new UnclesValidator(statelessBlockTree, headerValidator, logManager),
-            specProvider,
-            logManager
-        );
-
         return new BlockProcessor(
             specProvider,
-            blockValidator,
+            _blockValidator ?? CreateBlockValidator(statelessBlockTree),
             NoBlockRewards.Instance,
             txExecutor,
             WorldState,
@@ -115,8 +113,20 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            ExecutionRequestsProcessorFactory.Create(txProcessor),
+            new ExecutionRequestsProcessor(txProcessor),
             blockAccessListManager
+        );
+    }
+
+    private BlockValidator CreateBlockValidator(StatelessBlockTree blockTree)
+    {
+        HeaderValidator headerValidator = new(blockTree, sealValidator, specProvider, logManager);
+        return new BlockValidator(
+            new TxValidator(specProvider.ChainId),
+            headerValidator,
+            new UnclesValidator(blockTree, headerValidator, logManager),
+            specProvider,
+            logManager
         );
     }
 

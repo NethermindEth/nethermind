@@ -44,7 +44,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         if (_combined is not null) return _combined;
         EnsureBuilt();
 
-        Dictionary<string, RpcCapabilityOptions> combined = new(_jsonRpc!.Count + _ssz!.Count);
+        Dictionary<string, RpcCapabilityOptions> combined = [with(_jsonRpc!.Count + _ssz!.Count)];
         foreach ((string k, RpcCapabilityOptions v) in _jsonRpc) combined[k] = v;
         foreach ((string k, RpcCapabilityOptions v) in _ssz) combined[k] = v;
         return _combined = combined.ToFrozenDictionary();
@@ -128,6 +128,8 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7928Enabled));
+        // SSZ-only: GET payloads/{payloadId}/witness has no JSON-RPC counterpart.
+        sszLocal[SszRestPaths.GetPayloadsWitness] = Gate(spec.IsEip7928Enabled);
         Configure(nameof(IEngineRpcModule.engine_getBlobsV4), SszRestPaths.PostBlobsV4, Gate(spec.IsEip7843Enabled));
 
         // Bogota

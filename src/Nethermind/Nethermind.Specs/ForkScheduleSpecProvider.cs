@@ -5,12 +5,13 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Specs;
 
-public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
+public abstract partial class ForkScheduleSpecProvider : IForkAwareSpecProvider
 {
     public const ulong GenesisBlockNumber = 0;
     public const ulong GenesisTimestamp = 0UL;
@@ -23,7 +24,6 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
     protected internal ForkSpec[] ForkSchedule => _schedule.Value;
     public FrozenDictionary<string, IReleaseSpec> Forks => _forks.Value;
     public IEnumerable<string> AvailableForks => _availableForks.Value;
-    public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => Forks.TryGetValue(forkName, out spec);
 
     protected ForkScheduleSpecProvider(ForkSpec[] schedule, UInt256? terminalTotalDifficulty = null, ForkActivation? mergeBlockNumber = null)
         : this(new Lazy<ForkSpec[]>(schedule), terminalTotalDifficulty, mergeBlockNumber) { }
@@ -139,6 +139,7 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
     public IReleaseSpec GenesisSpec => ForkSchedule[0].Spec;
     public virtual ulong? DaoBlockNumber => null;
     public virtual ulong ChainId => NetworkId;
+    public virtual string SealEngine => SealEngineType.Ethash;
     public ForkActivation[] TransitionActivations { get; protected set; } = [];
 
     public abstract ulong TimestampFork { get; }

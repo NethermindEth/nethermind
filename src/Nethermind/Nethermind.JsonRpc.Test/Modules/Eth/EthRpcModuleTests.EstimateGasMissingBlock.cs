@@ -25,7 +25,9 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, blockId);
 
         JObject response = JObject.Parse(serialized);
+#pragma warning disable NUnit2045 // The key must exist before indexing the result.
         Assert.That(response.ContainsKey("error"), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
         Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo(expectedMessage));
     }

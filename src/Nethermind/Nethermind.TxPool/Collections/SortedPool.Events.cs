@@ -10,15 +10,16 @@ namespace Nethermind.TxPool.Collections
         public event EventHandler<SortedPoolEventArgs>? Inserted;
         public event EventHandler<SortedPoolRemovedEventArgs>? Removed;
 
-        public class SortedPoolEventArgs(TKey key, TValue value)
+        public readonly struct SortedPoolEventArgs(TKey key, TValue value)
         {
             public TKey Key { get; } = key;
             public TValue Value { get; } = value;
         }
 
-        public class SortedPoolRemovedEventArgs(TKey key, TValue value, bool evicted)
-            : SortedPoolEventArgs(key, value)
+        public readonly struct SortedPoolRemovedEventArgs(TKey key, TValue value, bool evicted)
         {
+            public TKey Key { get; } = key;
+            public TValue Value { get; } = value;
             public bool Evicted { get; } = evicted;
         }
     }

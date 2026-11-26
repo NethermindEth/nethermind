@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Rewards
 {
-    public class NoBlockRewards : IRewardCalculator, IRewardCalculatorSource
+    public class NoBlockRewards : IRewardCalculator
     {
         private NoBlockRewards() { }
 
@@ -16,6 +15,7 @@ namespace Nethermind.Consensus.Rewards
 
         public BlockReward[] CalculateRewards(Block block) => _noRewards;
 
-        public IRewardCalculator Get(ITransactionProcessor processor) => Instance;
+        public bool MayReward(BlockHeader header) => false;
+
     }
 }

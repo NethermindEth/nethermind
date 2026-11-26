@@ -3,11 +3,20 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>enable</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <ZkEvmNoopThreadStatic>false</ZkEvmNoopThreadStatic>
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Core.ZkEvm.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Nethermind.Numerics.Int256" />
-    <PackageReference Include="Nethermind.Zkvm.Abstractions" Condition="'$(EnableZkEvm)' == 'true'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Zkvm.Abstractions\Nethermind.Zkvm.Abstractions.csproj" Condition="'$(EnableZkEvm)' == 'true'" />
   </ItemGroup>
 
 </Project>

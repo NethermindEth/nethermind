@@ -8,6 +8,13 @@ namespace Nethermind.State.Flat;
 public interface IFlatDbManager : IFlatCommitTarget
 {
     SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage);
+
+    /// <inheritdoc cref="GatherSnapshotBundle(in StateId, ResourcePool.Usage)"/>
+    /// <param name="filterInMemorySlotReads">Serve the bundle's slot reads through the in-memory snapshots' negative
+    /// filter (<see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>); for read-only execution only. Implementations
+    /// may ignore it.</param>
+    SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads) =>
+        GatherSnapshotBundle(baseBlock, usage);
     ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock);
 
     /// <inheritdoc cref="GatherReadOnlySnapshotBundle(in StateId)"/>
@@ -19,6 +26,9 @@ public interface IFlatDbManager : IFlatCommitTarget
     /// <summary>Checks whether state is available for the requested processing usage.</summary>
     /// <remarks>Read-only historical state cannot serve main block processing.</remarks>
     bool HasStateForBlock(in StateId stateId, ResourcePool.Usage usage) => HasStateForBlock(stateId);
+
+    /// <summary>Whether reads at <paramref name="stateId"/> come from flat history, which serves values but no state trie.</summary>
+    bool IsHistoricalState(in StateId stateId) => false;
 
     /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/> and releases the
     /// bundles cached over them.</summary>

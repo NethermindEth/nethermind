@@ -43,6 +43,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
         private readonly MessageDictionary<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
         private readonly MessageDictionary<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
         private readonly MessageDictionary<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
+        private static readonly Func<AccountRangeMessage, int, AccountRangeMessage> SelectAccountRange =
+            static (message, _) => message;
+        private static readonly Func<StorageRangeMessage, int, StorageRangeMessage> SelectStorageRanges =
+            static (message, _) => message;
+        private static readonly Func<ByteCodesMessage, int, ByteCodesMessage> SelectByteCodes =
+            static (message, _) => message;
+        private static readonly Func<TrieNodesMessage, int, TrieNodesMessage> SelectTrieNodes =
+            static (message, _) => message;
         private static readonly byte[] _emptyBytes = [0];
 
         public Snap1ProtocolHandler(ISession session,
@@ -68,7 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
-            int size = message.Content.ReadableBytes;
+            int size = message.Content.Length;
 
             switch (message.PacketType)
             {
@@ -76,46 +84,43 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
                     HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.AccountRange:
-                    AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
-                    ReportIn(accountRangeMessage, size);
-                    Handle(accountRangeMessage, size);
+                    HandleCorrelatedResponse(_getAccountRangeRequests, message, size, SelectAccountRange);
                     return true;
                 case Snap1MessageCode.GetStorageRanges:
                     HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.StorageRanges:
-                    StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
-                    ReportIn(storageRangesMessage, size);
-                    Handle(storageRangesMessage, size);
+                    HandleCorrelatedResponse(_getStorageRangeRequests, message, size, SelectStorageRanges);
                     return true;
                 case Snap1MessageCode.GetByteCodes:
                     HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.ByteCodes:
-                    ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
-                    ReportIn(byteCodesMessage, size);
-                    Handle(byteCodesMessage, size);
+                    HandleCorrelatedResponse(_getByteCodesRequests, message, size, SelectByteCodes);
                     return true;
                 case Snap1MessageCode.GetTrieNodes:
                     HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.TrieNodes:
-                    TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
-                    ReportIn(trieNodesMessage, size);
-                    Handle(trieNodesMessage, size);
+                    HandleCorrelatedResponse(_getTrieNodesRequests, message, size, SelectTrieNodes);
                     return true;
                 default:
                     return false;
             }
         }
 
-        private void Handle(AccountRangeMessage msg, long size) => _getAccountRangeRequests.Handle(msg.RequestId, msg, size);
+        protected bool ShouldServeSnap()
+        {
+            if (!CanServe)
+            {
+                Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
+                if (Logger.IsDebug)
+                    Logger.Debug($"Peer disconnected because of requesting Snap data. Peer: {Session.Node.ClientId:hide}");
+                return false;
+            }
 
-        private void Handle(StorageRangeMessage msg, long size) => _getStorageRangeRequests.Handle(msg.RequestId, msg, size);
-
-        private void Handle(ByteCodesMessage msg, long size) => _getByteCodesRequests.Handle(msg.RequestId, msg, size);
-
-        private void Handle(TrieNodesMessage msg, long size) => _getTrieNodesRequests.Handle(msg.RequestId, msg, size);
+            return true;
+        }
 
         private ValueTask<AccountRangeMessage> Handle(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
         {
@@ -201,7 +206,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
             StorageRangeMessage response = await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
                 SendRequest(new GetStorageRangeMessage()
                 {
-                    StorageRange = range,
+                    StorageRange = range.Copy(),
                     ResponseBytes = bytesLimit
                 }, _getStorageRangeRequests, token));
 

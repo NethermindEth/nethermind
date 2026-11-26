@@ -3,26 +3,24 @@
 
 using System.Net;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
-public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PingMsg>
+public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IMessageSerializer<PingMsg>
 {
     protected virtual byte MsgTypeByte => (byte)MsgType.Ping;
 
-    public void Serialize(IByteBuffer byteBuffer, PingMsg msg)
+    public int Serialize(Span<byte> destination, PingMsg msg)
     {
-        (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(msg);
+        (_, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetDataLength(msg);
 
-        byteBuffer.MarkIndex();
-        PrepareBufferForSerialization(byteBuffer, totalLength, MsgTypeByte);
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        RlpWriter writer = StartPacket(destination, MsgTypeByte);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         writer.Encode(msg.Version);
         Encode(ref writer, msg.SourceAddress, msg.SourceTcpPort, sourceAddressLength);
         Encode(ref writer, msg.DestinationAddress, msg.DestinationTcpPort, destinationAddressLength);
@@ -33,63 +31,71 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
             writer.Encode(msg.EnrSequence.Value);
         }
 
-        byteBuffer.ResetIndex();
-        AddSignatureAndMdc(byteBuffer, totalLength + 1);
-
-        byteBuffer.MarkReaderIndex();
-        msg.Mdc = ReadHash(byteBuffer, byteBuffer.ReaderIndex);
-        byteBuffer.ResetReaderIndex();
+        writer.EndSequence(sequence);
+        int length = CompletePacket(destination, in writer, out ValueHash256 mdc);
+        msg.Mdc = mdc;
+        return length;
     }
 
-    public PingMsg Deserialize(IByteBuffer msgBytes)
+    public PingMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
-        (PublicKey FarPublicKey, ValueHash256 Mdc, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
-        RlpReader ctx = new(Data.AsSpan());
-        ctx.ReadSequenceLength();
-        int version = ctx.DecodeInt();
+        (PublicKey FarPublicKey, ValueHash256 Mdc) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
+        RlpReader ctx;
+        try
+        {
+            ctx = new RlpReader(data).EnterSequence(out _);
+        }
+        catch (RlpReaderException e) when (e.Message.StartsWith("RLP data is truncated", StringComparison.Ordinal))
+        {
+            throw new RlpReaderException("Ping list exceeds packet data.", e);
+        }
 
-        ctx.ReadSequenceLength();
-        ReadOnlySpan<byte> sourceAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
+        ReadOnlySpan<byte> versionBytes = ctx.DecodeByteArraySpan();
+        int version = 0;
+        if (versionBytes.Length < sizeof(int) ||
+            (versionBytes.Length == sizeof(int) && versionBytes[0] < 0x80))
+        {
+            foreach (byte value in versionBytes)
+            {
+                version = (version << 8) | value;
+            }
+        }
 
-        int sourceUdpPort = ctx.DecodeInt();
-        int sourceTcpPort = ctx.DecodeInt();
+        RlpReader sourceReader = ctx.EnterSequence(out int sourceLength);
+        ReadOnlySpan<byte> sourceAddress = sourceReader.DecodeByteArraySpan(IpAddressRlpLimit);
+
+        int sourceUdpPort = sourceReader.DecodeInt();
+        int sourceTcpPort = sourceReader.DecodeInt();
+        ctx.ExitSequenceIgnoringRest(sourceReader, sourceLength);
 
         IPEndPoint source = GetAddress(sourceAddress, sourceUdpPort, allowZeroPort: true);
-        ctx.ReadSequenceLength();
-        ReadOnlySpan<byte> destinationAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
-        int destinationUdpPort = ctx.DecodeInt();
-        int destinationTcpPort = ctx.DecodeInt();
+        RlpReader destinationReader = ctx.EnterSequence(out int destinationLength);
+        ReadOnlySpan<byte> destinationAddress = destinationReader.DecodeByteArraySpan(IpAddressRlpLimit);
+        int destinationUdpPort = destinationReader.DecodeInt();
+        int destinationTcpPort = destinationReader.DecodeInt();
+        ctx.ExitSequenceIgnoringRest(destinationReader, destinationLength);
         IPEndPoint destination = GetAddress(destinationAddress, destinationUdpPort, allowZeroPort: true);
 
         long expireTime = ctx.DecodeLong();
         PingMsg msg = new(FarPublicKey, expireTime, source, destination, Mdc, sourceTcpPort, destinationTcpPort) { Version = version };
 
-        if (version == 4)
+        if (ctx.HasNext && IsNextEnrSequence(ctx))
         {
-            if (ctx.Position < ctx.Length)
-            {
-                ulong enrSequence = ctx.DecodeULong();
-                msg.EnrSequence = enrSequence;
-            }
-        }
-        else
-        {
-            // what do we do when receive version 5?
+            msg.EnrSequence = ctx.DecodeULong();
         }
 
-        Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
+        while (ctx.HasNext)
+        {
+            ctx.SkipItem();
+        }
+
         return msg;
     }
 
-    public int GetLength(PingMsg msg, out int contentLength)
-    {
-        (int totalLength, contentLength, int _, int _) =
-            GetLength(msg);
-        return totalLength;
-    }
+    public int GetLength(PingMsg msg) => GetPacketLength(GetDataLength(msg).totalLength);
 
 
-    private static (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetLength(PingMsg msg)
+    private static (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetDataLength(PingMsg msg)
     {
         int sourceAddressLength = GetIPEndPointLength(msg.SourceAddress, msg.SourceTcpPort);
         int destinationAddressLength = GetIPEndPointLength(msg.DestinationAddress, msg.DestinationTcpPort);

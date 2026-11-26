@@ -7,6 +7,9 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Facade;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core.Timers;
+using Nethermind.Facade.Filters;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -14,15 +17,19 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Config;
 using Nethermind.Network;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Repositories;
 using Nethermind.State;
 using Nethermind.Synchronization;
 
@@ -39,6 +46,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public Task Initialize()
         {
             ITxPool txPool = NullTxPool.Instance;
+            FilterStore filterStore = new(Substitute.For<ITimerFactory>());
 
             BlockTree blockTree = Build.A.BlockTree()
                 .TestObject;
@@ -52,6 +60,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance,
                 Substitute.For<IStateReader>(),
                 Substitute.For<IBlockchainBridgeFactory>(),
+                filterStore,
+                new FilterManager(filterStore, Substitute.For<IMainProcessingContext>(), txPool, Substitute.For<IReceiptMonitor>(),
+                    LimboLogs.Instance, Substitute.For<ISpecProvider>(), blockTree, new ReceiptConfig()),
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IGasPriceOracle>(),
@@ -67,7 +78,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Substitute.For<ISyncPointers>(),
                     Substitute.For<IHistoryConfig>(),
                     Substitute.For<IHistoryPruner>()),
-                new BlockForRpcFactory());
+                new BlockForRpcFactory(),
+                new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Substitute.For<IHeaderStore>(), blockTree, Substitute.For<ISpecProvider>()),
+                Substitute.For<IReceiptStorage>());
             return Task.CompletedTask;
         }
 

@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Nethermind.Serialization.Ssz;
@@ -17,6 +18,8 @@ public class SszGenerator : IIncrementalGenerator
     {
         public required string TypeName { get; init; }
         public SszType? Type { get; init; }
+        public SszType? AlternateType { get; init; }
+        public string? PresetSelector { get; init; }
         public Location? Location { get; init; }
         public bool IsNested { get; init; }
         public string? ErrorMessage { get; init; }
@@ -42,6 +45,9 @@ public class SszGenerator : IIncrementalGenerator
     {
         context.RegisterPostInitializationOutput(static spc =>
             spc.AddSource("Serialization.SszCodec.Helpers.cs", SourceText.From(GenerateHelpersCode(), Encoding.UTF8)));
+
+        context.RegisterSourceOutput(context.CompilationProvider.Select(static (compilation, _) => CanUseCoreCopy(compilation)), static (spc, canUseCoreCopy) =>
+            spc.AddSource("Serialization.SszCodec.CopyBytes.cs", SourceText.From(GenerateCopyBytesCode(canUseCoreCopy), Encoding.UTF8)));
 
         IncrementalValuesProvider<SszDeclaration?> classDeclarations = context.SyntaxProvider
             .CreateSyntaxProvider(
@@ -76,9 +82,71 @@ public class SszGenerator : IIncrementalGenerator
             string? generatedCode = GenerateClassCode(spc, decl.Type, decl.Location);
             if (generatedCode is not null)
             {
+                if (decl.AlternateType is not null && GenerateClassCode(spc, decl.AlternateType, decl.Location) is { } alternateCode)
+                {
+                    try
+                    {
+                        generatedCode = SelectPresetBodies(generatedCode, alternateCode, decl.PresetSelector!);
+                    }
+                    catch (InvalidOperationException exception)
+                    {
+                        spc.ReportDiagnostic(Diagnostic.Create(GenerationFailureRule, decl.Location ?? Location.None, decl.TypeName, exception.Message));
+                        return;
+                    }
+                }
                 spc.AddSource($"Serialization.SszCodec.{decl.Type.HintName}.cs", SourceText.From(generatedCode, Encoding.UTF8));
             }
         });
+    }
+
+    private static string SelectPresetBodies(string defaultCode, string alternateCode, string selector)
+    {
+        if (defaultCode == alternateCode) return defaultCode;
+        CompilationUnitSyntax root = SyntaxFactory.ParseCompilationUnit(defaultCode);
+        SyntaxNode[] members = MembersWithBody(root);
+        SyntaxNode[] alternateMembers = MembersWithBody(SyntaxFactory.ParseCompilationUnit(alternateCode));
+        if (members.Length != alternateMembers.Length) throw new InvalidOperationException("SSZ preset method signatures differ.");
+        Dictionary<SyntaxNode, SyntaxNode> replacements = [];
+        for (int i = 0; i < members.Length; i++)
+        {
+            SyntaxNode member = members[i];
+            SyntaxNode alternate = alternateMembers[i];
+            SyntaxNode signature = WithBody(member, null);
+            if (!signature.IsEquivalentTo(WithBody(alternate, null)))
+                throw new InvalidOperationException($"SSZ preset method signatures differ for '{signature}'.");
+            if (member.IsEquivalentTo(alternate)) continue;
+            replacements.Add(member, WithBody(member, SyntaxFactory.Block(
+                SyntaxFactory.IfStatement(SyntaxFactory.ParseExpression(selector), Body(alternate),
+                    SyntaxFactory.ElseClause(Body(member))))));
+        }
+        return root.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]).NormalizeWhitespace().ToFullString();
+
+        static SyntaxNode[] MembersWithBody(CompilationUnitSyntax root) =>
+            root.DescendantNodes().Where(node => node is BaseMethodDeclarationSyntax or AccessorDeclarationSyntax).ToArray();
+
+        static SyntaxNode WithBody(SyntaxNode member, BlockSyntax? body) => member is AccessorDeclarationSyntax accessor
+            ? accessor.WithBody(body).WithExpressionBody(null).WithSemicolonToken(default)
+            : ((BaseMethodDeclarationSyntax)member).WithBody(body).WithExpressionBody(null).WithSemicolonToken(default);
+
+        static BlockSyntax Body(SyntaxNode member)
+        {
+            (BlockSyntax? body, ArrowExpressionClauseSyntax? arrow, bool returnsValue) = member switch
+            {
+                AccessorDeclarationSyntax accessor => (accessor.Body, accessor.ExpressionBody, true),
+                MethodDeclarationSyntax method => (method.Body, method.ExpressionBody,
+                    method.ReturnType is not PredefinedTypeSyntax type || !type.Keyword.IsKind(SyntaxKind.VoidKeyword)),
+                _ => (((BaseMethodDeclarationSyntax)member).Body, ((BaseMethodDeclarationSyntax)member).ExpressionBody, false),
+            };
+            if (body is not null) return body;
+            if (arrow is not { Expression: { } expression })
+                throw new InvalidOperationException($"SSZ preset method '{member}' has no body.");
+            StatementSyntax statement = expression is ThrowExpressionSyntax thrown
+                ? SyntaxFactory.ThrowStatement(thrown.Expression)
+                : returnsValue
+                    ? SyntaxFactory.ReturnStatement(expression)
+                    : SyntaxFactory.ExpressionStatement(expression);
+            return SyntaxFactory.Block(statement);
+        }
     }
 
     private static string PartialTypeDeclaration(SszType decl) =>
@@ -108,6 +176,10 @@ public class SszGenerator : IIncrementalGenerator
                     {
                         List<SszType> foundTypes = SszType.CreateKnownTypes(FindConverters(context.SemanticModel.Compilation));
                         SszType sszType = SszType.From(context.SemanticModel, foundTypes, typeSymbol);
+                        AttributeData? preset = context.SemanticModel.Compilation.Assembly.GetAttributes()
+                            .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == "Nethermind.Serialization.Ssz.SszPresetAttribute");
+                        SszType? alternateType = preset is null ? null : SszType.From(context.SemanticModel,
+                            SszType.CreateKnownTypes(FindConverters(context.SemanticModel.Compilation)), typeSymbol, alternatePreset: true);
                         // Carry the `where T : ...` clauses verbatim from syntax — the symbol-side API
                         // would require us to reassemble each constraint, and the textual form already matches.
                         sszType.TypeParameterConstraints = string.Join(" ", classDeclaration.ConstraintClauses.Select(c => c.ToString()));
@@ -121,10 +193,18 @@ public class SszGenerator : IIncrementalGenerator
                             }
                         }
 
+                        if (alternateType is not null)
+                        {
+                            alternateType.TypeParameterConstraints = sszType.TypeParameterConstraints;
+                            alternateType.TypeParameterConstraintNamespaces.AddRange(sszType.TypeParameterConstraintNamespaces);
+                        }
+
                         return new()
                         {
                             TypeName = sszType.Name,
                             Type = sszType,
+                            AlternateType = alternateType,
+                            PresetSelector = preset is null ? null : $"{((ITypeSymbol)preset.ConstructorArguments[0].Value!).ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{preset.ConstructorArguments[1].Value}",
                             Location = location,
                             IsNested = typeSymbol.ContainingType is not null,
                         };
@@ -168,6 +248,40 @@ public class SszGenerator : IIncrementalGenerator
     public static string Shift(int tabCount, string data) => string.Empty.PadLeft(4 * tabCount) + data;
     public static string Shift(int tabCount, IEnumerable<string> data, string? end = null) => string.Join("\n", data.Select(d => Shift(tabCount, d))) + (end is null || !data.Any() ? "" : end);
 
+    /// <summary>Whether the compilation can call Nethermind.Core's internal <c>Bytes.Copy</c>.</summary>
+    /// <remarks>Not every SSZ consumer has Nethermind.Core's <c>InternalsVisibleTo</c>; those keep <c>CopyTo</c>.</remarks>
+    private static bool CanUseCoreCopy(Compilation compilation) =>
+        compilation.GetTypeByMetadataName("Nethermind.Core.Extensions.Bytes")?.GetMembers("Copy")
+            .Any(m => compilation.IsSymbolAccessibleWithin(m, compilation.Assembly)) ?? false;
+
+    private static string GenerateCopyBytesCode(bool canUseCoreCopy) =>
+$$""""
+// <auto-generated/>
+#nullable enable
+using System;
+using System.Runtime.CompilerServices;
+
+namespace Nethermind.Serialization;
+
+internal static partial class SszCodecHelpers
+{
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial void CopyBytes(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+{{(canUseCoreCopy
+    ? """
+#if ZK_EVM
+        // Reaches the zkVM's memmove without corelib's GC-transition wrapper.
+        global::Nethermind.Core.Extensions.Bytes.Copy(source, destination);
+#else
+        source.CopyTo(destination);
+#endif
+"""
+    : "        source.CopyTo(destination);")}}
+    }
+}
+"""";
+
     private static string GenerateHelpersCode() =>
 """
 // <auto-generated/>
@@ -185,7 +299,7 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization;
 
-internal static class SszCodecHelpers
+internal static partial class SszCodecHelpers
 {
     private const int SszOffsetSize = 4;
 
@@ -284,17 +398,24 @@ internal static class SszCodecHelpers
         return firstOffset / SszOffsetSize;
     }
 
+    // Inlined into every variable-size list element's decode; the messages are built out of line.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void ValidateSszNextOffset(ReadOnlySpan<byte> data, int currentOffset, int nextOffset, string typeName)
+    {
+        if (nextOffset < currentOffset || nextOffset > data.Length)
+        {
+            ThrowInvalidSszNextOffset(data.Length, currentOffset, nextOffset, typeName);
+        }
+    }
+
+    private static void ThrowInvalidSszNextOffset(int dataLength, int currentOffset, int nextOffset, string typeName)
     {
         if (nextOffset < currentOffset)
         {
             ThrowInvalidSszData(typeName, $"offsets are out of order ({nextOffset} < {currentOffset}).");
         }
 
-        if (nextOffset > data.Length)
-        {
-            ThrowInvalidSszData(typeName, $"offset {nextOffset} exceeds the input length {data.Length}.");
-        }
+        ThrowInvalidSszData(typeName, $"offset {nextOffset} exceeds the input length {dataLength}.");
     }
 
     internal static void ValidateSszVectorLength<T>(ReadOnlySpan<T> items, int expectedLength, string typeName, string fieldName)
@@ -305,22 +426,28 @@ internal static class SszCodecHelpers
         }
     }
 
-    internal static void ValidateSszListLimit<T>(ReadOnlySpan<T> items, ulong limit, string typeName, string fieldName)
+    // Inlined into every byte-list element's decode, where the message's string handler would be zeroed per element.
+    internal static void ValidateSszListLimit(int count, ulong limit, string typeName, string fieldName)
     {
-        if ((ulong)items.Length > limit)
+        if ((ulong)count > limit)
         {
-            ThrowInvalidSszValue(typeName, fieldName, $"expected at most {limit} elements but found {items.Length}.");
+            ThrowSszListLimitExceeded(count, limit, typeName, fieldName);
         }
     }
+
+    private static void ThrowSszListLimitExceeded(int length, ulong limit, string typeName, string fieldName) =>
+        ThrowInvalidSszValue(typeName, fieldName, $"expected at most {limit} elements but found {length}.");
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static byte[] DecodeSszByteList(ReadOnlySpan<byte> data, ulong limit, string typeName, string fieldName)
     {
-        ValidateSszListLimit(data, limit, typeName, fieldName);
+        ValidateSszListLimit(data.Length, limit, typeName, fieldName);
         byte[] result = global::System.GC.AllocateUninitializedArray<byte>(data.Length);
-        data.CopyTo(result);
+        CopyBytes(data, result);
         return result;
     }
+
+    private static partial void CopyBytes(ReadOnlySpan<byte> source, Span<byte> destination);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static byte[] DecodeSszByteVector(ReadOnlySpan<byte> data, int expectedLength, string typeName, string fieldName)
@@ -364,6 +491,72 @@ internal static class SszCodecHelpers
         value = Nethermind.Serialization.Ssz.Ssz.DecodeBitlist(data);
     }
 
+    internal static ReadOnlySpan<byte> SliceSszLastVariableField(ReadOnlySpan<byte> data, int offsetPosition) =>
+        data.Slice(DecodeSszOffset(data.Slice(offsetPosition, SszOffsetSize)));
+
+    internal static ReadOnlySpan<byte> SliceSszVariableField(ReadOnlySpan<byte> data, int offsetPosition, int nextOffsetPosition)
+    {
+        int offset = DecodeSszOffset(data.Slice(offsetPosition, SszOffsetSize));
+        return data.Slice(offset, DecodeSszOffset(data.Slice(nextOffsetPosition, SszOffsetSize)) - offset);
+    }
+
+    internal static ReadOnlySpan<T> CastSszItems<T>(ReadOnlySpan<byte> data, int itemLength, string typeName)
+        where T : struct
+    {
+        ValidateSszMultipleOf(data.Length, itemLength, typeName);
+        return MemoryMarshal.Cast<byte, T>(data);
+    }
+
+    internal static ReadOnlySpan<T> ReadSszList<T>(ReadOnlySpan<T> items, ulong limit, string typeName, string fieldName)
+    {
+        ValidateSszListLimit(items.Length, limit, typeName, fieldName);
+        return items;
+    }
+
+    internal static Nethermind.Serialization.Ssz.SszListReader<T> ReadSszList<T>(Nethermind.Serialization.Ssz.SszListReader<T> items, ulong limit, string typeName, string fieldName)
+        where T : allows ref struct
+    {
+        ValidateSszListLimit(items.Count, limit, typeName, fieldName);
+        return items;
+    }
+
+    internal static Nethermind.Serialization.Ssz.SszListReader<T> ReadSszVector<T>(Nethermind.Serialization.Ssz.SszListReader<T> items, int length, string typeName, string fieldName)
+        where T : allows ref struct
+    {
+        if (items.Count != length)
+        {
+            ThrowInvalidSszValue(typeName, fieldName, $"expected {length} elements but found {items.Count}.");
+        }
+
+        return items;
+    }
+
+    internal static ReadOnlySpan<byte> ReadSszBitVector(ReadOnlySpan<byte> data, int length, string typeName, string fieldName)
+    {
+        if (length % 8 != 0 && data[^1] >> (length % 8) != 0)
+        {
+            ThrowInvalidSszValue(typeName, fieldName, "unused high bits are set.");
+        }
+
+        return data;
+    }
+
+    internal static ReadOnlySpan<byte> ReadSszBitList(ReadOnlySpan<byte> data, ulong limit, string typeName, string fieldName)
+    {
+        if (data.IsEmpty || data[^1] == 0)
+        {
+            ThrowInvalidSszValue(typeName, fieldName, "missing sentinel bit.");
+        }
+
+        ulong length = (ulong)(data.Length - 1) * 8 + (ulong)System.Numerics.BitOperations.Log2(data[^1]);
+        if (length > limit)
+        {
+            ThrowInvalidSszValue(typeName, fieldName, $"expected at most {limit} bits but found {length}.");
+        }
+
+        return data;
+    }
+
     internal static void MerkleizeBasicVector<T>(ReadOnlySpan<T> values, int itemSize, ulong length, out UInt256 root)
         where T : struct
     {
@@ -379,52 +572,7 @@ internal static class SszCodecHelpers
         Merkle.MixIn(ref root, values.Length);
     }
 
-    private static void MerkleizeProgressiveBytes(ReadOnlySpan<byte> value, out UInt256 root)
-    {
-        if (value.Length is 0)
-        {
-            root = UInt256.Zero;
-            return;
-        }
-
-        int chunkCount = (value.Length + 31) / 32;
-        // Stack-alloc up to 4 chunks (128 bytes); rent for larger payloads.
-        const int StackChunkLimit = 4;
-        scoped Span<UInt256> chunks;
-        UInt256[]? rented = null;
-        if (chunkCount <= StackChunkLimit)
-        {
-            Span<UInt256> stack = stackalloc UInt256[StackChunkLimit];
-            chunks = stack[..chunkCount];
-        }
-        else
-        {
-            rented = System.Buffers.ArrayPool<UInt256>.Shared.Rent(chunkCount);
-            chunks = rented.AsSpan(0, chunkCount);
-        }
-        try
-        {
-            int fullByteLength = value.Length / 32 * 32;
-            if (fullByteLength > 0)
-            {
-                MemoryMarshal.Cast<byte, UInt256>(value[..fullByteLength]).CopyTo(chunks);
-            }
-
-            if (fullByteLength != value.Length)
-            {
-                Span<byte> lastChunk = stackalloc byte[32];
-                lastChunk.Clear();
-                value[fullByteLength..].CopyTo(lastChunk);
-                chunks[chunkCount - 1] = new UInt256(lastChunk);
-            }
-
-            Merkle.MerkleizeProgressive(out root, chunks);
-        }
-        finally
-        {
-            if (rented is not null) System.Buffers.ArrayPool<UInt256>.Shared.Return(rented);
-        }
-    }
+    private static void MerkleizeProgressiveBytes(ReadOnlySpan<byte> value, out UInt256 root) => Merkle.MerkleizeProgressive(out root, value);
 
     internal static void MerkleizeProgressiveBasicList<T>(ReadOnlySpan<T> values, out UInt256 root)
         where T : struct
@@ -514,8 +662,7 @@ internal static class SszCodecHelpers
     {
         BitArray bits = value ?? new BitArray(0);
         int byteLength = (bits.Length + 7) / 8;
-        // BitArray.CopyTo requires a byte[] target, so we rent regardless of size;
-        // the small-chunkCount fast path in MerkleizeProgressiveBytes covers stackalloc.
+        // BitArray.CopyTo requires a byte[] target, so we rent regardless of size.
         byte[] bytes = System.Buffers.ArrayPool<byte>.Shared.Rent(byteLength);
         try
         {
@@ -634,7 +781,7 @@ internal static class SszCodecHelpers
 
         string lowerCased = name.Substring(0, 1).ToLower() + name.Substring(1);
 
-        return lowerCased == "data" || lowerCased == "container" || lowerCased.Contains("offset") ? $"_{lowerCased}" : lowerCased;
+        return lowerCased == "data" || lowerCased == "container" || lowerCased == "decoded" || lowerCased.Contains("offset") ? $"_{lowerCased}" : lowerCased;
     }
 
     /// <summary>
@@ -670,7 +817,7 @@ internal static class SszCodecHelpers
         {
             Kind.Vector when property.Type.Name == "BitArray" => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.Vector => $"ValidateSszVectorLength({SpanExpression(property, expression)}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
-            Kind.List => $"ValidateSszListLimit({SpanExpression(property, expression)}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
+            Kind.List => $"ValidateSszListLimit({(property.IsMemoryLikeProperty ? expression : SpanExpression(property, expression))}.Length, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.BitVector => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             _ => string.Empty,
@@ -780,6 +927,11 @@ internal static class SszCodecHelpers
     private static bool IsByteList(SszProperty property) =>
         property.Kind == Kind.List && (property.IsArrayProperty || property.IsMemoryLikeProperty) && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
 
+    /// <summary>Whether <paramref name="property"/> is a byte list held in a collection that is built from a span of its bytes.</summary>
+    private static bool IsConstructedByteList(SszProperty property) =>
+        property.Kind == Kind.List && property is { HasCollectionAsSpan: true, CanConstructCollectionFromReadOnlySpan: true, CollectionTypeReferenceName: not null }
+        && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
+
     private static bool IsByteVector(SszProperty property) =>
         property.Kind == Kind.Vector && (property.IsArrayProperty || property.IsMemoryLikeProperty) && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
 
@@ -807,6 +959,12 @@ internal static class SszCodecHelpers
         {
             string assignment = DecodeAssignmentExpression(property, variableName, sourceIsArray: true);
             return $"{{ byte[] {variableName} = DecodeSszByteList({sliceExpression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name})); container.{property.Name} = {assignment}; }}";
+        }
+
+        if (IsConstructedByteList(property))
+        {
+            // Built from the slice itself: the collection takes its own copy, so an intermediate array would copy twice.
+            return $"ValidateSszListLimit({sliceExpression}.Length, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name})); container.{property.Name} = new {property.CollectionTypeReferenceName}({sliceExpression});";
         }
 
         if (IsByteVector(property))
@@ -932,9 +1090,9 @@ internal static class SszCodecHelpers
             Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeBasicVectorWithConverter<{enumType.TypeReferenceName}>({EnumSpanExpression(property, expression)}, {enumType.StaticLength}, {property.Length}, {enumType.CustomEncodeMethod}, out {rootName});",
             Kind.List when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeBasicListWithConverter<{enumType.TypeReferenceName}>({EnumSpanExpression(property, expression)}, {enumType.StaticLength}, {property.Limit}UL, {enumType.CustomEncodeMethod}, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeProgressiveBasicListWithConverter<{enumType.TypeReferenceName}>({EnumSpanExpression(property, expression)}, {enumType.StaticLength}, {enumType.CustomEncodeMethod}, out {rootName});",
-            Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeBasicVectorWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, {property.Type.CustomEncodeMethod}, out {rootName});",
-            Kind.List when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeBasicListWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}UL, {property.Type.CustomEncodeMethod}, out {rootName});",
-            Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeProgressiveBasicListWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Type.CustomEncodeMethod}, out {rootName});",
+            Kind.Vector when property.Type.Kind == Kind.Basic && EncodesThroughConverter(property.Type) => $"MerkleizeBasicVectorWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, {property.Type.CustomEncodeMethod}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && EncodesThroughConverter(property.Type) => $"MerkleizeBasicListWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}UL, {property.Type.CustomEncodeMethod}, out {rootName});",
+            Kind.ProgressiveList when property.Type.Kind == Kind.Basic && EncodesThroughConverter(property.Type) => $"MerkleizeProgressiveBasicListWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Type.CustomEncodeMethod}, out {rootName});",
             Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeBasicVector({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, out {rootName});",
             Kind.List when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeBasicList({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}UL, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeProgressiveBasicList({SpanExpression(property, expression)}, out {rootName});",
@@ -946,6 +1104,10 @@ internal static class SszCodecHelpers
             Kind.ProgressiveList => $"{property.Type.StaticMemberAccess}.MerkleizeProgressiveList({SpanExpression(property, expression)}, out {rootName});",
             _ => $"{property.Type.StaticMemberAccess}.Merkleize({expression}, out {rootName});",
         };
+
+    // A byte encodes as itself, so a byte collection is merkleized straight from its span rather than through a copy.
+    private static bool EncodesThroughConverter(SszType type) =>
+        type is { HasCustomInlineCodec: true, IsSszBasicType: true } and not { Namespace: nameof(System), Name: nameof(Byte) };
 
     private static string MerkleizeEmptyCollectionRootStatement(SszProperty property, string rootName) =>
         property.Kind switch
@@ -1013,13 +1175,16 @@ internal static class SszCodecHelpers
         return $"UInt256 {rootName}; {MerkleizeRootAssignmentStatement(property, expression, rootName)} merkleizer.Feed({rootName});";
     }
 
+    private static bool IsBasicCollection(SszProperty m) =>
+        (m.Kind & (Kind.Collection | Kind.BitList | Kind.ProgressiveBitList)) != Kind.None && m.Type.Kind == Kind.Basic;
+
     private static string DynamicLength(SszType container, SszProperty m)
     {
-        if ((m.Kind & (Kind.Collection | Kind.BitList | Kind.ProgressiveBitList)) != Kind.None && m.Type.Kind == Kind.Basic)
+        if (IsBasicCollection(m))
         {
             string length = m.Kind is Kind.BitList or Kind.ProgressiveBitList
                 ? $"(container.{m.Name} is not null ? container.{m.Name}.Length / 8 + 1 : 1)"
-                : $"({m.Type.StaticLength} * {SpanExpression(m, $"container.{m.Name}")}.Length)";
+                : $"({m.Type.StaticLength} * {(m.IsMemoryLikeProperty ? $"container.{m.Name}" : SpanExpression(m, $"container.{m.Name}"))}.Length)";
             return m.IsNullable && (m.Kind is Kind.List or Kind.ProgressiveList) && CanEncodeNullAsDefault(m)
                 ? $"(container.{m.Name} is null ? 0 : {length})"
                 : length;
@@ -1034,21 +1199,39 @@ internal static class SszCodecHelpers
         return m.IsNullable ? $"(container.{m.Name} is null ? 0 : {call})" : call;
     }
 
+    /// <summary>Emits the encode of a variable-size member at <paramref name="start"/>, declaring <paramref name="end"/> as the offset past it.</summary>
+    private static string VariableEncodeStatement(SszType decl, SszProperty property, string start, string end)
+    {
+        string expression = $"container.{property.Name}";
+        bool requiresNullGuard = RequiresNullGuard(property);
+        if (IsBasicCollection(property))
+        {
+            string nullGuard = requiresNullGuard ? $"if ({expression} is not null) " : string.Empty;
+            return $"int {end} = {start} + {DynamicLength(decl, property)}; {nullGuard}{EncodeStatement($"data.Slice({start}, {end} - {start})", property, expression)}";
+        }
+
+        string call = $"{property.Type.StaticMemberAccess}.Encode(data.Slice({start}), {EncodeValueExpression(property, expression)})";
+        return $"int {end} = {start} + {(requiresNullGuard || property.IsNullable ? $"({expression} is null ? 0 : {call})" : call)};";
+    }
+
     private static string ByteArrayLiteral(byte[] value) => $"[{string.Join(", ", value)}]";
 
     private static string ProgressiveContainerMerkleizeBody(SszType decl)
     {
         string activeFields = ByteArrayLiteral(decl.ActiveFieldsBytes ?? []);
-        IEnumerable<string> memberRoots = decl.Members!.Select((m, index) =>
+        IEnumerable<string> memberRoots = decl.Members!.Select(m =>
         {
             string validation = ValidationStatement(decl, m, $"container.{m.Name}");
-            string merkleize = MerkleizeRootAssignmentStatement(m, $"container.{m.Name}", $"subRoots[{index}]");
+            string merkleize = MerkleizeRootAssignmentStatement(m, $"container.{m.Name}", $"subRoots[{m.FieldIndex}]");
             return string.IsNullOrEmpty(validation) ? merkleize : $"{validation} {merkleize}";
         });
 
         return string.Join("\n",
         [
-            $"Span<UInt256> subRoots = {(decl.Members!.Length <= ProgressiveContainerStackAllocationLimit ? "stackalloc" : "new")} UInt256[{decl.Members.Length}];",
+            $"Span<UInt256> subRoots = {(decl.ActiveFieldsBitLength <= ProgressiveContainerStackAllocationLimit ? "stackalloc" : "new")} UInt256[{decl.ActiveFieldsBitLength}];",
+            ..(decl.Members!.Length < decl.ActiveFieldsBitLength
+                ? new[] { "// EIP-7495: positions without a field are zero leaves.", "subRoots.Clear();" }
+                : []),
             ..memberRoots,
             "Merkle.MerkleizeProgressive(out root, subRoots);",
             $"Merkle.MixInActiveFields(ref root, {activeFields});",
@@ -1096,7 +1279,7 @@ internal static class SszCodecHelpers
             return false;
         }
 
-        return (property.IsNullable && CanEncodeNullAsDefault(property)) || !property.Type.IsStruct;
+        return (property.IsNullable && CanEncodeNullAsDefault(property)) || (!property.Type.IsStruct && property.IsReferenceType);
     }
 
     private static string UsingsBlock(SszType decl) =>
@@ -1157,12 +1340,139 @@ internal static class SszCodecHelpers
         }
     }
 
+    private const string ReaderBytesTypeName = "global::System.ReadOnlySpan<byte>";
+
+    /// <summary>The type a <c>RefReader</c> returns for a value of <paramref name="type"/>.</summary>
+    private static string ReaderItemTypeName(SszType type) => type switch
+    {
+        // C# cannot name a nested type through a type parameter.
+        { IsTypeParameter: true } => ReaderBytesTypeName,
+        { EnumType: not null } => type.StaticMemberAccess,
+        { Kind: Kind.Basic } => type.ReaderTypeReference ?? ReaderBytesTypeName,
+        _ => $"{type.StaticMemberAccess}.RefReader",
+    };
+
+    private static string ReadItemExpression(SszType type, string bytes) => type switch
+    {
+        { IsTypeParameter: true } => bytes,
+        { EnumType: { } enumType } => $"({type.StaticMemberAccess}){enumType.ReaderMethod}({bytes})",
+        { Kind: Kind.Basic, ReaderMethod: null } => bytes,
+        { Kind: Kind.Basic } => $"{type.ReaderMethod}({bytes})",
+        _ => $"new {ReaderItemTypeName(type)}({bytes})",
+    };
+
+    private static bool IsReadAsBytes(SszProperty property) =>
+        (property.Kind & (Kind.BitVector | Kind.BitList | Kind.ProgressiveBitList)) != Kind.None
+        || (property.IsCollection && property.Type is { Namespace: nameof(System), Name: nameof(Byte), IsSszBasicType: true });
+
+    private static string ReaderTypeName(SszProperty property) => property switch
+    {
+        _ when IsReadAsBytes(property) => ReaderBytesTypeName,
+        { IsCollection: true, Type.IsReadByRef: true } => $"global::System.ReadOnlySpan<{ReaderItemTypeName(property.Type)}>",
+        { IsCollection: true } => $"SszListReader<{ReaderItemTypeName(property.Type)}>",
+        _ => ReaderItemTypeName(property.Type),
+    };
+
+    private static string ReadExpression(SszType decl, SszProperty property, string bytes)
+    {
+        string names = $"nameof({decl.TypeReferenceName}), nameof({property.Name})";
+        string items = !property.IsCollection || IsReadAsBytes(property) ? bytes
+            : property.Type.IsReadByRef ? $"CastSszItems<{ReaderItemTypeName(property.Type)}>({bytes}, {property.Type.StaticLength}, \"{decl.TypeReferenceName}.{property.Name}\")"
+            : $"new {ReaderTypeName(property)}({bytes}, {(property.Type.IsVariable ? 0 : property.Type.StaticLength)}, static item => {ReadItemExpression(property.Type, "item")})";
+
+        return property.Kind switch
+        {
+            Kind.BitVector => $"ReadSszBitVector({bytes}, {property.Length}, {names})",
+            Kind.BitList => $"ReadSszBitList({bytes}, {property.Limit}UL, {names})",
+            Kind.ProgressiveBitList => $"ReadSszBitList({bytes}, ulong.MaxValue, {names})",
+            Kind.List => $"ReadSszList({items}, {property.Limit}UL, {names})",
+            // The bytes of a vector of fixed-size items always have the exact length.
+            Kind.Vector when property.Type.IsVariable => $"ReadSszVector({items}, {property.Length}, {names})",
+            Kind.Vector or Kind.ProgressiveList => items,
+            _ => $"{(property.Type.IsReadByRef ? "ref " : "")}{ReadItemExpression(property.Type, bytes)}",
+        };
+    }
+
+    private static string ReaderPropertyDeclaration(SszProperty property) =>
+        $"public {(!property.IsCollection && property.Type.IsReadByRef ? "ref readonly " : "")}{ReaderTypeName(property)} {property.Name}";
+
+    private static string ReaderProperty(SszType decl, SszProperty property, string bytes) =>
+        $"{ReaderPropertyDeclaration(property)} {{ get => {ReadExpression(decl, property, bytes)}; }}";
+
+    private static string RefReaderCode(SszType decl)
+    {
+        List<string> validation = [];
+        List<string> properties = [];
+        if (decl.IsSszListItself)
+        {
+            properties.Add(ReaderProperty(decl, decl.Members![0], "_data"));
+        }
+        else if (decl.Kind == Kind.CompatibleUnion)
+        {
+            string selectorType = decl.Selector!.Type.StaticMemberAccess;
+            validation.Add($"ValidateSszMinimumLength(data.Length, 1, nameof({decl.TypeReferenceName}));");
+            validation.Add($"switch(({selectorType})data[0]) {{");
+            properties.Add($"public {selectorType} Selector {{ get => ({selectorType})_data[0]; }}");
+            foreach (SszProperty member in decl.CompatibleUnionMembers!)
+            {
+                string lengthCheck = member.IsVariable ? string.Empty : $"ValidateSszExactLength(data.Length, {1 + member.StaticLength}, nameof({decl.TypeReferenceName})); ";
+                validation.Add($"    case {selectorType}.{member.Name}: {lengthCheck}break;");
+                properties.Add($"{ReaderPropertyDeclaration(member)} {{ get {{ if (_data[0] != {member.SelectorValue}) ThrowInvalidSszData(nameof({decl.TypeReferenceName}), $\"{member.Name} is not the selected member, the selector is {{_data[0]}}.\"); return {ReadExpression(decl, member, "_data.Slice(1)")}; }} }}");
+            }
+            validation.Add($"    default: ThrowInvalidSszData(nameof({decl.TypeReferenceName}), $\"unsupported union selector {{data[0]}}.\"); break;");
+            validation.Add("}");
+        }
+        else
+        {
+            SszProperty[] members = decl.Members!;
+            int[] positions = new int[members.Length];
+            for (int i = 1; i < members.Length; i++) positions[i] = positions[i - 1] + members[i - 1].StaticLength;
+            int[] variablePositions = positions.Where((_, i) => members[i].IsVariable).ToArray();
+
+            if (variablePositions.Length == 0)
+            {
+                validation.Add($"ValidateSszExactLength(data.Length, {decl.StaticLength}, nameof({decl.TypeReferenceName}));");
+            }
+            else
+            {
+                validation.Add($"ValidateSszMinimumLength(data.Length, {decl.StaticLength}, nameof({decl.TypeReferenceName}));");
+                validation.Add($"ValidateSszDynamicOffsets(data, {decl.StaticLength}, nameof({decl.TypeReferenceName}), [{string.Join(", ", variablePositions.Select(position => $"DecodeSszOffset(data.Slice({position}, {SszType.PointerLength}))"))}]);");
+            }
+
+            for (int i = 0; i < members.Length; i++)
+            {
+                int nextVariable = Array.IndexOf(variablePositions, positions[i]) + 1;
+                string bytes = !members[i].IsVariable ? $"_data.Slice({positions[i]}, {members[i].StaticLength})"
+                    : nextVariable == variablePositions.Length ? $"SliceSszLastVariableField(_data, {positions[i]})"
+                    : $"SliceSszVariableField(_data, {positions[i]}, {variablePositions[nextVariable]})";
+                properties.Add(ReaderProperty(decl, members[i], bytes));
+            }
+        }
+
+        return $@"    /// <summary>Reads the members of an encoded value on access, without decoding it.</summary>
+    /// <remarks>
+    /// The constructor checks only the layout of this value. Nested values are checked when they are read, so reading some members
+    /// does not prove that the whole value would decode.
+    /// </remarks>
+    public {(decl.HidesBaseRefReader ? "new " : "")}readonly ref struct RefReader
+    {{
+        private readonly {ReaderBytesTypeName} _data;
+{Whitespace}
+        public RefReader({ReaderBytesTypeName} data)
+        {{
+{Shift(3, validation.Append("_data = data;"))}
+        }}
+{Whitespace}
+{Shift(2, properties)}
+    }}";
+    }
+
     private static string? GenerateClassCode(SourceProductionContext context, SszType decl, Location? location)
     {
         try
         {
             List<SszProperty> variables = decl.Members.Where(m => m.IsVariable).ToList();
-            IEnumerable<string> BuildStaticEncodeLines(SszType d)
+            IEnumerable<string> BuildEncodeLines(SszType d)
             {
                 int localStaticOffset = 0;
                 int localOffsetIndex = 0;
@@ -1172,7 +1482,7 @@ internal static class SszCodecHelpers
                     if (m.IsVariable)
                     {
                         localOffsetIndex++;
-                        line = $"EncodeSszOffset(data.Slice({localStaticOffset}, 4), offset{localOffsetIndex});";
+                        line = $"EncodeSszOffset(data.Slice({localStaticOffset}, 4), offset{localOffsetIndex}); {VariableEncodeStatement(d, m, $"offset{localOffsetIndex}", $"offset{localOffsetIndex + 1}")}";
                     }
                     else
                     {
@@ -1226,12 +1536,17 @@ internal static class SszCodecHelpers
                     "merkleizer.CalculateRoot(out root);",
                 ]);
             }
-            bool isByteListItself = decl.IsSszListItself && decl.IsStruct && IsByteList(variables[0]);
-            string byteListVariableName = isByteListItself ? VarName(variables[0].Name) : string.Empty;
-            string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], byteListVariableName, sourceIsArray: true) : string.Empty;
+            // The item is built in a local before its slot is addressed, so the slot address is not held across the build.
+            // Skipping `new()` is only safe when it runs no user constructor. The locals have fixed names that cannot clash with the decoder's own locals.
+            bool decodesItemDirectly = decl.IsSszListItself && decl.IsStruct && !decl.HasExplicitParameterlessConstructor;
+            bool isByteListItself = decodesItemDirectly && IsByteList(variables[0]);
+            bool isConstructedByteListItself = decodesItemDirectly && IsConstructedByteList(variables[0]);
+            string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], "__value", sourceIsArray: true) : string.Empty;
             string DecodeCollectionItem(string sliceExpression, string destination) => isByteListItself
-                ? $"{{ byte[] {byteListVariableName} = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {destination}.{variables[0].Name} = {byteListAssignment}; }}"
-                : $"Decode({sliceExpression}, out {destination});";
+                ? $"{{ byte[] __value = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {destination}.{variables[0].Name} = {byteListAssignment}; }}"
+                : isConstructedByteListItself
+                    ? $"{{ ReadOnlySpan<byte> __item = {sliceExpression}; ValidateSszListLimit(__item.Length, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {variables[0].CollectionTypeReferenceName} __value = new {variables[0].CollectionTypeReferenceName}(__item); {destination}.{variables[0].Name} = __value; }}"
+                    : $"Decode({sliceExpression}, out {destination});";
             string result = FixWhitespace(decl.IsSszListItself ?
 $@"using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;
@@ -1275,15 +1590,16 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
+    public static int Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
-            return;
+            return 0;
         }")}
 {Whitespace}
         {ValidationStatement(decl, variables[0], $"container.{variables[0].Name}")}
-        {(RequiresNullGuard(variables[0]) ? $"if (container.{variables[0].Name} is not null) " : string.Empty)}{EncodeStatement("data", variables[0], $"container.{variables[0].Name}")}
+        {VariableEncodeStatement(decl, variables[0], "0", "length")}
+        return length;
     }}
 {Whitespace}
     public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
@@ -1293,7 +1609,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
+    public static int Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
 {Whitespace}
         int offset = items.Length * {(SszType.PointerLength)};
@@ -1303,10 +1619,9 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             EncodeSszOffset(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
-            int length = GetLength(item);
-            Encode(data.Slice(offset, length), item);
-            offset += length;
+            offset += Encode(data.Slice(offset), item);
         }}
+        return offset;
     }}
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName} container)
@@ -1330,7 +1645,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
         int firstOffset = DecodeSszOffset(data.Slice(0, 4));
         int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.TypeReferenceName}[]"")" : $@"ValidateSszMultipleOf(data.Length, {decl.StaticLength}, ""{decl.TypeReferenceName}[]"");
         int length = data.Length / {decl.StaticLength}")};
-        container = new {decl.TypeReferenceName}[length];
+        {decl.TypeReferenceName}[] decoded = new {decl.TypeReferenceName}[length];
+        container = decoded;
 {Whitespace}
         {(decl.IsVariable ? @$"int index = 0;
         int offset = firstOffset;
@@ -1338,14 +1654,14 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             int nextOffset = DecodeSszOffset(data.Slice(nextOffsetIndex, {SszType.PointerLength}));
             ValidateSszNextOffset(data, offset, nextOffset, ""{decl.TypeReferenceName}[]"");
-            {DecodeCollectionItem("data.Slice(offset, nextOffset - offset)", "container[index]")}
+            {DecodeCollectionItem("data.Slice(offset, nextOffset - offset)", "decoded[index]")}
             offset = nextOffset;
         }}
 {Whitespace}
-        {DecodeCollectionItem("data.Slice(offset)", "container[index]")}" : @$"int offset = 0;
+        {DecodeCollectionItem("data.Slice(offset)", "decoded[index]")}" : @$"int offset = 0;
         for(int index = 0; index < length; index++)
         {{
-            Decode(data.Slice(offset, {decl.StaticLength}), out container[index]);
+            Decode(data.Slice(offset, {decl.StaticLength}), out decoded[index]);
             offset += {decl.StaticLength};
         }}")}
     }}
@@ -1419,6 +1735,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
         }}
         Merkle.MixIn(ref root, count);
     }}
+{Whitespace}
+{RefReaderCode(decl)}
 }}
 " :
 (decl.Kind == Kind.Container || decl.Kind == Kind.ProgressiveContainer) ?
@@ -1431,6 +1749,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
 {Whitespace}
 {PartialTypeDeclaration(decl)}
 {{
+{(decl.FixedSectionLengthDeclaration is { } lengthDeclaration ? $"    {lengthDeclaration} => {decl.StaticLength};" : "")}
     public static int GetLength({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
@@ -1466,20 +1785,20 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
+    public static int Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
-            return;
+            return 0;
         }")}
 {Whitespace}
 {Shift(2, ValidationStatements(decl, decl.Members!, "container"))}
 {Whitespace}
-{Shift(2, variables.Select((_, i) => $"int offset{i + 1} = {(i == 0 ? decl.StaticLength : $"offset{i} + {DynamicLength(decl, variables[i - 1])}")};"))}
+        {(variables.Any() ? $"int offset1 = {decl.StaticLength};" : string.Empty)}
 {Whitespace}
-{Shift(2, BuildStaticEncodeLines(decl))}
+{Shift(2, BuildEncodeLines(decl))}
 {Whitespace}
-{Shift(2, variables.Select((m, i) => (RequiresNullGuard(m) ? $"if (container.{m.Name} is not null) " : "") + EncodeStatement($"data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1})", m, $"container.{m.Name}")))}
+        return {(variables.Any() ? $"offset{variables.Count + 1}" : decl.StaticLength.ToString())};
     }}
 {Whitespace}
     public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
@@ -1489,7 +1808,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
+    public static int Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
 {Whitespace}
         {(decl.IsVariable ? @$"int offset = items.Length * {(SszType.PointerLength)};
@@ -1499,9 +1818,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             EncodeSszOffset(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
-            int length = GetLength(item);
-            Encode(data.Slice(offset, length), item);
-            offset += length;
+            offset += Encode(data.Slice(offset), item);
         }}" : @$"int offset = 0;
         foreach({decl.TypeReferenceName} item in items)
         {{
@@ -1509,6 +1826,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
             {(decl.IsStruct ? string.Empty : "if (item is null) data.Slice(offset, length).Clear(); else ")}Encode(data.Slice(offset, length), item);
             offset += length;
         }}")}
+        return offset;
     }}
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName} container)
@@ -1537,7 +1855,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
         int firstOffset = DecodeSszOffset(data.Slice(0, 4));
         int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.TypeReferenceName}[]"")" : $@"ValidateSszMultipleOf(data.Length, {decl.StaticLength}, ""{decl.TypeReferenceName}[]"");
         int length = data.Length / {decl.StaticLength}")};
-        container = new {decl.TypeReferenceName}[length];
+        {decl.TypeReferenceName}[] decoded = new {decl.TypeReferenceName}[length];
+        container = decoded;
 {Whitespace}
         {(decl.IsVariable ? @$"int index = 0;
         int offset = firstOffset;
@@ -1545,14 +1864,14 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             int nextOffset = DecodeSszOffset(data.Slice(nextOffsetIndex, {SszType.PointerLength}));
             ValidateSszNextOffset(data, offset, nextOffset, ""{decl.TypeReferenceName}[]"");
-            Decode(data.Slice(offset, nextOffset - offset), out container[index]);
+            Decode(data.Slice(offset, nextOffset - offset), out decoded[index]);
             offset = nextOffset;
         }}
 {Whitespace}
-        Decode(data.Slice(offset), out container[index]);" : @$"int offset = 0;
+        Decode(data.Slice(offset), out decoded[index]);" : @$"int offset = 0;
         for(int index = 0; index < length; index++)
         {{
-            Decode(data.Slice(offset, {decl.StaticLength}), out container[index]);
+            Decode(data.Slice(offset, {decl.StaticLength}), out decoded[index]);
             offset += {decl.StaticLength};
         }}")}
     }}
@@ -1627,6 +1946,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
         }}
         Merkle.MixIn(ref root, count);
     }}
+{Whitespace}
+{RefReaderCode(decl)}
 }}
 " :
 // Compatible unions
@@ -1681,27 +2002,27 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
+    public static int Encode(Span<byte> data, {decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
-            return;
+            return 0;
         }")}
-        ValidateSszExactLength(data.Length, GetLength(container), nameof({decl.TypeReferenceName}));
         data[0] = (byte)container.Selector;
 {Whitespace}
         switch(container.Selector) {{
 {Shift(3, decl.CompatibleUnionMembers!.Select(m =>
 {
     string expression = $"container.{m.Name}";
-    string target = "data.Slice(1)";
-    string encode = NullClearingEncodeStatement(target, m, expression, EncodeStatement(target, m, expression));
-    return $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: {encode} break;";
+    string target = $"data.Slice(1, {m.StaticLength})";
+    string encode = m.IsVariable
+        ? $"{VariableEncodeStatement(decl, m, "1", "end")} return end;"
+        : $"{NullClearingEncodeStatement(target, m, expression, EncodeStatement(target, m, expression))} return 1 + {m.StaticLength};";
+    return $"case {decl.Selector!.Type.StaticMemberAccess}.{m.Name}: {{ {ValidationStatement(decl, m, expression)} {encode} }}";
 }))}
             default:
-                ThrowInvalidSszData(nameof({decl.TypeReferenceName}), $""unsupported union selector {{(byte)container.Selector}}."");
-                break;
-        }};
+                return ThrowInvalidSszData<int>(nameof({decl.TypeReferenceName}), $""unsupported union selector {{(byte)container.Selector}}."");
+        }}
     }}
 {Whitespace}
     public static byte[] Encode(ReadOnlySpan<{decl.TypeReferenceName}> items)
@@ -1711,7 +2032,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
         return buf;
     }}
 {Whitespace}
-    public static void Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
+    public static int Encode(Span<byte> data, ReadOnlySpan<{decl.TypeReferenceName}> items)
     {{
         int offset = items.Length * {(SszType.PointerLength)};
         int itemOffset = 0;
@@ -1719,10 +2040,9 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             EncodeSszOffset(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
             itemOffset += {(SszType.PointerLength)};
-            int length = GetLength(item);
-            Encode(data.Slice(offset, length), item);
-            offset += length;
+            offset += Encode(data.Slice(offset), item);
         }}
+        return offset;
     }}
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName}[] container)
@@ -1736,7 +2056,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
         ValidateSszMinimumLength(data.Length, {SszType.PointerLength}, ""{decl.TypeReferenceName}[]"");
         int firstOffset = DecodeSszOffset(data.Slice(0, 4));
         int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.TypeReferenceName}[]"");
-        container = new {decl.TypeReferenceName}[length];
+        {decl.TypeReferenceName}[] decoded = new {decl.TypeReferenceName}[length];
+        container = decoded;
 {Whitespace}
         int index = 0;
         int offset = firstOffset;
@@ -1744,11 +2065,11 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             int nextOffset = DecodeSszOffset(data.Slice(nextOffsetIndex, {SszType.PointerLength}));
             ValidateSszNextOffset(data, offset, nextOffset, ""{decl.TypeReferenceName}[]"");
-            Decode(data.Slice(offset, nextOffset - offset), out container[index]);
+            Decode(data.Slice(offset, nextOffset - offset), out decoded[index]);
             offset = nextOffset;
         }}
 {Whitespace}
-        Decode(data.Slice(offset), out container[index]);
+        Decode(data.Slice(offset), out decoded[index]);
     }}
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName} container)
@@ -1848,6 +2169,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
         }}
         Merkle.MixIn(ref root, count);
     }}
+{Whitespace}
+{RefReaderCode(decl)}
 }}
 ");
             return GeneratedSourceHeader + result;

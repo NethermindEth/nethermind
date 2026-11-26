@@ -42,10 +42,10 @@ public partial class VirtualMachine<TGasPolicy>
         }
 
         public VmState<TGasPolicy>? StateToExecute { get; }
+        public bool? PrecompileSuccess { get; }
         public ReadOnlyMemory<byte> Output { get; }
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
-        public bool? PrecompileSuccess { get; }
         [MemberNotNullWhen(false, nameof(StateToExecute))]
         public bool IsReturn => StateToExecute is null;
         //EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -12,13 +13,18 @@ namespace Nethermind.Db.Rocks.Config;
 
 public class PerTableDbConfig : IRocksDbConfig
 {
-    private readonly string _tableName;
+    private readonly string? _tableName;
     private readonly string? _columnName;
     private readonly IDbConfig _dbConfig;
     private readonly string[] _prefixes;
     private readonly string[] _reversedPrefixes;
 
-    public PerTableDbConfig(IDbConfig dbConfig, string dbName, string? columnName = null, bool validate = true)
+    /// <summary>Reads global options with optional per-table and column overrides.</summary>
+    /// <param name="dbConfig">The shared database configuration.</param>
+    /// <param name="dbName">The database name, or <see langword="null"/> for global-only defaults.</param>
+    /// <param name="columnName">The column name. Ignored when <paramref name="dbName"/> is null.</param>
+    /// <param name="validate">Whether to validate named database option declarations in debug builds.</param>
+    public PerTableDbConfig(IDbConfig dbConfig, string? dbName, string? columnName = null, bool validate = true)
     {
         _dbConfig = dbConfig;
         _tableName = dbName;
@@ -152,6 +158,6 @@ public class PerTableDbConfig : IRocksDbConfig
         }
     }
 
-    private static PropertyInfo? GetProperty(Type type, string name) =>
+    private static PropertyInfo? GetProperty([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)] Type type, string name) =>
         type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
 }

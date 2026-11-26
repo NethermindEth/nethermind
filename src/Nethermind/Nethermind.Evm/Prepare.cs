@@ -41,14 +41,18 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare Create2(byte[] code, byte[] salt, in UInt256 value)
+        public Prepare Create2(byte[] code, byte[] salt, in UInt256 value) => SaltedCreate(Instruction.CREATE2, code, salt, value);
+
+        public Prepare TCreate(byte[] code, byte[] salt, in UInt256 value) => SaltedCreate(Instruction.TCREATE, code, salt, value);
+
+        private Prepare SaltedCreate(Instruction instruction, byte[] code, byte[] salt, in UInt256 value)
         {
             StoreDataInMemory(0, code);
             PushData(salt);
             PushData(code.Length);
             PushData(0);
             PushData(value);
-            Op(Instruction.CREATE2);
+            Op(instruction);
             return this;
         }
 

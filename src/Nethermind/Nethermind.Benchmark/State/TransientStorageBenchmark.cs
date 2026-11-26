@@ -7,6 +7,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Benchmarks.State;
 
@@ -29,7 +30,7 @@ public class TransientStorageBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        _worldState = TestWorldStateFactory.CreateForTest();
+        _worldState = TestWorldStateFactory.CreateForTest(logManager: NullLogManager.Instance);
         _worldState.BeginScope(IWorldState.PreGenesis);
 
         _word = (UInt256)7;

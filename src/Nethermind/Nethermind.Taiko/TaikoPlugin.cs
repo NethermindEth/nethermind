@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -42,6 +41,7 @@ using Nethermind.Taiko.Tdx;
 using Nethermind.Taiko.Precompiles;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.Taiko.ZkGas;
+using Nethermind.TxPool;
 
 namespace Nethermind.Taiko;
 
@@ -54,13 +54,9 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-    public bool MustInitialize => true;
-
     public string SealEngineType => Core.SealEngineType.Taiko;
 
     public IModule Module => new TaikoModule();
-
-    public Type ApiType => typeof(TaikoNethermindApi);
 }
 
 public class TaikoModule : Module
@@ -70,7 +66,6 @@ public class TaikoModule : Module
         base.Load(builder);
 
         builder
-            .AddSingleton<NethermindApi, TaikoNethermindApi>()
             .AddModule(new BaseMergePluginModule())
             .AddModule(new TaikoSynchronizerModule())
 
@@ -91,6 +86,9 @@ public class TaikoModule : Module
             .AddDatabase(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())
             .AddSingleton<IL1OriginStore, L1OriginStore>()
 
+            // Taiko does not use blobs on L2, so blob transactions must be rejected at the mempool boundary.
+            .Intercept<ITxPoolConfig>(txPoolConfig => txPoolConfig.BlobsSupport = BlobsSupportMode.Disabled)
+
             // Sync modification
             .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
             .AddSingleton<IGossipPolicy>(ShouldNotGossip.Instance)
@@ -100,6 +98,8 @@ public class TaikoModule : Module
             .AddSingleton<IBlockValidator, TaikoBlockValidator>()
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
+            // TaikoHeaderValidator does not bound the gas limit against the parent's.
+            .AddSingleton(PayloadTransactionCountGuard.Disabled)
 
             // Block processing
             .AddSingleton<IBlockValidationModule, TaikoBlockValidationModule>()
@@ -157,6 +157,8 @@ public class TaikoModule : Module
             // Rpc
             .RegisterSingletonJsonRpcModule<ITaikoExtendedEthRpcModule, TaikoExtendedEthModule>()
             .RegisterSingletonJsonRpcModule<ITaikoEngineRpcModule, TaikoEngineRpcModule>()
+                // One engine module instance, so SSZ-REST and witness requests share the JSON-RPC request lock.
+                .Bind<IEngineRpcModule, ITaikoEngineRpcModule>()
                 .AddSingleton<IForkchoiceUpdatedHandler, TaikoForkchoiceUpdatedHandler>()
 
             // TDX attestation (enabled with Surge.TdxEnabled) 

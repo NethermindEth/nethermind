@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -16,9 +17,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         private readonly IBlockTree _blockTree;
         private readonly bool _includeTransactions;
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockForRpcFactory _blockForRpcFactory;
-
+        private readonly NewHeadPayloadCache _payloads;
+        private readonly Func<Block, Task> _send;
 
         [ConstructorWithSideEffect]
         public NewHeadSubscription(
@@ -28,24 +28,37 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ISpecProvider specProvider,
             IBlockForRpcFactory blockForRpcFactory,
             TransactionsOption? options = null)
+            : this(jsonRpcDuplexClient, blockTree, logManager, new NewHeadPayloadCache(specProvider, blockForRpcFactory), options)
+        {
+        }
+
+        [ConstructorWithSideEffect]
+        internal NewHeadSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            IBlockTree? blockTree,
+            ILogManager? logManager,
+            NewHeadPayloadCache payloads,
+            TransactionsOption? options = null)
             : base(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<NewHeadSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = options?.IncludeTransactions ?? false;
-            _specProvider = specProvider;
-            _blockForRpcFactory = blockForRpcFactory;
+            _payloads = payloads;
+            _send = Send;
 
             _blockTree.BlockAddedToMain += OnBlockAddedToMain;
             if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track BlockAddedToMain");
         }
 
-        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => ScheduleAction(async () =>
+        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => ScheduleAction(_send, e.Block);
+
+        private async Task Send(Block block)
         {
-            using JsonRpcResult result = CreateSubscriptionMessage(_blockForRpcFactory.Create(e.Block, _includeTransactions, _specProvider));
+            using JsonRpcResult result = CreateSubscriptionMessage(_payloads.Get(block, _includeTransactions));
             await JsonRpcDuplexClient.SendJsonRpcResult(result);
             if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
-        });
+        }
 
         public override string Type => SubscriptionType.EthSubscription.NewHeads;
 

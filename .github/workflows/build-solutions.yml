@@ -8,7 +8,7 @@ on:
   merge_group:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -25,12 +25,14 @@ jobs:
         config: [release, debug]
         solution: [Nethermind, EthereumTests, Benchmarks]
     steps:
+      # Private repositories (nethermind-sec) get the smaller hosted runner, whose root disk this build fills.
       - name: Free up disk space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
+        if: github.event.repository.private
+        # It starts with ~15 GB free and a full build needs ~33 GB; these hold over 25 GB the job never uses.
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/local/.ghcup /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/swift /usr/local/share/powershell /usr/lib/jvm /opt/az /usr/local/share/chromium /opt/google
+          docker image prune -af > /dev/null
+          df -h /
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -38,10 +40,13 @@ jobs:
           submodules: ${{ matrix.solution == 'EthereumTests' }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Install dependencies
         run: dotnet restore src/Nethermind/${{ matrix.solution }}.slnx --locked-mode
+
+      - name: Build stall watchdog
+        run: dotnet build scripts/ci/run-with-stall-watchdog.cs --output "${{ runner.temp }}/stall-watchdog" -p:UseSharedCompilation=false
 
       - name: Build ${{ matrix.solution }}.slnx
         env:
@@ -56,7 +61,7 @@ jobs:
           # leaves an unfinished gzip stream, so stall investigations need stacks/scheduler logs.
           MSBUILDDEBUGSCHEDULER: ${{ matrix.solution == 'EthereumTests' && 1 || '' }}
         run: >
-          bash scripts/ci/run-with-stall-watchdog.sh
+          dotnet "${{ runner.temp }}/stall-watchdog/run-with-stall-watchdog.dll"
           dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore
           ${{ matrix.solution == 'EthereumTests' && format('-bl:{0}/stall-diagnostics/build.binlog', runner.temp) || '' }}
 

@@ -11,7 +11,7 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class TreePathTests
+public partial class TreePathTests
 {
     // A hash and a length; 64 bytes if ValueHash256 were 32-byte aligned again.
     [Test]
@@ -64,6 +64,14 @@ public class TreePathTests
     }
 
     [Test]
+    public void Index_outside_the_path_throws([Values(-2, -1, 64)] int index)
+    {
+        TreePath path = new(Keccak.Zero, 64);
+        Assert.Throws<IndexOutOfRangeException>(() => _ = path[index]);
+        Assert.Throws<IndexOutOfRangeException>(() => path[index] = 1);
+    }
+
+    [Test]
     public void TestAppendArray()
     {
         byte[] nibbles = new byte[64];
@@ -74,8 +82,11 @@ public class TreePathTests
         TreePath path = new();
         TreePath newPath = path.Append(nibbles);
 
-        Assert.That(path.Length, Is.EqualTo(0));
-        Assert.That(newPath.Length, Is.EqualTo(64));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(path.Length, Is.EqualTo(0));
+            Assert.That(newPath.Length, Is.EqualTo(64));
+        }
         string asHex = newPath.Span.ToHexString();
         Assert.That(asHex, Is.EqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     }

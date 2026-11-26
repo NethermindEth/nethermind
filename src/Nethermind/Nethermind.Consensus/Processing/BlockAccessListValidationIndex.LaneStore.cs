@@ -32,6 +32,12 @@ internal sealed partial class BlockAccessListValidationIndex
         public readonly Span<int> Storage = storage;
     }
 
+    /// <summary>A code change as the code lane compares it: its hash and, per EIP-8298, whether it was adopted.</summary>
+    private readonly record struct CodeLaneValue(ValueHash256 CodeHash, bool IsAdopted)
+    {
+        public CodeLaneValue(in CodeChange change) : this(change.CodeHash, change.IsAdopted) { }
+    }
+
     /// <summary>
     /// Carve <paramref name="source"/> into four equal <paramref name="chunkSize"/>-sized
     /// per-lane spans.
@@ -52,7 +58,7 @@ internal sealed partial class BlockAccessListValidationIndex
     {
         private readonly Lane<UInt256> _balance;
         private readonly Lane<ulong> _nonce;
-        private readonly Lane<ValueHash256> _code;
+        private readonly Lane<CodeLaneValue> _code;
         private readonly StorageLane _storage;
 
         /// <summary>Build the immutable lane storage from per-row counters.</summary>
@@ -62,7 +68,7 @@ internal sealed partial class BlockAccessListValidationIndex
             {
                 _balance = Lane<UInt256>.CreateImmutable(counts.Balance);
                 _nonce = Lane<ulong>.CreateImmutable(counts.Nonce);
-                _code = Lane<ValueHash256>.CreateImmutable(counts.Code);
+                _code = Lane<CodeLaneValue>.CreateImmutable(counts.Code);
                 _storage = StorageLane.CreateImmutable(counts.Storage);
             }
             catch
@@ -79,7 +85,7 @@ internal sealed partial class BlockAccessListValidationIndex
             {
                 _balance = Lane<UInt256>.CreateMutableLike(other._balance);
                 _nonce = Lane<ulong>.CreateMutableLike(other._nonce);
-                _code = Lane<ValueHash256>.CreateMutableLike(other._code);
+                _code = Lane<CodeLaneValue>.CreateMutableLike(other._code);
                 _storage = StorageLane.CreateMutableLike(other._storage);
             }
             catch
@@ -123,7 +129,7 @@ internal sealed partial class BlockAccessListValidationIndex
 
         public bool TryAddBalance(int row, int ordinal, in UInt256 value) => _balance.Add(row, ordinal, in value);
         public bool TryAddNonce(int row, int ordinal, ulong value) => _nonce.Add(row, ordinal, value);
-        public bool TryAddCode(int row, int ordinal, in ValueHash256 hash) => _code.Add(row, ordinal, in hash);
+        public bool TryAddCode(int row, int ordinal, in CodeChange change) => _code.Add(row, ordinal, new CodeLaneValue(change));
         public bool TryAddStorage(int row, int ordinal, in UInt256 key, in UInt256 value) => _storage.Add(row, ordinal, in key, in value);
 
         /// <summary>
@@ -155,7 +161,7 @@ internal sealed partial class BlockAccessListValidationIndex
 
                 _balance.FillFromChanges<BalanceChange>(account.BalanceChanges, c.Balance, accountOrdinal, lastIndex, static b => b.Value);
                 _nonce.FillFromChanges<NonceChange>(account.NonceChanges, c.Nonce, accountOrdinal, lastIndex, static n => n.Value);
-                _code.FillFromChanges<CodeChange>(account.CodeChanges, c.Code, accountOrdinal, lastIndex, static cc => cc.CodeHash);
+                _code.FillFromChanges<CodeChange>(account.CodeChanges, c.Code, accountOrdinal, lastIndex, static cc => new CodeLaneValue(cc));
                 _storage.FillFromStorageChanges(account.StorageChanges, c.Storage, accountOrdinal, lastIndex);
             }
         }
@@ -496,7 +502,16 @@ internal sealed partial class BlockAccessListValidationIndex
         {
             if (length <= 1) return;
             int start = RowStarts[row];
-            AccountOrdinals.AsSpan(start, length).Sort(_values.AsSpan(start, length));
+            Span<int> ordinals = AccountOrdinals.AsSpan(start, length);
+            // A row filled from a block-level access list arrives in account order already.
+            for (int i = 1; i < ordinals.Length; i++)
+            {
+                if (ordinals[i - 1] > ordinals[i])
+                {
+                    ordinals.Sort(_values.AsSpan(start, length));
+                    return;
+                }
+            }
         }
 
         public override void Dispose()
@@ -638,10 +653,16 @@ internal sealed partial class BlockAccessListValidationIndex
         {
             if (length <= 1) return;
             int start = RowStarts[row];
+            StorageOrderComparer order = new(AccountOrdinals, _keys, start);
+            // A row filled from a block-level access list arrives in account and slot order already.
+            int sorted = 1;
+            while (sorted < length && order.Compare(sorted - 1, sorted) <= 0) sorted++;
+            if (sorted == length) return;
+
             _scratch.EnsureLength(length);
             for (int i = 0; i < length; i++) _scratch.Order[i] = i;
 
-            _scratch.Order.AsSpan(0, length).Sort(new StorageOrderComparer(AccountOrdinals, _keys, start));
+            _scratch.Order.AsSpan(0, length).Sort(order);
 
             for (int i = 0; i < length; i++)
             {

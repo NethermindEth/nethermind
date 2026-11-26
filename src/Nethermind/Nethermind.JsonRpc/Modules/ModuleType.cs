@@ -21,6 +21,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Health = nameof(Health);
         public const string Net = nameof(Net);
         public const string Nft = nameof(Nft);
+        public const string Ots = nameof(Ots);
         public const string Parity = nameof(Parity);
         public const string Personal = nameof(Personal);
         public const string Proof = nameof(Proof);
@@ -32,6 +33,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string TxPool = nameof(TxPool);
         public const string Web3 = nameof(Web3);
         public const string Statecomp = nameof(Statecomp);
+        public const string Overlay = nameof(Overlay);
 
         public static IEnumerable<string> DefaultModules { get; } = new List<string>()
         {

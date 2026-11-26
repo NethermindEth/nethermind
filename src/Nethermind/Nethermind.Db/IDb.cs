@@ -10,7 +10,6 @@ namespace Nethermind.Db
     public interface IDb : IKeyValueStoreWithBatching, IDbMeta, IDisposable
     {
         string Name { get; }
-        KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] { get; }
         IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false);
         IEnumerable<byte[]> GetAllKeys(bool ordered = false);
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
@@ -29,6 +28,12 @@ namespace Nethermind.Db
 
         /// <summary>Syncs the write-ahead log to durable storage, throwing on failure (<see cref="Flush"/> swallows).</summary>
         void SyncWal() => Flush(onlyWal: true);
+
+        /// <summary>
+        /// Flushes the memtable to durable storage, throwing on failure where <see cref="Flush"/> swallows. The RocksDB
+        /// column store implements it for its own column family; the default serves stores whose flush cannot fail.
+        /// </summary>
+        void FlushOrThrow() => Flush();
         void Clear() { }
         void Compact() { }
 
@@ -38,6 +43,17 @@ namespace Nethermind.Db
         /// declines. A decorator must forward this together with <see cref="InterruptCompactions"/>, or a shutdown
         /// during the rewrite loses its ability to abort it.</summary>
         bool CompactIfDeadWeightExceeds(double deadRatio) => false;
+
+        /// <summary>Runs a one-shot, store-wide forced-bottommost compaction with RocksDB blob garbage collection
+        /// enabled, to retire stale blob files a plain range reclaim cannot free while a surviving key still
+        /// references the oldest blob file. Blocks until done. The default declines.</summary>
+        /// <returns>Whether completion can be recorded, including when no blob files need reclaiming.
+        /// Returns false when unsupported, interrupted, or native background errors prevent confirming completion.</returns>
+        /// <remarks>Enables blob garbage collection and blob-file writing transiently for the compaction and restores
+        /// the prior options afterwards, so steady-state write amplification is unchanged. Abort via
+        /// <see cref="InterruptCompactions"/> on shutdown. A decorator must forward this together with
+        /// <see cref="InterruptCompactions"/>, or a shutdown during the rewrite loses its ability to abort it.</remarks>
+        bool CompactReclaimingBlobFiles() => false;
 
         /// <summary>Aborts any manual compaction in flight and refuses new ones, so a shutdown joining the thread
         /// that called <see cref="CompactIfDeadWeightExceeds"/> is not held for the rewrite's duration. Terminal

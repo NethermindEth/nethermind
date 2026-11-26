@@ -6,14 +6,11 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Evm.State;
-using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-/// <summary>Key/commitment derivations and the pre-state reference check for <see href="https://eips.ethereum.org/EIPS/eip-8272">EIP-8272</see> recent roots.</summary>
-/// <remarks>Recent-root storage is written by the <c>RECENT_ROOT_ADDRESS</c> predeploy bytecode during ordinary execution, not by the client, so this type only derives keys and validates references against already-written state.</remarks>
+/// <summary>Key/commitment derivations for <see href="https://eips.ethereum.org/EIPS/eip-8272">EIP-8272</see> recent roots.</summary>
+/// <remarks>Recent-root storage is written by the <c>RECENT_ROOT_ADDRESS</c> contract code during ordinary execution, not by the client, so this type only derives keys and commitments.</remarks>
 public static class RecentRootStore
 {
     private const int HashLength = 32;
@@ -21,7 +18,7 @@ public static class RecentRootStore
     private const int SlotLength = sizeof(ulong);
 
     /// <summary>The <c>source_id</c> keying a root source's ring buffer: <c>keccak256(source_address || salt)</c>.</summary>
-    /// <remarks>EIP-8272 hashes the address unpadded (20 bytes); a left-padded preimage would fork from the predeploy.</remarks>
+    /// <remarks>EIP-8272 hashes the address unpadded (20 bytes); a left-padded preimage would fork from the contract.</remarks>
     [SkipLocalsInit]
     public static ValueHash256 SourceId(Address sourceAddress, in ValueHash256 salt)
     {
@@ -52,24 +49,13 @@ public static class RecentRootStore
         return ValueKeccak.Compute(input);
     }
 
-    public static bool IsReferenceValid(IWorldState state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot) =>
-        IsReferenceValid(state, ReferenceCell(sourceId, slot), sourceId, slot, root, currentSlot);
+    /// <summary>Reads the <c>source_id(32) || slot(8, big-endian) || root(32)</c> tuple at the start of <paramref name="tuple"/>.</summary>
+    public static (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) ReadTuple(ReadOnlySpan<byte> tuple) =>
+        (new ValueHash256(tuple[..HashLength]),
+         BinaryPrimitives.ReadUInt64BigEndian(tuple[HashLength..(HashLength + SlotLength)]),
+         new ValueHash256(tuple[(HashLength + SlotLength)..(HashLength + SlotLength + HashLength)]));
 
-    /// <summary>Checks a reference against the commitment in <paramref name="cell"/>, which the caller has already
-    /// derived — the ring-buffer key costs a Keccak the gas schedule pays for once per reference.</summary>
-    public static bool IsReferenceValid(IWorldState state, in StorageCell cell, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
-    {
-        ulong age = currentSlot - slot; // unsigned: a future or same slot underflows and is rejected below
-        if (age is 0 || age > Eip8272Constants.RecentRootUsableWindow)
-        {
-            return false;
-        }
-
-        state.Get(cell, out UInt256 stored);
-        return stored.ToValueHash() == EntryHash(sourceId, slot, root);
-    }
-
-    /// <summary>The predeploy storage cell a reference to <paramref name="slot"/> reads.</summary>
+    /// <summary>The contract storage cell a reference to <paramref name="slot"/> reads.</summary>
     public static StorageCell ReferenceCell(in ValueHash256 sourceId, ulong slot) =>
         RingBufferCell(sourceId, slot % Eip8272Constants.RecentRootLength);
 

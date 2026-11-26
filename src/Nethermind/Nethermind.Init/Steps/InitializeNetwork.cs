@@ -22,17 +22,6 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Init.Steps;
 
-public static class NettyMemoryEstimator
-{
-    private const uint PageSize = 8192;
-
-    public static void SetPageSize() =>
-        // For some reason needs to be half page size to get page size
-        Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
-
-    public static ulong Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1UL << arenaOrder) * PageSize;
-}
-
 [RunnerStepDependencies(
     typeof(LoadGenesisBlock),
     typeof(SetupKeyStore),
@@ -137,13 +126,14 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        await InitPeer().ContinueWith(initPeerTask =>
+        try
         {
-            if (initPeerTask.IsFaulted)
-            {
-                _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
-            }
-        });
+            await InitPeer();
+        }
+        catch (Exception e) when (e is not ListenerBindException)
+        {
+            _logger.Error("Unable to init the peer manager.", e);
+        }
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -156,20 +146,21 @@ public class InitializeNetwork : IStep
             {
                 _logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
             }
-        });
+        }, CancellationToken.None);
 
         if (cancellationToken.IsCancellationRequested)
         {
             return;
         }
 
-        await StartDiscovery().ContinueWith(initDiscoveryTask =>
+        try
         {
-            if (initDiscoveryTask.IsFaulted)
-            {
-                _logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
-            }
-        });
+            await StartDiscovery();
+        }
+        catch (Exception e) when (e is not ListenerBindException)
+        {
+            _logger.Error("Unable to start the discovery protocol.", e);
+        }
 
         try
         {
@@ -188,11 +179,11 @@ public class InitializeNetwork : IStep
         ProductInfo.VersionPostfix = GetDbLayoutPostfix(_flatDbConfig);
         ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
 
-        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ");
+        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ", sensitive: true);
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
         ThisNodeInfo.AddInfo("Public id    :", ProductInfo.PublicClientId);
-        ThisNodeInfo.AddInfo("This node    :", $"{_enode.Info} ");
-        ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)");
+        ThisNodeInfo.AddInfo("This node    :", $"{_enode.Info} ", sensitive: true);
+        ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)", sensitive: true);
     }
 
     private static string GetDbLayoutPostfix(IFlatDbConfig flatDbConfig) => flatDbConfig.Layout switch
@@ -225,6 +216,7 @@ public class InitializeNetwork : IStep
         if (!_initConfig.PeerManagerEnabled)
         {
             if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
+            return;
         }
 
         if (_logger.IsDebug) _logger.Debug("Initializing peer manager");

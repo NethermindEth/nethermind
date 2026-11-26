@@ -5,10 +5,10 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Collections.Pooled;
-using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,6 +23,7 @@ using Nethermind.Stats.Model;
 using Discv5KademliaModule = Nethermind.Network.Discovery.Discv5.Kademlia.KademliaModule;
 
 [assembly: InternalsVisibleTo("Nethermind.Network.Discovery.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Network.Benchmark")]
 
 namespace Nethermind.Network.Discovery.Discv5;
 
@@ -33,10 +34,8 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     private readonly List<Node> _bootNodes;
     private readonly DiscoveryPersistenceManager _persistenceManager;
     private readonly IKademliaAdapter _discv5Adapter;
-    private readonly Func<NettyDiscoveryV5Handler> _discoveryHandlerFactory;
+    private readonly DiscoveryV5Transport _transport;
     private readonly ILifetimeScope _discv5Services;
-
-    private NettyDiscoveryV5Handler? _discoveryHandler;
 
     public DiscoveryV5App(
         ILifetimeScope rootScope,
@@ -74,7 +73,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         DiscV5Services services = _discv5Services.Resolve<DiscV5Services>();
         _persistenceManager = services.PersistenceManager;
         _discv5Adapter = services.Discv5Adapter;
-        _discoveryHandlerFactory = services.NettyDiscoveryHandlerFactory;
+        _transport = services.Transport;
         UseKademliaServices(services.NodeSource, services.Kademlia);
     }
 
@@ -86,7 +85,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         DiscoveryPersistenceManager PersistenceManager,
         IKademliaAdapter Discv5Adapter,
         IKademlia<PublicKey, Node> Kademlia,
-        Func<NettyDiscoveryV5Handler> NettyDiscoveryHandlerFactory
+        DiscoveryV5Transport Transport
     )
     {
     }
@@ -140,7 +139,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         {
             if (record.EnrSequence < node.HighestObservedEnrSequence)
             {
-                if (Logger.IsTrace) Logger.Trace($"Skipping stale discv5 discovery ENR for {node:s}.");
+                if (Logger.IsTrace) Logger.Trace($"Skipping stale discv5 discovery ENR for {node.ToString("s"):hide}.");
                 return;
             }
 
@@ -151,7 +150,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
             if (!enrNode.IdHash.Equals(node.IdHash))
             {
-                if (Logger.IsTrace) Logger.Trace($"Skipping discv5 discovery node {node:s} with mismatched ENR identity.");
+                if (Logger.IsTrace) Logger.Trace($"Skipping discv5 discovery node {node.ToString("s"):hide} with mismatched ENR identity.");
                 return;
             }
 
@@ -160,7 +159,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         }
         catch (Exception e)
         {
-            if (Logger.IsTrace) Logger.Trace($"Unable to parse discv5 discovery ENR for {node}: {e}");
+            if (Logger.IsTrace) Logger.Trace($"Unable to parse discv5 discovery ENR for {node:hide}: {e:hide}");
         }
     }
 
@@ -190,7 +189,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     {
         if (!DiscoveryAddressSupport.Supports(LocalIp, node.DiscoveryAddress.Address))
         {
-            if (Logger.IsTrace) Logger.Trace($"Skipping unreachable discv5 bootnode address family {node:s}.");
+            if (Logger.IsTrace) Logger.Trace($"Skipping unreachable discv5 bootnode address family {node.ToString("s"):hide}.");
             return BootNodeAddResult.Skipped;
         }
 
@@ -201,18 +200,18 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     {
         if (!seen.Add(node.IdHash))
         {
-            if (Logger.IsTrace) Logger.Trace($"Skipping duplicate discv5 bootnode {node:s}.");
+            if (Logger.IsTrace) Logger.Trace($"Skipping duplicate discv5 bootnode {node.ToString("s"):hide}.");
             return BootNodeAddResult.Duplicate;
         }
 
         node.IsBootnode = true;
         bootNodes.Add(node);
-        if (Logger.IsDebug) Logger.Debug($"Accepted discv5 bootnode {node:s}, has ENR: {node.Enr is not null}.");
+        if (Logger.IsDebug) Logger.Debug($"Accepted discv5 bootnode {node.ToString("s"):hide}, has ENR: {node.Enr is not null}.");
         return BootNodeAddResult.Added;
     }
 
     private static string[] GetDefaultBootnodes() =>
-        JsonSerializer.Deserialize<string[]>(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!) ?? [];
+        JsonSerializer.Deserialize(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!, BootnodesJsonContext.Default.StringArray) ?? [];
 
     internal bool TryGetAcceptableNodeFromEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
     {
@@ -279,29 +278,15 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             && !IPAddress.None.Equals(externalIp)
             && externalIp.IsLoopbackOrPrivateOrLinkLocal;
 
-    public override void InitializeChannel(IChannel channel)
+    /// <inheritdoc/>
+    /// <remarks>discv5 is the last protocol on the socket, so it never forwards datagrams.</remarks>
+    internal override void InitializeChannel(IDatagramSocket socket, Action<PooledUdpReceiveResult> forward)
     {
-        _discoveryHandler = _discoveryHandlerFactory();
-        _discoveryHandler.InitializeChannel(channel);
-        _discoveryHandler.OnChannelActivated += OnChannelActivated;
-        channel.Pipeline.AddLast(_discoveryHandler);
-        ActivateIfChannelIsActive(channel);
+        _transport.BindSocket(socket);
+        OnChannelActivated();
     }
 
-    protected override void DetachEventHandlers()
-    {
-        try
-        {
-            if (_discoveryHandler is not null)
-            {
-                _discoveryHandler.OnChannelActivated -= OnChannelActivated;
-            }
-        }
-        catch (Exception e)
-        {
-            Logger.Error("Error during discovery v5 cleanup", e);
-        }
-    }
+    internal override void Receive(PooledUdpReceiveResult datagram) => _transport.Receive(datagram);
 
     protected override async Task RunDiscoveryAsync(CancellationToken cancellationToken)
     {
@@ -334,7 +319,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     protected override async Task StopAsyncCore()
     {
         await _discv5Adapter.DisposeAsync();
-        _discoveryHandler?.Close();
+        _transport.Close();
     }
 
     protected override ValueTask DisposeAsyncCore() => _discv5Services.DisposeAsync();
@@ -404,3 +389,6 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         }
     }
 }
+
+[JsonSerializable(typeof(string[]))]
+internal partial class BootnodesJsonContext : JsonSerializerContext;

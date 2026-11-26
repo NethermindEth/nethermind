@@ -21,5 +21,7 @@ public class GetPayloadV6Handler(
     IBuilderOverridePolicy builderOverridePolicy)
     : GetPayloadHandlerBase<GetPayloadV6Result>(EngineApiVersions.GetPayload.V6, payloadPreparationService, specProvider, logManager, builderOverridePolicy)
 {
+    protected override bool ValidateFork(IReleaseSpec spec) => spec.BlockLevelAccessListsEnabled;
+
     protected override GetPayloadV6Result GetPayloadResultFromBlock(IBlockProductionContext context) => new GetPayloadV6DirectResponse(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!, ShouldOverrideBuilder(context.CurrentBestBlock!));
 }

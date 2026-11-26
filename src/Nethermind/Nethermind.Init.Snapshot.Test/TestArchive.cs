@@ -62,6 +62,20 @@ internal static class TestArchive
         return tarBuffer.ToArray();
     }
 
+    public static byte[] BuildTarEscapingDestination()
+    {
+        using MemoryStream tarBuffer = new();
+        using (TarWriter writer = new(tarBuffer, leaveOpen: true))
+        {
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "data/../escaped.bin")
+            {
+                DataStream = new MemoryStream(new byte[1000])
+            });
+        }
+
+        return tarBuffer.ToArray();
+    }
+
     public static byte[] BuildTarZstWithoutTopLevelDirectory()
     {
         using MemoryStream tarBuffer = new();

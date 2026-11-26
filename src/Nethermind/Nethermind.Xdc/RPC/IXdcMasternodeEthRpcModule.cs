@@ -20,7 +20,8 @@ public interface IXdcMasternodeEthRpcModule : IRpcModule
     /// "Signed" means a masternode posted a block-signer transaction covering the block. Masternodes only sign
     /// heights that are a multiple of the merge-sign range, so a block is represented by the next such height and
     /// the two share a signer set. Blocks too close to the head represent themselves, because that height does
-    /// not exist yet, and report no signers until the transactions land.
+    /// not exist yet, and report no signers until the transactions land. Fails when the block predates XDPoS 2.0 or
+    /// the node lacks the masternode list of its epoch, as for epochs before its sync pivot.
     /// </remarks>
     [JsonRpcMethod(
         Description = "Returns the masternodes that signed the block identified by hash.",
@@ -42,7 +43,8 @@ public interface IXdcMasternodeEthRpcModule : IRpcModule
     /// feed reward accounting rather than consensus, and which the reference client still serves here as the
     /// pre-2.0 finality proxy. Because those transactions cover the representative block and land after it, a
     /// block that is already committed under the V2 commit rule can report 0%. Read the <c>Committed</c> flag
-    /// from <c>XDPoS_getV2BlockByHash</c> or <c>XDPoS_getV2BlockByNumber</c> for actual V2 finality.
+    /// from <c>XDPoS_getV2BlockByHash</c> or <c>XDPoS_getV2BlockByNumber</c> for actual V2 finality. Fails when the
+    /// block predates XDPoS 2.0 or the node lacks the masternode list of its epoch, as for epochs before its sync pivot.
     /// </remarks>
     [JsonRpcMethod(
         Description = "Returns the percentage of masternodes that signed the block identified by hash. Not V2 finality; see XDPoS_getV2BlockByHash for that.",

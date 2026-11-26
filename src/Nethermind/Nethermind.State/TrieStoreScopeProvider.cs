@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.Intrinsics.X86;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -14,6 +13,9 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -34,7 +36,7 @@ namespace Nethermind.State;
 /// the same StateProvider would skip re-inserting the bytes, throwing
 /// "Code 0x… is missing from the database" on the next read.
 /// </param>
-public sealed class TrieStoreScopeProvider(
+public partial class TrieStoreScopeProvider(
     ITrieStore trieStore,
     IKeyValueStoreWithBatching codeDb,
     IStateHeaderProvider stateHeaderProvider,
@@ -44,8 +46,9 @@ public sealed class TrieStoreScopeProvider(
     private readonly ITrieStore _trieStore = trieStore;
     private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
     private readonly ILogManager _logManager = logManager;
-    private StateTree? _backingStateTree;
-    private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
+    protected StateTree? _backingStateTree;
+    // Used as is: the stateless witness' store serves code as executable memory, which the EVM runs without a copy.
+    private readonly IWorldStateScopeProvider.ICodeDb _codeDb = codeDb as IWorldStateScopeProvider.ICodeDb ?? new KeyValueWithBatchingBackedCodeDb(codeDb, codeDbIsPersistent);
 
     private StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
 
@@ -120,7 +123,7 @@ public sealed class TrieStoreScopeProvider(
 
         public Account? Get(Address address)
         {
-            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedAccounts, address, out bool exists);
+            ref Account? account = ref _loadedAccounts.GetValueRefOrAddDefault(address, out bool exists);
             if (!exists)
             {
                 account = _backingStateTree.Get(address);
@@ -130,6 +133,8 @@ public sealed class TrieStoreScopeProvider(
         }
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
+
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken) => ScopeBalApplier.Apply(this, bal, _logManager, cancellationToken);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
@@ -154,8 +159,8 @@ public sealed class TrieStoreScopeProvider(
                 return Task.CompletedTask;
             }
 
-            // Copy the span into a pooled array so the Parallel.For body can capture it.
-            ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
+            // Copy the span into a pooled array so the parallel loop can capture it.
+            ArrayPoolList<ReadOnlyAccountChanges> accountChanges = [with(bal.AccountChanges.AsSpan())];
 
             _hintBalCts = new CancellationTokenSource();
             CancellationToken token = _hintBalCts.Token;
@@ -163,12 +168,13 @@ public sealed class TrieStoreScopeProvider(
             return _hintBalTask = Task.Run(() =>
             {
                 // PatriciaTree.Get mutates shared TrieNode children in place as it resolves them,
-                // so each Parallel.For iteration must own its StateTree / StorageTree — slots per
+                // so each parallel iteration must own its StateTree / StorageTree — slots per
                 // account are read sequentially on the worker that owns it.
                 ParallelOptions parallelOptions = new() { CancellationToken = token };
                 try
                 {
-                    Parallel.For(0, accountCount, parallelOptions, (i) =>
+                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+                    ParallelUnbalancedWork.For(0, accountCount, parallelOptions, (i) =>
                     {
                         if (token.IsCancellationRequested) return;
                         ReadOnlyAccountChanges ac = accountChanges[i];
@@ -244,14 +250,18 @@ public sealed class TrieStoreScopeProvider(
                     sink.OnStorageRead(in cell, in value);
                 }
             }
-            catch (MissingTrieNodeException) { }
+            catch (MissingTrieNodeException e)
+            {
+                ILogger logger = _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>();
+                if (logger.IsTrace) logger.Trace($"BAL warmup of {address} stopped on a missing trie node: {e.Message}");
+            }
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree = backingStateTree;
-        private readonly Dictionary<AddressAsKey, StorageTree> _storages = [];
-        private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = [];
+        private readonly OptimizedDictionary<AddressAsKey, StorageTree> _storages = [];
+        private readonly OptimizedDictionary<AddressAsKey, Account?> _loadedAccounts = [];
         private readonly TrieStoreScopeProvider _scopeProvider = scopeProvider;
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1 = codeDb;
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
@@ -265,15 +275,32 @@ public sealed class TrieStoreScopeProvider(
 
         public void Commit(ulong blockNumber)
         {
-            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+            using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor || _storages.Count < 2)
             {
-                storage.Value.Commit();
+                foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+                {
+                    storage.Value.Commit();
+                }
+            }
+            else
+            {
+                using ArrayPoolList<StorageTree> storages = new(_storages.Count);
+                foreach (StorageTree storage in _storages.Values) storages.Add(storage);
+                ParallelUnbalancedWork.For(0, storages.Count, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
+                    storages, static (i, trees) =>
+                    {
+                        trees[i].Commit();
+                        return trees;
+                    });
             }
 
             _backingStateTree.Commit();
             _storages.Clear();
         }
 
+        [SkipLocalsInit]
         internal StorageTree LookupStorageTree(Address address)
         {
             if (_storages.TryGetValue(address, out StorageTree? storageTree))
@@ -291,13 +318,12 @@ public sealed class TrieStoreScopeProvider(
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => LookupStorageTree(address);
     }
 
-    private class WorldStateWriteBatch(
+    private partial class WorldStateWriteBatch(
         TrieStoreWorldStateBackendScope scope,
         int estimatedAccountCount,
         ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
-        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = [with(estimatedAccountCount)];
         private Action<Address, Hash256>? _markDirty;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
@@ -314,15 +340,17 @@ public sealed class TrieStoreScopeProvider(
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                if (!_dirtyAccounts.TryGetValue(key, out Account? account))
-                    account = scope.Get(key);
+                ref Account? slot = ref CollectionsMarshal.GetValueRefOrNullRef(_dirtyAccounts, key);
+                bool isDirty = !Unsafe.IsNullRef(ref slot);
+                Account? account = isDirty ? slot : scope.Get(key);
 
                 // Account may be null when EIP-161 deletes an empty account that had storage
                 // changes in the same block. Skip the storage root update since the account
                 // will not exist in the state trie.
                 if (account is null) continue;
                 account = account.WithChangedStorageRoot(storageRoot);
-                _dirtyAccounts[key] = account;
+                if (isDirty) slot = account;
+                else _dirtyAccounts[key] = account;
                 Address address = key.Value;
                 OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
                 if (logger.IsTrace) Trace(address, storageRoot, account);
@@ -330,18 +358,7 @@ public sealed class TrieStoreScopeProvider(
 
             OnAccountUpdated = null;
 
-            if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
-            {
-                scope._backingStateTree.SetAccounts(_dirtyAccounts);
-            }
-            else
-            {
-                using StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count);
-                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
-                {
-                    stateSetter.Set(kv.Key, kv.Value);
-                }
-            }
+            scope._backingStateTree.WriteAccounts(_dirtyAccounts);
 
             scope.ClearLoadedAccounts();
 
@@ -350,4 +367,122 @@ public sealed class TrieStoreScopeProvider(
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
     }
+
+    public partial class StorageTreeBulkWriteBatch(
+        int estimatedEntries,
+        StorageTree storageTree,
+        Action<Address, Hash256> onRootUpdated,
+        AddressAsKey address,
+        bool commit = false,
+        int minWritesToHashInParallel = StorageTreeBulkWriteBatch.MinWritesToHashInParallel) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        // Slight optimization on small contract as the index hash can be precalculated in some case.
+        public const int MIN_ENTRIES_TO_BATCH = 16;
+
+        /// <summary>Writes above which a batch that only hashes its tree hashes it in parallel.</summary>
+        private const int MinWritesToHashInParallel = 64;
+
+        private bool _hasSelfDestruct;
+        private bool _wasSetCalled = false;
+        private int _writes;
+
+        private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
+            estimatedEntries > BulkWriteThreshold
+                ? new(estimatedEntries)
+                : null;
+
+        private ValueHash256 _keyBuff = new();
+        private PendingHashes? _pendingHashes;
+
+        private sealed class PendingHashes
+        {
+            internal KeyHashBatch Batch;
+            internal PendingHashes() => Batch.Initialize(Hash256.Size);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void AddUnhashedEntry(ReadOnlySpan<byte> preimage, ReadOnlySpan<byte> encoded, bool isZero)
+        {
+            PendingHashes pending = _pendingHashes ??= new();
+            int index = _bulkWrite!.Count;
+            _bulkWrite.Add(StorageTree.CreateBulkSetEntry(default, encoded, isZero));
+            pending.Batch.AddMissing(preimage, index);
+            if (pending.Batch.IsFull) pending.Batch.Flush(_bulkWrite.AsSpan());
+        }
+
+        [SkipLocalsInit]
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            Unsafe.SkipInit(out EvmWord word);
+            bool isZero = value.IsZero;
+            ReadOnlySpan<byte> encoded = isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word);
+            _wasSetCalled = true;
+            _writes++;
+            if (_bulkWrite is null)
+            {
+                storageTree.Set(index, encoded, isZero);
+            }
+            else
+            {
+                if (Avx2.IsSupported)
+                {
+                    if (!StorageTree.TryGetCachedKey(index, out _keyBuff, out ValueHash256 preimage))
+                    {
+                        AddUnhashedEntry(preimage.BytesAsSpan, encoded, isZero);
+                        return;
+                    }
+                }
+                else
+                {
+                    StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
+                }
+                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, encoded, isZero));
+            }
+        }
+
+        public void Clear()
+        {
+            if (_bulkWrite is null)
+            {
+                storageTree.RootHash = Keccak.EmptyTreeHash;
+            }
+
+            if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
+            _hasSelfDestruct = true;
+        }
+
+        /// <summary>Updates the root on dispose even if no slot was set.</summary>
+        public void MarkSet() => _wasSetCalled = true;
+
+        public void Dispose()
+        {
+            bool hasSet = _wasSetCalled || _hasSelfDestruct;
+            if (_bulkWrite is not null)
+            {
+                if (_hasSelfDestruct)
+                {
+                    storageTree.RootHash = Keccak.EmptyTreeHash;
+                }
+
+                _pendingHashes?.Batch.Flush(_bulkWrite.AsSpan());
+                _pendingHashes = null;
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
+                storageTree.BulkSet(asRef);
+            }
+
+            if (hasSet)
+            {
+                if (commit)
+                {
+                    storageTree.Commit();
+                }
+                else
+                {
+                    storageTree.UpdateRootHash(_writes > minWritesToHashInParallel);
+                }
+                onRootUpdated(address, storageTree.RootHash);
+            }
+        }
+    }
+
 }

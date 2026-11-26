@@ -110,7 +110,7 @@ public class XdcKademliaAdapterTests
             .Returns(ci =>
             {
                 PingMsg sent = (PingMsg)ci[0]!;
-                using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
+                byte[] buffer = _receiverSerializationManager.SerializeToArray(sent);
                 PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
                 PongMsg pong = new(msg.FarPublicKey!, _timestamper.UnixTime.SecondsLong + 1, sent.Mdc!.Value, pongEnrSequence);
                 pong.FarAddress = sent.FarAddress;

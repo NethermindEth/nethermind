@@ -1,15 +1,20 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
+[GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<BlobTransactionForRpc>
 {
     public new static TxType TxType => TxType.Blob;
@@ -17,6 +22,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     public override TxType? Type => TxType;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    [JsonDiscriminator]
     public UInt256? MaxFeePerBlobGas { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -24,6 +30,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     public byte[][]? BlobVersionedHashes { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonDiscriminator]
     public byte[][]? Blobs { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -36,21 +43,25 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     public BlobTransactionForRpc() { }
 
     public BlobTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
 
-        if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
-        {
-            Blobs = wrapper.Blobs;
-            Commitments = wrapper.Commitments;
-            Proofs = wrapper.Proofs;
-        }
+        ShardBlobNetworkWrapper? wrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
+        Blobs = wrapper?.Blobs;
+        Commitments = wrapper?.Commitments;
+        Proofs = wrapper?.SplitProofs();
     }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
+        if (BlobVersionedHashes is null && MaxFeePerBlobGas is not null)
+            return RpcTransactionErrors.BlobFeeCapWithoutBlobHashes;
+
         if (BlobVersionedHashes is null || BlobVersionedHashes.Length == 0)
             return RpcTransactionErrors.AtLeastOneBlobInBlobTransaction;
 
@@ -89,6 +100,35 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
         return tx;
     }
+
+    internal override string? GetTraceCallUnsupportedField(IReleaseSpec spec) =>
+        base.GetTraceCallUnsupportedField(spec)
+        ?? (!spec.IsEip4844Enabled && (MaxFeePerBlobGas is not null || BlobVersionedHashes is not null) ? "blob" : null);
+
+    // Geth's message precheck reports an empty hash list after the fee and fork checks that conversion would skip.
+    internal override string? GetTraceCallForkError(IReleaseSpec spec, UInt256 baseFee) =>
+        BlobVersionedHashes is { Length: 0 }
+            ? GetTraceCallPrecheckError(GetTraceCallUnsupportedField(spec), spec, baseFee)
+                ?? RpcTransactionErrors.DebugTrace(TxErrorMessages.BlobTxMissingBlobVersionedHashes)
+            : base.GetTraceCallForkError(spec, baseFee);
+
+    internal override string? GetTraceCallRecipientError() =>
+        To is null && BlobVersionedHashes is not null ? TxErrorMessages.TxMissingTo : null;
+
+    internal override Result<Transaction> ConvertTraceCallTransaction(IReleaseSpec spec, ulong? gasCap)
+    {
+        if (MaxFeePerBlobGas is { IsZero: false })
+            return base.ConvertTraceCallTransaction(spec, gasCap);
+
+        // Geth permits a zero blob fee cap for simulated calls, and defaults an omitted one to zero; retain all other RPC validation.
+        Result<Transaction> result = WithZeroBlobFeeCapOmitted(this).ToCallTransaction(spec, gasCap);
+        if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
+        return result;
+    }
+
+    internal override bool ShouldCheckFeesBeforeConversion() => Blobs is null;
+
+    internal override bool ShouldFillDefaultsOnSend() => false;
 
     public override Result FillDefaults(in TxFillContext context)
     {
@@ -129,12 +169,44 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         }
 
         Commitments = wrapper.Commitments;
-        Proofs = wrapper.Proofs;
+        Proofs = wrapper.SplitProofs();
         return Result.Success;
     }
 
     public new static BlobTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);
+
+    /// <summary>
+    /// <paramref name="call"/> without a blob fee cap that came with neither blob hashes nor blobs, read again as the class
+    /// its other fields choose. A blob fee cap selects the blob class, so a call that sets one alone is rejected;
+    /// eth_simulateV1 keeps accepting it, as its spec fixtures expect. A cap beside another type's fields, such as
+    /// an authorization list, describes no single transaction and is rejected while deserializing, before this applies.
+    /// </summary>
+    public static TransactionForRpc WithLoneBlobFeeCapOmitted(TransactionForRpc call)
+    {
+        if (call is not BlobTransactionForRpc { BlobVersionedHashes: null, Blobs: null } blobCall)
+            return call;
+
+        BlobTransactionForRpc copy = (BlobTransactionForRpc)blobCall.MemberwiseClone();
+        copy.MaxFeePerBlobGas = null;
+        JsonSerializerOptions options = EthereumJsonSerializer.JsonOptions;
+        return TypeInfoJsonSerializer.Deserialize<TransactionForRpc>(TypeInfoJsonSerializer.SerializeToUtf8Bytes(copy, typeof(BlobTransactionForRpc), options), options)!;
+    }
+
+    /// <summary>
+    /// Returns a copy of <paramref name="call"/> without its blob fee cap when that cap is zero, so it converts as omitted;
+    /// otherwise returns <paramref name="call"/> unchanged.
+    /// </summary>
+    /// <remarks>A zero cap without blob hashes is kept, so the call reports the cap without hashes.</remarks>
+    public static TransactionForRpc WithZeroBlobFeeCapOmitted(TransactionForRpc call)
+    {
+        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true, BlobVersionedHashes: not null } blobCall)
+            return call;
+
+        BlobTransactionForRpc copy = (BlobTransactionForRpc)blobCall.MemberwiseClone();
+        copy.MaxFeePerBlobGas = null;
+        return copy;
+    }
 
     /// <summary>
     /// Validates the blob sidecar fields and attaches a <see cref="ShardBlobNetworkWrapper"/>
@@ -152,9 +224,10 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         };
         if (fieldError is not null) return fieldError;
 
-        ShardBlobNetworkWrapper wrapper = new(Blobs!, Commitments!, Proofs!, version);
+        bool proofLengthsValid = ShardBlobNetworkWrapper.TryJoinProofs(Proofs!, out byte[]? proofs);
+        ShardBlobNetworkWrapper wrapper = new(Blobs!, Commitments!, proofs ?? [], version);
         IBlobProofsManager manager = IBlobProofsManager.For(version);
-        if (!manager.ValidateLengths(wrapper))
+        if (!proofLengthsValid || !manager.ValidateLengths(wrapper))
             return "blob sidecar lengths invalid (blobs/commitments/proofs counts or individual byte sizes)";
         if (tx.BlobVersionedHashes is not null && !manager.ValidateHashes(wrapper, tx.BlobVersionedHashes))
             return "blob commitments do not match the supplied blobVersionedHashes";

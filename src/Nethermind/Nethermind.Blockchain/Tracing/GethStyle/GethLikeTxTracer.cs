@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
-public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
+public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOperationStorage
 {
     private readonly RefundTracker? _refundTracker;
 
@@ -50,8 +50,18 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         Trace.Failed = true;
+        Trace.Gas = gasSpent.SpentGas;
         Trace.ReturnValue = output ?? [];
     }
+
+    // Geth's struct logger subscribes to OnOpcode, but not to post-execution OnFault.
+    protected static bool IsExecutionFault(EvmExceptionType error) => error is
+        EvmExceptionType.BadInstruction or EvmExceptionType.InvalidJumpDestination or
+        EvmExceptionType.AccessViolation;
+
+    // Geth reports a failed depth or balance precheck only in the rejected action's exit, not on its opcode.
+    protected static bool IsRejectedActionPrecheck(EvmExceptionType error) => error is
+        EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded;
 
     protected static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
     {
@@ -59,12 +69,40 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
         EvmExceptionType.BadInstruction => "BadInstruction",
         EvmExceptionType.StackOverflow => "StackOverflow",
         EvmExceptionType.StackUnderflow => "StackUnderflow",
-        EvmExceptionType.OutOfGas => "OutOfGas",
+        EvmExceptionType.OutOfGas => "out of gas",
         EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
         EvmExceptionType.AccessViolation => "AccessViolation",
+        EvmExceptionType.ReturnStackOverflow => "ReturnStackOverflow",
+        EvmExceptionType.ReturnStackUnderflow => "ReturnStackUnderflow",
         EvmExceptionType.StaticCallViolation => "StaticCallViolation",
         _ => "Error"
     };
+
+    /// <summary>Returns the step error for a stack that cannot hold the opcode's inputs or growth, or null when it can.</summary>
+    /// <remarks>
+    /// Geth validates the stack before charging constant gas, so a stack failure outranks running out of gas, which
+    /// Nethermind checks first for some opcodes.
+    /// </remarks>
+    protected static string? GetStackFailure(int stackHead, int stackInputs, int stackGrowth) =>
+        stackHead < stackInputs ? $"stack underflow ({stackHead} <=> {stackInputs})"
+        : stackGrowth > 0 && stackHead >= EvmStack.MaxStackSize - stackGrowth ? GetErrorDescription(EvmExceptionType.StackOverflow)
+        : null;
+
+    /// <summary>Returns the gas an opcode used, from the gas left before and after it.</summary>
+    /// <param name="gasBefore">The gas left before the opcode.</param>
+    /// <param name="gasAfter">The gas left after the opcode.</param>
+    /// <param name="executionCost">The execution gas cost that the VM reported for the opcode, if any.</param>
+    /// <remarks>
+    /// EIP-8037: a step that refills state gas gives back to the gas left state gas that an earlier step took from it,
+    /// so the gas left can drop by less than the execution gas cost, or grow. The step then reports its execution gas
+    /// cost. Examples are an SSTORE that restores a slot, and a SELFDESTRUCT that empties the balance of an account
+    /// that the same transaction created.
+    /// </remarks>
+    internal static ulong GetGasCost(ulong gasBefore, ulong gasAfter, ulong? executionCost)
+    {
+        ulong executionGas = executionCost ?? 0;
+        return gasAfter <= gasBefore && gasBefore - gasAfter >= executionGas ? gasBefore - gasAfter : executionGas;
+    }
 
     public override void ReportRefund(long refund) => _refundTracker?.Add(refund);
 
@@ -101,16 +139,23 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
         _refundTracker?.RestoreSnapshot();
     }
 
+    /// <inheritdoc/>
+    public virtual void ReportStorageRefund(long refund) { }
+
     protected void ResetRefund() => _refundTracker?.Reset();
 
     public virtual GethLikeTxTrace BuildResult() => Trace;
 }
 
-public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? destroyRefund = null) : GethLikeTxTracer(options, destroyRefund) where TEntry : GethTxTraceEntry, new()
+public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? destroyRefund = null) : GethLikeTxTracer(options, destroyRefund), ITraceOperationGasCost, ITraceOperationStart where TEntry : GethTxTraceEntry, new()
 {
     protected TEntry? CurrentTraceEntry { get; set; }
 
     private bool _gasCostAlreadySetForCurrentOp;
+    private bool _gasCostReportedForCurrentOp;
+    private ulong? _calculatedGasCost;
+    private string? _stackFailure;
+    private byte[]? _lastReturnData;
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
@@ -126,24 +171,81 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         CurrentTraceEntry.ProgramCounter = pc;
         CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
         _gasCostAlreadySetForCurrentOp = false;
+        _gasCostReportedForCurrentOp = false;
+        _calculatedGasCost = null;
+        _stackFailure = null;
+    }
+
+    /// <inheritdoc/>
+    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth)
+    {
+        _calculatedGasCost = gasCost;
+        _stackFailure = GetStackFailure(stackHead, stackInputs, stackGrowth);
+    }
+
+    /// <inheritdoc/>
+    public void ReportOperationReady(ulong gasCost, string? error) => _calculatedGasCost = gasCost;
+
+    /// <inheritdoc/>
+    public void ReportOperationGasCost(ulong gasCost)
+    {
+        if (CurrentTraceEntry is not null)
+        {
+            CurrentTraceEntry.GasCost = gasCost;
+            // The remaining gas report is skipped once the cost is set; a tracer that shows the refund after the
+            // opcode samples it here, while the struct logger keeps the snapshot taken when the step started.
+            if (ReportsRefundAfterOperation)
+                CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
+            _gasCostAlreadySetForCurrentOp = true;
+            _gasCostReportedForCurrentOp = true;
+        }
+    }
+
+    /// <inheritdoc/>
+    public override void ReportActionErrorDetails(string error)
+    {
+        if (CurrentTraceEntry is not null)
+            CurrentTraceEntry.Error = error;
     }
 
     public override void ReportOperationError(EvmExceptionType error)
     {
-        if (CurrentTraceEntry is not null)
-            CurrentTraceEntry.Error = GetErrorDescription(error);
+        if (CurrentTraceEntry is null || IsRejectedActionPrecheck(error))
+            return;
+
+        if (error == EvmExceptionType.OutOfGas)
+            CurrentTraceEntry.Error ??= _stackFailure;
+        CurrentTraceEntry.Error ??= GetErrorDescription(error);
+        // As in Geth, an opcode that runs out of gas reports the cost it could not pay rather than the gas it had.
+        if (error == EvmExceptionType.OutOfGas && !_gasCostReportedForCurrentOp && _calculatedGasCost is ulong gasCost)
+            CurrentTraceEntry.GasCost = gasCost;
     }
 
     public override void ReportOperationRemainingGas(ulong gas)
     {
         if (!_gasCostAlreadySetForCurrentOp && CurrentTraceEntry is not null)
         {
-            CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
-            // Geth samples after dynamic gas calculation, including this opcode's refund changes.
-            CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
+            CurrentTraceEntry.GasCost = GetGasCost(CurrentTraceEntry.Gas, gas, _calculatedGasCost);
+            if (ReportsRefundAfterOperation)
+                CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
             _gasCostAlreadySetForCurrentOp = true;
         }
     }
+
+    /// <inheritdoc/>
+    public override void ReportStorageRefund(long refund)
+    {
+        if (ReportsRefundAfterOperation && CurrentTraceEntry is not null)
+            CurrentTraceEntry.Refund = CurrentRefund + refund;
+    }
+
+    /// <summary>Whether an entry shows the refund counter after its opcode rather than before it.</summary>
+    /// <remarks>
+    /// The struct logger shows the counter before the opcode, as execution-apis specifies. Geth samples it after the
+    /// opcode's dynamic gas, which includes the opcode's own refund changes, in its EIP-3155 traces and also in its
+    /// struct logger. The struct logger differs from Geth here on purpose.
+    /// </remarks>
+    protected virtual bool ReportsRefundAfterOperation => false;
 
     public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry?.UpdateMemorySize(newSize);
 
@@ -157,6 +259,23 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     {
         if (IsTracingFullMemory && CurrentTraceEntry is not null)
             CurrentTraceEntry.Memory = memoryTrace.ToRawWordBytes();
+    }
+
+    /// <inheritdoc/>
+    public override void SetOperationReturnData(ReadOnlySpan<byte> returnData)
+    {
+        if (CurrentTraceEntry is not null && !returnData.IsEmpty)
+            CurrentTraceEntry.ReturnData = GetReturnData(returnData);
+    }
+
+    // Return data only changes when a call returns, so consecutive opcodes share one copy. A change allocates a new
+    // array instead of overwriting the old one, because earlier entries still point to it.
+    private byte[] GetReturnData(ReadOnlySpan<byte> returnData)
+    {
+        if (_lastReturnData is null || !returnData.SequenceEqual(_lastReturnData))
+            _lastReturnData = returnData.ToArray();
+
+        return _lastReturnData;
     }
 
     public override GethLikeTxTrace BuildResult()

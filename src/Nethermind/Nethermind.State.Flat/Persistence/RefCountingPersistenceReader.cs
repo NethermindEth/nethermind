@@ -1,17 +1,19 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader
+public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader, IPersistence.IPrefetchingReader
 {
     private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
@@ -41,13 +43,21 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
         _innerReader.TryGetSlot(address, in slot, ref outValue);
 
+    public MigrationCursor? GetMigrationCursor() => _innerReader.GetMigrationCursor();
+
     public StateId CurrentState => _innerReader.CurrentState;
 
-    public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-        _innerReader.TryLoadStateRlp(in path, flags);
+    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStateRlp(in path, flags, action, arg);
 
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-        _innerReader.TryLoadStorageRlp(address, in path, flags);
+    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStorageRlp(address, in path, flags, action, arg);
+
+    public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStateRlp(in path, in hash, flags, action, arg);
+
+    public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStorageRlp(address, in path, in hash, flags, action, arg);
 
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
         _innerReader.GetAccountRaw(addrHash);
@@ -57,6 +67,16 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
         _innerReader.CreateAccountIterator(startKey, endKey);
+
+    public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+    {
+        if (_innerReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(columns, accounts, slots, cancellationToken);
+    }
+
+    public bool SupportsPrefetch => _innerReader is IPersistence.IPrefetchingReader { SupportsPrefetch: true };
+
+    public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples) =>
+        _innerReader is IPersistence.IPrefetchingReader prefetcher ? prefetcher.PlanPrefetch(accountSamples, slotSamples) : IPersistence.PrefetchColumns.None;
 
     public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
         _innerReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);

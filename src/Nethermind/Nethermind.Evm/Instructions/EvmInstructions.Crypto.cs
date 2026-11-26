@@ -30,16 +30,24 @@ public static partial class EvmInstructions
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
         ulong words = EvmCalculations.Div32Ceiling(in b, out bool outOfGas);
+        if (TTracingInst.IsActive)
+        {
+            if (TGasPolicy.GetRemainingGas(in gas) < GasCostOf.Sha3)
+                vm.TraceOperationGasCost(GasCostOf.Sha3);
+            else if (!outOfGas && words <= (ulong.MaxValue - GasCostOf.Sha3) / GasCostOf.Sha3Word)
+                vm.TraceMemoryOperationGasCost(in a, in b, GasCostOf.Sha3 + GasCostOf.Sha3Word * words);
+        }
         if (!TGasPolicy.TryConsumeKeccak(ref gas, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
         VmState<TGasPolicy> vmState = vm.VmState;
         // Charge gas for any required memory expansion.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, b, ref vmState.Memory) ||
-            !vmState.Memory.TryLoadSpan(in a, b, out Span<byte> bytes))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, b, ref vmState.Memory))
         {
             goto OutOfGas;
         }
+
+        Span<byte> bytes = vmState.Memory.LoadSpanAfterGas(in a, in b);
 
         // Compute the Keccak-256 hash.
         KeccakCache.ComputeTo(bytes, out ValueHash256 keccak);

@@ -185,3 +185,68 @@ public partial struct ProgressiveBitsStruct
     [SszProgressiveBitlist]
     public BitArray? L { get; set; }
 }
+
+[SszContainer]
+public partial struct ProgressiveSingleFieldContainerTestStruct
+{
+    [SszField(0)]
+    public byte A { get; set; }
+}
+
+[SszContainer]
+public partial struct ProgressiveSingleListContainerTestStruct
+{
+    [SszField(4)]
+    [SszProgressiveBitlist]
+    public BitArray? C { get; set; }
+}
+
+[SszContainer]
+public partial struct ProgressiveVarTestStruct
+{
+    [SszField(0)]
+    public byte A { get; set; }
+
+    [SszField(2)]
+    [SszList(123)]
+    public ushort[]? B { get; set; }
+
+    [SszField(4)]
+    [SszProgressiveBitlist]
+    public BitArray? C { get; set; }
+}
+
+[SszContainer]
+public partial struct ProgressiveComplexTestStruct
+{
+    [SszField(0)]
+    public byte A { get; set; }
+
+    [SszField(2)]
+    [SszList(123)]
+    public ushort[]? B { get; set; }
+
+    [SszField(4)]
+    [SszProgressiveBitlist]
+    public BitArray? C { get; set; }
+
+    [SszField(8)]
+    [SszProgressiveList]
+    public ulong[]? D { get; set; }
+
+    [SszField(12)]
+    [SszProgressiveList]
+    public SmallTestStruct[]? E { get; set; }
+
+    [SszField(13)]
+    [SszProgressiveList]
+    public ProgressiveVarTestStructList[]? F { get; set; }
+
+    [SszField(20)]
+    [SszList(10)]
+    public ProgressiveSingleFieldContainerTestStruct[]? G { get; set; }
+
+    [SszField(21)]
+    [SszProgressiveList]
+    public ProgressiveVarTestStruct[]? H { get; set; }
+}

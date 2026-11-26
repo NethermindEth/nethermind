@@ -50,8 +50,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        // Blob transactions are never valid on Taiko L2. The base TxValidator is initialised
-        // with an Always.Valid validator (see TaikoPlugin), so we must enforce this explicitly.
+        // Blob transactions are never valid on Taiko L2, so we must enforce this explicitly.
         foreach (Transaction tx in block.Transactions)
         {
             if (tx.Type == TxType.Blob)
@@ -61,7 +60,6 @@ public class TaikoBlockValidator(
             }
         }
 
-        // TaikoPlugin initializes the TxValidator with an Always.Valid validator
         return base.ValidateTransactions(block, spec, ref errorMessage);
     }
 
@@ -140,12 +138,12 @@ public class TaikoBlockValidator(
             _logger.Debug($"Anchor selector: 0x{Convert.ToHexString(selector)}, " +
                 $"IsUnzenEnabled={spec.IsUnzenEnabled}, IsShastaEnabled={spec.IsShastaEnabled}, " +
                 $"IsPacayaEnabled={spec.IsPacayaEnabled}, IsOntakeEnabled={spec.IsOntakeEnabled}. " +
-                $"Expected: {(spec.IsShastaEnabled ? $"V4=0x{Convert.ToHexString(AnchorV4Selector)} or V4WithSignalSlots=0x{Convert.ToHexString(AnchorV4WithSignalSlotsSelector)}" : spec.IsPacayaEnabled ? $"V3=0x{Convert.ToHexString(AnchorV3Selector)}" : $"V1=0x{Convert.ToHexString(AnchorSelector)} or V2=0x{Convert.ToHexString(AnchorV2Selector)}")}");
+                $"Expected: {(spec.IsShastaEnabled ? $"V4=0x{Convert.ToHexString(AnchorV4Selector)}{(spec.IsAnchorV4WithSignalSlotsEnabled ? $" or V4WithSignalSlots=0x{Convert.ToHexString(AnchorV4WithSignalSlotsSelector)}" : "")}" : spec.IsPacayaEnabled ? $"V3=0x{Convert.ToHexString(AnchorV3Selector)}" : $"V1=0x{Convert.ToHexString(AnchorSelector)} or V2=0x{Convert.ToHexString(AnchorV2Selector)}")}");
         }
 
         if (spec.IsShastaEnabled)
             return AnchorV4Selector.AsSpan().SequenceEqual(selector)
-                || AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(selector);
+                || (spec.IsAnchorV4WithSignalSlotsEnabled && AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(selector));
 
         if (spec.IsPacayaEnabled)
             return AnchorV3Selector.AsSpan().SequenceEqual(selector);

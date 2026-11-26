@@ -5,21 +5,26 @@ using Autofac;
 using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.JsonRpc.TraceStore.Ots;
 using Nethermind.Logging;
 using Nethermind.Init.Modules;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
-public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindPlugin
+public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig, IJsonRpcConfig jsonRpcConfig) : INethermindPlugin
 {
     public const string DbName = "TraceStore";
 
@@ -28,14 +33,15 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
     public string Author => "Nethermind";
     public bool Enabled => traceStoreConfig.Enabled;
 
-    public IModule Module => new TracerStorePluginModule(traceStoreConfig);
+    public IModule Module => new TracerStorePluginModule(traceStoreConfig, jsonRpcConfig);
 
-    private class TracerStorePluginModule(ITraceStoreConfig traceStoreConfig) : Module
+    private class TracerStorePluginModule(ITraceStoreConfig traceStoreConfig, IJsonRpcConfig jsonRpcConfig) : Module
     {
         protected override void Load(ContainerBuilder builder)
         {
             builder
                 .AddDatabase(DbName)
+                .AddDecorator<IRocksDbConfigFactory, TraceStoreRocksDbConfigFactory>()
                 .AddSingleton<TraceStorePruner>()
                 .AddSingleton<ITraceSerializer<ParityLikeTxTrace>, ITraceStoreConfig, ILogManager>((config, logManager) =>
                     new ParityLikeTraceSerializer(logManager, config.MaxDepth, config.VerifySerialized))
@@ -46,10 +52,16 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
                         ctx.Resolve<IBlockFinder>(),
                         ctx.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
                         ctx.Resolve<ITraceSerializer<ParityLikeTxTrace>>(),
+                        ctx.Resolve<ITraceStoreConfig>().TraceTypes,
                         ctx.Resolve<IJsonRpcConfig>(),
                         ctx.Resolve<ILogManager>(),
                         ctx.Resolve<ITraceStoreConfig>().DeserializationParallelization))
-                .AddSingleton<IMainProcessingModule, TraceStoreMainProcessingModule>();
+                .AddSingleton<IMainProcessingModule, TraceStoreMainProcessingModule>()
+                .RegisterBoundedJsonRpcModule<IOtsRpcModule, AutoRpcModuleFactory<IOtsRpcModule>>(int.Max(1, traceStoreConfig.OtsModuleConcurrentInstances), jsonRpcConfig.Timeout)
+                .AddScoped<IOtsRpcModule, OtsRpcModule>();
+
+            if (traceStoreConfig.AddressIndexEnabled)
+                builder.AddSingleton<TraceAddressIndex>().AddStep(typeof(StartTraceAddressIndex));
 
             if (traceStoreConfig.BlocksToKeep != 0)
                 builder.ResolveOnServiceActivation<TraceStorePruner, IBlockTree>();
@@ -66,9 +78,10 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
         [KeyFilter(DbName)] IDb db,
         ITraceStoreConfig traceStoreConfig,
         ITraceSerializer<ParityLikeTxTrace> traceSerializer,
+        ISpecProvider specProvider,
         ILogManager logManager)
         : DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer>(
-            new ParityLikeBlockTracer(traceStoreConfig.TraceTypes),
+            new ParityLikeBlockTracer(traceStoreConfig.TraceTypes, specProvider),
             db,
             traceSerializer,
             logManager);

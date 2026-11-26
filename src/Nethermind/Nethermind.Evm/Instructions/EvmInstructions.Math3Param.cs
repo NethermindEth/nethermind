@@ -40,11 +40,15 @@ public static partial class EvmInstructions
 
         if (!EvmStack.IsSlotZero(ref topRef))
         {
-            EvmStack.ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, EvmStack.WordSize), out UInt256 b);
-            EvmStack.ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, 2 * EvmStack.WordSize), out UInt256 a);
+            // The result goes to the modulus slot and the Int256 routines are not guaranteed alias-safe, so only
+            // the modulus is copied to a local. The popped slots stay intact until the next push, so a and b are
+            // read in place and the result is written straight into the slot.
             EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 c);
-            TOpMath.Operation(in a, in b, in c, out UInt256 result);
-            EvmStack.WriteUInt256ToSlot(ref topRef, in result);
+            TOpMath.Operation(
+                in Unsafe.As<byte, UInt256>(ref Unsafe.Add(ref topRef, 2 * EvmStack.WordSize)),
+                in Unsafe.As<byte, UInt256>(ref Unsafe.Add(ref topRef, EvmStack.WordSize)),
+                in c,
+                out Unsafe.As<byte, UInt256>(ref topRef));
         }
 
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
@@ -53,11 +57,11 @@ public static partial class EvmInstructions
 
     public struct OpAddMod : IOpMath3Param
     {
-        public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => UInt256.AddMod(in a, in b, in c, out result);
+        public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => AddMod256(in a, in b, in c, out result);
     }
 
     public struct OpMulMod : IOpMath3Param
     {
-        public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => UInt256.MultiplyMod(in a, in b, in c, out result);
+        public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => MulMod256(in a, in b, in c, out result);
     }
 }

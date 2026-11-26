@@ -17,10 +17,10 @@ namespace Nethermind.Db
     /// </summary>
     public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb), bool neverPrune = false) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
     {
-        private readonly SortedSet<(byte[] Key, int Version, byte[]? Value)> _db = new(new EntryComparer());
+        private readonly SortedSet<(byte[] Key, int Version, byte[]? Value)> _db = [with(new EntryComparer())];
         private readonly EntryComparer _entryComparer = new();
         private int _currentVersion = 0;
-        private readonly HashSet<int> _activeSnapshotVersions = [];
+        private readonly SortedList<int, int> _activeSnapshotVersions = [];
         private readonly Lock _versionLock = new();
         private readonly bool _neverPrune = neverPrune;
 
@@ -33,24 +33,6 @@ namespace Nethermind.Db
         {
             get => Get(key);
             set => Set(key, value);
-        }
-
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
-        {
-            get
-            {
-                KeyValuePair<byte[], byte[]?>[] result = new KeyValuePair<byte[], byte[]?>[keys.Length];
-                lock (_versionLock)
-                {
-                    ReadsCount += keys.Length;
-                    for (int i = 0; i < keys.Length; i++)
-                    {
-                        byte[] key = keys[i];
-                        result[i] = new KeyValuePair<byte[], byte[]?>(key, GetValueAtVersion(key, _currentVersion));
-                    }
-                }
-                return result;
-            }
         }
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
@@ -119,8 +101,6 @@ namespace Nethermind.Db
             lock (_versionLock)
             {
                 _db.Clear();
-                _currentVersion = 0;
-                _activeSnapshotVersions.Clear();
             }
         }
 
@@ -250,6 +230,7 @@ namespace Nethermind.Db
             lock (_versionLock)
             {
                 version = _currentVersion;
+                AddActiveVersion(version);
             }
             return new MemDbSortedView(this, version, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
         }
@@ -260,16 +241,22 @@ namespace Nethermind.Db
             lock (_versionLock)
             {
                 int snapshotVersion = _currentVersion;
-                _activeSnapshotVersions.Add(snapshotVersion);
+                AddActiveVersion(snapshotVersion);
                 return new MemDbSnapshot(this, snapshotVersion);
             }
         }
+
+        private void AddActiveVersion(int version) =>
+            _activeSnapshotVersions[version] = _activeSnapshotVersions.GetValueOrDefault(version) + 1;
 
         internal void OnSnapshotDisposed(int version)
         {
             lock (_versionLock)
             {
-                _activeSnapshotVersions.Remove(version);
+                if (--_activeSnapshotVersions[version] == 0)
+                {
+                    _activeSnapshotVersions.Remove(version);
+                }
 
                 // Skip pruning if disabled
                 if (_neverPrune)
@@ -285,7 +272,7 @@ namespace Nethermind.Db
                 }
 
                 // Slow path: prune versions older than oldest active snapshot
-                int minVersion = _activeSnapshotVersions.Min();
+                int minVersion = _activeSnapshotVersions.Keys[0];
                 PruneVersionsOlderThan(minVersion);
             }
         }
@@ -491,6 +478,7 @@ namespace Nethermind.Db
         {
             private readonly SnapshotableMemDb _db = db;
             private readonly int _snapshotVersion = snapshotVersion;
+            private bool _disposed;
 
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _db.GetAtVersion(key, _snapshotVersion);
 
@@ -525,16 +513,27 @@ namespace Nethermind.Db
                 }
             }
 
-            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) => new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
+            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
+            {
+                lock (_db._versionLock)
+                {
+                    _db.AddActiveVersion(_snapshotVersion);
+                }
+                return new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
+            }
 
-            public void Dispose() => _db.OnSnapshotDisposed(_snapshotVersion);
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, true)) return;
+                _db.OnSnapshotDisposed(_snapshotVersion);
+            }
         }
 
         /// <summary>
         /// Sorted view iterator for a range of keys.
         /// Uses GetViewBetween for efficient range queries instead of scanning from the beginning.
         /// </summary>
-        private sealed class MemDbSortedView(SnapshotableMemDb db, int version, byte[] firstKey, byte[] lastKey) : ISortedView
+        private sealed class MemDbSortedView(SnapshotableMemDb db, int version, byte[] firstKey, byte[] lastKey) : ISeekableSortedView
         {
             private readonly SnapshotableMemDb _db = db;
             private readonly int _version = version;
@@ -542,6 +541,7 @@ namespace Nethermind.Db
             private readonly byte[] _lastKey = lastKey;
             private byte[]? _currentKey;
             private byte[]? _currentValue;
+            private bool _disposed;
 
             public bool StartBefore(ReadOnlySpan<byte> key)
             {
@@ -598,13 +598,18 @@ namespace Nethermind.Db
                 }
             }
 
-            public bool MoveNext()
+            public bool MoveNext() => MoveToFirstFrom(_currentKey is not null
+                ? (_currentKey, int.MaxValue, null)
+                : (_firstKey, 0, null));
+
+            public bool SeekTo(ReadOnlySpan<byte> key) => MoveToFirstFrom(key.SequenceCompareTo(_firstKey) < 0
+                ? (_firstKey, 0, null)
+                : (key.ToArray(), 0, null));
+
+            private bool MoveToFirstFrom((byte[], int, byte[]?) lower)
             {
                 lock (_db._versionLock)
                 {
-                    (byte[], int, byte[]?) lower = _currentKey is not null
-                        ? (_currentKey, int.MaxValue, null)
-                        : (_firstKey, 0, null);
                     (byte[] _lastKey, int, byte[]?) upper = (_lastKey, 0, null);
 
                     if (_db._entryComparer.Compare(lower, upper) > 0)
@@ -653,8 +658,10 @@ namespace Nethermind.Db
 
             public void Dispose()
             {
+                if (Interlocked.Exchange(ref _disposed, true)) return;
                 _currentKey = null;
                 _currentValue = null;
+                _db.OnSnapshotDisposed(_version);
             }
         }
 
@@ -664,12 +671,12 @@ namespace Nethermind.Db
         private sealed class MemDbWriteBatch(SnapshotableMemDb db) : IWriteBatch
         {
             private readonly SnapshotableMemDb _db = db;
-            private readonly ArrayPoolList<(byte[] Key, byte[]? Value, WriteFlags Flags)> _operations = new(16);
+            private readonly ArrayPoolList<(byte[] Key, byte[]? Value, WriteFlags Flags)> _operations = [with(16)];
             private bool _disposed;
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
-                if (_disposed) throw new ObjectDisposedException(nameof(MemDbWriteBatch));
+                ObjectDisposedException.ThrowIf(_disposed, this);
                 _operations.Add((key.ToArray(), value, flags));
             }
 
@@ -679,7 +686,7 @@ namespace Nethermind.Db
 
             public void Clear()
             {
-                if (_disposed) throw new ObjectDisposedException(nameof(MemDbWriteBatch));
+                ObjectDisposedException.ThrowIf(_disposed, this);
                 _operations.Clear();
             }
 

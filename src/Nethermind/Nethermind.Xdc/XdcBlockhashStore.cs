@@ -37,9 +37,6 @@ public class XdcBlockhashStore(IBlockhashStore inner, IWorldState worldState) : 
         inner.ApplyBlockhashStateChanges(blockHeader, spec);
     }
 
-    public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, ulong requiredBlockNumber, IReleaseSpec spec) =>
-        inner.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);
-
     // The parent-hash write is delegated to the inner store, so its prewarm hint is exact here.
     public AccessList? GetAccessList(Block block, IReleaseSpec spec) =>
         (inner as IHasAccessList)?.GetAccessList(block, spec);

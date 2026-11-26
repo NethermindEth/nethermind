@@ -33,8 +33,11 @@ public class InstructionTracingFilterTests : VirtualMachineTestsBase
             using FilteredTracer tracer = new(selected);
             Execute(tracer, code, MainnetSpecProvider.CancunActivation);
 
-            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "each transaction must execute successfully");
-            Assert.That(tracer.Operations, Does.Contain(selected), "the current mask must select its opcode");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "each transaction must execute successfully");
+                Assert.That(tracer.Operations, Does.Contain(selected), "the current mask must select its opcode");
+            }
             Assert.That(tracer.Operations, Does.Not.Contain(selected == first ? second : first), "the cached previous mask must not leak observations");
         }
     }
@@ -52,17 +55,25 @@ public class InstructionTracingFilterTests : VirtualMachineTestsBase
             Execute(tracer, code, (MainnetSpecProvider.ParisBlockNumber + 1,
                 MainnetSpecProvider.ShanghaiBlockTimestamp - (activated ? 0UL : 1UL)));
 
-            Assert.That(tracer.StatusCode, Is.EqualTo(activated ? StatusCode.Success : StatusCode.Failure), "PUSH0 must follow the current fork");
-            Assert.That(tracer.OperationError, Is.EqualTo(activated ? null : (EvmExceptionType?)EvmExceptionType.BadInstruction), "the pre-activation transaction must reject PUSH0");
-            Assert.That(tracer.Operations, Does.Contain(Instruction.PUSH0), "selected opcodes must remain observable across fork changes");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.StatusCode, Is.EqualTo(activated ? StatusCode.Success : StatusCode.Failure), "PUSH0 must follow the current fork");
+                Assert.That(tracer.OperationError, Is.EqualTo(activated ? null : (EvmExceptionType?)EvmExceptionType.BadInstruction), "the pre-activation transaction must reject PUSH0");
+                Assert.That(tracer.Operations, Does.Contain(Instruction.PUSH0), "selected opcodes must remain observable across fork changes");
+            }
         }
     }
 
     [Test]
     public void Execute_WhenCancellationModeChanges_UsesCurrentDispatch([Values] bool cancelableFirst)
     {
-        byte[] code = new byte[2049];
+        // 2048 JUMPDESTs, then a taken jump to a final JUMPDEST and STOP: cancelable dispatch polls at a taken jump.
+        byte[] code = new byte[2054];
         Array.Fill(code, (byte)Instruction.JUMPDEST);
+        code[2048] = (byte)Instruction.PUSH2;
+        code[2049] = 2052 >> 8;
+        code[2050] = 2052 & 0xff;
+        code[2051] = (byte)Instruction.JUMP;
         code[^1] = (byte)Instruction.STOP;
         using FilteredTracer warmup = new(Instruction.JUMPDEST, cancelableFirst);
         Execute(warmup, code, MainnetSpecProvider.CancunActivation);
@@ -73,17 +84,23 @@ public class InstructionTracingFilterTests : VirtualMachineTestsBase
         if (cancelableFirst)
         {
             Execute(next, code, MainnetSpecProvider.CancunActivation);
-            Assert.That(next.StatusCode, Is.EqualTo(StatusCode.Success), "noncancelable dispatch must not retain cancellation handlers");
-            Assert.That(next.Operations.Count, Is.EqualTo(2048), "a stale cancelable handler must not truncate execution at its batch boundary");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(next.StatusCode, Is.EqualTo(StatusCode.Success), "noncancelable dispatch must not retain cancellation handlers");
+                Assert.That(next.Operations.Count, Is.EqualTo(2049), "a stale cancelable handler must not truncate execution at its poll point");
+            }
         }
         else
         {
             Assert.Throws<OperationCanceledException>(() => Execute(next, code, MainnetSpecProvider.CancunActivation),
                 "cancelable dispatch must observe cancellation requested during execution");
         }
-        Assert.That(next.Operations, Does.Contain(Instruction.JUMPDEST), "the filtered callback must execute before cancellation");
-        Assert.That(next.CancellationRequested, Is.True, "the callback must request cancellation deterministically");
-        Assert.That(next.CancellationPolls > 0, Is.EqualTo(!cancelableFirst), "only cancelable execution may poll cancellation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next.Operations, Does.Contain(Instruction.JUMPDEST), "the filtered callback must execute before cancellation");
+            Assert.That(next.CancellationRequested, Is.True, "the callback must request cancellation deterministically");
+            Assert.That(next.CancellationPolls > 0, Is.EqualTo(!cancelableFirst), "only cancelable execution may poll cancellation");
+        }
     }
 
     [Test]

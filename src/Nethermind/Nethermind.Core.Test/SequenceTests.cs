@@ -17,7 +17,7 @@ public class SequenceTests
         TestReadOnlySequenceSegment start = new("  "u8.ToArray(), 0, end);
         ReadOnlySequence<byte> sequence = new(start, 0, end, 5);
 
-        Assert.That(sequence.TrimStart().ToArray(), Is.EqualTo("abc"u8.ToArray()));
+        Assert.That(sequence.TrimStart(), Is.SequenceEqualTo("abc"u8));
     }
 
     private class TestReadOnlySequenceSegment : ReadOnlySequenceSegment<byte>

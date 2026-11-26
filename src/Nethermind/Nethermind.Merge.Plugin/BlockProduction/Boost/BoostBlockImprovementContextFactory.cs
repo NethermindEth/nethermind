@@ -19,7 +19,7 @@ public class BoostBlockImprovementContextFactory(IBlockProducer blockProducer, T
     private readonly IStateReader _stateReader = stateReader;
 
     public IBlockImprovementContext StartBlockImprovementContext(
-        Block currentBestBlock,
+        Block? currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,

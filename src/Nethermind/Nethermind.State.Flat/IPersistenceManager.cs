@@ -12,9 +12,32 @@ public interface IPersistenceManager
     StateId GetCurrentPersistedStateId();
     Task AddToPersistence(StateId latestSnapshot);
     StateId FlushToPersistence(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Converts the in-memory state of the committed head's ancestry to the persisted-snapshot tier, so a restart
+    /// resumes from the head instead of re-executing the in-memory tail.
+    /// </summary>
+    /// <returns>The number of blocks converted.</returns>
+    int PersistInMemoryTailForShutdown(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Compacts the persisted snapshots the last run left one per block, so reads after a restart do not walk each
+    /// of them. For the start only, before anything else uses the persisted tier.
+    /// </summary>
+    /// <returns>The number of compacted snapshots written.</returns>
+    int CompactReloadedSnapshots(CancellationToken cancellationToken);
+
     void ResetPersistedStateId();
 
     /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/>, serialized against
     /// persistence. Used when the head is force-reset so state kept for abandoned branches is released.</summary>
     void DropStateNotReachableFrom(in StateId head);
+
+    /// <summary>Writes on top of the persisted state, unless a persist is in progress or the persisted state has moved.</summary>
+    /// <remarks>
+    /// Does not wait for the persistence lock. The batch goes from <paramref name="expected"/> to itself, so
+    /// <paramref name="write"/> must not change any value a reader of that state sees, as when copying state from another store.
+    /// </remarks>
+    /// <returns>False, writing nothing, when a persist holds the lock or the persisted state is no longer <paramref name="expected"/>.</returns>
+    bool TryWriteOnPersistedState(in StateId expected, Action<IPersistence.IWriteBatch> write);
 }

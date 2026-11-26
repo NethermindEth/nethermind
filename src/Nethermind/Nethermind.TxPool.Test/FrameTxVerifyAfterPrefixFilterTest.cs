@@ -21,10 +21,10 @@ internal class FrameTxVerifyAfterPrefixFilterTest
     {
         yield return new TestCaseData(new[] { SelfVerify(), Execution() }, AcceptTxResult.Accepted)
             .SetName("a self relay prefix followed by a user op is admissible");
-        yield return new TestCaseData(new[] { Deploy(), OnlyVerify(), Pay(), Execution(), PostTx() }, AcceptTxResult.Accepted)
+        yield return new TestCaseData(new[] { Deploy(), OnlyVerify(), Pay(), Execution(), AssertFrame() }, AcceptTxResult.Accepted)
             .SetName("the longest recognized prefix followed by a body is admissible");
-        yield return new TestCaseData(new[] { SelfVerify(), Execution(), PostTx() }, AcceptTxResult.Accepted)
-            .SetName("a POST_TX frame behind the prefix is admissible");
+        yield return new TestCaseData(new[] { SelfVerify(), Execution(), AssertFrame() }, AcceptTxResult.Accepted)
+            .SetName("an ASSERT frame behind the prefix is admissible");
         yield return new TestCaseData(new[] { Expiry(), SelfVerify(), Execution() }, AcceptTxResult.Accepted)
             .SetName("a leading expiry frame joins the prefix rather than ending it");
         yield return new TestCaseData(new[] { Expiry(), Deploy(), OnlyVerify(), Pay(), Execution() }, AcceptTxResult.Accepted)
@@ -41,12 +41,11 @@ internal class FrameTxVerifyAfterPrefixFilterTest
         // Nothing can approve payment ahead of the only approving frame, so there is no prefix to sit behind.
         yield return new TestCaseData(new[] { Execution(), SelfVerify() }, AcceptTxResult.Accepted)
             .SetName("a layout whose only approving frame is last has nothing behind it");
-        // A leading VERIFY frame the grammar does not name leaves the layout unrecognized, and simulation
-        // admits it, so its trailing VERIFY frame would otherwise reach the pool unjudged.
+        // Standalone classification remains conservative for layouts rejected earlier by the pool's grammar filter.
         yield return new TestCaseData(new[] { ExtraVerify(), SelfVerify(), Execution(), OnlyVerify() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
             .SetName("a VERIFY frame behind an unrecognized prefix is rejected");
         yield return new TestCaseData(new[] { ExtraVerify(), SelfVerify(), Execution() }, AcceptTxResult.Accepted)
-            .SetName("an unrecognized prefix without a trailing VERIFY frame is admissible");
+            .SetName("the standalone trailing-VERIFY check accepts an unrecognized prefix without trailing VERIFY");
         yield return new TestCaseData(new[] { OnlyVerify(), ExtraVerify(), Pay(), Execution(), OnlyVerify() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
             .SetName("a VERIFY frame behind a paymaster prefix carrying an extra check is rejected");
         // The boundary is the approval flag rather than the mode, which carries no scope of its own.

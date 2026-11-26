@@ -19,6 +19,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Facade.Filters;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
@@ -32,6 +33,8 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly ILogManager _logManager;
     private readonly IStateReader _stateReader;
     private readonly IBlockchainBridgeFactory _blockchainBridgeFactory;
+    private readonly FilterStore _filterStore;
+    private readonly FilterManager _filterManager;
     private readonly ITxPool _txPool;
     private readonly ITxSender _txSender;
     private readonly IWallet _wallet;
@@ -53,9 +56,12 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly IJsonRpcClient? _sequencerRpcClient;
     private readonly HeadBlockSignal _headBlockSignal;
     private readonly IBlockForRpcFactory _blockForRpcFactory;
+    private readonly ForwardedNonceTracker _nonceTracker;
 
     public OptimismEthModuleFactory(IJsonRpcConfig rpcConfig,
         IBlockchainBridgeFactory blockchainBridgeFactory,
+        FilterStore filterStore,
+        FilterManager filterManager,
         IBlockFinder blockFinder,
         IBlockTree blockTree,
         [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
@@ -85,6 +91,8 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _logManager = logManager;
         _stateReader = stateReader;
         _blockchainBridgeFactory = blockchainBridgeFactory;
+        _filterStore = filterStore;
+        _filterManager = filterManager;
         _txPool = txPool;
         _txSender = txSender;
         _wallet = wallet;
@@ -116,11 +124,14 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         TxSealer sealer = new(txSigner, timestamper);
         _sealer = sealer;
         _headBlockSignal = new HeadBlockSignal(blockTree);
+        _nonceTracker = new ForwardedNonceTracker(blockFinder, stateReader);
     }
 
     public override IOptimismEthRpcModule Create() => new OptimismEthRpcModule(
             _rpcConfig,
             _blockchainBridgeFactory.CreateBlockchainBridge(),
+            _filterStore,
+            _filterManager,
             _blockFinder,
             _blockTree,
             _receiptFinder,
@@ -142,6 +153,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _opSpecHelper,
             _headBlockSignal,
             _capabilitiesProvider,
-            _blockForRpcFactory
+            _blockForRpcFactory,
+            _nonceTracker
         );
 }

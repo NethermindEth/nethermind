@@ -21,6 +21,16 @@ internal static partial class DispatchFlags
     /// <summary>Whether the requested EVM tracing capability is enabled.</summary>
     public static bool Tracing(bool isTracing) => isTracing;
 
+    /// <summary>Whether dispatch counts the opcodes it runs, for the opcode metric and the cancellation poll.</summary>
+    public static bool CountOpcodes => true;
+
+    /// <summary>Whether the untraced tables give some opcodes a fast path, backed by a plain copy of the table.</summary>
+    /// <remarks>See <c>IOpcodeBody.HasUntracedFastPath</c> and <c>FallbackHandlersOffset</c>.</remarks>
+    public static bool UntracedFastPaths => true;
+
+    /// <summary>Whether EXP builds the result of a power-of-two base as one bit.</summary>
+    public const bool PowerOfTwoExp = true;
+
     /// <summary>Whether the coming transaction can be cancelled part-way through.</summary>
     public static bool Cancelable(bool tracerIsCancelable) => tracerIsCancelable;
 

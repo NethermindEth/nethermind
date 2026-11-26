@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
@@ -40,9 +41,12 @@ public class BeaconPivotTests
     public void Beacon_pivot_defaults_to_block_tree_values_when_there_is_no_pivot()
     {
         IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), _blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
-        Assert.That(pivot.PivotHash, Is.EqualTo(_blockTree.SyncPivot.BlockHash));
-        Assert.That(pivot.PivotNumber, Is.EqualTo(_blockTree.SyncPivot.BlockNumber));
-        Assert.That(pivot.PivotDestinationNumber, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivot.PivotHash, Is.EqualTo(_blockTree.SyncPivot.BlockHash));
+            Assert.That(pivot.PivotNumber, Is.EqualTo(_blockTree.SyncPivot.BlockNumber));
+            Assert.That(pivot.PivotDestinationNumber, Is.EqualTo(0));
+        }
     }
 
     [TestCase(0, 1001)]
@@ -57,8 +61,31 @@ public class BeaconPivotTests
 
         BlockHeader pivotHeader = blockTree.FindHeader(10, BlockTreeLookupOptions.AllowInvalid)!;
         pivot.EnsurePivot(pivotHeader);
-        Assert.That(pivot.PivotHash, Is.EqualTo(pivotHeader.GetOrCalculateHash()));
-        Assert.That(pivot.PivotNumber, Is.EqualTo(pivotHeader.Number));
-        Assert.That(pivot.PivotDestinationNumber, Is.EqualTo(expectedPivotDestinationNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivot.PivotHash, Is.EqualTo(pivotHeader.GetOrCalculateHash()));
+            Assert.That(pivot.PivotNumber, Is.EqualTo(pivotHeader.Number));
+            Assert.That(pivot.PivotDestinationNumber, Is.EqualTo(expectedPivotDestinationNumber));
+        }
+    }
+
+    [Test]
+    public void Forkchoice_can_restart_beacon_sync_from_a_lower_header()
+    {
+        using MemDb db = new();
+        BeaconPivot pivot = new(_syncConfig, db, _blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
+        BeaconSync sync = new(pivot, _blockTree, _syncConfig, Substitute.For<IBlockCacheService>(), AlwaysPoS.Instance, LimboLogs.Instance);
+        BlockHeader provisional = Build.A.BlockHeader.WithNumber(1002).WithHash(TestItem.KeccakA).TestObject;
+        BlockHeader selected = Build.A.BlockHeader.WithNumber(1001).WithHash(TestItem.KeccakB).TestObject;
+        pivot.EnsurePivot(provisional, updateOnlyIfNull: true);
+
+        sync.InitBeaconHeaderSync(selected);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivot.PivotHash, Is.EqualTo(selected.Hash));
+            Assert.That(pivot.PivotNumber, Is.EqualTo(selected.Number));
+            Assert.That(_blockTree.LowestInsertedBeaconHeader, Is.SameAs(selected));
+        }
     }
 }
