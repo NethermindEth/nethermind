@@ -65,7 +65,6 @@ public static partial class StatelessExecutor
             {
                 ISpecProvider specProvider = payload.SpecProvider;
                 IReleaseSpec spec = specProvider.GetSpec(block.Header);
-                InitializeKzg(spec);
                 if (TryRecoverSenders(transactions, payload.EncodedTransactions, specProvider, spec))
                 {
                     using Witness witness = payload.Witness.ToWitness();
@@ -106,6 +105,8 @@ public static partial class StatelessExecutor
     private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes,
         IBlockTracer? blockTracer = null)
     {
+        // Every entry point executes through here, so none can run a block without the setup.
+        InitializeKzg(specProvider.GetSpec(suggestedBlock.Header));
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
         BlockHeader parentHeader;
 
