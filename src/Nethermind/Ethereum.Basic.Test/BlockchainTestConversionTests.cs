@@ -39,6 +39,24 @@ public class BlockchainTestConversionTests
         Assert.That(tests.Single().ForkName, Is.EqualTo(network));
     }
 
+    [TestCase("\"pre\": {},", ExpectedResult = false)]
+    [TestCase("\"preHash\": \"0x01\",", ExpectedResult = false)]
+    [TestCase("", ExpectedResult = true)]
+    public bool ConvertToBlockchainTests_FailsToLoadWithoutPreState(string preState)
+    {
+        string json = $$"""
+            {
+              "tests/some/test.py::test_case[fork_Amsterdam-blockchain_test]": {
+                "network": "Amsterdam",
+                {{preState}}
+                "lastblockhash": "0x281f01f5b9b9a5237ec39ac315e2e3a01017c37a83f6f0e26689b29e421a0311"
+              }
+            }
+            """;
+
+        return JsonToEthereumTest.ConvertToBlockchainTests(json).Single().LoadFailure is not null;
+    }
+
     [Test]
     public void ConvertToEngineReorgTests_LoadsBlockDagAndSteps()
     {

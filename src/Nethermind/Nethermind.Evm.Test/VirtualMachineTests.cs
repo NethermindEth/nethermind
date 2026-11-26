@@ -954,7 +954,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(trace.Failed, Is.True);
             Assert.That(trace.Gas, Is.EqualTo(40000));
-            Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.False);
+            Assert.That(trace.Entries.Where(static e => e.Error is not null).Select(static e => e.Error),
+                Is.EqualTo(new[] { "invalid jump destination" }));
         }
     }
 

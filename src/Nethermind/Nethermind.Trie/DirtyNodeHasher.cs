@@ -8,7 +8,6 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -37,7 +36,6 @@ internal static class DirtyNodeHasher
     private const int MaxPathLength = 64;
     private const int BranchChildCount = 16;
     private const int HashBatchSize = 8;
-    private const int Avx2HashBatchSize = 4;
     private const int MinimumBatchCount = 2;
     private const int VectorByteLength = 32;
     private const int MaxPaddedClass = KeccakHash.MaxBatchablePaddedLength / KeccakHash.RateBlockLength;
@@ -80,7 +78,7 @@ internal static class DirtyNodeHasher
     internal static bool HashBelowRoot(TrieNode root, ITrieNodeResolver resolver, ICappedArrayPool? pool, bool canBeParallel,
         int maxCollectedNodes = MaxCollectedNodes)
     {
-        if (!Avx2.IsSupported || !root.IsDirty || root.Keccak is not null) return false;
+        if (KeccakHash.MaxBatchWidth == 0 || !root.IsDirty || root.Keccak is not null) return false;
 
         if (!canBeParallel || RuntimeInformation.IsSingleProcessor || !root.IsBranch
             || !TryHashSubtreesInParallel(root, resolver, pool, maxCollectedNodes))
@@ -151,7 +149,7 @@ internal static class DirtyNodeHasher
         BuildDeepestFirstOrder(nodes, orderSpan);
 
         // The kernel width is fixed by the hardware, so a group must never grow past it.
-        int widestBatch = Avx512F.IsSupported ? HashBatchSize : Avx2HashBatchSize;
+        int widestBatch = KeccakHash.MaxBatchWidth;
         Unsafe.SkipInit(out HashBuffer buffer);
         Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
         NodesByClass nodesByClass = default;
@@ -303,7 +301,7 @@ internal static class DirtyNodeHasher
         }
 
         // The narrowest kernel that covers the group, so a small one does not permute eight lanes.
-        int batchSize = Avx512F.IsSupported && group.Length > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
+        int batchSize = KeccakHash.GetBatchWidth(group.Length);
         if (group.Length > batchSize) ThrowGroupWiderThanKernel();
 
         int paddedLength = paddedClass * KeccakHash.RateBlockLength;
@@ -322,21 +320,7 @@ internal static class DirtyNodeHasher
         }
 
         // The kernel runs at its native width; lanes past the group stay cleared and are dropped.
-        if (paddedLength == KeccakHash.RateBlockLength)
-        {
-            if (batchSize == HashBatchSize)
-                KeccakHash.ComputePaddedBlocks8Avx512(ref inputs[0], ref hashes[0]);
-            else
-                KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref hashes[0]);
-        }
-        else if (batchSize == HashBatchSize)
-        {
-            KeccakHash.ComputePaddedMultiBlocks8Avx512(ref inputs[0], paddedLength, ref hashes[0]);
-        }
-        else
-        {
-            KeccakHash.ComputePaddedMultiBlocks4Avx2(ref inputs[0], paddedLength, ref hashes[0]);
-        }
+        KeccakHash.ComputePaddedBatch(ref inputs[0], paddedLength, batchSize, ref hashes[0]);
 
         for (int i = 0; i < group.Length; i++)
         {
