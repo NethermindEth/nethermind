@@ -170,8 +170,11 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
 
         ExecuteTopLevel(code, value: 10.Ether);
 
-        Assert.That(TestState.GetBalance(inheritor), Is.EqualTo((UInt256)5.Ether));
-        Assert.That(TestState.AccountExists(child), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestState.GetBalance(inheritor), Is.EqualTo((UInt256)5.Ether));
+            Assert.That(TestState.AccountExists(child), Is.False);
+        }
     }
 
     [Test]
@@ -195,8 +198,11 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
         _processor.Execute(deployTx, blCtx, NullTxTracer.Instance);
         _processor.Execute(callTx, blCtx, NullTxTracer.Instance);
 
-        Assert.That(TestState.GetBalance(contract), Is.EqualTo((UInt256)7.Ether));
-        Assert.That(TestState.IsContract(contract), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestState.GetBalance(contract), Is.EqualTo((UInt256)7.Ether));
+            Assert.That(TestState.IsContract(contract), Is.True);
+        }
     }
 
     [Test]

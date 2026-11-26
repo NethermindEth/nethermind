@@ -55,9 +55,12 @@ namespace Nethermind.Wallet.Test
             FileStreamOptions options = null;
             test.FileSystem.FileStream.New(filePath, Arg.Do<FileStreamOptions>(o => options = o)).Returns(new TestFileSystemStream(written, filePath));
             PrivateKey nodeKey = test.NodeKeyManager.LoadNodeKey().Unprotect();
-            Assert.That(nodeKey, Is.EqualTo(TestItem.PrivateKeyA));
-            Assert.That(written.ToArray(), Is.EqualTo(nodeKey.KeyBytes));
-            Assert.That(options.Mode, Is.EqualTo(FileMode.Create));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nodeKey, Is.EqualTo(TestItem.PrivateKeyA));
+                Assert.That(written.ToArray(), Is.EqualTo(nodeKey.KeyBytes));
+                Assert.That(options.Mode, Is.EqualTo(FileMode.Create));
+            }
             if (!OperatingSystem.IsWindows())
             {
                 Assert.That(options.UnixCreateMode, Is.EqualTo(UnixFileMode.UserRead | UnixFileMode.UserWrite));

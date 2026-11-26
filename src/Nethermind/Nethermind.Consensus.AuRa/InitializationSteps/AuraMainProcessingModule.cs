@@ -3,7 +3,6 @@
 
 using System;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -12,6 +11,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -20,7 +20,6 @@ using Nethermind.TxPool;
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
 public class AuraMainProcessingModule(
-    IAbiEncoder abiEncoder,
     IGasPriceOracle gasPriceOracle,
     IReadOnlyTxProcessingEnvFactory envFactory,
     AuRaChainSpecEngineParameters chainSpecAuRa
@@ -32,7 +31,6 @@ public class AuraMainProcessingModule(
     {
 
         IAuRaValidator validator = new AuRaValidatorFactory(
-                abiEncoder,
                 worldState,
                 transactionProcessor,
                 api.BlockTree,
@@ -40,7 +38,8 @@ public class AuraMainProcessingModule(
                 receiptStorage,
                 api.ValidatorStore,
                 finalizationManager,
-                new TxPoolSender(api.TxPool, new TxSealer(api.EngineSigner, api.Timestamper), api.NonceManager, api.EthereumEcdsa),
+                new TxPoolSender(api.TxPool, new TxSealer(api.EngineSigner, api.Timestamper), api.NonceManager, api.EthereumEcdsa,
+                    api.Context.Resolve<IChainHeadSpecProvider>()),
                 api.TxPool,
                 api.Config<IBlocksConfig>(),
                 api.LogManager,

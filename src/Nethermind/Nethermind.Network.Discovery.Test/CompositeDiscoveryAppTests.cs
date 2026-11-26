@@ -143,8 +143,11 @@ public class CompositeDiscoveryAppTests
 
             await sender.SendToAsync(data, listener);
 
-            Assert.That(await second.Received.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(data));
-            Assert.That(first.InitializedSockets, Is.EqualTo(second.InitializedSockets));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await second.Received.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(data));
+                Assert.That(first.InitializedSockets, Is.EqualTo(second.InitializedSockets));
+            }
         }
         finally
         {
@@ -169,8 +172,11 @@ public class CompositeDiscoveryAppTests
             new IPEndPoint(IPAddress.Parse(preferredIp), 40404),
             out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node!.Host, Is.EqualTo(expectedIp));
@@ -192,8 +198,11 @@ public class CompositeDiscoveryAppTests
             preferredEndpoint: null,
             out Node? node);
 
-        Assert.That(result, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [TestCase("0.0.0.0", true, false)]
@@ -490,8 +499,11 @@ public class CompositeDiscoveryAppTests
         List<(byte[] Data, IPEndPoint Sender)> received = await ReceiveThroughPoolAsync(
             IPEndPoint.Parse("127.0.0.2:10000"), 2, [invalid, first, invalid, second]);
 
-        Assert.That(received[0].Data, Is.EqualTo(first));
-        Assert.That(received[1].Data, Is.EqualTo(second));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received[0].Data, Is.EqualTo(first));
+            Assert.That(received[1].Data, Is.EqualTo(second));
+        }
     }
 
     [TestCase("::1", "127.0.0.2", "127.0.0.2", Description = "IPv4 sender on a dual-stack listener")]

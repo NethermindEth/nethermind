@@ -4,28 +4,34 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using ConcurrentCollections;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Module = Autofac.Module;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -51,6 +57,182 @@ public class BlockchainProcessorTests
 
         Assert.DoesNotThrow(() =>
             BlockTraceDumper.LogDiagnosticTrace(NullBlockTracer.Instance, input, logger));
+    }
+
+    [Test]
+    public async Task Failed_enqueue_reports_an_empty_queue()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddDecorator<IBlockTree>((_, blockTree) => new FailingLookupBlockTree(blockTree, block.Hash!))
+            .Build();
+        BlockchainProcessor processor = (BlockchainProcessor)container.Resolve<IMainProcessingContext>().BlockchainProcessor;
+        processor.SoftMaxRecoveryQueueSizeInTx = 0;
+        int queueEmptyCount = 0;
+        processor.ProcessingQueueEmpty += (_, _) => queueEmptyCount++;
+
+        await Assert.ThrowsAsync<IOException>(async () => await processor.Enqueue(block, ProcessingOptions.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processor.IsEmpty, Is.True);
+            Assert.That(queueEmptyCount, Is.EqualTo(1));
+        }
+    }
+
+    private sealed class FailingLookupBlockTree(IBlockTree inner, Hash256 failingHash) : BlockTreeTestDouble(inner)
+    {
+        public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == failingHash ? throw new IOException() : base.FindBlock(blockHash, options, blockNumber);
+    }
+
+    [Test]
+    public async Task Refused_branch_is_deleted_and_the_best_suggested_block_reset_only_when_it_forks_below_the_head([Values] bool forkBelowHead)
+    {
+        RefusedBranch branch = CreateRefusedBranch(mainChainLength: forkBelowHead ? 2 : 1);
+        await using IContainer container = CreateRefusedBranchContainer();
+        IBlockTree blockTree = SuggestRefusedBranch(container, branch);
+
+        ProcessRefused(container, branch.Refused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(forkBelowHead ? branch.Head.Hash : branch.Refused.Hash));
+            Assert.That(blockTree.FindBlock(branch.Refused.Hash!, BlockTreeLookupOptions.None), forkBelowHead ? Is.Null : Is.Not.Null);
+            Assert.That(container.Resolve<IBadBlockStore>().GetAll(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Refused_branch_from_a_different_fork_is_deleted()
+    {
+        RefusedBranch branch = CreateRefusedBranch(mainChainLength: 1);
+        await using IContainer container = CreateRefusedBranchContainer(hiddenHeader: branch.BodylessParent!.Hash);
+        IBlockTree blockTree = SuggestRefusedBranch(container, branch);
+
+        ProcessRefused(container, branch.Refused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(branch.Head.Hash));
+            Assert.That(blockTree.FindBlock(branch.Refused.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(container.Resolve<IBadBlockStore>().GetAll(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Refused_branch_is_kept_when_the_block_is_post_merge_or_on_the_main_chain([Values] bool postMerge)
+    {
+        RefusedBranch branch = CreateRefusedBranch(mainChainLength: 2, postMerge: postMerge);
+        await using IContainer container = CreateRefusedBranchContainer(mainChainBlock: postMerge ? null : branch.Refused.Hash);
+        IBlockTree blockTree = SuggestRefusedBranch(container, branch);
+
+        ProcessRefused(container, branch.Refused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(branch.Refused.Hash));
+            Assert.That(blockTree.FindBlock(branch.Refused.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public async Task Refused_branch_on_a_main_chain_block_without_state_keeps_the_main_chain()
+    {
+        RefusedBranch branch = CreateRefusedBranch(mainChainLength: 3, mainChainStateRoot: TestItem.KeccakA, refusedParentIndex: 1);
+        await using IContainer container = CreateRefusedBranchContainer(hiddenHeader: branch.MainChain[0].Hash);
+        IBlockTree blockTree = SuggestRefusedBranch(container, branch);
+
+        ProcessRefused(container, branch.Refused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FindBlock(branch.Refused.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(blockTree.FindBlock(branch.MainChain[1].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(blockTree.FindBlock(branch.Head.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(blockTree.Head?.Hash, Is.EqualTo(branch.Head.Hash));
+            Assert.That(blockTree.IsMainChain(branch.Head.Header), Is.True);
+            Assert.That(container.Resolve<IBadBlockStore>().GetAll(), Is.Empty);
+        }
+    }
+
+    private sealed record RefusedBranch(Block Genesis, Block[] MainChain, BlockHeader? BodylessParent, Block Refused)
+    {
+        public Block Head => MainChain[^1];
+    }
+
+    private static RefusedBranch CreateRefusedBranch(int mainChainLength, Hash256? mainChainStateRoot = null, int? refusedParentIndex = null, bool postMerge = false)
+    {
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        genesis.Header.TotalDifficulty = genesis.Header.Difficulty;
+        Block[] mainChain = new Block[mainChainLength];
+        Block parent = genesis;
+        for (int i = 0; i < mainChain.Length; i++)
+        {
+            parent = mainChain[i] = Build.A.Block.WithParent(parent).WithNonce((ulong)i + 1).WithDifficulty(2).WithStateRoot(mainChainStateRoot ?? Keccak.EmptyTreeHash).TestObject;
+        }
+
+        BlockHeader? bodylessParent = refusedParentIndex is null
+            ? Build.A.BlockHeader.WithParent(genesis.Header).WithNonce(100).WithDifficulty(1).WithStateRoot(TestItem.KeccakA).TestObject
+            : null;
+        Block refused = Build.A.Block.WithParent(bodylessParent ?? mainChain[refusedParentIndex!.Value].Header).WithNonce(101).WithDifficulty(10).TestObject;
+        refused.Header.IsPostMerge = postMerge;
+        return new RefusedBranch(genesis, mainChain, bodylessParent, refused);
+    }
+
+    private static IContainer CreateRefusedBranchContainer(Hash256? hiddenHeader = null, Hash256? mainChainBlock = null)
+    {
+        ContainerBuilder builder = new ContainerBuilder().AddModule(new TestNethermindModule());
+        if (hiddenHeader is not null || mainChainBlock is not null)
+        {
+            builder.AddSingleton<IMainProcessingModule>(new RefusedBranchProcessingModule(hiddenHeader, mainChainBlock));
+        }
+
+        return builder.Build();
+    }
+
+    private static IBlockTree SuggestRefusedBranch(IContainer container, RefusedBranch branch)
+    {
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        blockTree.SuggestBlock(branch.Genesis);
+        blockTree.TryUpdateMainChain(branch.Genesis.Header, wereProcessed: true, preloadedBlocks: [branch.Genesis]);
+        foreach (Block block in branch.MainChain)
+        {
+            blockTree.SuggestBlock(block);
+            blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, preloadedBlocks: [block]);
+        }
+
+        if (branch.BodylessParent is not null)
+        {
+            blockTree.SuggestHeader(branch.BodylessParent);
+        }
+
+        blockTree.SuggestBlock(branch.Refused, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(branch.Refused.Hash));
+        return blockTree;
+    }
+
+    private static void ProcessRefused(IContainer container, Block refused)
+    {
+        IBlockchainProcessor processor = container.Resolve<IMainProcessingContext>().BlockchainProcessor;
+
+        Assert.Throws<InvalidBlockException>(() => processor.Process(refused, ProcessingOptions.None, NullBlockTracer.Instance));
+    }
+
+    private sealed class RefusedBranchProcessingModule(Hash256? hiddenHeader, Hash256? mainChainBlock) : Module, IMainProcessingModule
+    {
+        protected override void Load(ContainerBuilder builder) =>
+            builder.AddDecorator<IBlockTree>((_, blockTree) => new RefusedBranchBlockTree(blockTree, hiddenHeader, mainChainBlock));
+    }
+
+    private sealed class RefusedBranchBlockTree(IBlockTree inner, Hash256? hiddenHeader, Hash256? mainChainBlock) : BlockTreeTestDouble(inner)
+    {
+        public override BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == hiddenHeader ? null : base.FindHeader(blockHash, options, blockNumber);
+
+        public override bool IsMainChain(BlockHeader blockHeader) =>
+            blockHeader.Hash == mainChainBlock || base.IsMainChain(blockHeader);
     }
 
     private class ProcessingTestContext : IAsyncDisposable
@@ -288,7 +470,7 @@ public class BlockchainProcessorTests
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
             _processor = new BlockchainProcessor(_blockTree, _branchProcessor, [_recoveryStep], _stateReader, LimboLogs.Instance,
-                new BlockchainProcessor.Options { BlockProcessingTimeoutMs = blockProcessingTimeoutMs, TimeProvider = timeProvider ?? TimeProvider.System }, Substitute.For<IProcessingStats>(), new BlockTreeMutationLock());
+                new BlockchainProcessor.Options { BlockProcessingTimeoutMs = blockProcessingTimeoutMs, TimeProvider = timeProvider ?? TimeProvider.System }, Substitute.For<IProcessingStats>(), new BlockTreeMutationLock(), new BlockProcessingTracker());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
             _processor.BlockRemoved += (_, args) => Removal(args.BlockHash).TrySetResult(args.ProcessingResult);
@@ -384,8 +566,11 @@ public class BlockchainProcessorTests
             _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to fail processing");
             _branchProcessor.AllowToFail(block.Hash!);
             processedEvent.WaitOne(ProcessingWait);
-            Assert.That(wasProcessed, Is.True, $"Block was never processed {block.ToString(Block.Format.Short)}");
-            Assert.That(_blockTree.Head?.Hash, Is.EqualTo(_headBefore), $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(wasProcessed, Is.True, $"Block was never processed {block.ToString(Block.Format.Short)}");
+                Assert.That(_blockTree.Head?.Hash, Is.EqualTo(_headBefore), $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
+            }
             _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to fail processing");
             return new AfterBlock(_logManager, this, block);
         }
@@ -868,6 +1053,112 @@ public class BlockchainProcessorTests
 
         context.Processed(_block2D4).BecomesNewHead();
         await second.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Test]
+    public async Task Last_copy_removal_completes_all_removed_before_executed_copy_waiters([Values] bool processed)
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> removedWhenExecutedCopyCompletes) = ObserveInFlightRemoval(copies: 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed.IsCompleted, Is.False);
+            Assert.That(removedWhenExecutedCopyCompletes.IsCompleted, Is.False);
+        }
+
+        bool lastCopyRemoved = removeCopy(processed);
+
+        bool removedWhenExecutedCopyCompleted = await removedWhenExecutedCopyCompletes.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lastCopyRemoved, Is.True);
+            Assert.That(removedWhenExecutedCopyCompleted, Is.True,
+                "a last-copy executed waiter must already observe all copies removed when it resumes");
+        }
+    }
+
+    [Test]
+    public async Task Processed_copy_removal_releases_executed_waiters_while_another_copy_remains()
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> removedWhenExecutedCopyCompletes) = ObserveInFlightRemoval(copies: 2);
+
+        Assert.That(removeCopy(true), Is.False);
+
+        bool removedWhenExecutedCopyCompleted = await removedWhenExecutedCopyCompletes.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removedWhenExecutedCopyCompleted, Is.False,
+                "the processed copy releases its waiter without waiting for the duplicate");
+            Assert.That(removed.IsCompleted, Is.False);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removeCopy(false), Is.True);
+            Assert.That(removed.IsCompleted, Is.True);
+        }
+    }
+
+    [Test]
+    public void Removal_without_a_tracked_copy_preserves_the_count([Values] bool completed)
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> observation) = ObserveInFlightRemoval(copies: completed ? 1 : 0);
+        if (completed) Assert.That(removeCopy(false), Is.True);
+
+        Assert.That(removeCopy(true), Is.False);
+
+        object inFlight = removeCopy.Target!;
+        FieldInfo copies = inFlight.GetType().GetField("_copies", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int)copies.GetValue(inFlight)!, Is.EqualTo(completed ? -1 : 0));
+            Assert.That(removed.IsCompleted, Is.EqualTo(completed));
+            Assert.That(observation.IsCompleted, Is.EqualTo(completed));
+        }
+
+        Func<bool> addCopy = inFlight.GetType().GetMethod("TryAddCopy")!.CreateDelegate<Func<bool>>(inFlight);
+        Assert.That(addCopy(), Is.EqualTo(!completed));
+    }
+
+    [Test]
+    public async Task Last_copy_removal_keeps_late_executed_waiters_parked_until_release()
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> lateGetterWaited) = ObserveInFlightRemoval(copies: 1, observeLateGetter: true);
+
+        Assert.That(removeCopy(true), Is.True);
+
+        bool lateGetterWasWaiting = await lateGetterWaited.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lateGetterWasWaiting, Is.True,
+                "a getter arriving before the executed source is released must still wait on that source");
+            Assert.That(removed.IsCompleted, Is.True);
+        }
+    }
+
+    private static (Func<bool, bool> RemoveCopy, Task Removed, Task<bool> Observation) ObserveInFlightRemoval(int copies, bool observeLateGetter = false)
+    {
+        Type type = typeof(BlockchainProcessor).GetNestedType("InFlightBlock", BindingFlags.NonPublic)!;
+        object inFlight = Activator.CreateInstance(type, nonPublic: true)!;
+        Func<bool> addCopy = type.GetMethod("TryAddCopy")!.CreateDelegate<Func<bool>>(inFlight);
+        for (int i = 0; i < copies; i++) Assert.That(addCopy(), Is.True);
+        type.GetMethod("MarkExecuted")!.Invoke(inFlight, null);
+        if (observeLateGetter)
+            type.GetField("_removed", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(inFlight, CreateSynchronousSource());
+        Task removed = (Task)type.GetProperty("Removed")!.GetValue(inFlight)!;
+
+        TaskCompletionSource executedCopyRemoved = CreateSynchronousSource();
+        type.GetField("_executedCopyRemoved", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(inFlight, executedCopyRemoved);
+        Task<bool> observation = observeLateGetter
+            ? removed.ContinueWith(_ => !((Task)type.GetProperty("ExecutedCopyRemoved")!.GetValue(inFlight)!).IsCompleted,
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default)
+            : executedCopyRemoved.Task.ContinueWith(_ => removed.IsCompleted,
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+        return (type.GetMethod("RemoveCopy")!.CreateDelegate<Func<bool, bool>>(inFlight), removed, observation);
+
+#pragma warning disable NETH006 // Inline continuations observe the publication boundary deterministically.
+        static TaskCompletionSource CreateSynchronousSource() => new();
+#pragma warning restore NETH006
     }
 
     /// <summary>
@@ -1353,7 +1644,7 @@ public class BlockchainProcessorTests
                 return new ChainHeadInfoProvider(
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
-                    new ChainHeadReadOnlyStateProvider(blockTree, stateReader)) // Need to use the non  ChainHeadSpecProvider constructor.
+                    new ChainHeadReadOnlyStateProvider(blockTree, stateReader), ctx.Resolve<BlockProcessingTracker>()) // Need to use the non  ChainHeadSpecProvider constructor.
                 {
                     HasSynced = true
                 };

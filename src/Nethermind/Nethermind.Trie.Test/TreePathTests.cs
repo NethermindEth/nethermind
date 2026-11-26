@@ -97,8 +97,11 @@ public partial class TreePathTests
         TreePath path = new();
         TreePath newPath = path.Append(nibbles);
 
-        Assert.That(path.Length, Is.EqualTo(0));
-        Assert.That(newPath.Length, Is.EqualTo(64));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(path.Length, Is.EqualTo(0));
+            Assert.That(newPath.Length, Is.EqualTo(64));
+        }
         string asHex = newPath.Span.ToHexString();
         Assert.That(asHex, Is.EqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     }

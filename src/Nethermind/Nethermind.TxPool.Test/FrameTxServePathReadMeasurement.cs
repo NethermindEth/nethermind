@@ -58,14 +58,14 @@ public class FrameTxServePathReadMeasurement
         storage.ResetCounts();
         (TimeSpan _, long allocated) = TimeServePair(pool);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             AssertThePassAnswered();
             Assert.That(storage.FullRowReads, Is.Zero, "a warm serve must not re-read the sidecar-carrying row");
             Assert.That(storage.SidecarFreeReads, Is.Zero, "a warm serve must not read the sidecar-free record either");
             Assert.That(allocated, Is.LessThan(8 * 1024),
                 $"{FrameTxBlobMeasurementHarness.SampleTxs} warm serve pairs must answer from the pool's caches rather than decode any record");
-        });
+        }
     }
 
     [TestCase(1)]
@@ -130,7 +130,9 @@ public class FrameTxServePathReadMeasurement
         {
             ValueHash256 hash = sample.Hash!.ValueHash256;
 
+#pragma warning disable NUnit2045 // Pool reads must succeed before their returned transactions are dereferenced.
             Assert.That(pool.TryGetValueWithoutBlobs(hash, out Transaction? elided), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(elided!.Hash, Is.EqualTo(sample.Hash), "the sidecar-free read must answer with the sample itself");
             Assert.That(elided.Frames, Is.Not.Null.And.Length.EqualTo(sample.Frames!.Length), "it must keep the prefix");
             Assert.That(((ShardBlobNetworkWrapper)elided.NetworkWrapper!).Blobs, Is.Empty, "and drop the sidecar");

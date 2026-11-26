@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 
 using static System.Numerics.BitOperations;
@@ -14,10 +15,37 @@ namespace Nethermind.Core.Crypto;
 public sealed partial class KeccakHash
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial bool TryComputeHash256Into(ReadOnlySpan<byte> input, Span<byte> output) => false;
+    private static partial bool TryComputeHash256Into(ReadOnlySpan<byte> input, Span<byte> output)
+    {
+        if (!Sha3.IsSupported) return false;
+
+        ComputeHash256ArmSha3(input, output);
+        return true;
+    }
 
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
+
+    /// <summary>Whether whole 136-byte rate blocks are permuted one by one with <see cref="KeccakF1600Avx512VL"/>
+    /// rather than absorbed by <see cref="AbsorbBlocksScalar"/>: on every AVX-512VL core except AMD family 1Ah and
+    /// later. The scalar absorb was measured faster on Zen 5 only; later AMD families are assumed to follow it.</summary>
+    private static readonly bool PermutesBlocksWithAvx512VL = Avx512F.VL.IsSupported && !IsAmdZen5OrLater();
+
+    /// <summary>Whether the vendor id is <c>AuthenticAMD</c> and the CPUID family is 1Ah (Zen 5) or later.</summary>
+    private static bool IsAmdZen5OrLater()
+    {
+        const int Zen5Family = 0x1A;
+
+        (_, int ebx, int ecx, int edx) = X86Base.CpuId(0, 0);
+        ReadOnlySpan<int> vendor = [ebx, edx, ecx];
+        if (!MemoryMarshal.AsBytes(vendor).SequenceEqual("AuthenticAMD"u8))
+            return false;
+
+        int signature = X86Base.CpuId(1, 0).Eax;
+        int baseFamily = (signature >> 8) & 0xF;
+        int family = baseFamily == 0xF ? baseFamily + ((signature >> 20) & 0xFF) : baseFamily;
+        return family >= Zen5Family;
+    }
 
     /// <inheritdoc cref="KeccakHash.InitializeState" />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -32,7 +60,14 @@ public sealed partial class KeccakHash
         // run executes, so it is the one that can catch a caller the guest arm would then hash wrongly.
         Debug.Assert(!stateBytes.ContainsAnyExcept((byte)0), "the guest arm writes the first block, not XORs it");
 
-        return AbsorbFullBlocks(state, stateBytes, input, roundSize);
+        if (roundSize != HASH_DATA_AREA || PermutesBlocksWithAvx512VL)
+            return AbsorbFullBlocks(state, stateBytes, input, roundSize);
+
+        int blocks = input.Length / HASH_DATA_AREA;
+        AbsorbBlocksScalar(ref MemoryMarshal.GetReference(state), ref MemoryMarshal.GetReference(input), blocks);
+        input = input[(blocks * HASH_DATA_AREA)..];
+        AbsorbTail(stateBytes, input);
+        return input;
     }
 
     /// <inheritdoc cref="KeccakHash.ComputeHash256" />
@@ -56,6 +91,13 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static partial void NoteWitnessNodeLoaded(nint tag) { }
 
+    /// <inheritdoc cref="KeccakHash.CopyAndComputeHash256" />
+    internal static partial ValueHash256 CopyAndComputeHash256(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        source.CopyTo(destination);
+        return ComputeHash256(destination[..source.Length]);
+    }
+
     /// <inheritdoc cref="KeccakHash.DonateConsumedInput" />
     internal static partial void DonateConsumedInput(ReadOnlySpan<byte> consumed) { }
 
@@ -65,7 +107,9 @@ public sealed partial class KeccakHash
         Debug.Assert(st.Length == STATE_LANES);
 
         ref ulong state = ref MemoryMarshal.GetReference(st);
-        if (Avx512F.VL.IsSupported)
+        if (Sha3.IsSupported)
+            KeccakF1600ArmSha3(ref state);
+        else if (Avx512F.VL.IsSupported)
             KeccakF1600Avx512VL(ref state);
         else
             KeccakF1600Scalar(ref state);
@@ -73,9 +117,17 @@ public sealed partial class KeccakHash
 
     /// <summary>Portable Keccak-f[1600] permutation.</summary>
     /// <param name="state">Lane 0 of a 25-lane state; all 25 lanes are read and written.</param>
-    internal static void KeccakF1600Scalar(ref ulong state)
+    internal static void KeccakF1600Scalar(ref ulong state) =>
+        AbsorbBlocksScalar(ref state, ref Unsafe.NullRef<byte>(), 0);
+
+    /// <summary>XORs each of <paramref name="blocks"/> 136-byte rate blocks of <paramref name="input"/> into the state
+    /// and permutes after each, keeping the lanes in locals between blocks; zero blocks permutes once.</summary>
+    /// <param name="state">Lane 0 of a 25-lane state; all 25 lanes are read and written.</param>
+    internal static void AbsorbBlocksScalar(ref ulong state, ref byte input, int blocks)
     {
+        Debug.Assert(blocks >= 0);
         Span<ulong> st = MemoryMarshal.CreateSpan(ref state, STATE_LANES);
+        ref ulong roundConstants = ref MemoryMarshal.GetArrayDataReference(RoundConstants);
 
         ulong aba, abe, abi, abo, abu;
         ulong aga, age, agi, ago, agu;
@@ -116,146 +168,171 @@ public sealed partial class KeccakHash
         abe = st[1];
         aba = st[0];
 
-        for (int round = 0; round < ROUNDS; round += 2)
+        do
         {
-            // prepareTheta
-            bCa = aba ^ aga ^ aka ^ ama ^ asa;
-            bCe = abe ^ age ^ ake ^ ame ^ ase;
-            bCi = abi ^ agi ^ aki ^ ami ^ asi;
-            bCo = abo ^ ago ^ ako ^ amo ^ aso;
-            bCu = abu ^ agu ^ aku ^ amu ^ asu;
+            if (blocks != 0)
+            {
+                aba ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 0));
+                abe ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 8));
+                abi ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 16));
+                abo ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 24));
+                abu ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 32));
+                aga ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 40));
+                age ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 48));
+                agi ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 56));
+                ago ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 64));
+                agu ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 72));
+                aka ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 80));
+                ake ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 88));
+                aki ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 96));
+                ako ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 104));
+                aku ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 112));
+                ama ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 120));
+                ame ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input, 128));
+                input = ref Unsafe.Add(ref input, HASH_DATA_AREA);
+            }
 
-            // thetaRhoPiChiIotaPrepareTheta(round  , A, E)
-            da = bCu ^ RotateLeft(bCe, 1);
-            de = bCa ^ RotateLeft(bCi, 1);
-            di = bCe ^ RotateLeft(bCo, 1);
-            @do = bCi ^ RotateLeft(bCu, 1);
-            du = bCo ^ RotateLeft(bCa, 1);
+            for (int round = 0; round < ROUNDS; round += 2)
+            {
+                // prepareTheta
+                bCa = aba ^ aga ^ aka ^ ama ^ asa;
+                bCe = abe ^ age ^ ake ^ ame ^ ase;
+                bCi = abi ^ agi ^ aki ^ ami ^ asi;
+                bCo = abo ^ ago ^ ako ^ amo ^ aso;
+                bCu = abu ^ agu ^ aku ^ amu ^ asu;
 
-            bCa = aba ^ da;
-            bCe = RotateLeft(age ^ de, 44);
-            bCi = RotateLeft(aki ^ di, 43);
-            eba = bCa ^ ((~bCe) & bCi) ^ RoundConstants[round];
-            bCo = RotateLeft(amo ^ @do, 21);
-            ebe = bCe ^ ((~bCi) & bCo);
-            bCu = RotateLeft(asu ^ du, 14);
-            ebi = bCi ^ ((~bCo) & bCu);
-            ebo = bCo ^ ((~bCu) & bCa);
-            ebu = bCu ^ ((~bCa) & bCe);
+                // thetaRhoPiChiIotaPrepareTheta(round  , A, E)
+                da = bCu ^ RotateLeft(bCe, 1);
+                de = bCa ^ RotateLeft(bCi, 1);
+                di = bCe ^ RotateLeft(bCo, 1);
+                @do = bCi ^ RotateLeft(bCu, 1);
+                du = bCo ^ RotateLeft(bCa, 1);
 
-            bCa = RotateLeft(abo ^ @do, 28);
-            bCe = RotateLeft(agu ^ du, 20);
-            bCi = RotateLeft(aka ^ da, 3);
-            ega = bCa ^ ((~bCe) & bCi);
-            bCo = RotateLeft(ame ^ de, 45);
-            ege = bCe ^ ((~bCi) & bCo);
-            bCu = RotateLeft(asi ^ di, 61);
-            egi = bCi ^ ((~bCo) & bCu);
-            ego = bCo ^ ((~bCu) & bCa);
-            egu = bCu ^ ((~bCa) & bCe);
+                bCa = aba ^ da;
+                bCe = RotateLeft(age ^ de, 44);
+                bCi = RotateLeft(aki ^ di, 43);
+                eba = bCa ^ ((~bCe) & bCi) ^ Unsafe.Add(ref roundConstants, round);
+                bCo = RotateLeft(amo ^ @do, 21);
+                ebe = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(asu ^ du, 14);
+                ebi = bCi ^ ((~bCo) & bCu);
+                ebo = bCo ^ ((~bCu) & bCa);
+                ebu = bCu ^ ((~bCa) & bCe);
 
-            bCa = RotateLeft(abe ^ de, 1);
-            bCe = RotateLeft(agi ^ di, 6);
-            bCi = RotateLeft(ako ^ @do, 25);
-            eka = bCa ^ ((~bCe) & bCi);
-            bCo = RotateLeft(amu ^ du, 8);
-            eke = bCe ^ ((~bCi) & bCo);
-            bCu = RotateLeft(asa ^ da, 18);
-            eki = bCi ^ ((~bCo) & bCu);
-            eko = bCo ^ ((~bCu) & bCa);
-            eku = bCu ^ ((~bCa) & bCe);
+                bCa = RotateLeft(abo ^ @do, 28);
+                bCe = RotateLeft(agu ^ du, 20);
+                bCi = RotateLeft(aka ^ da, 3);
+                ega = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(ame ^ de, 45);
+                ege = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(asi ^ di, 61);
+                egi = bCi ^ ((~bCo) & bCu);
+                ego = bCo ^ ((~bCu) & bCa);
+                egu = bCu ^ ((~bCa) & bCe);
 
-            bCa = RotateLeft(abu ^ du, 27);
-            bCe = RotateLeft(aga ^ da, 36);
-            bCi = RotateLeft(ake ^ de, 10);
-            ema = bCa ^ ((~bCe) & bCi);
-            bCo = RotateLeft(ami ^ di, 15);
-            eme = bCe ^ ((~bCi) & bCo);
-            bCu = RotateLeft(aso ^ @do, 56);
-            emi = bCi ^ ((~bCo) & bCu);
-            emo = bCo ^ ((~bCu) & bCa);
-            emu = bCu ^ ((~bCa) & bCe);
+                bCa = RotateLeft(abe ^ de, 1);
+                bCe = RotateLeft(agi ^ di, 6);
+                bCi = RotateLeft(ako ^ @do, 25);
+                eka = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(amu ^ du, 8);
+                eke = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(asa ^ da, 18);
+                eki = bCi ^ ((~bCo) & bCu);
+                eko = bCo ^ ((~bCu) & bCa);
+                eku = bCu ^ ((~bCa) & bCe);
 
-            bCa = RotateLeft(abi ^ di, 62);
-            bCe = RotateLeft(ago ^ @do, 55);
-            bCi = RotateLeft(aku ^ du, 39);
-            esa = bCa ^ ((~bCe) & bCi);
-            bCo = RotateLeft(ama ^ da, 41);
-            ese = bCe ^ ((~bCi) & bCo);
-            bCu = RotateLeft(ase ^ de, 2);
-            esi = bCi ^ ((~bCo) & bCu);
-            eso = bCo ^ ((~bCu) & bCa);
-            esu = bCu ^ ((~bCa) & bCe);
+                bCa = RotateLeft(abu ^ du, 27);
+                bCe = RotateLeft(aga ^ da, 36);
+                bCi = RotateLeft(ake ^ de, 10);
+                ema = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(ami ^ di, 15);
+                eme = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(aso ^ @do, 56);
+                emi = bCi ^ ((~bCo) & bCu);
+                emo = bCo ^ ((~bCu) & bCa);
+                emu = bCu ^ ((~bCa) & bCe);
 
-            // prepareTheta
-            bCe = ebe ^ ege ^ eke ^ eme ^ ese;
-            bCu = ebu ^ egu ^ eku ^ emu ^ esu;
+                bCa = RotateLeft(abi ^ di, 62);
+                bCe = RotateLeft(ago ^ @do, 55);
+                bCi = RotateLeft(aku ^ du, 39);
+                esa = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(ama ^ da, 41);
+                ese = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(ase ^ de, 2);
+                esi = bCi ^ ((~bCo) & bCu);
+                eso = bCo ^ ((~bCu) & bCa);
+                esu = bCu ^ ((~bCa) & bCe);
 
-            // thetaRhoPiChiIotaPrepareTheta(round+1, E, A)
-            da = bCu ^ RotateLeft(bCe, 1);
-            bCa = eba ^ ega ^ eka ^ ema ^ esa;
-            bCi = ebi ^ egi ^ eki ^ emi ^ esi;
-            de = bCa ^ RotateLeft(bCi, 1);
-            bCo = ebo ^ ego ^ eko ^ emo ^ eso;
-            di = bCe ^ RotateLeft(bCo, 1);
-            @do = bCi ^ RotateLeft(bCu, 1);
-            du = bCo ^ RotateLeft(bCa, 1);
+                // prepareTheta
+                bCe = ebe ^ ege ^ eke ^ eme ^ ese;
+                bCu = ebu ^ egu ^ eku ^ emu ^ esu;
 
-            bCi = RotateLeft(eki ^ di, 43);
-            bCe = RotateLeft(ege ^ de, 44);
-            bCa = eba ^ da;
-            aba = bCa ^ ((~bCe) & bCi) ^ RoundConstants[round + 1];
-            bCo = RotateLeft(emo ^ @do, 21);
-            abe = bCe ^ ((~bCi) & bCo);
-            bCu = RotateLeft(esu ^ du, 14);
-            abi = bCi ^ ((~bCo) & bCu);
-            abo = bCo ^ ((~bCu) & bCa);
-            abu = bCu ^ ((~bCa) & bCe);
+                // thetaRhoPiChiIotaPrepareTheta(round+1, E, A)
+                da = bCu ^ RotateLeft(bCe, 1);
+                bCa = eba ^ ega ^ eka ^ ema ^ esa;
+                bCi = ebi ^ egi ^ eki ^ emi ^ esi;
+                de = bCa ^ RotateLeft(bCi, 1);
+                bCo = ebo ^ ego ^ eko ^ emo ^ eso;
+                di = bCe ^ RotateLeft(bCo, 1);
+                @do = bCi ^ RotateLeft(bCu, 1);
+                du = bCo ^ RotateLeft(bCa, 1);
 
-            bCa = RotateLeft(ebo ^ @do, 28);
-            bCe = RotateLeft(egu ^ du, 20);
-            bCi = RotateLeft(eka ^ da, 3);
-            aga = bCa ^ ((~bCe) & bCi);
-            bCo = RotateLeft(eme ^ de, 45);
-            age = bCe ^ ((~bCi) & bCo);
-            bCu = RotateLeft(esi ^ di, 61);
-            agi = bCi ^ ((~bCo) & bCu);
-            ago = bCo ^ ((~bCu) & bCa);
-            agu = bCu ^ ((~bCa) & bCe);
+                bCi = RotateLeft(eki ^ di, 43);
+                bCe = RotateLeft(ege ^ de, 44);
+                bCa = eba ^ da;
+                aba = bCa ^ ((~bCe) & bCi) ^ Unsafe.Add(ref roundConstants, round + 1);
+                bCo = RotateLeft(emo ^ @do, 21);
+                abe = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(esu ^ du, 14);
+                abi = bCi ^ ((~bCo) & bCu);
+                abo = bCo ^ ((~bCu) & bCa);
+                abu = bCu ^ ((~bCa) & bCe);
 
-            bCa = RotateLeft(ebe ^ de, 1);
-            bCe = RotateLeft(egi ^ di, 6);
-            bCi = RotateLeft(eko ^ @do, 25);
-            aka = bCa ^ ((~bCe) & bCi);
-            bCo = RotateLeft(emu ^ du, 8);
-            ake = bCe ^ ((~bCi) & bCo);
-            bCu = RotateLeft(esa ^ da, 18);
-            aki = bCi ^ ((~bCo) & bCu);
-            ako = bCo ^ ((~bCu) & bCa);
-            aku = bCu ^ ((~bCa) & bCe);
+                bCa = RotateLeft(ebo ^ @do, 28);
+                bCe = RotateLeft(egu ^ du, 20);
+                bCi = RotateLeft(eka ^ da, 3);
+                aga = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(eme ^ de, 45);
+                age = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(esi ^ di, 61);
+                agi = bCi ^ ((~bCo) & bCu);
+                ago = bCo ^ ((~bCu) & bCa);
+                agu = bCu ^ ((~bCa) & bCe);
 
-            bCa = RotateLeft(ebu ^ du, 27);
-            bCe = RotateLeft(ega ^ da, 36);
-            bCi = RotateLeft(eke ^ de, 10);
-            ama = bCa ^ ((~bCe) & bCi);
-            bCo = RotateLeft(emi ^ di, 15);
-            ame = bCe ^ ((~bCi) & bCo);
-            bCu = RotateLeft(eso ^ @do, 56);
-            ami = bCi ^ ((~bCo) & bCu);
-            amo = bCo ^ ((~bCu) & bCa);
-            amu = bCu ^ ((~bCa) & bCe);
+                bCa = RotateLeft(ebe ^ de, 1);
+                bCe = RotateLeft(egi ^ di, 6);
+                bCi = RotateLeft(eko ^ @do, 25);
+                aka = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(emu ^ du, 8);
+                ake = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(esa ^ da, 18);
+                aki = bCi ^ ((~bCo) & bCu);
+                ako = bCo ^ ((~bCu) & bCa);
+                aku = bCu ^ ((~bCa) & bCe);
 
-            bCa = RotateLeft(ebi ^ di, 62);
-            bCe = RotateLeft(ego ^ @do, 55);
-            bCi = RotateLeft(eku ^ du, 39);
-            asa = bCa ^ ((~bCe) & bCi);
-            bCo = RotateLeft(ema ^ da, 41);
-            ase = bCe ^ ((~bCi) & bCo);
-            bCu = RotateLeft(ese ^ de, 2);
-            asi = bCi ^ ((~bCo) & bCu);
-            aso = bCo ^ ((~bCu) & bCa);
-            asu = bCu ^ ((~bCa) & bCe);
-        }
+                bCa = RotateLeft(ebu ^ du, 27);
+                bCe = RotateLeft(ega ^ da, 36);
+                bCi = RotateLeft(eke ^ de, 10);
+                ama = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(emi ^ di, 15);
+                ame = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(eso ^ @do, 56);
+                ami = bCi ^ ((~bCo) & bCu);
+                amo = bCo ^ ((~bCu) & bCa);
+                amu = bCu ^ ((~bCa) & bCe);
+
+                bCa = RotateLeft(ebi ^ di, 62);
+                bCe = RotateLeft(ego ^ @do, 55);
+                bCi = RotateLeft(eku ^ du, 39);
+                asa = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(ema ^ da, 41);
+                ase = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(ese ^ de, 2);
+                asi = bCi ^ ((~bCo) & bCu);
+                aso = bCo ^ ((~bCu) & bCa);
+                asu = bCu ^ ((~bCa) & bCe);
+            }
+        } while (--blocks > 0);
 
         // copyToState(state, A)
         st[24] = asu;

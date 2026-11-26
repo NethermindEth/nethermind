@@ -3,8 +3,8 @@
 
 using System.Collections.Generic;
 using DotNetty.Buffers;
-using DotNetty.Codecs;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -18,7 +18,6 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCaseSource(nameof(TotalPacketSizeExceedsLimitInvalidCases))]
         public bool Throws_when_total_packet_size_exceeds_limit(int frameSize, long totalPacketSize)
         {
-            FrameHeaderReader reader = new();
             using DisposableByteBuffer buffer = Unpooled.Buffer(Frame.HeaderSize).AsDisposable();
 
             try
@@ -28,18 +27,20 @@ namespace Nethermind.Network.Test.Rlpx
                 buffer.WriteByte(frameSize);
 
                 int contentLength = Rlp.LengthOf(0) + Rlp.LengthOf(1) + Rlp.LengthOf(totalPacketSize);
-                buffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-                ByteBufferRlpWriter writer = new(buffer);
-                writer.StartSequence(contentLength);
+                int length = Rlp.LengthOfSequence(contentLength);
+                RlpWriter writer = buffer.StartRlpWrite(length);
+                RlpSequence sequence = writer.StartSequence(contentLength);
                 writer.Encode(0);
                 writer.Encode(1);
                 writer.Encode(totalPacketSize);
+                writer.EndSequence(sequence);
+                buffer.CompleteRlpWrite(writer, length);
 
                 buffer.WriteZero(Frame.HeaderSize - buffer.WriterIndex);
 
-                reader.ReadFrameHeader(buffer);
+                FrameHeaderReader.ReadFrameHeader(buffer.AsSpan());
             }
-            catch (CorruptedFrameException)
+            catch (InvalidFrameException)
             {
                 return false;
             }
@@ -66,7 +67,6 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCaseSource(nameof(MalformedHeaderBodyPrefixes))]
         public void Throws_corrupted_frame_when_rlp_header_body_is_malformed(byte[] headerBodyPrefix)
         {
-            FrameHeaderReader reader = new();
             using DisposableByteBuffer buffer = Unpooled.Buffer(Frame.HeaderSize).AsDisposable();
 
             const int frameSize = 1;
@@ -77,8 +77,8 @@ namespace Nethermind.Network.Test.Rlpx
             buffer.WriteBytes(headerBodyPrefix);
             buffer.WriteZero(Frame.HeaderSize - buffer.WriterIndex);
 
-            Assert.That(() => reader.ReadFrameHeader(buffer),
-                Throws.InstanceOf<CorruptedFrameException>(),
+            Assert.That(() => FrameHeaderReader.ReadFrameHeader(buffer.AsSpan()),
+                Throws.InstanceOf<InvalidFrameException>(),
                 "malformed header body RLP must be rejected as corrupted frame");
         }
 

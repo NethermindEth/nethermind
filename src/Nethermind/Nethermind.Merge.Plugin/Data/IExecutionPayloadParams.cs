@@ -154,7 +154,9 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Fail;
         }
 
-        if (transactionCountGuard is not null && !transactionCountGuard.IsWithinParentGasLimit(executionPayload, spec, out error, out latestValidHash))
+        bool isParentUnknown = false;
+        ulong boundedGasLimit = executionPayload.GasLimit;
+        if (transactionCountGuard is not null && !transactionCountGuard.IsWithinParentGasLimit(executionPayload, spec, out error, out latestValidHash, out isParentUnknown, out boundedGasLimit))
         {
             return ValidationResult.Invalid;
         }
@@ -174,11 +176,15 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                     return ValidationResult.Invalid;
                 }
 
+                bool isOverItemLimit = false;
                 bool decoded = executionPayload is ExecutionPayloadV4 executionPayloadV4
-                    ? executionPayloadV4.TryDecodeBlockAccessList(out _, out error)
-                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, out _, out error);
+                    ? isParentUnknown
+                        ? executionPayloadV4.TryDeferBlockAccessListDecode(out error)
+                        : executionPayloadV4.TryDecodeBlockAccessList(boundedGasLimit, out _, out error, out isOverItemLimit)
+                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, boundedGasLimit, out _, out error, out isOverItemLimit);
                 if (!decoded)
                 {
+                    if (isOverItemLimit) latestValidHash = transactionCountGuard?.GetLatestValidHashOfInvalidChild(executionPayload.ParentHash);
                     return ValidationResult.Invalid;
                 }
             }
@@ -208,7 +214,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 return ValidationResult.Invalid;
             }
 
-            if (reconstructedBlock.Data.CalculateHash() == executionPayload.BlockHash)
+            if (reconstructedBlock.Data.Header.CalculateValueHash() == executionPayload.BlockHash)
             {
                 error = "Block access list must not be set before engine_newPayloadV5";
                 return ValidationResult.Fail;

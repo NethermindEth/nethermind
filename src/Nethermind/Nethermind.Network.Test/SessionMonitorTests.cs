@@ -5,13 +5,13 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Transport.Channels;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -66,8 +66,11 @@ namespace Nethermind.Network.Test
             await _pingSender.Received().SendPing();
             await _noPong.Received().SendPing();
 
-            Assert.That(session1.State, Is.EqualTo(SessionState.Initialized));
-            Assert.That(session2.State, Is.EqualTo(SessionState.Disconnected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session1.State, Is.EqualTo(SessionState.Initialized));
+                Assert.That(session2.State, Is.EqualTo(SessionState.Disconnected));
+            }
         }
 
         [Test]
@@ -98,9 +101,12 @@ namespace Nethermind.Network.Test
                 Assert.That(() => unresponsive.IsClosing, Is.True.After(10_000, 20));
                 Assert.That(() => reason, Is.EqualTo(DisconnectReason.ReceiveMessageTimeout).After(5_000, 20),
                     "the reason selects the reconnect delay and lets the privileged-node gate reap dead static sessions");
-                Assert.That(disconnectedAt - lastPong, Is.GreaterThanOrEqualTo(6 * TimeSpan.FromMilliseconds(networkConfig.P2PPingInterval)),
-                    "the window is measured from the last pong, so the first missed pongs have to be tolerated");
-                Assert.That(responsive.IsClosing, Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(disconnectedAt - lastPong, Is.GreaterThanOrEqualTo(6 * TimeSpan.FromMilliseconds(networkConfig.P2PPingInterval)),
+                        "the window is measured from the last pong, so the first missed pongs have to be tolerated");
+                    Assert.That(responsive.IsClosing, Is.False);
+                }
             }
             finally
             {
@@ -144,12 +150,12 @@ namespace Nethermind.Network.Test
 
         private ISession CreateSession(IPingSender pingSender)
         {
-            ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            ISession session = new Session(30312, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.RemoteHost = "1.2.3.4";
             session.RemotePort = 12345;
             session.PingSender = pingSender;
             session.Handshake(TestItem.PublicKeyB);
-            session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());
+            session.Init(5, Substitute.For<IPacketSender>());
             return session;
         }
 
@@ -179,12 +185,12 @@ namespace Nethermind.Network.Test
 
         private ISession CreateUnresponsiveSession()
         {
-            ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            ISession session = new Session(30312, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.RemoteHost = "1.2.3.4";
             session.RemotePort = 12345;
             session.PingSender = _noPong;
             session.Handshake(TestItem.PublicKeyB);
-            session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());
+            session.Init(5, Substitute.For<IPacketSender>());
             return session;
         }
     }

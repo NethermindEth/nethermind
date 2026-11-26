@@ -80,7 +80,7 @@ public static class InclusionListValidator
     private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, in Profile2Inputs profile2)
     {
         // Index the first copy of each hash; included copies satisfy every occurrence in the IL.
-        Dictionary<Hash256, int> ilByHash = new(il.Length);
+        Dictionary<Hash256, int> ilByHash = [with(il.Length)];
         for (int i = 0; i < il.Length; i++)
         {
             Hash256? h = il[i].Hash;

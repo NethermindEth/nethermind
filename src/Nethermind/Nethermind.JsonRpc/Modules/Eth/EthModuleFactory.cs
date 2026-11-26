@@ -7,6 +7,7 @@ using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Filters;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
@@ -27,6 +28,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ILogManager logManager,
         IStateReader stateReader,
         IBlockchainBridgeFactory blockchainBridgeFactory,
+        FilterStore filterStore,
+        FilterManager filterManager,
         ISpecProvider specProvider,
         [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IGasPriceOracle gasPriceOracle,
@@ -48,6 +51,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public override IEthRpcModule Create() => new EthRpcModule(
                 config,
                 blockchainBridgeFactory.CreateBlockchainBridge(),
+                filterStore,
+                filterManager,
                 _blockTree,
                 blockTree,
                 receiptFinder,

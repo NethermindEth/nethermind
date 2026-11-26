@@ -372,7 +372,7 @@ public partial class EngineModuleTests
         .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(1_000_000)
         .WithType(TxType.EIP1559).WithTo(Profile2Sender).WithData([1]).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
-    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
     // Called with calldata it sets slot 0; as a VERIFY frame it approves only once slot 0 is nonzero.
     private static readonly byte[] ApproveOnceSlotIsSet =

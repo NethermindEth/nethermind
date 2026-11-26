@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Check Docker Hub OIDC availability
         id: dockerhub
@@ -50,6 +50,8 @@ jobs:
         # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
         # id-token: write); those runs pull anonymously as before.
         if: steps.dockerhub.outputs.available == 'true'
+        # A failed login falls back to anonymous pulls instead of failing the job
+        continue-on-error: true
         uses: docker/login-action@v4
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
@@ -90,7 +92,7 @@ jobs:
 
           curl -fsSL "$CATALOG_ROOT/batches.jsonl" -o "$SUMMARY_DIR/batches.jsonl"
 
-          python3 - "$SUMMARY_DIR/batches.jsonl" "$GITHUB_OUTPUT" <<'PY'
+          python3 - "$SUMMARY_DIR/batches.jsonl" "$SUMMARY_DIR/chunks.json" "$GITHUB_OUTPUT" <<'PY'
           import json
           import math
           import os
@@ -117,7 +119,7 @@ jobs:
           ]
           MAX_TIMEOUT_MINUTES = 360
 
-          batches_path, output_path = sys.argv[1:]
+          batches_path, chunks_path, output_path = sys.argv[1:]
           with open(batches_path, encoding="utf-8") as file:
               batches = [json.loads(line) for line in file if line.strip()]
 
@@ -126,6 +128,8 @@ jobs:
 
           run_number = int(os.environ["RUN_NUMBER"])
           include = []
+          # The batch lists travel as an artifact: in the matrix they outgrew GitHub's 1 MiB job-output limit.
+          chunks = []
           for guest in GUESTS:
               stride = guest["batch_stride"]
               selected = batches[run_number % stride::stride]
@@ -139,21 +143,32 @@ jobs:
                       "selection": "all available batches" if stride == 1 else f"1 in {stride} batches, offset {run_number % stride}",
                       "range": f"{chunk[0]['batchStartBlock']}-{chunk[-1]['batchEndBlock']}",
                       "timeout": min(MAX_TIMEOUT_MINUTES, sum(batch["artifactCount"] for batch in chunk) * guest["minutes_per_block"]),
-                      "batches": [
-                          {"path": batch["path"], "sha256": batch["sha256"]}
-                          for batch in chunk
-                      ],
+                      "chunk": len(chunks),
                   })
+                  chunks.append([
+                      {"path": batch["path"], "sha256": batch["sha256"]}
+                      for batch in chunk
+                  ])
 
           outputs = {
               "matrix": json.dumps({"include": include}, separators=(",", ":")),
               "selected_count": str(len(batches)),
           }
 
+          with open(chunks_path, "w", encoding="utf-8") as file:
+              json.dump(chunks, file, separators=(",", ":"))
           with open(output_path, "a", encoding="utf-8") as file:
               for name, value in outputs.items():
                   file.write(f"{name}={value}\n")
           PY
+
+      - name: Upload batch selection
+        uses: actions/upload-artifact@v7
+        with:
+          name: stateless-glamsterdam-batches
+          path: ${{ env.SUMMARY_DIR }}/chunks.json
+          if-no-files-found: error
+          retention-days: 1
 
   test:
     name: Run ${{ matrix.vm }} blocks ${{ matrix.range }}
@@ -180,6 +195,12 @@ jobs:
           name: nethermind-${{ matrix.vm }}
           path: src/Nethermind/${{ matrix.project }}/bin
 
+      - name: Download batch selection
+        uses: actions/download-artifact@v8
+        with:
+          name: stateless-glamsterdam-batches
+          path: ${{ runner.temp }}/batch-selection
+
       - name: Check Docker Hub OIDC availability
         id: dockerhub
         env:
@@ -191,6 +212,8 @@ jobs:
         # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
         # id-token: write); those runs pull anonymously as before.
         if: steps.dockerhub.outputs.available == 'true'
+        # A failed login falls back to anonymous pulls instead of failing the job
+        continue-on-error: true
         uses: docker/login-action@v4
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
@@ -212,7 +235,8 @@ jobs:
           SELECTION: ${{ matrix.selection }}
           BLOCK_TIMEOUT: ${{ matrix.block_timeout }}
           BATCH_RANGE: ${{ matrix.range }}
-          BATCHES_JSON: ${{ toJSON(matrix.batches) }}
+          BATCH_CHUNK: ${{ matrix.chunk }}
+          BATCHES_FILE: ${{ runner.temp }}/batch-selection/chunks.json
         run: |
           set -euo pipefail
 
@@ -273,6 +297,9 @@ jobs:
 
             rm -rf "$archive" "$batch_dir"
           }
+
+          # The loop below reads jq through a process substitution, which set -e cannot see fail.
+          jq -e --argjson chunk "$BATCH_CHUNK" '.[$chunk] | length > 0' "$BATCHES_FILE" > /dev/null
 
           while IFS= read -r batch; do
             archive_path="$(jq -r '.path' <<< "$batch")"
@@ -391,7 +418,7 @@ jobs:
             done < <(jq -c '.artifacts[]' "$batch_manifest")
 
             rm -rf "$archive" "$batch_dir"
-          done < <(jq -c '.[]' <<< "$BATCHES_JSON")
+          done < <(jq -c --argjson chunk "$BATCH_CHUNK" '.[$chunk][]' "$BATCHES_FILE")
 
           {
             echo

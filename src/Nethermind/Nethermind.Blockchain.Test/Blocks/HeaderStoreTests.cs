@@ -3,6 +3,9 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -11,12 +14,19 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Blockchain.Test.Blocks;
 
@@ -31,17 +41,26 @@ public class HeaderStoreTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         BlockHeader header2 = Build.A.BlockHeader.WithNumber(102).TestObject;
 
-        Assert.That(store.Get(header.Hash!), Is.Null);
-        Assert.That(store.Get(header2.Hash!), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(header.Hash!), Is.Null);
+            Assert.That(store.Get(header2.Hash!), Is.Null);
+        }
 
         store.Insert(header);
-        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
-        Assert.That(store.Get(header.Hash!, blockNumber: header.Number)!.Hash, Is.EqualTo(header.Hash!));
-        Assert.That(store.Get(header2.Hash!), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+            Assert.That(store.Get(header.Hash!, blockNumber: header.Number)!.Hash, Is.EqualTo(header.Hash!));
+            Assert.That(store.Get(header2.Hash!), Is.Null);
+        }
 
         store.Insert(header2);
-        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
-        Assert.That(store.Get(header2.Hash!, blockNumber: header2.Number)!.Hash, Is.EqualTo(header2.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+            Assert.That(store.Get(header2.Hash!, blockNumber: header2.Number)!.Hash, Is.EqualTo(header2.Hash!));
+        }
     }
 
     [Test]
@@ -51,7 +70,7 @@ public class HeaderStoreTests
         HeaderStore store = new(headerDb, new MemDb());
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
+        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header));
 
         Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
     }
@@ -84,7 +103,7 @@ public class HeaderStoreTests
         HeaderStore store = new(headerDb, new MemDb());
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
+        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header));
 
         store.Delete(header.Hash!);
         Assert.That(store.Get(header.Hash!)!, Is.Null);
@@ -100,8 +119,11 @@ public class HeaderStoreTests
         context.AssertReads(() =>
         {
             BlockHeader? result = context.Store.Get(context.Header.Hash!);
-            Assert.That(result?.Hash, Is.EqualTo(persisted ? context.Header.Hash : null));
-            Assert.That(result, Is.Not.SameAs(context.Header));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result?.Hash, Is.EqualTo(persisted ? context.Header.Hash : null));
+                Assert.That(result, Is.Not.SameAs(context.Header));
+            }
         }, numberReads: 1, headerReads: 1);
     }
 
@@ -119,7 +141,7 @@ public class HeaderStoreTests
         [Values] bool legacyKey, [Values] bool shouldCache)
     {
         using HeaderStoreFixture context = new(persisted: !legacyKey);
-        if (legacyKey) context.HeaderDb.Set(context.Header.Hash!, new HeaderDecoder().Encode(context.Header).Bytes);
+        if (legacyKey) context.HeaderDb.Set(context.Header.Hash!, new HeaderDecoder().Encode(context.Header));
 
         for (int i = 0; i < 2; i++)
         {
@@ -131,10 +153,10 @@ public class HeaderStoreTests
     }
 
     [Test]
-    public void Malformed_block_number_entry([Values] bool cached)
+    public void Malformed_block_number_entry([Values] bool cached, [Values(7, 9)] int length)
     {
         using HeaderStoreFixture context = new(persisted: true, cached: cached);
-        context.BlockNumberDb.Set(context.Header.Hash!, new byte[7]);
+        context.BlockNumberDb.Set(context.Header.Hash!, new byte[length]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -156,8 +178,81 @@ public class HeaderStoreTests
     }
 
     [Test]
+    public async Task GetBlockNumbers_resolves_each_block_as_GetBlockNumber_does([Values] bool batching)
+    {
+        MemDb headerDb = new();
+        MemDb blockNumberDb = batching ? new BatchReadMemDb() : new MemDb();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        using IContainer container = BuildContainer(headerDb, blockNumberDb, writer);
+        IHeaderStore store = container.Resolve<IHeaderStore>();
+        BlockHeader stored = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader hashOnly = Build.A.BlockHeader.WithNumber(101).TestObject;
+        BlockHeader pending = Build.A.BlockHeader.WithNumber(102).TestObject;
+        BlockHeader emptyNumber = Build.A.BlockHeader.WithNumber(103).TestObject;
+        store.Insert(stored);
+        headerDb.Set(hashOnly.Hash!, new HeaderDecoder().Encode(hashOnly));
+        headerDb.Set(emptyNumber.Hash!, new HeaderDecoder().Encode(emptyNumber));
+        blockNumberDb.Set(emptyNumber.Hash!, Array.Empty<byte>());
+        store.InsertDeferred(pending);
+        ValueHash256[] hashes = [pending.Hash!, TestItem.KeccakA, hashOnly.Hash!, stored.Hash!, emptyNumber.Hash!];
+
+        ulong?[] numbers = new ulong?[hashes.Length];
+        store.GetBlockNumbers(hashes, numbers);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(numbers, Is.EqualTo(new ulong?[] { 102, null, 101, 100, 103 }));
+            Assert.That(numbers, Is.EqualTo(hashes.Select(h => store.GetBlockNumber(new Hash256(h)))));
+            if (blockNumberDb is BatchReadMemDb batch) Assert.That(batch.BatchReads, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task GetBlockNumbers_rejects_a_malformed_block_number_entry([Values] bool batching, [Values(7, 9)] int length)
+    {
+        MemDb blockNumberDb = batching ? new BatchReadMemDb() : new MemDb();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        using IContainer container = BuildContainer(new MemDb(), blockNumberDb, writer);
+        IHeaderStore store = container.Resolve<IHeaderStore>();
+        blockNumberDb.Set(TestItem.KeccakA, new byte[length]);
+
+        Assert.Throws<InvalidDataException>(() => store.GetBlockNumbers([TestItem.KeccakA.ValueHash256], new ulong?[1]));
+    }
+
+    [Test]
+    public async Task Block_number_of_an_unknown_hash_reads_each_database_once([Values] bool batched)
+    {
+        MemDb headerDb = new();
+        MemDb blockNumberDb = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        using IContainer container = BuildContainer(headerDb, blockNumberDb, writer);
+        IHeaderStore store = container.Resolve<IHeaderStore>();
+
+        ulong?[] numbers = new ulong?[1];
+        if (batched) store.GetBlockNumbers([TestItem.KeccakA.ValueHash256], numbers);
+        else numbers[0] = store.GetBlockNumber(TestItem.KeccakA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(numbers[0], Is.Null);
+            Assert.That(blockNumberDb.ReadsCount, Is.EqualTo(1), "block number reads");
+            Assert.That(headerDb.ReadsCount, Is.EqualTo(1), "header reads");
+        }
+    }
+
+    private static IContainer BuildContainer(MemDb headerDb, MemDb blockNumberDb, DeferredBlockDataWriter writer)
+    {
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new TestNethermindModule());
+        builder.RegisterInstance(headerDb).Keyed<IDb>(DbNames.Headers);
+        builder.RegisterInstance(blockNumberDb).Keyed<IDb>(DbNames.BlockNumbers);
+        builder.RegisterInstance(writer).As<IDeferredBlockDataWriter>().ExternallyOwned();
+        return builder.Build();
+    }
+
+    [Test]
     public void GetIfBloomMatches_decodes_only_a_header_whose_bloom_matches(
-        [Values] bool cached, [Values] bool legacyKey, [Values] bool matches)
+        [Values] bool cached, [Values] bool legacyKey, [Values] bool matches, [Values] bool byValueHash)
     {
         CountingHeaderDecoder decoder = new();
         MemDb headerDb = new();
@@ -165,12 +260,15 @@ public class HeaderStoreTests
         Bloom bloom = new();
         bloom.Set(TestItem.AddressA.Bytes);
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithBloom(bloom).TestObject;
-        if (legacyKey) headerDb.Set(header.Hash!, decoder.Encode(header).Bytes);
+        if (legacyKey) headerDb.Set(header.Hash!, decoder.Encode(header));
         else store.Insert(header);
         if (cached) store.Cache(header);
         Address address = matches ? TestItem.AddressA : TestItem.AddressB;
 
-        BlockHeader? result = store.GetIfBloomMatches(header.Hash!, header.Number, b => new BloomStructRef(b).Matches(address.Bytes), out bool found);
+        Func<ReadOnlySpan<byte>, bool> bloomMatches = b => new BloomStructRef(b).Matches(address.Bytes);
+        BlockHeader? result = byValueHash
+            ? store.GetIfBloomMatches(in header.Hash!.ValueHash256, header.Number, bloomMatches, out bool found)
+            : store.GetIfBloomMatches(header.Hash!, header.Number, bloomMatches, out found);
 
         using (Assert.EnterMultipleScope())
         {
@@ -213,6 +311,157 @@ public class HeaderStoreTests
             Assert.That(found, Is.True);
             Assert.That(result?.Bloom, Is.SameAs(Bloom.ZeroLength));
         }
+    }
+
+    public enum HeaderSource { NumberedKey, HashKey, Cache }
+
+    /// <param name="storeDecoder">Whether the decoder asked for is the store decoder, so that the stored encoding is copied.</param>
+    /// <param name="native">Whether the database serves native slices, as RocksDB does.</param>
+    [Test]
+    public void TryAppendRlp_appends_the_encoding_whose_hash_is_the_block_hash(
+        [Values] HeaderSource source,
+        [Values] bool prague,
+        [Values] bool storeDecoder,
+        [Values] bool native)
+    {
+        using TestMemDb headerDb = native ? new PinnedTestDb() : new TestMemDb();
+        CountingHeaderDecoder decoder = new();
+        HeaderStore store = new(headerDb, new MemDb(), decoder);
+        BlockHeaderBuilder builder = Build.A.BlockHeader.WithNumber(100);
+        BlockHeader header = prague
+            ? builder.WithBaseFee(7).WithWithdrawalsRoot(TestItem.KeccakA).WithBlobGasUsed(131072).WithExcessBlobGas(0)
+                .WithParentBeaconBlockRoot(TestItem.KeccakB).WithRequestsHash(TestItem.KeccakC).TestObject
+            : builder.TestObject;
+        switch (source)
+        {
+            case HeaderSource.NumberedKey:
+                store.Insert(header);
+                break;
+            case HeaderSource.HashKey:
+                headerDb.Set(header.Hash!, decoder.Encode(header));
+                break;
+            case HeaderSource.Cache:
+                store.Cache(header);
+                break;
+        }
+
+        using ArrayPoolList<byte> rlp = new(0);
+        bool found = store.TryAppendRlp(header.Hash!, header.Number, storeDecoder ? decoder : new HeaderDecoder(), rlp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(Keccak.Compute(rlp.AsSpan()), Is.EqualTo(header.Hash));
+            Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(new HeaderDecoder().Encode(header)));
+            Assert.That(decoder.Decodes, Is.EqualTo(storeDecoder || source == HeaderSource.Cache ? 0 : 1));
+            if (headerDb is PinnedTestDb pinned)
+            {
+                Assert.That(pinned.Released, Is.EqualTo(source == HeaderSource.Cache ? 0 : 1));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public void TryAppendRlp_appends_nothing_for_a_missing_header([Values] bool storeDecoder)
+    {
+        HeaderDecoder decoder = new();
+        HeaderStore store = new(new MemDb(), new MemDb(), decoder);
+        using ArrayPoolList<byte> rlp = new(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryAppendRlp(TestItem.KeccakA, 100, storeDecoder ? decoder : new CountingHeaderDecoder(), rlp), Is.False);
+            Assert.That(rlp.Count, Is.Zero);
+        }
+    }
+
+    /// <param name="rocks">Whether the headers are in RocksDB, which reads them in one batch.</param>
+    [Test]
+    public void GetIfBloomMatches_of_many_gets_each_header_as_the_single_lookup_does([Values] bool bloomMatches, [Values] bool rocks)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb headerDb = rocks ? CreateRocksDb(directory) : new TestMemDb();
+        HeaderDecoder decoder = new();
+        HeaderStore store = new(headerDb, new MemDb(), decoder);
+        HeaderSource?[] sources = [HeaderSource.NumberedKey, null, HeaderSource.HashKey, HeaderSource.Cache, HeaderSource.NumberedKey];
+        (_, ValueHash256[] hashes, ulong[] numbers) = StoreHeaders(store, headerDb, decoder, sources);
+
+        BlockHeader?[] headers = new BlockHeader?[sources.Length];
+        bool[] found = new bool[sources.Length];
+        store.GetIfBloomMatches(hashes, numbers, _ => bloomMatches, headers, found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < sources.Length; i++)
+            {
+                Assert.That(found[i], Is.EqualTo(sources[i] is not null), $"found {i}");
+                Assert.That(headers[i]?.Hash?.ValueHash256, Is.EqualTo(bloomMatches && sources[i] is not null ? (ValueHash256?)hashes[i] : null), $"header {i}");
+            }
+        }
+    }
+
+    /// <param name="rocks">Whether the headers are in RocksDB, which reads them in one batch.</param>
+    [Test]
+    public void AppendRlps_appends_each_header_as_TryAppendRlp_does([Values] bool storeDecoder, [Values] bool rocks)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb headerDb = rocks ? CreateRocksDb(directory) : new TestMemDb();
+        HeaderDecoder decoder = new();
+        HeaderStore store = new(headerDb, new MemDb(), decoder);
+        HeaderSource?[] sources = [HeaderSource.NumberedKey, null, HeaderSource.HashKey, HeaderSource.Cache, HeaderSource.NumberedKey];
+        (BlockHeader[] headers, ValueHash256[] hashes, ulong[] numbers) = StoreHeaders(store, headerDb, decoder, sources);
+
+        using ArrayPoolList<byte> rlp = new(0);
+        Range[] items = new Range[headers.Length];
+        store.AppendRlps(hashes, numbers, storeDecoder ? decoder : new CountingHeaderDecoder(), rlp, items);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (sources[i] is null)
+                    Assert.That(items[i], Is.EqualTo(default(Range)), $"header {i}");
+                else
+                    Assert.That(rlp.AsSpan()[items[i]].ToArray(), Is.EqualTo(new HeaderDecoder().Encode(headers[i])), $"header {i}");
+            }
+        }
+    }
+
+    /// <summary>Builds one header per source, from block 100 up, and stores each where its source says; a null source stores nothing.</summary>
+    private static (BlockHeader[] Headers, ValueHash256[] Hashes, ulong[] Numbers) StoreHeaders(HeaderStore store, IDb headerDb, HeaderDecoder decoder, HeaderSource?[] sources)
+    {
+        BlockHeader[] headers = new BlockHeader[sources.Length];
+        ValueHash256[] hashes = new ValueHash256[sources.Length];
+        ulong[] numbers = new ulong[sources.Length];
+        for (int i = 0; i < sources.Length; i++)
+        {
+            BlockHeader header = headers[i] = Build.A.BlockHeader.WithNumber(100 + (ulong)i).TestObject;
+            hashes[i] = header.Hash!.ValueHash256;
+            numbers[i] = header.Number;
+            switch (sources[i])
+            {
+                case HeaderSource.NumberedKey:
+                    store.Insert(header);
+                    break;
+                case HeaderSource.HashKey:
+                    headerDb.Set(header.Hash!, decoder.Encode(header));
+                    break;
+                case HeaderSource.Cache:
+                    store.Cache(header);
+                    break;
+            }
+        }
+
+        return (headers, hashes, numbers);
+    }
+
+    private static IDb CreateRocksDb(TempPath directory)
+    {
+        using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        return new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(), new HyperClockCacheWrapper(),
+                new RealFileSystem(), LimboLogs.Instance, directory.Path)
+            .CreateDb(new DbSettings(DbNames.Headers, "headers"));
     }
 
     private sealed class CountingHeaderDecoder : HeaderDecoder
@@ -289,8 +538,11 @@ public class HeaderStoreTests
         store.Delete(chain[4].Hash!);
         using IOwnedReadOnlyList<BlockHeader> partial = store.FindReversedHeaders(last.Number, last.Hash!, chain.Length);
         Assert.That(partial.Count, Is.EqualTo(3)); // chain[5], chain[6], chain[7]
-        Assert.That(partial[0].Hash, Is.EqualTo(chain[5].Hash!));
-        Assert.That(partial[^1].Hash, Is.EqualTo(chain[7].Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(partial[0].Hash, Is.EqualTo(chain[5].Hash!));
+            Assert.That(partial[^1].Hash, Is.EqualTo(chain[7].Hash!));
+        }
 
         // Fork: insert an extra header at the same number as chain[3] that is NOT in the main chain
         BlockHeader fork = Build.A.BlockHeader.WithParent(chain[2]).TestObject;
@@ -339,10 +591,13 @@ public class HeaderStoreTests
         HeaderStore store = new(headerDb, new MemDb());
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
+        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header));
 
-        Assert.That(store.PrefetchByNumberRange(100, 101), Is.Empty);
-        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.PrefetchByNumberRange(100, 101), Is.Empty);
+            Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+        }
     }
 
 }

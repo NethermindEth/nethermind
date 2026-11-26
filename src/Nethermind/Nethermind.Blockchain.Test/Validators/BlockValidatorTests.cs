@@ -92,8 +92,11 @@ public class BlockValidatorTests
 
         bool isValid = sut.ValidateSuggestedBlock(block, parent, out string? error, validateHashes);
 
-        Assert.That(isValid, Is.False);
-        Assert.That(error, Does.StartWith(BlockErrorMessages.MissingWithdrawals));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False);
+            Assert.That(error, Does.StartWith(BlockErrorMessages.MissingWithdrawals));
+        }
     }
 
     [Test]
@@ -149,8 +152,11 @@ public class BlockValidatorTests
             .WithParent(parent)
             .WithUncles(Build.A.BlockHeader.WithNumber(10).TestObject)
             .TestObject;
-        Assert.That(blockValidator.ValidateSuggestedBlock(block, parent, out _), Is.EqualTo(false));
-        Assert.That(blockValidator.ValidateOrphanedBlock(block, out _), Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockValidator.ValidateSuggestedBlock(block, parent, out _), Is.EqualTo(false));
+            Assert.That(blockValidator.ValidateOrphanedBlock(block, out _), Is.EqualTo(true));
+        }
     }
 
     private static IEnumerable<TestCaseData> CorruptedBodyFieldCases()
@@ -286,7 +292,7 @@ public class BlockValidatorTests
                 .WithBlobGasUsed(0)
                 .WithWithdrawals([])
                 .WithBlockAccessList(new ReadOnlyBlockAccessList())
-                .WithEncodedBlockAccessList(Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes).TestObject,
+                .WithEncodedBlockAccessList(Rlp.Encode(new ReadOnlyBlockAccessList())).TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
             "InvalidBlockLevelAccessListHash")
@@ -472,7 +478,7 @@ public class BlockValidatorTests
         // ValidateProcessedBlock must catch the floor against the BAL produced during execution.
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
-        byte[] encodedBal = Rlp.Encode(bal).Bytes;
+        byte[] encodedBal = Rlp.Encode(bal);
         Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
 
         Block suggestedBlock = Build.A.Block
@@ -613,8 +619,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(isValid, Is.True, error);
-        Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.All.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.True, error);
+            Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.All.Null);
+        }
     }
 
     /// <summary>A self-transfer priced between the two charges is valid only for its own sender, so that one is recovered.</summary>
@@ -625,8 +634,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(isValid, Is.True, error);
-        Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.True, error);
+            Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressA));
+        }
     }
 
     /// <summary>
@@ -641,8 +653,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut(txValidator).ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(txValidator.FirstCheckFailed, Is.True, "precondition: the first check prices the transaction without its sender");
-        Assert.That(isValid, Is.True, error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txValidator.FirstCheckFailed, Is.True, "precondition: the first check prices the transaction without its sender");
+            Assert.That(isValid, Is.True, error);
+        }
     }
 
     /// <summary>Stands in for the background recovery: the sender appears just after the first check reads it as missing.</summary>
@@ -675,8 +690,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(isValid, Is.False);
-        Assert.That(error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False);
+            Assert.That(error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+        }
     }
 
     private static Transaction Eip2780Transfer(PrivateKey signer, Address to, ulong gasLimit) =>
@@ -722,13 +740,38 @@ public class BlockValidatorTests
             Assert.That(error, Does.StartWith(failPrefix));
         }
     }
+
+    [Test]
+    public void ValidateBlockLevelAccessListHashMatches_reports_calculated_hash([Values(true, false, null)] bool? hashMatches)
+    {
+        byte[] encoded = Rlp.Encode(new ReadOnlyBlockAccessList());
+        Hash256 calculatedHash = Keccak.Compute(encoded);
+        Block block = Build.A.Block
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .WithEncodedBlockAccessList(encoded)
+            .WithBlockAccessListHash(hashMatches switch
+            {
+                true => calculatedHash,
+                false => TestItem.KeccakA,
+                null => null
+            })
+            .TestObject;
+
+        bool result = BlockValidator.ValidateBlockLevelAccessListHashMatches(block, out Hash256? balRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(hashMatches is true));
+            Assert.That(balRoot, Is.EqualTo(calculatedHash));
+        }
+    }
 }
 
 file static class BalBuilderExtensions
 {
     public static BlockBuilder WithBal(this BlockBuilder builder, ReadOnlyBlockAccessList bal)
     {
-        byte[] encoded = Rlp.Encode(bal).Bytes;
+        byte[] encoded = Rlp.Encode(bal);
         return builder
             .WithBlockAccessList(bal)
             .WithEncodedBlockAccessList(encoded)

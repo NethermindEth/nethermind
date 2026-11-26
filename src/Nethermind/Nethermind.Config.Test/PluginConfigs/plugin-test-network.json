@@ -1,0 +1,3 @@
+{
+  "Init": { "ChainSpecPath": "chainspec/plugin-test-network.json" }
+}

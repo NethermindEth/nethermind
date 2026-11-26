@@ -32,5 +32,5 @@ public struct SszBlobCell
     }
 
     [UnscopedRef]
-    public ReadOnlySpan<byte> AsSpan() => this;
+    public readonly ReadOnlySpan<byte> AsSpan() => this;
 }

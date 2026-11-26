@@ -36,7 +36,7 @@ public static class FrameTxTestFrames
     /// replaced rather than returned for the caller to install.</remarks>
     public static void SignSecp256k1(Transaction tx, PrivateKey key, Address? signer)
     {
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, default)];
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         byte[] raw = Secp256k1SignatureBytes(new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx)));
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, raw)];
     }

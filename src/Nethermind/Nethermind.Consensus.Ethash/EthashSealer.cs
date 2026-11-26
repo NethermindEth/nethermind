@@ -26,17 +26,15 @@ namespace Nethermind.Consensus.Ethash
 
         public async Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)
         {
-            Block? block = await MineAsync(cancellationToken, processed, null).ContinueWith(t =>
+            try
             {
-                if (t.IsFaulted)
-                {
-                    _logger.Error($"{nameof(SealBlock)} failed", t.Exception);
-                    return null;
-                }
-
-                return t.Result;
-            }, cancellationToken) ?? throw new SealEngineException($"{nameof(SealBlock)} failed");
-            return block;
+                return await MineAsync(cancellationToken, processed, null);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                _logger.Error($"{nameof(SealBlock)} failed", e);
+                throw new SealEngineException($"{nameof(SealBlock)} failed", e);
+            }
         }
 
         public bool CanSeal(ulong blockNumber, Hash256 parentHash) => true;
@@ -55,22 +53,14 @@ namespace Nethermind.Consensus.Ethash
                 throw new InvalidOperationException($"Requested to mine an invalid block {processed.Header}");
             }
 
-            Task<Block> miningTask = Task.Factory.StartNew(() => Mine(processed, startNonce), cancellationToken);
-            await miningTask.ContinueWith(
-                t =>
-                {
-                    if (t.IsCompleted)
-                    {
-                        t.Result.Header.Hash = t.Result.Header.CalculateHash();
-                    }
-                }, cancellationToken, TaskContinuationOptions.NotOnFaulted, TaskScheduler.Default);
-
-            return await miningTask;
+            Block block = await Task.Factory.StartNew(() => Mine(processed, startNonce, cancellationToken), cancellationToken);
+            block.Header.Hash = block.Header.CalculateHash();
+            return block;
         }
 
-        private Block Mine(Block block, ulong? startNonce)
+        private Block Mine(Block block, ulong? startNonce, CancellationToken cancellationToken)
         {
-            (Hash256 MixHash, ulong Nonce) = _ethash.Mine(block.Header, startNonce);
+            (Hash256 MixHash, ulong Nonce) = _ethash.Mine(block.Header, startNonce, cancellationToken);
             block.Header.Nonce = Nonce;
             block.Header.MixHash = MixHash;
             return block;

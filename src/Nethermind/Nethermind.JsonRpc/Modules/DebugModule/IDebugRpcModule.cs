@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -34,50 +36,38 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<bool> debug_resetHead(Hash256 blockHash);
 
     [JsonRpcMethod(Description = "This method will attempt to run the transaction in the exact same manner as it was executed on the network. It will replay any transaction that may have been executed prior to this one before it will finally attempt to execute the transaction that corresponds to the given hash.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null);
+    ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
-    [JsonRpcMethod(Description = "This method lets you run an eth_call within the context of the given block execution using the final state of parent block as the base. The block can be specified either by hash or by number. It takes the same input object as a eth_call. It returns the same output as debug_traceTransaction.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
+    [JsonRpcMethod(Description = "This method lets you run an eth_call within the context of the given block execution using the final state of parent block as the base. The block can be specified either by hash or by number. It takes the same input object as a eth_call. It returns the same output as debug_traceTransaction."
+        + " A non-null `input` takes precedence over `data`."
+        + " Blob versioned hashes are decoded as byte arrays; invalid lengths are rejected during Blob transaction conversion, not JSON decoding. For duplicate fields, the last value is used.", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions? options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Returns the full stack trace of the transaction at the given index of the block specified by number, tag or hash. The block that the parameter resolves to is the one traced, so a hash that is not on the canonical chain traces that block rather than the canonical one at the same height.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex, GethTraceOptions options = null);
+    ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Returns the full stack trace of the transaction at the given index of the block with the specified hash. The block need not be on the canonical chain.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockHash, int txIndex, GethTraceOptions options = null);
+    ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockHash, int txIndex, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Returns the full stack trace of all invoked opcodes of all transactions that were included in the block specified. The parent of the block must be present or it will fail.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null);
+    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block number as well as \"latest\" or \"finalized\" and replays the block that is already present in the database.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockParameter,
-        [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null);
+        [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block hash and replays the block that is already present in the database.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null);
+    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash,
+        [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Similar to debug_traceBlockByHash, but replays a block that has been rejected as invalid and is held in the bad-block store.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBadBlock(Hash256 blockHash, GethTraceOptions? options = null);
+    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBadBlock(Hash256 blockHash, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions? options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Replays a block and returns the world-state root after each transaction in execution order. EIP-4788/EIP-2935 system calls and withdrawals do not produce an entry. Failed transactions still produce a root (geth partial-result semantics). The block must be canonical or in the bad-block store.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null);
+    ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions? options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Returns up to maxResult storage slots of an account as they are before the transaction at the given index of the block runs. Slots are in hashed-key order from the hashed key keyStart. nextKey is the hashed key to continue from, or null when no slots follow. Slot key preimages are not kept, so each key is null. At most 1024 slots are returned per call. Not supported on chains whose block processor cannot stop before a transaction, such as AuRa and Taiko.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<StorageRangeResult> debug_storageRangeAt(BlockParameter blockParameter, int txIndex, Address address, byte[] keyStart, int maxResult);
-
-    [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null);
-
-    [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
-    ResultWrapper<object> debug_dumpBlock(BlockParameter blockParameter);
-
-    [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
-    ResultWrapper<GcStats> debug_gcStats();
-
-    [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
-    ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);
-
-    [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
-    ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
+    ResultWrapper<StorageRangeResult> debug_storageRangeAt(BlockParameter blockParameter, int txIndex, Address address, byte[] keyStart, int maxResult, CancellationToken cancellationToken = default);
 
     /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock(BlockParameter)" path="/member/remarks"/>
     [JsonRpcMethod(Description = "Rewinds the head to a canonical block with state available for block processing, given by number, tag or hash, and prunes abandoned flat-state snapshots. Returns false for an unknown target or a refused rewind (Nethermind specific). Requires paused, drained block processing and no active initial synchronization. A target below the sync pivot is refused unless historical downloads are complete and retained progress is at or below the target; the pivot then moves with the head. Ancient backfill permits rewinds at or above the pivot.", IsImplemented = true, IsSharable = true)]
@@ -89,11 +79,14 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled", IsImplemented = true, IsSharable = true, ResultCanBeNull = true)]
     ResultWrapper<object> debug_getConfigValue(string category, string name);
 
-    [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null);
+    [JsonRpcMethod(Description = "Returns the complete fork configuration (Nethermind specific).", IsImplemented = true, IsSharable = true)]
+    ResultWrapper<JsonNode> debug_config();
 
     [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null);
+    ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
+
+    [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Sets the block number up to which receipts will be migrated to (Nethermind specific).")]
     Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to);
@@ -121,28 +114,32 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Writes to a file the full stack trace of all invoked opcodes of the transaction specified (or all transactions if not specified) that was included in the block specified. The parent of the block must be present or it will fail.",
         IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null);
+    ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "This method is similar to the `debug_standardTraceBlockToFile` method, but can be used to obtain information about a block that has been rejected as invalid.",
         IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null);
+    ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Returns the stored invalid blocks, or writes them as JSON to <paramref name="file"/> when it is given.
     /// </summary>
+    /// <remarks>
+    /// Unlike Geth, which resolves a relative path against the node's working directory, a relative path is rejected
+    /// with invalid params. Once the request times out, the write stops before the next block.
+    /// </remarks>
     /// <param name="file">Optional absolute local path (not a UNC or device path) of a new file to write the list to; an existing file is never overwritten.</param>
     /// <returns>The list of invalid blocks, or <c>null</c> when it was written to <paramref name="file"/>.</returns>
-    [JsonRpcMethod(Description = "Return list of invalid blocks. If an absolute local file path is given, writes the list to that new file and returns null.",
+    [JsonRpcMethod(Description = "Return list of invalid blocks. If an absolute local file path is given, writes the list to that new file and returns null. Unlike Geth, a relative path is rejected instead of being resolved against the node's working directory.",
         ResponseDescription = "Each `block` carries full transaction objects.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null);
 
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks",
         IsSharable = true)]
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
-        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
+        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null, CancellationToken cancellationToken = default);
 
-    [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
+    [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces. Unless any bundle has state or block overrides, each call is traced independently against the state of the selected block; to let later calls see the effects of earlier ones, set state or block overrides on a bundle or use debug_simulateV1. Non-empty options.stateOverrides or options.blockOverrides cannot be combined with state or block overrides on any bundle.", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(Description = "Reprocesses the existing block with the parameters specified and returns the generated execution witness.")]
     ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);

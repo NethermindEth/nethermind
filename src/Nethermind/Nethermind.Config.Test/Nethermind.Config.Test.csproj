@@ -34,4 +34,8 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+  <ItemGroup>
+    <!-- Configurations as a plugin ships them (see BuiltInConfigs.AddFrom). -->
+    <EmbeddedResource Include="PluginConfigs\*.json" LogicalName="configs/%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

@@ -26,8 +26,11 @@ public class ShareableOverridableEnvSourceTests
         List<Scope<Marker>> rented = RentMany(source, held);
 
         Action overflow = () => source.BuildAndOverride(null);
-        Assert.That(overflow, Throws.TypeOf<ConcurrencyLimitReachedException>());
-        Assert.That(factory.Created, Is.EqualTo(held), "factory must not run when the cap is already reached");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overflow, Throws.TypeOf<ConcurrencyLimitReachedException>());
+            Assert.That(factory.Created, Is.EqualTo(held), "factory must not run when the cap is already reached");
+        }
 
         foreach (Scope<Marker> scope in rented) scope.Dispose();
     }
@@ -69,14 +72,17 @@ public class ShareableOverridableEnvSourceTests
         if (state == ShutdownState.StillRented)
         {
             Action returnAfterShutdown = scope.Dispose;
-            Assert.That(returnAfterShutdown, Throws.Nothing);
-            Assert.That(factory.DisposedCount, Is.EqualTo(1), "double dispose is a no-op via the tracking dictionary");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(returnAfterShutdown, Throws.Nothing);
+                Assert.That(factory.DisposedCount, Is.EqualTo(1), "double dispose is a no-op via the tracking dictionary");
+            }
         }
     }
 
     private static List<Scope<Marker>> RentMany(ShareableOverridableEnvSource<Marker> source, int count)
     {
-        List<Scope<Marker>> rented = new(count);
+        List<Scope<Marker>> rented = [with(count)];
         for (int i = 0; i < count; i++) rented.Add(source.BuildAndOverride(null));
         return rented;
     }

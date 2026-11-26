@@ -46,8 +46,11 @@ public class GuestNibblesTests
 
         for (int i = 0; i < count; i++)
         {
-            Assert.That(actual[i * 2], Is.Zero, $"high nibble at {i}");
-            Assert.That(actual[(i * 2) + 1], Is.EqualTo(0x0F), $"low nibble at {i}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual[i * 2], Is.Zero, $"high nibble at {i}");
+                Assert.That(actual[(i * 2) + 1], Is.EqualTo(0x0F), $"low nibble at {i}");
+            }
         }
     }
 

@@ -61,7 +61,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public abstract class TransactionPermissionContract : Contract, ITransactionPermissionContract
     {
-        public virtual UInt256 ContractVersion(BlockHeader blockHeader) => Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
+        internal static readonly ContractFunction<ValueTuple, UInt256> ContractVersionFunction = new AbiSignature("contractVersion").With().Returns(AbiType.UInt256);
+
+        public virtual UInt256 ContractVersion(BlockHeader blockHeader) => Constant.Call(blockHeader, ContractVersionFunction, Address.Zero, default);
 
         /// <summary>
         /// Returns the contract version number needed for node's engine.
@@ -78,46 +80,32 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <returns><see cref="ITransactionPermissionContract.TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
         public (ITransactionPermissionContract.TxPermissions Permissions, bool ShouldCache, bool ContractExists) AllowedTxTypes(BlockHeader parentHeader, Transaction tx)
         {
-            object[] parameters = GetAllowedTxTypesParameters(tx, parentHeader);
-            PermissionConstantContract.PermissionCallInfo callInfo = new(parentHeader, nameof(AllowedTxTypes), Address.Zero, parameters, tx.To ?? Address.Zero);
-            (ITransactionPermissionContract.TxPermissions, bool) result = CallAllowedTxTypes(callInfo);
-            return (result.Item1, result.Item2, callInfo.ToIsContract);
+            (ITransactionPermissionContract.TxPermissions permissions, bool shouldCache) = CallAllowedTxTypes(parentHeader, tx, out bool toIsContract);
+            return (permissions, shouldCache, toIsContract);
         }
 
-        protected virtual (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(PermissionConstantContract.PermissionCallInfo callInfo) =>
-            Constant.Call<ITransactionPermissionContract.TxPermissions, bool>(callInfo);
+        /// <summary>Calls the version-specific <c>allowedTxTypes</c> function with the fields of <paramref name="tx"/>.</summary>
+        /// <param name="toIsContract">Whether the recipient of <paramref name="tx"/> is a contract, in the state the call ran on.</param>
+        protected abstract (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(BlockHeader parentHeader, Transaction tx, out bool toIsContract);
 
-        protected abstract object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader);
-
-        protected IConstantContract Constant { get; }
+        protected PermissionConstantContract Constant { get; }
 
         protected TransactionPermissionContract(
-            IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress) => Constant = new PermissionConstantContract(this, readOnlyTxProcessorSource);
+            : base(contractAddress) => Constant = new PermissionConstantContract(this, readOnlyTxProcessorSource);
 
         protected class PermissionConstantContract(Contract contract, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : ConstantContract(contract, readOnlyTxProcessorSource)
         {
-            protected override object[] CallRaw(CallInfo callInfo, IReadOnlyTxProcessingScope scope)
+            /// <summary>Calls <paramref name="function"/>, also checking in the same state whether <paramref name="to"/> is a contract.</summary>
+            public TResult Call<TArgs, TResult>(BlockHeader parentHeader, ContractFunction<TArgs, TResult> function, TArgs arguments, Address to, out bool toIsContract)
             {
-                if (callInfo is PermissionCallInfo transactionPermissionCallInfo)
+                lock (_readOnlyTxProcessorSource)
                 {
-                    transactionPermissionCallInfo.ToIsContract = scope.WorldState.IsContract(transactionPermissionCallInfo.To);
+                    using IReadOnlyTxProcessingScope scope = _readOnlyTxProcessorSource.Build(parentHeader);
+                    toIsContract = scope.WorldState.IsContract(to);
+                    return Call(scope, parentHeader, function, Address.Zero, arguments);
                 }
-
-                return base.CallRaw(callInfo, scope);
-            }
-
-            public class PermissionCallInfo(
-                BlockHeader parentHeader,
-                string functionName,
-                Address sender,
-                object[] arguments,
-                Address to) : CallInfo(parentHeader, functionName, sender, arguments)
-            {
-                public Address To { get; } = to;
-                public bool ToIsContract { get; set; }
             }
         }
     }

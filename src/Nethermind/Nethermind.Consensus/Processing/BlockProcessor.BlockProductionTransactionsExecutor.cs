@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -11,10 +12,12 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
@@ -81,7 +84,8 @@ namespace Nethermind.Consensus.Processing
 
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
-                HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
+                HashSet<Transaction> consideredTx = [with(ByHashTxComparer.Instance)];
+                HashSet<Transaction>? executedAndSkippedTx = null;
                 IReadOnlySet<Hash256AsKey>? claimable = blockToProduce?.InclusionListCandidates;
                 List<OmissionClaim>? claims = null;
                 BlockAccessListItemBudget itemBudget = CreateItemBudget(block);
@@ -93,7 +97,7 @@ namespace Nethermind.Consensus.Processing
                     // EIP-7805: only the first attempt is where the builder tried; a later offer is a duplicate.
                     bool claimOnSkip = claimable is not null && currentTx.Hash is { } hash
                         && claimable.Contains(hash) && !consideredTx.Contains(currentTx);
-                    TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, out bool invalidHere);
+                    TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, out bool executed, out bool invalidHere);
                     if (action == TxAction.Stop) break;
                     // A claim binds the builder: the omission is judged at the claimed index alone, so claim only where the
                     // candidate is invalid there, never where it was skipped for a reason of the builder's own.
@@ -110,6 +114,108 @@ namespace Nethermind.Consensus.Processing
                             blockToProduce.TxByteLength += currentTx.GetLength(false);
                         }
                     }
+                    else if (executed && blockToProduce?.InclusionList is { Length: > 0 })
+                    {
+                        (executedAndSkippedTx ??= [with(ByHashTxComparer.Instance)]).Add(currentTx);
+                    }
+                }
+
+                CancellationToken reofferToken = blockToProduce is { AbandonToken.CanBeCanceled: true } ? blockToProduce.AbandonToken : token;
+                if (blockToProduce?.InclusionList is { Length: > 0 } inclusionList && !reofferToken.IsCancellationRequested)
+                {
+                    consideredTx.Clear();
+                    foreach (Transaction tx in includedTx.AsSpan()) consideredTx.Add(tx);
+                    if (executedAndSkippedTx is not null) consideredTx.UnionWith(executedAndSkippedTx);
+
+                    int[] pending = ArrayPool<int>.Shared.Rent(inclusionList.Length);
+                    try
+                    {
+                        int pendingCount = 0;
+                        for (int i = 0; i < inclusionList.Length; i++)
+                        {
+                            Transaction tx = inclusionList[i];
+                            if (!tx.SupportsFrames && tx.SenderAddress is not null && !consideredTx.Contains(tx)) pending[pendingCount++] = i;
+                        }
+
+                        if (pendingCount > 0)
+                        {
+                            ulong[] nonceAtSkip = ArrayPool<ulong>.Shared.Rent(inclusionList.Length);
+                            UInt256[] balanceAtSkip = ArrayPool<UInt256>.Shared.Rent(inclusionList.Length);
+                            try
+                            {
+                                bool firstPass = true;
+                                bool added = true;
+                                while (added && pendingCount > 0 && !reofferToken.IsCancellationRequested)
+                                {
+                                    added = false;
+                                    int kept = 0;
+                                    for (int k = 0; k < pendingCount; k++)
+                                    {
+                                        if (reofferToken.IsCancellationRequested)
+                                        {
+                                            added = false;
+                                            break;
+                                        }
+
+                                        int index = pending[k];
+                                        Transaction currentTx = inclusionList[index];
+                                        Address sender = currentTx.SenderAddress!;
+                                        ulong nonce = stateProvider.GetNonce(sender);
+                                        UInt256 balance = stateProvider.GetBalance(sender);
+                                        if (!firstPass && nonce == nonceAtSkip[k] && balance == balanceAtSkip[k])
+                                        {
+                                            pending[kept] = index;
+                                            nonceAtSkip[kept] = nonceAtSkip[k];
+                                            balanceAtSkip[kept] = balanceAtSkip[k];
+                                            kept++;
+                                            continue;
+                                        }
+
+                                        TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, out bool executed, out _);
+                                        if (action == TxAction.Stop)
+                                        {
+                                            added = false;
+                                            break;
+                                        }
+
+                                        if (action == TxAction.Add)
+                                        {
+                                            added = true;
+                                            consideredTx.Add(currentTx);
+                                            includedTx.Add(currentTx);
+                                            blockToProduce.TxByteLength += currentTx.GetLength(false);
+                                        }
+                                        else if (!executed)
+                                        {
+                                            pending[kept] = index;
+                                            nonceAtSkip[kept] = nonce;
+                                            balanceAtSkip[kept] = balance;
+                                            kept++;
+                                        }
+                                    }
+
+                                    pendingCount = kept;
+                                    firstPass = false;
+                                }
+                            }
+                            finally
+                            {
+                                ArrayPool<ulong>.Shared.Return(nonceAtSkip);
+                                ArrayPool<UInt256>.Shared.Return(balanceAtSkip);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        ArrayPool<int>.Shared.Return(pending);
+                    }
+                }
+
+                if (blockToProduce?.RequiredTransactions is { } required &&
+                    (includedTx.Count < required.Length || !includedTx.AsSpan()[..required.Length].SequenceEqual(required)))
+                {
+                    token.ThrowIfCancellationRequested();
+                    throw new InvalidBlockException(block, "Could not include all required payload transactions in order.");
                 }
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
@@ -151,8 +257,10 @@ namespace Nethermind.Consensus.Processing
                 ProcessingOptions processingOptions,
                 HashSet<Transaction> transactionsInBlock,
                 ref BlockAccessListItemBudget itemBudget,
+                out bool executed,
                 out bool invalidHere)
             {
+                executed = false;
                 AddingTxEventArgs args = txPicker.CanAddTransaction(
                     block,
                     currentTx,
@@ -167,6 +275,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
+                    executed = true;
                     ITransactionProcessorAdapter processor = balManager.Enabled ? balManager.GetTxProcessor() : transactionProcessor;
                     Snapshot snapshot = itemBudget.Enabled ? stateProvider.TakeSnapshot() : Snapshot.Empty;
                     int receiptsSnapshot = receiptsTracer.TakeSnapshot();

@@ -23,6 +23,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Filters;
 using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
@@ -146,8 +147,11 @@ public class RpcAllocationMeasurement
         }
 
         await TestContext.Out.WriteLineAsync(File.ReadAllText(reportPath));
-        Assert.That(casesRun, Is.Positive, $"no case matches RPC_ALLOC_FILTER '{filter}'");
-        Assert.That(errors, Is.Empty, "error responses are not representative measurements");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(casesRun, Is.Positive, $"no case matches RPC_ALLOC_FILTER '{filter}'");
+            Assert.That(errors, Is.Empty, "error responses are not representative measurements");
+        }
     }
 
     private static IEnumerable<(string Method, string Params, int Iterations)> Cases(Address contract, Block[] blocks)
@@ -202,7 +206,7 @@ public class RpcAllocationMeasurement
     }
 
     private static IEthRpcModule CreateEthModule(TestRpcBlockchain chain) => new EthRpcModule(
-        chain.RpcConfig, chain.Bridge, chain.BlockFinder, chain.BlockTree, chain.ReceiptFinder, chain.StateReader, chain.TxPool, chain.TxSender, chain.TestWallet,
+        chain.RpcConfig, chain.Bridge, chain.Container.Resolve<FilterStore>(), chain.Container.Resolve<FilterManager>(), chain.BlockFinder, chain.BlockTree, chain.ReceiptFinder, chain.StateReader, chain.TxPool, chain.TxSender, chain.TestWallet,
         NullLogManager.Instance, chain.SpecProvider, chain.GasPriceOracle,
         new EthSyncingInfo(chain.BlockTree, Substitute.For<ISyncPointers>(), chain.Container.Resolve<ISyncConfig>(),
             new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, chain.LogManager),

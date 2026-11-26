@@ -3,6 +3,7 @@
 
 using System;
 using System.Net;
+using System.Threading;
 using Microsoft.Extensions.Primitives;
 using Nethermind.JsonRpc.Modules;
 
@@ -34,6 +35,15 @@ namespace Nethermind.JsonRpc
         public IJsonRpcDuplexClient? DuplexClient { get; }
         public JsonRpcUrl? Url { get; }
         public bool IsAuthenticated { get; }
+
+        /// <summary>The transport cancellation signal for modules that cooperate with request cancellation.</summary>
+        public CancellationToken RequestAborted { get; init; }
+
+        /// <summary>Optional per-batch execution and envelope budgets imposed by the transport.</summary>
+        public JsonRpcBatchLimits? BatchLimits { get; init; }
+
+        /// <summary>Uses strict JSON-RPC 2.0 notification classification and invalid-envelope errors.</summary>
+        public bool StrictEnvelope { get; init; }
 
         /// <summary>Address of the remote caller, or <see langword="null"/> when the transport has none (IPC).</summary>
         public IPAddress? RemoteAddress { get; init; }

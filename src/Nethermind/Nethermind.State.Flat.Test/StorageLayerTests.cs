@@ -87,23 +87,35 @@ public class StorageLayerTests
         CatalogEntry? loadedCompacted = FindEntry(loaded, sharedTo, depth: 2);
         CatalogEntry? loadedCompactSized = FindEntry(loaded, sharedTo, depth: 4);
         Assert.That(loadedBase, Is.Not.Null);
-        Assert.That(loadedBase!.From, Is.EqualTo(s_base_from));
-        Assert.That(loadedBase.Location, Is.EqualTo(new SnapshotLocation(0, 0, 1024)));
-        Assert.That(loadedBase.Tier, Is.EqualTo(SnapshotTier.PersistedBase));
-        Assert.That(loadedCompacted, Is.Not.Null);
-        Assert.That(loadedCompacted!.From, Is.EqualTo(s_compacted_from));
-        Assert.That(loadedCompacted.Location, Is.EqualTo(new SnapshotLocation(0, 1024, 2048)));
-        Assert.That(loadedCompacted.Tier, Is.EqualTo(SnapshotTier.PersistedSmallCompacted));
-        Assert.That(loadedCompactSized, Is.Not.Null);
-        Assert.That(loadedCompactSized!.From, Is.EqualTo(s_compactSized_from));
-        Assert.That(loadedCompactSized.Location, Is.EqualTo(new SnapshotLocation(0, 3072, 4096)));
-        Assert.That(loadedCompactSized.Tier, Is.EqualTo(SnapshotTier.PersistedCompactSized));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadedBase!.From, Is.EqualTo(s_base_from));
+            Assert.That(loadedBase.Location, Is.EqualTo(new SnapshotLocation(0, 0, 1024)));
+            Assert.That(loadedBase.Tier, Is.EqualTo(SnapshotTier.PersistedBase));
+            Assert.That(loadedCompacted, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadedCompacted!.From, Is.EqualTo(s_compacted_from));
+            Assert.That(loadedCompacted.Location, Is.EqualTo(new SnapshotLocation(0, 1024, 2048)));
+            Assert.That(loadedCompacted.Tier, Is.EqualTo(SnapshotTier.PersistedSmallCompacted));
+            Assert.That(loadedCompactSized, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadedCompactSized!.From, Is.EqualTo(s_compactSized_from));
+            Assert.That(loadedCompactSized.Location, Is.EqualTo(new SnapshotLocation(0, 3072, 4096)));
+            Assert.That(loadedCompactSized.Tier, Is.EqualTo(SnapshotTier.PersistedCompactSized));
+        }
 
         CatalogEntry? loadedTail = FindEntry(loaded, s2, depth: 100);
         Assert.That(loadedTail, Is.Not.Null);
-        Assert.That(loadedTail!.From, Is.EqualTo(sharedTo));
-        Assert.That(loadedTail.Location, Is.EqualTo(new SnapshotLocation(0, 7168, 2048)));
-        Assert.That(loadedTail.Tier, Is.EqualTo(SnapshotTier.PersistedCompactSized));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadedTail!.From, Is.EqualTo(sharedTo));
+            Assert.That(loadedTail.Location, Is.EqualTo(new SnapshotLocation(0, 7168, 2048)));
+            Assert.That(loadedTail.Tier, Is.EqualTo(SnapshotTier.PersistedCompactSized));
+        }
     }
 
     [Test]
@@ -121,7 +133,9 @@ public class StorageLayerTests
         // Same To (s2), different depth (s_compactedFrom→s2 has depth=2 vs s1→s2 depth=1).
         catalog.Add(new(s_compactedFrom, s2, new(0, 200, 100), SnapshotTier.PersistedSmallCompacted));
 
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
         Assert.That(FindEntry(catalog, s1, depth: 1), Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(catalog.Remove(s1, SnapshotTier.PersistedBase), Is.True);
         Assert.That(FindEntry(catalog, s1, depth: 1), Is.Null);
         Assert.That(catalog.Load().Count(), Is.EqualTo(2));
@@ -248,8 +262,11 @@ public class StorageLayerTests
         }
         // The reused write starts at the page-aligned frontier after the baseline reservation —
         // i.e. it landed in the same file, proving the cancelled write returned to the right pool.
-        Assert.That(loc.ArenaId, Is.EqualTo(baselineLoc.ArenaId));
-        Assert.That(loc.Offset, Is.EqualTo(PageLayout.RoundUpToOsPage(baselineLoc.Offset + baselineLoc.Size)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loc.ArenaId, Is.EqualTo(baselineLoc.ArenaId));
+            Assert.That(loc.Offset, Is.EqualTo(PageLayout.RoundUpToOsPage(baselineLoc.Offset + baselineLoc.Size)));
+        }
     }
 
     // Regression test: all previously-live bytes dying while a writer holds a shared arena must
@@ -317,8 +334,11 @@ public class StorageLayerTests
         {
             // The fully-dead arena was dropped on cancel — its file is gone and the next write
             // gets a fresh arena instead of the poisoned id.
-            Assert.That(nextLoc.ArenaId, Is.Not.EqualTo(baselineLoc.ArenaId));
-            Assert.That(Directory.GetFiles(arenaDir, "arena_*.bin"), Has.Length.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nextLoc.ArenaId, Is.Not.EqualTo(baselineLoc.ArenaId));
+                Assert.That(Directory.GetFiles(arenaDir, "arena_*.bin"), Has.Length.EqualTo(1));
+            }
         }
     }
 
@@ -435,11 +455,14 @@ public class StorageLayerTests
         SnapshotLocation small = Write(manager, data, small: true);
         SnapshotLocation small2 = Write(manager, data, small: true);
 
-        Assert.That(small.ArenaId, Is.Not.EqualTo(large.ArenaId), "small and non-small writes must not share a file");
-        Assert.That(small2.ArenaId, Is.EqualTo(small.ArenaId), "consecutive small writes pack into the small pool's file");
-        // The "arena_*" glob is prefix-anchored, so it must not catch the "small_arena_*" file.
-        Assert.That(Directory.GetFiles(arenaDir, "small_arena_*.bin"), Has.Length.EqualTo(1));
-        Assert.That(Directory.GetFiles(arenaDir, "arena_*.bin"), Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(small.ArenaId, Is.Not.EqualTo(large.ArenaId), "small and non-small writes must not share a file");
+            Assert.That(small2.ArenaId, Is.EqualTo(small.ArenaId), "consecutive small writes pack into the small pool's file");
+            // The "arena_*" glob is prefix-anchored, so it must not catch the "small_arena_*" file.
+            Assert.That(Directory.GetFiles(arenaDir, "small_arena_*.bin"), Has.Length.EqualTo(1));
+            Assert.That(Directory.GetFiles(arenaDir, "arena_*.bin"), Has.Length.EqualTo(1));
+        }
     }
 
     [Test]

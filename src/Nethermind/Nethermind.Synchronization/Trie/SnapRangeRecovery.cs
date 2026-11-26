@@ -67,7 +67,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                             token);
                         if (result is not null) return result;
 
-                        if (_logger.IsDebug) _logger.Debug($"Mark peer {peer} weak");
+                        if (_logger.IsDebug) _logger.Debug($"Mark peer {peer:hide} weak");
                         peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
                     }
                     catch (OperationCanceledException)
@@ -75,7 +75,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                     }
                     catch (Exception ex)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Error recovering node from {peer} {ex}");
+                        if (_logger.IsWarn) _logger.Warn($"Error recovering node from {peer:hide} {ex:hide}");
                         peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
                     }
                     return null;
@@ -122,7 +122,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             AccountsAndProofs acc = await snapProtocol.GetAccountRange(accountRange, cancellationToken);
             if (acc.PathAndAccounts.Count == 0 && acc.Proofs.Count == 0)
             {
-                if (_logger.IsWarn) _logger.Warn($"Did not receive any path from {peer}. {acc.Proofs.Count}");
+                if (_logger.IsWarn) _logger.Warn($"Did not receive any path from {peer:hide}. {acc.Proofs.Count}");
                 return null;
             }
 
@@ -131,7 +131,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             ValueHash256 slotPath = default;
             if (pathAndAccounts.Length > 0)
             {
-                accountRlp = AccountRlpDecoder.EncodeAsBytes(pathAndAccounts[0].Account);
+                accountRlp = AccountRlpDecoder.Encode(pathAndAccounts[0].Account);
                 slotPath = pathAndAccounts[0].Path;
             }
 
@@ -158,7 +158,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             ReadOnlySpan<PathWithStorageSlot> firstSlots = pathsAndSlots.Length == 0 ? [] : pathsAndSlots[0].AsSpan();
             if ((pathsAndSlots.Length == 0 || firstSlots.Length == 0) && res.Proofs.Count == 0)
             {
-                if (_logger.IsWarn) _logger.Warn($"Did not receive any path from {peer}. {res.Proofs.Count}");
+                if (_logger.IsWarn) _logger.Warn($"Did not receive any path from {peer:hide}. {res.Proofs.Count}");
                 return null;
             }
 
@@ -181,7 +181,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         byte[] value,
         IByteArrayList proofs)
     {
-        ArrayPoolList<(TreePath, byte[])> result = new(1);
+        ArrayPoolList<(TreePath, byte[])> result = [with(1)];
 
         ITrieNodeResolver emptyResolver = new EmptyTrieNodeResolver();
         Dictionary<ValueHash256, byte[]> nodes = [];

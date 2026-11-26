@@ -35,9 +35,9 @@ namespace Nethermind.Synchronization.StateSync
             Task<IByteArrayList>? task = null;
             HashList? hashList = null;
             GetTrieNodesRequest? getTrieNodesRequest = null;
-            if (ProtocolSupportsNodeData(peer))
+            if (peer.CanGetNodeData)
             {
-                if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer}");
+                if (Logger.IsTrace) Logger.Trace($"Requested NodeData via EthProtocol from peer {peer:hide}");
                 hashList = HashList.Rent(batch.RequestedNodes);
                 task = peer.GetNodeData(hashList, cancellationToken);
             }
@@ -46,13 +46,13 @@ namespace Nethermind.Synchronization.StateSync
             {
                 if (batch.NodeDataType == NodeDataType.Code)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"Requested ByteCodes via SnapProtocol from peer {peer}");
+                    if (Logger.IsTrace) Logger.Trace($"Requested ByteCodes via SnapProtocol from peer {peer:hide}");
                     hashList = HashList.Rent(batch.RequestedNodes);
                     task = snapHandler.GetByteCodes(new KeccakToValueKeccakList(hashList), cancellationToken);
                 }
                 else if (ProtocolSupportsTrieNodes(snapHandler))
                 {
-                    if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer}");
+                    if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer:hide}");
                     getTrieNodesRequest = GetGroupedRequest(batch);
                     task = snapHandler.GetTrieNodes(getTrieNodesRequest, cancellationToken);
                 }
@@ -77,8 +77,6 @@ namespace Nethermind.Synchronization.StateSync
                 getTrieNodesRequest?.Dispose();
             }
         }
-
-        protected virtual bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < EthVersions.Eth67;
 
         protected virtual bool ProtocolSupportsTrieNodes(ISnapSyncPeer peer) => peer.CanGetTrieNodes();
 

@@ -63,11 +63,12 @@ public class InitializeTaikoPlugin(
         if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
             throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1 precompiles");
 
-        if (logger.IsInfo) logger.Info($"L1 precompiles: using L1 endpoint: {surgeConfig.L1EthApiEndpoint}");
+        Uri l1Endpoint = new(surgeConfig.L1EthApiEndpoint);
+        if (logger.IsInfo) logger.Info($"L1 precompiles: using L1 endpoint: {SensitiveLogMasking.SafeUrl(l1Endpoint)}");
 
         // Single RPC client shared by both L1 precompile providers. Process-lifetime scope.
         IJsonRpcClient l1RpcClient = new BasicJsonRpcClient(
-            new Uri(surgeConfig.L1EthApiEndpoint),
+            l1Endpoint,
             jsonSerializer,
             logManager,
             L1PrecompileConstants.L1RpcTimeout);

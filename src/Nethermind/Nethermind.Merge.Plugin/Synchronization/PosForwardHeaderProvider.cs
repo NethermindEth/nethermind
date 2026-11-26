@@ -18,7 +18,7 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class PosForwardHeaderProvider : PowForwardHeaderProvider
+public class PosForwardHeaderProvider : PowForwardHeaderProvider, IDisposable
 {
     private const int CacheBatchMultiplier = 4;
 
@@ -108,7 +108,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
         if (fresh.Length >= fetchSize) UpdateCache(fresh, skipLastN);
 
         int take = Math.Min(fresh.Length, maxHeader);
-        ArrayPoolList<BlockHeader?> result = new(((BlockHeader?[])fresh).AsSpan(0, take));
+        ArrayPoolList<BlockHeader?> result = [with(((BlockHeader?[])fresh).AsSpan(0, take))];
         return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(result);
     }
 
@@ -141,7 +141,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
             take = Math.Min(available, maxHeader);
         }
 
-        return new ArrayPoolList<BlockHeader?>(cached.AsSpan(offset, take));
+        return [with(cached.AsSpan(offset, take))];
     }
 
     private void UpdateCache(BlockHeader[] headers, int skipLastN)
@@ -198,6 +198,14 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
     protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty is null || bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero)) &&
             !_poSSwitcher.HasEverReachedTerminalBlock();
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Classifies the header with the call <see cref="MergeSealValidator.ValidateSeal"/> uses to accept a post-merge
+    /// seal without the pre-merge validator, so a post-merge header needs no hint (with Ethash, a hint for an epoch
+    /// without a cache starts a build). The terminal PoW block is not post-merge, so it is still hinted.
+    /// </remarks>
+    protected override bool NeedsSealHint(BlockHeader header) => !_poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge;
+
     protected override IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> response)
     {
         // Override PoW's RequestHeaders so that it won't request beyond PoW.
@@ -216,8 +224,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
                 }
 
                 using IOwnedReadOnlyList<BlockHeader> oldResponse = response;
-                ArrayPoolList<BlockHeader> trimmedResponse = new(preMergeHeadersCount);
-                trimmedResponse.AddRange(responseSpan[..preMergeHeadersCount]);
+                ArrayPoolList<BlockHeader> trimmedResponse = [with(responseSpan[..preMergeHeadersCount])];
                 response = trimmedResponse;
                 if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Count} sized batch.");
             }
@@ -247,5 +254,5 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
         }
     }
 
-    internal void UnsubscribeForTest() => _blockTree.OnUpdateMainChain -= BlockTreeOnUpdateMainChain;
+    public void Dispose() => _blockTree.OnUpdateMainChain -= BlockTreeOnUpdateMainChain;
 }

@@ -21,6 +21,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Health = nameof(Health);
         public const string Net = nameof(Net);
         public const string Nft = nameof(Nft);
+        public const string Ots = nameof(Ots);
         public const string Parity = nameof(Parity);
         public const string Personal = nameof(Personal);
         public const string Proof = nameof(Proof);

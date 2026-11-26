@@ -345,6 +345,8 @@ public static partial class EvmInstructions
 
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
         ulong words = EvmCalculations.Div32Ceiling(c, out bool outOfGas);
+        if (TTracingInst.IsActive && !outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.VeryLow)
+            vm.TraceMemoryOperationGasCost(UInt256.Max(b, a), in c, GasCostOf.VeryLow + GasCostOf.VeryLow * words);
         if (!TGasPolicy.TryConsumeMemoryCopy(ref gas, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
@@ -440,7 +442,7 @@ public static partial class EvmInstructions
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
         ulong traceStorageAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
-        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, in storageCell, StorageAccessType.SSTORE, spec))
         {
             if (TTracingInst.IsActive)
                 vm.TraceOperationReady(0, "out of gas: not enough gas for slot access");
@@ -576,7 +578,7 @@ public static partial class EvmInstructions
         // Charge gas based on whether this is a cold or warm storage access before reading
         // the slot; BAL records the read only once the access cost is covered.
         ulong traceStorageAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
-        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, in storageCell, StorageAccessType.SSTORE, spec))
         {
             if (TTracingInst.IsActive)
                 vm.TraceOperationReady(0, "out of gas: not enough gas for slot access");
@@ -739,7 +741,13 @@ public static partial class EvmInstructions
             }
         }
 
-        if (TTracingInst.IsActive) vm.TraceOperationReady(traceExecutionCost);
+        if (TTracingInst.IsActive)
+        {
+            // EIP-8037: as in Geth, the step's cost is its execution charge alone; state gas spilled into gas_left
+            // or refilled from it shows only in the remaining gas.
+            if (TEip8037.IsActive) vm.TraceOperationGasCost(traceExecutionCost);
+            vm.TraceOperationReady(traceExecutionCost);
+        }
 
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
@@ -858,7 +866,7 @@ public static partial class EvmInstructions
 
         ulong traceGasCost = TTracingInst.IsActive && vm.IsTracingOperationStart ? vm.GetStorageLoadTraceGasCost(in storageCell) : 0;
         // Charge additional gas based on whether the storage cell is hot or cold.
-        bool gasAvailable = TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec);
+        bool gasAvailable = TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, in storageCell, StorageAccessType.SLOAD, spec);
         if (TTracingInst.IsActive)
             vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
         if (!gasAvailable)
@@ -912,8 +920,15 @@ public static partial class EvmInstructions
 
         uint available = (uint)inputData.Length - (uint)offset;
         uint copiedLength = available >= 32 ? 32u : available;
-        return stack.WriteRightPaddedBytes<TTracingInst>(ref slot,
-            ref Unsafe.Add(ref MemoryMarshal.GetReference(inputData), (nint)offset),
-            copiedLength);
+        ref byte input = ref Unsafe.Add(ref MemoryMarshal.GetReference(inputData), (nint)offset);
+        if (EvmPooledMemory.IsSwizzled)
+        {
+            // The input is laid out as memory is (see EvmPooledMemory.LoadInputAfterGas).
+            Span<byte> natural = stackalloc byte[EvmStack.WordSize];
+            SwizzledMemory.Read(ref input, natural[..(int)copiedLength]);
+            return stack.WriteRightPaddedBytes<TTracingInst>(ref slot, ref MemoryMarshal.GetReference(natural), copiedLength);
+        }
+
+        return stack.WriteRightPaddedBytes<TTracingInst>(ref slot, ref input, copiedLength);
     }
 }

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Ethereum.Test.Base
 {
@@ -19,6 +20,7 @@ namespace Ethereum.Test.Base
         public IReleaseSpec? EthereumNetwork { get; set; }
         public IReleaseSpec? EthereumNetworkAfterTransition { get; set; }
         public ForkActivation? TransitionForkActivation { get; set; }
+        public UInt256? TransitionTerminalTotalDifficulty { get; set; }
         public string? LastBlockHash { get; set; }
         public ConfigJson? Config { get; set; }
         public string? GenesisRlp { get; set; }
@@ -31,6 +33,9 @@ namespace Ethereum.Test.Base
         public Dictionary<Address, AccountState>? PostState { get; set; }
 
         public Hash256? PostStateHash { get; set; }
+
+        public string? PreHash { get; set; }
+        public Dictionary<Address, AccountState?>? PostStateDiff { get; set; }
 
         public string? SealEngine { get; set; }
         public string? LoadFailure { get; set; }

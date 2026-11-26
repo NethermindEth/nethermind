@@ -1,0 +1,53 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Microsoft.AspNetCore.Http;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.BeaconChain.Api.Common;
+
+internal readonly record struct ResolvedBlock(Hash256 Root, ForkedSignedBeaconBlock Block)
+{
+    public ulong Slot => Block.Slot;
+
+    public Hash256 ParentRoot => Block switch
+    {
+        ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message!.ParentRoot!,
+        ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Message!.ParentRoot!,
+        _ => throw UnknownShape(),
+    };
+
+    public Hash256 StateRoot => Block switch
+    {
+        ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message!.StateRoot!,
+        ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Message!.StateRoot!,
+        _ => throw UnknownShape(),
+    };
+
+    private NotSupportedException UnknownShape() => new($"Unhandled signed beacon block shape {Block.GetType().Name}");
+}
+
+internal static class BlockIdResolver
+{
+    public static bool TryResolve(BeaconChainStore store, BeaconApiHead view, string blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage)
+    {
+        resolved = default;
+
+        if (!IdResolver.TryResolveRoot(store, view, blockId, out Hash256? root, out errorStatus, out errorMessage))
+        {
+            return false;
+        }
+
+        if (!store.TryGetForkedBlock(root!, out ForkedSignedBeaconBlock? block))
+        {
+            errorStatus = StatusCodes.Status404NotFound;
+            errorMessage = $"Block {root} is not retained by this node.";
+            return false;
+        }
+
+        resolved = new ResolvedBlock(root!, block);
+        return true;
+    }
+}

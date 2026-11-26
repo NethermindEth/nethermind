@@ -78,14 +78,17 @@ public class StartupTreeFixerTests
         using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
 
-        Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
-        Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
-        Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+            Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
+            Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
-        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
-        Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body).UsingBlockBodyComparer());
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
+            Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body).UsingBlockBodyComparer());
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
+        }
     }
 
     // A flat DB keeps the state of its in-memory tail on a clean shutdown, so the blocks above the persisted state
@@ -131,7 +134,7 @@ public class StartupTreeFixerTests
             Assert.That(tree.Head!.Hash, Is.EqualTo(blocks[expectedHead].Hash));
             Assert.That(tree.FindHeader(3, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(blocks[3].Hash), "the fork stays off the canonical chain");
             Assert.That(suggested.Where(h => h != fork.Hash), Is.EqualTo(blocks[((int)expectedHead + 1)..].Select(static b => b.Hash)));
-            Assert.That(suggested.Contains(fork.Hash!), Is.EqualTo(expectedHead < 3), "a fork below the resumed head is not re-executed");
+            Assert.That(suggested, Does.Not.Contain(fork.Hash!), "a block off the main chain is not re-executed");
         }
     }
 
@@ -197,6 +200,31 @@ public class StartupTreeFixerTests
         Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Fixer_suggests_only_the_main_chain_block_of_a_level()
+    {
+        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        await testRpc.BlockProcessingQueue.StopAsync();
+        IBlockTree tree = testRpc.BlockTree;
+        Block head = tree.Head!;
+        Block mainChainBlock = Build.A.Block.WithNumber(head.Number + 1).WithDifficulty(head.Difficulty + 1).WithParent(head).WithStateRoot(head.StateRoot!).TestObject;
+        Block sibling = Build.A.Block.WithNumber(head.Number + 1).WithDifficulty(head.Difficulty + 1).WithParent(head).WithStateRoot(head.StateRoot!).WithExtraData([1]).TestObject;
+        tree.SuggestBlock(mainChainBlock);
+        tree.SuggestBlock(sibling);
+        ChainLevelInfo level = new(true, new BlockInfo(mainChainBlock.Hash!, 0), new BlockInfo(sibling.Hash!, 0));
+
+        using IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.StateReader, NoErrorLimboLogs.Instance, 5);
+        await fixer.VisitLevelStart(level, mainChainBlock.Number, CancellationToken.None);
+        BlockVisitOutcome siblingOutcome = await fixer.VisitBlock(sibling, CancellationToken.None);
+        BlockVisitOutcome mainChainOutcome = await fixer.VisitBlock(mainChainBlock, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(siblingOutcome, Is.EqualTo(BlockVisitOutcome.None));
+            Assert.That(mainChainOutcome, Is.EqualTo(BlockVisitOutcome.Suggest));
+        }
+    }
+
     private static void SuggestNumberOfBlocks(IBlockTree blockTree, ulong blockAmount)
     {
         Block newParent = blockTree.Head!;
@@ -241,12 +269,15 @@ public class StartupTreeFixerTests
         using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
 
-        Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
-        Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
-        Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+            Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
+            Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(2ul), "best known");
-        Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
-        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(2ul), "best known");
+            Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        }
     }
 }

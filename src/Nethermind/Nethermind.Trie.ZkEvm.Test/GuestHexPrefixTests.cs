@@ -29,11 +29,14 @@ public class GuestHexPrefixTests
                 _ => HexPrefix.ConcatNibbles([v0], [v1, v2])
             };
 
-            Assert.That(first, Is.EqualTo(new[] { v0, v1, v2 }), $"path {index:x3}");
-            Assert.That(HexPrefix.GetArray([v0, v1, v2]), Is.SameAs(first), $"GetArray {index:x3}");
-            Assert.That(HexPrefix.FromBytes([(byte)(0x30 | v0), (byte)((v1 << 4) | v2)]).key, Is.SameAs(first), $"FromBytes {index:x3}");
-            Assert.That(HexPrefix.PrependNibble(v0, [v1, v2]), Is.SameAs(first), $"PrependNibble {index:x3}");
-            Assert.That(HexPrefix.ConcatNibbles([v0, v1], [v2]), Is.SameAs(first), $"ConcatNibbles {index:x3}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first, Is.EqualTo(new[] { v0, v1, v2 }), $"path {index:x3}");
+                Assert.That(HexPrefix.GetArray([v0, v1, v2]), Is.SameAs(first), $"GetArray {index:x3}");
+                Assert.That(HexPrefix.FromBytes([(byte)(0x30 | v0), (byte)((v1 << 4) | v2)]).key, Is.SameAs(first), $"FromBytes {index:x3}");
+                Assert.That(HexPrefix.PrependNibble(v0, [v1, v2]), Is.SameAs(first), $"PrependNibble {index:x3}");
+                Assert.That(HexPrefix.ConcatNibbles([v0, v1], [v2]), Is.SameAs(first), $"ConcatNibbles {index:x3}");
+            }
         }
     }
 }

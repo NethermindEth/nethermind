@@ -21,10 +21,6 @@ public static partial class IReleaseSpecExtensions
 
         public bool UseTxAccessLists => spec.IsEip2930Enabled;
         public bool AddCoinbaseToTxAccessList => spec.IsEip3651Enabled;
-        public bool ModExpEnabled => spec.IsEip198Enabled;
-        public bool BN254Enabled => spec.IsEip196Enabled && spec.IsEip197Enabled;
-        public bool BlakeEnabled => spec.IsEip152Enabled;
-        public bool Bls12381Enabled => spec.IsEip2537Enabled;
 
         public bool UseExpDDosProtection => spec.IsEip160Enabled;
         public bool UseLargeStateDDosProtection => spec.IsEip1884Enabled;

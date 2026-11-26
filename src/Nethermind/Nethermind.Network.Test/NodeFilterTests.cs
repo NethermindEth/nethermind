@@ -52,7 +52,9 @@ public class NodeFilterTests
         filter.Touch(first);
         filter.Touch(second);
         filter.Touch(first);
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryAccept(first), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(filter.TryAccept(second), Is.True);
     }
 
@@ -80,7 +82,9 @@ public class NodeFilterTests
         IPAddress ip1 = IPAddress.Parse("192.0.2.1");
         IPAddress ip2 = IPAddress.Parse("192.0.2.2");
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryAccept(ip1), Is.True, "first address should be accepted");
+#pragma warning restore NUnit2045
         Assert.That(filter.TryAccept(ip2), Is.True, "different address should be accepted");
     }
 
@@ -104,7 +108,9 @@ public class NodeFilterTests
     public void TryAccept_FiltersSecondAddress(string first, string second, bool secondAccepted)
     {
         NodeFilter filter = CreateFilter();
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryAccept(IPAddress.Parse(first)), Is.True, "first address should be accepted");
+#pragma warning restore NUnit2045
         Assert.That(filter.TryAccept(IPAddress.Parse(second)), Is.EqualTo(secondAccepted));
     }
 
@@ -115,8 +121,11 @@ public class NodeFilterTests
         IPAddress first = IPAddress.Parse("2001:db8::1");
         IPAddress sameSubnet = IPAddress.Parse("2001:db8::2");
 
-        Assert.That(filter.WouldAccept(first), Is.True);
-        Assert.That(filter.WouldAccept(sameSubnet), Is.True, "a read-only probe must not consume filter capacity");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.WouldAccept(first), Is.True);
+            Assert.That(filter.WouldAccept(sameSubnet), Is.True, "a read-only probe must not consume filter capacity");
+        }
 
         filter.Touch(first);
 
@@ -216,7 +225,9 @@ public class NodeFilterTests
         IPAddress ip2 = IPAddress.Parse("192.0.2.2");
         IPAddress ip3 = IPAddress.Parse("192.0.2.3");
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryAccept(ip1), Is.True, "first address should be accepted");
+#pragma warning restore NUnit2045
         Assert.That(filter.TryAccept(ip2), Is.True, "second address should be accepted");
         Assert.That(filter.TryAccept(ip3), Is.True, "third address should be accepted");
 
@@ -241,6 +252,24 @@ public class NodeFilterTests
     {
         NodeFilter filter = NodeFilter.Create(50, filterEnabled: false, subnetBucketing: true, currentIp: null);
         Assert.That(filter, Is.SameAs(NodeFilter.AcceptAll));
+    }
+
+    [Test]
+    public void Create_keeps_recent_connections_when_peer_target_is_zero()
+    {
+        NodeFilter filter = NodeFilter.Create(0, filterEnabled: true, subnetBucketing: false, currentIp: null);
+        IPAddress[] addresses =
+        [
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("192.0.2.2"),
+            IPAddress.Parse("192.0.2.3"),
+            IPAddress.Parse("192.0.2.4"),
+        ];
+        List<bool> accepted = [];
+        foreach (IPAddress address in addresses) accepted.Add(filter.TryAccept(address));
+        foreach (IPAddress address in addresses) accepted.Add(filter.TryAccept(address));
+
+        Assert.That(accepted, Is.EqualTo(new[] { true, true, true, true, false, false, false, false }));
     }
 
     [TestCase("127.0.0.1", true, Description = "IPv4 loopback")]
@@ -304,12 +333,16 @@ public class NodeFilterTests
 
         if (expectEqual)
         {
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(filter.TryAccept(IPAddress.Parse(remote1)), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(filter.TryAccept(IPAddress.Parse(remote2)), Is.False);
         }
         else
         {
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(filter.TryAccept(IPAddress.Parse(remote1)), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(filter.TryAccept(IPAddress.Parse(remote2)), Is.True);
         }
     }
@@ -323,7 +356,9 @@ public class NodeFilterTests
         IPAddress ip1 = IPAddress.Parse(first);
         IPAddress ip2 = IPAddress.Parse(second);
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryAccept(ip1), Is.True, "first attempt should be accepted");
+#pragma warning restore NUnit2045
         Assert.That(filter.TryAccept(ip2), Is.False, "second attempt within timeout should be rejected");
 
         clock.Advance(TimeSpan.FromMilliseconds(500));

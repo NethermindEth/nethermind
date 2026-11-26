@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using NUnit.Framework;
 
@@ -28,12 +29,33 @@ public class BuiltInConfigsTests
         Assert.That(stream, Is.Not.Null);
 
         JsonConfigSource source = new(stream!);
-        Assert.That(stream!.CanRead, Is.True, "the caller owns the stream");
-        Assert.That(source.GetRawValue("InitConfig", "ChainSpecPath").Value, Is.EqualTo("chainspec/foundation.json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream!.CanRead, Is.True, "the caller owns the stream");
+            Assert.That(source.GetRawValue("InitConfig", "ChainSpecPath").Value, Is.EqualTo("chainspec/foundation.json"));
+        }
     }
 
     [TestCase("unknown")]
     [TestCase("configs/mainnet.json")]
     [TestCase("mainnet.cfg")]
     public void Returns_null_for_unknown_name(string name) => Assert.That(BuiltInConfigs.Open(name), Is.Null);
+
+    [Test]
+    public void Adds_configurations_a_plugin_embeds_without_replacing_built_in_ones()
+    {
+        IReadOnlyList<string> added = BuiltInConfigs.AddFrom(typeof(BuiltInConfigsTests).Assembly);
+        IReadOnlyList<string> addedAgain = BuiltInConfigs.AddFrom(typeof(BuiltInConfigsTests).Assembly);
+        using Stream? plugin = BuiltInConfigs.Open("plugin-test-network");
+        using Stream? builtIn = BuiltInConfigs.Open("mainnet");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BuiltInConfigs.Names, Does.Contain("plugin-test-network"));
+            Assert.That(added, Has.None.EqualTo("mainnet"), "a built-in name keeps its configuration");
+            Assert.That(addedAgain, Is.Empty, "adding again changes nothing");
+            Assert.That(new JsonConfigSource(plugin!).GetRawValue("InitConfig", "ChainSpecPath").Value, Is.EqualTo("chainspec/plugin-test-network.json"));
+            Assert.That(new JsonConfigSource(builtIn!).GetRawValue("InitConfig", "ChainSpecPath").Value, Is.EqualTo("chainspec/foundation.json"));
+        }
+    }
 }

@@ -28,7 +28,7 @@ public class JsonConfigSource : IConfigSource
         try
         {
             using JsonDocument json = JsonDocument.Parse(jsonContent);
-            HashSet<string> loadedModules = new(StringComparer.InvariantCultureIgnoreCase);
+            HashSet<string> loadedModules = [with(StringComparer.InvariantCultureIgnoreCase)];
             foreach (JsonProperty moduleEntry in json.RootElement.EnumerateObject())
             {
                 if (moduleEntry.Name == SchemaKey)
@@ -75,9 +75,10 @@ public class JsonConfigSource : IConfigSource
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
+                // the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
+                missingConfigFileMessage.AppendLine($"Could not list config files: {e.Message}");
             }
 
             throw new IOException(missingConfigFileMessage.ToString());
@@ -88,7 +89,7 @@ public class JsonConfigSource : IConfigSource
 
     private void LoadModule(string moduleName, JsonElement configItems)
     {
-        Dictionary<string, string> itemsDict = new(StringComparer.InvariantCultureIgnoreCase);
+        Dictionary<string, string> itemsDict = [with(StringComparer.InvariantCultureIgnoreCase)];
 
         foreach (JsonProperty configItem in configItems.EnumerateObject())
         {
@@ -113,6 +114,10 @@ public class JsonConfigSource : IConfigSource
                 {
                     itemsDict[key] = "false";
                 }
+                else if (value.ValueKind == JsonValueKind.Null)
+                {
+                    itemsDict[key] = "null";
+                }
                 else
                 {
                     itemsDict[key] = configItem.Value.ToString();
@@ -127,41 +132,24 @@ public class JsonConfigSource : IConfigSource
         ApplyConfigValues(moduleName, itemsDict);
     }
 
-    private readonly Dictionary<string, Dictionary<string, string>> _values = new(StringComparer.InvariantCultureIgnoreCase);
-
-    private readonly Dictionary<string, Dictionary<string, object>> _parsedValues = new(StringComparer.InvariantCultureIgnoreCase);
+    private readonly Dictionary<string, Dictionary<string, string>> _values = [with(StringComparer.InvariantCultureIgnoreCase)];
 
     private void ApplyConfigValues(string configModule, Dictionary<string, string> items)
     {
         configModule = NormalizeModuleName(configModule);
 
         _values[configModule] = items;
-        _parsedValues[configModule] = new Dictionary<string, object>(StringComparer.InvariantCultureIgnoreCase);
     }
 
     private static string NormalizeModuleName(string configModule) =>
         configModule.EndsWith("Config", StringComparison.InvariantCultureIgnoreCase) ? configModule : $"{configModule}Config";
 
-    private void ParseValue(Type type, string category, string name)
-    {
-        string valueString = _values[category][name];
-        _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString, category, name)!;
-    }
-
     public (bool IsSet, object? Value) GetValue(Type type, string category, string name)
     {
-        (bool isSet, _) = GetRawValue(category, name);
-        if (isSet)
-        {
-            if (!_parsedValues[category].ContainsKey(name))
-            {
-                ParseValue(type, category, name);
-            }
-
-            return (true, _parsedValues[category][name]);
-        }
-
-        return (false, ConfigSourceHelper.GetDefault(type));
+        (bool isSet, string? raw) = GetRawValue(category, name);
+        return isSet
+            ? (true, ConfigSourceHelper.ParseValue(type, raw!, category, name))
+            : (false, ConfigSourceHelper.GetDefault(type));
     }
 
     public (bool IsSet, string? Value) GetRawValue(string category, string name)
@@ -171,17 +159,19 @@ public class JsonConfigSource : IConfigSource
             return (false, null);
         }
 
-        bool isSet = _values.ContainsKey(category) && _values[category].ContainsKey(name);
-        return (isSet, isSet ? _values[category][name] : null);
+        return _values.TryGetValue(category, out Dictionary<string, string>? values) && values.TryGetValue(name, out string? value)
+            ? (true, value)
+            : (false, null);
     }
 
     public IEnumerable<(string? Category, string Name)> GetConfigKeys() => _values.SelectMany(m => m.Value.Keys.Select(n => ((string?)m.Key, n)));
 
     private string ParseNumber(JsonElement value)
     {
-        if (value.TryGetInt64(out long result))
+        string rawText = value.GetRawText();
+        if (rawText.AsSpan().IndexOfAny('.', 'e', 'E') < 0)
         {
-            return result.ToString();
+            return rawText;
         }
         else if (value.TryGetDouble(out double doubleResult))
         {
@@ -189,7 +179,7 @@ public class JsonConfigSource : IConfigSource
         }
         else
         {
-            throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as either Int64 or Double.");
+            throw new System.Configuration.ConfigurationErrorsException($"Failed to parse the JSON number '{value}' as Double.");
         }
     }
 }

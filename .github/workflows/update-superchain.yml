@@ -17,7 +17,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
       - name: Remove existing Chainspec and config files
         run: |
           rm -f ./src/Nethermind/Chains/*.zst

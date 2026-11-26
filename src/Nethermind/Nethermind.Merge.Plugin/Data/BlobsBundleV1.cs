@@ -47,7 +47,7 @@ public class BlobsBundleV1
             {
                 Commitments[blockIndex] = wrapper.Commitments[txIndex];
                 Blobs[blockIndex] = wrapper.Blobs[txIndex];
-                Proofs[blockIndex] = wrapper.Proofs[txIndex];
+                Proofs[blockIndex] = wrapper.GetProofs(txIndex).ToArray();
             }
         }
     }

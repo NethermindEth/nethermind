@@ -3,9 +3,12 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Exceptions;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Json;
@@ -20,6 +23,9 @@ public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
 {
     private const int MaxLength = 2 + 64;
 
+    /// <summary>Longest key an error message repeats in full; a longer one is cut, so the error stays small whatever was sent.</summary>
+    private const int MaxEchoedLength = 2 * MaxLength;
+
     [SkipLocalsInit]
     public override StorageIndex Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         new(ReadValue(ref reader));
@@ -33,20 +39,40 @@ public sealed class StorageIndexConverter : JsonConverter<StorageIndex>
         }
 
         int length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
-        if (length is 0 or > MaxLength)
+        if (length == 0)
         {
             throw new JsonException();
         }
 
-        if (reader.HasValueSequence)
+        if (length > MaxLength)
         {
-            Span<byte> span = stackalloc byte[length];
-            reader.ValueSequence.CopyTo(span);
-            return Parse(span);
+            ThrowInvalidKey("storage key too long (want at most 32 bytes)", ref reader, innerException: null);
         }
 
-        return Parse(reader.ValueSpan);
+        try
+        {
+            if (reader.HasValueSequence)
+            {
+                Span<byte> span = stackalloc byte[length];
+                reader.ValueSequence.CopyTo(span);
+                return Parse(span);
+            }
+
+            return Parse(reader.ValueSpan);
+        }
+        catch (FormatException e)
+        {
+            ThrowInvalidKey("invalid hex in storage key", ref reader, e);
+            return default;
+        }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidKey(string reason, ref Utf8JsonReader reader, Exception? innerException) =>
+        throw new SafePublicMessageFormatException($"{reason}: \"{Echo(reader.GetString()!)}\"", innerException, omitArgumentPosition: true);
+
+    private static string Echo(string key) =>
+        key.Length <= MaxEchoedLength ? key : string.Concat(key.AsSpan(0, MaxEchoedLength), "...");
 
     private static UInt256 Parse(ReadOnlySpan<byte> hex)
     {

@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -29,7 +28,7 @@ namespace Nethermind.Bootnode;
 internal static class DiscoveryContainer
 {
     /// <summary>
-    /// Points the general and discovery buffers at one small pooled allocator.
+    /// Points the general buffers at one small pooled allocator.
     /// </summary>
     /// <remarks>
     /// A bootnode only serializes discovery traffic, so one arena of 2 MiB chunks replaces the process-wide default's
@@ -37,7 +36,7 @@ internal static class DiscoveryContainer
     /// the default allocator's chunks remain reachable.
     /// </remarks>
     internal static void ConfigureNetworkBuffers() =>
-        NethermindBuffers.Default = NethermindBuffers.DiscoveryAllocator = NethermindBuffers.CreateAllocator(
+        NethermindBuffers.Default = NethermindBuffers.CreateAllocator(
             arenaOrder: 8,
             arenaCount: 1);
 
@@ -122,11 +121,11 @@ internal static class DiscoveryContainer
             .SingleInstance();
 
         builder.RegisterInstance(new FileNetworkStorage(Path.Combine(options.DataDir, "discovery-v4-nodes.json"), logManager))
-            .Keyed<INetworkStorage>(DbNames.DiscoveryNodes)
+            .Keyed<INetworkStorage>(DiscoveryStorageKeys.V4)
             .SingleInstance();
 
         builder.RegisterInstance(new FileNetworkStorage(Path.Combine(options.DataDir, "discovery-v5-nodes.json"), logManager))
-            .Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes)
+            .Keyed<INetworkStorage>(DiscoveryStorageKeys.V5)
             .SingleInstance();
 
         builder.RegisterType<DiscoveryV5App>()
@@ -180,5 +179,7 @@ internal static class DiscoveryContainer
         public bool IsForkIdCompatible(ForkId peerId) => true;
 
         public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head) => default;
+
+        public ReadOnlySpan<Fork> GetAllForks() => [];
     }
 }

@@ -7,7 +7,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Encoding;
@@ -30,7 +30,9 @@ public class AuRaBlockStoreDecoderTests
         Block? retrieved = store.Get(block.Number, block.Hash!);
 
         Assert.That(retrieved, Is.Not.Null);
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
         Assert.That(retrieved!.Header, Is.InstanceOf<AuRaBlockHeader>());
+#pragma warning restore NUnit2045
         Assert.That(((AuRaBlockHeader)retrieved.Header).AuRaSignature, Is.EqualTo(new byte[65]));
     }
 
@@ -46,7 +48,7 @@ public class AuRaBlockStoreDecoderTests
         // The pre-fix wiring left BlockStore without a decoder, so it fell back to the base HeaderDecoder.
         BlockStore baseStore = new(db);
 
-        Assert.That(() => baseStore.Get(block.Number, block.Hash!), Throws.InstanceOf<RlpException>());
+        Assert.That(() => baseStore.Get(block.Number, block.Hash!), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -60,7 +62,9 @@ public class AuRaBlockStoreDecoderTests
 
         Block retrieved = store.GetAll().Single();
 
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
         Assert.That(retrieved.Header, Is.InstanceOf<AuRaBlockHeader>());
+#pragma warning restore NUnit2045
         Assert.That(((AuRaBlockHeader)retrieved.Header).AuRaSignature, Is.EqualTo(new byte[65]));
         Assert.That(retrieved.Hash, Is.EqualTo(block.Hash));
     }

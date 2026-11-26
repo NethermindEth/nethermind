@@ -100,8 +100,8 @@ public class OptimizedCollectionsTests
     private static void RunDictionary<TKey>(Func<int, TKey> key, IEqualityComparer<TKey>? comparer, int seed) where TKey : notnull, IEquatable<TKey>
     {
         Random random = new(seed);
-        Dictionary<TKey, int> expected = new(comparer);
-        OptimizedDictionary<TKey, int> actual = new(comparer);
+        Dictionary<TKey, int> expected = [with(comparer)];
+        OptimizedDictionary<TKey, int> actual = [with(comparer)];
         for (int step = 0; step < Steps; step++)
         {
             TKey k = key(random.Next(KeyRange));
@@ -167,9 +167,12 @@ public class OptimizedCollectionsTests
             Assert.That(actual.Count, Is.EqualTo(expected.Count));
             if (step % 50 == 0)
             {
-                Assert.That(actual.ToArray(), Is.EqualTo(expected.ToArray()), "enumeration order");
-                Assert.That(actual.Keys.ToArray(), Is.EqualTo(expected.Keys.ToArray()));
-                Assert.That(actual.Values.ToArray(), Is.EqualTo(expected.Values.ToArray()));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual.ToArray(), Is.EqualTo(expected.ToArray()), "enumeration order");
+                    Assert.That(actual.Keys.ToArray(), Is.EqualTo(expected.Keys.ToArray()));
+                    Assert.That(actual.Values.ToArray(), Is.EqualTo(expected.Values.ToArray()));
+                }
             }
         }
     }
@@ -177,8 +180,8 @@ public class OptimizedCollectionsTests
     private static void RunHashSet<T>(Func<int, T> item, IEqualityComparer<T>? comparer, int seed) where T : notnull, IEquatable<T>
     {
         Random random = new(seed);
-        HashSet<T> expected = new(comparer);
-        OptimizedHashSet<T> actual = new(comparer);
+        HashSet<T> expected = [with(comparer)];
+        OptimizedHashSet<T> actual = [with(comparer)];
         for (int step = 0; step < Steps; step++)
         {
             T value = item(random.Next(KeyRange));

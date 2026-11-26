@@ -38,8 +38,11 @@ public class OptimismProtocolVersionTest
         actual.Write(bytesWritten);
         string bytesWrittenHex = bytesWritten.ToHexString(withZeroX: true);
 
-        Assert.That(actual, Is.EqualTo(testCase.Expected));
-        Assert.That(testCase.HexString, Is.EqualTo(bytesWrittenHex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(testCase.Expected));
+            Assert.That(testCase.HexString, Is.EqualTo(bytesWrittenHex));
+        }
     }
 
     [Test]
@@ -98,8 +101,11 @@ public class OptimismProtocolVersionTest
     [TestCaseSource(nameof(V0CompareCases))]
     public void OptimismProtocolVersionV0_Compare((OptimismProtocolVersion.V0 Left, OptimismProtocolVersion.V0 Right, int Expected) testCase)
     {
-        Assert.That(testCase.Left.CompareTo(testCase.Right), Is.EqualTo(testCase.Expected));
-        Assert.That(testCase.Right.CompareTo(testCase.Left), Is.EqualTo(testCase.Expected * -1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testCase.Left.CompareTo(testCase.Right), Is.EqualTo(testCase.Expected));
+            Assert.That(testCase.Right.CompareTo(testCase.Left), Is.EqualTo(testCase.Expected * -1));
+        }
     }
 
     [Test]

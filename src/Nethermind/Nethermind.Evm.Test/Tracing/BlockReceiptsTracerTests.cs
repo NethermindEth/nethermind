@@ -19,6 +19,52 @@ namespace Nethermind.Evm.Test.Tracing
     public class BlockReceiptsTracerTests
     {
         [Test]
+        public void Forwards_action_error_detail_scope([Values] bool nested, [Values] bool actionOnly)
+        {
+            Transaction transaction = Build.A.Transaction.TestObject;
+            ITxTracer leaf = Substitute.For<ITxTracer>();
+            IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+            blockTracer.StartNewTxTrace(transaction).Returns(leaf);
+            using BlockReceiptsTracer? inner = nested ? new() : null;
+            if (inner is not null)
+            {
+                inner.SetOtherTracer(blockTracer);
+                blockTracer = inner;
+            }
+            using BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(blockTracer);
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(transaction).TestObject);
+            tracer.StartNewTxTrace(transaction);
+
+            tracer.ReportActionErrorDetails("fault", actionOnly);
+
+            leaf.Received(1).ReportActionErrorDetails("fault", actionOnly);
+        }
+
+        [Test]
+        public void Forwards_code_deposit_error([Values] bool nested)
+        {
+            Transaction transaction = Build.A.Transaction.TestObject;
+            ITxTracer leaf = Substitute.For<ITxTracer>();
+            IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+            blockTracer.StartNewTxTrace(transaction).Returns(leaf);
+            using BlockReceiptsTracer? inner = nested ? new() : null;
+            if (inner is not null)
+            {
+                inner.SetOtherTracer(blockTracer);
+                blockTracer = inner;
+            }
+            using BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(blockTracer);
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(transaction).TestObject);
+            tracer.StartNewTxTrace(transaction);
+
+            tracer.ReportCodeDepositError("max code size exceeded");
+
+            leaf.Received(1).ReportCodeDepositError("max code size exceeded");
+        }
+
+        [Test]
         public void Forwards_current_transaction_cancellation([Values] bool nested)
         {
             using CancellationTokenSource cancellation = new();
@@ -242,6 +288,22 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(tracer.TxReceipts[0].TxType, Is.EqualTo(TxType.AccessList));
         }
 
+        [TestCase(7ul, 30ul, 12ul)]
+        [TestCase(7ul, 10ul, 10ul)]
+        public void Sets_effective_gas_price(ulong baseFee, ulong maxFeePerGas, ulong expected)
+        {
+            Transaction transaction = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(maxFeePerGas).WithMaxPriorityFeePerGas(5).TestObject;
+            Block block = Build.A.Block.WithBaseFeePerGas(baseFee).WithTransactions(transaction).TestObject;
+
+            BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(NullBlockTracer.Instance);
+            tracer.StartNewBlockTrace(block);
+            tracer.StartNewTxTrace(transaction);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, [], []);
+
+            Assert.That(tracer.TxReceipts[0].EffectiveGasPrice, Is.EqualTo((UInt256)expected));
+        }
+
         [Test]
         public void Sets_state_root_if_provided_on_failure()
         {
@@ -300,10 +362,16 @@ namespace Nethermind.Evm.Test.Tracing
 
             tracer.SetReceipt(2, receipt);
 
-            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(3));
-            Assert.That(wrappedTracer.TxReceipts.Length, Is.EqualTo(3));
-            Assert.That(tracer.TxReceipts[2], Is.SameAs(receipt));
-            Assert.That(wrappedTracer.TxReceipts[2], Is.SameAs(receipt));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts.Length, Is.EqualTo(3));
+                Assert.That(wrappedTracer.TxReceipts.Length, Is.EqualTo(3));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts[2], Is.SameAs(receipt));
+                Assert.That(wrappedTracer.TxReceipts[2], Is.SameAs(receipt));
+            }
         }
 
         [Test]
@@ -340,8 +408,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             tracer.ResetForParallelTx(nextBlock, nextOtherTracer);
 
-            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
-            Assert.That(tracer.InnerTracer, Is.SameAs(NullTxTracer.Instance));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
+                Assert.That(tracer.InnerTracer, Is.SameAs(NullTxTracer.Instance));
+            }
             previousOtherTracer.Received(1).StartNewBlockTrace(previousBlock);
             previousOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);
             nextOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);

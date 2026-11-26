@@ -41,8 +41,11 @@ public class ParityTxTraceStreamingResultTests
 
         int[] enumerated = result.ToArray();
 
-        Assert.That(enumerated, Is.EqualTo(new[] { 1, 2 }), "the in-process view yields the materialized items in order");
-        Assert.That(items.IsDisposed, Is.True, "the materialized items are released once enumeration ends");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enumerated, Is.EqualTo(new[] { 1, 2 }), "the in-process view yields the materialized items in order");
+            Assert.That(items.IsDisposed, Is.True, "the materialized items are released once enumeration ends");
+        }
     }
 
     private static ParityTxTraceStreamingResult<int> CreateResult(CancellationTokenSource timeoutCts, Func<IEnumerable<int>> materialize) =>

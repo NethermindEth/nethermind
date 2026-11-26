@@ -29,7 +29,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -215,8 +214,11 @@ public class Eip8360Tests : VirtualMachineTestsBase
             .STOP()
             .Done);
 
-        Assert.That(Run(spec: unmetered).StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(FactorySlot(1), Is.EqualTo((UInt256)7), "the legacy SSTORE handler writes the same transient slot SLOAD reads");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Run(spec: unmetered).StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(FactorySlot(1), Is.EqualTo((UInt256)7), "the legacy SSTORE handler writes the same transient slot SLOAD reads");
+        }
     }
 
     [Test]
@@ -319,8 +321,11 @@ public class Eip8360Tests : VirtualMachineTestsBase
 
         // Recreated, the account derives the same CREATE address and collides (EIP-684).
         ClearFactorySlot(0);
-        Assert.That(Run().StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(FactorySlot(0), Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Run().StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(FactorySlot(0), Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -465,6 +470,47 @@ public class Eip8360Tests : VirtualMachineTestsBase
             Assert.That(TestState.GetBalance(Sink), Is.EqualTo((UInt256)(fromTransientCreate ? 6 : 1)));
             AssertFinalized(tcreated, (UInt256)(fromTransientCreate ? 0 : 4));
         }
+    }
+
+    [TestCase(true, CallGas, """["step:14000:","post:14000"]""", TestName = "SELFDESTRUCT step cost counts a TCREATE beneficiary's ACCOUNT_WRITE")]
+    [TestCase(true, 10_000L, """["step:14000:out of gas","post:14000"]""", TestName = "SELFDESTRUCT runs out of gas from the step on a TCREATE beneficiary's ACCOUNT_WRITE")]
+    [TestCase(false, 0L, """["step:14000:","post:14000"]""", TestName = "SELFDESTRUCT step cost counts a TCREATE sender's ACCOUNT_WRITE")]
+    public void Self_destruct_step_cost_counts_account_write(bool toTransientCreate, long libraryGas, string expected)
+    {
+        byte[] init = toTransientCreate ? EmptyInit : Prepare.EvmCode.SELFDESTRUCT(Factory).Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        // Funded before the transaction, so its balance starts at its original balance and changing it charges no state gas.
+        TestState.CreateAccount(tcreated, 1);
+        TestState.Commit(Spec);
+        Prepare factory = Prepare.EvmCode.TCreate(init, Salt, 0).Op(Instruction.POP);
+        if (toTransientCreate)
+        {
+            // A pre-existing library, so EIP-6780 only moves its balance to the warm TCREATE account.
+            InstallCode(Library, Prepare.EvmCode.SELFDESTRUCT(tcreated).Done, 4);
+            factory.Call(Library, libraryGas).Op(Instruction.POP);
+        }
+
+        InstallCode(Factory, factory.STOP().Done, 100);
+        (Block block, Transaction tx) = BuildFactoryCall();
+        const string script = """
+            {
+                events: [],
+                step: function(log) { if (log.op.toNumber() === 0xff) this.events.push('step:' + log.getCost() + ':' + (log.getError() || '')); },
+                postStep: function(log) { if (log.op.toNumber() === 0xff) this.events.push('post:' + log.getCost()); },
+                fault: function(log) { if (log.op.toNumber() === 0xff) this.events.push('fault:' + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, EnabledSpec, GethTraceOptions.Default with { Tracer = script });
+        tracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = ((IBlockTracer)tracer).StartNewTxTrace(tx);
+
+        ExecuteFactoryCall(block, tx, txTracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().Single();
+
+        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions), Is.EqualTo(expected));
     }
 
     [TestCase(true, TestName = "PAY draining a TCREATE account refills state gas")]
@@ -662,6 +708,45 @@ public class Eip8360Tests : VirtualMachineTestsBase
 
         Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions),
             Is.EqualTo("""["step:SSTORE:100:2","post:SSTORE:100:2","step:SLOAD:100:1","post:SLOAD:100:1"]"""));
+    }
+
+    [TestCase(false, TestName = "JavaScript tracer reads the pushed TCREATE salt")]
+    [TestCase(true, TestName = "JavaScript tracer reads the pushed TCREATE salt in a fault after the pop")]
+    public void JavaScript_tracer_reads_the_pushed_transient_create_salt(bool faultAfterThePop)
+    {
+        const string salt = "a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0";
+        // The fault: the init code's memory range lies beyond the cap, which TCREATE finds after popping the salt.
+        InstallCode(Factory, faultAfterThePop
+            ? Bytes.FromHexString("7f" + salt + "600163ffffffff5ff65000")
+            : Prepare.EvmCode.TCreate(EmptyInit, Bytes.FromHexString(salt), 0).Op(Instruction.POP).STOP().Done);
+        (Block block, Transaction tx) = BuildFactoryCall();
+        const string script = """
+            {
+                events: [],
+                record: function(stage, log) {
+                    if (log.op.toNumber() !== 0xf6) return;
+                    var stack = [];
+                    for (var i = 0; i < log.stack.length(); i++) stack.push(log.stack.peek(i).toString(16));
+                    this.events.push(stage + ':' + (log.getError() || '') + ':' + stack.join(','));
+                },
+                step: function(log) { this.record('step', log); },
+                postStep: function(log) { this.record('post', log); },
+                fault: function(log) { this.record('fault', log); },
+                result: function() { return this.events; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, EnabledSpec, GethTraceOptions.Default with { Tracer = script });
+        tracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = ((IBlockTracer)tracer).StartNewTxTrace(tx);
+
+        ExecuteFactoryCall(block, tx, txTracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().Single();
+
+        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions), Is.EqualTo(faultAfterThePop
+            ? $"""["step::0,ffffffff,1,{salt}","post::0,ffffffff,1,{salt}","fault:out of gas:0,ffffffff,1,{salt}"]"""
+            : $"""["step::0,0,1,{salt}","post::0,0,1,{salt}"]"""));
     }
 
     [Test]
@@ -1037,10 +1122,13 @@ public class Eip8360Tests : VirtualMachineTestsBase
 
     private void AssertFinalized(Address address, in UInt256 expectedBalance)
     {
-        Assert.That(TestState.AccountExists(address), Is.EqualTo(!expectedBalance.IsZero), "empty accounts are removed (EIP-161)");
-        Assert.That(TestState.GetBalance(address), Is.EqualTo(expectedBalance), "balance is preserved");
-        Assert.That(TestState.GetNonce(address), Is.EqualTo(0UL), "nonce is reset");
-        Assert.That(TestState.IsContract(address), Is.False, "code is removed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestState.AccountExists(address), Is.EqualTo(!expectedBalance.IsZero), "empty accounts are removed (EIP-161)");
+            Assert.That(TestState.GetBalance(address), Is.EqualTo(expectedBalance), "balance is preserved");
+            Assert.That(TestState.GetNonce(address), Is.EqualTo(0UL), "nonce is reset");
+            Assert.That(TestState.IsContract(address), Is.False, "code is removed");
+        }
     }
 
     private sealed class ReceiptTracer : TxTracer

@@ -98,7 +98,9 @@ public class FrameTxBlobRevalidationReloadMeasurement
     private void AssertEveryFormIsReadable()
     {
         Transaction sample = _samples[0];
+#pragma warning disable NUnit2045 // Storage reads must succeed before their returned transactions are dereferenced.
         Assert.That(_storage.TryGet(sample.Hash!.ValueHash256, sample.SenderAddress!, sample.Timestamp, out Transaction? full), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(full!.NetworkWrapper, Is.InstanceOf<ShardBlobNetworkWrapper>(), "the full read must carry the sidecar it is timed for");
 
         Assert.That(_storage.TryGetWithoutBlobs(sample.Hash!.ValueHash256, sample.SenderAddress!, out Transaction? elided), Is.True);
@@ -131,5 +133,5 @@ public class FrameTxBlobRevalidationReloadMeasurement
         return (Stopwatch.GetElapsedTime(start), GC.GetAllocatedBytesForCurrentThread() - before);
     }
 
-    private static byte[] Encoded(Transaction tx, RlpBehaviors behaviors) => TxDecoder.Instance.Encode(tx, behaviors).Bytes;
+    private static byte[] Encoded(Transaction tx, RlpBehaviors behaviors) => TxDecoder.Instance.Encode(tx, behaviors);
 }

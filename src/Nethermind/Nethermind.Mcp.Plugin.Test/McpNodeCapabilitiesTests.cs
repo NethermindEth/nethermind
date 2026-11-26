@@ -93,8 +93,11 @@ public class McpNodeCapabilitiesTests
 
         McpStateStorage? storage = node.Create().GetStateStorage();
 
-        Assert.That(storage?.Backend, Is.EqualTo("Hash"));
-        Assert.That(storage?.Archive, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage?.Backend, Is.EqualTo("Hash"));
+            Assert.That(storage?.Archive, Is.False);
+        }
     }
 
     [Test]
@@ -516,7 +519,6 @@ public class McpNodeCapabilitiesTests
     {
         public Nethermind.Evm.State.IWorldStateScopeProvider GlobalWorldState => inner.GlobalWorldState;
         public IStateReader GlobalStateReader => inner.GlobalStateReader;
-        public Nethermind.State.SnapServer.ISnapStateServer SnapStateServer => inner.SnapStateServer;
         public IReadOnlyKeyValueStore? HashServer => inner.HashServer;
         public Nethermind.Evm.State.IWorldStateScopeProvider CreateResettableWorldState() => inner.CreateResettableWorldState();
         public IOverridableWorldScope CreateOverridableWorldScope() => inner.CreateOverridableWorldScope();

@@ -114,7 +114,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private static OpcodeBodySet DescribeBodies(IReleaseSpec spec)
     {
         Dictionary<nint, OpcodeBody>? outer = _bodyRecorder;
-        Dictionary<nint, OpcodeBody> recorder = new(2 * FallbackHandlersOffset);
+        Dictionary<nint, OpcodeBody> recorder = [with(2 * FallbackHandlersOffset)];
         _bodyRecorder = recorder;
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] table;
         try

@@ -838,9 +838,9 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET for CI scripts
-        uses: actions/setup-dotnet@v5
+        uses: ./rpc-bench-workspace/.github/actions/setup-dotnet
         with:
-          dotnet-version: 10.0.x
+          global-json-file: rpc-bench-workspace/global.json
 
       - name: Verify scripts checkout
         id: scripts
@@ -977,11 +977,11 @@ jobs:
           echo "Snapshot sets: ${db_sources[*]}${REFERENCE_DB_SOURCE:+ (reference: ${REFERENCE_DB_SOURCE})}; outputs under ${BENCH_TEMP} and ${DIAG_DIR}"
 
       - name: Reclaim root disk before pulling
-        if: needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
-        # Filling the disk docker writes to kills the daemon and takes the runner with it. Docker and containerd may
-        # live on /data: check their filesystems for image space while reserving headroom on / for the runner;
-        # pruning images on /data cannot free root space.
+        # Both benchmark boxes: filling the disk docker writes to kills the daemon and takes the runner with it, and a
+        # full disk otherwise surfaces only as a failed pull. Docker and containerd may live on another filesystem (/data
+        # on ARM): check their filesystems for image space while reserving headroom on / for the runner; pruning images
+        # there cannot free root space.
         env:
           KEEP_IMAGES: |
             ${{ needs.resolve.outputs.image_ref }}
@@ -1022,8 +1022,8 @@ jobs:
           docker image prune -f || true
           docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
           find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete 2>/dev/null || true
-          # On this box each run's output dir sits on the scratch disk, and only `Remove run output` deletes it -
-          # which never runs if the job dies with the box. Sweep dirs older than any live run can be.
+          # Each run's output dir sits on the scratch disk on ARM (under RUNNER_TEMP on amd64), and only `Remove run
+          # output` deletes it - which never runs if the job dies with the box. Sweep dirs older than any live run can be.
           find "${SCRATCH_ROOT}" -mindepth 1 -maxdepth 1 -type d -name 'rpcbench.*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
           apt-get clean 2>/dev/null || true
           journalctl --vacuum-size=200M 2>/dev/null || true
@@ -1774,7 +1774,7 @@ jobs:
         run: dotnet run --file scripts/rpc-bench/cleanup.cs -- || true
 
       - name: Reclaim root disk after the run
-        if: always() && needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
+        if: always()
         shell: bash
         run: |
           set -uo pipefail
@@ -1872,9 +1872,7 @@ jobs:
           path: reports/
 
       - name: Set up .NET for CI scripts
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
+        uses: ./.github/actions/setup-dotnet
 
       - name: Summarize hot spots
         shell: bash

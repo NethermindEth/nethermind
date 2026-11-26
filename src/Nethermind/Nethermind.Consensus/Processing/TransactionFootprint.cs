@@ -33,6 +33,13 @@ internal sealed class TransactionFootprint(
 
     public Transaction Transaction { get; } = transaction;
 
+    /// <summary>The account the run executed the transaction as.</summary>
+    /// <remarks>
+    /// Taken when the run is recorded: a mempool run is adopted by the block's transaction of the same hash, whose
+    /// sender is recovered from its signature and so need not be the sender the mempool held.
+    /// </remarks>
+    public Address? Sender { get; init; } = transaction.SenderAddress;
+
     /// <summary>Whether the run refreshed an invalidated footprint, on the values the footprints before it leave.</summary>
     public bool Refreshed { get; init; }
 
@@ -61,8 +68,9 @@ internal sealed class TransactionFootprint(
     public ReadOnlySpan<StateEffect> Effects => effects;
 
     /// <summary>This mempool run as the run of the block's <paramref name="tx"/>, with <paramref name="replacedEffects"/> in place of its effects.</summary>
+    /// <remarks>It keeps the sender the run executed as.</remarks>
     public TransactionFootprint For(Transaction tx, StateEffect[] replacedEffects) =>
-        new(tx, accounts, slots, replacedEffects, in _receipt, in _result, in _counts) { ContextReads = ContextReads, FromMempool = true };
+        new(tx, accounts, slots, replacedEffects, in _receipt, in _result, in _counts) { ContextReads = ContextReads, FromMempool = true, Sender = Sender };
 
     [SkipLocalsInit]
     public bool Matches(IWorldState state)

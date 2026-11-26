@@ -59,9 +59,12 @@ public class GethLikeBlockMemoryTracerTests
         ((IBlockTracer)blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject);
         ((IBlockTracer)blockTracer).EndTxTrace();
 
-        Assert.That(blockTracer.BuildResult().First(), Is.Not.Null, "0");
-        Assert.That(blockTracer.BuildResult().Skip(1).First(), Is.Not.Null, "1");
-        Assert.That(blockTracer.BuildResult().Last(), Is.Not.Null, "2");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTracer.BuildResult().First(), Is.Not.Null, "0");
+            Assert.That(blockTracer.BuildResult().Skip(1).First(), Is.Not.Null, "1");
+            Assert.That(blockTracer.BuildResult().Last(), Is.Not.Null, "2");
+        }
     }
 
     [TestCase(0UL, 24_000L)]

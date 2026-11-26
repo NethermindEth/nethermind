@@ -27,13 +27,9 @@ public class EIP4844_blobtransactions : BlockchainTestFixture<EIP4844_blobtransa
 
 public class _4895_withdrawals : BlockchainTestFixture<_4895_withdrawals>;
 
-public class EIP6780 : BlockchainTestFixture<EIP6780>;
-
 public class Example : BlockchainTestFixture<Example>;
 
 public class ExploitTest : BlockchainTestFixture<ExploitTest>;
-
-public class ForgedTest : BlockchainTestFixture<ForgedTest>;
 
 public class ForkStressTest : BlockchainTestFixture<ForkStressTest>;
 
@@ -46,8 +42,6 @@ public class MultiChainTest : BlockchainTestFixture<MultiChainTest>;
 public class RandomBlockhashTest : BlockchainTestFixture<RandomBlockhashTest>;
 
 public class StateTests : BlockchainTestFixture<StateTests>;
-
-public class TotalDifficultyTest : BlockchainTestFixture<TotalDifficultyTest>;
 
 public class UncleHeaderValidity : BlockchainTestFixture<UncleHeaderValidity>;
 

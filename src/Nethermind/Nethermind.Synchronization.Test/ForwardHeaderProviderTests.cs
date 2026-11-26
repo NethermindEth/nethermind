@@ -19,7 +19,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -72,8 +71,11 @@ public partial class ForwardHeaderProviderTests
         int maxNHeader = Math.Min(maxHeader, peerInfo!.MaxHeadersPerRequest());
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders((ulong)skipLastN, (ulong)maxNHeader, CancellationToken.None);
-        Assert.That(headers?[0]?.Number, Is.EqualTo(expectedStartNumber));
-        Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedEndNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers?[0]?.Number, Is.EqualTo(expectedStartNumber));
+            Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedEndNumber));
+        }
     }
 
     [Test]
@@ -102,8 +104,11 @@ public partial class ForwardHeaderProviderTests
         }
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        Assert.That(headers?[0]?.Number, Is.EqualTo(1019));
-        Assert.That(headers?[^1]?.Number, Is.EqualTo(1146));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers?[0]?.Number, Is.EqualTo(1019));
+            Assert.That(headers?[^1]?.Number, Is.EqualTo(1146));
+        }
     }
 
     [Test]
@@ -167,8 +172,11 @@ public partial class ForwardHeaderProviderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
-        Assert.That(headers?[0]?.Number, Is.EqualTo(0));
-        Assert.That(headers?[^1]?.Number, Is.EqualTo(headNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers?[0]?.Number, Is.EqualTo(0));
+            Assert.That(headers?[^1]?.Number, Is.EqualTo(headNumber));
+        }
     }
 
     [Test]
@@ -490,7 +498,9 @@ public partial class ForwardHeaderProviderTests
     [Test]
     public async Task Cached_pin_is_kept_when_owner_sleeps_only_for_other_contexts([Values(
         AllocationContexts.Bodies,
-        AllocationContexts.Blocks)] AllocationContexts sleepContexts)
+        AllocationContexts.Blocks,
+        AllocationContexts.Headers,
+        AllocationContexts.All)] AllocationContexts sleepContexts)
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
@@ -546,8 +556,11 @@ public partial class ForwardHeaderProviderTests
         {
             Assert.That(bounded, Is.Not.Null);
             Assert.That(bounded, Has.Count.EqualTo(2));
-            Assert.That(bounded![0]!.Number, Is.EqualTo(setup.Initial[1]!.Number));
-            Assert.That(bounded[^1]!.Number, Is.EqualTo(setup.Initial[1]!.Number + 1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bounded![0]!.Number, Is.EqualTo(setup.Initial[1]!.Number));
+                Assert.That(bounded[^1]!.Number, Is.EqualTo(setup.Initial[1]!.Number + 1));
+            }
         }
 
         UInt256 conflictDifficultyWide = setup.Initial[1]!.TotalDifficulty.GetValueOrDefault() + UInt256.One;
@@ -582,7 +595,9 @@ public partial class ForwardHeaderProviderTests
 
         using IOwnedReadOnlyList<BlockHeader?>? cached = await setup.ForwardHeader.GetBlockHeaders(0, 2, CancellationToken.None);
         Assert.That(cached, Is.Not.Null);
+#pragma warning disable NUnit2045 // Each parent block must be accepted before suggesting its child.
         Assert.That(cached, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
         Assert.That(ctx.BlockTree.SuggestBlock(new Block(setup.Initial[2]!), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
         Assert.That(ctx.BlockTree.SuggestBlock(new Block(setup.Initial[3]!), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
         setup.ForwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(setup.Initial[2]!), AddBlockResult.Added);
@@ -616,8 +631,11 @@ public partial class ForwardHeaderProviderTests
                 .WithHash(TestItem.KeccakB)
                 .TestObject;
             conflicting.TotalDifficulty = conflictDifficultyWide;
-            Assert.That(ctx.BlockTree.SuggestBlock(new Block(conflicting), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
-            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(conflicting.Hash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.BlockTree.SuggestBlock(new Block(conflicting), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
+                Assert.That(ctx.BlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(conflicting.Hash));
+            }
         }
         else
         {
@@ -796,6 +814,7 @@ public partial class ForwardHeaderProviderTests
         public Node Node { get; } = null!;
         public string ProtocolCode { get; } = null!;
         public byte ProtocolVersion { get; } = default;
+        public bool CanGetNodeData => true;
         public Hash256 HeadHash { get; set; } = headHash ?? Keccak.Zero;
         public ulong HeadNumber { get; set; } = number;
         public UInt256? TotalDifficulty { get; set; } = totalDiff ?? UInt256.MaxValue;
@@ -892,6 +911,72 @@ public partial class ForwardHeaderProviderTests
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Func<Task> act = () => forwardHeader.GetBlockHeaders(0, 128, cts.Token);
         Assert.That(async () => await act(), Throws.InstanceOf<OperationCanceledException>());
+    }
+
+    public enum BatchExit
+    {
+        Returned,
+        ShortReply,
+        AncestorSearchExhausted,
+        InconsistentBatch,
+        InvalidSeal,
+        CancelledAfterReply,
+    }
+
+    [Test]
+    public async Task Disposes_every_header_batch_it_does_not_return([Values] BatchExit exit)
+    {
+        await using IContainer node = CreateNode(builder =>
+        {
+            // The peer's chain differs from the local one, so the ancestor search steps back until it gives up.
+            if (exit == BatchExit.AncestorSearchExhausted) builder.AddSingleton<IBlockTree>(CachedBlockTreeBuilder.OfLength(2048 + 1));
+            if (exit == BatchExit.InvalidSeal) builder.AddSingleton<ISealValidator>(Always.Invalid);
+        });
+        Context ctx = node.Resolve<Context>();
+        SyncPeerMock? otherChain = exit == BatchExit.AncestorSearchExhausted ? new(2072 + 1, true, Response.AllCorrect) : null;
+        Response response = exit == BatchExit.InconsistentBatch ? Response.AllCorrect ^ Response.Consistent : Response.AllCorrect;
+        using CancellationTokenSource cancellation = new();
+        List<IOwnedReadOnlyList<BlockHeader>> batches = [];
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.HeadNumber.Returns(otherChain?.HeadNumber ?? 1000UL);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(async ci =>
+            {
+                IOwnedReadOnlyList<BlockHeader>? batch = otherChain is null
+                    ? await ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), exit == BatchExit.ShortReply ? 1 : ci.ArgAt<int>(1), response)
+                    : await otherChain.GetBlockHeaders(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), 0, CancellationToken.None);
+                batches.Add(batch!);
+                if (exit == BatchExit.CancelledAfterReply) cancellation.Cancel();
+                return batch;
+            });
+        ctx.ConfigureBestPeer(syncPeer);
+
+        Task<IOwnedReadOnlyList<BlockHeader?>?> request = ctx.ForwardHeaderProvider.GetBlockHeaders(0, 128, cancellation.Token);
+        if (exit == BatchExit.CancelledAfterReply) Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
+        using IOwnedReadOnlyList<BlockHeader?>? result = exit == BatchExit.CancelledAfterReply ? null : await request;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result is not null, Is.EqualTo(exit == BatchExit.Returned));
+            Assert.That(batches, Is.Not.Empty);
+            Assert.That(batches.Select(IsDisposed).ToArray(), Is.EqualTo(batches.Select(batch => !ReferenceEquals(batch, result)).ToArray()),
+                "every batch but the one handed to the caller must go back to the pool");
+        }
+
+        static bool IsDisposed(IOwnedReadOnlyList<BlockHeader> batch)
+        {
+            try
+            {
+                _ = batch.AsSpan();
+                return false;
+            }
+            catch (ObjectDisposedException)
+            {
+                return true;
+            }
+        }
     }
 
     [Flags]
@@ -1018,6 +1103,7 @@ public partial class ForwardHeaderProviderTests
         public Node Node { get; } = null!;
         public string ClientId { get; } = null!;
         public byte ProtocolVersion { get; } = default;
+        public bool CanGetNodeData => true;
         public string ProtocolCode { get; } = null!;
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;
@@ -1036,7 +1122,8 @@ public partial class ForwardHeaderProviderTests
             }
 
             using BlockBodiesMessage message = new(headers);
-            byte[] messageSerialized = _bodiesSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_bodiesSerializer.GetLength(message)];
+            _bodiesSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
         }
 
@@ -1057,7 +1144,8 @@ public partial class ForwardHeaderProviderTests
             }
 
             using BlockHeadersMessage message = new(headers.ToPooledList());
-            byte[] messageSerialized = _headersSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_headersSerializer.GetLength(message)];
+            _headersSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
         }
 
@@ -1073,7 +1161,8 @@ public partial class ForwardHeaderProviderTests
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());
-            byte[] messageSerialized = _receiptsSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_receiptsSerializer.GetLength(message)];
+            _receiptsSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
         }
 
@@ -1185,7 +1274,8 @@ public partial class ForwardHeaderProviderTests
             }
 
             using BlockHeadersMessage message = new(headers.ToPooledList());
-            byte[] messageSerialized = _headersSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_headersSerializer.GetLength(message)];
+            _headersSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
         }
 
@@ -1258,7 +1348,8 @@ public partial class ForwardHeaderProviderTests
             }
 
             using BlockBodiesMessage message = new(blockBodies);
-            byte[] messageSerialized = _bodiesSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_bodiesSerializer.GetLength(message)];
+            _bodiesSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
         }
     }

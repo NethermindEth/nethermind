@@ -8,7 +8,6 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -113,19 +112,191 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
             .PushData(offset)
             .Op(Instruction.MSTORE)
             .Done;
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
-        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+
+        // The EIP-3155 file tracer reports the cost the opcode could not pay.
+        const ulong words = offset / EvmStack.WordSize + 1;
+        Assert.That(TraceLastFileStep(Activation, 100000UL, code, wrapped).GasCost,
+            Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Memory * words + words * words / 512));
+    }
+
+    /// <remarks>
+    /// As in Geth, the struct logger reports a failing step's cost as zero; the EIP-3155 file tracer keeps the cost the
+    /// step could not pay.
+    /// </remarks>
+    [TestCaseSource(nameof(OutOfGasOperations))]
+    public void Out_of_gas_operation_reports_zero_cost_and_file_tracer_its_full_cost(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    {
+        using GethLikeTxTrace trace = ExecuteAndTrace(GasCostOf.Transaction + gasAfterIntrinsic, code);
+        (string? fileError, ulong fileGasCost) = TraceLastFileStep(Activation, GasCostOf.Transaction + gasAfterIntrinsic, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[^1].Error, Is.EqualTo("out of gas"));
+            Assert.That(trace.Entries[^1].GasCost, Is.Zero);
+            Assert.That(fileError, Is.EqualTo("out of gas"), "file error");
+            Assert.That(fileGasCost, Is.EqualTo(expectedGasCost), "file gas cost");
+        }
+    }
+
+    /// <summary>Returns the error and gas cost of the last step the EIP-3155 file tracer writes.</summary>
+    private (string? Error, ulong GasCost) TraceLastFileStep(ForkActivation activation, ulong gasLimit, byte[] code, bool wrapped = false)
+    {
+        (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code);
+        string? error = null;
+        ulong gasCost = 0;
+        GethLikeTxFileTracer tracer = new(entry => (error, gasCost) = (entry.Error, entry.GasCost), GethTraceOptions.Default);
         using ITxTracer executionTracer = wrapped
             ? new CancellationTxTracer(new CompositeTxTracer(NullTxTracer.Instance, tracer))
             : tracer;
 
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), executionTracer);
-
-        // As in geth, the opcode that runs out of gas reports the cost it could not pay.
-        const ulong words = offset / EvmStack.WordSize + 1;
         using GethLikeTxTrace trace = tracer.BuildResult();
-        Assert.That(trace.Entries[^1].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Memory * words + words * words / 512));
+        return (error, gasCost);
     }
+
+    /// <remarks>
+    /// Geth only prices the execution dimension of an EIP-8037 cost, so the state charge a step could not pay never
+    /// shows up in the file tracer's <c>gasCost</c>; the struct logger reports zero.
+    /// </remarks>
+    [TestCaseSource(nameof(AmsterdamOutOfGasOperations))]
+    public void Out_of_gas_operation_reports_its_execution_cost_on_Amsterdam(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    {
+        ForkActivation activation = MainnetSpecProvider.AmsterdamActivation;
+        (_, Transaction sizing) = PrepareTx(activation, 0, code);
+        ulong intrinsicGas = IntrinsicGasCalculator.Calculate(sizing, SpecProvider.GetSpec(activation)).MinimalGas;
+        (Block block, Transaction transaction) = PrepareTx(activation, intrinsicGas + gasAfterIntrinsic, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        (string? fileError, ulong fileGasCost) = TraceLastFileStep(activation, intrinsicGas + gasAfterIntrinsic, code);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[^1].Error, Is.EqualTo("out of gas"));
+            Assert.That(trace.Entries[^1].GasCost, Is.Zero);
+            Assert.That(fileError, Is.EqualTo("out of gas"), "file error");
+            Assert.That(fileGasCost, Is.EqualTo(expectedGasCost), "file gas cost");
+        }
+    }
+
+    /// <remarks>
+    /// The SSTORE that restores the slot gives back the state gas that the first SSTORE took from the gas left, so
+    /// the gas left can grow across it.
+    /// </remarks>
+    [Test]
+    public void Sstore_that_refills_state_gas_reports_its_execution_cost_on_Amsterdam([Values] bool reservoirFunded)
+    {
+        (Block block, Transaction transaction) = PrepareSetClearSetSlotTx(reservoirFunded);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        GethTxTraceEntry restore = trace.Entries.Where(static e => e.Opcode == "SSTORE").ElementAt(1);
+        Assert.That(restore.GasCost, Is.EqualTo(Eip8038Constants.WarmAccess));
+    }
+
+    private static TestCaseData[] AmsterdamOutOfGasOperations()
+    {
+        byte[] sstore = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done;
+        byte[] create = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Done;
+        byte[] create2 = Prepare.EvmCode.PushData(0).PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE2).Done;
+        return
+        [
+            new TestCaseData(sstore, 3000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE execution"),
+            new TestCaseData(sstore, 14000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE state"),
+            new TestCaseData(create, 1000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE execution"),
+            new TestCaseData(create, 20000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE state"),
+            new TestCaseData(create2, 1000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE2 execution"),
+            new TestCaseData(create2, 12013UL, Eip8038Constants.CreateAccess + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory).SetArgDisplayNames("CREATE2 dynamic"),
+        ];
+    }
+
+    /// <remarks>
+    /// As in Geth, a step's <c>gasCost</c> is its execution charge; the state gas it spills into, or refills, the
+    /// remaining gas shows only in <c>gas</c>.
+    /// </remarks>
+    [TestCaseSource(nameof(AmsterdamStateGasOperations))]
+    public void Operation_reports_its_execution_cost_on_Amsterdam(byte[] code, string opcode, ulong expectedGasCost, long? expectedRefund)
+    {
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.AmsterdamActivation, 1_000_000, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        GethTxTraceEntry entry = trace.Entries.Last(e => e.Opcode == opcode && e.Depth == 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.False);
+            Assert.That(entry.Error, Is.Null);
+            Assert.That(entry.GasCost, Is.EqualTo(expectedGasCost));
+            Assert.That(entry.Refund, Is.EqualTo(expectedRefund));
+        }
+    }
+
+    /// <summary>Restores a slot to its original value: the refund counter is zero when the restoring SSTORE starts.</summary>
+    internal static byte[] RestoredSlotCode =>
+        Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+
+    [Test]
+    public void Restoring_sstore_shows_its_refund_on_the_next_step_on_Amsterdam()
+    {
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.AmsterdamActivation, 1_000_000, RestoredSlotCode);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        GethTxTraceEntry[] entries = [.. trace.Entries];
+        int restore = Array.FindLastIndex(entries, e => e.Opcode == "SSTORE");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[restore].GasCost, Is.EqualTo(GasCostOf.WarmStateRead));
+            Assert.That(entries[restore].Refund, Is.Null);
+            Assert.That(entries[restore + 1].Opcode, Is.EqualTo("STOP"));
+            Assert.That(entries[restore + 1].Refund, Is.EqualTo((long)Eip8038Constants.StorageWrite));
+        }
+    }
+
+    internal static TestCaseData[] AmsterdamStateGasOperations()
+    {
+        Address newAccount = new("0x1000000000000000000000000000000000000001");
+        return
+        [
+            new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done, "SSTORE",
+                Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite, null).SetArgDisplayNames("SSTORE new slot"),
+            new TestCaseData(RestoredSlotCode, "SSTORE", GasCostOf.WarmStateRead, null).SetArgDisplayNames("SSTORE restored slot"),
+            new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Op(Instruction.STOP).Done, "CREATE",
+                Eip8038Constants.CreateAccess, null).SetArgDisplayNames("CREATE new account"),
+            new TestCaseData(Prepare.EvmCode.PushData(0).PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE2).Op(Instruction.STOP).Done, "CREATE2",
+                Eip8038Constants.CreateAccess + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory, null).SetArgDisplayNames("CREATE2 new account"),
+            new TestCaseData(Prepare.EvmCode.CallWithValue(newAccount, 0, 1).Op(Instruction.STOP).Done, "CALL",
+                Eip8038Constants.ColdAccountAccess + Eip8038Constants.CallValue, null).SetArgDisplayNames("CALL value to new account"),
+            new TestCaseData(Prepare.EvmCode.PushData(newAccount).Op(Instruction.SELFDESTRUCT).Done, "SELFDESTRUCT",
+                GasCostOf.SelfDestructEip150 + Eip8038Constants.ColdAccountAccess + Eip8038Constants.AccountWrite, null).SetArgDisplayNames("SELFDESTRUCT to new account"),
+        ];
+    }
+
+    internal static TestCaseData[] OutOfGasOperations() =>
+    [
+        new TestCaseData(Prepare.EvmCode.PushData(1).Done, 2UL, GasCostOf.VeryLow).SetArgDisplayNames("PUSH1"),
+        new TestCaseData(Prepare.EvmCode.PushData(2).PushData(2).Op(Instruction.EXP).Done, 11UL, GasCostOf.Exp + GasCostOf.ExpByteEip160).SetArgDisplayNames("EXP base"),
+        new TestCaseData(Prepare.EvmCode.PushData(2).PushData(2).Op(Instruction.EXP).Done, 30UL, GasCostOf.Exp + GasCostOf.ExpByteEip160).SetArgDisplayNames("EXP"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.KECCAK256).Done, 20UL, GasCostOf.Sha3).SetArgDisplayNames("KECCAK256 base"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.KECCAK256).Done, 40UL, GasCostOf.Sha3 + GasCostOf.Sha3Word + GasCostOf.Memory).SetArgDisplayNames("KECCAK256"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).PushData(0).Op(Instruction.LOG3).Done, 100UL, GasCostOf.Log + 3 * GasCostOf.LogTopic).SetArgDisplayNames("LOG3"),
+        new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done, 3000UL, GasCostOf.SSet).SetArgDisplayNames("SSTORE"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Done, 1000UL, GasCostOf.Create).SetArgDisplayNames("CREATE"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE).Done, 32010UL, GasCostOf.Create + GasCostOf.Memory).SetArgDisplayNames("CREATE dynamic"),
+        new TestCaseData(Prepare.EvmCode.PushData(1).PushData(1).Op(Instruction.SIGNEXTEND).Done, 10UL, GasCostOf.Low).SetArgDisplayNames("SIGNEXTEND"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.BLOCKHASH).Done, 22UL, GasCostOf.BlockHash).SetArgDisplayNames("BLOCKHASH"),
+        new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 715UL,
+            GasCostOf.ExtCodeEip150 + GasCostOf.Memory + GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY"),
+        // Before Berlin, Geth prices the 5000 in its gas function, with the new-account charge for an empty beneficiary.
+        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT"),
+    ];
 
     [Test]
     public void AccessGasDiagnostics_WhenOperationRepeats_PreservesColdAndWarmCosts(
@@ -155,23 +326,38 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
+    /// <remarks>As in Geth, the stack is checked before the constant gas, so the underflow outranks running out of gas.</remarks>
     [Test]
-    public void Can_trace_stack_underflow_failure()
+    public void Can_trace_stack_underflow_failure([ValueSource(nameof(StackUnderflowGasAfterIntrinsic))] ulong gasAfterIntrinsic)
     {
-        byte[] code = Prepare.EvmCode
-            .Op(Instruction.ADD)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        using GethLikeTxTrace trace = ExecuteAndTrace(GasCostOf.Transaction + gasAfterIntrinsic, Prepare.EvmCode.Op(Instruction.ADD).Done);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
             Assert.That(trace.Entries[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
+            Assert.That(trace.Entries[0].GasCost, Is.Zero);
         }
     }
 
+    [TestCase(Instruction.ADD, "", "stack underflow (0 <=> 2)")]
+    [TestCase(Instruction.KECCAK256, "", "stack underflow (0 <=> 2)")]
+    [TestCase(Instruction.SELFDESTRUCT, "", "stack underflow (0 <=> 1)")]
+    [TestCase(Instruction.LOG4, "600060006000", "stack underflow (3 <=> 6)")]
+    public void Can_trace_stack_underflow_error_text(Instruction opcode, string pushes, string error)
+    {
+        byte[] code = [.. Bytes.FromHexString(pushes), (byte)opcode];
+
+        using GethLikeTxTrace trace = ExecuteAndTrace(code);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.EqualTo(true));
+            Assert.That(trace.Entries[^1].Error, Is.EqualTo(error));
+        }
+    }
+
+    internal static readonly ulong[] StackUnderflowGasAfterIntrinsic = [GasCostOf.VeryLow - 1, 100000UL];
+
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_stack_overflow_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -182,11 +368,8 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
             .Done;
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.EqualTo("StackOverflow"));
-        }
+        Assert.That(trace.Failed, Is.EqualTo(true));
+        AssertFailedStep(TraceStructLogs(code, Activation), "PUSH1", "stack limit reached 1024 (1023)");
     }
 
     [Test]
@@ -201,7 +384,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.Null);
+            Assert.That(trace.Entries.Last().Error, Is.EqualTo("invalid jump destination"));
         }
     }
 
@@ -216,7 +399,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.Null);
+            Assert.That(trace.Entries.Last().Error, Is.EqualTo("invalid opcode: INVALID"));
         }
     }
 
@@ -235,6 +418,19 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         for (int i = 0; i < opCodes.Length; i++)
         {
             Assert.That(trace.Entries[i].Opcode, Is.EqualTo(opCodes[i]));
+        }
+    }
+
+    [Test]
+    public void Callee_out_of_gas_leaves_the_calling_step_without_error([Values] bool precompile)
+    {
+        using GethLikeTxTrace trace = ExecuteAndTrace(CalleeOutOfGasCode(precompile));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.False);
+            Assert.That(trace.Entries.Where(static e => e.Error is not null).Select(static e => e.Depth).ToArray(),
+                Is.EqualTo(precompile ? Array.Empty<int>() : [2]), "depths of the steps with an error");
         }
     }
 
@@ -487,17 +683,20 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "entry[0] length");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[1].StackWordCount(), Is.EqualTo(1), "entry[1] length");
-        Assert.That(trace.Entries[1].GetStackWord(0), Is.EqualTo(sample1), "entry[1][0]");
+            Assert.That(trace.Entries[1].StackWordCount(), Is.EqualTo(1), "entry[1] length");
+            Assert.That(trace.Entries[1].GetStackWord(0), Is.EqualTo(sample1), "entry[1][0]");
 
-        Assert.That(trace.Entries[2].StackWordCount(), Is.EqualTo(2), "entry[2] length");
-        Assert.That(trace.Entries[2].GetStackWord(0), Is.EqualTo(sample1), "entry[2][0]");
-        Assert.That(trace.Entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero), "entry[2][1]");
+            Assert.That(trace.Entries[2].StackWordCount(), Is.EqualTo(2), "entry[2] length");
+            Assert.That(trace.Entries[2].GetStackWord(0), Is.EqualTo(sample1), "entry[2][0]");
+            Assert.That(trace.Entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero), "entry[2][1]");
 
-        Assert.That(trace.Entries[3].StackWordCount(), Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].GetStackWord(0), Is.EqualTo(sample1), "entry[3][0]");
+            Assert.That(trace.Entries[3].StackWordCount(), Is.EqualTo(1), "entry[3] length");
+            Assert.That(trace.Entries[3].GetStackWord(0), Is.EqualTo(sample1), "entry[3][0]");
+        }
     }
 
     [Test]
@@ -519,20 +718,23 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "entry[0] length");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[1].MemoryWordCount(), Is.EqualTo(0), "entry[1] length");
+            Assert.That(trace.Entries[1].MemoryWordCount(), Is.EqualTo(0), "entry[1] length");
 
-        Assert.That(trace.Entries[2].MemoryWordCount(), Is.EqualTo(0), "entry[2] length");
+            Assert.That(trace.Entries[2].MemoryWordCount(), Is.EqualTo(0), "entry[2] length");
 
-        Assert.That(trace.Entries[3].MemoryWordCount(), Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].GetMemoryWord(0), Is.EqualTo(sample1), "entry[3][0]");
+            Assert.That(trace.Entries[3].MemoryWordCount(), Is.EqualTo(1), "entry[3] length");
+            Assert.That(trace.Entries[3].GetMemoryWord(0), Is.EqualTo(sample1), "entry[3][0]");
 
-        Assert.That(trace.Entries[4].MemoryWordCount(), Is.EqualTo(1), "entry[4] length");
-        Assert.That(trace.Entries[4].GetMemoryWord(0), Is.EqualTo(sample1), "entry[4][0]");
+            Assert.That(trace.Entries[4].MemoryWordCount(), Is.EqualTo(1), "entry[4] length");
+            Assert.That(trace.Entries[4].GetMemoryWord(0), Is.EqualTo(sample1), "entry[4][0]");
 
-        Assert.That(trace.Entries[5].MemoryWordCount(), Is.EqualTo(1), "entry[5] length");
-        Assert.That(trace.Entries[5].GetMemoryWord(0), Is.EqualTo(sample1), "entry[5][0]");
+            Assert.That(trace.Entries[5].MemoryWordCount(), Is.EqualTo(1), "entry[5] length");
+            Assert.That(trace.Entries[5].GetMemoryWord(0), Is.EqualTo(sample1), "entry[5][0]");
+        }
     }
 
     [Test]
@@ -563,8 +765,25 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(sstore.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
+            Assert.That(sstore.Refund, Is.Null, "the counter before the clearing SSTORE");
             Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund after the clearing SSTORE");
+        }
+    }
+
+    [Test]
+    public void Failing_sstore_reports_refund_counter_before_it()
+    {
+        (Block block, Transaction transaction) = PrepareChildClearOutOfGasTx();
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        GethTxTraceEntry sstore = trace.Entries.Single(e => e.Opcode == "SSTORE");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sstore.Error, Is.Not.Null);
+            Assert.That(sstore.Refund, Is.Null);
         }
     }
 
@@ -758,6 +977,148 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         AssertStreamingMatchesInMemory(code);
     }
 
+    /// <remarks>As in Geth, a step that halts with an error does not execute its opcode, so it records no storage.</remarks>
+    [TestCase(Instruction.CALL, 25112L, "out of gas", 2)]
+    [TestCase(Instruction.CALL, 24412L, "out of gas: not enough gas for reentrancy sentry", 2)]
+    [TestCase(Instruction.STATICCALL, 50000L, "out of gas: write protection", 1)]
+    public void Failed_SSTORE_step_has_no_storage(Instruction callOpcode, long callGas, string expectedError, int expectedSStoreSteps)
+    {
+        byte[] calleeCode = Prepare.EvmCode
+            .PersistData("0x0", "0x1")
+            .PersistData("0x1", "0x1")
+            .Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        Prepare caller = Prepare.EvmCode;
+        byte[] code = (callOpcode == Instruction.CALL ? caller.Call(TestItem.AddressC, callGas) : caller.StaticCall(TestItem.AddressC, callGas))
+            .Op(Instruction.STOP)
+            .Done;
+        ForkActivation activation = MainnetSpecProvider.CancunActivation;
+
+        (Block block, Transaction transaction) = PrepareTx(activation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument inMemory = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string tracerName, JsonElement[] entries) in (ReadOnlySpan<(string, JsonElement[])>)[
+                ("in-memory", inMemory.RootElement.GetProperty("structLogs").EnumerateArray().ToArray()),
+                ("streaming", ExecuteStreamingTracerEntries(code, activation))])
+            {
+                JsonElement[] sstores = [.. entries.Where(static e => e.GetProperty("op").GetString() == "SSTORE")];
+                Assert.That(sstores, Has.Length.EqualTo(expectedSStoreSteps), $"{tracerName}: SSTORE steps");
+                Assert.That(sstores[^1].GetProperty("error").GetString(), Is.EqualTo(expectedError), $"{tracerName}: failed SSTORE error");
+                Assert.That(sstores[^1].TryGetProperty("storage", out _), Is.False, $"{tracerName}: failed SSTORE storage");
+                Assert.That(sstores[..^1].All(static e => e.TryGetProperty("storage", out _)), Is.True, $"{tracerName}: successful SSTORE storage");
+            }
+        }
+    }
+
+    /// <remarks>
+    /// Geth checks the stack, then gas, and rejects LOG and TSTORE while executing them, so their write protection carries
+    /// no out-of-gas prefix. Other writes fail in their gas function, which Geth reports as running out of gas.
+    /// </remarks>
+    [TestCase("5f5f5f5f60015f5af1", 50000, "CALL", "out of gas: write protection")]
+    [TestCase("5f5f5ff0", 50000, "CREATE", "out of gas: write protection")]
+    [TestCase("5f5f5ff0", 30000, "CREATE", "out of gas")]
+    [TestCase("5f5f5f5ff5", 50000, "CREATE2", "out of gas: write protection")]
+    [TestCase("5fff", 50000, "SELFDESTRUCT", "out of gas: write protection")]
+    [TestCase("6001600055", 50000, "SSTORE", "out of gas: write protection")]
+    [TestCase("5f5f5f5fa2", 50000, "LOG2", "write protection")]
+    [TestCase("5f5f5f5fa2", 1000, "LOG2", "out of gas")]
+    [TestCase("a2", 50000, "LOG2", "stack underflow (0 <=> 4)")]
+    [TestCase("600160005d", 50000, "TSTORE", "write protection")]
+    [TestCase("600160005d", 105, "TSTORE", "out of gas")]
+    // Geth sizes and prices a LOG's memory before it executes it, so an expansion no gas pays runs out of gas first.
+    [TestCase("63800000005fa0", 50000, "LOG0", "out of gas")]
+    [TestCase("64ffffffffff5fa0", 50000, "LOG0", "out of gas: gas uint64 overflow")]
+    [TestCase("600168010000000000000000a0", 50000, "LOG0", "gas uint64 overflow")]
+    public void Static_context_write_step_error(string calleeCode, long calleeGas, string expectedOpcode, string expectedError)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(calleeCode), Spec);
+        TestState.Commit(Spec);
+        byte[] code = Prepare.EvmCode.StaticCall(TestItem.AddressC, calleeGas).Op(Instruction.STOP).Done;
+
+        AssertFailedStep(TraceStructLogs(code, MainnetSpecProvider.CancunActivation), expectedOpcode, expectedError, depth: 2);
+    }
+
+    /// <remarks>
+    /// The name comes from the fork's opcode set, as ethereum/execution-apis#986 proposes: CLZ is not defined before
+    /// Osaka, and 0xb0 and 0xfc only in draft forks.
+    /// </remarks>
+    [TestCase(0xb0)]
+    [TestCase(0xfc)]
+    [TestCase(0x1e)]
+    public void Undefined_opcode_step_name(byte opcode)
+    {
+        string name = $"opcode 0x{opcode:x} not defined";
+        AssertFailedStep(TraceStructLogs([opcode], MainnetSpecProvider.CancunActivation), name, $"invalid opcode: {name}");
+    }
+
+    /// <remarks>
+    /// Before executing them, Geth requires one, two and two stack items; while executing, it checks the depth the
+    /// EIP-8024 immediate selects and rejects an immediate in the excluded ranges.
+    /// </remarks>
+    [TestCase("e680", "DUPN", "stack underflow (0 <=> 1)")]
+    [TestCase("5fe680", "DUPN", "stack underflow (1 <=> 17)")]
+    [TestCase("e780", "SWAPN", "stack underflow (0 <=> 2)")]
+    [TestCase("5f5fe780", "SWAPN", "stack underflow (2 <=> 18)")]
+    [TestCase("e89d", "EXCHANGE", "stack underflow (0 <=> 2)")]
+    [TestCase("5f5fe89d", "EXCHANGE", "stack underflow (2 <=> 4)")]
+    [TestCase("5fe65b", "DUPN", "invalid opcode: DUPN (operand: 0x5b)")]
+    [TestCase("5f5fe89f", "EXCHANGE", "stack underflow (2 <=> 29)")]
+    [TestCase("5f5fe88f", "EXCHANGE", "stack underflow (2 <=> 30)")]
+    [TestCase("5f5fe852", "EXCHANGE", "invalid opcode: EXCHANGE (operand: 0x52)")]
+    // A missing immediate reads as zero.
+    [TestCase("5fe6", "DUPN", "stack underflow (1 <=> 145)")]
+    [TestCase("5f5fe7", "SWAPN", "stack underflow (2 <=> 146)")]
+    public void Immediate_opcode_step_error(string code, string expectedOpcode, string expectedError) =>
+        AssertFailedStep(TraceStructLogs(Bytes.FromHexString(code), MainnetSpecProvider.AmsterdamActivation), expectedOpcode, expectedError);
+
+    /// <remarks>Geth checks that DUPN has room for the item it pushes before it reads the immediate.</remarks>
+    [Test]
+    public void Dupn_on_full_stack_step_error([Values("e680", "e65b")] string dupn)
+    {
+        byte[] code = [.. Enumerable.Repeat((byte)Instruction.PUSH0, EvmStack.MaxStackSize - 1), .. Bytes.FromHexString(dupn)];
+        AssertFailedStep(TraceStructLogs(code, MainnetSpecProvider.AmsterdamActivation), "DUPN", "stack limit reached 1024 (1023)");
+    }
+
+    /// <summary>Traces <paramref name="code"/> with the in-memory and the streaming struct logger.</summary>
+    private (string Tracer, JsonElement[] Entries)[] TraceStructLogs(byte[] code, ForkActivation activation)
+    {
+        (Block block, Transaction transaction) = PrepareTx(activation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument inMemory = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+
+        return [
+            ("in-memory", [.. inMemory.RootElement.GetProperty("structLogs").EnumerateArray().Select(static e => e.Clone())]),
+            ("streaming", ExecuteStreamingTracerEntries(code, activation))];
+    }
+
+    /// <summary>Asserts the last step at <paramref name="depth"/>, the one that halted its frame, in each tracer's output.</summary>
+    /// <remarks>As in Geth, a step that halts exceptionally reports a zero gas cost.</remarks>
+    private static void AssertFailedStep((string Tracer, JsonElement[] Entries)[] traces, string expectedOpcode, string expectedError,
+        int depth = 1)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string tracer, JsonElement[] entries) in traces)
+            {
+                JsonElement step = entries.Last(e => e.GetProperty("depth").GetInt32() == depth);
+                Assert.That(step.GetProperty("op").GetString(), Is.EqualTo(expectedOpcode), $"{tracer}: op");
+                Assert.That(step.TryGetProperty("error", out JsonElement error) ? error.GetString() : null, Is.EqualTo(expectedError), $"{tracer}: error");
+                Assert.That(step.GetProperty("gasCost").GetUInt64(), Is.Zero, $"{tracer}: gasCost");
+            }
+        }
+    }
+
     [Test]
     public void Streamed_deep_stack_of_mixed_width_words_matches_in_memory()
     {
@@ -796,9 +1157,9 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
-    private JsonElement[] ExecuteStreamingTracerEntries(byte[] code)
+    private JsonElement[] ExecuteStreamingTracerEntries(byte[] code, ForkActivation? activation = null)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(activation ?? Activation, 100000, code);
 
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
@@ -813,6 +1174,25 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         using JsonDocument document = JsonDocument.Parse(buffer.WrittenMemory);
         return document.RootElement.EnumerateArray().Select(e => e.Clone()).ToArray();
+    }
+
+    /// <summary>As in Geth's struct logger, an action rejected by its balance precheck leaves its opcode without an error.</summary>
+    [TestCase(Instruction.CALL)]
+    [TestCase(Instruction.CREATE)]
+    public void Rejected_action_leaves_no_error_on_its_opcode(Instruction operation)
+    {
+        Prepare code = operation == Instruction.CALL
+            ? Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, UInt256.MaxValue)
+            : Prepare.EvmCode.Create([(byte)Instruction.STOP], UInt256.MaxValue);
+        byte[] bytecode = code.Op(Instruction.POP).Op(Instruction.STOP).Done;
+        using GethLikeTxTrace trace = ExecuteAndTrace(bytecode);
+        JsonElement streamed = ExecuteStreamingTracerEntries(bytecode).Single(e => e.GetProperty("op").GetString() == operation.ToString());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries.Single(entry => entry.Opcode == operation.ToString()).Error, Is.Null, "memory tracer");
+            Assert.That(streamed.TryGetProperty("error", out _), Is.False, "streaming tracer");
+        }
     }
 
     private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, UInt256 expectedStackTop, int expectedStackCount)

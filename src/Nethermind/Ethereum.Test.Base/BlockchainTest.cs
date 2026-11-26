@@ -5,18 +5,27 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Int256;
 
 namespace Ethereum.Test.Base
 {
     public class BlockchainTest : EthereumTest
     {
+        /// <summary>The fixture's key in its file, verbatim; <see cref="EthereumTest.Name"/> keeps only the part after <c>.py::</c>.</summary>
+        public string? FixtureId { get; set; }
         public string? ForkName { get; set; }
         public IReleaseSpec? Network { get; set; }
         public IReleaseSpec? NetworkAfterTransition { get; set; }
         public ForkActivation? TransitionForkActivation { get; set; }
+
+        /// <summary>
+        /// The terminal total difficulty of a PoW to PoS transition network named <c>{from}To{to}AtDiff{hex}</c>,
+        /// where the merge happens at the first block whose parent reaches this total difficulty rather than at a
+        /// block number or timestamp. Null for every other network.
+        /// </summary>
+        public UInt256? TransitionTerminalTotalDifficulty { get; set; }
         public Hash256? LastBlockHash { get; set; }
-        public Rlp? GenesisRlp { get; set; }
+        public byte[]? GenesisRlp { get; set; }
 
         public TestBlockJson[]? Blocks { get; set; }
         public TestBlockHeaderJson? GenesisBlockHeader { get; set; }
@@ -25,6 +34,12 @@ namespace Ethereum.Test.Base
         public Dictionary<Address, AccountState>? Pre { get; set; }
         public Dictionary<Address, AccountState>? PostState { get; set; }
         public Hash256? PostStateRoot { get; set; }
+
+        /// <summary>The <c>blockchain_tests_engine_x</c> pre-allocation group the test runs on.</summary>
+        public string? PreHash { get; set; }
+
+        /// <summary>The <c>blockchain_tests_engine_x</c> post-state as changes to the group's pre-allocation; a null account is deleted.</summary>
+        public Dictionary<Address, AccountState?>? PostStateDiff { get; set; }
 
         public override string? ToString() => Name;
     }

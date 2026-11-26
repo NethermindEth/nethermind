@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.TxPool.Comparison
@@ -55,9 +54,7 @@ namespace Nethermind.TxPool.Comparison
             SameNonceDomain(KeyedDomain(newTx), KeyedDomain(oldTx));
 
         /// <summary>The keys whose sequences <paramref name="tx"/> consumes, or an empty span when it consumes the account nonce.</summary>
-        /// <remarks>The set <c>[0]</c> aliases the account nonce, so it must compare as the account-nonce domain or it stops competing with plain transactions.</remarks>
-        private static ReadOnlySpan<UInt256> KeyedDomain(Transaction tx) =>
-            tx.NonceKeys is { } nonceKeys && KeyedNonceManager.UsesKeyedDomain(nonceKeys) ? nonceKeys : default;
+        private static ReadOnlySpan<UInt256> KeyedDomain(Transaction tx) => tx.NonceKeys;
 
         private static bool SameNonceDomain(ReadOnlySpan<UInt256> newKeys, ReadOnlySpan<UInt256> oldKeys) =>
             newKeys.SequenceEqual(oldKeys);

@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync.Snap;
@@ -32,7 +33,7 @@ public class FlatSnapTrieFactoryTests
     private static (FlatSnapTrieFactory factory, IPersistence persistence, IPersistence.IPersistenceReader reader) Build(bool doubleWriteCheck = false, IPersistenceManager? persistenceManager = null)
     {
         IPersistence persistence = Substitute.For<IPersistence>();
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        IPersistence.IPersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         persistence.CreateReader(Arg.Any<ReaderFlags>()).Returns(reader);
         // NSubstitute proxies fail with InvalidProgramException on the ReadOnlySpan parameters,
         // so the write batch is a hand-rolled no-op fake.
@@ -52,14 +53,15 @@ public class FlatSnapTrieFactoryTests
         public void SetAccount(Address addr, Account? account) { }
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) { }
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
+        public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) { }
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account) { }
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) { }
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) { }
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) { }
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) { }
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) { }
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
+        public void SetMigrationCursor(in MigrationCursor? cursor) { }
         public void Dispose() { }
     }
 
@@ -98,7 +100,7 @@ public class FlatSnapTrieFactoryTests
         if (hasState)
         {
             using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-            batch.SetAccountRaw(Keccak.Zero.ValueHash256, new Account(1));
+            batch.SetAccountRaw(Keccak.Zero.ValueHash256, new AccountStruct(1));
         }
 
         TestLogger logger = new();
@@ -136,9 +138,12 @@ public class FlatSnapTrieFactoryTests
         using (ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default))
         using (ISnapTree<PathWithStorageSlot> nonDefaultStorageTree = factory.CreateStorageTree(new ValueHash256(Bytes.FromHexString("11" + new string('0', 62)))))
         {
-            Assert.That(stateTree, Is.Not.Null);
-            Assert.That(storageTree, Is.Not.Null);
-            Assert.That(nonDefaultStorageTree, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stateTree, Is.Not.Null);
+                Assert.That(storageTree, Is.Not.Null);
+                Assert.That(nonDefaultStorageTree, Is.Not.Null);
+            }
         }
 
         // Clear is the runner's responsibility via EnsureInitialize; tree creation must not invoke it.
@@ -164,8 +169,11 @@ public class FlatSnapTrieFactoryTests
         using ISnapTree<PathWithAccount> stateTree = factory.CreateStateTree();
         using ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default);
 
-        Assert.That(stateTree, Is.Not.Null);
-        Assert.That(storageTree, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateTree, Is.Not.Null);
+            Assert.That(storageTree, Is.Not.Null);
+        }
     }
 
     [Test]
@@ -177,7 +185,7 @@ public class FlatSnapTrieFactoryTests
         {
             // Proofless flow: no boundary stitching, no IsPersisted, double-write check off.
             storageTree.BulkSetAndUpdateRootHash([new PathWithStorageSlot(new ValueHash256("0x1000000000000000000000000000000000000000000000000000000000000000"), [1])]);
-            storageTree.Commit(Keccak.MaxValue);
+            storageTree.Commit(Keccak.Zero, Keccak.MaxValue);
         }
 
         using (ISnapTree<PathWithAccount> stateTree = factory.CreateStateTree())
@@ -212,7 +220,7 @@ public class FlatSnapTrieFactoryTests
 
     private static readonly ValueHash256 FirstPartitionLimit = new("0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
     private static readonly byte[] BranchRlp = BuildBranchRlp();
-    private static readonly byte[] SlotRlp = Rlp.Encode(new byte[] { 1 }).Bytes;
+    private static readonly byte[] SlotRlp = Rlp.Encode(new byte[] { 1 });
     private static readonly string[] StorageNodePaths = ["", "1", "8", "c", "1111111111111111", "cccccccccccccccc"];
 
     // The last account before the checkpoint, and the first path still to download, which shares its 20-byte key.
@@ -230,14 +238,15 @@ public class FlatSnapTrieFactoryTests
         ValueHash256 storageQueued = Path("2");
         ValueHash256 storageQueuedFromSlot8 = Path("3");
         ValueHash256 refreshedFromSlot8 = Path("4");
+        ValueHash256 storageQueuedAfterSlot9 = Path("5");
         ValueHash256 slot1 = Path("1");
         ValueHash256 slotC = Path("c");
 
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
         {
-            foreach (ValueHash256 account in (ValueHash256[])[LastAccount, writtenAfter, inFinishedPartition, storageQueued, storageQueuedFromSlot8, refreshedFromSlot8])
+            foreach (ValueHash256 account in (ValueHash256[])[LastAccount, writtenAfter, inFinishedPartition, storageQueued, storageQueuedFromSlot8, refreshedFromSlot8, storageQueuedAfterSlot9])
             {
-                batch.SetAccountRaw(account, new Account(1));
+                batch.SetAccountRaw(account, new AccountStruct(1));
                 batch.SetStorageRawEncoded(account, slot1, SlotRlp);
                 batch.SetStorageRawEncoded(account, slotC, SlotRlp);
                 foreach (string node in StorageNodePaths) batch.SetStorageTrieNode(account.ToCommitment(), TreePath.FromHexString(node), BranchRlp);
@@ -250,13 +259,19 @@ public class FlatSnapTrieFactoryTests
 
             // Leaves on the path to the next account: one of the last account downloaded, one past it.
             batch.SetStateTrieNode(TreePath.FromHexString("9"), BuildLeafRlp(new string('0', 63)));
+            // The same in a storage trie: the leaf of the last slot downloaded, on the path to the next one.
+            batch.SetStorageTrieNode(storageQueuedAfterSlot9.ToCommitment(), TreePath.FromHexString("9"), BuildLeafRlp(new string('0', 63)));
             batch.SetStateTrieNode(TreePath.FromHexString("900"), BuildLeafRlp("f" + new string('0', 60)));
         }
 
         CreateResumingFactory(persistence, db).SaveCheckpoint(CreateCheckpoint(
-            storagesToRetrieve: [new PathWithAccount(storageQueued, new Account(1))],
-            storageRanges: [new StorageRangeProgress([new PathWithAccount(storageQueuedFromSlot8, new Account(1))], Path("8"), null)],
-            accountsToRefresh: [new AccountWithStorageStartingHash { PathAndAccount = new PathWithAccount(refreshedFromSlot8, new Account(1)), StorageStartingHash = Path("8"), StorageHashLimit = ValueKeccak.MaxValue }]));
+            storagesToRetrieve: [new PathWithAccount(storageQueued, new AccountStruct(1))],
+            storageRanges:
+            [
+                new StorageRangeProgress([new PathWithAccount(storageQueuedFromSlot8, new AccountStruct(1))], Path("8"), null),
+                new StorageRangeProgress([new PathWithAccount(storageQueuedAfterSlot9, new AccountStruct(1))], Path("9").IncrementPath(), null),
+            ],
+            accountsToRefresh: [new AccountWithStorageStartingHash { PathAndAccount = new PathWithAccount(refreshedFromSlot8, new AccountStruct(1)), StorageStartingHash = Path("8"), StorageHashLimit = ValueKeccak.MaxValue }]));
 
         FlatSnapTrieFactory factory = CreateResumingFactory(persistence, db);
         factory.EnsureInitialize();
@@ -267,7 +282,7 @@ public class FlatSnapTrieFactoryTests
             Assert.That(factory.LoadCheckpoint(), Is.Not.Null, "the checkpoint is what the resumed run starts from");
 
             foreach ((ValueHash256 account, bool kept) in (ValueTuple<ValueHash256, bool>[])
-                     [(LastAccount, true), (writtenAfter, false), (inFinishedPartition, true), (storageQueued, true), (storageQueuedFromSlot8, true), (refreshedFromSlot8, true)])
+                     [(LastAccount, true), (writtenAfter, false), (inFinishedPartition, true), (storageQueued, true), (storageQueuedFromSlot8, true), (refreshedFromSlot8, true), (storageQueuedAfterSlot9, true)])
             {
                 Assert.That(reader.GetAccountRaw(account) is not null, Is.EqualTo(kept), $"account {account}");
             }
@@ -280,6 +295,7 @@ public class FlatSnapTrieFactoryTests
                          (storageQueued, slot1, false), (storageQueued, slotC, false),
                          (storageQueuedFromSlot8, slot1, true), (storageQueuedFromSlot8, slotC, false),
                          (refreshedFromSlot8, slot1, true), (refreshedFromSlot8, slotC, false),
+                         (storageQueuedAfterSlot9, slot1, true), (storageQueuedAfterSlot9, slotC, false),
                      ])
             {
                 UInt256 value = default;
@@ -295,14 +311,18 @@ public class FlatSnapTrieFactoryTests
                          // The root and the node at 8 are on the path to slot 8, the ones at c are past it.
                          (storageQueuedFromSlot8, ["1", "1111111111111111"]),
                          (refreshedFromSlot8, ["1", "1111111111111111"]),
+                         (storageQueuedAfterSlot9, ["1", "8", "1111111111111111"]),
                      ])
             {
                 foreach (string node in StorageNodePaths)
                 {
-                    Assert.That(reader.TryLoadStorageRlp(account.ToCommitment(), TreePath.FromHexString(node), ReadFlags.None) is not null,
+                    Assert.That(reader.LoadStorageRlp(account.ToCommitment(), TreePath.FromHexString(node), ReadFlags.None) is not null,
                         Is.EqualTo(keptNodes.Contains(node)), $"storage node {node} of {account}");
                 }
             }
+
+            // Unlike the account leaf at 9 below, the slot leaf at 9 goes, as no storage range persists a node reaching past it.
+            Assert.That(reader.LoadStorageRlp(storageQueuedAfterSlot9.ToCommitment(), TreePath.FromHexString("9"), ReadFlags.None), Is.Null, "slot leaf on the path to the next slot");
 
             // The branches at 9 lie on the path to the next account and the nodes at a past it. The leaf at 9 is on that
             // path too, but it holds the last account downloaded before the checkpoint, so it stays.
@@ -312,25 +332,36 @@ public class FlatSnapTrieFactoryTests
                          ("90000000", false), ("a0000000", false), ("8000000000000000000000", true), ("9000000000000000000000", false),
                      ])
             {
-                Assert.That(reader.TryLoadStateRlp(TreePath.FromHexString(node), ReadFlags.None) is not null, Is.EqualTo(kept), $"state node {node}");
+                Assert.That(reader.LoadStateRlp(TreePath.FromHexString(node), ReadFlags.None) is not null, Is.EqualTo(kept), $"state node {node}");
             }
         }
     }
 
-    public enum Unresumable { ResumeDisabled, PartitionCountChanged, Unreadable }
+    public enum Unresumable { ResumeDisabled, PartitionCountChanged, Unreadable, WipedByAnOlderVersion, WipeByAnOlderVersionInterrupted }
 
     [Test]
     public void EnsureInitialize_StartsOver_WhenTheCheckpointCannotBeResumed([Values] Unresumable reason)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
-        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
-        {
-            batch.SetAccountRaw(LastAccount, new Account(1));
-        }
+        WriteLastAccount(persistence);
 
         CreateResumingFactory(persistence, db).SaveCheckpoint(CreateCheckpoint());
-        if (reason == Unresumable.Unreadable) BasePersistence.WriteSnapCheckpoint(db, [0xff]);
+        switch (reason)
+        {
+            case Unresumable.Unreadable:
+                BasePersistence.WriteSnapCheckpoint(db, [0xff]);
+                break;
+            case Unresumable.WipedByAnOlderVersion:
+                // The older version leaves the checkpoint behind, then syncs data the checkpoint does not describe.
+                WipeLikeAnOlderVersion(db, maxKeys: int.MaxValue);
+                WriteLastAccount(persistence);
+                break;
+            case Unresumable.WipeByAnOlderVersionInterrupted:
+                // The least such a wipe commits: the first key of its first batch.
+                WipeLikeAnOlderVersion(db, maxKeys: 1);
+                break;
+        }
 
         FlatSnapTrieFactory factory = CreateResumingFactory(persistence, db,
             partitionCount: reason == Unresumable.PartitionCountChanged ? 4 : 2,
@@ -351,23 +382,26 @@ public class FlatSnapTrieFactoryTests
     public void SaveCheckpoint_FlushesTheWritesItCovers_AndDeletesItWhenNull()
     {
         IPersistence persistence = Substitute.For<IPersistence>();
-        FlatSnapTrieFactory factory = CreateResumingFactory(persistence, new MemColumnsDb<FlatDbColumns>());
+        MemColumnsDb<FlatDbColumns> db = new();
+        FlatSnapTrieFactory factory = CreateResumingFactory(persistence, db);
 
         factory.SaveCheckpoint(CreateCheckpoint());
         persistence.Received(1).Flush();
         Assert.That(factory.LoadCheckpoint()?.AnchorHash, Is.EqualTo(TestItem.KeccakA));
 
         factory.SaveCheckpoint(null);
-        Assert.That(factory.LoadCheckpoint(), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.LoadCheckpoint(), Is.Null);
+            Assert.That(BasePersistence.HasSnapCheckpointSentinel(db), Is.False);
+        }
     }
 
     [Test]
     public void SaveCheckpoint_KeepsTheLastCheckpoint_WhenTheWritesItCoversFailToFlush()
     {
-        MemColumnsDb<FlatDbColumns> columns = new();
         FlushFailingDb accounts = new();
-        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
-        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(c => c.Arg<FlatDbColumns>() == FlatDbColumns.Account ? accounts : columns.GetColumnDb(c.Arg<FlatDbColumns>()));
+        IColumnsDb<FlatDbColumns> db = CreateColumnsDbWithAccounts(accounts);
         FlatSnapTrieFactory factory = CreateResumingFactory(Substitute.For<IPersistence>(), db);
         factory.SaveCheckpoint(CreateCheckpoint());
 
@@ -375,6 +409,15 @@ public class FlatSnapTrieFactoryTests
 
         Assert.Throws<InvalidOperationException>(() => factory.SaveCheckpoint(CreateCheckpoint(anchorHash: TestItem.KeccakB)));
         Assert.That(factory.LoadCheckpoint()?.AnchorHash, Is.EqualTo(TestItem.KeccakA));
+    }
+
+    [Test]
+    public void WriteSnapCheckpoint_WritesNoCheckpoint_WhenItsSentinelFailsToFlush()
+    {
+        IColumnsDb<FlatDbColumns> db = CreateColumnsDbWithAccounts(new FlushFailingDb { FailFlush = true });
+
+        Assert.Throws<InvalidOperationException>(() => BasePersistence.WriteSnapCheckpoint(db, [1, 2, 3]));
+        Assert.That(BasePersistence.ReadSnapCheckpoint(db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
     }
 
     // RocksDB commits a batch without the WAL every few hundred writes, which bounds the memory a large discard takes.
@@ -390,7 +433,7 @@ public class FlatSnapTrieFactoryTests
         {
             foreach (ValueHash256 account in (ValueHash256[])[writtenAfter, storageQueued])
             {
-                batch.SetAccountRaw(account, new Account(1));
+                batch.SetAccountRaw(account, new AccountStruct(1));
                 batch.SetStorageRawEncoded(account, Path("1"), SlotRlp);
                 batch.SetStorageTrieNode(account.ToCommitment(), TreePath.FromHexString("1"), BranchRlp);
             }
@@ -398,7 +441,7 @@ public class FlatSnapTrieFactoryTests
             batch.SetStateTrieNode(TreePath.FromHexString("a"), BranchRlp);
         }
 
-        CreateResumingFactory(persistence, db).SaveCheckpoint(CreateCheckpoint(storagesToRetrieve: [new PathWithAccount(storageQueued, new Account(1))]));
+        CreateResumingFactory(persistence, db).SaveCheckpoint(CreateCheckpoint(storagesToRetrieve: [new PathWithAccount(storageQueued, new AccountStruct(1))]));
         CreateResumingFactory(persistence, db).EnsureInitialize();
 
         Assert.That(db.DeleteFlags, Is.Not.Empty);
@@ -406,6 +449,29 @@ public class FlatSnapTrieFactoryTests
     }
 
     private static ValueHash256 Path(string hexPrefix) => new(hexPrefix.PadRight(64, '0'));
+
+    private static void WriteLastAccount(IPersistence persistence)
+    {
+        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        batch.SetAccountRaw(LastAccount, new AccountStruct(1));
+    }
+
+    /// <summary>Deletes the first <paramref name="maxKeys"/> keys in the order a wipe of a version that predates the snap checkpoint does.</summary>
+    /// <remarks>Such a wipe goes through every column but the metadata, each in key order, as a RocksDB iterator yields them.</remarks>
+    private static void WipeLikeAnOlderVersion(IColumnsDb<FlatDbColumns> db, int maxKeys)
+    {
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            if (column == FlatDbColumns.Metadata) continue;
+
+            IDb columnDb = db.GetColumnDb(column);
+            foreach (byte[] key in columnDb.GetAllKeys().Order(Bytes.Comparer))
+            {
+                if (maxKeys-- == 0) return;
+                columnDb.Remove(key);
+            }
+        }
+    }
 
     private static byte[] BuildBranchRlp()
     {
@@ -435,6 +501,14 @@ public class FlatSnapTrieFactoryTests
     private static FlatSnapTrieFactory CreateResumingFactory(IPersistence persistence, IColumnsDb<FlatDbColumns> db, int partitionCount = 2, bool snapResume = true) =>
         new(persistence, Substitute.For<IPersistenceManager>(), db, new MemDb(),
             new SyncConfig { SnapResume = snapResume, SnapSyncAccountRangePartitionCount = partitionCount }, LimboLogs.Instance);
+
+    private static IColumnsDb<FlatDbColumns> CreateColumnsDbWithAccounts(IDb accounts)
+    {
+        MemColumnsDb<FlatDbColumns> columns = new();
+        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
+        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(c => c.Arg<FlatDbColumns>() == FlatDbColumns.Account ? accounts : columns.GetColumnDb(c.Arg<FlatDbColumns>()));
+        return db;
+    }
 
     /// <summary>Two account partitions: the first finished, the second downloaded up to <see cref="LastAccount"/>.</summary>
     private static SnapCheckpoint CreateCheckpoint(

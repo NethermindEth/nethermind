@@ -7,8 +7,10 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -18,26 +20,29 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 public class BlockBodiesMessageSerializerTests
 {
     [Test, NonParallelizable]
-    public void Deserialize_failure_returns_transactions_from_earlier_bodies()
+    public void Decode_failure_returns_transactions_from_earlier_bodies()
     {
-        Rlp body = BlockBodyDecoder.Instance.Encode(new BlockBody([Build.A.Transaction.Signed().TestObject], []));
-        Rlp malformed = Rlp.Encode(Rlp.Encode(sequence: [Rlp.Encode(Build.A.Transaction.Signed().TestObject)]), Rlp.OfEmptyByteArray);
-        byte[] bytes = Rlp.Encode(body, Rlp.OfEmptyList, body, malformed).Bytes;
+        byte[] body = BlockBodyDecoder.Instance.Encode(new BlockBody([Build.A.Transaction.Signed().TestObject], []));
+        byte[] malformed = RlpTestHelper.EncodeSequence(RlpTestHelper.EncodeSequence([Rlp.Encode(Build.A.Transaction.Signed().TestObject)]), RlpTestHelper.OfEmptyByteArray);
+        byte[] bytes = RlpTestHelper.EncodeSequence(body, RlpTestHelper.OfEmptyList, body, malformed);
         HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(bytes).AsDisposable();
-        Assert.Throws<RlpException>(() => new BlockBodiesMessageSerializer().Deserialize(buffer));
+        using (BlockBodiesMessage message = new BlockBodiesMessageSerializer().Deserialize(buffer))
+        {
+            Assert.Throws<RlpReaderException>(() => _ = message.Bodies!.Bodies);
+        }
 
         TransactionPoolTestHelper.AssertAllReturned(pooled);
     }
 
     [TestCaseSource(nameof(GetBlockBodyValues))]
-    public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.TestZero(
+    public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.Test(
         new BlockBodiesMessageSerializer(),
         new BlockBodiesMessage(bodies));
 
     [TestCaseSource(nameof(GetEncodingCases))]
-    public void Should_encode_to_expected_wire_bytes(BlockBody[] bodies, string expected) => SerializerTester.TestZero(
+    public void Should_encode_to_expected_wire_bytes(BlockBody[] bodies, string expected) => SerializerTester.Test(
         new BlockBodiesMessageSerializer(),
         new BlockBodiesMessage(bodies),
         expected);

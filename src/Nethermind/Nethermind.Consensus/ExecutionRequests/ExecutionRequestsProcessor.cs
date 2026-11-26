@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.ExecutionRequests;
 
 public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
 {
-    public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
+    public static readonly AbiSignature<(byte[], byte[], byte[], byte[], byte[])> DepositEventAbi = new AbiSignature("DepositEvent").With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes);
 
     private const ulong GasLimit = Eip8037Constants.SystemCallGasLimit;
 

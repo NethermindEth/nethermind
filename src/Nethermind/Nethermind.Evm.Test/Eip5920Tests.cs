@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Threading;
 using Autofac;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
@@ -24,7 +27,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -421,10 +423,10 @@ public class Eip5920Tests : VirtualMachineTestsBase
         public LogEntry[] Logs { get; private set; } = [];
         public EvmExceptionType RejectedActionError { get; private set; }
 
-        public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+        public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
             ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
         {
-            ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+            ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
             RejectedActionError = error;
         }
 
@@ -479,5 +481,39 @@ public class Eip5920ActivationTests(bool enabled) : VirtualMachineTestsBase
         Assert.That(new EthereumJsonSerializer().Serialize(prestate.BuildResult().CustomTracerResult), enabled
             ? Does.Contain(Target.ToString())
             : Does.Not.Contain(Target.ToString()));
+    }
+
+    /// <remarks>
+    /// An enabled PAY also halts as a bad instruction, on a dirty address word, so only the undefined byte takes the
+    /// name Geth gives bytes it does not know.
+    /// </remarks>
+    [Test]
+    public void Bad_instruction_step_keeps_the_opcode_name_only_when_enabled([Values] bool streaming, [Values] bool cancelable)
+    {
+        byte[] code = Prepare.EvmCode.PushData(0).PushData(UInt256.MaxValue).Op(Instruction.PAY).Done;
+        string expectedName = enabled ? "PAY" : "opcode 0xfc not defined";
+
+        if (streaming)
+        {
+            ArrayBufferWriter<byte> buffer = new();
+            using (Utf8JsonWriter writer = new(buffer))
+            {
+                GethLikeTxDirectStreamingTracer tracer = new(null, GethTraceOptions.Default, writer, pipeWriter: null, CancellationToken.None);
+                writer.WriteStartArray();
+                Execute(cancelable ? tracer.WithCancellation(CancellationToken.None) : (ITxTracer)tracer, code);
+                tracer.BuildResult();
+                writer.WriteEndArray();
+            }
+
+            using JsonDocument document = JsonDocument.Parse(buffer.WrittenMemory);
+            Assert.That(document.RootElement.EnumerateArray().Last().GetProperty("op").GetString(), Is.EqualTo(expectedName));
+        }
+        else
+        {
+            GethLikeTxMemoryTracer tracer = new(null, GethTraceOptions.Default);
+            Execute(cancelable ? tracer.WithCancellation(CancellationToken.None) : (ITxTracer)tracer, code);
+            using GethLikeTxTrace trace = tracer.BuildResult();
+            Assert.That(trace.Entries[^1].Opcode, Is.EqualTo(expectedName));
+        }
     }
 }

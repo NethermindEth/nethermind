@@ -110,7 +110,7 @@ public interface IDiscoveryConfig : IConfig
     [Obsolete]
     int DiscoveryNewCycleWaitTime { get; }
 
-    [ConfigItem(Description = "Deprecated. Use `Network.Bootnodes` instead. Merged into `Network.Bootnodes` at startup.", DefaultValue = "[]", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Deprecated. Use `Network.Bootnodes` instead. Merged into `Network.Bootnodes` at startup.", DefaultValue = "[]", HiddenFromDocs = true, IsSensitiveWhenMasked = true)]
     NetworkNode[] Bootnodes { get; set; }
 
     /// <summary>

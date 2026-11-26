@@ -104,7 +104,7 @@ namespace Nethermind.Config
                 byte[] bytes = Encoding.UTF8.GetBytes(value);
                 if (bytes.Length > 32)
                 {
-                    throw new InvalidConfigurationException($"Extra Data length was more than 32 bytes. You provided: {_extraDataString}",
+                    throw new InvalidConfigurationException($"Extra Data length was more than 32 bytes. You provided: {value}",
                         ExitCodes.TooLongExtraData);
 
                 }

@@ -34,7 +34,9 @@ public class BlockProcessingQueueExtensionsTests
 
         ValueTask<bool> wait = queue.WaitForExecutedCopyAsync(Hash, TimeSpan.FromMinutes(1));
 
+#pragma warning disable NUnit2045 // Completion is required before checking the resulting state.
         Assert.That(wait.IsCompletedSuccessfully, Is.True, "no copy is committing, so there is nothing to wait for");
+#pragma warning restore NUnit2045
         Assert.That(await wait, Is.True);
     }
 

@@ -2,10 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.EthStats.Clients;
+using Nethermind.EthStats.Messages;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
+using Websocket.Client;
 
 namespace Nethermind.EthStats.Test
 {
@@ -28,6 +34,59 @@ namespace Nethermind.EthStats.Test
         {
             EthStatsClient ethClient = new(url, 5000, Substitute.For<IMessageSender>(), LimboLogs.Instance);
             Assert.Throws<ArgumentException>(() => ethClient.BuildUrl());
+        }
+
+        [Test]
+        [CancelAfter(30_000)]
+        public async Task Init_keeps_retrying_when_server_is_unavailable_at_startup([Values("ws://127.0.0.1:{0}/api", "ws://127.0.0.1:{0}/api/", "ws://127.0.0.1:{0}", "http://127.0.0.1:{0}")] string configUrl, CancellationToken cancellationToken)
+        {
+            TcpListener listener = new(IPAddress.Loopback, 0);
+            listener.Start();
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+
+            using EthStatsClient ethClient = new(string.Format(configUrl, port), 100, Substitute.For<IMessageSender>(), LimboLogs.Instance);
+            IWebsocketClient client = await ethClient.InitAsync();
+            Assert.That(client.Url.AbsoluteUri.TrimEnd('/'), Is.EqualTo($"ws://127.0.0.1:{port}/api"));
+
+            listener = new(IPAddress.Loopback, port);
+            listener.Start();
+            try
+            {
+                using TcpClient connection = await listener.AcceptTcpClientAsync(cancellationToken);
+                Assert.That(connection.Connected, Is.True);
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
+        [TestCase("\"primus::ping::1690000000000\"", 1, TestName = "Ping_handler_logs_send_failure_instead_of_throwing")]
+        [TestCase("\"primus::pong::1690000000000\"", 0, TestName = "Ping_handler_ignores_non_ping_message")]
+        [CancelAfter(30_000)]
+        public async Task Ping_handler_answers_only_pings_and_logs_send_failure(string message, int expectedSends)
+        {
+            TcpListener listener = new(IPAddress.Loopback, 0);
+            listener.Start();
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+
+            IMessageSender sender = Substitute.For<IMessageSender>();
+            sender.SendAsync(Arg.Any<IWebsocketClient>(), Arg.Any<LatencyMessage>(), Arg.Any<string>()).Returns(Task.FromException(new InvalidOperationException()));
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsError.Returns(true);
+            ILogger clientLogger = new(logger);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            logManager.GetClassLogger<EthStatsClient>().Returns(clientLogger);
+
+            using EthStatsClient ethClient = new($"ws://127.0.0.1:{port}/api", 100, sender, logManager);
+            IWebsocketClient client = await ethClient.InitAsync();
+
+            client.StreamFakeMessage(ResponseMessage.TextMessage(message));
+
+            await sender.Received(expectedSends).SendAsync(Arg.Any<IWebsocketClient>(), Arg.Any<LatencyMessage>(), Arg.Any<string>());
+            logger.Received(expectedSends).Error(Arg.Any<string>(), Arg.Any<InvalidOperationException>());
         }
 
         [TestCase("primus::ping::", TestName = "Ping_with_empty_timestamp_tail_fails_to_parse")]

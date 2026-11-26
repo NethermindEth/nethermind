@@ -2,18 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions;
 
 public class CompositeTxFilter(params ITxFilter[] txFilters) : ITxFilter
 {
-    public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
+    public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
     {
         for (int i = 0; i < txFilters.Length; i++)
         {
-            AcceptTxResult isAllowed = txFilters[i].IsAllowed(tx, parentHeader, currentSpec);
+            AcceptTxResult isAllowed = txFilters[i].IsAllowed(tx, in context);
             if (!isAllowed)
             {
                 return isAllowed;

@@ -225,9 +225,12 @@ public partial class DebugRpcModuleTests
         }
 
         Block block = await chain.AddBlock(calls);
-        Assert.That(block.Transactions, Has.Length.EqualTo(calls.Length), "precondition: every call is in the block");
-        Assert.That(chain.WorldStateManager.GlobalStateReader.CollectStorageRange(block.Header, contract, default, 100).Slots,
-            Has.Count.EqualTo(StorageRangeInitialSlots + calls.Length), "precondition: every call stored a slot");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(calls.Length), "precondition: every call is in the block");
+            Assert.That(chain.WorldStateManager.GlobalStateReader.CollectStorageRange(block.Header, contract, default, 100).Slots,
+                Has.Count.EqualTo(StorageRangeInitialSlots + calls.Length), "precondition: every call stored a slot");
+        }
         return (contract, block);
     }
 

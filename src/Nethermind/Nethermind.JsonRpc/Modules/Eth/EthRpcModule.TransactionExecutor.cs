@@ -18,7 +18,9 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -33,7 +35,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected readonly IJsonRpcConfig _rpcConfig = rpcConfig;
             protected bool NoBaseFee { get; private set; }
             private BlockOverride? _blockOverride;
-            private CancellationToken _requestToken;
+            private CancellationToken _cancellationToken;
             protected BlockOverride? BlockOverride => _blockOverride;
             protected UInt256? BlobBaseFeeOverride => _blockOverride?.BlobBaseFee;
 
@@ -74,30 +76,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return tx;
             }
 
-            private ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
-            {
-                if (stateOverride is not null)
-                {
-                    IReleaseSpec spec = specProvider.GetSpec(header);
-                    foreach ((Address address, AccountOverride? accountOverride) in stateOverride)
-                    {
-                        if (accountOverride?.MovePrecompileToAddress is not null &&
-                            spec.IsPrecompile(address) &&
-                            accountOverride.MovePrecompileToAddress == address)
-                        {
-                            return ResultWrapper<TResult>.Fail(
-                                $"account {address} is already overridden",
-                                ErrorCodes.InvalidInput);
-                        }
-                    }
-                }
-
+            private ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token) =>
                 // The block override is applied later, inside the bridge, after the read-only state scope is opened
                 // on this (base) header — so the overridden block number does not leak into state selection.
-                if (!_requestToken.CanBeCanceled) return ExecuteTx(header, tx, stateOverride, token);
-                using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, _requestToken);
-                return ExecuteTx(header, tx, stateOverride, linked.Token);
-            }
+                ExecuteTx(header, tx, stateOverride, token);
 
             public virtual ResultWrapper<TResult> Execute(
                 TransactionForRpc transactionCall,
@@ -116,31 +98,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
                 }
 
-                CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-                try
-                {
-                    Result<Transaction> prepareResult = Prepare(transactionCall, header);
-                    return !prepareResult.Success(out Transaction? data, out string? error)
-                        ? ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput)
-                        : Execute(header, data, stateOverride, timeout.Token);
-                }
-                finally
-                {
-                    JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
-                }
+                // As in Geth, overrides are validated before the call's fee fields.
+                if ((BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) ?? StateOverrideValidation.GetError(stateOverride, GetSpec(_blockOverride?.ApplyTo(header) ?? header))) is { } overrideError)
+                    return ResultWrapper<TResult>.Fail(overrideError, ErrorCodes.InvalidInput);
+
+                Result<Transaction> prepareResult = Prepare(transactionCall, header);
+                return !prepareResult.Success(out Transaction? data, out string? error)
+                    ? ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput)
+                    : Execute(header, data, stateOverride, _cancellationToken);
             }
 
-            /// <param name="requestToken">Cancels this execution along with work the request did before it, so both share one timeout.</param>
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null,
-                BlockOverride? blockOverride = null, CancellationToken requestToken = default, SearchResult<BlockHeader>? searchResult = null)
+                BlockOverride? blockOverride = null, CancellationToken cancellationToken = default, SearchResult<BlockHeader>? searchResult = null)
             {
-                if (blockOverride?.Withdrawals is not null)
-                    return ResultWrapper<TResult>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
                 ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
                 if (blockOverride?.GasLimit > gasCap)
                     return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {gasCap}", ErrorCodes.InvalidInput);
                 _blockOverride = blockOverride;
-                _requestToken = requestToken;
+                _cancellationToken = cancellationToken;
                 return Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
@@ -154,12 +129,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     {
                         string revertMessage = TransactionSubstate.BuildRevertMessage(executionRevertedReason, errorMessage);
 
-                        if (executionRevertedReason is not null)
-                        {
-                            return ResultWrapper<TResult, string>.Fail(revertMessage, ErrorCodes.ExecutionReverted, executionRevertedReason.ToHexString(true));
-                        }
-
-                        return ResultWrapper<TResult, string?>.Fail(revertMessage, ErrorCodes.ExecutionReverted, null);
+                        return ResultWrapper<TResult, string>.Fail(revertMessage, ErrorCodes.ExecutionReverted, (executionRevertedReason ?? []).ToHexString(true));
                     }
 
                     return bodyData is null
@@ -260,12 +230,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// applied. A request that sets one of the fee cap and priority fee after London gets the other before it
             /// is priced: a missing priority fee is the node's suggested one, and a missing fee cap is the priority fee
             /// plus twice the block's base fee. A request with no fee field at all stays unpriced, so a sender that
-            /// cannot afford fees the node would pick can still get its access list.
+            /// cannot afford fees the node would pick can still get its access list. A frame request naming
+            /// <c>maxFee</c> has its fee cap and gets only a missing priority fee.
             /// </remarks>
             public static FeeDefaults FillFeeDefaults(TransactionForRpc call, BlockHeader header, bool isLondon, IGasPriceOracle gasPriceOracle)
             {
                 if (FeeDefaultRules.Error(call, isLondon) is { } feeDefaultsError)
                     return new FeeDefaults(feeDefaultsError, null);
+
+                if (isLondon && call is FrameTransactionForRpc { MaxFee: not null } budgeted)
+                {
+                    budgeted.MaxPriorityFeePerGas ??= gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+                    return default;
+                }
 
                 // Before London the rules above leave no fee field to fill.
                 if (!isLondon
@@ -293,20 +270,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// <summary>The hash of an unsigned dynamic-fee <paramref name="tx"/> carrying <paramref name="feeCap"/>.</summary>
             private static Hash256 HashWithFeeCap(Transaction tx, BigInteger feeCap)
             {
-                Rlp payload = Rlp.Encode(
-                    Rlp.Encode(tx.ChainId ?? 0UL),
-                    Rlp.Encode(tx.Nonce),
-                    Rlp.Encode(tx.MaxPriorityFeePerGas),
-                    Rlp.Encode(feeCap),
-                    Rlp.Encode(tx.GasLimit),
-                    tx.To is null ? Rlp.OfEmptyByteArray : Rlp.Encode(tx.To.Bytes),
-                    Rlp.Encode(tx.Value),
-                    Rlp.Encode(tx.Data.Span),
-                    Rlp.Encode(tx.AccessList ?? AccessList.Empty),
-                    Rlp.OfEmptyByteArray,
-                    Rlp.OfEmptyByteArray,
-                    Rlp.OfEmptyByteArray);
-                return Keccak.Compute([(byte)TxType.EIP1559, .. payload.Bytes]);
+                byte[] payload = RlpCodec.Write((tx, feeCap), static (ref RlpWriter writer, (Transaction Tx, BigInteger FeeCap) unsigned) =>
+                    writer.WriteSequence(unsigned, static (ref RlpWriter writer, (Transaction Tx, BigInteger FeeCap) unsigned) =>
+                    {
+                        Transaction tx = unsigned.Tx;
+                        writer.Encode(tx.ChainId ?? 0UL);
+                        writer.Encode(tx.Nonce);
+                        writer.Encode(tx.MaxPriorityFeePerGas);
+                        writer.WriteEncoded(Rlp.Encode(unsigned.FeeCap));
+                        writer.Encode(tx.GasLimit);
+                        writer.Encode(tx.To);
+                        writer.Encode(tx.Value);
+                        writer.Encode(tx.Data.Span);
+                        AccessListDecoder.Instance.Encode(ref writer, tx.AccessList ?? AccessList.Empty);
+                        writer.EncodeEmptyByteArray();
+                        writer.EncodeEmptyByteArray();
+                        writer.EncodeEmptyByteArray();
+                    }));
+                return Keccak.Compute([(byte)TxType.EIP1559, .. payload]);
             }
 
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)

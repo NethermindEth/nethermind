@@ -64,8 +64,11 @@ public class McpActivityPagingTests
         CallToolResult call = await McpToolCalls.Call(client, "address_activity",
             [("address", TestItem.AddressB.ToString()), ("token", scenario.TokenContract.ToString()), ("limit", 1)]);
         JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("movements")[0].GetProperty("blockNumber").GetUInt64(), Is.EqualTo(last.Number));
-        Assert.That(result.GetProperty("scannedFrom").GetUInt64(), Is.GreaterThanOrEqualTo(last.Number - 3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("movements")[0].GetProperty("blockNumber").GetUInt64(), Is.EqualTo(last.Number));
+            Assert.That(result.GetProperty("scannedFrom").GetUInt64(), Is.GreaterThanOrEqualTo(last.Number - 3));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
     }
 
@@ -230,8 +233,11 @@ public class McpActivityPagingTests
 
         CallToolResult call = await McpToolCalls.Call(client, "address_activity", Query(scenario, last, "desc", 50));
 
-        Assert.That(McpAssert.Success(call).GetProperty("movements").GetArrayLength(), Is.EqualTo(50));
-        Assert.That(receiptReads, Is.Zero, "exactly the read limit is a complete result, not evidence of a cap");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(McpAssert.Success(call).GetProperty("movements").GetArrayLength(), Is.EqualTo(50));
+            Assert.That(receiptReads, Is.Zero, "exactly the read limit is a complete result, not evidence of a cap");
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
     }
 
@@ -253,7 +259,9 @@ public class McpActivityPagingTests
 
         CallToolResult call = await McpToolCalls.Call(client, "address_activity", Query(scenario, last, "desc", 50));
         JsonElement result = McpAssert.Success(call);
+#pragma warning disable NUnit2045 // Cursor decoding must succeed before its positions are read.
         Assert.That(McpActivityCursor.TryDecode(result.GetProperty("nextCursor").GetString()!, out McpActivityCursor? state, out _), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(state!.Positions.Select(static position => position.Span),
             Is.All.EqualTo(last.Number - scenario.Block.Number + 1), "stopping during a read must preserve the span for resume");
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
@@ -274,8 +282,11 @@ public class McpActivityPagingTests
         CallToolResult call = await McpToolCalls.Call(client, "address_activity",
             [("address", TestItem.AddressB.ToString()), ("token", scenario.TokenContract.ToString())]);
         JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("movements").GetArrayLength(), Is.EqualTo(lag <= 64 ? 1 : 0));
-        Assert.That(result.GetProperty("indexed").GetBoolean(), Is.False, "the unindexed head tail is part of this page");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("movements").GetArrayLength(), Is.EqualTo(lag <= 64 ? 1 : 0));
+            Assert.That(result.GetProperty("indexed").GetBoolean(), Is.False, "the unindexed head tail is part of this page");
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
     }
 
@@ -290,8 +301,11 @@ public class McpActivityPagingTests
         await using McpClient client = await node.CreateClient();
         CallToolResult call = await McpToolCalls.Call(client, "address_activity", Query(scenario, last, "desc", 50));
         JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("movements").GetArrayLength(), Is.EqualTo(1), "empty windows must widen during the call");
-        Assert.That(result.GetProperty("truncated").GetBoolean(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("movements").GetArrayLength(), Is.EqualTo(1), "empty windows must widen during the call");
+            Assert.That(result.GetProperty("truncated").GetBoolean(), Is.False);
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
     }
 
@@ -369,8 +383,11 @@ public class McpActivityPagingTests
             cursor = result.TryGetProperty("nextCursor", out JsonElement next) ? next.GetString() : null;
             await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
         }
-        Assert.That(found, Is.EqualTo(1), "300k empty blocks must be skipped with wider windows, not separate pages");
-        Assert.That(reads, Is.LessThanOrEqualTo(80));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(1), "300k empty blocks must be skipped with wider windows, not separate pages");
+            Assert.That(reads, Is.LessThanOrEqualTo(80));
+        }
     }
 
     [Test]
@@ -505,8 +522,11 @@ public class McpActivityPagingTests
         (McpTxScenario scenario, Block last, _) = await Seed(node, 2, 1);
         await using McpClient client = await node.CreateClient();
         JsonElement result = McpAssert.Success(await McpToolCalls.Call(client, "address_activity", Query(scenario, last, "asc", 1)));
-        Assert.That(result.GetProperty("toBlock").GetUInt64(), Is.LessThan(last.Number));
-        Assert.That(result.GetProperty("coveredTo").GetUInt64(), Is.EqualTo(result.GetProperty("toBlock").GetUInt64()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("toBlock").GetUInt64(), Is.LessThan(last.Number));
+            Assert.That(result.GetProperty("coveredTo").GetUInt64(), Is.EqualTo(result.GetProperty("toBlock").GetUInt64()));
+        }
     }
 
     [Test]
@@ -529,8 +549,11 @@ public class McpActivityPagingTests
         CallToolResult call = await McpToolCalls.Call(client, "address_activity", Query(scenario, last, "asc"));
         Assert.That(call.IsError, Is.Not.True, "optional scan work must stop before the executor timeout");
         JsonElement page = McpAssert.Success(call);
-        Assert.That(page.GetProperty("truncated").GetBoolean(), Is.True);
-        Assert.That(calls, Is.LessThanOrEqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(page.GetProperty("truncated").GetBoolean(), Is.True);
+            Assert.That(calls, Is.LessThanOrEqualTo(2));
+        }
         CallToolResult resumed = await McpToolCalls.Call(client, "address_activity", [.. Query(scenario, last, "asc"), ("cursor", page.GetProperty("nextCursor").GetString())]);
         Assert.That(resumed.IsError, Is.Not.True);
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
@@ -561,8 +584,11 @@ public class McpActivityPagingTests
             await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
             if (cursor is null) break;
         }
-        Assert.That(cursor, Is.Null, "slow reads must terminate within eight calls");
-        Assert.That(actual, Is.EqualTo(ReceiptHashes(node, scenario.TokenContract)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cursor, Is.Null, "slow reads must terminate within eight calls");
+            Assert.That(actual, Is.EqualTo(ReceiptHashes(node, scenario.TokenContract)));
+        }
     }
 
     [Test]
@@ -584,8 +610,11 @@ public class McpActivityPagingTests
         CallToolResult call = await McpToolCalls.Call(client, "address_activity", Query(scenario, last, "desc", 50));
         Assert.That(call.IsError, Is.Not.True, "a later error must not discard the first window");
         JsonElement page = McpAssert.Success(call);
-        Assert.That(page.GetProperty("movements").GetArrayLength(), Is.EqualTo(1));
-        Assert.That(page.GetProperty("note").GetString(), Does.Contain($"block {failing.Number}").And.Not.Contain("private scan details"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(page.GetProperty("movements").GetArrayLength(), Is.EqualTo(1));
+            Assert.That(page.GetProperty("note").GetString(), Does.Contain($"block {failing.Number}").And.Not.Contain("private scan details"));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
         provider.BeforeCall = null;
         if (missingReceipts) node.Chain.ReceiptStorage.Insert(failing, receipts);
@@ -649,8 +678,11 @@ public class McpActivityPagingTests
         JsonElement first = McpAssert.Success(await McpToolCalls.Call(client, "address_activity", Query(scenario, last, "desc")));
         JsonElement second = McpAssert.Success(await McpToolCalls.Call(client, "address_activity",
             [.. Query(scenario, last, "desc"), ("cursor", first.GetProperty("nextCursor").GetString())]));
-        Assert.That(second.TryGetProperty("clampedFromBlock", out _), Is.True, "clamping applies to every page");
-        Assert.That(second.GetProperty("note").GetString(), Does.Contain("receipt history"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.TryGetProperty("clampedFromBlock", out _), Is.True, "clamping applies to every page");
+            Assert.That(second.GetProperty("note").GetString(), Does.Contain("receipt history"));
+        }
     }
 
 }

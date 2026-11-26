@@ -42,8 +42,7 @@ public class ExecutionProcessorTests
     private static readonly Address DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
     private static readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
     private static readonly Address eip7251Account = Eip7251Constants.ConsolidationRequestPredeployAddress;
-    private static readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
-    private static readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
+    private static readonly AbiSignature<(byte[], byte[], byte[], byte[], byte[])> _depositEventData = new AbiSignature().With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes);
     private const int AbiWordSize = 32;
     private const int DepositEventFieldCount = 5;
     private const int PubkeyHeadWord = 0;
@@ -250,8 +249,12 @@ public class ExecutionProcessorTests
     }
 
     [Test]
-    public void ListSystemContracts_reports_the_request_contracts_configured_by_spec()
+    public void ListSystemContracts_reports_the_contracts_configured_by_spec()
     {
+        _spec.IsEip4788Enabled.Returns(true);
+        _spec.IsEip2935Enabled.Returns(true);
+        _spec.Eip4788ContractAddress.Returns(TestItem.AddressC);
+        _spec.Eip2935ContractAddress.Returns(TestItem.AddressD);
         _spec.Eip7002ContractAddress.Returns(TestItem.AddressA);
         _spec.Eip7251ContractAddress.Returns(TestItem.AddressB);
 
@@ -259,6 +262,8 @@ public class ExecutionProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(systemContracts[Eip4788Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressC));
+            Assert.That(systemContracts[Eip2935Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressD));
             Assert.That(systemContracts[Eip7002Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressA));
             Assert.That(systemContracts[Eip7251Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressB));
         }
@@ -274,7 +279,7 @@ public class ExecutionProcessorTests
             .WithAddress(DepositContractAddress).TestObject;
 
     private static byte[] EncodeDepositEventData(byte[][] requestDataParts) =>
-        _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts);
+        AbiCodec.Encode(_depositEventData, (requestDataParts[0], requestDataParts[1], requestDataParts[2], requestDataParts[3], requestDataParts[4]));
 
     [TestCase(DepositEventLayoutMutation.SwappedPubkeyAndCredentialsBlocks)]
     [TestCase(DepositEventLayoutMutation.SwappedAmountAndSignatureBlocks)]

@@ -103,6 +103,6 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
 
         // Forkchoice updates report execution validity only; inclusion verdicts are polled by identifier.
-        return ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
+        return ForkchoiceUpdatedV3(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
     }
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     {
                         emitInitChangeCallable = ValidatorContract.EmitInitiateChangeCallable(parent);
                     }
-                    catch (AbiException e)
+                    catch (ContractException e)
                     {
                         if (_logger.IsError) _logger.Error($"Call to {nameof(ValidatorContract.EmitInitiateChangeCallable)} failed.", e);
                     }

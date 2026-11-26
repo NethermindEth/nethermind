@@ -75,7 +75,7 @@ public class Eip8369VerifyBudgetFillBenchmarks
             while (true)
             {
                 Transaction tx = FrameTx(nonce++, signature);
-                byte[] encoded = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+                byte[] encoded = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
                 if (bytes + encoded.Length > Eip7805Constants.MaxBytesPerInclusionList) break;
                 bytes += encoded.Length;
                 tx.Hash = Keccak.Compute(encoded);

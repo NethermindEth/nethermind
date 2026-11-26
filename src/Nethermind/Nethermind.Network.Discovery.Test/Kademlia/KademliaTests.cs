@@ -174,19 +174,25 @@ public class KademliaTests
                 kad.AddOrRefresh(valueHash256);
             }
 
-            Assert.That(kad.GetKNeighbour(ValueKeccak.Zero), Has.Length.EqualTo(5));
-            Assert.That(kad.GetKNeighbour(kad.CurrentNode), Does.Contain(kad.CurrentNode));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(kad.GetKNeighbour(ValueKeccak.Zero), Has.Length.EqualTo(5));
+                Assert.That(kad.GetKNeighbour(kad.CurrentNode), Does.Contain(kad.CurrentNode));
+            }
             foreach (ValueHash256 testHash in testHashes)
             {
                 // It must return K items exactly, taking from other bucket if necessary.
                 Assert.That(kad.GetKNeighbour(testHash), Has.Length.EqualTo(5));
 
                 // It must find the closest one at least.
-                Assert.That(kad.GetKNeighbour(testHash), Does.Contain(testHash));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(kad.GetKNeighbour(testHash), Does.Contain(testHash));
 
-                // It must exclude a node when hash is specified
-                Assert.That(kad.GetKNeighbour(testHash, testHash), Has.Length.EqualTo(5));
-                Assert.That(kad.GetKNeighbour(testHash, excludeSelf: true), Does.Not.Contain(kad.CurrentNode));
+                    // It must exclude a node when hash is specified
+                    Assert.That(kad.GetKNeighbour(testHash, testHash), Has.Length.EqualTo(5));
+                    Assert.That(kad.GetKNeighbour(testHash, excludeSelf: true), Does.Not.Contain(kad.CurrentNode));
+                }
             }
         }
         finally
@@ -235,9 +241,12 @@ public class KademliaTests
         HashSet<ValueHash256> expected248 = testHashes[..5].ToHashSet();
         HashSet<ValueHash256> expected249 = testHashes[5..10].ToHashSet();
         HashSet<ValueHash256> expected250 = testHashes[10..].ToHashSet();
-        Assert.That(kad.GetAllAtDistance(248).ToHashSet(), Is.EquivalentTo(expected248));
-        Assert.That(kad.GetAllAtDistance(249).ToHashSet(), Is.EquivalentTo(expected249));
-        Assert.That(kad.GetAllAtDistance(250).ToHashSet(), Is.EquivalentTo(expected250));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(kad.GetAllAtDistance(248).ToHashSet(), Is.EquivalentTo(expected248));
+            Assert.That(kad.GetAllAtDistance(249).ToHashSet(), Is.EquivalentTo(expected249));
+            Assert.That(kad.GetAllAtDistance(250).ToHashSet(), Is.EquivalentTo(expected250));
+        }
     }
 
     [Test]
@@ -262,8 +271,11 @@ public class KademliaTests
             .GetMethod("PruneLastBucketRefreshTicks", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(kad, [activePrefixes]);
 
-        Assert.That(lastRefreshTicks.ContainsKey(activePrefix), Is.True);
-        Assert.That(lastRefreshTicks.ContainsKey(stalePrefix), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lastRefreshTicks.ContainsKey(activePrefix), Is.True);
+            Assert.That(lastRefreshTicks.ContainsKey(stalePrefix), Is.False);
+        }
     }
 
     private static ValueHash256 RandomValueHashAtDistance(ValueHash256 currentHash, int distance) =>

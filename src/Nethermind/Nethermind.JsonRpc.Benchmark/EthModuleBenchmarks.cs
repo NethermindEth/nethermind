@@ -29,6 +29,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Facade.Filters;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Benchmark
@@ -67,12 +68,14 @@ namespace Nethermind.JsonRpc.Benchmark
             IBlockchainBridge bridge = _container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
 
             ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
-            FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
+            FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider, new JsonRpcConfig());
 
             _headBlockSignal = new HeadBlockSignal(blockTree);
             _ethModule = new EthRpcModule(
                 _container.Resolve<IJsonRpcConfig>(),
                 bridge,
+                _container.Resolve<FilterStore>(),
+                _container.Resolve<FilterManager>(),
                 blockTree,
                 blockTree,
                 _container.Resolve<IReceiptFinder>(),

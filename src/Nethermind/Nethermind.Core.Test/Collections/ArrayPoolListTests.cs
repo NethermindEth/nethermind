@@ -26,6 +26,41 @@ public class ArrayPoolListTests
         }
     }
 
+    [TestCase(1 << 30, 1, ExpectedResult = 0x7FFFFFC7)]
+    [TestCase(1 << 30, 0x3FFFFFC8, ExpectedResult = 0x7FFFFFC8)]
+    public int Growth_past_1_GiB_rents_at_most_the_largest_array(int count, int itemsToAdd)
+    {
+        RentRecordingPool pool = new();
+        byte[] array = [];
+        int capacity = 1 << 30;
+
+        Assert.Throws<NotSupportedException>(() => ArrayPoolListCore<byte>.GuardResize(pool, ref array, ref capacity, count, itemsToAdd));
+        return pool.RentedLength;
+    }
+
+    [Test]
+    public void Growth_past_int_MaxValue_items_throws()
+    {
+        byte[] array = [];
+        int capacity = 1 << 30;
+
+        Assert.Throws<OverflowException>(() => ArrayPoolListCore<byte>.GuardResize(new RentRecordingPool(), ref array, ref capacity, int.MaxValue, 1));
+    }
+
+    /// <summary>Records the requested length and throws, so no large array is allocated.</summary>
+    private sealed class RentRecordingPool : ArrayPool<byte>
+    {
+        public int RentedLength { get; private set; }
+
+        public override byte[] Rent(int minimumLength)
+        {
+            RentedLength = minimumLength;
+            throw new NotSupportedException();
+        }
+
+        public override void Return(byte[] array, bool clearArray = false) { }
+    }
+
     [Test]
     public void Should_not_hang_when_capacity_is_zero()
     {
@@ -133,7 +168,9 @@ public class ArrayPoolListTests
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(list.Remove(item), Is.EqualTo(removed));
+#pragma warning restore NUnit2045
         Assert.That(list, Is.EqualTo(expected));
     }
 
@@ -218,6 +255,16 @@ public class ArrayPoolListTests
     }
 
     [Test]
+    public void AddUninitialized_adds_the_items_for_the_caller_to_write([Values(3, 100)] int count)
+    {
+        using ArrayPoolList<int> list = new(16) { 0, 1 };
+        Span<int> added = list.AddUninitialized(count);
+        for (int i = 0; i < added.Length; i++) added[i] = i + 2;
+
+        Assert.That(list, Is.EqualTo(Enumerable.Range(0, count + 2)));
+    }
+
+    [Test]
     public void Construct_from_ICollection_copies_all_items()
     {
         // HashSet is an ICollection<T> but neither an array nor a list, so it exercises the bulk CopyTo path.
@@ -242,18 +289,24 @@ public class ArrayPoolListTests
 
         list.Insert(1, 2);
         Assert.That(list[1], Is.EqualTo(2));
-        Assert.That(list[1], Is.EqualTo(listT[1]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list[1], Is.EqualTo(listT[1]));
 
-        Assert.That(list.Count, Is.EqualTo(2));
+            Assert.That(list.Count, Is.EqualTo(2));
+        }
         Assert.That(list.Count, Is.EqualTo(listT.Count));
 
         int[] a = new int[3];
 
         list.CopyTo(a, 1);
-        Assert.That(a[2], Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a[2], Is.EqualTo(2));
 
-        Assert.That(list.Contains(2), Is.EqualTo(listT.Contains(2)));
-        Assert.That(list.IndexOf(2), Is.EqualTo(listT.IndexOf(2)));
+            Assert.That(list.Contains(2), Is.EqualTo(listT.Contains(2)));
+            Assert.That(list.IndexOf(2), Is.EqualTo(listT.IndexOf(2)));
+        }
 
         list.Remove(2);
         Assert.That(list.Count, Is.EqualTo(1));
@@ -294,6 +347,40 @@ public class ArrayPoolListTests
 
         action = () => list[0] = string.Empty;
         Assert.That(action, Throws.TypeOf<InvalidCastException>());
+    }
+
+    [Test]
+    public void Lookup_compares_only_items_within_count()
+    {
+        using ArrayPoolList<CountingItem> list = new(1024);
+        list.Add(new CountingItem(1, null));
+        EqualsCounter counter = new();
+        CountingItem missing = new(2, counter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Contains(missing), Is.False);
+            Assert.That(list.IndexOf(missing), Is.EqualTo(-1));
+            Assert.That(list.Remove(missing), Is.False);
+            Assert.That(counter.Calls, Is.EqualTo(3 * list.Count));
+        }
+    }
+
+    private sealed class EqualsCounter
+    {
+        public int Calls;
+    }
+
+    /// <summary>Counts the comparisons made against the item searched for.</summary>
+    private readonly record struct CountingItem(int Value, EqualsCounter? Counter)
+    {
+        public bool Equals(CountingItem other)
+        {
+            if (other.Counter is not null) other.Counter.Calls++;
+            return Value == other.Value;
+        }
+
+        public override int GetHashCode() => Value;
     }
 
     [Test]
@@ -349,12 +436,13 @@ public class ArrayPoolListTests
     [Test]
     public void Dispose_recursive()
     {
-        ArrayPoolList<ArrayPoolList<int>> list = new(8)
-        {
-            new ArrayPoolList<int>(8),
-            new ArrayPoolList<int>(8),
-            new ArrayPoolList<int>(8)
-        };
+        ArrayPoolList<ArrayPoolList<int>> list =
+        [
+            with(8),
+            [with(8)],
+            [with(8)],
+            [with(8)]
+        ];
 
         list.DisposeRecursive();
         list.DisposeRecursive();
@@ -373,8 +461,11 @@ public class ArrayPoolListTests
 
         Action act = () => list.RemoveAt(2);
 
-        Assert.That(act, Throws.Nothing);
-        Assert.That(list, Is.EqualTo(new[] { 0, 1, 3, 4, 5, 6, 7 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(act, Throws.Nothing);
+            Assert.That(list, Is.EqualTo(new[] { 0, 1, 3, 4, 5, 6, 7 }));
+        }
     }
 
     private sealed class ExactSizeArrayPool<T> : ArrayPool<T>
@@ -392,9 +483,12 @@ public class ArrayPoolListTests
         using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 10, 10, clearFirst: false);
 
         Assert.That(list.Count, Is.EqualTo(10));
-        Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(10));
-        Assert.That(list.AsSpan().Length, Is.EqualTo(10));
-        Assert.That(list.AsMemory().Length, Is.EqualTo(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(10));
+            Assert.That(list.AsSpan().Length, Is.EqualTo(10));
+            Assert.That(list.AsMemory().Length, Is.EqualTo(10));
+        }
     }
 
     [Test]

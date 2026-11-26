@@ -12,6 +12,7 @@ using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -21,7 +22,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -51,10 +51,13 @@ public partial class EngineModuleTests
             string name,
             Type type)
         {
-            Assert.That(parameter.Info.Name, Is.EqualTo(name));
-            Assert.That(parameter.ParameterType, Is.EqualTo(type));
-            Assert.That(parameter.Kind, Is.EqualTo(RpcModuleProvider.ResolvedMethodInfo.ParameterKind.Typed));
-            Assert.That(parameter.TypeInfo, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parameter.Info.Name, Is.EqualTo(name));
+                Assert.That(parameter.ParameterType, Is.EqualTo(type));
+                Assert.That(parameter.Kind, Is.EqualTo(RpcModuleProvider.ResolvedMethodInfo.ParameterKind.Typed));
+                Assert.That(parameter.TypeInfo, Is.Not.Null);
+            }
             Assert.That(parameter.TypeInfo!.Type, Is.EqualTo(type));
         }
     }
@@ -102,7 +105,9 @@ public partial class EngineModuleTests
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -150,7 +155,9 @@ public partial class EngineModuleTests
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -161,7 +168,9 @@ public partial class EngineModuleTests
             chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -184,7 +193,9 @@ public partial class EngineModuleTests
         response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -395,7 +406,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(releaseSpec.IsCancunEnabled ? Keccak.Zero : null)
             .WithBlobGasUsed(hasBlobFields ? 0UL : null)
             .WithExcessBlobGas(hasBlobFields ? 0UL : null)
-            .WithEncodedBlockAccessList(hasAmsterdamFields ? Rlp.OfEmptyList.Bytes : null)
+            .WithEncodedBlockAccessList(hasAmsterdamFields ? RlpTestHelper.OfEmptyList : null)
             .WithSlotNumber(hasAmsterdamFields ? 0UL : null)
             .TestObject;
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -488,8 +499,11 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await chain.EngineRpcModule
             .engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(head, head, head), null);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
-        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
     }
 
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
@@ -516,8 +530,11 @@ public partial class EngineModuleTests
                 Hash256 newHead = getPayloadResult!.BlockHash!;
                 ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
                 ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse = await rpc.engine_forkchoiceUpdatedV3(forkchoiceStateV1);
-                Assert.That(setHeadResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-                Assert.That(setHeadResponse.Data.PayloadId, Is.EqualTo(null));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(setHeadResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+                    Assert.That(setHeadResponse.Data.PayloadId, Is.EqualTo(null));
+                }
             }
 
             blocks.Add(getPayloadResult);

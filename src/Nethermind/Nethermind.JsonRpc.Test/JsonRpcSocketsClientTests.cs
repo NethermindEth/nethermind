@@ -67,8 +67,11 @@ public class JsonRpcSocketsClientTests
             Assert.That(response[0], Is.EqualTo((byte)'['));
         }
 
-        Assert.That(response.AsSpan().Count((byte)'\n'), Is.EqualTo(1));
-        Assert.That(fixture.Sink.BytesWritten, Is.EqualTo(response.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.AsSpan().Count((byte)'\n'), Is.EqualTo(1));
+            Assert.That(fixture.Sink.BytesWritten, Is.EqualTo(response.Length));
+        }
     }
 
     [TestCase(RpcEndpoint.Ws, true)]
@@ -283,6 +286,132 @@ public class JsonRpcSocketsClientTests
     }
 
     [Test]
+    public async Task Large_socket_response_is_written_only_asynchronously([Values] bool batch)
+    {
+        using AsyncWriteOnlyMessageStream stream = new();
+        using SocketSendLock sendLock = new();
+
+        await WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => Enumerable.Repeat("0x0102030405060708091011121314151617181920212223242526272829303132", 4096).ToArray(), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Length, Is.GreaterThan(4 * 32 * 1024));
+            Assert.DoesNotThrow(() => JsonDocument.Parse(stream.ToArray()).Dispose());
+        }
+    }
+
+    [Test]
+    public async Task Socket_response_to_a_caller_that_does_not_read_is_aborted_after_the_send_deadline([Values] bool batch)
+    {
+        StalledMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 64 * 1024 * 1024, sendTimeout: 100);
+
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => Enumerable.Repeat("0x0102030405060708091011121314151617181920212223242526272829303132", 1024).ToArray(), CancellationToken.None).AsTask();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(async () => await write.WaitAsync(TimeSpan.FromSeconds(10)), Throws.InstanceOf<SocketSendLimitException>());
+            Assert.That(sendLock.IsFaulted, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Streamed_socket_response_to_a_caller_that_does_not_read_is_aborted_after_the_send_deadline([Values] bool batch)
+    {
+        StalledMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 64 * 1024 * 1024, sendTimeout: 100);
+
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => new FlushingStreamable(chunks: 4), CancellationToken.None).AsTask();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(async () => await write.WaitAsync(TimeSpan.FromSeconds(10)), Throws.InstanceOf<SocketSendLimitException>());
+            Assert.That(sendLock.IsFaulted, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Socket_response_above_the_unsent_limit_stops_serialization([Values] bool batch)
+    {
+        const int items = 64 * 1024;
+        int produced = 0;
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 64 * 1024, sendTimeout: 60_000);
+
+        IEnumerable<string> Produce()
+        {
+            for (int i = 0; i < items; i++)
+            {
+                produced++;
+                yield return "0x0102030405060708091011121314151617181920212223242526272829303132";
+            }
+        }
+
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null, () => Produce(), CancellationToken.None).AsTask();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(async () => await write, Throws.InstanceOf<SocketSendLimitException>());
+            Assert.That(produced, Is.LessThan(items / 8));
+            Assert.That(sendLock.IsFaulted, Is.True);
+            Assert.That(stream.Length, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Streamed_socket_response_above_the_unsent_limit_is_not_flushed([Values] bool batch)
+    {
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 1024, sendTimeout: 60_000);
+
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => new UnflushedStreamable(chunkSize: 4096), CancellationToken.None).AsTask();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(async () => await write, Throws.InstanceOf<SocketSendLimitException>());
+            Assert.That(sendLock.IsFaulted, Is.True);
+            Assert.That(stream.Length, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Socket_response_above_the_unsent_limit_faults_the_connection([Values] bool batch)
+    {
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 1024, sendTimeout: 60_000);
+
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => Enumerable.Repeat("0x0102030405060708091011121314151617181920212223242526272829303132", 1024).ToArray(), CancellationToken.None).AsTask();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(async () => await write, Throws.InstanceOf<IOException>());
+            Assert.That(sendLock.IsFaulted, Is.True);
+            Assert.That(stream.Length, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Socket_response_within_the_limits_is_sent([Values] bool batch)
+    {
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new(maxUnsentBytes: 64 * 1024 * 1024, sendTimeout: 60_000);
+
+        await WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batch ? 2 : null,
+            static () => Enumerable.Repeat("0x0102030405060708091011121314151617181920212223242526272829303132", 1024).ToArray(), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sendLock.IsFaulted, Is.False);
+            Assert.DoesNotThrow(() => JsonDocument.Parse(stream.ToArray()).Dispose());
+        }
+    }
+
+    [Test]
     public async Task Socket_sink_reports_deferred_failure([Values] bool committed, [Values] bool batch)
     {
         using MemoryMessageStream stream = new();
@@ -416,7 +545,9 @@ public class JsonRpcSocketsClientTests
         InvalidOperationException failure = new("serialization failed");
         using JsonRpcResult failed = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = new FlushingStreamable(chunks: 0, failure) }, default);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await Assert.CatchAsync(async () => await server.Client.SendJsonRpcResult(failed)), Is.SameAs(failure));
+#pragma warning restore NUnit2045
         Assert.That(stream.ToArray(), Is.Empty, "the failure must precede any stream write");
 
         using JsonRpcResult next = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = "next" }, default);
@@ -522,6 +653,34 @@ public class JsonRpcSocketsClientTests
             Assert.That(rejected, Is.InstanceOf<IOException>().With.InnerException.SameAs(reset), "the queued worker is rejected by the faulted lock");
             Assert.That(stopped, Is.SameAs(reset), "a queued sender's rejection must not hide the reset");
             AssertMatchesIpcDisconnectFilter(stopped);
+        }
+    }
+
+    [Test]
+    public void Request_that_is_not_queued_returns_its_buffer()
+    {
+        // Rents land in ArrayPool<byte>.Shared's 1 KiB bucket; on one thread, the last array returned there is the next one rented.
+        const int size = 1000;
+        using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
+            "test",
+            new WebSocketMessageStream(Substitute.For<WebSocket>(), LimboLogs.Instance),
+            RpcEndpoint.Ws,
+            Substitute.For<IJsonRpcProcessor>(),
+            Substitute.For<IJsonRpcLocalStats>(),
+            new EthereumJsonSerializer());
+        using CancellationTokenSource cancelled = new();
+        cancelled.Cancel();
+        byte[] pooled = ArrayPool<byte>.Shared.Rent(size);
+        ArrayPool<byte>.Shared.Return(pooled);
+
+        Task processing = client.ProcessAsync(new ArraySegment<byte>(new byte[size]), cancelled.Token);
+        byte[] next = ArrayPool<byte>.Shared.Rent(size);
+        ArrayPool<byte>.Shared.Return(next);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processing.IsCanceled, Is.True);
+            Assert.That(next, Is.SameAs(pooled), "the request buffer was not returned to the pool");
         }
     }
 
@@ -706,6 +865,39 @@ public class JsonRpcSocketsClientTests
         {
             Write(buffer, offset, count);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class UnflushedStreamable(int chunkSize) : IStreamableResult
+    {
+        public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            writer.Write("\""u8);
+            writer.Write(Encoding.UTF8.GetBytes(new string('x', chunkSize)));
+            await writer.FlushAsync(cancellationToken);
+            writer.Write("\""u8);
+        }
+    }
+
+    private sealed class StalledMessageStream : MemoryMessageStream
+    {
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            Task.Delay(Timeout.Infinite, cancellationToken);
+    }
+
+    private sealed class AsyncWriteOnlyMessageStream : MemoryMessageStream
+    {
+        public override void Write(byte[] buffer, int offset, int count) => throw new InvalidOperationException("Synchronous write");
+
+        public override void Write(ReadOnlySpan<byte> buffer) => throw new InvalidOperationException("Synchronous write");
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            base.Write(buffer.ToArray(), 0, buffer.Length);
+            return ValueTask.CompletedTask;
         }
     }
 
@@ -1192,8 +1384,11 @@ public class JsonRpcSocketsClientTests
             int sent = sendMessages.Result;
             int received = receiveMessages.Result;
 
-            Assert.That(received, Is.EqualTo(sent));
-            Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(received, Is.EqualTo(sent));
+                Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
+            }
         }
 
         private static async Task SendAndAssertPayloads(string wireData, IReadOnlyList<string> expectedPayloads, int timeout = 5000, int chunkSize = 0)
@@ -1230,6 +1425,24 @@ public class JsonRpcSocketsClientTests
             Assert.That(processedPayloads, Is.EqualTo(expectedPayloads));
 
             await ShutdownAndWait(pair.SendSocket, receiver);
+        }
+
+        /// <remarks>The token is cancelled explicitly: noticing that the peer went away is not what this covers.</remarks>
+        [Test]
+        public async Task Cancelled_connection_abandons_its_queued_request()
+        {
+            using QueuedRentalFixture fixture = new();
+            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
+            QueuedRentalFixture.IProbeRpcModule held = fixture.Hold();
+            Task receiver = StartReceiver(pair.Listener, fixture.CreateProcessor(), pair.Cts.Token);
+            await using IpcSocketMessageStream client = new(pair.SendSocket);
+            await client.WriteAsync(Encoding.UTF8.GetBytes(QueuedRentalFixture.Request()));
+
+            await fixture.WaitUntilQueued(1);
+            await pair.Cts.CancelAsync();
+            await Assert.CatchAsync<OperationCanceledException>(() => receiver.WaitAsync(QueuedRentalFixture.Watchdog));
+            await fixture.ReleaseAndAssertUsable(held);
+            Assert.That(fixture.Invocations, Is.Zero);
         }
 
         private static Task StartReceiver(Socket listener, IJsonRpcProcessor processor, CancellationToken token, int concurrency = 1) =>

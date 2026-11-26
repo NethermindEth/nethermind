@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using Nethermind.Core.Exceptions;
+using Nethermind.JsonRpc.Exceptions;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -20,11 +22,19 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
             catch (KeyNotFoundException)
             {
-                return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+                return ResultWrapper<string>.Fail($"no \"{subscriptionName}\" subscription in eth namespace", ErrorCodes.MethodNotFound);
+            }
+            catch (LimitExceededException e)
+            {
+                return ResultWrapper<string>.Fail(e.Message, ErrorCodes.LimitExceeded, isTemporary: true);
             }
             catch (ArgumentException e)
             {
-                return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
+                return ResultWrapper<string>.Fail(e.Message, ErrorCodes.InvalidParams);
+            }
+            catch (Exception e) when (e is IExceptionWithSafePublicMessage safe)
+            {
+                return ResultWrapper<string>.Fail(safe.OmitArgumentPosition ? e.Message : $"invalid argument 1: {e.Message}", ErrorCodes.InvalidParams);
             }
             catch (Exception e) when (e is JsonException or FormatException or OverflowException)
             {

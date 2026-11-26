@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc.Test")]
+[assembly: InternalsVisibleTo("Nethermind.JsonRpc.TraceStore.Test")]
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Runner.Test")]
 [assembly: InternalsVisibleTo("nethermind")]
@@ -58,13 +59,13 @@ namespace Nethermind.JsonRpc.Modules
                 if (Regex.IsMatch(methodName.ToLowerInvariant(), filter, RegexOptions.IgnoreCase))
                 {
                     if (_logger.IsDebug)
-                        _logger.Debug($"{methodName} will be accepted by the JSON RPC filter because of {filter}.");
+                        _logger.Debug($"{JsonRpcRequest.EncodeLogText(methodName)} will be accepted by the JSON RPC filter because of {filter}.");
                     return true;
                 }
             }
 
             if (_logger.IsDebug)
-                _logger.Debug($"{methodName} will not be accepted by the JSON RPC filter (no match).");
+                _logger.Debug($"{JsonRpcRequest.EncodeLogText(methodName)} will not be accepted by the JSON RPC filter (no match).");
 
             return false;
         }

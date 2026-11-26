@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Globalization;
 using System.Text.Json;
 using Nethermind.Evm;
 
@@ -29,29 +27,20 @@ public static class OpcodeJsonNames
         for (int i = 0; i < 256; i++)
         {
             Instruction opcode = (Instruction)i;
-            string name = (byte)opcode switch
-            {
-                0x44 => "DIFFICULTY",
-                0xd0 => "DATALOAD",
-                0xd1 => "DATALOADN",
-                0xd2 => "DATASIZE",
-                0xd3 => "DATACOPY",
-                0xe0 => "RJUMP",
-                0xe1 => "RJUMPI",
-                0xe2 => "RJUMPV",
-                0xe3 => "CALLF",
-                0xe4 => "RETF",
-                0xe5 => "JUMPF",
-                0xec => "EOFCREATE",
-                0xee => "RETURNCONTRACT",
-                0xf7 => "RETURNDATALOAD",
-                0xf8 => "EXTCALL",
-                0xf9 => "EXTDELEGATECALL",
-                0xfb => "EXTSTATICCALL",
-                byte value => Enum.GetName(opcode) ?? string.Create(CultureInfo.InvariantCulture, $"opcode 0x{value:x} not defined"),
-            };
+            string name = InstructionNames.GetName(opcode);
             table[i] = (name, JsonEncodedText.Encode(name));
         }
         return table;
     }
+
+    /// <summary>Gets the name for an opcode that the active fork does not define.</summary>
+    /// <param name="opcode">Opcode byte.</param>
+    /// <returns>The unescaped opcode name.</returns>
+    /// <remarks>
+    /// The name comes from the fork's opcode set, as ethereum/execution-apis#986 proposes, so a byte a later fork
+    /// defines, such as PUSH0 before Shanghai, reads as undefined. INVALID is the designated invalid opcode on every fork.
+    /// </remarks>
+    internal static string GetUndefinedName(Instruction opcode) => opcode == Instruction.INVALID
+        ? GetName(opcode)
+        : $"opcode 0x{(byte)opcode:x} not defined";
 }

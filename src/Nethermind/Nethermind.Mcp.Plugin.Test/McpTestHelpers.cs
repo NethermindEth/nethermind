@@ -13,7 +13,7 @@ internal static class McpToolCalls
 {
     public static async Task<CallToolResult> Call(McpClient client, string toolName, (string Name, object? Value)[] args, CancellationToken cancellationToken = default)
     {
-        Dictionary<string, object?> arguments = new(args.Length);
+        Dictionary<string, object?> arguments = [with(args.Length)];
         foreach ((string name, object? value) in args) arguments[name] = value;
         return await client.CallToolAsync(toolName, arguments, cancellationToken: cancellationToken);
     }
@@ -22,8 +22,11 @@ internal static class McpToolCalls
     public static async Task AssertConformsToOutputSchema(McpClient client, string toolName, CallToolResult result, CancellationToken cancellationToken = default)
     {
         McpClientTool tool = (await client.ListToolsAsync(cancellationToken: cancellationToken)).Single(t => t.Name == toolName);
-        Assert.That(tool.ProtocolTool.OutputSchema, Is.Not.Null, $"{toolName} must declare an output schema");
-        Assert.That(result.StructuredContent, Is.Not.Null, $"{toolName} must return structured content");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tool.ProtocolTool.OutputSchema, Is.Not.Null, $"{toolName} must declare an output schema");
+            Assert.That(result.StructuredContent, Is.Not.Null, $"{toolName} must return structured content");
+        }
         McpSchemaValidator.AssertConforms(tool.ProtocolTool.OutputSchema!.Value, result.StructuredContent!.Value);
     }
 }

@@ -73,10 +73,13 @@ namespace Ethereum.KeyAddress.Test
             Assert.That(actualAddress, Is.EqualTo(expectedAddress), "address vs address from private key");
 
             Address recoveredActualAddress = _ecdsa.RecoverAddress(actualSig, Keccak.OfAnEmptyString);
-            Assert.That(recoveredActualAddress, Is.EqualTo(actualAddress));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recoveredActualAddress, Is.EqualTo(actualAddress));
 
-            // it does not work
-            Assert.That(actualSigHex, Is.EqualTo(expectedSigHex), "expected vs actual signature hex");
+                // it does not work
+                Assert.That(actualSigHex, Is.EqualTo(expectedSigHex), "expected vs actual signature hex");
+            }
 
             Address recovered = _ecdsa.RecoverAddress(expectedSig, Keccak.OfAnEmptyString);
             Assert.That(recovered, Is.EqualTo(expectedAddress));

@@ -40,14 +40,14 @@ internal sealed class StreamingSnapshotInitializer(
             catch (SnapshotSourceChangedException e)
             {
                 if (_logger.IsWarn)
-                    _logger.Warn($"{e.Message} Restarting the snapshot download.");
+                    _logger.Warn($"{(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)} Restarting the snapshot download.");
                 DeleteDatabase();
                 continue;
             }
             catch (Exception e) when (e is IOException or InvalidDataException or EndOfStreamException or ZstdException)
             {
                 if (_logger.IsError)
-                    _logger.Error($"Snapshot streaming failed: {e.Message} Deleting the partially extracted database.");
+                    _logger.Error($"Snapshot streaming failed: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)} Deleting the partially extracted database.");
                 DeleteDatabase();
                 LogContinuingWithoutSnapshot();
                 return;
@@ -55,7 +55,7 @@ internal sealed class StreamingSnapshotInitializer(
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 if (_logger.IsError)
-                    _logger.Error("Snapshot streaming failed. Deleting the partially extracted database.", e);
+                    _logger.Error("Snapshot streaming failed. Deleting the partially extracted database.", SensitiveLogMasking.Enabled ? null : e);
                 DeleteDatabase();
                 throw;
             }
@@ -121,10 +121,10 @@ internal sealed class StreamingSnapshotInitializer(
             catch (Exception e) when (e is IOException or HttpRequestException)
             {
                 if (++attempts >= settings.MaxNoProgressRetries)
-                    throw new IOException($"The snapshot could not be reached across {attempts} attempts.", e);
+                    throw new IOException($"The snapshot could not be reached across {attempts} attempts.", SensitiveLogMasking.Enabled ? null : e);
 
                 if (_logger.IsWarn)
-                    _logger.Warn($"Snapshot probe failed. Retrying in {retryDelay.TotalSeconds}s. Error: {e.Message}");
+                    _logger.Warn($"Snapshot probe failed. Retrying in {retryDelay.TotalSeconds}s. Error: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)}");
                 await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
                 retryDelay = retryDelay * 2 > settings.MaxRetryDelay ? settings.MaxRetryDelay : retryDelay * 2;
             }
@@ -160,7 +160,7 @@ internal sealed class StreamingSnapshotInitializer(
             return;
 
         if (_logger.IsWarn)
-            _logger.Warn($"Deleting snapshot file {archivePath}; the streaming download does not use it.");
+            _logger.Warn($"Deleting snapshot file {archivePath:hide}; the streaming download does not use it.");
         File.Delete(archivePath);
     }
 
@@ -173,7 +173,7 @@ internal sealed class StreamingSnapshotInitializer(
         }
         else if (_logger.IsInfo)
         {
-            _logger.Info($"Streaming snapshot from {url} with {settings.Connections} connections.");
+            _logger.Info($"Streaming snapshot from {SensitiveLogMasking.SafeUrl(url)} with {settings.Connections} connections.");
         }
     }
 
@@ -204,7 +204,7 @@ internal sealed class StreamingSnapshotInitializer(
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             throw new IOException(
-                $"Could not clean up the database at {dbPath}, so the node must not start on top of it. Delete it manually before restarting.", e);
+                $"Could not clean up the database at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)}, so the node must not start on top of it. Delete it manually before restarting.", SensitiveLogMasking.Enabled ? null : e);
         }
     }
 }

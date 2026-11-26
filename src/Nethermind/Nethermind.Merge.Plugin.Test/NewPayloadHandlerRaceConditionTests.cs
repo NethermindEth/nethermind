@@ -79,7 +79,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             .AddSingleton<IEthereumEcdsa>(ecdsa)
             .Build();
         RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
-        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
+        // A fresh signer, so the process-wide sender cache cannot answer before the gated ecdsa.
+        Transaction tx = Build.A.Transaction.SignedAndResolved(Build.A.PrivateKey.TestObject).WithSenderAddress(null).TestObject;
         Block block = Build.A.Block.WithParentHash(TestItem.KeccakC).WithNumber(1)
             .WithDifficulty(0).WithNonce(0).WithTransactions(tx).TestObject;
         block.Header.IsPostMerge = true;
@@ -201,6 +202,35 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             Assert.That(logger.ReceivedCount, Is.EqualTo(1));
         }
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
+    /// <summary>
+    /// A block that cannot be executed yet, because its parent has no state, and that the block validator turns down
+    /// is INVALID whether or not the validator gave a reason; the reason is optional in the Engine API.
+    /// </summary>
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("invalid")]
+    public async Task Unexecutable_block_turned_down_by_the_validator_is_invalid_with_or_without_a_reason(string? error)
+    {
+        Block block = PostMergeBlock();
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: false,
+            configure: (_, stateReader) => stateReader.HasStateForBlock(Arg.Is<BlockHeader>(h => h != null && h.Hash == block.ParentHash)).Returns(false),
+            suggestedBlockError: error);
+
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(result.Data.LatestValidHash, Is.Null);
+            Assert.That(result.Data.ValidationError, Is.EqualTo(error));
+        }
     }
 
     /// <summary>
@@ -376,22 +406,67 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
+    [Test]
+    public async Task Received_line_is_written_once_while_a_known_invalid_payload_waits_for_its_ancestor()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        TaskCompletionSource waitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource ancestorRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilRemovedAsync(block.ParentHash!, false).Returns(_ => new ValueTask(ancestorRemoved.Task));
+        processingQueue.WaitUntilExecutedCopyRemovedAsync(block.ParentHash!).Returns(_ =>
+        {
+            waitRequested.TrySetResult();
+            return new ValueTask(ancestorRemoved.Task);
+        });
+        IInvalidChainTracker invalidChainTracker = Substitute.For<IInvalidChainTracker>();
+        invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Arg.Any<Hash256?>()).Returns(call =>
+        {
+            call[1] = block.ParentHash;
+            return true;
+        });
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.AlreadyKnown,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            logManager: new OneLoggerLogManager(new ILogger(logger)),
+            invalidChainTracker: invalidChainTracker);
+
+        await AssertReceivedWrittenWhileHeld(
+            handler.HandleAsync(ExecutionPayload.Create(block)), logger,
+            reachedWait: waitRequested.Task, waitsFor: "the last valid ancestor",
+            release: () =>
+            {
+                ancestorRemoved.SetResult();
+                return Task.CompletedTask;
+            },
+            expectedStatus: PayloadStatus.Invalid);
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
     /// <summary>
     /// Drives a request held at a wait before the hand-off: once it has reached the wait, its Received line must be
-    /// written while it is still held there; <paramref name="release"/> then lets it go on, and it must end VALID with
-    /// that one line and no other.
+    /// written while it is still held there; <paramref name="release"/> then lets it go on, and it must end with
+    /// <paramref name="expectedStatus"/> and that one line and no other.
     /// </summary>
     private static async Task AssertReceivedWrittenWhileHeld(
         Task<ResultWrapper<PayloadStatusV1>> request,
         ReceivedLineLogger logger,
         Task reachedWait,
         string waitsFor,
-        Func<Task> release)
+        Func<Task> release,
+        string expectedStatus = PayloadStatus.Valid)
     {
         // Awaited first, so the checks below see the request on the wait rather than at an earlier step.
         await reachedWait.WaitAsync(AnswerWait);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await Task.WhenAny(logger.FirstReceived, Task.Delay(AnswerWait)), Is.SameAs(logger.FirstReceived),
             $"no Received line while the request waits for {waitsFor}");
+#pragma warning restore NUnit2045
         Assert.That(request.IsCompleted, Is.False, $"the line is written while the request still waits for {waitsFor}");
 
         await release();
@@ -399,7 +474,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.Status, Is.EqualTo(expectedStatus));
             Assert.That(logger.ReceivedCount, Is.EqualTo(1), "exactly one Received line for the request");
         }
     }
@@ -461,8 +536,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-        Assert.That(parentLookups, Is.Zero, "an archive node may retain state thousands of blocks behind head");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(parentLookups, Is.Zero, "an archive node may retain state thousands of blocks behind head");
+        }
     }
 
     [Test]
@@ -518,8 +596,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ResultWrapper<PayloadStatusV1>[] results = await Task.WhenAll(tasks);
 
         // All tasks should complete successfully without throwing exceptions
-        Assert.That(results.Length, Is.EqualTo(concurrentCalls));
-        Assert.That(Array.TrueForAll(results, static r => r is not null), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results.Length, Is.EqualTo(concurrentCalls));
+            Assert.That(Array.TrueForAll(results, static r => r is not null), Is.True);
+        }
 
         // The results should be consistent (all should have the same status)
         ResultWrapper<PayloadStatusV1> firstResult = results[0];
@@ -545,9 +626,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
-        Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0),
-            "the completion source must be removed even when SuggestBlockAsync rejects the block before enqueue");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0),
+                "the completion source must be removed even when SuggestBlockAsync rejects the block before enqueue");
+        }
     }
 
     [Test]
@@ -570,9 +654,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-        Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0),
-            "timed out requests must not leave stale entries behind when BlockRemoved never arrives");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0),
+                "timed out requests must not leave stale entries behind when BlockRemoved never arrives");
+        }
     }
 
     /// <summary>
@@ -999,7 +1086,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Action<IBlockTree, IStateReader>? configure = null,
         RecoverSignatures? senderRecovery = null,
         ISpecProvider? specProvider = null,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        IInvalidChainTracker? invalidChainTracker = null,
+        string? suggestedBlockError = "invalid")
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -1009,7 +1098,6 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         IBeaconPivot beaconPivot = Substitute.For<IBeaconPivot>();
         IBlockCacheService blockCacheService = Substitute.For<IBlockCacheService>();
         IBlockProcessingQueue effectiveProcessingQueue = processingQueue ?? Substitute.For<IBlockProcessingQueue>();
-        IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
         IMergeSyncController mergeSyncController = Substitute.For<IMergeSyncController>();
         IStateReader stateReader = Substitute.For<IStateReader>();
         IMergeConfig mergeConfig = new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = timeoutMs };
@@ -1042,7 +1130,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), false)
             .Returns(callInfo =>
             {
-                callInfo[2] = validateSuggestedBlock ? null : "invalid";
+                callInfo[2] = validateSuggestedBlock ? null : suggestedBlockError;
                 return validateSuggestedBlock;
             });
 
@@ -1070,7 +1158,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             beaconPivot,
             blockCacheService,
             effectiveProcessingQueue,
-            invalidChainTracker,
+            invalidChainTracker ?? new NoopInvalidChainTracker(),
             mergeSyncController,
             mergeConfig,
             receiptConfig,

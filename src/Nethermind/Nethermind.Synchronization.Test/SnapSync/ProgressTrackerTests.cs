@@ -9,12 +9,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
@@ -81,7 +83,9 @@ public class ProgressTrackerTests
         for (int i = 0; i < 4; i++)
         {
             bool finished = progressTracker.IsFinished(out SnapSyncBatch? request);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
             Assert.That(request!.AccountRangeRequest, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(request.AccountRangeRequest!.StartingHash, Is.EqualTo(expectedStarts[i]));
             Assert.That(request.AccountRangeRequest.LimitHash!.Value, Is.EqualTo(expectedLimits[i]));
             Assert.That(finished, Is.False);
@@ -89,8 +93,11 @@ public class ProgressTrackerTests
         }
 
         bool finalFinished = progressTracker.IsFinished(out SnapSyncBatch? finalRequest);
-        Assert.That(finalRequest, Is.Null);
-        Assert.That(finalFinished, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finalRequest, Is.Null);
+            Assert.That(finalFinished, Is.False);
+        }
     }
 
     [Test]
@@ -112,8 +119,11 @@ public class ProgressTrackerTests
         }
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
-        Assert.That(request!.CodesRequest, Is.Not.Null);
-        Assert.That(request.StorageRangeRequest, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request!.CodesRequest, Is.Not.Null);
+            Assert.That(request.StorageRangeRequest, Is.Null);
+        }
         request.Dispose();
     }
 
@@ -136,23 +146,34 @@ public class ProgressTrackerTests
         }
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
-        Assert.That(request!.CodesRequest, Is.Null);
-        Assert.That(request.StorageRangeRequest, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request!.CodesRequest, Is.Null);
+            Assert.That(request.StorageRangeRequest, Is.Not.Null);
+        }
         request.Dispose();
     }
 
-    // Healing is not checkpointed, so once it may start a restart must find no checkpoint to resume. A backend that
-    // cannot resume is never checkpointed at all.
+    // Healing resumes after a graceful stop from the checkpoint of the finished ranges, which keeps the anchor and the
+    // accounts to heal. The last periodic checkpoint is deleted first, so a failed save leaves none that still has
+    // ranges to download. A backend that cannot resume is never checkpointed at all.
     [Test]
     [NonParallelizable]
     public void Will_mark_range_phase_finished_when_ranges_drain([Values] bool snapResume, [Values] bool supportsCheckpoints)
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
         snapTrieFactory.SupportsCheckpoints.Returns(supportsCheckpoints);
+        List<SnapCheckpoint?> saved = [];
+        snapTrieFactory.When(static f => f.SaveCheckpoint(Arg.Any<SnapCheckpoint?>())).Do(call => saved.Add(call.Arg<SnapCheckpoint?>()));
         bool checkpointed = snapResume && supportsCheckpoints;
+        BlockHeader pivotHeader = Build.A.BlockHeader.WithNumber(5).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
+        IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
+        pivot.GetPivotHeader().Returns(pivotHeader);
+        pivot.UpdatedStorages.Returns([]);
         TestLogger logger = new();
-        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, logManager: new OneLoggerLogManager(new ILogger(logger)), snapResume: snapResume);
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, logManager: new OneLoggerLogManager(new ILogger(logger)), snapResume: snapResume, pivot: pivot);
 
+        progressTracker.TrackAccountToHeal(TestItem.ValueKeccaks[0]);
         progressTracker.IsFinished(out SnapSyncBatch? request);
         Assert.That(request!.AccountRangeRequest, Is.Not.Null);
         progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
@@ -161,14 +182,29 @@ public class ProgressTrackerTests
         Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale - 1));
 
         bool finished = progressTracker.IsFinished(out _);
-        Assert.That(finished, Is.True);
-        Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale));
-
-        snapTrieFactory.Received(1).MarkRangePhaseFinished();
-        if (checkpointed) snapTrieFactory.Received(1).SaveCheckpoint(null);
-        else snapTrieFactory.DidNotReceiveWithAnyArgs().SaveCheckpoint(default);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(finished, Is.True);
+            Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(ProgressTracker.RangesProgressScale));
+        }
+
+        snapTrieFactory.Received(1).MarkRangePhaseFinished();
+        using (Assert.EnterMultipleScope())
+        {
+            if (checkpointed)
+            {
+                Assert.That(saved[^2], Is.Null, "the last periodic checkpoint is deleted first");
+                Assert.That(saved[^1]?.Partitions.Select(static p => p.MoreAccountsToRight), Is.EqualTo(new[] { false }), "finished partitions");
+                Assert.That(saved[^1]?.StorageRangesToRefetch(), Is.Empty, "storage left to download");
+                Assert.That(saved[^1]?.CodesToRetrieve, Is.Empty, "codes left to download");
+                Assert.That(saved[^1]?.UpdatedStorages, Is.EqualTo(new[] { TestItem.ValueKeccaks[0].ToCommitment() }), "accounts to heal");
+                Assert.That((saved[^1]?.AnchorNumber, saved[^1]?.AnchorHash), Is.EqualTo((pivotHeader.Number, pivotHeader.Hash)), "anchor");
+            }
+            else
+            {
+                Assert.That(saved, Is.Empty);
+            }
+
             Assert.That(logger.LogList, Has.Some.StartsWith("Snap         State Ranges (Phase 1 of 2): ("));
             Assert.That(logger.LogList, Has.Some.EqualTo("Snap - State Ranges (Phase 1 of 2) finished."));
         }
@@ -200,8 +236,8 @@ public class ProgressTrackerTests
         snapTrieFactory.When(static f => f.SaveCheckpoint(Arg.Any<SnapCheckpoint?>())).Do(call => saved = call.Arg<SnapCheckpoint?>());
         using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, snapResume: true, checkpointInterval: TimeSpan.MaxValue);
 
-        PathWithAccount withStorage = new(TestItem.ValueKeccaks[1], Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject);
-        PathWithAccount toRefresh = new(TestItem.ValueKeccaks[2], Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount withStorage = new(TestItem.ValueKeccaks[1], Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject.ToStruct());
+        PathWithAccount toRefresh = new(TestItem.ValueKeccaks[2], Build.An.Account.WithBalance(2).TestObject.ToStruct());
         ValueHash256 refreshFrom = new("0x8000000000000000000000000000000000000000000000000000000000000000");
         progressTracker.EnqueueAccountStorage(withStorage);
         progressTracker.EnqueueAccountRefresh(toRefresh, refreshFrom, null);
@@ -250,8 +286,8 @@ public class ProgressTrackerTests
             interrupted.ReportRequestReleased(accountRange);
             accountRange.Dispose();
 
-            interrupted.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[1], Build.An.Account.WithStorageRoot(TestItem.KeccakA).TestObject));
-            interrupted.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[2], Build.An.Account.WithStorageRoot(TestItem.KeccakB).TestObject));
+            interrupted.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[1], Build.An.Account.WithStorageRoot(TestItem.KeccakA).TestObject.ToStruct()));
+            interrupted.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[2], Build.An.Account.WithStorageRoot(TestItem.KeccakB).TestObject.ToStruct()));
             interrupted.IsFinished(out SnapSyncBatch? droppedInFlight);
             Assert.That(droppedInFlight!.StorageRangeRequest!.Accounts, Has.Count.EqualTo(2));
             interrupted.SaveCheckpointAtShutdown();
@@ -266,8 +302,11 @@ public class ProgressTrackerTests
         resumed.ReportRequestReleased(storage);
         storage.Dispose();
 
-        Assert.That(resumed.IsFinished(out SnapSyncBatch? next), Is.True, "the answered storage was the last request, so the phase is done");
-        Assert.That(next, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumed.IsFinished(out SnapSyncBatch? next), Is.True, "the answered storage was the last request, so the phase is done");
+            Assert.That(next, Is.Null);
+        }
     }
 
     // Regression: a resumed run reported its account ranges as not started, so its progress never got past the
@@ -304,6 +343,29 @@ public class ProgressTrackerTests
         Assert.That(Metrics.SnapRangesProgress, Is.EqualTo(1875));
     }
 
+    [Test]
+    public void Checkpoint_rejects_an_account_entry_carrying_no_account()
+    {
+        AccountStruct account = new(1);
+        byte[] encoded = new SnapCheckpoint
+        {
+            AnchorNumber = 1,
+            AnchorHash = TestItem.KeccakA,
+            Partitions = [],
+            StoragesToRetrieve = [new PathWithAccount(TestItem.ValueKeccaks[0], account)],
+            StorageRanges = [],
+            AccountsToRefresh = [],
+            CodesToRetrieve = [],
+            UpdatedStorages = [],
+        }.Encode();
+        byte[] accountRlp = AccountDecoder.Instance.Encode(account);
+        int rlpStart = encoded.AsSpan().IndexOf(accountRlp);
+        // The entry's 4-byte length and account RLP become a one-byte placeholder that carries no account.
+        byte[] carryingNoAccount = [.. encoded[..(rlpStart - sizeof(int))], .. Bytes.FromHexString("00000001c1"), .. encoded[(rlpStart + accountRlp.Length)..]];
+
+        Assert.That(() => SnapCheckpoint.Decode(carryingNoAccount), Throws.TypeOf<InvalidDataException>());
+    }
+
     // Regression: a restart during the state ranges phase used to start the account ranges over from the beginning.
     [Test]
     public void A_restarted_run_resumes_from_a_checkpoint_taken_with_a_request_in_flight()
@@ -321,8 +383,8 @@ public class ProgressTrackerTests
         snapTrieFactory.LoadCheckpoint().Returns(_ => saved is null ? null : SnapCheckpoint.Decode(saved.Encode()));
 
         ValueHash256 nextAccount = new("0x4000000000000000000000000000000000000000000000000000000000000000");
-        PathWithAccount withStorage = new(TestItem.ValueKeccaks[1], Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject);
-        PathWithAccount toRefresh = new(TestItem.ValueKeccaks[2], Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount withStorage = new(TestItem.ValueKeccaks[1], Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject.ToStruct());
+        PathWithAccount toRefresh = new(TestItem.ValueKeccaks[2], Build.An.Account.WithBalance(2).TestObject.ToStruct());
         ValueHash256 refreshFrom = new("0x8000000000000000000000000000000000000000000000000000000000000000");
         IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
         pivot.GetPivotHeader().Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(Keccak.EmptyTreeHash).TestObject);
@@ -368,7 +430,7 @@ public class ProgressTrackerTests
             Assert.That(batches.Where(static b => b.AccountRangeRequest is not null).Select(static b => b.AccountRangeRequest!.StartingHash),
                 Is.EquivalentTo(new[] { nextAccount, new ValueHash256("0x8000000000000000000000000000000000000000000000000000000000000000") }));
             Assert.That(batches.Single(static b => b.AccountsToRefreshRequest is not null).AccountsToRefreshRequest!.Paths[0].StorageStartingHash, Is.EqualTo(refreshFrom));
-            Assert.That(batches.Single(static b => b.StorageRangeRequest is not null).StorageRangeRequest!.Accounts[0].Account!.StorageRoot, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(batches.Single(static b => b.StorageRangeRequest is not null).StorageRangeRequest!.Accounts[0].Account.StorageRoot, Is.EqualTo(TestItem.KeccakA));
             Assert.That(batches.Single(static b => b.CodesRequest is not null).CodesRequest, Is.EqualTo(new[] { TestItem.ValueKeccaks[3] }));
             Assert.That(pivot.UpdatedStorages, Is.EquivalentTo(new[] { toRefresh.Path.ToCommitment() }), "the account to heal survives the restart");
         }
@@ -396,11 +458,15 @@ public class ProgressTrackerTests
                 return batch;
             });
 
+#pragma warning disable NUnit2045 // Confirm the wait outcome before checking checkpoint state.
             Assert.That(next.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the checkpoint is due, so it waits for the response");
+#pragma warning restore NUnit2045
             Assert.That(Volatile.Read(ref checkpointsSaved), Is.EqualTo(1));
         }
 
+#pragma warning disable NUnit2045 // Confirm the wait outcome before checking checkpoint state.
         Assert.That(next.Wait(TimeSpan.FromSeconds(10)), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Volatile.Read(ref checkpointsSaved), Is.EqualTo(2));
         first!.Dispose();
         next.Result!.Dispose();
@@ -443,9 +509,12 @@ public class ProgressTrackerTests
 
         progressTracker.LoadProgress();
 
-        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.True);
-        Assert.That(request, Is.Null);
-        Assert.That(logger.LogList, Has.Some.EqualTo("Snap - State Ranges (Phase 1 of 2) is finished."));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.True);
+            Assert.That(request, Is.Null);
+            Assert.That(logger.LogList, Has.Some.EqualTo("Snap - State Ranges (Phase 1 of 2) is finished."));
+        }
     }
 
     // Regression: account ranges must be requested again rather than skipped over a store that was just emptied.
@@ -458,7 +527,9 @@ public class ProgressTrackerTests
 
         progressTracker.LoadProgress();
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(request!.AccountRangeRequest, Is.Not.Null);
         request.Dispose();
     }
@@ -479,25 +550,34 @@ public class ProgressTrackerTests
             StartingHash = new ValueHash256(start),
             LimitHash = limitHash
         };
-        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 1_000_000_000);
+        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 1_000_000_000, Keccak.EmptyTreeHash, Keccak.Zero);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);
 
         //expecting 2 batches
         isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch1);
-        Assert.That(isFinished, Is.False);
-        Assert.That(batch1, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isFinished, Is.False);
+            Assert.That(batch1, Is.Not.Null);
+        }
 
         isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch2);
-        Assert.That(isFinished, Is.False);
-        Assert.That(batch2, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isFinished, Is.False);
+            Assert.That(batch2, Is.Not.Null);
+        }
 
-        Assert.That(batch2?.StorageRangeRequest?.StartingHash, Is.EqualTo(batch1?.StorageRangeRequest?.LimitHash?.IncrementPath()));
-        Assert.That(batch1?.StorageRangeRequest?.StartingHash, Is.EqualTo(lastProcessedHash.IncrementPath()));
-        Assert.That(batch2?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch2?.StorageRangeRequest?.StartingHash, Is.EqualTo(batch1?.StorageRangeRequest?.LimitHash?.IncrementPath()));
+            Assert.That(batch1?.StorageRangeRequest?.StartingHash, Is.EqualTo(lastProcessedHash.IncrementPath()));
+            Assert.That(batch2?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
 
-        Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(new ValueHash256(expectedSplit)));
+            Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(new ValueHash256(expectedSplit)));
+        }
     }
 
 
@@ -516,18 +596,24 @@ public class ProgressTrackerTests
             StartingHash = new ValueHash256(start),
             LimitHash = limitHash
         };
-        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 100000000);
+        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 100000000, Keccak.EmptyTreeHash, Keccak.Zero);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);
 
         //expecting 1 batch
         isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch1);
-        Assert.That(isFinished, Is.False);
-        Assert.That(batch1, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isFinished, Is.False);
+            Assert.That(batch1, Is.Not.Null);
+        }
 
-        Assert.That(batch1?.StorageRangeRequest?.StartingHash, Is.EqualTo(lastProcessedHash.IncrementPath()));
-        Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch1?.StorageRangeRequest?.StartingHash, Is.EqualTo(lastProcessedHash.IncrementPath()));
+            Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
+        }
     }
 
     // Regression for #13200. SnapSyncFeed.AnalyzeResponsePerPeer reaches the pivot only through UpdatePivot, and a
@@ -585,8 +671,11 @@ public class ProgressTrackerTests
         progressTracker.IsFinished(out SnapSyncBatch? request);
         using (request)
         {
-            Assert.That(request!.AccountsToRefreshRequest, Is.Null, "the turn is over, so the refresh queue must yield");
-            Assert.That(request.CodesRequest, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(request!.AccountsToRefreshRequest, Is.Null, "the turn is over, so the refresh queue must yield");
+                Assert.That(request.CodesRequest, Is.Not.Null);
+            }
         }
     }
 

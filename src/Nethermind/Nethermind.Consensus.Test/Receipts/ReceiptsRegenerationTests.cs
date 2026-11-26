@@ -100,7 +100,9 @@ public class ReceiptsRegenerationTests
     {
         Block block = await AddBlock(BuildTransactions(scenario));
         TxReceipt[] stored = _chain.ReceiptStorage.Get(block);
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
         Assert.That(stored, Is.Not.Empty, "the scenario must produce at least one receipt");
+#pragma warning restore NUnit2045
 
         Assert.That(_regenerator.TryRegenerate(block, out TxReceipt[] regenerated), Is.True);
         AssertReceiptsMatch(stored, regenerated, block);
@@ -176,8 +178,10 @@ public class ReceiptsRegenerationTests
         reloaded.Header.IsPostMerge = false;
         reloaded.Header.TotalDifficulty = null;
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(regenerator.TryRegenerate(reloaded, out TxReceipt[] regenerated), Is.True,
             "re-execution must read PREVRANDAO from the mix hash, not the zeroed difficulty");
+#pragma warning restore NUnit2045
         Assert.That(ReceiptsRootCalculator.Instance.GetReceiptsRoot(regenerated, spec, reloaded.Header.ReceiptsRoot),
             Is.EqualTo(reloaded.Header.ReceiptsRoot));
         Assert.That(regenerated[0].Logs[0].Data, Is.EqualTo(TestItem.KeccakB.BytesToArray()),
@@ -200,6 +204,22 @@ public class ReceiptsRegenerationTests
             Assert.That(served, Is.SameAs(stored), "a populated store short-circuits before any re-execution");
         else
             AssertReceiptsMatch(stored, served, block);
+    }
+
+    [Test]
+    public async Task Decorator_takes_the_transaction_index_from_stored_receipts_only()
+    {
+        Block block = await AddBlock(BuildTransactions(Scenario.ContractCreationWithLog));
+        Hash256 txHash = block.Transactions[0].Hash!;
+        IReceiptFinder inner = Substitute.For<IReceiptFinder>();
+        inner.FindTransactionIndex(block, txHash).Returns(0);
+        RegeneratingReceiptFinder finder = new(inner, _chain.ReceiptStorage, _chain.BlockFinder, _regenerator);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finder.FindTransactionIndex(block, txHash), Is.EqualTo(0), "the stored receipts give the index");
+            inner.DidNotReceive().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>());
+        }
     }
 
     [Test]

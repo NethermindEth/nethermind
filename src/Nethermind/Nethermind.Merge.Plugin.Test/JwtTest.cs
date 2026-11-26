@@ -137,8 +137,11 @@ public class JwtTest
         IRpcAuthentication uncached = JwtAuthentication.FromSecret(HexSecret, ts, LimboTraceLogger.Instance);
         bool expected = Math.Abs(secondsAfterIssue) <= 60
             && (!expirationAfterIssue.HasValue || secondsAfterIssue < expirationAfterIssue.Value);
-        Assert.That(await uncached.Authenticate(token), Is.EqualTo(expected));
-        Assert.That(await auth.Authenticate(token), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await uncached.Authenticate(token), Is.EqualTo(expected));
+            Assert.That(await auth.Authenticate(token), Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -148,7 +151,9 @@ public class JwtTest
         string token1 = CreateJwt("{\"alg\":\"HS256\",\"typ\":\"JWT\"}", $"{{\"iat\":{TestIat}}}");
         string token2 = CreateJwt("{\"alg\":\"HS256\",\"typ\":\"JWT\"}", $"{{\"iat\":{TestIat + 1}}}");
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await auth.Authenticate(token1), Is.True);
+#pragma warning restore NUnit2045
         // Different token — cache miss, must revalidate
         Assert.That(await auth.Authenticate(token2), Is.True);
     }
@@ -164,11 +169,15 @@ public class JwtTest
             : $"{{\"iat\":{TestIat}}}";
         string token = CreateJwt(CreateHeader(useLibraryFallback: true), payload);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await auth.Authenticate(token), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(logger.LogList, Has.Count.EqualTo(1));
 
         ts.UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat + 1).UtcDateTime;
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await auth.Authenticate(token), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(logger.LogList, Has.Count.EqualTo(1), "A cache hit must skip library validation and its trace log");
     }
 

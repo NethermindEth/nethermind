@@ -9,7 +9,6 @@ using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
 using Nethermind.Serialization.Rlp;
@@ -39,7 +38,7 @@ public class ZeroNettyFrameDecoderTests
         (EncryptionSecrets _, EncryptionSecrets B) = NetTestVectors.GetSecretsPair();
 
         _frameCipher = new FrameCipher(B.AesSecret);
-        _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, B);
+        _macProcessor = new FrameMacProcessor(B);
 
         _frame = new byte[16 + 16 + LongFrameSize + 16]; //  header | header MAC | packet type | data | padding | frame MAC
         _frame[2] = LongFrameSize - 15; // size (total - padding)
@@ -149,8 +148,8 @@ public class ZeroNettyFrameDecoderTests
     {
         using PooledBufferLeakDetector detector = new();
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
-        using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor outboundMac = new(a);
+        using FrameMacProcessor inboundMac = new(b);
         int length = ZeroFrameDecoder.DefaultMaxInboundFrameSize + delta;
         byte[] header = new byte[Frame.HeaderSize + Frame.MacSize];
         header[0] = (byte)(length >> 16);
@@ -158,8 +157,8 @@ public class ZeroNettyFrameDecoderTests
         header[2] = (byte)length;
         header[3] = 0xc2;
         header[4] = header[5] = 0x80;
-        new FrameCipher(a.AesSecret).Encrypt(header, 0, Frame.HeaderSize, header, 0);
-        outboundMac.AddMac(header, 0, Frame.HeaderSize, header, Frame.HeaderSize, true);
+        new FrameCipher(a.AesSecret).Encrypt(header.AsSpan(0, Frame.HeaderSize), header.AsSpan(0, Frame.HeaderSize));
+        outboundMac.AddMac(header.AsSpan(0, Frame.HeaderSize), header.AsSpan(Frame.HeaderSize, Frame.MacSize), true);
         EmbeddedChannel channel = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac));
         channel.Configuration.Allocator = detector.Allocator;
         try
@@ -182,8 +181,8 @@ public class ZeroNettyFrameDecoderTests
     public void Rejects_zero_size_frame()
     {
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor encoderMac = new(TestItem.IgnoredPublicKey, a);
-        using FrameMacProcessor decoderMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor encoderMac = new(a);
+        using FrameMacProcessor decoderMac = new(b);
         ZeroFrameEncoderTestWrapper encoder = new(new FrameCipher(a.AesSecret), encoderMac);
         ZeroFrameDecoderTestWrapper decoder = new(new FrameCipher(b.AesSecret), decoderMac);
 
@@ -205,12 +204,124 @@ public class ZeroNettyFrameDecoderTests
         Assert.That(DecodeTamperedPayload(throwOnCorruptedFrames: false), Is.Null, "unverified plaintext was forwarded");
     }
 
+    [Test]
+    public void Frames_split_at_every_offset_decode_to_original_payload([Values] bool pooled)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IByteBufferAllocator allocator = pooled ? detector.Allocator : UnpooledByteBufferAllocator.Default;
+        AssertSplitFramesDecode(allocator, allocator);
+    }
+
+    [TestCase(true, true)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    public void Frames_split_at_every_offset_decode_from_buffers_without_array(bool arraylessInbound, bool arraylessFrame)
+    {
+        IByteBufferAllocator heap = UnpooledByteBufferAllocator.Default;
+        ArraylessByteBufferAllocator arrayless = new();
+        IByteBuffer probe = arrayless.Buffer(Frame.BlockSize);
+        bool probeHasArray = probe.HasArray;
+        probe.Release();
+        Assert.That(probeHasArray, Is.False);
+        AssertSplitFramesDecode(arraylessInbound ? arrayless : heap, arraylessFrame ? arrayless : heap);
+    }
+
+    private sealed class ArraylessByteBufferAllocator() : AbstractByteBufferAllocator(false)
+    {
+        public override bool IsDirectBufferPooled => false;
+
+        protected override IByteBuffer NewHeapBuffer(int initialCapacity, int maxCapacity) => new ArraylessByteBuffer(this, initialCapacity, maxCapacity);
+
+        protected override IByteBuffer NewDirectBuffer(int initialCapacity, int maxCapacity) => new ArraylessByteBuffer(this, initialCapacity, maxCapacity);
+    }
+
+    private sealed class ArraylessByteBuffer(IByteBufferAllocator allocator, int initialCapacity, int maxCapacity)
+        : UnpooledHeapByteBuffer(allocator, initialCapacity, maxCapacity)
+    {
+        public override bool HasArray => false;
+    }
+
+    private static void AssertSplitFramesDecode(IByteBufferAllocator inbound, IByteBufferAllocator channel)
+    {
+        (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor outboundMac = new(a);
+        using FrameMacProcessor inboundMac = new(b);
+        EmbeddedChannel encoder = new(new ZeroPacketSplitter(new FrameCipher(a.AesSecret), outboundMac));
+        EmbeddedChannel decoder = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac));
+        decoder.Configuration.Allocator = channel;
+        byte[] payload = new byte[SplitPayloadLength];
+        new Random(7).NextBytes(payload);
+        payload[0] = 2;
+        try
+        {
+            for (int split = 1; split < SplitWireLength; split++)
+            {
+                byte[] wire = EncodeFrame(encoder, payload);
+                Assert.That(wire, Has.Length.EqualTo(SplitWireLength));
+                decoder.WriteInbound(inbound.Buffer(split).WriteBytes(wire, 0, split));
+                Assert.That(decoder.ReadInbound<IByteBuffer>(), Is.Null, $"partial frame published at split {split}");
+                decoder.WriteInbound(inbound.Buffer(wire.Length - split).WriteBytes(wire, split, wire.Length - split));
+                using DisposableByteBuffer decoded = decoder.ReadInbound<IByteBuffer>().AsDisposable();
+                byte[] decodedPayload = new byte[payload.Length];
+                decoded.GetBytes(decoded.ReaderIndex + Frame.HeaderSize, decodedPayload);
+                Assert.That(decodedPayload, Is.EqualTo(payload), $"split {split}");
+            }
+        }
+        finally
+        {
+            encoder.FinishAndReleaseAll();
+            decoder.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
+    public void Split_frame_with_corrupted_mac_is_not_published(
+        [Values(Frame.HeaderSize, SplitWireLength - 1)] int corruptedIndex, [Values(17, 64, SplitWireLength - 1)] int split)
+    {
+        using PooledBufferLeakDetector detector = new();
+        (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor outboundMac = new(a);
+        using FrameMacProcessor inboundMac = new(b);
+        EmbeddedChannel encoder = new(new ZeroPacketSplitter(new FrameCipher(a.AesSecret), outboundMac));
+        EmbeddedChannel decoder = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac));
+        decoder.Configuration.Allocator = detector.Allocator;
+        byte[] payload = new byte[SplitPayloadLength];
+        payload[0] = 2;
+        try
+        {
+            byte[] wire = EncodeFrame(encoder, payload);
+            wire[corruptedIndex] ^= 1;
+            Assert.That(() =>
+            {
+                decoder.WriteInbound(detector.Allocator.Buffer(split).WriteBytes(wire, 0, split));
+                decoder.WriteInbound(detector.Allocator.Buffer(wire.Length - split).WriteBytes(wire, split, wire.Length - split));
+            }, Throws.InstanceOf<DecoderException>());
+            Assert.That(decoder.ReadInbound<IByteBuffer>(), Is.Null);
+        }
+        finally
+        {
+            encoder.FinishAndReleaseAll();
+            decoder.Pipeline.Remove<ZeroFrameDecoder>();
+            decoder.FinishAndReleaseAll();
+        }
+    }
+
+    private const int SplitPayloadLength = 1000;
+    private const int SplitWireLength = Frame.HeaderSize + Frame.MacSize + 1008 + Frame.MacSize;
+
+    private static byte[] EncodeFrame(EmbeddedChannel encoder, byte[] payload)
+    {
+        encoder.WriteOutbound(Unpooled.WrappedBuffer(payload));
+        using DisposableByteBuffer wire = encoder.ReadOutbound<IByteBuffer>().AsDisposable();
+        return wire.AsSpan().ToArray();
+    }
+
     private static IByteBuffer DecodeTamperedPayload(bool throwOnCorruptedFrames)
     {
         // Both the cipher and the MAC processor carry per-connection state, so each decode
         // needs its own pair rather than the ones built in SetUp.
         (EncryptionSecrets _, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor decoderMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor decoderMac = new(b);
         ZeroFrameDecoderTestWrapper decoder = new(new FrameCipher(b.AesSecret), decoderMac);
 
         byte[] frame = Bytes.FromHexString(BigNewBlockSingleFrame);
@@ -241,8 +352,11 @@ public class ZeroNettyFrameDecoderTests
         TestContext.Out.WriteLine(resultBytes.ToHexString());
         string expected = expectedOutput;
         TestContext.Out.WriteLine(resultBytes.ToHexString());
-        Assert.That(resultBytes.ToHexString(), Is.EqualTo(expected));
-        Assert.That(input.WriterIndex, Is.EqualTo(input.ReaderIndex), "reader index == writer index");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultBytes.ToHexString(), Is.EqualTo(expected));
+            Assert.That(input.WriterIndex, Is.EqualTo(input.ReaderIndex), "reader index == writer index");
+        }
     }
 
     private static IByteBuffer DeliverAllAtOnce(byte[] frame, IByteBuffer input, ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper)

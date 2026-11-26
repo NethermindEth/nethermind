@@ -42,7 +42,7 @@ public class BlockAccessListItemCountTests
             (Action<BlockAccessListAtIndex>)(static s => s.AddBalanceChange(TestItem.AddressA, before: UInt256.Zero, after: (UInt256)100)),
             1).SetName("ItemCount_balance_change_counts_only_account");
         yield return new TestCaseData(
-            (Action<BlockAccessListAtIndex>)(static s => s.AddNonceChange(TestItem.AddressA, 1)),
+            (Action<BlockAccessListAtIndex>)(static s => s.AddNonceChange(TestItem.AddressA, 0, 1)),
             1).SetName("ItemCount_nonce_change_counts_only_account");
         yield return new TestCaseData(
             (Action<BlockAccessListAtIndex>)(static s => s.AddCodeChange(TestItem.AddressA, before: Array.Empty<byte>(), after: new byte[] { 0x60 })),
@@ -185,6 +185,33 @@ public class BlockAccessListItemCountTests
         {
             Assert.That(counted, Is.EqualTo(expected));
             Assert.That(bal.ItemCount - before, Is.EqualTo(counted));
+        }
+    }
+
+    [Test]
+    public void Merge_appends_changes_of_an_account_and_slot_written_in_several_slices()
+    {
+        GeneratedBlockAccessList bal = new();
+        BlockAccessListAtIndex first = new() { Index = 1 };
+        first.AddBalanceChange(TestItem.AddressA, before: UInt256.Zero, after: (UInt256)10);
+        first.AddStorageRead(TestItem.AddressA, 1);
+        bal.Merge(first);
+        for (uint index = 2; index <= 3; index++)
+        {
+            BlockAccessListAtIndex next = new() { Index = index };
+            next.AddBalanceChange(TestItem.AddressA, before: (UInt256)(10 * (index - 1)), after: (UInt256)(10 * index));
+            next.AddStorageChange(TestItem.AddressA, 1, before: (UInt256)(index - 1), after: (UInt256)index);
+            bal.Merge(next);
+        }
+
+        GeneratedAccountChanges account = bal.GetAccountChanges(TestItem.AddressA)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.BalanceChanges, Is.EqualTo(new BalanceChange[] { new(1, 10), new(2, 20), new(3, 30) }));
+            Assert.That(account.TryGetSlotChanges(1, out GeneratedSlotChanges? slot), Is.True);
+            Assert.That(slot!.Changes, Is.EqualTo(new StorageChange[] { new(2, 2), new(3, 3) }));
+            Assert.That(account.StorageReads, Is.Empty);
+            Assert.That(bal.ItemCount, Is.EqualTo(2));
         }
     }
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -22,11 +23,14 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -58,12 +62,131 @@ public class DevBlockProducerTests
 
         blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
         Assert.That(autoResetEvent.WaitOne(NewHeadWaitMs), Is.True, "genesis");
+#pragma warning restore NUnit2045
 
         Assert.That(await trigger.BuildBlock(), Is.Not.Null, "produced");
         Assert.That(autoResetEvent.WaitOne(NewHeadWaitMs), Is.True, "1");
         Assert.That(blockTree.Head!.Number, Is.EqualTo(1));
         Assert.That(blockTree.Head.ParentBeaconBlockRoot, Is.EqualTo(Hash256.Zero));
+    }
+
+    private static IEnumerable<TestCaseData> WithdrawalsCases()
+    {
+        yield return new TestCaseData(London.Instance, London.Instance, null, null)
+            .SetName("Produced block has no withdrawals before Shanghai");
+        yield return new TestCaseData(Shanghai.Instance, Shanghai.Instance, null, Array.Empty<Withdrawal>())
+            .SetName("Produced block has empty withdrawals on Shanghai");
+        yield return new TestCaseData(London.Instance, Shanghai.Instance, null, Array.Empty<Withdrawal>())
+            .SetName("Produced block has empty withdrawals on the first Shanghai block");
+        yield return new TestCaseData(Shanghai.Instance, Shanghai.Instance, new[] { TestItem.WithdrawalA_1Eth }, new[] { TestItem.WithdrawalA_1Eth })
+            .SetName("Produced block keeps supplied withdrawals");
+    }
+
+    [TestCaseSource(nameof(WithdrawalsCases)), MaxTime(Timeout.MaxTestTime)]
+    public async Task Produced_block_has_the_withdrawals_its_fork_requires(IReleaseSpec parentSpec, IReleaseSpec childSpec, Withdrawal[]? supplied, Withdrawal[]? expected)
+    {
+        (Block block, bool isValid, string? error) = await ProduceAndValidateFirstBlock(parentSpec, childSpec, Build.A.Block.Genesis.TestObject, supplied);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Withdrawals, Is.EqualTo(expected));
+            Assert.That(block.Header.WithdrawalsRoot, Is.EqualTo(expected is null ? null : WithdrawalTrie.CalculateRoot(expected)));
+            Assert.That(BlockValidator.ValidateWithdrawalsHashMatches(block, out _), Is.True, "body matches the header");
+            Assert.That(isValid, Is.True, error);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> ExcessBlobGasCases()
+    {
+        const ulong blob = Eip4844Constants.GasPerBlob;
+        yield return new TestCaseData(Shanghai.Instance, Shanghai.Instance, null, null, null)
+            .SetName("Produced block has no excess blob gas before Cancun");
+        yield return new TestCaseData(Shanghai.Instance, Cancun.Instance, null, null, 0UL)
+            .SetName("Produced block has zero excess blob gas on the first Cancun block");
+        yield return new TestCaseData(Cancun.Instance, Cancun.Instance, 0UL, 0UL, 0UL)
+            .SetName("Produced block has zero excess blob gas after a parent without blobs");
+        // Excess 5 blobs + used 2 - the Cancun target of 3 = 4 blobs, which differs from each parent field.
+        yield return new TestCaseData(Cancun.Instance, Cancun.Instance, 5 * blob, 2 * blob, 4 * blob)
+            .SetName("Produced block carries the parent's blob gas above the target");
+    }
+
+    [TestCaseSource(nameof(ExcessBlobGasCases)), MaxTime(Timeout.MaxTestTime)]
+    public async Task Produced_block_has_the_excess_blob_gas_its_fork_requires(IReleaseSpec parentSpec, IReleaseSpec childSpec, ulong? parentExcess, ulong? parentUsed, ulong? expected)
+    {
+        Block genesis = Build.A.Block.Genesis.WithExcessBlobGas(parentExcess).WithBlobGasUsed(parentUsed).TestObject;
+        (Block block, bool isValid, string? error) = await ProduceAndValidateFirstBlock(parentSpec, childSpec, genesis);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.ExcessBlobGas, Is.EqualTo(expected));
+            Assert.That(isValid, Is.True, error);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Mined_transaction_can_read_the_blob_base_fee()
+    {
+        using NethDevTestBlockchain chain = await NethDevTestBlockchain.Create(1.GWei, spec: Cancun.Instance);
+
+        // Init code BLOBBASEFEE PUSH0 SSTORE STOP: the opcode is invalid in a block without excess blob gas.
+        Transaction tx = Build.A.Transaction
+            .WithCode(Bytes.FromHexString("0x4a5f5500"))
+            .WithGasLimit(100_000)
+            .WithGasPrice(chain.NextBaseFee() * 2)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block? includingBlock = null;
+        Task included = chain.WaitForNewHeadWhere(b =>
+        {
+            if (b.Transactions.All(t => t.Hash != tx.Hash)) return false;
+            includingBlock = b;
+            return true;
+        });
+        Assert.That(chain.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        await included;
+
+        chain.StateReader.GetStorage(includingBlock!.Header, ContractAddress.From(TestItem.AddressA, UInt256.Zero), UInt256.Zero, out UInt256 stored);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.ReceiptStorage.Get(includingBlock).Single().StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(stored, Is.EqualTo(UInt256.One), "the blob base fee at zero excess blob gas");
+        }
+    }
+
+    /// <summary>
+    /// Produces block 1 on <paramref name="genesis"/> and checks it with a real block validator, which the container
+    /// replaces with <see cref="Always.Valid"/>.
+    /// </summary>
+    private static async Task<(Block Block, bool IsValid, string? Error)> ProduceAndValidateFirstBlock(
+        IReleaseSpec parentSpec, IReleaseSpec childSpec, Block genesis, Withdrawal[]? withdrawals = null)
+    {
+        TestSpecProvider specProvider = new(parentSpec) { NextForkSpec = childSpec, ForkOnBlockNumber = 1 };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(specProvider)
+            .AddSingleton<IBlockValidator>(Always.Valid)
+            .AddSingleton<IBlockProducerTxSourceFactory, EmptyTxSourceFactory>()
+            .AddScoped<IBlockProducerFactory, TestBlockProcessingModule.AutoBlockProducerFactory<DevBlockProducer>>()
+            .Build();
+
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        AutoResetEvent autoResetEvent = new(false);
+        blockTree.NewHeadBlock += (_, _) => autoResetEvent.Set();
+
+        container.Resolve<IMainProcessingContext>().BlockProcessingQueue.Start();
+        container.Resolve<IBlockProducerRunner>().Start();
+
+        blockTree.SuggestBlock(genesis);
+        Assert.That(autoResetEvent.WaitOne(NewHeadWaitMs), Is.True, "genesis");
+
+        BlockHeader parent = blockTree.Head!.Header;
+        PayloadAttributes? payloadAttributes = withdrawals is null ? null : new PayloadAttributes { Timestamp = parent.Timestamp + 1, Withdrawals = withdrawals };
+        Block? block = await container.Resolve<IManualBlockProductionTrigger>().BuildBlock(payloadAttributes: payloadAttributes);
+        Assert.That(block, Is.Not.Null, "produced");
+        BlockValidator blockValidator = new(container.Resolve<ITxValidator>(), container.Resolve<IHeaderValidator>(),
+            container.Resolve<IUnclesValidator>(), specProvider, LimboLogs.Instance);
+        Assert.That(autoResetEvent.WaitOne(NewHeadWaitMs), Is.True, "1");
+        bool isValid = blockValidator.ValidateSuggestedBlock(block!, parent, out string? error);
+        return (block!, isValid, error);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -143,7 +266,7 @@ public class DevBlockProducerTests
     {
         private NethDevBlockProducerFactory Factory => Container.Resolve<NethDevBlockProducerFactory>();
 
-        public static async Task<NethDevTestBlockchain> Create(UInt256 genesisBaseFee, UInt256 minGasPrice = default)
+        public static async Task<NethDevTestBlockchain> Create(UInt256 genesisBaseFee, UInt256 minGasPrice = default, IReleaseSpec? spec = null)
         {
             NethDevTestBlockchain chain = new(minGasPrice);
             await chain.Build(builder => builder
@@ -151,7 +274,8 @@ public class DevBlockProducerTests
                 // The default test override returns a new spec instance per head, which the pool treats as a fork:
                 // the revalidation it queues runs after TxPoolHeadChanged and drops a gapped tx submitted meanwhile.
                 // One stable instance keeps the pool from revalidating. EIP-3607 is off so AddressA, which has code, can send.
-                .AddSingleton<ISpecProvider>(new TestSpecProvider(new OverridableReleaseSpec(London.Instance) { IsEip3607Enabled = false }) { AllowTestChainOverride = false })
+                // Shanghai by default, so the blocks that include transactions also get the empty withdrawals list.
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(new OverridableReleaseSpec(spec ?? Shanghai.Instance) { IsEip3607Enabled = false }) { AllowTestChainOverride = false })
                 .AddSingleton<IGenesisPostProcessor>(new FunctionalGenesisPostProcessor(genesis => genesis.Header.BaseFeePerGas = genesisBaseFee))
                 .ConfigureTestConfiguration(conf => conf.SuggestGenesisOnStart = false));
 

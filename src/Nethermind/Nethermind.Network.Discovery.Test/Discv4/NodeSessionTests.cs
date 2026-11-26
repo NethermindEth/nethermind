@@ -80,8 +80,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             _nodeSession.OnPingReceived(TestEndpoint);
 
-            Assert.That(_nodeSession.HasReceivedPingFrom(TestEndpoint), Is.True);
-            Assert.That(_nodeSession.HasReceivedPingFrom(differentEndpoint), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_nodeSession.HasReceivedPingFrom(TestEndpoint), Is.True);
+                Assert.That(_nodeSession.HasReceivedPingFrom(differentEndpoint), Is.False);
+            }
         }
 
         [Test]
@@ -92,8 +95,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _nodeSession.OnPingReceived(TestEndpoint);
             _nodeSession.OnPingReceived(otherEndpoint);
 
-            Assert.That(_nodeSession.HasReceivedPingFrom(TestEndpoint), Is.True);
-            Assert.That(_nodeSession.HasReceivedPingFrom(otherEndpoint), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_nodeSession.HasReceivedPingFrom(TestEndpoint), Is.True);
+                Assert.That(_nodeSession.HasReceivedPingFrom(otherEndpoint), Is.True);
+            }
         }
 
         [Test]
@@ -104,8 +110,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _nodeSession.OnPongReceived(TestEndpoint);
             _nodeSession.OnPongReceived(otherEndpoint);
 
-            Assert.That(_nodeSession.HasEndpointBond(TestEndpoint), Is.True);
-            Assert.That(_nodeSession.HasEndpointBond(otherEndpoint), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_nodeSession.HasEndpointBond(TestEndpoint), Is.True);
+                Assert.That(_nodeSession.HasEndpointBond(otherEndpoint), Is.True);
+            }
         }
 
         [TestCaseSource(nameof(RememberedEndpointCapacityCases))]
@@ -124,8 +133,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 recordEndpoint(_nodeSession, newestEndpoint);
             }
 
-            Assert.That(hasEndpoint(_nodeSession, oldestEndpoint), Is.False);
-            Assert.That(hasEndpoint(_nodeSession, newestEndpoint), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hasEndpoint(_nodeSession, oldestEndpoint), Is.False);
+                Assert.That(hasEndpoint(_nodeSession, newestEndpoint), Is.True);
+            }
         }
 
         [Test]
@@ -176,8 +188,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 _nodeSession.OnPingSent(newestEndpoint);
             }
 
-            Assert.That(_nodeSession.HasPendingBondingPing(oldestEndpoint), Is.False);
-            Assert.That(_nodeSession.HasPendingBondingPing(newestEndpoint), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_nodeSession.HasPendingBondingPing(oldestEndpoint), Is.False);
+                Assert.That(_nodeSession.HasPendingBondingPing(newestEndpoint), Is.True);
+            }
         }
 
         [Test]

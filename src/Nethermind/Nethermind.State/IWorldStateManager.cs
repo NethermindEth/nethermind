@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm.State;
-using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -14,7 +13,6 @@ public interface IWorldStateManager
 {
     IWorldStateScopeProvider GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
-    ISnapStateServer SnapStateServer { get; }
     IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>

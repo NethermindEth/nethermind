@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Numerics;
-using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -47,7 +47,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
 
-[Parallelizable(ParallelScope.Self)]
+[NonParallelizable]
 public class ProtocolsManagerTests
 {
     [SetUp]
@@ -84,10 +84,13 @@ public class ProtocolsManagerTests
             session,
             new DisconnectEventArgs(DisconnectReason.Other, DisconnectType.Remote, "test"));
 
-        Assert.That(initializedHandler, Is.Not.Null);
-        Assert.That(session.AddedDisconnectedHandler, Is.Null);
-        Assert.That(session.RemovedInitializedHandler, Is.SameAs(initializedHandler));
-        Assert.That(session.RemovedDisconnectedHandler, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(initializedHandler, Is.Not.Null);
+            Assert.That(session.AddedDisconnectedHandler, Is.Null);
+            Assert.That(session.RemovedInitializedHandler, Is.SameAs(initializedHandler));
+            Assert.That(session.RemovedDisconnectedHandler, Is.Null);
+        }
     }
 
     [TestCase(DisconnectReason.TooManyPeers, DisconnectType.Remote)]
@@ -106,6 +109,7 @@ public class ProtocolsManagerTests
         IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
         ISession session = Substitute.For<ISession>();
         session.BestStateReached.Returns(SessionState.Initialized);
+        session.RemoteNodeId.Returns(TestItem.PublicKeyA);
         session.Node.Returns(new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303));
         _ = new ProtocolsManager(
             Substitute.For<ISyncPeerPool>(),
@@ -146,13 +150,19 @@ public class ProtocolsManagerTests
         ProtocolsManager manager = BuildManagerWithResolvers(resolver);
 
         Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
-        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
-        Assert.That(resolver.ResolveCount, Is.EqualTo(1), "advertised capabilities should be cached across calls");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+            Assert.That(resolver.ResolveCount, Is.EqualTo(1), "advertised capabilities should be cached across calls");
+        }
 
         resolver.RaiseChanged();
 
-        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
-        Assert.That(resolver.ResolveCount, Is.EqualTo(2), "cache should rebuild after a resolver signals a change");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+            Assert.That(resolver.ResolveCount, Is.EqualTo(2), "cache should rebuild after a resolver signals a change");
+        }
     }
 
     private static ProtocolsManager BuildManagerWithResolvers(params IP2PCapabilityResolver[] resolvers) =>
@@ -184,12 +194,28 @@ public class ProtocolsManagerTests
         public void RaiseChanged() => Changed?.Invoke();
     }
 
+    /// <summary>A satellite protocol that is initialized as soon as it starts, as snap is.</summary>
+    private sealed class SatelliteProtocolHandler(ISession session, string code, INodeStatsManager nodeStats, IMessageSerializationService serializer)
+        : ProtocolHandlerBase(session, nodeStats, serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance)
+    {
+        public override string Name => code;
+        protected override TimeSpan InitTimeout => TimeSpan.FromSeconds(10);
+        public override byte ProtocolVersion => 1;
+        public override string ProtocolCode => code;
+        public override int MessageIdSpaceSize => 1;
+        public override void Init() => NotifyProtocolInitialized(new ProtocolInitializedEventArgs(this));
+        public override void HandleMessage(Packet message) { }
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) { }
+        public override void Dispose() { }
+    }
+
     public class Context
     {
         private readonly int _localPort = 30312;
         private readonly int _remotePort = 30000;
         private readonly string _remoteHost = "35.0.0.1";
         private ISession _currentSession;
+        private IRlpxConnection _connection;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IRlpxHost _rlpxHost;
         private readonly ProtocolsManager _manager;
@@ -200,9 +226,6 @@ public class ProtocolsManagerTests
         private readonly ISyncServer _syncServer;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ITxPool _txPool;
-        private readonly IChannelHandlerContext _channelHandlerContext;
-        private readonly IChannel _channel;
-        private readonly IChannelPipeline _pipeline;
         private readonly IPacketSender _packetSender;
         private readonly IBlockTree _blockTree;
         private readonly IGossipPolicy _gossipPolicy;
@@ -211,15 +234,11 @@ public class ProtocolsManagerTests
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IForkInfo _forkInfo;
+        private readonly string[] _satelliteProtocols;
 
-        public Context()
+        public Context(ILogManager? logManager = null, IRlpxHost? rlpxHost = null, IPeerManager? peerManager = null, string? clientIdMatcher = null, string[]? satelliteProtocols = null)
         {
-            _channel = Substitute.For<IChannel>();
-            _channelHandlerContext = Substitute.For<IChannelHandlerContext>();
-            _pipeline = Substitute.For<IChannelPipeline>();
-            _channelHandlerContext.Channel.Returns(_channel);
-            _channel.Pipeline.Returns(_pipeline);
-            _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter());
+            _satelliteProtocols = satelliteProtocols ?? [];
             _packetSender = Substitute.For<IPacketSender>();
             _syncServer = Substitute.For<ISyncServer>();
             _syncServer = Substitute.For<ISyncServer>();
@@ -234,8 +253,7 @@ public class ProtocolsManagerTests
                 SerializerInfo.Create(new DisconnectMessageSerializer())
                 );
 
-            _rlpxHost = Substitute.For<IRlpxHost>();
-            _rlpxHost.LocalPort.Returns(_localPort);
+            _rlpxHost = rlpxHost ?? Substitute.For<IRlpxHost>();
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _blockTree = Substitute.For<IBlockTree>();
@@ -243,8 +261,8 @@ public class ProtocolsManagerTests
             _blockTree.ChainId.Returns(TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
             _forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
-            _peerManager = Substitute.For<IPeerManager>();
-            _networkConfig = new NetworkConfig();
+            _peerManager = peerManager ?? Substitute.For<IPeerManager>();
+            _networkConfig = new NetworkConfig { ClientIdMatcher = clientIdMatcher };
             _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _forkInfo, _networkConfig, LimboLogs.Instance);
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
@@ -260,9 +278,9 @@ public class ProtocolsManagerTests
                 _protocolValidator,
                 _peerManager,
                 _peerStorage,
-                BuildProtocolHandlerFactories(),
-                [new DefaultP2PCapabilityResolver()],
-                LimboLogs.Instance);
+                [.. BuildProtocolHandlerFactories(), .. _satelliteProtocols.Select(BuildSatelliteFactory)],
+                [new DefaultP2PCapabilityResolver(), new FakeCapabilityResolver(caps => caps.UnionWith(_satelliteProtocols.Select(code => new Capability(code, 1))))],
+                logManager ?? LimboLogs.Instance);
         }
 
         private IProtocolHandlerFactory[] BuildProtocolHandlerFactories() => [
@@ -295,11 +313,16 @@ public class ProtocolsManagerTests
                     71)
             ];
 
+        private IProtocolHandlerFactory BuildSatelliteFactory(string code) =>
+            new ReusableProtocolHandlerFactory<SatelliteProtocolHandler>(
+                session => new SatelliteProtocolHandler(session, code, _nodeStatsManager, _serializer),
+                code,
+                1);
+
         public Context CreateIncomingSession()
         {
-            IChannel channel = Substitute.For<IChannel>();
-            _currentSession = new Session(_localPort, channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-            _pipeline.Get<ZeroNettyP2PHandler>().Returns(new ZeroNettyP2PHandler(_currentSession, LimboLogs.Instance));
+            _connection = Substitute.For<IRlpxConnection>();
+            _currentSession = new Session(_localPort, _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             _rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
             return this;
         }
@@ -309,9 +332,8 @@ public class ProtocolsManagerTests
 
         public Context CreateOutgoingSession(Node node)
         {
-            IChannel channel = Substitute.For<IChannel>();
-            _currentSession = new Session(_localPort, node, channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-            _pipeline.Get<ZeroNettyP2PHandler>().Returns(new ZeroNettyP2PHandler(_currentSession, LimboLogs.Instance));
+            _connection = Substitute.For<IRlpxConnection>();
+            _currentSession = new Session(_localPort, node, _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             _rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
             return this;
         }
@@ -324,7 +346,7 @@ public class ProtocolsManagerTests
 
         public Context Init()
         {
-            _currentSession.Init(5, _channelHandlerContext, _packetSender);
+            _currentSession.Init(5, _packetSender);
             return this;
         }
 
@@ -354,13 +376,20 @@ public class ProtocolsManagerTests
 
             // to account for AdaptivePacketType byte
             disconnectPacket.ReadByte();
-            _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
+            _currentSession.ReceiveMessage(new NettyBufferPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
             return this;
         }
 
         public Context VerifyInitialized()
         {
             Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
+            return this;
+        }
+
+        public Context VerifySnappyEnabled(bool enabled)
+        {
+            Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
+            _connection.Received(enabled ? 1 : 0).EnableSnappy();
             return this;
         }
 
@@ -404,17 +433,20 @@ public class ProtocolsManagerTests
             using DisposableByteBuffer statusPacket = _serializer.ZeroSerialize(msg).AsDisposable();
             statusPacket.ReadByte();
 
-            _currentSession.ReceiveMessage(new ZeroPacket(statusPacket) { PacketType = Eth62MessageCode.Status + 16 });
+            _currentSession.ReceiveMessage(new NettyBufferPacket(statusPacket) { PacketType = Eth62MessageCode.Status + 16 });
             return this;
         }
 
         public Context VerifyEthInitialized()
         {
             INodeStats stats = _nodeStatsManager.GetOrAdd(_currentSession.Node);
-            Assert.That(stats.EthNodeDetails.NetworkId, Is.EqualTo(TestBlockchainIds.NetworkId));
-            Assert.That(stats.EthNodeDetails.GenesisHash, Is.EqualTo(_blockTree.Genesis.Hash));
-            Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(68));
-            Assert.That(stats.EthNodeDetails.TotalDifficulty, Is.EqualTo(BigInteger.One));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stats.EthNodeDetails.NetworkId, Is.EqualTo(TestBlockchainIds.NetworkId));
+                Assert.That(stats.EthNodeDetails.GenesisHash, Is.EqualTo(_blockTree.Genesis.Hash));
+                Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(68));
+                Assert.That(stats.EthNodeDetails.TotalDifficulty, Is.EqualTo(BigInteger.One));
+            }
             return this;
         }
 
@@ -433,9 +465,22 @@ public class ProtocolsManagerTests
 
         public Context VerifySyncPeersRemoved()
         {
-            _txPool.Received().RemovePeer(Arg.Any<PublicKey>());
+            _txPool.Received().RemovePeer(Arg.Is<ITxPoolPeer>(peer => peer.Id == _currentSession.RemoteNodeId));
             _syncPeerPool.Received().RemovePeer(Arg.Any<ISyncPeer>());
             return this;
+        }
+
+        public void VerifyNoGossipPeerRemoved()
+        {
+            _txPool.Received().AddPeer(Arg.Is<ITxPoolPeer>(peer => peer.Id == _currentSession.RemoteNodeId));
+            _txPool.DidNotReceive().RemovePeer(Arg.Any<PublicKey>());
+            _txPool.DidNotReceive().RemovePeer(Arg.Any<ITxPoolPeer>());
+        }
+
+        public Context ReceiveHello(Session session)
+        {
+            _currentSession = session;
+            return ReceiveHello();
         }
 
         private Context ReceiveHello(HelloMessage msg)
@@ -444,7 +489,7 @@ public class ProtocolsManagerTests
             // to account for AdaptivePacketType byte
             helloPacket.ReadByte();
 
-            _currentSession.ReceiveMessage(new ZeroPacket(helloPacket) { PacketType = P2PMessageCode.Hello });
+            _currentSession.ReceiveMessage(new NettyBufferPacket(helloPacket) { PacketType = P2PMessageCode.Hello });
             return this;
         }
 
@@ -460,6 +505,27 @@ public class ProtocolsManagerTests
 
             return ReceiveHello(msg);
         }
+
+        public Context ReceiveHelloWithSatellites()
+        {
+            using HelloMessage msg = new();
+            msg.Capabilities = new ArrayPoolList<Capability>(1 + _satelliteProtocols.Length, [new Capability("eth", 68), .. _satelliteProtocols.Select(code => new Capability(code, 1))]);
+            msg.NodeId = TestItem.PublicKeyB;
+            msg.ClientId = "other client v1";
+            msg.P2PVersion = 5;
+            msg.ListenPort = 30314;
+
+            return ReceiveHello(msg);
+        }
+
+        public Context VerifySatellitesAttached()
+        {
+            _syncPeerPool.Received(1).AddPeer(Arg.Is<ISyncPeer>(peer => HasAllSatellites(peer)));
+            return this;
+        }
+
+        private bool HasAllSatellites(ISyncPeer peer) =>
+            _satelliteProtocols.All(code => peer.TryGetSatelliteProtocol(code, out object _));
 
         public Context ReceiveHelloNoEth()
         {
@@ -520,6 +586,16 @@ public class ProtocolsManagerTests
             .ReceiveHello()
             .VerifyPingSenderSet();
 
+    [TestCase((byte)5, true)]
+    [TestCase((byte)4, false)]
+    public void Enables_snappy_once_for_admitted_v5_hello(byte p2pVersion, bool snappy) => When
+            .CreateIncomingSession()
+            .ActivateChannel()
+            .Handshake()
+            .Init()
+            .ReceiveHello(p2pVersion)
+            .VerifySnappyEnabled(snappy);
+
     [Test]
     public void Disconnects_on_p2p_before_version_4() => When
             .CreateIncomingSession()
@@ -540,6 +616,12 @@ public class ProtocolsManagerTests
             .VerifyDisconnected();
 
     [Test]
+    public void Disconnect_before_hello_preserves_the_registered_gossip_peer() => When
+        .CreateOutgoingSession().ActivateChannel().Handshake().Init().ReceiveHello().ReceiveStatus()
+        .CreateIncomingSession().ActivateChannel().Handshake().Init().Disconnect()
+        .VerifyNoGossipPeerRemoved();
+
+    [Test]
     public void Runs_ok_when_initializing_protocol_on_a_closing_session() => When
             .CreateIncomingSession()
             .ActivateChannel()
@@ -557,21 +639,39 @@ public class ProtocolsManagerTests
             .VerifyInitialized();
 
     [Test]
-    public void Can_initialize_eth_protocol() => When
-            .CreateIncomingSession()
-            .ActivateChannel()
-            .Handshake()
-            .Init()
-            .VerifyInitialized()
-            .ReceiveHello()
-            .ReceiveStatus()
-            .VerifyEthInitialized();
+    public void Can_initialize_eth_protocol([Values] bool maskSensitiveData, [Values] bool outbound)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            TestLogger logger = new();
+            Context context = new(new OneLoggerLogManager(new(logger)));
+            if (outbound) context.CreateOutgoingSession();
+            else context.CreateIncomingSession();
+            context.ActivateChannel().Handshake().Init().VerifyInitialized()
+                .ReceiveHello().ReceiveStatus().VerifyEthInitialized();
+
+            string diagnostic = logger.LogList.Single(line => line.Contains(" sync peer ") && line.EndsWith(" created."));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(diagnostic, Does.Contain(maskSensitiveData ? "[redacted]" : "other client v1"));
+                if (maskSensitiveData) Assert.That(diagnostic, Does.Not.Contain("other client v1"));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
 
     [Test]
     public void Persists_verified_enr_after_protocol_initialization()
     {
         NodeRecord record = CreateSignedRecord("35.0.0.1", includeIpv6: true);
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(Node.TryFromEnr(record, out Node? node), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(node!.SetVerifiedEnr(record), Is.True);
 
         When.CreateOutgoingSession(node)
@@ -625,6 +725,17 @@ public class ProtocolsManagerTests
         new NodeRecordSigner(new EthereumEcdsa(0), TestItem.PrivateKeyB).Sign(record);
         return record;
     }
+
+    [Test]
+    // Both start as soon as the hello agrees on them, while eth still waits for the peer's status: both are parked.
+    public void Attaches_every_satellite_protocol_that_starts_before_eth() => new Context(satelliteProtocols: ["sat1", "sat2"])
+            .CreateIncomingSession()
+            .ActivateChannel()
+            .Handshake()
+            .Init()
+            .ReceiveHelloWithSatellites()
+            .ReceiveStatus()
+            .VerifySatellitesAttached();
 
     [Test]
     public void Removes_sync_peers_on_disconnect() => When
@@ -711,6 +822,8 @@ public class ProtocolsManagerTests
         public SessionState State => SessionState.Disconnected;
         public SessionState BestStateReached => SessionState.Disconnected;
         public bool IsClosing => true;
+        public bool IsChannelClosed => false;
+        public bool IsOutboundBufferFull => false;
         public PublicKey RemoteNodeId => null!;
         public PublicKey ObsoleteRemoteNodeId => null!;
         public string RemoteHost { get; set; } = string.Empty;
@@ -752,10 +865,9 @@ public class ProtocolsManagerTests
         public bool HasAgreedCapability(Capability capability) => throw new NotSupportedException();
         public void AddProtocolHandler(IProtocolHandler handler) => throw new NotSupportedException();
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => throw new NotSupportedException();
-        public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender) => throw new NotSupportedException();
+        public void Init(byte p2PVersion, IPacketSender packetSender) => throw new NotSupportedException();
         public void InitiateDisconnect(DisconnectReason disconnectReason, string details) => throw new NotSupportedException();
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details) => throw new NotSupportedException();
         public void Handshake(PublicKey handshakeRemoteNodeId) => throw new NotSupportedException();
-        public void StartTrackingSession() => throw new NotSupportedException();
     }
 }

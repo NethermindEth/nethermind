@@ -25,8 +25,11 @@ public class WalkSchedulerTests
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        Assert.That(captured.IsAlive, Is.False, "a finished fork must not keep its work's captures alive until the owner joins");
-        Assert.That(owner.IsDone, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(captured.IsAlive, Is.False, "a finished fork must not keep its work's captures alive until the owner joins");
+            Assert.That(owner.IsDone, Is.True);
+        }
         owner.Join(null);
     }
 

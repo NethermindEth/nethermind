@@ -46,7 +46,7 @@ public partial class EthRpcModuleTests
     {
         "Prague" => Prague.Instance,
         "Amsterdam" => Amsterdam.Instance,
-        // The env records transaction diffs through TracedAccessWorldState once the final spec enables EIP-7906.
+        // EIP-7906 adds the assertion opcodes and the ASSERT diff recorder the processor starts for frame transactions.
         "Amsterdam+EIP-7906" => new OverridableReleaseSpec(Amsterdam.Instance) { IsEip7906Enabled = true },
         _ => throw new ArgumentOutOfRangeException(nameof(fork), fork, null)
     };

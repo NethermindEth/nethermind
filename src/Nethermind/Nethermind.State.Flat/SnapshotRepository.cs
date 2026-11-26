@@ -14,7 +14,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat;
 
@@ -96,7 +96,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     public AssembledSnapshotResult AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
     {
-        if (baseBlock == targetState) return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
+        if (Height(baseBlock) <= Height(targetState)) return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
 
         AssemblePolicy policy = new(targetState);
         return WalkAndAssemble(baseBlock, estimatedSize, ref policy);
@@ -208,7 +208,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 Interlocked.Increment(ref _snapshotCount);
                 Metrics.SnapshotCount++;
 
-                long totalBytes = snapshot.EstimateMemory();
+                // A compacted snapshot shares the node buffer generations of the base snapshots it merges, so only these count them.
+                long totalBytes = snapshot.EstimateMemory() + snapshot.EstimatePinnedNodeBytes();
                 Interlocked.Add(ref _inMemoryBytes, totalBytes);
                 Metrics.SnapshotMemory += totalBytes;
                 Metrics.TotalSnapshotMemory += totalBytes;
@@ -330,7 +331,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
                 sortedSnapshots.Remove(stateId);
 
-            long totalBytes = existing.EstimateMemory();
+            long totalBytes = existing.EstimateMemory() + existing.EstimatePinnedNodeBytes();
             Interlocked.Add(ref _inMemoryBytes, -totalBytes);
             Metrics.SnapshotMemory -= totalBytes;
             Metrics.TotalSnapshotMemory -= totalBytes;
@@ -726,7 +727,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// twin over the same reservation carrying a lease on <paramref name="sharedBloom"/>, so its own
     /// bloom is freed once it drains. Skips the snapshot already on the shared bloom and any extending
     /// below <paramref name="from"/> (whose keys the shared bloom does not cover — sharing it would
-    /// produce false negatives).
+    /// produce false negatives). Containment is necessary, not sufficient: the caller shares only a
+    /// bloom that covers the range (see <see cref="ISnapshotRepository.ShareBloomAcrossRange"/>).
     /// </summary>
     private void ShareBloomAt(in StateId at, in StateId from, in StateId to,
         RefCountedBloomFilter sharedBloom, BlobArenaManager blobs, SnapshotTier tier)
@@ -737,7 +739,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         using (s)
         {
             if (ReferenceEquals(s.BloomRef, sharedBloom)) return;   // the big snapshot itself / already shared
-            if (Height(s.From) < Height(from)) return;              // extends below window → not a subset
+            if (Height(s.From) < Height(from)) return;              // extends below window → keys outside the range
             if (Height(s.To) > Height(to)) return;                  // belt-and-suspenders (true on a backward walk)
             sharedBloom.AcquireLease();
             using PersistedSnapshot twin = new(s.From, s.To, s.Reservation, blobs, tier, sharedBloom);
@@ -797,6 +799,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         HashSet<ulong> unavailableHeights = [];
         bool ancestryVerified = false;
         int totalPruned = 0;
+        using PooledSet<StateId> pruned = [];
         // Batched like RemoveSiblingAndDescendents: one unbounded range over a long-finality gap would
         // build a LOH-sized dedupe set on every block.
         ulong batchStart = firstBlock;
@@ -808,8 +811,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             batchStart = batchEnd + 1;
         }
 
+        int descendantsPruned = pruned.Count == 0 ? 0 : RemoveDescendantsOf(pruned);
         if (totalPruned > 0 && _logger.IsInfo)
-            _logger.Info($"Pruned {totalPruned} finalized non-canonical persisted state(s) at or below block {finalizedBlock}.");
+            _logger.Info($"Pruned {totalPruned} finalized non-canonical persisted state(s) at or below block {finalizedBlock} and {descendantsPruned} of their descendant(s).");
 
         // False aborts the pass.
         bool PruneBatch(ArrayPoolList<StateId> states)
@@ -840,7 +844,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                     continue;
                 }
 
-                if (RemovePersistedStateExact(state)) totalPruned++;
+                if (RemovePersistedStateExact(state))
+                {
+                    totalPruned++;
+                    pruned.Add(state);
+                }
             }
             return true;
         }
@@ -859,6 +867,60 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             Hash256? root = GetFinalizedRootLocked(height);
             if (root is null) unavailableHeights.Add(height);
             return root;
+        }
+    }
+
+    private int RemoveDescendantsOf(PooledSet<StateId> removed)
+    {
+        ulong firstBlock = ulong.MaxValue;
+        foreach (StateId state in removed) firstBlock = Math.Min(firstBlock, state.BlockNumber);
+        ulong maxBlock = GetLastSnapshotId()?.BlockNumber ?? 0;
+
+        int totalRemoved = 0;
+        for (ulong batchStart = firstBlock + 1; batchStart <= maxBlock;)
+        {
+            ulong batchEnd = Math.Min(batchStart + PruneBatchSize - 1, maxBlock);
+            using ArrayPoolList<StateId> states = GetPersistedStatesInRange(batchStart, batchEnd);
+            using (ArrayPoolListRef<StateId> inMemory = GetStatesInRange(batchStart, batchEnd))
+            {
+                states.AddRange(inMemory.AsSpan());
+            }
+            states.AsSpan().Sort();
+
+            foreach (StateId state in states)
+            {
+                if (removed.Contains(state)) continue;
+
+                if (!BuildsOnlyOnRemovedStates(state, removed)) continue;
+
+                removed.Add(state);
+                RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryCompacted);
+                RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryBase);
+                RemovePersistedStateExact(state);
+                totalRemoved++;
+            }
+
+            batchStart = batchEnd + 1;
+        }
+
+        return totalRemoved;
+    }
+
+    private bool BuildsOnlyOnRemovedStates(in StateId state, PooledSet<StateId> removed)
+    {
+        bool found = false;
+        if (_snapshots.TryGetValue(state, out Snapshot? inMemoryBase) && !BuildsOnRemoved(inMemoryBase.From)) return false;
+        if (_compactedSnapshots.TryGetValue(state, out Snapshot? inMemoryCompacted) && !BuildsOnRemoved(inMemoryCompacted.From)) return false;
+        if (_base.TryGet(state, out PersistedSnapshot? persistedBase) && !BuildsOnRemoved(persistedBase.From)) return false;
+        if (_smallCompacted.TryGet(state, out PersistedSnapshot? smallCompacted) && !BuildsOnRemoved(smallCompacted.From)) return false;
+        if (_largeCompacted.TryGet(state, out PersistedSnapshot? largeCompacted) && !BuildsOnRemoved(largeCompacted.From)) return false;
+        if (_compactSized.TryGet(state, out PersistedSnapshot? compactSized) && !BuildsOnRemoved(compactSized.From)) return false;
+        return found;
+
+        bool BuildsOnRemoved(in StateId from)
+        {
+            found = true;
+            return removed.Contains(from);
         }
     }
 
@@ -958,6 +1020,10 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         _smallCompacted.DisposeAndClear();
         _largeCompacted.DisposeAndClear();
         _compactSized.DisposeAndClear();
+
+        // In-memory snapshots pin their trie node buffer generations, which stay allocated until every pin is released.
+        foreach (KeyValuePair<StateId, Snapshot> compacted in _compactedSnapshots) RemoveAndReleaseInMemoryKnownState(compacted.Key, SnapshotTier.InMemoryCompacted);
+        foreach (KeyValuePair<StateId, Snapshot> snapshot in _snapshots) RemoveAndReleaseInMemoryKnownState(snapshot.Key, SnapshotTier.InMemoryBase);
     }
 
     // ---- Backward-walk infrastructure ----
@@ -1074,9 +1140,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier)
         {
             if (from == currentPersistedState)
-                // Any chunk spanning at most CompactSize is persistable; a wider large-compacted is skip-only.
+                // Any chunk spanning at most CompactSize is persistable; a wider large-compacted is skip-only. A base
+                // is one committed state and cannot be split, so it is persistable at any width: a bulk import commits
+                // one on top of the persisted base, and skipping it leaves no candidate ever.
                 // from == PreGenesis makes to - from wrap to to + 1 (the genesis-spanning span), as intended.
-                return to.BlockNumber - from.BlockNumber <= compactSize
+                return (to.BlockNumber - from.BlockNumber <= compactSize || tier is SnapshotTier.InMemoryBase or SnapshotTier.PersistedBase)
                     && (finality.GetFinalizedRoot(to.BlockNumber, ref _unavailableRoots) is not { } root || to.StateRoot == root)
                     ? AssembleStep.WinAndStop : AssembleStep.Skip;
             return Height(from) > Height(currentPersistedState) ? AssembleStep.Traverse : AssembleStep.Skip;
@@ -1097,7 +1165,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         using PooledSet<StateId> seen = new();
         // visited owns a lease on every retained edge; GatherChain re-leases the winning path before the
         // finally releases all of them.
-        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited = new(estimatedSize);
+        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited = [with(estimatedSize)];
         try
         {
             int winnerIndex = -1;

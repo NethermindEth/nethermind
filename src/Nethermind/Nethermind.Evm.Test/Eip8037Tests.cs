@@ -60,7 +60,9 @@ public class Eip8037Tests : VirtualMachineTestsBase
     public void System_transaction_gas_keeps_execution_budget_and_state_reservoir()
     {
         EthereumGasPolicy intrinsicGas = EthereumGasPolicy.CreateSystemTransactionIntrinsicGas(Eip8037Constants.SystemCallGasLimit);
+#pragma warning disable NUnit2045 // Keep output variables in the enclosing scope for subsequent checks and actions.
         Assert.That(EthereumGasPolicy.TryCreateSystemTransactionAvailableGas(Eip8037Constants.SystemCallGasLimit, in intrinsicGas, Amsterdam.Instance, out EthereumGasPolicy availableGas), Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(
             (
@@ -172,11 +174,14 @@ public class Eip8037Tests : VirtualMachineTestsBase
         ulong expectedExecution = GasCostOf.TransactionEip2780 + recipientExecution + accessListBaseCost + accessListFloorCost;
         ulong expectedFloorGas = GasCostOf.TransactionEip2780 + recipientExecution + accessListFloorCost;
 
-        Assert.That(splitIntrinsicGas.Standard.Value, Is.EqualTo(expectedExecution));
-        Assert.That(splitIntrinsicGas.Standard.StateReservoir, Is.Zero);
-        Assert.That(splitIntrinsicGas.FloorGas.Value, Is.EqualTo(expectedFloorGas));
-        Assert.That(intrinsicGas.Standard, Is.EqualTo(expectedExecution));
-        Assert.That(intrinsicGas.FloorGas, Is.EqualTo(expectedFloorGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(splitIntrinsicGas.Standard.Value, Is.EqualTo(expectedExecution));
+            Assert.That(splitIntrinsicGas.Standard.StateReservoir, Is.Zero);
+            Assert.That(splitIntrinsicGas.FloorGas.Value, Is.EqualTo(expectedFloorGas));
+            Assert.That(intrinsicGas.Standard, Is.EqualTo(expectedExecution));
+            Assert.That(intrinsicGas.FloorGas, Is.EqualTo(expectedFloorGas));
+        }
     }
 
     [Test]
@@ -193,8 +198,11 @@ public class Eip8037Tests : VirtualMachineTestsBase
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Prague.Instance);
         ulong expectedExecution = GasCostOf.Transaction + GasCostOf.AccessAccountListEntry + GasCostOf.AccessStorageListEntry;
 
-        Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(expectedExecution));
-        Assert.That(intrinsicGas.FloorGas.Value, Is.EqualTo(GasCostOf.Transaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(expectedExecution));
+            Assert.That(intrinsicGas.FloorGas.Value, Is.EqualTo(GasCostOf.Transaction));
+        }
     }
 
     [Test]
@@ -253,10 +261,13 @@ public class Eip8037Tests : VirtualMachineTestsBase
     {
         EthereumGasPolicy intrinsic = new() { Value = Eip7825Constants.DefaultTxGasLimitCap + 1, StateReservoir = 0 };
 
-        Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(
-            Eip7825Constants.DefaultTxGasLimitCap + 2, in intrinsic, Amsterdam.Instance, out EthereumGasPolicy gas), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(
+                Eip7825Constants.DefaultTxGasLimitCap + 2, in intrinsic, Amsterdam.Instance, out EthereumGasPolicy gas), Is.True);
 
-        Assert.That((gas.Value, gas.StateReservoir), Is.EqualTo((0UL, 1L)));
+            Assert.That((gas.Value, gas.StateReservoir), Is.EqualTo((0UL, 1L)));
+        }
     }
 
     [Test]
@@ -305,9 +316,12 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         ulong executionRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, Amsterdam.Instance, stateGasFloor: 0);
 
-        Assert.That(executionRefund, Is.Zero);
-        Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
-            Is.EqualTo((0L, 0L, GasCostOf.PerAuthBaseState, 0L)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executionRefund, Is.Zero);
+            Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
+                Is.EqualTo((0L, 0L, GasCostOf.PerAuthBaseState, 0L)));
+        }
     }
 
     [Test]
@@ -328,7 +342,9 @@ public class Eip8037Tests : VirtualMachineTestsBase
         // inflating the reservoir would let later operations draw state gas the spec says is unavailable.
         EthereumGasPolicy gas = new() { Value = 10_000, StateReservoir = 0 };
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, 4000), Is.True);
+#pragma warning restore NUnit2045
         Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
             Is.EqualTo((6000L, 0L, 4000L, 4000L)), "charge with empty reservoir spills into execution gas");
 
@@ -343,7 +359,9 @@ public class Eip8037Tests : VirtualMachineTestsBase
         // Complementary case: a reservoir-funded charge refunds back to the reservoir (no spill).
         EthereumGasPolicy gas = new() { Value = 10_000, StateReservoir = 5000 };
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, 4000), Is.True);
+#pragma warning restore NUnit2045
         Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
             Is.EqualTo((10_000L, 1000L, 4000L, 0L)), "reservoir-funded charge does not touch execution gas");
 
@@ -433,8 +451,11 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy.RestoreChildStateGas(ref parent, in child);
 
         long netSpill = GasCostOf.CreateState + 3 * GasCostOf.SSetState;
-        Assert.That((parent.Value, parent.StateReservoir), Is.EqualTo(((ulong)(1_000 + netSpill), -netSpill)));
-        Assert.That(parent.StateGasSpill, Is.EqualTo(0L), "reverted child spill counter is not propagated");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((parent.Value, parent.StateReservoir), Is.EqualTo(((ulong)(1_000 + netSpill), -netSpill)));
+            Assert.That(parent.StateGasSpill, Is.EqualTo(0L), "reverted child spill counter is not propagated");
+        }
     }
 
     [Test]
@@ -461,9 +482,12 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy.RefundStateGas(ref gas, 80, stateGasFloor: 0);
 
         // LIFO: the refund returns to gas_left, not the reservoir, tracked in StateGasSpillRefunded.
-        Assert.That((gas.StateGasUsed, gas.StateReservoir, gas.StateGasSpill, gas.StateGasSpillRefunded),
-            Is.EqualTo((120L, 0L, 200L, 80L)));
-        Assert.That(gas.Value, Is.EqualTo(880L));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((gas.StateGasUsed, gas.StateReservoir, gas.StateGasSpill, gas.StateGasSpillRefunded),
+                Is.EqualTo((120L, 0L, 200L, 80L)));
+            Assert.That(gas.Value, Is.EqualTo(880L));
+        }
     }
 
     [Test]
@@ -552,8 +576,11 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         // The child's net spill (200 - 80 = 120) refills the parent gas_left; the parent's
         // own spill counters are not bumped.
-        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((1_120UL, 0L, 0L)));
-        Assert.That((parent.StateGasSpill, parent.StateGasSpillRefunded), Is.EqualTo((0L, 0L)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((1_120UL, 0L, 0L)));
+            Assert.That((parent.StateGasSpill, parent.StateGasSpillRefunded), Is.EqualTo((0L, 0L)));
+        }
     }
 
     [TestCase(0, TestName = "Code_deposit_halt_does_not_inherit_unrefunded_child_spill")]
@@ -627,15 +654,20 @@ public class Eip8037Tests : VirtualMachineTestsBase
         // the user does not keep paying for state-gas they didn't get to commit.
         EthereumGasPolicy gas = new() { Value = 100_000, StateReservoir = 1_000, StateGasUsed = 0 };
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, 5_000), Is.True);
+#pragma warning restore NUnit2045
         Assert.That((gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill), Is.EqualTo((0L, 5_000L, 4_000L)),
             "consume 5_000 state-gas with 1_000 reservoir => reservoir=0, used=5_000, spill=4_000");
 
         EthereumGasPolicy.ResetForHalt(ref gas, initialStateReservoir: 1_000, initialStateGasUsed: 0);
 
-        Assert.That(gas.StateReservoir, Is.EqualTo(1_000L), "reservoir snaps to R0");
-        Assert.That(gas.StateGasUsed, Is.EqualTo(0L), "state-gas-used snaps to intrinsic floor");
-        Assert.That(gas.StateGasSpill, Is.EqualTo(0L), "spill is zeroed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gas.StateReservoir, Is.EqualTo(1_000L), "reservoir snaps to R0");
+            Assert.That(gas.StateGasUsed, Is.EqualTo(0L), "state-gas-used snaps to intrinsic floor");
+            Assert.That(gas.StateGasSpill, Is.EqualTo(0L), "spill is zeroed");
+        }
     }
 
     [Test]
@@ -644,7 +676,9 @@ public class Eip8037Tests : VirtualMachineTestsBase
         // Top-level halt: block_state = post-reset StateGasUsed (intrinsic floor); the spilled
         // portion was paid from gas_left and burns as execution gas.
         EthereumGasPolicy gas = new() { Value = 100_000, StateReservoir = 1_000, StateGasUsed = 0 };
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, 5_000), Is.True);
+#pragma warning restore NUnit2045
         Assert.That((gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill), Is.EqualTo((0L, 5_000L, 4_000L)),
             "after consuming 5_000 with 1_000 reservoir: reservoir=0, used=5_000 (= 1_000 reservoir-portion + 4_000 spill), spill=4_000");
 
@@ -652,9 +686,12 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         // Block_state = post-reset StateGasUsed (0); the spill burns as execution gas.
         long blockLevelContribution = gas.StateGasUsed;
-        Assert.That(blockLevelContribution, Is.EqualTo(0L),
-            "block-level sum_state contribution = post-reset floor (0); spill is burned as execution gas");
-        Assert.That((gas.StateReservoir, gas.StateGasSpill), Is.EqualTo((1_000L, 0L)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockLevelContribution, Is.EqualTo(0L),
+                "block-level sum_state contribution = post-reset floor (0); spill is burned as execution gas");
+            Assert.That((gas.StateReservoir, gas.StateGasSpill), Is.EqualTo((1_000L, 0L)));
+        }
     }
 
     [Test]
@@ -666,7 +703,9 @@ public class Eip8037Tests : VirtualMachineTestsBase
         const long stateGasCharged = GasCostOf.SSetState;
 
         EthereumGasPolicy gas = new() { Value = 1_000_000, StateReservoir = reservoirAtTxStart, StateGasUsed = 0 };
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, stateGasCharged), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(gas.StateGasSpill, Is.EqualTo(0L), "reservoir covers full charge; no spill");
         Assert.That(gas.StateGasUsed, Is.EqualTo(stateGasCharged), "full charge recorded in StateGasUsed");
 
@@ -689,7 +728,9 @@ public class Eip8037Tests : VirtualMachineTestsBase
         const long stateGasCharged = 104_174;   // reservoir(100k) consumed + 4_174 spill
 
         EthereumGasPolicy gas = new() { Value = perTxGasLimit, StateReservoir = reservoirAtTxStart, StateGasUsed = intrinsicStateGas };
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, stateGasCharged), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(gas.StateGasSpill, Is.EqualTo(4_174L), "4_174 spill from reservoir overflow");
 
         EthereumGasPolicy.ResetForHalt(ref gas, initialStateReservoir: reservoirAtTxStart, initialStateGasUsed: intrinsicStateGas);
@@ -707,15 +748,20 @@ public class Eip8037Tests : VirtualMachineTestsBase
         // propagated — a reverted child never inflates the parent's unrefunded spill.
         EthereumGasPolicy parent = new() { Value = 100_000, StateReservoir = 0, StateGasUsed = 0 };
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 50_000);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref child, 4_174L), Is.True,
             "child consumes 4_174 state-gas with reservoir=0; entirely spills from gas_left");
+#pragma warning restore NUnit2045
         Assert.That(child.StateGasSpill, Is.EqualTo(4_174L));
 
         EthereumGasPolicy.RestoreChildStateGas(ref parent, in child);
 
-        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((104_174UL, 0L, 0L)),
-            "child spill refills the parent gas_left; reservoir/used net to zero");
-        Assert.That(parent.StateGasSpill, Is.EqualTo(0L), "reverted child spill is not propagated to the parent");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((104_174UL, 0L, 0L)),
+                "child spill refills the parent gas_left; reservoir/used net to zero");
+            Assert.That(parent.StateGasSpill, Is.EqualTo(0L), "reverted child spill is not propagated to the parent");
+        }
     }
 
     [Test]
@@ -754,9 +800,12 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         EthereumGasPolicy.ResetForHalt(ref gas, initialStateReservoir: 0, initialStateGasUsed: GasCostOf.CreateState);
 
-        Assert.That((gas.Value, gas.StateGasSpillRefunded), Is.EqualTo((4_242UL, 4_174L)),
-            "ResetForHalt preserves gas_left and the StateGasSpillRefunded mark");
-        Assert.That(gas.StateGasSpill, Is.EqualTo(0L), "spill is zeroed by the reset");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((gas.Value, gas.StateGasSpillRefunded), Is.EqualTo((4_242UL, 4_174L)),
+                "ResetForHalt preserves gas_left and the StateGasSpillRefunded mark");
+            Assert.That(gas.StateGasSpill, Is.EqualTo(0L), "spill is zeroed by the reset");
+        }
     }
 
     [Test]
@@ -820,10 +869,13 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         // Both refunds returned to gas_left; the outer frame reverts, so no spill (nor its refund
         // mark) is propagated up to the ancestor, and gas_left returns to its starting value.
-        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill),
-            Is.EqualTo((500_000UL, 0L, 0L, 0L)));
-        Assert.That(parent.StateGasSpillRefunded, Is.EqualTo(0L),
-            "reverted descendant spill and its refund mark are not inherited by the ancestor");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill),
+                Is.EqualTo((500_000UL, 0L, 0L, 0L)));
+            Assert.That(parent.StateGasSpillRefunded, Is.EqualTo(0L),
+                "reverted descendant spill and its refund mark are not inherited by the ancestor");
+        }
     }
 
     [TestCase(ExpectedResult = 5_000L)]

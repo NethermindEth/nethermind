@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -35,8 +36,11 @@ public class BlockOverride
         return result;
     }
 
-    /// <summary>Gets or sets the requested beacon root, which debug_traceCall rejects as unsupported.</summary>
+    /// <summary>Gets or sets the requested beacon root. Single-call methods reject it; see <see cref="BeaconRootNotSupported"/>.</summary>
     public Hash256? BeaconRoot { get; set; }
+
+    /// <summary>The error of a single-call method given an unsupported <see cref="BeaconRoot"/> override.</summary>
+    public const string BeaconRootNotSupported = "block override \"beaconRoot\" is not supported for this RPC method";
 
     public void ApplyOverrides(BlockHeader result)
     {
@@ -64,6 +68,13 @@ public class BlockOverride
         // EIP-4844 formula. The override is applied via BlobBaseFeeOverrideCalculatorDecorator
         // (and for simulate via IBlobBaseFeeOverrideProvider) instead.
     }
+
+    /// <summary>
+    /// The <see cref="PrevRandao"/> that PREVRANDAO returns in a single call run under <paramref name="callSpec"/>, the
+    /// spec of the call's block after these overrides, or <c>null</c> when the call keeps its block's own value.
+    /// </summary>
+    /// <remarks>As in geth, where a random value turns the merge rules on only from London: before it, opcode 0x44 reads the difficulty.</remarks>
+    public Hash256? PrevRandaoFor(IReleaseSpec callSpec) => callSpec.IsEip1559Enabled ? PrevRandao : null;
 
     public BlockOverride WithBaseFee(UInt256 baseFee)
     {

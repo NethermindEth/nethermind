@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
@@ -9,11 +10,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.Sync.Snap;
 
@@ -71,13 +73,20 @@ public class FlatSnapTrieFactory(
 
     /// <inheritdoc/>
     /// <remarks>
-    /// A checkpoint that cannot be read, or was saved with a different number of account range partitions, is not
-    /// returned, so every caller, including those ahead of <see cref="EnsureInitialize"/>, treats it as gone.
+    /// A checkpoint that cannot be read, was saved with a different number of account range partitions, or outlived a
+    /// wipe of the data it describes, is not returned, so every caller, including those ahead of
+    /// <see cref="EnsureInitialize"/>, treats it as gone.
     /// </remarks>
     public SnapCheckpoint? LoadCheckpoint()
     {
         byte[]? record = BasePersistence.ReadSnapCheckpoint(flatDb.GetColumnDb(FlatDbColumns.Metadata));
         if (record is null) return null;
+
+        if (!BasePersistence.HasSnapCheckpointSentinel(flatDb))
+        {
+            if (_logger.IsWarn) _logger.Warn("Ignoring the snap sync checkpoint: the data it describes was wiped after it was saved, likely by an older Nethermind version.");
+            return null;
+        }
 
         SnapCheckpoint checkpoint;
         try
@@ -126,6 +135,8 @@ public class FlatSnapTrieFactory(
     /// commit never persists a node whose keys reach past the committed range, so such a node was written after the
     /// checkpoint. A leaf or an extension on that path whose keys lie wholly outside the range is kept, as it may well
     /// predate the checkpoint, and trie reassembly can rebuild a missing branch from the flat entries but not a leaf.
+    /// In a storage trie such a leaf or extension is deleted too: a range commit persists no storage node whose path
+    /// reaches past the range, and reassembly rebuilds a missing slot leaf from the flat entries.
     /// </para>
     /// </remarks>
     private void DiscardWritesAfter(SnapCheckpoint checkpoint)
@@ -139,12 +150,12 @@ public class FlatSnapTrieFactory(
                 if (!partition.MoreAccountsToRight) continue;
 
                 batch.DeleteStateTrieNodeRange(partition.NextAccountPath, partition.AccountPathLimit);
-                DeleteNodesReachingInto(reader, batch, address: null, partition.NextAccountPath, partition.AccountPathLimit);
+                DeleteNodesReachingInto(reader, batch, address: null, partition.NextAccountPath, partition.AccountPathLimit, wholePath: false);
 
                 if (TryGetFirstAccountKeyAtOrAfter(partition.NextAccountPath, out ValueHash256 firstAccount))
                 {
                     batch.DeleteAccountRange(firstAccount, partition.AccountPathLimit);
-                    batch.SelfDestructRange(firstAccount, partition.AccountPathLimit);
+                    batch.SelfDestructRange(firstAccount, partition.AccountPathLimit, null);
                 }
             }
 
@@ -155,7 +166,7 @@ public class FlatSnapTrieFactory(
                 // Over the whole trie, every node is within the range deleted above.
                 if (from == ValueKeccak.Zero && to == ValueKeccak.MaxValue) continue;
 
-                DeleteNodesReachingInto(reader, batch, accountPath.ToCommitment(), from, to);
+                DeleteNodesReachingInto(reader, batch, accountPath.ToCommitment(), from, to, wholePath: true);
             }
         }
 
@@ -164,34 +175,48 @@ public class FlatSnapTrieFactory(
 
     /// <summary>
     /// Deletes the nodes on the paths to <paramref name="from"/> and <paramref name="to"/> whose keys reach into
-    /// <c>[<paramref name="from"/>, <paramref name="to"/>]</c>, in the storage trie of <paramref name="address"/>, or in
-    /// the state trie when it is <c>null</c>.
+    /// <c>[<paramref name="from"/>, <paramref name="to"/>]</c>, or whose path does when <paramref name="wholePath"/> is
+    /// set, in the storage trie of <paramref name="address"/>, or in the state trie when it is <c>null</c>.
     /// </summary>
-    private static void DeleteNodesReachingInto(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch batch, Hash256? address, in ValueHash256 from, in ValueHash256 to)
+    private static void DeleteNodesReachingInto(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch batch, Hash256? address, in ValueHash256 from, in ValueHash256 to, bool wholePath)
     {
-        DeleteNodesReachingInto(reader, batch, address, new TreePath(from, MaxNodePathLength), from, to);
-        DeleteNodesReachingInto(reader, batch, address, new TreePath(to, MaxNodePathLength), from, to);
+        DeleteNodesReachingInto(reader, batch, address, new TreePath(from, MaxNodePathLength), from, to, wholePath);
+        DeleteNodesReachingInto(reader, batch, address, new TreePath(to, MaxNodePathLength), from, to, wholePath);
     }
 
-    private static void DeleteNodesReachingInto(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch batch, Hash256? address, in TreePath boundary, in ValueHash256 from, in ValueHash256 to)
+    private static void DeleteNodesReachingInto(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch batch, Hash256? address, in TreePath boundary, in ValueHash256 from, in ValueHash256 to, bool wholePath)
     {
         for (int length = 0; length < MaxNodePathLength; length++)
         {
             TreePath path = boundary.Truncate(length);
-            byte[]? rlp = address is null
-                ? reader.TryLoadStateRlp(path, ReadFlags.None)
-                : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
-            if (rlp is null) continue;
+            TreePath keys = path;
+            bool found = address is null
+                ? reader.TryLoadStateRlp(path, ReadFlags.None, AppendNodeKey, new Span<TreePath>(ref keys))
+                : reader.TryLoadStorageRlp(address, path, ReadFlags.None, AppendNodeKey, new Span<TreePath>(ref keys));
+            if (!found) continue;
 
-            TrieNode node = new(NodeType.Unknown, rlp);
-            node.ResolveNode(NullTrieNodeResolver.Instance, path);
-            TreePath keys = node.IsBranch ? path : path.Append(node.Key);
-            if (keys.ToUpperBoundPath().CompareTo(from) < 0 || keys.ToLowerBoundPath().CompareTo(to) > 0) continue;
+            if (!wholePath && (keys.ToUpperBoundPath().CompareTo(from) < 0 || keys.ToLowerBoundPath().CompareTo(to) > 0)) continue;
 
             // A null span deletes the key.
             if (address is null) batch.SetStateTrieNode(path, default);
             else batch.SetStorageTrieNode(address, path, default);
         }
+    }
+
+    /// <summary>Appends the key nibbles of the leaf or extension node <paramref name="rlp"/> to the path in <paramref name="keys"/>; a branch has no key.</summary>
+    private static void AppendNodeKey(ReadOnlySpan<byte> rlp, Span<TreePath> keys)
+    {
+        NodeRlpReader reader = new(rlp);
+        int position = 0;
+        reader.ReadSequenceLength(ref position, out _);
+        int keyPosition = position;
+        reader.SkipItems(ref position, 2);
+        if (position != rlp.Length) return;
+
+        reader.DecodeByteArraySpan(ref keyPosition, out ReadOnlySpan<byte> hexPrefix);
+        Span<byte> nibbles = stackalloc byte[NodeRlp.HexPrefixNibbleCount(hexPrefix)];
+        NodeRlp.ReadHexPrefix(hexPrefix, 0, nibbles);
+        keys[0] = keys[0].Append(nibbles);
     }
 
     /// <summary>Finds the lowest path whose 20-byte account key no account below <paramref name="path"/> can share.</summary>
@@ -219,14 +244,14 @@ public class FlatSnapTrieFactory(
     {
         IPersistence.IPersistenceReader reader = new LazyReader(persistence, ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck, logManager);
+        return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck);
     }
 
     public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
     {
         IPersistence.IPersistenceReader reader = new LazyReader(persistence, ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck, logManager);
+        return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck);
     }
 
     /// <summary>
@@ -267,8 +292,11 @@ public class FlatSnapTrieFactory(
         public bool IsPreimageMode => Inner.IsPreimageMode;
         public Account? GetAccount(Address address) => Inner.GetAccount(address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => Inner.TryGetSlot(address, slot, ref outValue);
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => Inner.TryLoadStateRlp(path, flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => Inner.TryLoadStorageRlp(address, path, flags);
+        public MigrationCursor? GetMigrationCursor() => Inner.GetMigrationCursor();
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStateRlp(path, flags, action, arg);
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStorageRlp(address, path, flags, action, arg);
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStateRlp(path, hash, flags, action, arg);
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStorageRlp(address, path, hash, flags, action, arg);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => Inner.GetAccountRaw(addrHash);
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => Inner.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => Inner.CreateAccountIterator(startKey, endKey);

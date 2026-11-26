@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using Nethermind.Core.Test;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using NSubstitute;
@@ -27,6 +28,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(filter.AcceptMethod(methodName), Is.EqualTo(expectedResult));
         }
 
+        [TestCase("^eth_", true, "will be accepted by the JSON RPC filter because of ^eth_.")]
+        [TestCase("^debug_", false, "will not be accepted by the JSON RPC filter (no match).")]
+        public void Debug_log_encodes_the_method_name(string regex, bool expectedResult, string message)
+        {
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Exists(FilePath).Returns(true);
+            fileSystem.File.ReadLines(FilePath).Returns(new[] { regex });
+            TestLogger logger = new();
+            RpcMethodFilter filter = new(FilePath, fileSystem, new(logger));
+
+            bool accepted = filter.AcceptMethod("eth_example\u2028method");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accepted, Is.EqualTo(expectedResult));
+                Assert.That(logger.LogList, Is.EqualTo(new[] { @"eth_example\u2028method " + message }));
+            }
+        }
+
         [Test]
         public void Test_multiple_lines()
         {
@@ -35,8 +55,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             fileSystemSub.File.ReadLines(FilePath).Returns(new[] { "eth*", "debug*" });
 
             RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger<RpcMethodFilterTests>());
-            Assert.That(filter.AcceptMethod("eth_blockNumber"), Is.True);
-            Assert.That(filter.AcceptMethod("debug_trace"), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(filter.AcceptMethod("eth_blockNumber"), Is.True);
+                Assert.That(filter.AcceptMethod("debug_trace"), Is.True);
+            }
         }
 
         [TestCase("eth_blocknumber", "eth_blockNumber", true)]

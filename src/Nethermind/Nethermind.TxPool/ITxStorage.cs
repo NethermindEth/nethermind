@@ -5,8 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
@@ -69,4 +71,30 @@ internal interface ISpecChangeValidationStorage
 {
     string? GetSpecChangeValidationMarker();
     void SetSpecChangeValidationMarker(string? marker);
+}
+
+/// <summary>Reads stored full blob transactions in the form a <c>PooledTransactions</c> response carries them.</summary>
+internal interface IBlobTxNetworkFormStorage
+{
+    /// <summary>Reads the stored full record of a blob transaction and writes its network form, without decoding it.</summary>
+    /// <param name="hash">The transaction hash.</param>
+    /// <param name="timestamp">The timestamp the record is stored under.</param>
+    /// <param name="networkForm">
+    /// The mempool encoding without the typed envelope, as <see cref="RlpBehaviors.InMempoolForm"/> with
+    /// <see cref="RlpBehaviors.SkipTypedWrapping"/> encodes it. The caller disposes it.
+    /// </param>
+    /// <returns>
+    /// <see langword="false"/> when the record is missing, is not a type-3 transaction, or does not hold every blob.
+    /// </returns>
+    bool TryGetNetworkForm(in ValueHash256 hash, in UInt256 timestamp, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? networkForm);
+}
+
+/// <summary>Reads stored full blob transactions without decoding their blobs.</summary>
+internal interface IBlobTxElidedReadStorage
+{
+    /// <summary>Reads the stored full record of a blob transaction without its blob and cell payloads.</summary>
+    /// <returns>
+    /// The transaction as <see cref="BlobTransactionPayload.Elide"/> leaves the one <see cref="ITxStorage.TryGet"/> reads.
+    /// </returns>
+    bool TryGetFullRecordWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction);
 }

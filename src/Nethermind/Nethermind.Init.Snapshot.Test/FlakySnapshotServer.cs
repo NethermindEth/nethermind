@@ -39,15 +39,13 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public int? DropFirstAttemptPerRangeAfterBytes { get; set; }
 
-    public int? FailWithNotFoundAfterRequests { get; set; }
+    public (int RequestNumber, int StatusCode)? FailRequestWithStatus { get; set; }
 
     public bool OmitContentLength { get; set; }
 
     public bool RotateETagEveryRequest { get; set; }
 
     public int? HangOnceAfterBytes { get; set; }
-
-    public int? ServerErrorFirstRequests { get; set; }
 
     public bool IgnoreRangeOnce { get; set; }
 
@@ -58,6 +56,8 @@ internal sealed class FlakySnapshotServer : IDisposable
     public int? DropETagAfterRequests { get; set; }
 
     public int? DropEveryAttemptAfterBytes { get; set; }
+
+    public Func<CancellationToken, Task>? BeforeResponse { get; set; }
 
     public int RequestCount => _requestCount;
 
@@ -70,6 +70,7 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public void Dispose()
     {
+        // First: HandleAsync treats InvalidOperationException as benign only once this is cancelled.
         _hangCts.Cancel();
         _listener.Stop();
         _listener.Close();
@@ -99,9 +100,11 @@ internal sealed class FlakySnapshotServer : IDisposable
                 return;
             }
 
-            Task handler = Task.Run(() => HandleAsync(context));
+            // Track the handler before it starts, so Dispose always waits for a handler that has already run.
+            Task<Task> handler = new(() => HandleAsync(context));
             lock (_handlers)
-                _handlers.Add(handler);
+                _handlers.Add(handler.Unwrap());
+            handler.Start(TaskScheduler.Default);
         }
     }
 
@@ -118,6 +121,9 @@ internal sealed class FlakySnapshotServer : IDisposable
 
         try
         {
+            if (BeforeResponse is not null)
+                await BeforeResponse(_hangCts.Token);
+
             if (RedirectFirstRequest && Interlocked.Exchange(ref _redirected, 1) == 0)
             {
                 response.StatusCode = 302;
@@ -126,16 +132,9 @@ internal sealed class FlakySnapshotServer : IDisposable
                 return;
             }
 
-            if (FailWithNotFoundAfterRequests is int failAfter && requestNumber > failAfter)
+            if (FailRequestWithStatus is (int failedRequest, int failureStatus) && requestNumber == failedRequest)
             {
-                response.StatusCode = 404;
-                response.Close();
-                return;
-            }
-
-            if (ServerErrorFirstRequests is int errorCount && requestNumber <= errorCount)
-            {
-                response.StatusCode = 500;
+                response.StatusCode = failureStatus;
                 response.Close();
                 return;
             }
@@ -212,7 +211,9 @@ internal sealed class FlakySnapshotServer : IDisposable
             await response.OutputStream.WriteAsync(content.AsMemory((int)from, (int)length));
             response.Close();
         }
-        catch (Exception e) when (e is HttpListenerException or IOException or ObjectDisposedException or OperationCanceledException)
+        catch (Exception e) when (e is HttpListenerException or IOException or ObjectDisposedException or OperationCanceledException
+                                  // Closing the listener sends the headers of in-flight responses before disposing them, so a racing setter throws this
+                                  || (e is InvalidOperationException && _hangCts.IsCancellationRequested))
         {
             response.Abort();
         }

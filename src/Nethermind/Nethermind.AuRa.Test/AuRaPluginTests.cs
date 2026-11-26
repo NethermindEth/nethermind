@@ -39,8 +39,11 @@ namespace Nethermind.AuRa.Test
             IBlockProducer blockProducer = container.Resolve<IBlockProducerFactory>().InitBlockProducer();
             IBlockProducerRunner runner = container.Resolve<IBlockProducerRunnerFactory>().InitBlockProducerRunner(blockProducer);
 
-            Assert.That(blockProducer, Is.InstanceOf<AuRaBlockProducer>());
-            Assert.That(runner, Is.InstanceOf<StandardBlockProducerRunner>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blockProducer, Is.InstanceOf<AuRaBlockProducer>());
+                Assert.That(runner, Is.InstanceOf<StandardBlockProducerRunner>());
+            }
         }
 
         [Test]

@@ -73,7 +73,7 @@ internal static class Program
             return;
         }
 
-        string output = GenerateContextSource(sortedTypes);
+        string output = GenerateContextSource(sortedTypes, arguments.AssemblyName);
         Directory.CreateDirectory(Path.GetDirectoryName(arguments.OutputPath)!);
         WriteIfChanged(arguments.OutputPath, output);
     }
@@ -105,16 +105,18 @@ internal static class Program
     /// Builds the source file that declares all eligible <see cref="JsonSerializableAttribute"/> roots
     /// and registers the generated resolver at module initialization time.
     /// </summary>
-    private static string GenerateContextSource(JsonRoot[] sortedTypes)
+    private static string GenerateContextSource(JsonRoot[] sortedTypes, string assemblyName)
     {
+        // Friend assemblies can see generated contexts in their dependencies.
+        string assemblyIdentifier = Convert.ToHexString(Encoding.UTF8.GetBytes(assemblyName));
         StringBuilder builder = new();
         builder.AppendLine(GeneratedSourceHeader).AppendLine(
-            """
+            $"""
             using System.Runtime.CompilerServices;
             using System.Text.Json.Serialization;
             using Nethermind.Serialization.Json;
 
-            namespace Nethermind.JsonRpc;
+            namespace Nethermind.JsonRpc.Generated.A{assemblyIdentifier};
 
             [JsonSourceGenerationOptions(
                 GenerationMode = JsonSourceGenerationMode.Metadata,
@@ -152,7 +154,7 @@ internal static class Program
     private static JsonRoot[] GetSourceGeneratedTypes(List<ITypeSymbol> typeSymbols, IAssemblySymbol currentAssembly)
     {
         JsonContextEligibility eligibility = new(currentAssembly);
-        Dictionary<string, JsonTypeCandidate> candidatesByDisplayName = new(StringComparer.Ordinal);
+        Dictionary<string, JsonTypeCandidate> candidatesByDisplayName = [with(StringComparer.Ordinal)];
 
         for (int i = 0; i < typeSymbols.Count; i++)
         {
@@ -166,8 +168,8 @@ internal static class Program
         }
 
         Dictionary<string, HashSet<string>> displayNamesByGeneratedName = GetDisplayNamesByGeneratedName(candidatesByDisplayName.Values);
-        HashSet<string> unnameableCollisions = new(StringComparer.Ordinal);
-        Dictionary<string, string?> propertyNameByDisplayName = new(StringComparer.Ordinal);
+        HashSet<string> unnameableCollisions = [with(StringComparer.Ordinal)];
+        Dictionary<string, string?> propertyNameByDisplayName = [with(StringComparer.Ordinal)];
         foreach (KeyValuePair<string, HashSet<string>> group in displayNamesByGeneratedName)
         {
             if (group.Value.Count < 2)
@@ -209,14 +211,14 @@ internal static class Program
 
     private static Dictionary<string, HashSet<string>> GetDisplayNamesByGeneratedName(IEnumerable<JsonTypeCandidate> candidates)
     {
-        Dictionary<string, HashSet<string>> displayNamesByGeneratedName = new(StringComparer.Ordinal);
+        Dictionary<string, HashSet<string>> displayNamesByGeneratedName = [with(StringComparer.Ordinal)];
         foreach (JsonTypeCandidate candidate in candidates)
         {
             foreach (KeyValuePair<string, string> generatedTypeName in candidate.GeneratedTypeNames)
             {
                 if (!displayNamesByGeneratedName.TryGetValue(generatedTypeName.Key, out HashSet<string>? displayNames))
                 {
-                    displayNamesByGeneratedName[generatedTypeName.Key] = displayNames = new(StringComparer.Ordinal);
+                    displayNamesByGeneratedName[generatedTypeName.Key] = displayNames = [with(StringComparer.Ordinal)];
                 }
 
                 displayNames.Add(generatedTypeName.Value);
@@ -257,7 +259,7 @@ internal static class Program
         private const string SystemNamespace = "System";
 
         private readonly IAssemblySymbol _currentAssembly = currentAssembly;
-        private readonly Dictionary<string, bool> _accessibleByDisplayName = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, bool> _accessibleByDisplayName = [with(StringComparer.Ordinal)];
 
         /// <summary>Whether generated code in the target assembly can name a type the traversal visited.</summary>
         public bool IsAccessible(string displayName) => _accessibleByDisplayName.TryGetValue(displayName, out bool accessible) && accessible;
@@ -271,8 +273,8 @@ internal static class Program
                 return null;
             }
 
-            Dictionary<string, string> generatedTypeNames = new(StringComparer.Ordinal);
-            HashSet<string> visitedTypes = new(StringComparer.Ordinal);
+            Dictionary<string, string> generatedTypeNames = [with(StringComparer.Ordinal)];
+            HashSet<string> visitedTypes = [with(StringComparer.Ordinal)];
             return CanGenerateMetadata(type, generatedTypeNames, visitedTypes)
                 ? new JsonTypeCandidate(displayName, generatedTypeNames)
                 : null;
@@ -542,7 +544,7 @@ internal static class Program
         }
 
         string[] lines = File.ReadAllLines(path);
-        List<string> existing = new(lines.Length);
+        List<string> existing = [with(lines.Length)];
         for (int i = 0; i < lines.Length; i++)
         {
             string line = lines[i];
@@ -566,7 +568,7 @@ internal static class Program
     {
         public static Arguments Parse(string[] args)
         {
-            Dictionary<string, string> values = new(StringComparer.Ordinal);
+            Dictionary<string, string> values = [with(StringComparer.Ordinal)];
             for (int i = 0; i < args.Length; i += 2)
             {
                 if (i + 1 >= args.Length || !args[i].StartsWith("--", StringComparison.Ordinal))

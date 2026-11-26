@@ -67,8 +67,11 @@ public class BackgroundTaskSchedulerBurstTests
             await Task.Delay(200);
         }
 
-        Assert.That(totalDropped, Is.EqualTo(0), $"no tasks should be dropped — {totalDropped} of {totalScheduled + totalDropped} were dropped");
-        Assert.That(totalScheduled, Is.EqualTo(cycles * tasksPerCycle));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(totalDropped, Is.EqualTo(0), $"no tasks should be dropped — {totalDropped} of {totalScheduled + totalDropped} were dropped");
+            Assert.That(totalScheduled, Is.EqualTo(cycles * tasksPerCycle));
+        }
 
         // After all block processing cycles, new tasks should execute normally
         int postCycleExecuted = 0;

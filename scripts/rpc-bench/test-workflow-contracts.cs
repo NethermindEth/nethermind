@@ -117,7 +117,8 @@ tests.Case("all migrated workflow commands have preceding SDK setup", () =>
             if (WorkflowTest.Get(job, "steps") is not YamlSequenceNode steps) continue;
             foreach (var step in steps.Children)
             {
-                setup |= WorkflowTest.Text(step, "uses").StartsWith("actions/setup-dotnet@", StringComparison.Ordinal);
+                var uses = WorkflowTest.Text(step, "uses");
+                setup |= uses.StartsWith("actions/setup-dotnet@", StringComparison.Ordinal) || uses.EndsWith("/.github/actions/setup-dotnet", StringComparison.Ordinal);
                 if (WorkflowTest.Text(step, "run").Contains("dotnet run --file", StringComparison.Ordinal)) RpcScriptTests.Assert(setup, file + " invokes app before SDK setup");
             }
         }

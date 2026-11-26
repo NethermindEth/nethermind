@@ -8,7 +8,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -62,8 +61,11 @@ public class PeerManagerFilteringIntegrationTests
 
             await trackingMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-            Assert.That(trackingMock.CallsToConnectAsync, Is.Not.Empty);
-            Assert.That(trackingMock.CallsToShouldContact, Is.Not.Empty, "ShouldContact should have been called before ConnectAsync");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trackingMock.CallsToConnectAsync, Is.Not.Empty);
+                Assert.That(trackingMock.CallsToShouldContact, Is.Not.Empty, "ShouldContact should have been called before ConnectAsync");
+            }
         }
         finally
         {
@@ -109,9 +111,12 @@ public class PeerManagerFilteringIntegrationTests
 
         Assert.That(ctx.RlpxMock.CallsToShouldContact, Does.Contain(other.Address.Address),
             "the dial of the other peer has to reach the filter, otherwise the assertion below passes for the wrong reason - the peer is static because this mock filter only accepts privileged dials");
-        Assert.That(ctx.RlpxMock.CallsToShouldContact, Does.Not.Contain(self.Address.Address),
-            "the IP filter records every address it accepts, so our own record must be rejected before it reaches the filter - otherwise it keeps re-arming it for our own subnet and locks out real peers there");
-        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(self.Id));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.RlpxMock.CallsToShouldContact, Does.Not.Contain(self.Address.Address),
+                "the IP filter records every address it accepts, so our own record must be rejected before it reaches the filter - otherwise it keeps re-arming it for our own subnet and locks out real peers there");
+            Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(self.Id));
+        }
     }
 
     [Test]
@@ -150,8 +155,11 @@ public class PeerManagerFilteringIntegrationTests
         ctx.PeerManager.Start();
 
         Node connected = await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
-        Assert.That(connected.Id, Is.EqualTo(staticNode.Id), "First peer connected should be the static one");
-        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(regularNode.Id), "Regular peer should be blocked by the IP filter");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(connected.Id, Is.EqualTo(staticNode.Id), "First peer connected should be the static one");
+            Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(regularNode.Id), "Regular peer should be blocked by the IP filter");
+        }
     }
 
     private class Context : IAsyncDisposable
@@ -214,7 +222,7 @@ public class PeerManagerFilteringIntegrationTests
             ConnectedNodeIds.Add(node.Id);
             FirstConnect.TrySetResult(node);
 
-            Session session = new(30303, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30303, node, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
             return Task.FromResult(true);
         }

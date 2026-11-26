@@ -68,6 +68,17 @@ public class CodeInfoRepositoryTests
         Assert.That(repository.GetCachedCodeInfo(address, false, spec, out _), Is.SameAs(expected));
     }
 
+    [Test]
+    public void Delegated_precompile_records_its_account_and_returns_empty_code()
+    {
+        Address target = IdentityPrecompile.Address;
+        IWorldState worldState = Substitute.For<IWorldState>();
+        CodeInfoRepository repository = new(worldState, NoPrecompiles());
+
+        Assert.That(repository.GetDelegatedCodeInfo(target, Prague.Instance), Is.SameAs(CodeInfo.Empty));
+        worldState.Received(1).RecordAccountAccess(target);
+    }
+
     private static IPrecompileProvider NoPrecompiles()
     {
         IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
@@ -156,12 +167,15 @@ public class CodeInfoRepositoryTests
     public void Ordinary_address_is_not_taken_for_a_precompile()
     {
         // Sixteen leading zero bytes is what makes an address a candidate; this has none.
-        Assert.That(TestItem.AddressA.CouldBePrecompile(), Is.False);
-        Assert.That(_releaseSpec.IsPrecompile(TestItem.AddressA), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestItem.AddressA.CouldBePrecompile(), Is.False);
+            Assert.That(_releaseSpec.IsPrecompile(TestItem.AddressA), Is.False);
 
-        // Zero clears the shape guard — index 0 — so only the set can reject it.
-        Assert.That(Address.Zero.CouldBePrecompile(), Is.True);
-        Assert.That(_releaseSpec.IsPrecompile(Address.Zero), Is.False);
+            // Zero clears the shape guard — index 0 — so only the set can reject it.
+            Assert.That(Address.Zero.CouldBePrecompile(), Is.True);
+            Assert.That(_releaseSpec.IsPrecompile(Address.Zero), Is.False);
+        }
     }
 
     public static IEnumerable<TestCaseData> NotDelegationCodeCases()
@@ -211,9 +225,12 @@ public class CodeInfoRepositoryTests
 
         LoadTrackingCodeInfoRepository sut = new(stateProvider);
 
-        Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.False);
 
-        Assert.That(sut.LoadCalled, Is.False);
+            Assert.That(sut.LoadCalled, Is.False);
+        }
     }
 
     public static IEnumerable<TestCaseData> DelegationCodeCases()
