@@ -36,13 +36,8 @@ launch the vendor runner, without another restore or compile. The service stops 
 whole control group, including the vendor runner's descendants. Dockerfiles, image builds, and container entrypoints
 are unchanged. Python remains available for other tools used by sync jobs.
 
-The spawner service account may only manage `gh-*` instances and disks in the runner zones
-and use the runner subnetwork; its other compute access is read-only. Changing the `gh-`
-prefix in `Gcp.InstanceName`, `GCP_ZONES` or the subnetwork also requires updating
-`runner_name_prefix`, `zones` or the network in the `github-runners` unit of the terragrunt repository.
-The same unit allow-lists the workflow files whose jobs may impersonate the spawner, matched on the
-`job_workflow_ref` claim: for a reusable workflow that is the called file, not its caller. Files
-reached from `pull_request_target`, such as `sync-pr-gate-hoodi.yml`, are allowed only at `refs/heads/master`.
+Changing the `gh-` prefix in `Gcp.InstanceName`, `GCP_ZONES`, the subnetwork or the workflow
+files that create runners needs a matching change to the spawner's permissions.
 
 Run the Linux regression suites without cloud credentials or real instances:
 
