@@ -250,6 +250,7 @@ public sealed class MemoryTools(WorkspacePaths paths)
                  "so ask before dumping a production node, and prefer heap_stats and heap_retention on the PID. The file is roughly as large as the process's memory.")]
     public async Task<string> WriteDumpAsync([Description("Process ID.")] int pid, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         string path = Path.Combine(paths.Heap, WorkspacePaths.NewFileName($"pid{pid}", ".dmp"));
         // The target's runtime writes the dump as the target's user. In a sidecar, or for a local process of another user, that user cannot write
         // to the workspace, so the dump goes to the target's temp folder and is moved from there. The target's root as this process sees it
@@ -267,7 +268,7 @@ public sealed class MemoryTools(WorkspacePaths paths)
             await new DiagnosticsClient(pid).WriteDumpAsync(DumpType.WithHeap, requested, logDumpGeneration: false, CancellationToken.None);
             cancellationToken.ThrowIfCancellationRequested();
             if (written != path)
-                File.Move(written, path);
+                MoveInto(written, path);
             kept = true;
         }
         finally
@@ -277,6 +278,26 @@ public sealed class MemoryTools(WorkspacePaths paths)
         }
 
         return $"Dump written: {path} ({Size(new FileInfo(path).Length)})";
+    }
+
+    /// <summary>Moves <paramref name="source"/> to <paramref name="destination"/>, leaving nothing at the destination when the move fails.</summary>
+    /// <remarks>
+    /// Across file systems a move copies, and a failed copy leaves the destination partly written. The move goes to a file beside
+    /// the destination first, which is renamed only once complete.
+    /// </remarks>
+    internal static void MoveInto(string source, string destination)
+    {
+        string partial = destination + ".partial";
+        try
+        {
+            File.Move(source, partial);
+            File.Move(partial, destination);
+        }
+        catch
+        {
+            File.Delete(partial);
+            throw;
+        }
     }
 
     /// <summary>Whether <paramref name="pid"/> runs as another user than this process; false when that cannot be read.</summary>

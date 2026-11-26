@@ -108,26 +108,40 @@ public class LiveEventPipeTests
     }
 
     [Test]
-    [CancelAfter(120_000)]
-    public async Task Write_dump_leaves_no_dump_behind_when_cancelled(CancellationToken cancellationToken)
+    public async Task Write_dump_does_not_start_when_already_cancelled()
     {
-        if (!OperatingSystem.IsLinux())
-            Assert.Ignore("Starts the server's Linux build as the target.");
-
         string workspace = Directory.CreateTempSubdirectory("dump-").FullName;
-        using Process target = await StartIdleProcessAsync(cancellationToken);
         try
         {
             using CancellationTokenSource cancelled = new();
             await cancelled.CancelAsync();
 
-            Assert.That(async () => await new MemoryTools(WorkspacePaths.At(workspace)).WriteDumpAsync(target.Id, cancelled.Token), Throws.InstanceOf<OperationCanceledException>());
+            // No process has this ID, so reaching the runtime would fail with another exception.
+            Assert.That(async () => await new MemoryTools(WorkspacePaths.At(workspace)).WriteDumpAsync(int.MaxValue, cancelled.Token), Throws.InstanceOf<OperationCanceledException>());
             Assert.That(Directory.GetFiles(workspace, "*", SearchOption.AllDirectories), Is.Empty);
         }
         finally
         {
-            target.Kill();
             Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    [Test]
+    public void Moving_a_dump_leaves_nothing_behind_when_it_fails()
+    {
+        if (!OperatingSystem.IsLinux())
+            Assert.Ignore("Needs /proc.");
+
+        string folder = Directory.CreateTempSubdirectory("move-").FullName;
+        try
+        {
+            // /proc is another file system, so the move copies the file, then fails to delete the source.
+            Assert.That(() => MemoryTools.MoveInto("/proc/self/status", Path.Combine(folder, "pid1.dmp")), Throws.InstanceOf<UnauthorizedAccessException>());
+            Assert.That(Directory.GetFiles(folder), Is.Empty);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
         }
     }
 
