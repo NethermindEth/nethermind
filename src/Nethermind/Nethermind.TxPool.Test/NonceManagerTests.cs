@@ -59,7 +59,7 @@ public class NonceManagerTests
         _headInfo = new ChainHeadInfoProvider(
             new ChainHeadSpecProvider(_specProvider, _blockTree),
             _blockTree,
-            _stateProvider);
+            _stateProvider, new());
         _nonceManager = new NonceManager(_headInfo, Substitute.For<IStateHeaderProvider>(), Substitute.For<IStateReader>());
         _pendingTxs = Substitute.For<IPendingTxsBySender>();
         _pendingTxs.ContainsTx(Arg.Any<Hash256>(), Arg.Any<TxType>())

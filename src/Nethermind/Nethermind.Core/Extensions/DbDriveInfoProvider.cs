@@ -121,9 +121,11 @@ namespace Nethermind.Core.Extensions
             {
                 directoryInfo.Create();
             }
-            catch (IOException)
+            catch (IOException e)
             {
                 // ignored
+                ILogger logger = Static.LogManager.GetClassLogger(typeof(DbDriveInfoProvider));
+                if (logger.IsDebug) logger.Debug($"Cannot create the database directory {directoryInfo.FullName:hide}: {e.Message:hide}");
             }
             return directoryInfo.Exists;
         }

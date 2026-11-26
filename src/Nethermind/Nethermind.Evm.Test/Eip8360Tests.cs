@@ -710,6 +710,45 @@ public class Eip8360Tests : VirtualMachineTestsBase
             Is.EqualTo("""["step:SSTORE:100:2","post:SSTORE:100:2","step:SLOAD:100:1","post:SLOAD:100:1"]"""));
     }
 
+    [TestCase(false, TestName = "JavaScript tracer reads the pushed TCREATE salt")]
+    [TestCase(true, TestName = "JavaScript tracer reads the pushed TCREATE salt in a fault after the pop")]
+    public void JavaScript_tracer_reads_the_pushed_transient_create_salt(bool faultAfterThePop)
+    {
+        const string salt = "a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0";
+        // The fault: the init code's memory range lies beyond the cap, which TCREATE finds after popping the salt.
+        InstallCode(Factory, faultAfterThePop
+            ? Bytes.FromHexString("7f" + salt + "600163ffffffff5ff65000")
+            : Prepare.EvmCode.TCreate(EmptyInit, Bytes.FromHexString(salt), 0).Op(Instruction.POP).STOP().Done);
+        (Block block, Transaction tx) = BuildFactoryCall();
+        const string script = """
+            {
+                events: [],
+                record: function(stage, log) {
+                    if (log.op.toNumber() !== 0xf6) return;
+                    var stack = [];
+                    for (var i = 0; i < log.stack.length(); i++) stack.push(log.stack.peek(i).toString(16));
+                    this.events.push(stage + ':' + (log.getError() || '') + ':' + stack.join(','));
+                },
+                step: function(log) { this.record('step', log); },
+                postStep: function(log) { this.record('post', log); },
+                fault: function(log) { this.record('fault', log); },
+                result: function() { return this.events; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, EnabledSpec, GethTraceOptions.Default with { Tracer = script });
+        tracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = ((IBlockTracer)tracer).StartNewTxTrace(tx);
+
+        ExecuteFactoryCall(block, tx, txTracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().Single();
+
+        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions), Is.EqualTo(faultAfterThePop
+            ? $"""["step::0,ffffffff,1,{salt}","post::0,ffffffff,1,{salt}","fault:out of gas:0,ffffffff,1,{salt}"]"""
+            : $"""["step::0,0,1,{salt}","post::0,0,1,{salt}"]"""));
+    }
+
     [Test]
     public void Prestate_tracer_shows_the_wipe_and_no_transient_storage([Values(0, 5)] int endowment, [Values] bool diffMode)
     {

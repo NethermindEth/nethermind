@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Builders;
+using System.Buffers.Binary;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Consensus;
@@ -95,6 +96,57 @@ public class EraImporterTest
 
         IEraImporter sut = testContext.Resolve<IEraImporter>();
         Assert.That(() => sut.Import(tempDirectory, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraFormatException>());
+    }
+
+    [Test]
+    public async Task Import_WhenRangeEndsAtEraBoundary_ImportsAllBlocks()
+    {
+        const int ChainLength = 17;
+        await using IContainer sourceCtx = await EraTestModule.CreateExportedEraEnv(ChainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+        await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true })
+            .Build();
+        targetCtx.Resolve<IBlockTree>().SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+        IBlockStore targetStore = targetCtx.Resolve<IBlockStore>();
+
+        await targetCtx.Resolve<IEraImporter>().Import(sourceCtx.ResolveTempDirPath(), 0, ulong.MaxValue, null, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong i = 1; i < ChainLength; i++)
+            {
+                Assert.That(targetStore.Get(i, sourceTree.FindBlock(i, BlockTreeLookupOptions.None)!.Hash!), Is.Not.Null, $"block {i}");
+            }
+        }
+    }
+
+    [TestCase(1UL << 62, "starts at block")]
+    [TestCase(ulong.MaxValue, "Invalid starting block number")]
+    public async Task Import_EraFileStartingAtWrongBlock_IsRefused(ulong startBlock, string expectedMessage)
+    {
+        await using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
+        IFileSystem fileSystem = outputCtx.Resolve<IFileSystem>();
+        string destinationPath = outputCtx.ResolveTempDirPath();
+
+        string lastEraFile = fileSystem.Directory.GetFiles(destinationPath, "*.era1").Order(StringComparer.Ordinal).Last();
+        byte[] bytes = await fileSystem.File.ReadAllBytesAsync(lastEraFile);
+        int blockCount = (int)BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(bytes.Length - sizeof(ulong)));
+        int startBlockOffset = bytes.Length - sizeof(ulong) - blockCount * sizeof(ulong) - sizeof(ulong);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(startBlockOffset), startBlock);
+        await fileSystem.File.WriteAllBytesAsync(lastEraFile, bytes);
+
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
+            .Build();
+
+        IEraImporter sut = inCtx.Resolve<IEraImporter>();
+        Assert.That(() => sut.Import(destinationPath, 0, 0, null, CancellationToken.None),
+            Throws.InstanceOf<EraException>().With.Message.Contains(expectedMessage));
+        Assert.That(() => fileSystem.File.Open(lastEraFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None).Dispose(), Throws.Nothing);
     }
 
     [Test]
@@ -632,11 +684,13 @@ public class EraImporterTest
         Block block = blockTree.FindBlock(5, BlockTreeLookupOptions.None)!;
         KnownHeaders.EnsureMatch(blockTree, block);
 
+        // Under one byte per call: absorbs one-off JIT and tiering allocations on this thread, while any per-call allocation fails.
+        const int calls = 100_000;
         long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1_000; i++)
+        for (int i = 0; i < calls; i++)
             KnownHeaders.EnsureMatch(blockTree, block);
 
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(1_000));
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(calls));
     }
 
     private sealed class FindLevelCountingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)

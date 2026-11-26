@@ -4,7 +4,6 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Ssz.Merkleization;
@@ -22,7 +21,7 @@ public static partial class Merkle
         concatenation[1] = right;
 
         Unsafe.SkipInit(out parent);
-        SHA256.HashData(
+        ThreadSha256.HashData(
             MemoryMarshal.AsBytes(concatenation),
             MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref parent, 1)));
     }

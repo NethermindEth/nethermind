@@ -1,0 +1,254 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Security.Cryptography;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Nethermind.JsonRpc;
+
+namespace Nethermind.LightClient.Rpc;
+
+/// <summary>Maintains bounded polling cursors over authenticated head changes and locally admitted transactions.</summary>
+internal sealed class RpcFilters(TimeProvider? timeProvider = null)
+{
+    internal const int MaxFilters = 32;
+    internal const int MaxHeadChanges = 32;
+    internal const int MaxPendingHashes = 1_024;
+    internal static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(5);
+    private static readonly SerializedJson Empty = new("[]"u8.ToArray());
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+    private readonly Lock _lock = new();
+    private readonly Dictionary<UInt256, Filter> _filters = [];
+    private readonly Queue<HeadChange> _history = new(MaxHeadChanges);
+    private long _sequence;
+    private long _lostThrough;
+
+    internal long PublicationSequence => Volatile.Read(ref _sequence);
+    internal long StartPublication() => Interlocked.Increment(ref _sequence);
+
+    internal UInt256 Install(RpcBackend.LogQuery? query = null, bool pending = false)
+    {
+        if (query is { FromFinalized: true } or { ToFinalized: true })
+            throw new RpcException(ErrorCodes.InvalidParams, "Polling log filters accept latest or numbered block bounds.");
+        lock (_lock)
+        {
+            long now = _clock.GetTimestamp();
+            Expire(now);
+            if (_filters.Count == MaxFilters) throw new RpcException(ErrorCodes.LimitExceeded, "The polling filter limit is 32.");
+            Filter filter = new(query, pending, PublicationSequence, now);
+            UInt256 id;
+            Span<byte> random = stackalloc byte[16];
+            do
+            {
+                RandomNumberGenerator.Fill(random);
+                id = new(random, isBigEndian: true);
+            } while (!_filters.TryAdd(id, filter));
+            return id;
+        }
+    }
+
+    internal bool Uninstall(UInt256 id)
+    {
+        lock (_lock)
+        {
+            Expire(_clock.GetTimestamp());
+            return _filters.Remove(id);
+        }
+    }
+
+    internal bool HeadInterests(long sequence, ref bool logs)
+    {
+        lock (_lock)
+        {
+            Expire(_clock.GetTimestamp());
+            bool interested = false;
+            foreach (Filter filter in _filters.Values)
+            {
+                if (filter.Pending is not null || filter.Cursor >= sequence || !filter.Polling && filter.Cursor < _lostThrough) continue;
+                if (filter.Query is not null)
+                {
+                    logs = true;
+                    return true;
+                }
+                interested = true;
+            }
+            if (!interested) _history.Clear();
+            return interested;
+        }
+    }
+
+    internal void RecordHead(HeadChange change)
+    {
+        lock (_lock)
+        {
+            if (change.Sequence <= _lostThrough) return;
+            if (_history.Count == MaxHeadChanges) _lostThrough = _history.Dequeue().Sequence;
+            _history.Enqueue(change);
+        }
+    }
+
+    internal void LoseHeadHistory(long sequence)
+    {
+        lock (_lock)
+        {
+            if (sequence <= _lostThrough) return;
+            _lostThrough = sequence;
+            _history.Clear();
+        }
+    }
+
+    internal void PublishPending(Hash256 hash)
+    {
+        lock (_lock)
+        {
+            Expire(_clock.GetTimestamp());
+            foreach (Filter filter in _filters.Values)
+            {
+                if (filter.Pending is not { } hashes || filter.PendingOverflow) continue;
+                if (hashes.Count == MaxPendingHashes)
+                {
+                    hashes.Clear();
+                    filter.PendingOverflow = true;
+                }
+                else hashes.Add(hash);
+            }
+        }
+    }
+
+    internal RpcBackend.LogQuery GetLogQuery(UInt256 id)
+    {
+        lock (_lock) return GetFilter(id, _clock.GetTimestamp()).Query ?? throw FilterNotFound();
+    }
+
+    internal async Task<ResultWrapper<SerializedJson>> PollAsync(UInt256 id, RpcBackend rpc, CancellationToken token, bool webSocket = false)
+    {
+        Filter filter;
+        HeadChange[] changes;
+        Hash256[]? hashes = null;
+        lock (_lock)
+        {
+            token.ThrowIfCancellationRequested();
+            long now = _clock.GetTimestamp();
+            filter = GetFilter(id, now);
+            filter.LastPoll = now;
+            // The poll in flight owns the changes so far, and leaves them for the next poll if its response is not sent.
+            if (filter.Polling) return ResultWrapper<SerializedJson>.Success(Empty);
+            if (filter.Pending is { } pending)
+            {
+                if (filter.PendingOverflow) throw RemoveOverflowedFilter(id);
+                if (pending.Count == 0) return ResultWrapper<SerializedJson>.Success(Empty);
+                hashes = [.. pending];
+                changes = [];
+            }
+            else
+            {
+                if (filter.Cursor < _lostThrough) throw RemoveOverflowedFilter(id);
+                List<HeadChange> unseen = [];
+                foreach (HeadChange change in _history)
+                    if (change.Sequence > filter.Cursor) unseen.Add(change);
+                if (unseen.Count == 0) return ResultWrapper<SerializedJson>.Success(Empty);
+                changes = [.. unseen];
+                if (filter.Query is null)
+                {
+                    List<Hash256> added = [];
+                    foreach (HeadChange change in changes) added.AddRange(change.AddedHashes);
+                    hashes = [.. added];
+                }
+            }
+            filter.Polling = true;
+        }
+        try
+        {
+            SerializedJson? result = hashes is not null ? BoundedJson.Serialize(hashes)
+                : await rpc.GetLogChangesAsync(filter.Query!, filter.Start, changes, token, webSocket);
+            long sequence = changes.Length == 0 ? 0 : changes[^1].Sequence;
+            int pendingCount = filter.Pending is not null ? hashes!.Length : 0;
+            lock (_lock)
+            {
+                token.ThrowIfCancellationRequested();
+                if (!_filters.TryGetValue(id, out Filter? installed) || !ReferenceEquals(filter, installed)) throw FilterNotFound();
+                if (filter.Pending is null && sequence < _lostThrough) throw RemoveOverflowedFilter(id);
+                if (result is null)
+                {
+                    _filters.Remove(id);
+                    throw new RpcException(ErrorCodes.LimitExceeded, "Polling filter changes exceed the HTTP response limit; recover logs with a narrower query and install a new filter.");
+                }
+            }
+            return new PollResponse(result.Value, sent => CompletePoll(filter, sequence, pendingCount, sent));
+        }
+        catch
+        {
+            CompletePoll(filter, 0, 0, sent: false);
+            throw;
+        }
+    }
+
+    private void CompletePoll(Filter filter, long sequence, int pendingCount, bool sent)
+    {
+        lock (_lock)
+        {
+            filter.Polling = false;
+            if (!sent) return;
+            if (filter.Pending is { } pending)
+            {
+                if (!filter.PendingOverflow) pending.RemoveRange(0, pendingCount);
+            }
+            else filter.Cursor = sequence;
+        }
+    }
+
+    private Filter GetFilter(UInt256 id, long now)
+    {
+        Expire(now);
+        return _filters.TryGetValue(id, out Filter? filter) ? filter : throw FilterNotFound();
+    }
+
+    private void Expire(long now)
+    {
+        foreach ((UInt256 id, Filter filter) in _filters)
+            if (_clock.GetElapsedTime(filter.LastPoll, now) >= IdleTimeout) _filters.Remove(id);
+    }
+
+    private static RpcException FilterNotFound() => new(ErrorCodes.InvalidInput, "filter not found");
+
+    private RpcException RemoveOverflowedFilter(UInt256 id)
+    {
+        _filters.Remove(id);
+        return new(ErrorCodes.LimitExceeded, "Polling filter history was lost; install a new filter.");
+    }
+
+    internal readonly record struct LogBlock(long AddedAt, BlockHeader Header);
+    internal sealed record HeadChange(long Sequence, LogBlock[] Removed, Hash256[] AddedHashes, BlockHeader[] AddedLogHeaders);
+
+    /// <summary>A poll result that commits the filter's cursor only once the transport accepts it into the outgoing frame.</summary>
+    internal sealed class PollResponse : ResultWrapper<SerializedJson>
+    {
+        private Action<bool>? _complete;
+
+        internal PollResponse(SerializedJson result, Action<bool> complete)
+        {
+            Data = result;
+            _complete = complete;
+        }
+
+        internal Action<bool>? TakeCompletion() => Interlocked.Exchange(ref _complete, null);
+
+        public override void Dispose()
+        {
+            TakeCompletion()?.Invoke(false);
+            base.Dispose();
+        }
+    }
+
+    private sealed class Filter(RpcBackend.LogQuery? query, bool pending, long start, long now)
+    {
+        internal RpcBackend.LogQuery? Query { get; } = query;
+        internal List<Hash256>? Pending { get; } = pending ? [] : null;
+        internal bool PendingOverflow { get; set; }
+        internal long Start { get; } = start;
+        internal long Cursor { get; set; } = start;
+        internal long LastPoll { get; set; } = now;
+        internal bool Polling { get; set; }
+    }
+}

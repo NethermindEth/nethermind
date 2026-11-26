@@ -35,13 +35,16 @@ COMMA := ,
 # .NET 11, not 10: both pass the soft-float suite, but 11 is the line it is
 # maintained on. It costs ~2.6% more SP1 cycles and ~2.5% more ZisK steps over
 # the nine stateless-tests blocks, and gives ~6.5% smaller binaries.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:eadcaf8cd2fdcf4008c902fb47cfc4fe2c27c016@sha256:9aba9c8f58944e91d935863a12a00df25edc0adbfe8d05107d3548f9a22b4217
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:3e6703196d4a350e61344168b1332b77ed3e8092@sha256:7433a423863fee75426a5c544cf70b997cdafdf76f70f57f8488261e1750b5cc
 
 # Every rv64 target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.
 # Floating point in the IL is not an error: the guest is soft-float (lp64), and
 # --error-on-float-binary checks that no F/D instruction is in the image.
 ISA_GATES ?= --error-on-float-binary --error-on-compressed --error-on-atomic
+
+# Extra bflat options, such as --codegenopt Name=Value.
+BFLAT_EXTRA_FLAGS ?=
 
 # The guest has no instruction cache, so favouring speed over size is near free.
 # Requires the TrieNode seqlock collapse: -Ot over the seqlock built a guest whose
@@ -170,6 +173,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
+		$(BFLAT_EXTRA_FLAGS) \
 		$(GUEST_OUT) \
 		$(GUEST_SOURCES)
 	@len=$$(sed -n 's/.*Name="__embedded_resourcedata" Length="\([0-9]*\)".*/\1/p' $(GUEST_DIR)/Program.map.xml); \

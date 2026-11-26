@@ -323,6 +323,10 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         new("600060006000600073000000000000000000000000000000000000beef6000f4", 23000UL, "out of gas: out of gas", 100UL)
     ];
 
+    /// <remarks>
+    /// As in Geth, the struct loggers report a failing step's cost as zero; the EIP-3155 file tracer keeps the cost
+    /// the step could not pay.
+    /// </remarks>
     [TestCaseSource(nameof(OpcodeFaultCases))]
     public void Opcode_fault_preserves_error_and_calculated_cost(string bytecode, ulong gasLimit, string expectedError, ulong expectedCost)
     {
@@ -333,7 +337,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Entries[^1].Error, Is.EqualTo(expectedError));
-            Assert.That(result.Entries[^1].GasCost, Is.EqualTo(expectedCost));
+            Assert.That(result.Entries[^1].GasCost, Is.Zero);
             Assert.That(result.Gas, Is.EqualTo(gasLimit));
         }
 
@@ -357,12 +361,12 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(last.GetProperty("error").GetString(), Is.EqualTo(expectedError), "streaming error");
-            Assert.That(last.GetProperty("gasCost").GetUInt64(), Is.EqualTo(expectedCost), "streaming gas cost");
+            Assert.That(last.GetProperty("gasCost").GetUInt64(), Is.Zero, "streaming gas cost");
         }
     }
 
     [TestCaseSource(nameof(OpcodeFaultCases))]
-    public void Child_opcode_fault_keeps_diagnostics_and_parent_resumes(string bytecode, ulong gasLimit, string expectedError, ulong expectedCost)
+    public void Child_opcode_fault_keeps_diagnostics_and_parent_resumes(string bytecode, ulong gasLimit, string expectedError, ulong _)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(bytecode), CancunSpec);
@@ -380,7 +384,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(entry.Error, Is.EqualTo(expectedError));
-                Assert.That(entry.GasCost, Is.EqualTo(expectedCost));
+                Assert.That(entry.GasCost, Is.Zero);
                 Assert.That(entry.Depth, Is.EqualTo(2));
             }
         }
@@ -393,14 +397,14 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase("600160005500", "SSTORE", "out of gas: write protection", 0UL)]
-    [TestCase("ff", "SELFDESTRUCT", "stack underflow (0 <=> 1)", 5000UL)]
+    [TestCase("600160005500", "SSTORE", "out of gas: write protection")]
+    [TestCase("ff", "SELFDESTRUCT", "stack underflow (0 <=> 1)")]
     // The MSTORE8 at 0x25ec0 leaves 4922 gas, short of the constant charge Geth takes before write protection.
-    [TestCase("5f62025ec05361beefff", "SELFDESTRUCT", "out of gas", 5000UL)]
-    // Geth's struct logger has no fault hook, so only the cost of a LOG that faults with write protection is compared.
-    [TestCase("5f5f5f5fa2", "LOG2", null, 1125UL)]
-    [TestCase("5f5f60205fa2", "LOG2", null, 1384UL)]
-    public void Static_storage_fault_keeps_dynamic_gas_error(string childCode, string opcode, string? error, ulong gasCost)
+    [TestCase("5f62025ec05361beefff", "SELFDESTRUCT", "out of gas")]
+    // Geth rejects LOG while executing it, so its write protection carries no out-of-gas prefix.
+    [TestCase("5f5f5f5fa2", "LOG2", "write protection")]
+    [TestCase("5f5f60205fa2", "LOG2", "write protection")]
+    public void Static_storage_fault_keeps_dynamic_gas_error(string childCode, string opcode, string error)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), CancunSpec);
@@ -414,9 +418,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(storage.Opcode, Is.EqualTo(opcode));
-            if (error is not null)
-                Assert.That(storage.Error, Is.EqualTo(error));
-            Assert.That(storage.GasCost, Is.EqualTo(gasCost));
+            Assert.That(storage.Error, Is.EqualTo(error));
+            Assert.That(storage.GasCost, Is.Zero);
             Assert.That(result.Failed, Is.False);
             Assert.That(result.Entries[^1].Opcode, Is.EqualTo("STOP"));
         }
@@ -435,17 +438,18 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     private static System.Collections.Generic.IEnumerable<TestCaseData> NonGasOpcodeFaultCases()
     {
-        yield return new("fe", 0UL, null, 100000UL);
-        yield return new("0c", 0UL, null, 100000UL);
-        yield return new("01", 3UL, "stack underflow (0 <=> 2)", 100000UL);
-        yield return new("600156", 8UL, null, 100000UL);
-        yield return new("6001600060003e", 9UL, null, 100000UL);
-        yield return new("60006000fd", 0UL, null, 100000UL);
-        yield return new("fe", 0UL, null, 21000UL);
-        yield return new("fe", 0UL, null, 21009UL);
-        yield return new("600101", 3UL, "stack underflow (1 <=> 2)", 100000UL);
-        yield return new("600160006110003e", 425UL, "out of gas", 21100UL);
-        yield return new("600160006110003e", 425UL, null, 22000UL);
+        yield return new("fe", 0UL, "invalid opcode: INVALID", 100000UL);
+        yield return new("0c", 0UL, "invalid opcode: opcode 0xc not defined", 100000UL);
+        yield return new("01", 0UL, "stack underflow (0 <=> 2)", 100000UL);
+        yield return new("600156", 0UL, "invalid jump destination", 100000UL);
+        yield return new("6001600060003e", 0UL, "return data out of bounds", 100000UL);
+        // REVERT is not an exceptional halt, so it keeps its cost and has no error.
+        yield return new("60206000fd", 3UL, null, 100000UL);
+        yield return new("fe", 0UL, "invalid opcode: INVALID", 21000UL);
+        yield return new("fe", 0UL, "invalid opcode: INVALID", 21009UL);
+        yield return new("600101", 0UL, "stack underflow (1 <=> 2)", 100000UL);
+        yield return new("600160006110003e", 0UL, "out of gas", 21100UL);
+        yield return new("600160006110003e", 0UL, "return data out of bounds", 22000UL);
     }
 
     [TestCaseSource(nameof(NonGasOpcodeFaultCases))]
@@ -483,15 +487,15 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     {
         foreach (ForkActivation activation in new[] { MainnetSpecProvider.CancunActivation, MainnetSpecProvider.PragueActivation })
         {
-            yield return new TestCaseData(activation, "6000600055", 24000UL, 1UL, 5000UL, "out of gas");
-            yield return new TestCaseData(activation, "6002600055", 24000UL, 1UL, 5000UL, "out of gas");
+            yield return new TestCaseData(activation, "6000600055", 24000UL, 1UL, 0UL, "out of gas");
+            yield return new TestCaseData(activation, "6002600055", 24000UL, 1UL, 0UL, "out of gas");
             yield return new TestCaseData(activation, "6001600055", 23307UL, 1UL, 2200UL, null);
             yield return new TestCaseData(activation, "60016000556002600055", 45412UL, 0UL, 0UL, "out of gas: not enough gas for reentrancy sentry");
         }
         foreach (ForkActivation activation in new ForkActivation[] { new(MainnetSpecProvider.IstanbulBlockNumber), new(MainnetSpecProvider.BerlinBlockNumber - 1), new(MainnetSpecProvider.BerlinBlockNumber) })
         {
-            yield return new TestCaseData(activation, "6000600055", 24000UL, 1UL, 5000UL, "out of gas");
-            yield return new TestCaseData(activation, "6002600055", 24000UL, 1UL, 5000UL, "out of gas");
+            yield return new TestCaseData(activation, "6000600055", 24000UL, 1UL, 0UL, "out of gas");
+            yield return new TestCaseData(activation, "6002600055", 24000UL, 1UL, 0UL, "out of gas");
         }
     }
 
@@ -526,7 +530,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             Assert.That(hasStorage, Is.EqualTo(expectedError is null));
             if (hasStorage)
                 Assert.That(storage.GetProperty("0x" + new string('0', 64)).GetString(), Is.EqualTo("0x" + expectedValue.ToString("x64")));
-            Assert.That(lastStorage.Refund, Is.EqualTo(expectedValue == 0 ? (long?)spec.GasCosts.SClearRefund : null));
+            Assert.That(lastStorage.Refund, Is.Null, "the counter before the SSTORE");
         }
 
         using JsonDocument streamed = ExecuteStreamingTrace(block, tx, GethTraceOptions.Default with { DisableStack = disableStack });
@@ -840,17 +844,28 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
         if (opcodeResult is not null)
         {
+            // The struct step names a byte by the active fork's opcode set and, as in Geth, gives INVALID no constant
+            // cost, so it reports the invalid opcode even where the native frame keeps running out of gas.
+            string expectedName = expectedError is null || opcode == Instruction.INVALID
+                ? OpcodeJsonNames.GetName(opcode)
+                : $"opcode 0x{(byte)opcode:x} not defined";
+            string? expectedStepError = expectedError is null ? null : $"invalid opcode: {expectedName}";
             int matchingSteps = 0;
             foreach (GethTxTraceEntry entry in opcodeResult.Entries)
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(entry.Error, Is.Null, $"struct step {entry.ProgramCounter} at depth {entry.Depth}");
-                    if (entry.Opcode == OpcodeJsonNames.GetName(opcode) && entry.Depth == (child ? 2 : 1))
+                    if (entry.ProgramCounter == 0 && entry.Depth == (child ? 2 : 1))
                     {
                         matchingSteps++;
+                        Assert.That(entry.Opcode, Is.EqualTo(expectedName), "struct step name");
+                        Assert.That(entry.Error, Is.EqualTo(expectedStepError), "struct step error");
                         if (expectedError is not null)
                             Assert.That(entry.GasCost, Is.Zero, "invalid opcode step gas cost");
+                    }
+                    else
+                    {
+                        Assert.That(entry.Error, Is.Null, $"struct step {entry.ProgramCounter} at depth {entry.Depth}");
                     }
                 }
             }
@@ -926,6 +941,11 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             if (outcome == ChildOutcome.Revert)
             {
                 Assert.That(frame.Error, Is.EqualTo("execution reverted"), "revert error");
+            }
+
+            if (outcome == ChildOutcome.StackOverflow)
+            {
+                Assert.That(frame.Error, Is.EqualTo("stack limit reached 1024 (1023)"), "stack overflow error");
             }
 
             if (depth == 2)
@@ -1862,6 +1882,50 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             }
             """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    [Test(Description = "Like geth, a SELFDESTRUCT that runs out of gas paying for the new beneficiary account reports no frame")]
+    public void Test_CallTrace_SelfDestruct_OutOfGas_OmitsFrame([Values] bool enoughGas)
+    {
+        Address beneficiary = new("0x00000000000000000000000000000000000000be");
+        byte[] childCode = Prepare.EvmCode.PushData(beneficiary).Op(Instruction.SELFDESTRUCT).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1);
+        TestState.InsertCode(TestItem.AddressC, childCode, Spec);
+        // The new account charge of 25000 runs after the beneficiary access, so 10000 gas reaches it but cannot pay it.
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, enoughGas ? 50000 : 10000).Op(Instruction.POP).STOP().Done;
+
+        (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        using GethLikeTxTrace trace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
+        NativeCallTracerCallFrame child = ((NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!).Calls.AssertSingle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(child.Error, Is.EqualTo(enoughGas ? null : "out of gas"));
+            Assert.That(child.Calls.Select(static frame => frame.Type), Is.EqualTo(enoughGas ? new[] { Instruction.SELFDESTRUCT } : Array.Empty<Instruction>()));
+        }
+    }
+
+    [Test(Description = "Like geth, the EIP-7708 transfer log of a SELFDESTRUCT comes before its frame")]
+    public void Test_CallTrace_SelfDestruct_TransferLog_Position()
+    {
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        LogEntry transferLog = new(TestItem.AddressA, [], [Keccak.Zero]);
+
+        tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportSelfDestruct(TestItem.AddressB, 1, TestItem.AddressC);
+        tracer.ReportLog(transferLog);
+        tracer.ReportActionEnd(90000, ReadOnlyMemory<byte>.Empty);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(10000, 10000), [], [transferLog]);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Logs.AssertSingle().Position, Is.Zero);
+            Assert.That(root.Calls.AssertSingle().Type, Is.EqualTo(Instruction.SELFDESTRUCT));
+        }
     }
 
     public enum CreateOutcome { Success, Revert, InvalidOpcode, AddressCollision }

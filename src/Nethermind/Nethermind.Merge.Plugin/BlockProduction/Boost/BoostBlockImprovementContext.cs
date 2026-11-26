@@ -44,25 +44,27 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         _boostRelay = boostRelay;
         _stateReader = stateReader;
         _improvementCancellation = cts;
-        _timeOutCancellation = new CancellationTokenSource(timeout);
-        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
+        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _timeOutCancellation = CancellationTokenSource.CreateLinkedTokenSource(_linkedCancellation.Token);
+        _timeOutCancellation.CancelAfter(timeout);
         _best = new(currentBestBlock, UInt256.Zero);
         StartDateTime = startDateTime;
-        ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _linkedCancellation.Token);
+        ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _timeOutCancellation.Token, _linkedCancellation.Token);
     }
 
     private async Task<Block?> StartImprovingBlock(
         IBlockProducer blockProducer,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CancellationToken abandonToken)
     {
 
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
         Address feeRecipient = payloadAttributes.SuggestedFeeRecipient!;
         _stateReader.TryGetAccount(parentHeader, feeRecipient, out AccountStruct account);
         UInt256 balanceBefore = account.Balance;
-        Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
+        Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken, abandonToken);
         if (block is not null && TrySetBest(new(block, _feesTracer.Fees), _best))
         {
             _stateReader.TryGetAccount(parentHeader, feeRecipient, out account);

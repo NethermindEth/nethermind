@@ -933,7 +933,7 @@ public partial class DebugRpcModuleTests
 
     [TestCase("""{"gasPrice":"0x1","maxFeePerGas":"0x2"}""", RpcTransactionErrors.GasPriceInEip1559)]
     [TestCase("""{"maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x2"}""", "maxFeePerGas (1) < maxPriorityFeePerGas (2)")]
-    [TestCase("""{"blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"],"maxFeePerBlobGas":"0x1"}""", RpcTransactionErrors.MissingToInBlobTx)]
+    [TestCase("""{"blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"],"maxFeePerBlobGas":"0x1"}""", Nethermind.Core.Messages.TxErrorMessages.TxMissingTo)]
     [TestCase("""{"authorizationList":[]}""", Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)]
     [TestCase("""{"authorizationList":[],"input":"0x00"}""", Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)]
     public async Task Debug_traceCall_contract_creation_preserves_validation(string fields, string expectedError)
@@ -1231,6 +1231,7 @@ public partial class DebugRpcModuleTests
     public static IEnumerable<TestCaseData> OpcodeLoggerLimitCases()
     {
         // Streamed counts pin Geth boundaries; buffered counts pin the conservative estimate.
+        // Rows whose steps change the refund counter follow the execution-apis refund timing, not Geth's.
         (string Code, bool DisableStack, bool EnableMemory, long Limit, int Count, int EstimatedCount)[] cases =
         [
             ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 770, 9, 3),
@@ -1243,8 +1244,8 @@ public partial class DebugRpcModuleTests
             ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1440, 17, 4),
             ("602a600055600060005500", false, false, 507, 5, 2),
             ("602a600055600060005500", false, false, 508, 6, 2),
-            ("602a600055600060005500", false, false, 752, 6, 3),
-            ("602a600055600060005500", false, false, 753, 7, 3),
+            ("602a600055600060005500", false, false, 737, 6, 3),
+            ("602a600055600060005500", false, false, 738, 7, 3),
             ("602a61ffff5360006000f3", false, true, 224, 3, 1),
             ("602a61ffff5360006000f3", false, true, 225, 4, 1),
             ("602a61ffff5360006000f3", false, true, 141613, 4, 4),
@@ -1624,6 +1625,13 @@ public partial class DebugRpcModuleTests
             ("explicit_type_without_fields", Istanbul.Instance, new() { ["type"] = "0x4" }, null),
             ("dynamic_fees_before_london", Berlin.Instance, new() { ["maxFeePerGas"] = "0x0" }, "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"),
             ("fee_order_before_authorization_fork", Cancun.Instance, new() { ["authorizationList"] = authorizationList, ["maxFeePerGas"] = "0x1", ["maxPriorityFeePerGas"] = "0x2" },
+                $"tracing failed: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 2, maxFeePerGas: 1"),
+            ("priority_fee_without_fee_cap", Cancun.Instance, new() { ["maxPriorityFeePerGas"] = "0x3" },
+                $"tracing failed: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 3, maxFeePerGas: 0"),
+            ("zero_priority_fee_without_fee_cap", Cancun.Instance, new() { ["maxPriorityFeePerGas"] = "0x0" }, null),
+            ("blob_recipient_before_empty_hashes", Cancun.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["blobVersionedHashes"] = Array.Empty<string>() }, TxErrorMessages.TxMissingTo),
+            ("blob_empty_hashes_at_cancun", Cancun.Instance, new() { ["blobVersionedHashes"] = Array.Empty<string>() }, "tracing failed: blob transaction missing blob hashes"),
+            ("fee_order_before_empty_hashes", Cancun.Instance, new() { ["blobVersionedHashes"] = Array.Empty<string>(), ["maxFeePerGas"] = "0x1", ["maxPriorityFeePerGas"] = "0x2" },
                 $"tracing failed: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 2, maxFeePerGas: 1"),
             ("authorization_fork_before_empty_list", Cancun.Instance, new() { ["authorizationList"] = Array.Empty<object>() }, Unsupported("setcode")),
             ("blob_recipient_before_london", Berlin.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["blobVersionedHashes"] = blobHashes, ["maxFeePerGas"] = "0x1" }, TxErrorMessages.TxMissingTo),

@@ -52,12 +52,14 @@ public class FlatTreeSyncStoreTests
 
     private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value)
     {
-        IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
-        ValueHash256 addrHash = ValueKeccak.Compute(address.Bytes);
         Span<byte> slotBytes = stackalloc byte[32];
         slot.ToBigEndian(slotBytes);
-        ValueHash256 slotHash = ValueKeccak.Compute(slotBytes);
+        WriteStorageDirectToDb(ValueKeccak.Compute(address.Bytes), ValueKeccak.Compute(slotBytes), value);
+    }
 
+    private void WriteStorageDirectToDb(in ValueHash256 addrHash, in ValueHash256 slotHash, byte[] value)
+    {
+        IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
         byte[] storageKey = new byte[52];
         addrHash.Bytes[..4].CopyTo(storageKey.AsSpan()[..4]);
         slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
@@ -95,6 +97,53 @@ public class FlatTreeSyncStoreTests
         store.EnsureStorageEmpty(Keccak.Compute(address.Bytes));
 
         Assert.That(HasStorageEntries(address), Is.False, "Storage entries should be deleted after EnsureStorageEmpty");
+    }
+
+    /// <summary>
+    /// Healing finds a storage trie node stored at a path with the hash it expects saved with its subtree, so the nodes
+    /// have to go with the slots, whether or not the root is among them, in both columns, and for that account only.
+    /// </summary>
+    [Test]
+    public void EnsureStorageEmpty_deletes_the_storage_trie_nodes_of_that_account_only([Values] bool withRootNode)
+    {
+        // The second account shares the first four bytes of the cleared one, which storage keys start with.
+        Hash256 cleared = new("0x1234567811111111111111111111111111111111111111111111111111111111");
+        Hash256 samePrefix = new("0x1234567822222222222222222222222222222222222222222222222222222222");
+        Hash256 other = TestItem.KeccakB;
+        Hash256[] accounts = [cleared, samePrefix, other];
+        ValueHash256 slot = TestItem.KeccakC;
+        // The deepest of these is past the paths the storage node column holds.
+        TreePath[] nodePaths = [TreePath.Empty, TreePath.FromHexString("1"), TreePath.FromHexString("f"), TreePath.FromHexString("fffffffffffffff"), TreePath.FromHexString("1111111111111111")];
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            foreach (Hash256 account in accounts)
+            {
+                foreach (TreePath nodePath in nodePaths)
+                {
+                    if (withRootNode || account != cleared || nodePath.Length > 0) batch.SetStorageTrieNode(account, nodePath, StorageNodeRlp);
+                }
+            }
+        }
+
+        foreach (Hash256 account in accounts) WriteStorageDirectToDb(account, slot, [0x01, 0x02]);
+
+        using FlatTestContainer container = CreateContainer(_persistence);
+        container.Resolve<FlatTreeSyncStore>().EnsureStorageEmpty(cleared);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Hash256 account in accounts)
+            {
+                bool kept = account != cleared;
+                UInt256 value = default;
+                Assert.That(reader.TryGetStorageRaw(account, slot, ref value), Is.EqualTo(kept), $"slot of {account}");
+                foreach (TreePath nodePath in nodePaths)
+                {
+                    Assert.That(reader.LoadStorageRlp(account, nodePath, ReadFlags.None), kept ? Is.EqualTo(StorageNodeRlp) : Is.Null, $"storage node {nodePath} of {account}");
+                }
+            }
+        }
     }
 
     [Test]
@@ -192,16 +241,89 @@ public class FlatTreeSyncStoreTests
         }
     }
 
+    public enum SavedBeforeTheLeaf
+    {
+        Nothing,
+        StorageOfTheLeafAccount,
+        LeafOfTheLeafAccountAbove,
+        StorageOfAnotherAccount,
+        StateNodeBelowTheLeaf,
+        LeafOfAnotherAccountAbove,
+        LeafOfTheLeafAccountBelow,
+    }
+
+    [TestCase(SavedBeforeTheLeaf.Nothing, false)]
+    [TestCase(SavedBeforeTheLeaf.StorageOfTheLeafAccount, false)]
+    [TestCase(SavedBeforeTheLeaf.LeafOfTheLeafAccountAbove, false)]
+    [TestCase(SavedBeforeTheLeaf.StorageOfAnotherAccount, true)]
+    [TestCase(SavedBeforeTheLeaf.StateNodeBelowTheLeaf, true)]
+    [TestCase(SavedBeforeTheLeaf.LeafOfAnotherAccountAbove, true)]
+    [TestCase(SavedBeforeTheLeaf.LeafOfTheLeafAccountBelow, true)]
+    public void SaveNode_compares_a_leaf_with_the_one_RemoveMismatchedNode_took_out_until_a_state_node_or_another_account_is_saved_under_it(SavedBeforeTheLeaf saved, bool selfDestructsTheRange)
+    {
+        // Both accounts are under the leaf's path "a".
+        Hash256 held = new("0xa000000000000000000000000000000000000000000000000000000000000001");
+        Hash256 other = new("0xa000000000000000000000000000000000000000000000000000000000000002");
+        TreePath leafPath = TreePath.FromHexString("a");
+        using (FlatTestContainer container = CreateContainer(_persistence))
+        {
+            SaveAccountLeaf(container.Resolve<FlatTreeSyncStore>(), held, depth: 1);
+        }
+
+        FakeWriteBatch batch = new();
+        using FlatTestContainer recording = CreateContainer(new BatchRecordingPersistence(_persistence, batch));
+        FlatTreeSyncStore store = recording.Resolve<FlatTreeSyncStore>();
+        (_, byte[] newLeaf) = Leaf(held, depth: 1, Rlp.Encode(new Account(1, 2)));
+        store.RemoveMismatchedNode(null, leafPath, ValueKeccak.Compute(newLeaf));
+        // The recording batch keeps the removal from the db.
+        using (IPersistence.IWriteBatch dbBatch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            dbBatch.SetStateTrieNode(leafPath, default);
+        }
+
+        switch (saved)
+        {
+            case SavedBeforeTheLeaf.StorageOfTheLeafAccount: SaveSlotLeaf(store, held); break;
+            case SavedBeforeTheLeaf.LeafOfTheLeafAccountAbove: SaveAccountLeaf(store, held, depth: 0); break;
+            case SavedBeforeTheLeaf.StorageOfAnotherAccount: SaveSlotLeaf(store, other); break;
+            case SavedBeforeTheLeaf.StateNodeBelowTheLeaf: SaveAccountLeaf(store, other, depth: 2); break;
+            case SavedBeforeTheLeaf.LeafOfAnotherAccountAbove: SaveAccountLeaf(store, other, depth: 0); break;
+            case SavedBeforeTheLeaf.LeafOfTheLeafAccountBelow: SaveAccountLeaf(store, held, depth: 2); break;
+        }
+        batch.SelfDestructRangeCalls.Clear();
+
+        store.SaveNode(null, leafPath, ValueKeccak.Compute(newLeaf), newLeaf);
+
+        Assert.That(batch.SelfDestructRangeCalls, selfDestructsTheRange ? Is.Not.Empty : Is.Empty);
+    }
+
     private static readonly byte[] StorageNodeRlp = [0xc2, 0x80, 0x80];
     private static readonly TreePath[] StorageNodePaths = [TreePath.FromHexString("1"), TreePath.FromHexString("1111111111111111")];
 
-    private static void SaveRootAccountLeaf(FlatTreeSyncStore store, Address address)
+    private static void SaveRootAccountLeaf(FlatTreeSyncStore store, Address address) =>
+        SaveAccountLeaf(store, Keccak.Compute(address.Bytes), depth: 0);
+
+    private static void SaveAccountLeaf(FlatTreeSyncStore store, Hash256 account, int depth)
     {
-        TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles.BytesToNibbleBytes(Keccak.Compute(address.Bytes).Bytes), Rlp.Encode(new Account(1, 1)));
-        TreePath path = TreePath.Empty;
-        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
-        byte[] rlp = leaf.FullRlp.ToArray()!;
-        store.SaveNode(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
+        (TreePath path, byte[] rlp) = Leaf(account, depth, Rlp.Encode(new Account(1, 1)));
+        store.SaveNode(null, path, ValueKeccak.Compute(rlp), rlp);
+    }
+
+    private static void SaveSlotLeaf(FlatTreeSyncStore store, Hash256 account)
+    {
+        (_, byte[] rlp) = Leaf(TestItem.KeccakA, depth: 0, Rlp.Encode(new byte[] { 0x01 }));
+        store.SaveNode(account, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
+    }
+
+    /// <summary>The leaf of the key at the depth, and its path.</summary>
+    private static (TreePath Path, byte[] Rlp) Leaf(Hash256 key, int depth, byte[] value)
+    {
+        byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
+        TreePath path = TreePath.Empty.Append(nibbles.AsSpan(0, depth));
+        TrieNode leaf = TrieNodeFactory.CreateLeaf(nibbles.AsSpan(depth), value);
+        TreePath resolvePath = path;
+        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref resolvePath);
+        return (path, leaf.FullRlp.ToArray()!);
     }
 
     [Test]

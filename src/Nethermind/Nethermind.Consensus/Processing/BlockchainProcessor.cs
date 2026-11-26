@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Evm;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -102,6 +103,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly Stopwatch _stopwatch = new();
     private readonly BlockProcessingPauseGate _pauseGate = new();
     private readonly BlockTreeMutationLock _mutationLock;
+    private readonly BlockProcessingTracker _processingTracker;
 
     /// <summary>
     ///
@@ -124,11 +126,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Options options,
         IProcessingStats processingStats,
         BlockTreeMutationLock mutationLock,
+        BlockProcessingTracker processingTracker,
         IEnumerable<IBlockTracer>? blockTracers = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
         _mutationLock = mutationLock;
+        _processingTracker = processingTracker;
         _branchProcessor = branchProcessor;
         _options = options;
         _branchBuilder = new ProcessingBranchBuilder(blockTree, stateReader, preprocessorSteps, logManager.GetClassLogger<ProcessingBranchBuilder>());
@@ -618,7 +622,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
+    private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _processingTracker.IsProcessingBlock = value; } }
 
     private async Task RunProcessingLoop()
     {
@@ -654,6 +658,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             finally
             {
+                if (ExecutionMetricsFlag.IsActive) PerTxTimingCollector.DiscardPending();
                 IsBlockProcessingThread = previousMainThread;
                 IsProcessingBlock = false;
                 GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);

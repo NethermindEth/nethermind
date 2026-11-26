@@ -564,7 +564,6 @@ public class MempoolStatePrewarmerTests
 
         public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
         public void ClearCaches() { }
-        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
         {
@@ -581,7 +580,6 @@ public class MempoolStatePrewarmerTests
 
         public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
         public void ClearCaches() { }
-        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
         {
@@ -613,11 +611,10 @@ public class MempoolStatePrewarmerTests
 
         public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
         public void ClearCaches() { }
-        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
         {
-            _sessions.Add((head, cancellationToken));
+            _sessions.Add((head, cancellationToken), CancellationToken.None);
             return Task.CompletedTask;
         }
 

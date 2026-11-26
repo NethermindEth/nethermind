@@ -4,6 +4,7 @@
 using System.Collections;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Test.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -166,7 +167,7 @@ public class BlockSignatureBatchProcessingTests
     {
         BeaconBlockGloas block = SignedGloasBlock();
         GloasFixture fixture = SharedGloas.Value;
-        BlockSignatureBatch batch = new();
+        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
         GloasBlockProcessing.ProcessBlock(fixture.Pre.Clone(), block, new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), verifySignatures: true, batch);
 
         Outcome serial = RunGloas(block, batched: false);
@@ -242,7 +243,7 @@ public class BlockSignatureBatchProcessingTests
             Replace(block, part, WrongSignature);
         }
         GloasFixture fixture = SharedGloas.Value;
-        BlockSignatureBatch batch = new();
+        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
 
         GloasBlockProcessing.ProcessBlock(fixture.Pre.Clone(), block, new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), verifySignatures: false, batch);
 
@@ -416,7 +417,7 @@ public class BlockSignatureBatchProcessingTests
     public void A_fully_signed_fulu_block_is_accepted_with_the_serial_post_state_after_deferring_every_signature()
     {
         BeaconBlock block = SignedFuluBlock();
-        BlockSignatureBatch batch = new();
+        BlockSignatureBatch batch = new(BlsSignatureVerifier.Instance);
         Outcome serial = RunFulu(block, batched: false);
         RunFulu(block, batched: false, batch);
 
@@ -459,19 +460,19 @@ public class BlockSignatureBatchProcessingTests
             process = batch => BlockProcessing.ProcessVoluntaryExit(state.Clone(), exit, new EpochCache(), pubkeys, verifySignature: true, batch);
         }
 
-        BlockSignatureBatch deferred = new();
+        BlockSignatureBatch deferred = new(BlsSignatureVerifier.Instance);
         process(deferred);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(deferred.Count, Is.EqualTo(1), "the exit signature is deferred");
         if (validSignature)
         {
             Assert.That(() => process(null), Throws.Nothing, "fixture bug: the serial path must accept the exit");
-            Assert.That(() => BlockSignatureBatch.Run(batch => process(batch)), Throws.Nothing);
+            Assert.That(() => BlockSignatureBatch.Run(BlsSignatureVerifier.Instance, batch => process(batch)), Throws.Nothing);
         }
         else
         {
             Assert.That(() => process(null), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo(refusal));
-            Assert.That(() => BlockSignatureBatch.Run(batch => process(batch)), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo(refusal));
+            Assert.That(() => BlockSignatureBatch.Run(BlsSignatureVerifier.Instance, batch => process(batch)), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo(refusal));
         }
     }
 
@@ -651,6 +652,31 @@ public class BlockSignatureBatchProcessingTests
         Assert.That(gloasState.RandaoMixes![gloasMix], Is.EqualTo(Mixed(SharedGloas.Value.Pre.RandaoMixes![gloasMix], WrongSignature)), "gloas mix");
         Assert.That(fuluRefusal, Is.EqualTo(SerialRefusal(SignedPart.Randao)), "fulu");
         Assert.That(fuluState.RandaoMixes![fuluMix], Is.EqualTo(Mixed(fulu.Anchor.RandaoMixes![fuluMix], WrongSignature)), "fulu mix");
+    }
+
+    [Test]
+    public void A_verifier_that_rejects_every_signature_refuses_a_fully_signed_block([Values] bool gloas, [Values] bool proposerSignatureVerified)
+    {
+        string? refusal;
+        if (gloas)
+        {
+            GloasFixture fixture = SharedGloas.Value;
+            PubkeyCache pubkeys = new() { SignatureVerifier = new RejectingSignatureVerifier() };
+            pubkeys.Build(fixture.Pre.Validators!);
+            refusal = Refusal(() => ForkedStateTransition.Apply(new ForkedBeaconState.OfGloas(fixture.BeforeSlots.Clone()), new ForkedSignedBeaconBlock.OfGloas(SignedByProposer(SignedGloasBlock())),
+                new EpochCache(), pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), validateResult: false, verifySignatures: true, proposerSignatureVerified));
+        }
+        else
+        {
+            FuluFixture fixture = SharedFulu.Value;
+            PubkeyCache pubkeys = new() { SignatureVerifier = new RejectingSignatureVerifier() };
+            pubkeys.Build(fixture.Anchor.Validators!);
+            refusal = Refusal(() => FuluStateTransition.Apply(fixture.Anchor.Clone(), SignedFuluBlockByProposer(SignedFuluBlock()), new EpochCache(), pubkeys, new AcceptingNotifier(), fixture.Chain.Spec,
+                validateResult: false, verifySignatures: true, proposerSignatureVerified));
+        }
+
+        string firstRefusal = !proposerSignatureVerified ? "Invalid proposer signature" : gloas ? "Invalid execution payload bid signature" : "Invalid RANDAO reveal";
+        Assert.That(refusal, Does.StartWith(firstRefusal));
     }
 
     private static string? Refusal(Action apply)
