@@ -3,6 +3,13 @@
 The composite action sets up the .NET SDK from `global.json` before running `create.cs` or `destroy.cs`.
 Both programs preserve the action's environment inputs and GitHub output names.
 Runner names include the run attempt so retries can register a new JIT runner.
+Registering the JIT runner is retried on GitHub 429 and 5xx responses; a 409 after such a
+retry means the timed-out request did register the name, so that registration is removed first.
+
+"Re-run failed jobs" does not re-run a create job that succeeded, so a re-run sync job would
+wait for a runner that no longer exists. Callers should create, sync and tear down in one
+reusable workflow per runner, skip the sync when the create job's attempt differs from
+`github.run_attempt`, and have users re-run the create job, which re-runs its dependents.
 
 Teardown runs in a separate job and still requires SDK installation and compilation.
 The pinned SDK supports `#:include`; an arbitrary preinstalled SDK may not. Restore
@@ -33,6 +40,9 @@ The spawner service account may only manage `gh-*` instances and disks in the ru
 and use the runner subnetwork; its other compute access is read-only. Changing the `gh-`
 prefix in `Gcp.InstanceName`, `GCP_ZONES` or the subnetwork also requires updating
 `runner_name_prefix`, `zones` or the network in the `github-runners` unit of the terragrunt repository.
+The same unit allow-lists the workflow files whose jobs may impersonate the spawner, matched on the
+`job_workflow_ref` claim: for a reusable workflow that is the called file, not its caller. Files
+reached from `pull_request_target`, such as `sync-pr-gate-hoodi.yml`, are allowed only at `refs/heads/master`.
 
 Run the Linux regression suites without cloud credentials or real instances:
 
