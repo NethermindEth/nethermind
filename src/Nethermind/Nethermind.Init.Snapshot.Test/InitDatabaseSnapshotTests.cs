@@ -601,10 +601,11 @@ public class InitDatabaseSnapshotTests
     public async Task Execute_ArchiveEntryInLostAndFound_StopsWithoutWritingIntoIt(bool zip)
     {
         // What a filesystem check saved: the database directory still counts as empty, and the file must keep its bytes.
+        // The archive aims at another, absent file there, so only the refusal can keep it out.
         string recovered = Path.Combine(_dbPath, "lost+found", "#1234");
         Directory.CreateDirectory(Path.GetDirectoryName(recovered)!);
         File.WriteAllBytes(recovered, [7, 7, 7]);
-        Dictionary<string, byte[]> files = new() { ["state/a.sst"] = [1], ["lost+found/#1234"] = [2] };
+        Dictionary<string, byte[]> files = new() { ["state/a.sst"] = [1], ["lost+found/#5678"] = [2] };
         if (zip)
         {
             _snapshotConfig.SnapshotFileName = "snapshot.zip";
@@ -622,6 +623,8 @@ public class InitDatabaseSnapshotTests
             Assert.That(exception.Message, Does.Contain("lost+found"), "the error must name what the archive would write into");
             Assert.That(File.ReadAllBytes(recovered), Is.EqualTo(new byte[] { 7, 7, 7 }), "a recovered file must keep its bytes");
             Assert.That(Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(recovered)!).Count(), Is.EqualTo(1), "nothing may be written into lost+found");
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a.sst")), Is.EqualTo(!zip),
+                "a tar entry is refused when the extraction reaches it; a ZIP archive is checked whole before its first entry is written");
             Assert.That(File.Exists(MarkerPath), Is.True, "the extraction that stopped must stay marked for the operator");
         }
     }
@@ -646,22 +649,71 @@ public class InitDatabaseSnapshotTests
         }
     }
 
-    [Test]
-    public async Task Execute_ArchiveWithAnEmptyLostAndFound_ExtractsAroundIt()
+    [TestCase(false, "directory", TestName = "Execute_TarWithTheDirectoryEntryOfLostAndFound_ExtractsAroundAnEmptyOne")]
+    [TestCase(false, "absent", TestName = "Execute_TarWithTheDirectoryEntryOfLostAndFound_DoesNotCreateIt")]
+    [TestCase(false, "file", TestName = "Execute_TarWithTheDirectoryEntryOfLostAndFound_ExtractsAroundAFileByThatName")]
+    [TestCase(true, "directory", TestName = "Execute_ZipWithTheDirectoryEntryOfLostAndFound_ExtractsAroundAnEmptyOne")]
+    [TestCase(true, "absent", TestName = "Execute_ZipWithTheDirectoryEntryOfLostAndFound_DoesNotCreateIt")]
+    [TestCase(true, "file", TestName = "Execute_ZipWithTheDirectoryEntryOfLostAndFound_ExtractsAroundAFileByThatName")]
+    public async Task Execute_ArchiveWithTheDirectoryEntryOfLostAndFound_SkipsIt(bool zip, string onDisk)
     {
+        // The archive of a database at a mount root holds the directory entry of its lost+found, which the extraction skips.
         string lostAndFound = Path.Combine(_dbPath, "lost+found");
-        Directory.CreateDirectory(lostAndFound);
-        // The archive of a database at a mount root holds the directory entry of its lost+found, which writes nothing into it.
-        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(TestArchive.BuildFiles(), emptyDirectory: "lost+found"));
-        AdvanceCheckpoint(SnapshotStage.Verified);
+        Directory.CreateDirectory(_dbPath);
+        if (onDisk == "directory")
+            Directory.CreateDirectory(lostAndFound);
+        else if (onDisk == "file")
+            File.WriteAllBytes(lostAndFound, [7, 7, 7]);
+        UseArchiveWithTheDirectoryEntryOfLostAndFound(zip, TestArchive.BuildFiles());
 
         await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "the snapshot must be extracted");
-            Assert.That(Directory.EnumerateFileSystemEntries(lostAndFound), Is.Empty, "lost+found must stay empty");
+            Assert.That(File.ReadAllBytes(Path.Combine(_dbPath, "state", "a42.sst")), Is.EqualTo(TestArchive.BuildFiles()["state/a42.sst"]), "the snapshot must be extracted");
+            Assert.That(File.Exists(MarkerPath), Is.False, "the marker must be removed after success");
+            switch (onDisk)
+            {
+                case "directory":
+                    Assert.That(Directory.EnumerateFileSystemEntries(lostAndFound), Is.Empty, "lost+found must stay empty");
+                    break;
+                case "absent":
+                    Assert.That(Path.Exists(lostAndFound), Is.False, "the extraction must not create lost+found");
+                    break;
+                default:
+                    Assert.That(File.ReadAllBytes(lostAndFound), Is.EqualTo(new byte[] { 7, 7, 7 }), "a file named lost+found must stay as it was");
+                    break;
+            }
         }
+    }
+
+    [TestCase(false, TestName = "Execute_TarWithOnlyTheDirectoryEntryOfLostAndFound_FailsTheEmptyOutputCheck")]
+    [TestCase(true, TestName = "Execute_ZipWithOnlyTheDirectoryEntryOfLostAndFound_FailsTheEmptyOutputCheck")]
+    public async Task Execute_ArchiveWithOnlyTheDirectoryEntryOfLostAndFound_FailsTheEmptyOutputCheck(bool zip)
+    {
+        UseArchiveWithTheDirectoryEntryOfLostAndFound(zip, []);
+
+        InvalidOperationException exception = (await Assert.ThrowsAsync<InvalidOperationException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("produced no files"), "an archive with nothing but the recovery directory is empty");
+            Assert.That(Path.Exists(Path.Combine(_dbPath, "lost+found")), Is.False, "the extraction must not create lost+found");
+            Assert.That(File.Exists(MarkerPath), Is.True, "the extraction that stopped must stay marked for the operator");
+        }
+    }
+
+    private void UseArchiveWithTheDirectoryEntryOfLostAndFound(bool zip, Dictionary<string, byte[]> files)
+    {
+        if (zip)
+        {
+            _snapshotConfig.SnapshotFileName = "snapshot.zip";
+            _snapshotPath = Path.Combine(_snapshotConfig.SnapshotDirectory, _snapshotConfig.SnapshotFileName);
+        }
+
+        File.WriteAllBytes(_snapshotPath, zip ? TestArchive.BuildZip(files, emptyDirectory: "lost+found") : TestArchive.BuildTar(files, emptyDirectory: "lost+found"));
+        AdvanceCheckpoint(SnapshotStage.Verified);
     }
 
     [Test]

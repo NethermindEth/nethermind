@@ -77,7 +77,8 @@ internal static class SnapshotDatabase
     /// <summary>
     /// Whether an archive entry, given by its full path under <paramref name="destinationRoot"/> (which ends with a
     /// separator), would write where the extraction must not: below the top-level <c>lost+found</c>, which stays the
-    /// filesystem's, at <c>lost+found</c> itself unless it is a directory, or at the marker's path.
+    /// filesystem's, at <c>lost+found</c> itself unless it is a directory entry, which the extraction skips (see
+    /// <see cref="IsRecoveryDirectory"/>), or at the marker's path.
     /// </summary>
     public static bool IsReservedDestination(string destinationRoot, string entryPath, bool isDirectory)
     {
@@ -93,6 +94,19 @@ internal static class SnapshotDatabase
 
         ReadOnlySpan<char> rest = relative[MountArtifact.Length..];
         return rest.IsEmpty ? !isDirectory : rest[0] == Path.DirectorySeparatorChar;
+    }
+
+    /// <summary>
+    /// Whether an archive entry, given by its full path under <paramref name="destinationRoot"/> (which ends with a
+    /// separator), is the top-level <c>lost+found</c> itself. A dump of a mount root holds its directory entry; the
+    /// extraction skips it, so it neither creates <c>lost+found</c> nor fails on whatever the filesystem has there.
+    /// </summary>
+    public static bool IsRecoveryDirectory(string destinationRoot, string entryPath)
+    {
+        ReadOnlySpan<char> path = Path.TrimEndingDirectorySeparator(entryPath.AsSpan());
+        return path.Length == destinationRoot.Length + MountArtifact.Length
+            && path.StartsWith(destinationRoot, StringComparison.OrdinalIgnoreCase)
+            && path.EndsWith(MountArtifact, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string MarkerPath(string dbPath) => Path.Combine(dbPath, ExtractionMarker);

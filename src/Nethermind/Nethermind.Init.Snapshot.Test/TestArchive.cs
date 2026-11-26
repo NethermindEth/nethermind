@@ -40,12 +40,17 @@ internal static class TestArchive
         return tarBuffer.ToArray();
     }
 
-    /// <summary>A zip of <paramref name="files"/>, named as they are, without a top-level directory.</summary>
-    public static byte[] BuildZip(IReadOnlyDictionary<string, byte[]> files)
+    /// <summary>
+    /// A zip of <paramref name="files"/>, named as they are, without a top-level directory. <paramref name="emptyDirectory"/>
+    /// adds an entry for a directory with nothing in it, first.
+    /// </summary>
+    public static byte[] BuildZip(IReadOnlyDictionary<string, byte[]> files, string? emptyDirectory = null)
     {
         using MemoryStream zipBuffer = new();
         using (System.IO.Compression.ZipArchive zip = new(zipBuffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
         {
+            if (emptyDirectory is not null)
+                zip.CreateEntry($"{emptyDirectory}/");
             foreach ((string name, byte[] data) in files)
             {
                 using Stream entry = zip.CreateEntry(name).Open();
