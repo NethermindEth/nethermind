@@ -623,7 +623,7 @@ public class InitDatabaseSnapshotTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(File.ReadAllBytes(dbPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "a file at the database path counts as content, as on master");
+            Assert.That(File.ReadAllBytes(dbPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "a regular file at the database path counts as content: it is kept and the snapshot skipped");
             Assert.That(File.Exists(_snapshotPath), Is.True, "the snapshot must be skipped");
         }
     }
@@ -680,7 +680,7 @@ public class InitDatabaseSnapshotTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(File.ReadAllBytes(_dbPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "a file at the database path counts as content, as on master");
+            Assert.That(File.ReadAllBytes(_dbPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "a regular file at the database path counts as content: it is kept and the snapshot skipped");
             Assert.That(File.Exists(_snapshotPath), Is.True, "the snapshot must be skipped");
         }
     }
