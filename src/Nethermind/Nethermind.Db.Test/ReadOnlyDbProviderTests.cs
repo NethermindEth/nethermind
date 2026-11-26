@@ -58,7 +58,11 @@ namespace Nethermind.Db.Test
             IDb readOnly = dbProvider.GetColumnDb<ReceiptsColumns>(DbNames.Receipts).GetColumnDb(ReceiptsColumns.Default);
             readOnly.Set(TestItem.KeccakB, [2]);
             readOnly.Set(TestItem.KeccakA, [3]);
-            Assert.That(readOnly.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 3 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(readOnly.Get(TestItem.KeccakB), Is.EqualTo(new byte[] { 2 }));
+                Assert.That(readOnly.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 3 }));
+            }
 
             dbProvider.ClearTempChanges();
 
