@@ -16,7 +16,8 @@ public sealed class NodeSource(
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     IForkInfo forkInfo,
-    ILogManager logManager)
+    ILogManager logManager,
+    IRoutingTableNodeLimiter<Node> nodeLimiter)
     : IKademliaNodeSource
 {
     private const int ChannelCapacity = 64;
@@ -69,7 +70,18 @@ public sealed class NodeSource(
         }
     }
 
-    private bool IsExcluded(Node node) => node.IdHash.Equals(_currentNodeHash) || HasIncompatibleForkId(node);
+    private bool IsExcluded(Node node)
+    {
+        if (node.IdHash.Equals(_currentNodeHash) || HasIncompatibleForkId(node)) return true;
+
+        if (!nodeLimiter.WouldAdmit(node))
+        {
+            if (_logger.IsTrace) _logger.Trace($"Dropping peer candidate {node.ToString("s"):hide} at the subnet table cap");
+            return true;
+        }
+
+        return false;
+    }
 
     private bool HasIncompatibleForkId(Node node)
     {
