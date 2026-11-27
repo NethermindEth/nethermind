@@ -20,8 +20,9 @@ public sealed partial class ProofWrapperBroadcaster
 
     /// <summary>The outcome of validating a received wrapper.</summary>
     /// <remarks>Only <see cref="Malformed"/> penalizes the serving peer. <see cref="Invalid"/> is a proof or dependency-rule
-    /// failure, discarded without penalty (EIP-8437); <see cref="LocalFailure"/> is a local inability to finish validation.</remarks>
-    private enum Verdict { Valid, PoolRejected, Malformed, Invalid, LocalFailure }
+    /// failure, discarded without penalty (EIP-8437); <see cref="Unsupported"/> a scheme the connection does not carry, discarded
+    /// unverified; <see cref="LocalFailure"/> is a local inability to finish validation.</remarks>
+    private enum Verdict { Valid, PoolRejected, Malformed, Invalid, Unsupported, LocalFailure }
 
     // ---- Announcements and wrapper requests ---------------------------------------------------------------------------
 
@@ -129,7 +130,7 @@ public sealed partial class ProofWrapperBroadcaster
     private bool HeldDirectly(in ValueHash256 transaction)
     {
         foreach (ValueHash256 wrapperHash in _store.Listing(transaction))
-            if (TryGetOffered(wrapperHash, out WrapperStore.Entry entry) && entry.Shape.Mode == MempoolWrapper.ModeDirect) return true;
+            if (TryGetOffered(wrapperHash, out WrapperStore.Entry entry) && entry.Shape is { Mode: MempoolWrapper.ModeDirect, LeanSphincsOnly: true }) return true;
         return false;
     }
 
@@ -568,10 +569,17 @@ public sealed partial class ProofWrapperBroadcaster
     private async Task ValidateAsync(WrapperFetch fetch, CancellationToken cancellation)
     {
         byte[] wrapper = fetch.Wrapper!;
-        try { WrapperBodies.ParseWrapper(wrapper, out _); }
+        WrapperShape shape;
+        try { WrapperBodies.ParseWrapper(wrapper, out shape); }
         catch (RlpException exception)
         {
             Conclude(fetch, Verdict.Malformed, $"noncanonical wrapper: {exception.Message}");
+            return;
+        }
+        // EIP-8437: an eth/75 peer carries only leanSPHINCS dependencies; any other scheme is discarded unverified, without penalty.
+        if (fetch.Server is { } source && !source.Supports(shape))
+        {
+            Conclude(fetch, Verdict.Unsupported, "a dependency scheme other than leanSPHINCS");
             return;
         }
         (Verdict verdict, string? error, Eip8288Verifier? verifier) =
@@ -616,6 +624,11 @@ public sealed partial class ProofWrapperBroadcaster
                         DropBacklog(server);
                     }
                 }
+                if (_logger.IsDebug) _logger.Debug($"eth/75 discarded {fetch.Announcement}: {error}");
+                break;
+            case Verdict.Unsupported:
+                WrapperMetrics.Record(WrapperEvent.UnsupportedScheme);
+                SoftTombstone(fetch);
                 if (_logger.IsDebug) _logger.Debug($"eth/75 discarded {fetch.Announcement}: {error}");
                 break;
             default:

@@ -93,7 +93,9 @@ public sealed class WrapperAnnouncement
 /// <param name="ProofBytes">The witness or proof bytes a verifier decodes.</param>
 /// <param name="VerificationWork">Direct verifications priced at their EIP-8288 verification gas, or one recursive STARK
 /// verification for mode 1.</param>
-public readonly record struct WrapperShape(int Mode, int ProofBytes, long VerificationWork);
+/// <param name="LeanSphincsOnly">Whether every dependency uses <c>LEANSPHINCS_SCHEME</c>, the only scheme <c>eth/75</c> carries
+/// (EIP-8437).</param>
+public readonly record struct WrapperShape(int Mode, int ProofBytes, long VerificationWork, bool LeanSphincsOnly);
 
 /// <summary>The canonical EIP-8288 wrapper encoding, checked on receipt before validation.</summary>
 public static class WrapperBodies
@@ -111,6 +113,7 @@ public static class WrapperBodies
     {
         int verificationBytes = 0;
         long work = 0;
+        bool leanSphincsOnly = true;
         if (wrapper.Length > Eth75Protocol.MaxWrapperBytes) throw new RlpException("Wrapper exceeds MAX_WRAPPER_BYTES");
         Eth75RlpReader outer = new(wrapper);
         Eth75RlpReader fields = outer.ReadList();
@@ -143,6 +146,7 @@ public static class WrapperBodies
             if (i > 0 && dependency.SequenceCompareTo(dependencyEntries.AsSpan((i - 1) * Eip8288Constants.DependencyTripleLength, Eip8288Constants.DependencyTripleLength)) <= 0)
                 throw new RlpException("Wrapper dependencies are not in strictly ascending order");
             dependency.CopyTo(entry);
+            leanSphincsOnly &= dependency[31] == Eip8288Constants.LeanSphincsScheme;
             work += (long)(dependency[31] == Eip8288Constants.LeanStarkScheme
                 ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas);
         }
@@ -160,7 +164,7 @@ public static class WrapperBodies
             work = (long)Eip8288Constants.LeanStarkVerificationGas;
         }
         content.End();
-        shape = new((int)mode, verificationBytes, work);
+        shape = new((int)mode, verificationBytes, work, leanSphincsOnly);
         byte[] transactionHashes = new byte[hashes.Count * ValueHash256.MemorySize];
         for (int i = 0; i < hashes.Count; i++) hashes[i].Bytes.CopyTo(transactionHashes.AsSpan(i * ValueHash256.MemorySize));
         coverage = new(ValueKeccak.Compute(dependencyEntries), ValueKeccak.Compute(transactionHashes));

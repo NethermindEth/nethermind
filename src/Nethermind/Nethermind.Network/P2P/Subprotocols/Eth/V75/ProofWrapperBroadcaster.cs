@@ -130,7 +130,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             foreach (WrapperStore.Entry entry in _store.Recent())
             {
                 if (peer.ToAnnounce.Count == WrapperTransportLimits.MaxConnectAnnouncements) break;
-                if (entry.Verifier != _verifier || !peer.Supports(entry.Shape.Mode)) continue;
+                if (entry.Verifier != _verifier || !peer.Supports(entry.Shape)) continue;
                 if (_wrappers.IsAnyPending(entry.Hashes)) peer.ToAnnounce.Add(entry.Announcement);
                 else (stale ??= []).Add(entry.Announcement.Hash);
             }
@@ -393,7 +393,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
                 peer.Exchanged.Clear();
                 peer.ToAnnounce.Clear();
                 foreach (WrapperStore.Entry entry in _store.Recent())
-                    if (entry.Verifier == verifier && peer.Supports(entry.Shape.Mode)) peer.ToAnnounce.Add(entry.Announcement);
+                    if (entry.Verifier == verifier && peer.Supports(entry.Shape)) peer.ToAnnounce.Add(entry.Announcement);
                 FlushAnnouncements(peer, outbox);
             }
         }
@@ -427,7 +427,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers)
             {
-                if (peer.Known.Contains(announcement.Hash, now) || !peer.Supports(shape.Mode)) continue;
+                if (peer.Known.Contains(announcement.Hash, now) || !peer.Supports(shape)) continue;
                 peer.ToAnnounce.Add(announcement);
                 FlushAnnouncements(peer, outbox);
             }

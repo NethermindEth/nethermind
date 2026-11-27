@@ -207,8 +207,9 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     /// without coverage hints.</summary>
     public bool Aggregates => Link.ProtocolVersion > EthVersions.Eth75;
 
-    /// <summary>Whether wrappers of <paramref name="mode"/> are announced and served to the peer.</summary>
-    public bool Supports(int mode) => mode == MempoolWrapper.ModeDirect || Aggregates;
+    /// <summary>Whether wrappers of <paramref name="shape"/> are announced and served to the peer: on <c>eth/75</c>, only mode-0
+    /// wrappers whose dependencies are all leanSPHINCS (EIP-8437).</summary>
+    public bool Supports(in WrapperShape shape) => Aggregates || shape is { Mode: MempoolWrapper.ModeDirect, LeanSphincsOnly: true };
 
     /// <summary>Encoding hashes of transactions this node sent the peer in full within validated wrappers: the only ones it
     /// may replace with hash references (EIP-8437).</summary>
