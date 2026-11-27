@@ -105,10 +105,11 @@ public class VerifyTrieStarterTests
 
         try
         {
-            // Started from a pool thread, so the run goes to the default scheduler and never runs inline on the test thread.
+            // Both starts run on pool threads, so a run they admit goes to the default scheduler and never runs inline on
+            // the test thread, where it would wait on the gate before the finally could open it.
             Assert.That(await Task.Run(() => starter.TryStartVerifyTrie(header)), Is.True);
             await running.Task.WaitAsync(TimeSpan.FromMilliseconds(FailsafeMs));
-            Assert.That(starter.TryStartVerifyTrie(header), Is.False, "a second verification started while the first one runs");
+            Assert.That(await Task.Run(() => starter.TryStartVerifyTrie(header)), Is.False, "a second verification started while the first one runs");
         }
         finally
         {
