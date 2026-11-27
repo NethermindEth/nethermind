@@ -75,11 +75,12 @@ public partial class BlockDownloaderTests
                 AddBlockResult.CannotAccept => $"Block download deferred: Block tree cannot accept block/header from peer {peer}:",
                 _ => $"Peer {peer} sent an invalid block/header:"
             };
+            string[] logs = logger.GetSnapshot();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(((StoredBlockRejectionTree)context.BlockTree).Rejections, Is.EqualTo(1));
-                Assert.That(logger.LogList, Has.Some.Contains(expected));
-                Assert.That(logger.LogList, Has.None.Contains(nameof(NullReferenceException)));
+                Assert.That(logs, Has.Some.Contains(expected));
+                Assert.That(logs, Has.None.Contains(nameof(NullReferenceException)));
             }
         }
         finally

@@ -9,8 +9,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Init.Modules;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
@@ -22,24 +22,45 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Sync;
 
-[TestFixture]
-public class FlatTreeSyncStoreTests
+/// <summary>
+/// The store over each flat layout, through the persistence <see cref="FlatWorldStateModule"/> builds over it: the reader
+/// cache, and the carry-forward cache when enabled.
+/// </summary>
+[TestFixtureSource(nameof(Configurations))]
+public class FlatTreeSyncStoreTests(FlatLayout layout, bool carryForwardCache)
 {
     private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
+    private FlatTestContainer _persistenceContainer = null!;
     private IPersistence _persistence = null!;
+
+    public static IEnumerable<TestFixtureData> Configurations()
+    {
+        foreach (FlatLayout layout in (FlatLayout[])[FlatLayout.Flat, FlatLayout.FlatInTrie])
+        {
+            foreach (bool carryForwardCache in (bool[])[false, true])
+            {
+                yield return new TestFixtureData(layout, carryForwardCache).SetArgDisplayNames(layout.ToString(), carryForwardCache ? "carry-forward cache" : "no carry-forward cache");
+            }
+        }
+    }
 
     [SetUp]
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        // WriteStorageDirectToDb seeds the Storage column with raw (un-wrapped) bytes after the persistence
-        // is built, so slot-presence detection can't kick in — pin the raw encoding up front.
-        BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        _persistenceContainer = new FlatTestContainer(new FlatDbConfig { Layout = layout, EnableCarryForwardCache = carryForwardCache }, loadPersistedTier: false, configure: builder => builder
+            .AddSingleton<IColumnsDb<FlatDbColumns>>(_columnsDb)
+            .AddSingleton<ITrieNodeLog>(NullTrieNodeLog.Instance)
+            .AddSingleton<IPersistenceManager>(Substitute.For<IPersistenceManager>()));
+        _persistence = _persistenceContainer.Resolve<IPersistence>();
     }
 
     [TearDown]
-    public void TearDown() => _columnsDb.Dispose();
+    public void TearDown()
+    {
+        _persistenceContainer.Dispose();
+        _columnsDb.Dispose();
+    }
 
     private static FlatTestContainer CreateContainer(IPersistence persistence, IHistoryPivotSeeder? seeder = null) =>
         new(loadPersistedTier: false, configure: builder =>
@@ -50,53 +71,200 @@ public class FlatTreeSyncStoreTests
             if (seeder is not null) builder.AddSingleton<IHistoryPivotSeeder>(seeder);
         });
 
-    private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value)
+    /// <summary>Writes the slots as healing does, through a sync batch of the persistence under test.</summary>
+    private void WriteSlots(params (Address Address, UInt256 Slot, byte[] Value)[] slots)
+    {
+        using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        foreach ((Address address, UInt256 slot, byte[] value) in slots) batch.SetStorage(address, slot, new UInt256(value, isBigEndian: true));
+    }
+
+    /// <summary>Writes the slots of hashed owners and slot paths as healing does, as the RLP of the value without leading zeros.</summary>
+    private void WriteHashedSlots(params (ValueHash256 Owner, ValueHash256 Slot, byte[] Value)[] slots)
+    {
+        using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        foreach ((ValueHash256 owner, ValueHash256 slot, byte[] value) in slots) batch.SetStorageRawEncoded(owner, slot, Rlp.Encode(value));
+    }
+
+    private static ValueHash256 SlotPath(in UInt256 slot)
     {
         Span<byte> slotBytes = stackalloc byte[32];
         slot.ToBigEndian(slotBytes);
-        WriteStorageDirectToDb(ValueKeccak.Compute(address.Bytes), ValueKeccak.Compute(slotBytes), value);
+        return ValueKeccak.Compute(slotBytes);
     }
 
-    private void WriteStorageDirectToDb(in ValueHash256 addrHash, in ValueHash256 slotHash, byte[] value)
+    /// <summary>Whether a new reader of the persistence under test finds the slot.</summary>
+    private bool HasSlot(Address address, in UInt256 slot) => HasSlot(ValueKeccak.Compute(address.Bytes), SlotPath(slot));
+
+    /// <inheritdoc cref="HasSlot(Address, in UInt256)"/>
+    private bool HasSlot(in ValueHash256 owner, in ValueHash256 slot)
     {
-        IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
-        byte[] storageKey = new byte[52];
-        addrHash.Bytes[..4].CopyTo(storageKey.AsSpan()[..4]);
-        slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
-        addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan()[36..52]);
-
-        storageDb.PutSpan(storageKey, ((ReadOnlySpan<byte>)value).WithoutLeadingZeros());
-    }
-
-    private bool HasStorageEntries(Address address)
-    {
-        IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
-        ValueHash256 addrHash = ValueKeccak.Compute(address.Bytes);
-        byte[] prefix = addrHash.Bytes[..4].ToArray();
-
-        foreach (byte[] key in storageDb.GetAllKeys())
-        {
-            if (key.AsSpan()[..4].SequenceEqual(prefix))
-                return true;
-        }
-        return false;
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        UInt256 value = default;
+        return reader.TryGetStorageRaw(owner, slot, ref value);
     }
 
     [Test]
     public void EnsureStorageEmpty_deletes_all_storage_entries()
     {
         Address address = TestItem.AddressA;
-        WriteStorageDirectToDb(address, 0, [0x01, 0x15, 0xe8]);
-        WriteStorageDirectToDb(address, 1, [0xab, 0xcd]);
-        WriteStorageDirectToDb(address, 42, [0xff]);
+        UInt256[] slots = [0, 1, 42];
+        WriteSlots((address, slots[0], [0x01, 0x15, 0xe8]), (address, slots[1], [0xab, 0xcd]), (address, slots[2], [0xff]), (TestItem.AddressB, slots[0], [0x01]));
 
-        Assert.That(HasStorageEntries(address), Is.True, "Storage entries should exist before cleanup");
+        Assert.That(slots.Select(slot => HasSlot(address, slot)), Is.All.True, "Storage entries should exist before cleanup");
 
         using FlatTestContainer container = CreateContainer(_persistence);
         FlatTreeSyncStore store = container.Resolve<FlatTreeSyncStore>();
         store.EnsureStorageEmpty(Keccak.Compute(address.Bytes));
 
-        Assert.That(HasStorageEntries(address), Is.False, "Storage entries should be deleted after EnsureStorageEmpty");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots.Select(slot => HasSlot(address, slot)), Is.All.False, "Storage entries should be deleted after EnsureStorageEmpty");
+            Assert.That(HasSlot(TestItem.AddressB, slots[0]), Is.True, "Storage of another account");
+        }
+    }
+
+    /// <summary>
+    /// A reader that read a slot before, through the caches of the persistence, does not keep the cleared slot for the
+    /// readers after it: a new reader finds neither the slot nor the node, and a sync reader, which bypasses the caches,
+    /// shows that the store itself no longer has them.
+    /// </summary>
+    /// <remarks>
+    /// The carry-forward cache serves readers at the state it was last committed to, and a sync batch commits it to
+    /// <see cref="StateId.Sync"/> while the persisted state stays where it was, so an empty batch at the persisted state
+    /// brings ordinary readers back onto the cache before each read.
+    /// </remarks>
+    [Test]
+    public void EnsureStorageEmpty_leaves_no_slot_for_a_reader_after_one_that_read_it()
+    {
+        Address address = TestItem.AddressA;
+        Hash256 owner = Keccak.Compute(address.Bytes);
+        UInt256 slot = 7;
+        TreePath nodePath = TreePath.FromHexString("1");
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            batch.SetAccount(address, new Account(1, 1));
+            batch.SetStorage(address, slot, 42);
+            batch.SetStorageTrieNode(owner, nodePath, StorageNodeRlp);
+        }
+
+        CommitCacheAtPersistedState();
+        using (IPersistence.IPersistenceReader primed = _persistence.CreateReader())
+        {
+            UInt256 value = default;
+            Assert.That(primed.TryGetSlot(address, slot, ref value) ? value : (UInt256?)null, Is.EqualTo((UInt256)42), "the slot before cleanup");
+        }
+
+        using FlatTestContainer container = CreateContainer(_persistence);
+        container.Resolve<FlatTreeSyncStore>().EnsureStorageEmpty(owner);
+
+        CommitCacheAtPersistedState();
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using IPersistence.IPersistenceReader syncReader = _persistence.CreateReader(ReaderFlags.Sync);
+        using (Assert.EnterMultipleScope())
+        {
+            UInt256 value = default;
+            Assert.That(reader.TryGetSlot(address, slot, ref value), Is.False, "slot through a new reader");
+            Assert.That(syncReader.TryGetStorageRaw(owner, SlotPath(slot), ref value), Is.False, "slot through a sync reader");
+            Assert.That(reader.LoadStorageRlp(owner, nodePath, ReadFlags.None), Is.Null, "storage node through a new reader");
+            Assert.That(syncReader.LoadStorageRlp(owner, nodePath, ReadFlags.None), Is.Null, "storage node through a sync reader");
+            Assert.That(reader.GetAccount(address), Is.Not.Null, "the account");
+        }
+
+        void CommitCacheAtPersistedState()
+        {
+            using (_persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            {
+            }
+        }
+    }
+
+    /// <summary>
+    /// Storage is keyed by the first 20 bytes of the account path, split into a four-byte prefix and 16 bytes after the
+    /// slot or node path, so the bounds take in every account whose first 20 bytes are within them, whatever its last 12.
+    /// Six accounts share 19 bytes and differ in the 20th; the range covers the middle four, with bounds whose last bytes
+    /// are past those of the account at the bound, and keeps one of them when <paramref name="keepInterior"/>.
+    /// </summary>
+    [Test]
+    public void SelfDestructRange_deletes_the_storage_of_accounts_within_its_inclusive_20_byte_bounds([Values] bool keepInterior)
+    {
+        ValueHash256[] owners =
+        [
+            Owner(0x50, 0xaa), Owner(0x51, 0x00), Owner(0x52, 0x33), Owner(0x53, 0x11), Owner(0x54, 0xff), Owner(0x55, 0xbb),
+            // Another four-byte prefix, past the one of the range.
+            Owner(0x52, 0x33, fourthByte: 0x79),
+        ];
+        ValueHash256 from = Owner(0x51, 0xff);
+        ValueHash256 to = Owner(0x54, 0x00);
+        ValueHash256? kept = keepInterior ? Owner(0x53, 0x22) : null;
+        bool[] deleted = [false, true, true, !keepInterior, true, false, false];
+        ValueHash256[] slots = [ValueKeccak.Zero, ValueKeccak.MaxValue];
+        // The second is past the paths the storage node column holds.
+        TreePath[] nodePaths = [TreePath.FromHexString("1"), TreePath.FromHexString("1111111111111111")];
+        TreePath stateNodePath = TreePath.FromHexString("12");
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            for (int i = 0; i < owners.Length; i++)
+            {
+                for (int j = 0; j < slots.Length; j++) batch.SetStorageRawEncoded(owners[i], slots[j], Rlp.Encode(SlotValue(i, j)));
+                foreach (TreePath nodePath in nodePaths) batch.SetStorageTrieNode(owners[i], nodePath, NodeRlp(i));
+            }
+
+            batch.SetAccountRaw(owners[2], new AccountStruct(1, 1));
+            batch.SetStateTrieNode(stateNodePath, StorageNodeRlp);
+        }
+
+        AssertStorage(static _ => true, "before the range is deleted");
+
+        // The range is deleted over what its batch sees when it opens, so the rows are written by an earlier one.
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            batch.SelfDestructRange(from, to, kept);
+        }
+
+        AssertStorage(i => !deleted[i], "after the range is deleted");
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GetAccountRaw(owners[2]), Is.Not.Null, "account in the range");
+            Assert.That(reader.LoadStateRlp(stateNodePath, ReadFlags.None), Is.EqualTo(StorageNodeRlp), "state node");
+        }
+
+        void AssertStorage(Func<int, bool> present, string when)
+        {
+            using IPersistence.IPersistenceReader storageReader = _persistence.CreateReader();
+            using (Assert.EnterMultipleScope())
+            {
+                for (int i = 0; i < owners.Length; i++)
+                {
+                    for (int j = 0; j < slots.Length; j++)
+                    {
+                        UInt256 value = default;
+                        Assert.That(storageReader.TryGetStorageRaw(owners[i], slots[j], ref value) ? value : (UInt256?)null,
+                            present(i) ? Is.EqualTo(new UInt256(SlotValue(i, j), isBigEndian: true)) : Is.Null, $"{when}: slot {j} of account {i}");
+                    }
+
+                    foreach (TreePath nodePath in nodePaths)
+                    {
+                        Assert.That(storageReader.LoadStorageRlp(owners[i].ToCommitment(), nodePath, ReadFlags.None), present(i) ? Is.EqualTo(NodeRlp(i)) : Is.Null,
+                            $"{when}: storage node {nodePath} of account {i}");
+                    }
+                }
+            }
+        }
+
+        static ValueHash256 Owner(byte twentiethByte, byte lastBytes, byte fourthByte = 0x78)
+        {
+            byte[] path = new byte[32];
+            Bytes.FromHexString("0x123456789a9a9a9a9a9a9a9a9a9a9a9a9a9a9a").CopyTo(path, 0);
+            path[3] = fourthByte;
+            path[19] = twentiethByte;
+            path.AsSpan(20).Fill(lastBytes);
+            return new ValueHash256(path);
+        }
+
+        static byte[] SlotValue(int owner, int slot) => [(byte)(0x50 + owner), (byte)(slot + 1)];
+
+        static byte[] NodeRlp(int owner) => [0xc2, 0x80, (byte)(0x10 + owner)];
     }
 
     /// <summary>
@@ -125,7 +293,7 @@ public class FlatTreeSyncStoreTests
             }
         }
 
-        foreach (Hash256 account in accounts) WriteStorageDirectToDb(account, slot, [0x01, 0x02]);
+        WriteHashedSlots([.. accounts.Select(account => ((ValueHash256)account, slot, (byte[])[0x01, 0x02]))]);
 
         using FlatTestContainer container = CreateContainer(_persistence);
         container.Resolve<FlatTreeSyncStore>().EnsureStorageEmpty(cleared);
@@ -154,15 +322,14 @@ public class FlatTreeSyncStoreTests
         using FlatTestContainer container = CreateContainer(_persistence);
         FlatTreeSyncStore store = container.Resolve<FlatTreeSyncStore>();
         SaveRootAccountLeaf(store, removed);
-        WriteStorageDirectToDb(removed, 1, [0x01]);
-        WriteStorageDirectToDb(kept, 1, [0x02]);
+        WriteSlots((removed, 1, [0x01]), (kept, 1, [0x02]));
 
         SaveRootAccountLeaf(store, kept);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(HasStorageEntries(removed), Is.False);
-            Assert.That(HasStorageEntries(kept), Is.True);
+            Assert.That(HasSlot(removed, 1), Is.False);
+            Assert.That(HasSlot(kept, 1), Is.True);
         }
     }
 
@@ -182,16 +349,15 @@ public class FlatTreeSyncStoreTests
                 foreach (TreePath nodePath in StorageNodePaths) batch.SetStorageTrieNode(Keccak.Compute(address.Bytes), nodePath, StorageNodeRlp);
             }
         }
-        WriteStorageDirectToDb(held, 1, [0x01]);
-        WriteStorageDirectToDb(removed, 1, [0x02]);
+        WriteSlots((held, 1, [0x01]), (removed, 1, [0x02]));
 
         SaveRootAccountLeaf(store, held);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(HasStorageEntries(held), Is.True);
-            Assert.That(HasStorageEntries(removed), Is.False);
+            Assert.That(HasSlot(held, 1), Is.True);
+            Assert.That(HasSlot(removed, 1), Is.False);
             foreach (TreePath nodePath in StorageNodePaths)
             {
                 Assert.That(reader.LoadStorageRlp(Keccak.Compute(held.Bytes), nodePath, ReadFlags.None), Is.EqualTo(StorageNodeRlp), $"storage node {nodePath} of the held account");
@@ -208,15 +374,14 @@ public class FlatTreeSyncStoreTests
         using FlatTestContainer container = CreateContainer(_persistence);
         FlatTreeSyncStore store = container.Resolve<FlatTreeSyncStore>();
         SaveRootAccountLeaf(store, TestItem.AddressA);
-        WriteStorageDirectToDb(orphaned, 1, [0x01]);
-        WriteStorageDirectToDb(kept, 1, [0x02]);
+        WriteSlots((orphaned, 1, [0x01]), (kept, 1, [0x02]));
 
         SaveRootAccountLeaf(store, kept);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(HasStorageEntries(orphaned), Is.False);
-            Assert.That(HasStorageEntries(kept), Is.True);
+            Assert.That(HasSlot(orphaned, 1), Is.False);
+            Assert.That(HasSlot(kept, 1), Is.True);
         }
     }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.Intrinsics.Arm;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -27,6 +28,37 @@ public static class UInt256Extensions
 [TestFixture]
 public class MerkleTests
 {
+    [Test]
+    public void Hash_matches_sha256_with_overlapping_destination([Values(0, 33, 48, 55, 64)] int length, [Values(0, 1, 16, 32, 64)] int destinationOffset)
+    {
+        byte[] buffer = new byte[96];
+        new Random(157).NextBytes(buffer);
+        byte[] expected = (byte[])buffer.Clone();
+        SHA256.HashData(buffer.AsSpan(0, length)).CopyTo(expected, destinationOffset);
+
+        ThreadSha256.HashData(buffer.AsSpan(0, length), buffer.AsSpan(destinationOffset, 32));
+
+        Assert.That(buffer, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Try_hash_data_arm_preserves_destination_on_failure([Values(0, 1, 55, 56, 63, 64, 65)] int length, [Values(31, 32, 33)] int destinationSize)
+    {
+        byte[] source = new byte[length];
+        new Random(236).NextBytes(source);
+        byte[] destination = new byte[destinationSize];
+        new Random(571).NextBytes(destination);
+        byte[] expected = (byte[])destination.Clone();
+        bool supported = Sha256.IsSupported && length is <= 55 or 64 && destinationSize >= SHA256.HashSizeInBytes;
+        if (supported) SHA256.HashData(source).CopyTo(expected, 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ThreadSha256.TryHashDataArm(source, destination), Is.EqualTo(supported));
+            Assert.That(destination, Is.EqualTo(expected));
+        }
+    }
+
     [Test]
     public void Merkleize_matches_padded_binary_tree(
         [Values(0, 1, 2, 3, 4, 7, 8, 9, 31, 32, 33, 64, 65, 100)] int count, [Values(1, 256)] int minimumWidth, [Values] bool zeroChunks)

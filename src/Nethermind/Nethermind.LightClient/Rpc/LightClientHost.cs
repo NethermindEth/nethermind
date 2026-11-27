@@ -34,6 +34,7 @@ internal static class LightClientHost
             .AddCommandLine(args);
         builder.WebHost.ConfigureKestrel(static (context, options) =>
             options.Configure(context.Configuration.GetSection("Kestrel"), reloadOnChange: true));
+        builder.Services.AddResponseCompression();
         builder.Host.UseDefaultServiceProvider(static (context, options) =>
         {
             bool development = context.HostingEnvironment.IsDevelopment();
