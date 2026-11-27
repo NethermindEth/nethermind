@@ -319,11 +319,48 @@ jobs:
           echo "Reference URL: ${reference_url:-<none>}"
           echo "reference_url=$reference_url" >> "$GITHUB_OUTPUT"
 
+  create_sync_runner:
+    name: Create runner for the sync wait
+    runs-on: ubuntu-latest
+    needs: [verify_correctness_of_setup, resolve_urls, create_geth_node, create_reference_node]
+    if: ${{ !cancelled() && needs.resolve_urls.result == 'success' && (needs.verify_correctness_of_setup.outputs.spawn_nm == 'true' || inputs.spawn_geth || inputs.reference_ref != '') }}
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Create a runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: rpc-comparison-sync-${{ github.run_id }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          machine_type: e2-standard-2
+          local_ssd_count: 0
+          provisioning_model: STANDARD
+          max_run_duration: 25h
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
   wait_for_node_to_sync:
     name: Wait for spawned nodes to finish syncing
-    runs-on: [vpn]
-    needs: [verify_correctness_of_setup, resolve_urls, create_geth_node, create_reference_node]
-    if: always() && needs.resolve_urls.result == 'success' && (needs.verify_correctness_of_setup.outputs.spawn_nm == 'true' || inputs.spawn_geth || inputs.reference_ref != '')
+    runs-on: rpc-comparison-sync-${{ github.run_id }}
+    needs: [verify_correctness_of_setup, resolve_urls, create_geth_node, create_reference_node, create_sync_runner]
+    if: ${{ !cancelled() && needs.create_sync_runner.result == 'success' }}
     timeout-minutes: 1440
     steps:
       - name: Wait for the nodes to sync
@@ -480,11 +517,84 @@ jobs:
             sleep 1152
           fi
 
+  destroy_sync_runner:
+    name: Destroy runner for the sync wait
+    runs-on: ubuntu-latest
+    needs: [create_sync_runner, wait_for_node_to_sync]
+    # Also runs on cancellation. A failed create still needs teardown: creation may have got part way.
+    if: always() && needs.create_sync_runner.result != 'skipped'
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Destroy runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: rpc-comparison-sync-${{ github.run_id }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          expect_instance: ${{ needs.create_sync_runner.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+  create_compare_runner:
+    name: Create runner for rpc_int
+    runs-on: ubuntu-latest
+    needs: [verify_correctness_of_setup, resolve_urls, create_sync_runner, wait_for_node_to_sync, create_geth_node]
+    # The wait is skipped both when no node needs it and when its runner could not be created; only the first may proceed.
+    if: ${{ !cancelled() && needs.resolve_urls.result == 'success' && (needs.wait_for_node_to_sync.result == 'success' || needs.create_sync_runner.result == 'skipped') && (needs.create_geth_node.result == 'success' || needs.create_geth_node.result == 'skipped') }}
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Create a runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: rpc-comparison-${{ github.run_id }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          machine_type: e2-standard-2
+          local_ssd_count: 0
+          provisioning_model: STANDARD
+          max_run_duration: 7h
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
   compare:
     name: Run rpc_int against the Nethermind node
-    runs-on: [vpn]
-    needs: [verify_correctness_of_setup, resolve_urls, wait_for_node_to_sync, create_geth_node]
-    if: always() && needs.resolve_urls.result == 'success' && (needs.wait_for_node_to_sync.result == 'success' || needs.wait_for_node_to_sync.result == 'skipped') && (needs.create_geth_node.result == 'success' || needs.create_geth_node.result == 'skipped')
+    runs-on: rpc-comparison-${{ github.run_id }}
+    needs: [verify_correctness_of_setup, resolve_urls, wait_for_node_to_sync, create_geth_node, create_compare_runner]
+    if: ${{ !cancelled() && needs.create_compare_runner.result == 'success' }}
     steps:
       - name: Checkout rpc-tests
         uses: actions/checkout@v6
@@ -610,6 +720,41 @@ jobs:
             integration/*/results/
           if-no-files-found: warn
           retention-days: 30
+
+  destroy_compare_runner:
+    name: Destroy runner for rpc_int
+    runs-on: ubuntu-latest
+    needs: [create_compare_runner, compare]
+    # Also runs on cancellation. A failed create still needs teardown: creation may have got part way.
+    if: always() && needs.create_compare_runner.result != 'skipped'
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Destroy runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: rpc-comparison-${{ github.run_id }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          expect_instance: ${{ needs.create_compare_runner.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
 
   cleanup_spawned_nodes:
     name: Destroy spawned nodes
