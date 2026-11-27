@@ -1289,8 +1289,8 @@ public class StartupTests
     }
 
     [TestCase("10.0.0.3", true, TestName = "Third large unsent response of a direct caller is refused")]
-    [TestCase("127.0.0.1", false, TestName = "Loopback caller has no large unsent response count")]
-    [TestCase("::ffff:127.0.0.1", false, TestName = "IPv4-mapped loopback caller has no large unsent response count")]
+    [TestCase("127.0.0.1", true, TestName = "Third large unsent response of a loopback caller is refused")]
+    [TestCase("::ffff:127.0.0.1", true, TestName = "Third large unsent response of an IPv4-mapped loopback caller is refused")]
     public async Task ProcessJsonRpcRequest_LimitsLargeUnsentResponsesPerAddress(string remoteAddress, bool refused)
     {
         Startup startup = CreateStartup(NoAuthentication.Instance, CreateLargeResultEngineModule(), new JsonRpcConfig
@@ -1333,8 +1333,8 @@ public class StartupTests
         }
     }
 
-    [TestCase("127.0.0.1", null, null, null, false, TestName = "Loopback caller without X-Forwarded-For has no address share")]
-    [TestCase("::1", null, null, null, false, TestName = "IPv6 loopback caller without X-Forwarded-For has no address share")]
+    [TestCase("127.0.0.1", null, null, null, true, TestName = "Loopback caller without X-Forwarded-For keeps its address share")]
+    [TestCase("::1", null, null, null, true, TestName = "IPv6 loopback caller without X-Forwarded-For keeps its address share")]
     [TestCase("203.0.113.7", null, null, null, true, TestName = "Direct caller keeps its address share")]
     [TestCase("203.0.113.7", null, "198.51.100.1", "198.51.100.2", true, TestName = "X-Forwarded-For from an untrusted peer is ignored")]
     [TestCase("127.0.0.1", null, "198.51.100.1", "198.51.100.2", false, TestName = "Clients behind a loopback proxy each get their own share")]

@@ -38,7 +38,7 @@ internal sealed class HttpJsonRpcResponseSink(
     private long _accountedBytes;
     private long _reservedBytes;
     private bool _responseCounted;
-    private UnsentResponseCounter.CallerKey? _caller;
+    private UnsentResponseCounter.CallerKey _caller;
     private bool _callerResolved;
     private IPAddress? _clientAddress;
     private bool _forwarded;

@@ -34,8 +34,7 @@ internal sealed class UnsentResponseCounter(Startup.TrustedCidr[] trustedProxies
     public static bool IsCounted(long responseBytes) => responseBytes > CountedResponseBytes;
 
     /// <summary>Finds the caller that the limits per address apply to.</summary>
-    /// <returns>The caller, or <c>null</c> for a local process, which only the node limit applies to.</returns>
-    public CallerKey? ResolveCaller(HttpContext context, out IPAddress? clientAddress, out bool forwarded)
+    public CallerKey ResolveCaller(HttpContext context, out IPAddress? clientAddress, out bool forwarded)
     {
         ConnectionInfo connection = context.Connection;
         IPAddress? peer = connection.RemoteIpAddress;
@@ -53,13 +52,7 @@ internal sealed class UnsentResponseCounter(Startup.TrustedCidr[] trustedProxies
             return new CallerKey(GetAddressKey(peer), null);
         }
 
-        StringValues forwardedFor = context.Request.Headers[ForwardedForHeader];
-        if (forwardedFor.Count == 0)
-        {
-            return loopback ? null : new CallerKey(GetAddressKey(peer), null);
-        }
-
-        IPAddress? client = GetForwardedClient(forwardedFor, loopback);
+        IPAddress? client = GetForwardedClient(context.Request.Headers[ForwardedForHeader], loopback);
         if (client is null || IsLoopback(client))
         {
             return new CallerKey(GetAddressKey(peer), null);
@@ -160,7 +153,7 @@ internal sealed class UnsentResponseCounter(Startup.TrustedCidr[] trustedProxies
         return BinaryPrimitives.ReadUInt128BigEndian(bytes);
     }
 
-    public UnsentResponseLimit TryReserve(CallerKey? caller, long responseBytes, long bytes, bool responseCounted, long limit, int maxResponsesPerCaller, long callerAllowance = 0)
+    public UnsentResponseLimit TryReserve(CallerKey caller, long responseBytes, long bytes, bool responseCounted, long limit, int maxResponsesPerCaller, long callerAllowance = 0)
     {
         long callerLimit = CallerLimit(limit) + callerAllowance;
         bool countsNow = !responseCounted && IsCounted(responseBytes + bytes);
@@ -171,13 +164,7 @@ internal sealed class UnsentResponseCounter(Startup.TrustedCidr[] trustedProxies
                 return UnsentResponseLimit.Node;
             }
 
-            if (caller is not CallerKey key)
-            {
-                _bytes += bytes;
-                return UnsentResponseLimit.None;
-            }
-
-            _callers.TryGetValue(key, out (long Bytes, int Responses) state);
+            _callers.TryGetValue(caller, out (long Bytes, int Responses) state);
             if (state.Bytes > responseBytes && state.Bytes + bytes > callerLimit)
             {
                 return UnsentResponseLimit.AddressSize;
@@ -188,23 +175,17 @@ internal sealed class UnsentResponseCounter(Startup.TrustedCidr[] trustedProxies
                 return UnsentResponseLimit.AddressResponses;
             }
 
-            _callers[key] = (state.Bytes + bytes, countsNow ? state.Responses + 1 : state.Responses);
+            _callers[caller] = (state.Bytes + bytes, countsNow ? state.Responses + 1 : state.Responses);
             _bytes += bytes;
             return UnsentResponseLimit.None;
         }
     }
 
-    public void Release(CallerKey? caller, long bytes, bool responseCounted)
+    public void Release(CallerKey caller, long bytes, bool responseCounted)
     {
         lock (_lock)
         {
-            if (caller is not CallerKey key)
-            {
-                _bytes -= Math.Min(bytes, _bytes);
-                return;
-            }
-
-            if (!_callers.TryGetValue(key, out (long Bytes, int Responses) state))
+            if (!_callers.TryGetValue(caller, out (long Bytes, int Responses) state))
             {
                 return;
             }
@@ -213,11 +194,11 @@ internal sealed class UnsentResponseCounter(Startup.TrustedCidr[] trustedProxies
             (long Bytes, int Responses) next = (state.Bytes - released, responseCounted ? Math.Max(0, state.Responses - 1) : state.Responses);
             if (next is { Bytes: 0, Responses: 0 })
             {
-                _callers.Remove(key);
+                _callers.Remove(caller);
             }
             else
             {
-                _callers[key] = next;
+                _callers[caller] = next;
             }
 
             _bytes -= released;
