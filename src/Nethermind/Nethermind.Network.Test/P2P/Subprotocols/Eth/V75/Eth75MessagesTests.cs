@@ -349,7 +349,7 @@ public class Eth75MessagesTests
             byte[] bare = Announcements();
             Assert.That(serializer.Encode(serializer.Decode(bare)), Has.Length.EqualTo(2563));
             byte[] full = Announcements(widest);
-            Assert.That(full, Has.Length.EqualTo(186_436));
+            Assert.That(full, Has.Length.EqualTo(186_436).And.Length.LessThan(Eth75Protocol.MaxNewProofWrapperHashesBytes));
             Assert.That(serializer.Encode(serializer.Decode(full)), Is.EqualTo(full));
             Assert.That(() => serializer.Decode(Eth75Rlp.EncodeList([.. Enumerable.Range(1, Eth75Protocol.MaxAnnouncements + 1)
                 .Select(static i => Entry(Eth75Rlp.EncodeUInt(0), 1, Eth75Rlp.EncodeBytes(Word(i))))])), Throws.InstanceOf<RlpException>());
@@ -360,12 +360,12 @@ public class Eth75MessagesTests
     }
 
     // check_vectors.py: fee lists have no fixed length, but the whole announcement, metadata included and whatever its mode, is
-    // bounded at 2 MiB.
+    // bounded at 256 KiB.
     [Test]
-    public void Announcement_payload_is_bounded_at_two_mebibytes([Values(0, 2)] int mode)
+    public void Announcement_payload_is_bounded_at_256_KiB([Values(0, 2)] int mode)
     {
         byte[] maxFee = Eth75Rlp.EncodeBytes(Enumerable.Repeat((byte)0xff, 32).ToArray());
-        List<byte[]> fees = [.. Enumerable.Repeat(maxFee, 60_000)];
+        List<byte[]> fees = [.. Enumerable.Repeat(maxFee, Eth75Protocol.MaxNewProofWrapperHashesBytes / 66)];
         byte[] Payload() => Eth75Rlp.EncodeList(Entry(Eth75Rlp.EncodeUInt((ulong)mode), Eth75Protocol.MaxWrapperBytes, Hash32(),
             Eth75Rlp.EncodeList(Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt(10)), Eth75Rlp.EncodeList(Hash32()),
                 Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes(new byte[20])), Eth75Rlp.EncodeList(Eth75Rlp.EncodeList([.. fees])),
@@ -379,7 +379,7 @@ public class Eth75MessagesTests
         NewProofWrapperHashesMessageSerializer serializer = new();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(largest, Has.Length.EqualTo(2 * 1024 * 1024));
+            Assert.That(largest, Has.Length.EqualTo(1 << 18));
             Assert.That(serializer.Decode(largest).Announcements, Has.Length.EqualTo(mode == 0 ? 1 : 0));
             Assert.That(oversized, Has.Length.EqualTo(largest.Length + 1));
             Assert.That(() => serializer.Decode(oversized), Throws.InstanceOf<RlpException>());
