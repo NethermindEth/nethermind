@@ -233,16 +233,18 @@ public class ExecutionPayloadV4Tests
     // Two devnet fixture lines both call their Amsterdam successor Bogota while meaning different
     // things by it, so the label a genesis carries has to decide which newPayload version the node
     // accepts: inclusion lists move it to V6, frame transactions to V7 and ExecutionPayloadV5.
-    [TestCase("bogotaTime", EngineApiVersions.NewPayload.V6)]
-    [TestCase("eip8141PrototypeTime", EngineApiVersions.NewPayload.V7)]
-    public void ValidateForkOnNewPayload_accepts_the_version_the_genesis_fork_label_selects(string label, int accepted)
+    // ExecutionPayloadV5 extends Amsterdam's payload, so frame transactions without Amsterdam take no version at all.
+    [TestCase("bogotaTime", EngineApiVersions.NewPayload.V6, true)]
+    [TestCase("eip8141PrototypeTime", EngineApiVersions.NewPayload.V7, true)]
+    [TestCase("eip8141PrototypeTime", 0, false)]
+    public void ValidateForkOnNewPayload_accepts_the_version_the_genesis_fork_label_selects(string label, int accepted, bool amsterdam)
     {
         string genesis = $$"""
             {
               "config": {
                 "chainId": 1, "homesteadBlock": 0, "eip150Block": 0, "eip155Block": 0, "eip158Block": 0, "byzantiumBlock": 0,
                 "constantinopleBlock": 0, "petersburgBlock": 0, "istanbulBlock": 0, "berlinBlock": 0, "londonBlock": 0,
-                "shanghaiTime": 0, "amsterdamTime": 15, "{{label}}": 15
+                "shanghaiTime": 0, {{(amsterdam ? "\"amsterdamTime\": 15, " : "")}}"{{label}}": 15
               },
               "difficulty": "0x1",
               "gasLimit": "0x8000000",
