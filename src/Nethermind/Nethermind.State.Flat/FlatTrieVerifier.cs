@@ -106,6 +106,8 @@ public class FlatTrieVerifier
 
     private bool VerifyCore(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken)
     {
+        ResetCounters();
+
         HashVerifyingTrieStore verifyingTrieStore = new(trieStore, null, _logger);
         VisitorProgressTracker progressTracker = new("Verify flat", _logManager, printNodes: false);
 
@@ -164,6 +166,23 @@ public class FlatTrieVerifier
         if (_logger.IsInfo) _logger.Info($"Verification complete. {Stats}");
 
         return isOk;
+    }
+
+    /// <summary>Starts a run's result counters from zero, so that <see cref="Stats"/> and the result describe that run only.</summary>
+    /// <remarks>
+    /// The node keeps one verifier, and its callers run verifications one at a time, so a retry after a failed
+    /// verification must not inherit the failed run's counts. The storage-worker and offload counters are left alone:
+    /// they balance themselves within each run.
+    /// </remarks>
+    private void ResetCounters()
+    {
+        Interlocked.Exchange(ref _accountCount, 0);
+        Interlocked.Exchange(ref _slotCount, 0);
+        Interlocked.Exchange(ref _mismatchedAccount, 0);
+        Interlocked.Exchange(ref _mismatchedSlot, 0);
+        Interlocked.Exchange(ref _missingInFlat, 0);
+        Interlocked.Exchange(ref _missingInTrie, 0);
+        Interlocked.Exchange(ref _storageTrieHashMismatchCount, 0);
     }
 
     /// <summary>
