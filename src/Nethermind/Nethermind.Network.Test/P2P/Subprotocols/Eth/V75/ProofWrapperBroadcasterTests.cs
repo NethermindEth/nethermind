@@ -1183,10 +1183,10 @@ public class ProofWrapperBroadcasterTests
         }
     }
 
-    // Support depends on the connection, not the wrapper: an eth/75 serve of another scheme neither tombstones the hash nor stops
-    // its fetch from an aggregating announcer, while another eth/75 announcement of it is not fetched again.
+    // EIP-8518 mixed-version peers: a wrapper discarded as unsupported on an eth/75 connection is neither marked invalid nor kept
+    // from an aggregating peer announcing it before or after the discard; another eth/75 announcement of it is not fetched again.
     [Test]
-    public async Task Other_scheme_served_on_eth75_is_still_fetched_from_an_aggregating_peer()
+    public async Task Other_scheme_served_on_eth75_is_still_fetched_from_an_aggregating_peer([Values] bool aggregatingAnnouncesFirst)
     {
         using WrapperTestNode node = new();
         Transaction transaction = FrameTransaction(1, Eip8288Constants.LeanStarkScheme);
@@ -1196,8 +1196,13 @@ public class ProofWrapperBroadcasterTests
         FakeWrapperLink aggregatingLink = new("eth76");
         WrapperPeer eth75 = node.Connect(eth75Link), otherEth75 = node.Connect(otherEth75Link), aggregating = node.Connect(aggregatingLink);
         node.Broadcaster.OnAnnounce(eth75, new([Describe(wrapper)]));
-        node.Broadcaster.OnAnnounce(aggregating, new([Describe(wrapper)]));
+        if (aggregatingAnnouncesFirst) node.Broadcaster.OnAnnounce(aggregating, new([Describe(wrapper)]));
         Answer(node, eth75, eth75Link, wrapper);
+        if (!aggregatingAnnouncesFirst)
+        {
+            await WrapperTestNode.Until(() => node.Broadcaster.FetchCount == 0);
+            node.Broadcaster.OnAnnounce(aggregating, new([Describe(wrapper)]));
+        }
         await WrapperTestNode.Until(() => aggregatingLink.Sent<GetProofWrappersMessage>().Length != 0);
         node.Broadcaster.OnAnnounce(otherEth75, new([Describe(wrapper)]));
         Answer(node, aggregating, aggregatingLink, wrapper);
