@@ -335,6 +335,54 @@ public class InitDatabaseSnapshotTests
         logger.Received(warns ? 0 : 1).Info(Arg.Is<string>(line => line.Contains("Database already exists")));
     }
 
+    [TestCase("staged", false, TestName = "Execute_PopulatedBesideAStagedArchive_TheWarningNamesTheArchive")]
+    [TestCase("staged", true, TestName = "Execute_PopulatedBesideAStagedArchiveWithMaskedPaths_TheWarningRedactsItsPath")]
+    [TestCase("none", false, TestName = "Execute_PopulatedWithoutAStagedArchive_TheWarningNamesNoArchive")]
+    [TestCase("no plain name", false, TestName = "Execute_PopulatedBesideAFileOutsideTheSnapshotDirectory_TheWarningNamesNoArchive")]
+    public async Task Execute_PopulatedBesideAStagedArchive_TheWarningNamesTheArchive(string archive, bool masked)
+    {
+        // A two-phase download stopped before the claim, then a database the node synced: the archive stays with the kept
+        // database, and the warning says where. A name that is not plain leads out of the snapshot directory, so a file
+        // there is not named.
+        if (archive == "no plain name")
+            _snapshotConfig.SnapshotFileName = "../snapshot.tar";
+        else
+            AdvanceCheckpoint(SnapshotStage.Verified);
+        string archivePath = Path.Combine(_snapshotConfig.SnapshotDirectory, _snapshotConfig.SnapshotFileName);
+        if (archive != "none")
+            File.WriteAllBytes(archivePath, [7, 8, 9]);
+        string synced = Path.Combine(_dbPath, "state", "000001.sst");
+        Directory.CreateDirectory(Path.GetDirectoryName(synced)!);
+        File.WriteAllBytes(synced, [1, 2, 3]);
+        TestLogger logger = new();
+        _api.LogManager.Returns(new OneLoggerLogManager(new(logger)));
+        bool wasMasked = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = masked;
+        try
+        {
+            await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = wasMasked;
+        }
+
+        string warning = logger.LogList.Single(static line => line.Contains("holds content and no snapshot extraction marker"));
+        using (Assert.EnterMultipleScope())
+        {
+            if (archive != "staged")
+                Assert.That(warning, Does.Not.Contain("snapshot archive"), "only an archive in the snapshot directory may be named");
+            else if (masked)
+                Assert.That(warning, Does.Contain("A snapshot archive also stays at [redacted];").And.Not.Contain(_tempDir.Path), "with masked paths the warning must name no path");
+            else
+                Assert.That(warning, Does.Contain($"A snapshot archive also stays at {archivePath};"), "the warning must say where the kept archive is");
+
+            if (archive != "none")
+                Assert.That(File.ReadAllBytes(archivePath), Is.EqualTo(new byte[] { 7, 8, 9 }), "the archive must be kept");
+            Assert.That(File.ReadAllBytes(synced), Is.EqualTo(new byte[] { 1, 2, 3 }), "the database must be kept");
+        }
+    }
+
     [TestCase(nameof(SnapshotStage.Verified), TestName = "Execute_InterruptedExtraction_StopsAndDeletesNothing")]
     [TestCase(nameof(SnapshotStage.Extracted), TestName = "Execute_ExtractionStoppedBeforeRemovingItsMarker_StopsAndDeletesNothing")]
     [TestCase(nameof(SnapshotStage.Completed), TestName = "Execute_ExtractionCompletedBeforeRemovingItsMarker_StopsAndDeletesNothing")]
@@ -587,6 +635,53 @@ public class InitDatabaseSnapshotTests
             if (withData)
                 Assert.That(File.ReadAllBytes(data), Is.EqualTo(new byte[] { 1, 2, 3 }), "the other extraction's file must stay as it was");
             Assert.That(Directory.GetFileSystemEntries(_dbPath, "*", SearchOption.AllDirectories).Length, Is.EqualTo(withData ? 3 : 1), "nothing may be extracted");
+        }
+    }
+
+    [TestCase(false, TestName = "ConfirmClaim_ContentBesideTheNewMarker_RemovesTheMarkerAndThrows")]
+    [TestCase(true, TestName = "ConfirmClaim_ContentBesideTheNewMarkerWithMaskedPaths_RemovesTheMarkerAndRedactsThePath")]
+    public void ConfirmClaim_ContentBesideTheNewMarker_RemovesTheMarkerAndThrows(bool masked)
+    {
+        // What the claim finds when another initializer, which the lock did not keep out, completed its extraction between
+        // the check before the create and the create. A test cannot time that, so the claim's last step is called on its
+        // own: after a claim of the empty directory, with that database written beside the new marker.
+        SnapshotDatabase.BeginExtraction(_dbPath);
+        string completed = Path.Combine(_dbPath, "state", "000001.sst");
+        Directory.CreateDirectory(Path.GetDirectoryName(completed)!);
+        File.WriteAllBytes(completed, [1, 2, 3]);
+        bool wasMasked = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = masked;
+        IOException exception;
+        try
+        {
+            exception = Assert.Throws<IOException>(() => SnapshotDatabase.ConfirmClaim(_dbPath))!;
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = wasMasked;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("holds content when the snapshot extraction would begin"), "the claim must report the content, as the check before the create does");
+            Assert.That(exception.Message, masked ? Does.Not.Contain(_dbPath) : Does.Contain(_dbPath), "the error names the directory unless paths are masked");
+            Assert.That(File.Exists(MarkerPath), Is.False, "the claim must remove the marker it created, as it extracts nothing");
+            Assert.That(Directory.GetFileSystemEntries(_dbPath), Is.EquivalentTo(new[] { Path.GetDirectoryName(completed) }), "only the content may stay");
+            Assert.That(File.ReadAllBytes(completed), Is.EqualTo(new byte[] { 1, 2, 3 }), "the content must keep its bytes");
+        }
+    }
+
+    [Test]
+    public void ConfirmClaim_NothingBesideTheNewMarker_KeepsTheMarker()
+    {
+        // A fresh volume: lost+found is skipped by name, as at admission.
+        Directory.CreateDirectory(Path.Combine(_dbPath, "lost+found"));
+        SnapshotDatabase.BeginExtraction(_dbPath);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => SnapshotDatabase.ConfirmClaim(_dbPath), Throws.Nothing, "a directory that holds only the marker and lost+found is the claim's");
+            Assert.That(File.ReadAllText(MarkerPath), Is.EqualTo("Nethermind snapshot extraction in progress"), "the marker must stay");
         }
     }
 
