@@ -1360,6 +1360,37 @@ public class InitDatabaseSnapshotTests
     }
 
     [Test]
+    public async Task Execute_StopRequestedDuringTheExtraction_KeepsTheMarkerAndReleasesTheLock()
+    {
+        // After the claim: the stop is requested at the extraction's first log line, so the extraction itself observes it.
+        // The marker must stay for the operator.
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        byte[] archive = File.ReadAllBytes(_snapshotPath);
+        using CancellationTokenSource stop = new();
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        logger.When(l => l.Info(Arg.Is<string>(line => line.Contains("Extracting snapshot to")))).Do(_ => stop.Cancel());
+        // Made first: the logger reads the levels of the substitute, which must not happen inside Returns.
+        OneLoggerLogManager logManager = new(new(logger));
+        _api.LogManager.Returns(logManager);
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await Assert.CatchAsync<OperationCanceledException>(() => step.Execute(stop.Token), "the stop must end the start");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.ReadAllText(MarkerPath), Is.EqualTo("Nethermind snapshot extraction in progress"), "a stop after the claim must keep the marker");
+            Assert.That(File.ReadAllBytes(_snapshotPath), Is.EqualTo(archive), "the staged archive must stay");
+            Assert.That(ReadCheckpoint(), Is.EqualTo(SnapshotStage.Verified), "the checkpoint must not advance");
+            Assert.That(() => HoldLock().Dispose(), Throws.Nothing, "a run stopped during the extraction must release its lock");
+        }
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
+        Assert.That(exception.Message, Does.Contain("was not completed"), "the next start must stop on the marker");
+    }
+
+    [Test]
     public async Task Execute_DatabasePathWithTrailingSeparator_KeepsTheLockNextToTheDirectory()
     {
         _api.Config<IInitConfig>().Returns(new InitConfig { BaseDbPath = _dbPath + Path.DirectorySeparatorChar });
