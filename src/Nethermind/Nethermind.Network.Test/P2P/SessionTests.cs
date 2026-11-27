@@ -689,28 +689,28 @@ public class SessionTests
         Assert.That(message.WasDisposed, Is.True);
     }
 
-    // eth/73 wrapper messages are bounded by this client's caps on their advertised uncompressed size, before decompression;
-    // PooledTransactions (0x0a) keeps its eth limits.
-    [TestCase(73, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes, false)]
-    [TestCase(73, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes + 1, true)]
-    [TestCase(73, 0x17, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MaxGetProofWrappersBytes + 1, true)]
-    [TestCase(73, 0x17, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MaxGetProofWrappersBytes, false)]
-    [TestCase(73, 0x16, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MaxNewProofWrapperHashesBytes + 1, true)]
-    [TestCase(73, 0x16, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MaxNewProofWrapperHashesBytes, false)]
-    [TestCase(73, 0x0a, 16 * 1024 * 1024, false)]
-    [TestCase(73, 0x15, 16 * 1024 * 1024, false)]
-    [TestCase(72, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes + 1, false)]
-    // eth/74 does not extend eth/73: its DependencyProofs (0x17) is held to its own cap, not the GetProofWrappers one.
+    // eth/74 DependencyProofs and eth/75 wrapper messages are bounded by this client's caps on their advertised uncompressed
+    // size, before decompression; PooledTransactions (0x0a) keeps its eth limits.
+    [TestCase(75, 0x1a, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.LocalMaxResponseBytes, false)]
+    [TestCase(75, 0x1a, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.LocalMaxResponseBytes + 1, true)]
+    [TestCase(75, 0x19, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.MaxGetProofWrappersBytes + 1, true)]
+    [TestCase(75, 0x19, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.MaxGetProofWrappersBytes, false)]
+    [TestCase(75, 0x18, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.MaxNewProofWrapperHashesBytes + 1, true)]
+    [TestCase(75, 0x18, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.MaxNewProofWrapperHashesBytes, false)]
+    [TestCase(75, 0x0a, 16 * 1024 * 1024, false)]
+    [TestCase(75, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes, false)]
+    [TestCase(75, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes + 1, true)]
     [TestCase(74, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes, false)]
     [TestCase(74, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes + 1, true)]
-    [TestCase(74, 0x16, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes + 1, false)]
+    [TestCase(74, 0x1a, Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.LocalMaxResponseBytes + 1, false)]
+    [TestCase(72, 0x17, Network.P2P.Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes + 1, false)]
     public void Wrapper_and_proof_messages_are_bounded_before_decompression(int version, int code, int length, bool exceeds)
     {
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
         session.AddProtocolHandler(BuildHandler("p2p", 16));
-        IProtocolHandler eth = BuildHandler("eth", Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MessageIdSpaceSize);
+        IProtocolHandler eth = BuildHandler("eth", Network.P2P.Subprotocols.Eth.V75.Eth75Protocol.MessageIdSpaceSize);
         eth.ProtocolVersion.Returns((byte)version);
         session.AddProtocolHandler(eth);
         Assert.That(((IMessageLimitSession)session).ExceedsMessageLimit(16 + code, length), Is.EqualTo(exceeds));

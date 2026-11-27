@@ -693,7 +693,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Assert.That(excess, Is.Null);
         }
 
-        // EIP-8437: below eth/73 dependency-bearing transactions are answered as unavailable, and none is admitted from
+        // EIP-8437: below eth/75 dependency-bearing transactions are answered as unavailable, and none is admitted from
         // PooledTransactions without a validated covering wrapper.
         [Test]
         public void Dependency_bearing_transactions_are_neither_served_nor_admitted()
@@ -729,7 +729,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _transactionPool.DidNotReceive().SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == dependent.Hash), Arg.Any<TxHandlingOptions>());
             }
 
-            // EIP-8437: below eth/73 they are neither broadcast nor announced.
+            // EIP-8437: below eth/75 they are neither broadcast nor announced.
             _session.ClearReceivedCalls();
             _handler.SendNewTransactions([dependent], sendFullTx: true);
             _handler.SendNewTransactions([dependent], sendFullTx: false);

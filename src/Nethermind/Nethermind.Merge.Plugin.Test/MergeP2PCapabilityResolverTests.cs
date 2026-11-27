@@ -81,7 +81,7 @@ public class MergeP2PCapabilityResolverTests
     }
 
     [Test]
-    public void Resolve_advertises_eth73_once_eip8288_is_scheduled_before_it_activates([Values] bool scheduled)
+    public void Resolve_advertises_eth75_once_eip8288_is_scheduled_before_it_activates([Values] bool scheduled)
     {
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.TransitionFinished.Returns(true);
@@ -103,16 +103,17 @@ public class MergeP2PCapabilityResolverTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.EqualTo(scheduled));
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.False, "EIP-8408 eth/73 is not implemented");
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 74)), Is.EqualTo(scheduled), "EIP-8512 eth/74 activates with EIP-8288");
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 75)), Is.EqualTo(scheduled), "EIP-8437 eth/75 activates with EIP-8288");
         }
     }
 
-    [TestCase(BlobsSupportMode.Disabled, false, true, true, TestName = "No blob support, EIP-8288 scheduled, no PeerDAS: eth72 and eth73")]
+    [TestCase(BlobsSupportMode.Disabled, false, true, true, TestName = "No blob support, EIP-8288 scheduled, no PeerDAS: eth72 and eth75")]
     [TestCase(BlobsSupportMode.Disabled, false, false, false, TestName = "No blob support, no EIP-8288: neither")]
     [TestCase(BlobsSupportMode.StorageWithReorgs, false, true, false, TestName = "Blob support without PeerDAS: neither")]
-    [TestCase(BlobsSupportMode.StorageWithReorgs, true, true, true, TestName = "Blob support with PeerDAS: eth72 and eth73")]
-    public void Resolve_advertises_eth73_without_peerdas_only_without_blob_support(BlobsSupportMode blobs, bool eip7594Enabled,
+    [TestCase(BlobsSupportMode.StorageWithReorgs, true, true, true, TestName = "Blob support with PeerDAS: eth72 and eth75")]
+    public void Resolve_advertises_eth75_without_peerdas_only_without_blob_support(BlobsSupportMode blobs, bool eip7594Enabled,
         bool eip8288Scheduled, bool advertised)
     {
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
@@ -132,8 +133,8 @@ public class MergeP2PCapabilityResolverTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 72)), Is.EqualTo(advertised));
-            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.EqualTo(advertised));
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 74)), Is.EqualTo(advertised));
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 75)), Is.EqualTo(advertised));
         }
     }
 

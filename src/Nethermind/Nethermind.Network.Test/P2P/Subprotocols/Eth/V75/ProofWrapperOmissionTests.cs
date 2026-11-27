@@ -5,12 +5,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using NUnit.Framework;
-using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V73.WrapperTestObjects;
+using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V75.WrapperTestObjects;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V75;
 
 /// <summary>EIP-8437 hash-based omission between a requester and a responder.</summary>
 public class ProofWrapperOmissionTests
@@ -230,8 +230,8 @@ public class ProofWrapperOmissionTests
 
     private static int CountReferences(byte[] wrapper)
     {
-        Eth73RlpReader outer = new(wrapper);
-        Eth73RlpReader transactions = outer.ReadList().ReadList();
+        Eth75RlpReader outer = new(wrapper);
+        Eth75RlpReader transactions = outer.ReadList().ReadList();
         int references = 0;
         while (transactions.HasMore)
         {

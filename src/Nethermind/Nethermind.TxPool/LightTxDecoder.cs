@@ -68,7 +68,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
     {
         // Read once through the pool's own key, so the record and the cap's ledger cannot disagree on the sponsor.
         Address? paymaster = PendingPaymasterCache.KeyFor(tx);
-        // Kept so a reloaded EIP-8288 dependency-bearing record, which has no frames, still takes its eth/73 paths.
+        // Kept so a reloaded EIP-8288 dependency-bearing record, which has no frames, still takes its eth/75 paths.
         bool dependencyBearing = Eip8288Dependencies.IsDependencyBearing(tx);
         int networkSize = tx.GetLength();
         (int persistedEncodingSize, byte sizeFormatVersion) = GetPersistedEncodingSize(tx);

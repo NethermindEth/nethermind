@@ -15,9 +15,9 @@ using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V73.WrapperTestObjects;
+using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V75.WrapperTestObjects;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V75;
 
 /// <summary>Bounds and gating of EIP-8437 wrapped blob transactions in the sparse blob pool registry.</summary>
 public class WrappedBlobRegistryTests

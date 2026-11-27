@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
@@ -12,18 +13,19 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Init.Modules;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V73.WrapperTestObjects;
+using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V75.WrapperTestObjects;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V75;
 
 public class ProofWrapperBroadcasterTests
 {
@@ -150,8 +152,8 @@ public class ProofWrapperBroadcasterTests
         {
             "mode" => Announcement(1 - truth.Mode, truth.Length, truth.Hash, truth.Coverage),
             "length" => Announcement(truth.Mode, truth.Length + 1, truth.Hash, truth.Coverage),
-            "dependency digest" => Announcement(truth.Mode, truth.Length, truth.Hash, truth.Coverage with { DepsHash = default }),
-            "transaction digest" => Announcement(truth.Mode, truth.Length, truth.Hash, truth.Coverage with { TxsHash = default }),
+            "dependency digest" => Announcement(truth.Mode, truth.Length, truth.Hash, truth.Coverage!.Value with { DepsHash = default }),
+            "transaction digest" => Announcement(truth.Mode, truth.Length, truth.Hash, truth.Coverage!.Value with { TxsHash = default }),
             _ => truth
         };
         using WrapperTestNode node = new();
@@ -181,14 +183,14 @@ public class ProofWrapperBroadcasterTests
     /// <summary>The wrapper with each transaction replaced by its <c>[encoding-hash]</c> reference.</summary>
     private static byte[] Compact(byte[] wrapper)
     {
-        Eth73RlpReader outer = new(wrapper);
-        Eth73RlpReader fields = outer.ReadList();
-        Eth73RlpReader transactions = fields.ReadList();
+        Eth75RlpReader outer = new(wrapper);
+        Eth75RlpReader fields = outer.ReadList();
+        Eth75RlpReader transactions = fields.ReadList();
         System.Collections.Generic.List<byte[]> references = [];
-        while (transactions.HasMore) references.Add(Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes(ValueKeccak.Compute(transactions.ReadBytes()).Bytes)));
+        while (transactions.HasMore) references.Add(Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes(ValueKeccak.Compute(transactions.ReadBytes()).Bytes)));
         byte[] mode = fields.ReadItem().ToArray();
         byte[] content = fields.ReadItem().ToArray();
-        return Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. references]), mode, content);
+        return Eth75Rlp.EncodeList(Eth75Rlp.EncodeList([.. references]), mode, content);
     }
 
     [Test]
@@ -260,7 +262,7 @@ public class ProofWrapperBroadcasterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(otherTransactions.Coverage.DepsHash, Is.EqualTo(reproof.Coverage.DepsHash));
+            Assert.That(otherTransactions.Coverage!.Value.DepsHash, Is.EqualTo(reproof.Coverage!.Value.DepsHash));
             Assert.That(link.Sent<GetProofWrappersMessage>().SelectMany(static r => r.Hashes), Is.EqualTo(new[] { otherTransactions.Hash }));
             Assert.That(node.Broadcaster.FetchCount, Is.EqualTo(1));
         }
@@ -302,15 +304,16 @@ public class ProofWrapperBroadcasterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(offered(recursive.Coverage.DepsHash), Is.True);
-            Assert.That(offered(direct.Coverage.DepsHash), Is.False, "only a recursive proof can be reused");
+            Assert.That(offered(recursive.Coverage!.Value.DepsHash), Is.True);
+            Assert.That(offered(direct.Coverage!.Value.DepsHash), Is.False, "only a recursive proof can be reused");
         }
         node.Tick(WrapperTransportLimits.PendingLifetime + WrapperTransportLimits.FetchDeadline);
-        Assert.That(offered(recursive.Coverage.DepsHash), Is.False, "an expired offer no longer defers aggregation");
+        Assert.That(offered(recursive.Coverage!.Value.DepsHash), Is.False, "an expired offer no longer defers aggregation");
     }
 
-    // A response is held to the metadata its own server announced, so the first announcer's false length or hints cannot get an
-    // honest server penalized for the true wrapper.
+    // A response is held to the claims its own server announced, so the first announcer's false length or hints cannot get an
+    // honest server penalized for the true wrapper; the false claims are found against its verified hash and their sender is
+    // disconnected (EIP-8437), not for its empty response.
     [Test]
     public void A_false_announced_length_does_not_blame_an_honest_server()
     {
@@ -319,7 +322,7 @@ public class ProofWrapperBroadcasterTests
         WrapperPeer liarPeer = node.Connect(liar), honestPeer = node.Connect(honest);
         byte[] wrapper = Wrapper(64, FrameTransaction(1));
         WrapperAnnouncement truth = Describe(wrapper);
-        WrapperAnnouncement lie = Announcement(truth.Mode, wrapper.Length + 1, truth.Hash, truth.Coverage with { TxsHash = default });
+        WrapperAnnouncement lie = Announcement(truth.Mode, wrapper.Length + 1, truth.Hash, truth.Coverage!.Value with { TxsHash = default });
         node.Broadcaster.OnAnnounce(liarPeer, new([lie]));
         node.Broadcaster.OnAnnounce(honestPeer, new([truth]));
         node.Broadcaster.OnProofWrappers(liarPeer, new(liar.Sent<GetProofWrappersMessage>().Single().RequestId, []));
@@ -328,7 +331,7 @@ public class ProofWrapperBroadcasterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(honest.Penalties, Is.Empty);
-            Assert.That(liar.Penalties, Is.Empty, "an empty response is not misbehavior");
+            Assert.That(liar.Penalties, Has.One.Contains("false mode, length or metadata"));
         }
     }
 
@@ -343,7 +346,7 @@ public class ProofWrapperBroadcasterTests
         for (int message = 0; message < 5; message++)
         {
             foreach (WrapperPeer peer in silent)
-                node.Broadcaster.OnAnnounce(peer, new([.. Enumerable.Range(0, Eth73Protocol.MaxAnnouncements)
+                node.Broadcaster.OnAnnounce(peer, new([.. Enumerable.Range(0, Eth75Protocol.MaxAnnouncements)
                     .Select(_ => Announcement(1, 64, Keccak.Compute($"silent:{announced++}").ValueHash256)).OrderBy(static a => a.Hash)]));
             node.Tick(TimeSpan.FromSeconds(1));
         }
@@ -376,7 +379,7 @@ public class ProofWrapperBroadcasterTests
         {
             for (int request = 0; request < WrapperTransportLimits.MaxRequestsPerPeer; request++)
             {
-                byte[][] wrappers = [.. Enumerable.Range(0, Eth73Protocol.MaxWrappersPerRequest).Select(_ => Wrapper(64, FrameTransaction(seed++)))];
+                byte[][] wrappers = [.. Enumerable.Range(0, Eth75Protocol.MaxWrappersPerRequest).Select(_ => Wrapper(64, FrameTransaction(seed++)))];
                 node.Broadcaster.OnAnnounce(peer, new([.. wrappers.Select(Describe)]));
                 GetProofWrappersMessage sent = link.Sent<GetProofWrappersMessage>()[^1];
                 Assert.That(sent.Hashes, Has.Length.EqualTo(wrappers.Length));
@@ -425,14 +428,14 @@ public class ProofWrapperBroadcasterTests
         using WrapperTestNode node = new();
         WrapperPeer[] silent = [.. Enumerable.Range(0, 4).Select(i => node.Connect(new FakeWrapperLink($"silent {i}")))];
         // Large announced lengths keep each request to one wrapper, so the shared one stays unrequested.
-        WrapperAnnouncement shared = Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute("shared").ValueHash256,
+        WrapperAnnouncement shared = Announcement(1, Eth75Protocol.MaxWrapperBytes, Keccak.Compute("shared").ValueHash256,
             new WrapperCoverage(Keccak.Compute("shared deps").ValueHash256, default));
         int announced = 0;
-        WrapperAnnouncement Filler() => Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"silent:{announced++}").ValueHash256);
+        WrapperAnnouncement Filler() => Announcement(1, Eth75Protocol.MaxWrapperBytes, Keccak.Compute($"silent:{announced++}").ValueHash256);
         for (int message = 0; message < 5; message++)
         {
             foreach (WrapperPeer peer in silent)
-                node.Broadcaster.OnAnnounce(peer, new([.. Enumerable.Range(0, Eth73Protocol.MaxAnnouncements)
+                node.Broadcaster.OnAnnounce(peer, new([.. Enumerable.Range(0, Eth75Protocol.MaxAnnouncements)
                     .Select(i => message == 0 && i == WrapperTransportLimits.MaxRequestsPerPeer && peer == silent[0] ? shared : Filler())]));
             node.Tick(TimeSpan.FromSeconds(1));
         }
@@ -444,7 +447,7 @@ public class ProofWrapperBroadcasterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(honest.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(1));
-            Assert.That(node.Broadcaster.IsDependencySetOffered(shared.Coverage.DepsHash), Is.True);
+            Assert.That(node.Broadcaster.IsDependencySetOffered(shared.Coverage!.Value.DepsHash), Is.True);
         }
     }
 
@@ -457,11 +460,11 @@ public class ProofWrapperBroadcasterTests
         WrapperPeer[] silent = [.. Enumerable.Range(0, WrapperTransportLimits.MaxSourcesPerWrapper).Select(i => node.Connect(new FakeWrapperLink($"silent {i}")))];
         foreach (WrapperPeer peer in silent)
             node.Broadcaster.OnAnnounce(peer, new([.. Enumerable.Range(0, WrapperTransportLimits.MaxRequestsPerPeer)
-                .Select(i => Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:{i}").ValueHash256))]));
+                .Select(i => Announcement(1, Eth75Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:{i}").ValueHash256))]));
         node.Tick(WrapperTransportLimits.RequestTimeout);
         // Their one remaining request slot each is taken, so the wanted wrapper can only be requested from another source.
         foreach (WrapperPeer peer in silent)
-            node.Broadcaster.OnAnnounce(peer, new([Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:busy").ValueHash256)]));
+            node.Broadcaster.OnAnnounce(peer, new([Announcement(1, Eth75Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:busy").ValueHash256)]));
         FakeWrapperLink late = new("late");
         WrapperPeer latePeer = node.Connect(late);
         WrapperAnnouncement announcement = Describe(Wrapper(64, FrameTransaction(1)));
@@ -478,7 +481,7 @@ public class ProofWrapperBroadcasterTests
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
         WrapperAnnouncement[] announcements = [.. Enumerable.Range(0, 10)
-            .Select(i => Describe(Wrapper(Eth73Protocol.SoftResponseLimit / 3, FrameTransaction(i)))).OrderBy(d => d.Hash)];
+            .Select(i => Describe(Wrapper(Eth75Protocol.SoftResponseLimit / 3, FrameTransaction(i)))).OrderBy(d => d.Hash)];
         node.Broadcaster.OnAnnounce(peer, new(announcements));
         GetProofWrappersMessage[] requests = link.Sent<GetProofWrappersMessage>();
         using (Assert.EnterMultipleScope())
@@ -519,8 +522,8 @@ public class ProofWrapperBroadcasterTests
                 "unknown IDs are skipped, the second wrapper overshoots the soft limit and the third is not added");
             Assert.That(responses[0].Entries.Select(static e => e.Hash), Is.EqualTo(new[] { Describe(second).Hash, Describe(first).Hash }));
             Assert.That(responses[1].Entries, Is.Empty);
-            Assert.That(length, Is.GreaterThan(Eth73Protocol.SoftResponseLimit).And.LessThanOrEqualTo(Eth73Protocol.LocalMaxResponseBytes));
-            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.ProofWrappers, length), Is.False, "overshooting the soft limit is valid");
+            Assert.That(length, Is.GreaterThan(Eth75Protocol.SoftResponseLimit).And.LessThanOrEqualTo(Eth75Protocol.LocalMaxResponseBytes));
+            Assert.That(Eth75Protocol.ExceedsMessageLimit(Eth75MessageCode.ProofWrappers, length), Is.False, "overshooting the soft limit is valid");
         }
     }
 
@@ -642,7 +645,7 @@ public class ProofWrapperBroadcasterTests
         node.Tick(TimeSpan.FromSeconds(1));
         bad.Clear();
         WrapperAnnouncement[] many = [.. Enumerable.Range(0, 10)
-            .Select(i => Describe(Wrapper(Eth73Protocol.SoftResponseLimit / 3, FrameTransaction(200 + i)))).OrderBy(d => d.Hash)];
+            .Select(i => Describe(Wrapper(Eth75Protocol.SoftResponseLimit / 3, FrameTransaction(200 + i)))).OrderBy(d => d.Hash)];
         node.Broadcaster.OnAnnounce(badPeer, new(many));
         // A wrapper the failing peer announced first is requested from the other source, although that source announced it later.
         WrapperAnnouncement shared = Describe(Wrapper(64, FrameTransaction(1)));
@@ -747,13 +750,13 @@ public class ProofWrapperBroadcasterTests
     {
         Transaction transaction = FrameTransaction(1);
         byte[] valid = Wrapper(64, transaction);
-        Eth73RlpReader outer = new(valid);
-        Eth73RlpReader fields = outer.ReadList();
+        Eth75RlpReader outer = new(valid);
+        Eth75RlpReader fields = outer.ReadList();
         byte[] envelope = fields.ReadList().ReadBytes().ToArray();
         byte[] rest = [.. fields.ReadItem(), .. fields.ReadItem()];
         byte[] wrapper = scenario == "duplicate transaction"
-            ? Eth73Rlp.EncodeList(Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes(envelope), Eth73Rlp.EncodeBytes(envelope)), rest)
-            : Eth73Rlp.EncodeList(Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([(byte)TxType.FrameTx, 0xc1, 0x01])), rest);
+            ? Eth75Rlp.EncodeList(Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes(envelope), Eth75Rlp.EncodeBytes(envelope)), rest)
+            : Eth75Rlp.EncodeList(Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes([(byte)TxType.FrameTx, 0xc1, 0x01])), rest);
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
@@ -826,22 +829,22 @@ public class ProofWrapperBroadcasterTests
     [Test]
     public void Wrapper_beyond_the_byte_budget_is_dropped_and_counted()
     {
-        byte[] wrapper = Wrapper(64, [.. Enumerable.Range(1, Eth73Protocol.MaxAnnouncements).Select(FrameTransaction)]);
+        byte[] wrapper = Wrapper(64, [.. Enumerable.Range(1, Eth75Protocol.MaxAnnouncements).Select(FrameTransaction)]);
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
         node.Broadcaster.OnAnnounce(peer, new([Describe(wrapper)]));
         long reserved = node.Broadcaster.ChargedBytes;
         // Peers that never answer reserve the rest of the global budget.
-        for (int filler = 0; WrapperTransportLimits.MaxGlobalBytes - node.Broadcaster.ChargedBytes > Eth73Protocol.ResponseFramingBytes + 64; filler++)
+        for (int filler = 0; WrapperTransportLimits.MaxGlobalBytes - node.Broadcaster.ChargedBytes > Eth75Protocol.ResponseFramingBytes + 64; filler++)
         {
             long headroom = WrapperTransportLimits.MaxGlobalBytes - node.Broadcaster.ChargedBytes;
-            int length = (int)Math.Min(Eth73Protocol.MaxWrapperBytes, headroom);
-            while (ProofWrapperBroadcaster.EntryLength(length) + Eth73Protocol.ResponseFramingBytes > headroom) length--;
+            int length = (int)Math.Min(Eth75Protocol.MaxWrapperBytes, headroom);
+            while (ProofWrapperBroadcaster.EntryLength(length) + Eth75Protocol.ResponseFramingBytes > headroom) length--;
             node.Broadcaster.OnAnnounce(node.Connect(new($"filler {filler}")), new([Announcement(1, length, Keccak.Compute($"filler:{filler}").ValueHash256)]));
         }
         Assert.That(reserved + WrapperTransportLimits.MaxGlobalBytes - node.Broadcaster.ChargedBytes,
-            Is.LessThan(InboundTransactionBudget.TransactionCharge * (long)Eth73Protocol.MaxAnnouncements));
+            Is.LessThan(InboundTransactionBudget.TransactionCharge * (long)Eth75Protocol.MaxAnnouncements));
         static long Dropped() => Metrics.ProofWrapperEvents.TryGetValue("budget_dropped", out long count) ? count : 0;
         long dropped = Dropped();
 
@@ -997,9 +1000,9 @@ public class ProofWrapperBroadcasterTests
         node.Wrappers.RefreshVerifier();
         node.Verifier.Valid = false;
         byte[] invalid = Wrapper(64, FrameTransaction(1));
-        Eth73RlpReader fields = new Eth73RlpReader(Wrapper(64, FrameTransaction(2))).ReadList();
+        Eth75RlpReader fields = new Eth75RlpReader(Wrapper(64, FrameTransaction(2))).ReadList();
         fields.ReadItem();
-        byte[] malformed = Eth73Rlp.EncodeList(Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([(byte)TxType.FrameTx, 0xc1, 0x01])),
+        byte[] malformed = Eth75Rlp.EncodeList(Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes([(byte)TxType.FrameTx, 0xc1, 0x01])),
             [.. fields.ReadItem(), .. fields.ReadItem()]);
         FakeWrapperLink link = new(), bad = new("bad");
         WrapperPeer peer = node.Connect(link), badPeer = node.Connect(bad);
@@ -1126,6 +1129,182 @@ public class ProofWrapperBroadcasterTests
         {
             Assert.That(node.Broadcaster.PublishWrapper([.. wrapper, 0x80]), Is.False);
             Assert.That(node.Broadcaster.PublishWrapper(wrapper), Is.True);
+        }
+    }
+
+    // EIP-8437: an eth/75 connection exchanges only mode-0 wrappers, announced with their inline metadata and requested complete.
+    // EIP-8437: eth/75 carries only mode-0 wrappers whose dependencies are all leanSPHINCS.
+    [Test]
+    public void Eth75_connection_exchanges_only_mode0_leanSphincs_wrappers()
+    {
+        using WrapperTestNode node = new();
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2), c = FrameTransaction(4, Eip8288Constants.LeanStarkScheme);
+        node.AddPending(a, b, c);
+        byte[] direct = DirectWrapper(a);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Broadcaster.PublishWrapper(Wrapper(64, b)), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(DirectWrapper(c)), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(direct), Is.True);
+        }
+        FakeWrapperLink link = new() { ProtocolVersion = EthVersions.Eth75 };
+        WrapperPeer peer = node.Connect(link);
+        byte[] announcedDirect = DirectWrapper(FrameTransaction(3));
+        node.Broadcaster.OnAnnounce(peer, new([Describe(announcedDirect)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            WrapperAnnouncement announced = link.Sent<NewProofWrapperHashesMessage>().SelectMany(static m => m.Announcements).Single();
+            Assert.That(announced.Hash, Is.EqualTo(Describe(direct).Hash));
+            Assert.That(announced.Metadata, Is.EqualTo(WrapperMetadata.InlineFor(direct)));
+            Assert.That(link.Sent<GetProofWrappersMessage>().Single().Compact, Is.False);
+        }
+    }
+
+    // EIP-8437: a wrapper with a dependency scheme other than leanSPHINCS, served on eth/75, is discarded unverified and without
+    // penalty; an aggregating connection carries every scheme the mempool fork enables.
+    [Test]
+    public async Task Other_schemes_served_on_eth75_are_discarded_without_penalty([Values] bool eth75, [Values] bool mixed)
+    {
+        using WrapperTestNode node = new();
+        Transaction transaction = FrameTransaction(1, Eip8288Constants.LeanStarkScheme);
+        Transaction[] transactions = mixed ? [transaction, FrameTransaction(2)] : [transaction];
+        byte[] wrapper = DirectWrapper(transactions);
+        FakeWrapperLink link = new() { ProtocolVersion = eth75 ? EthVersions.Eth75 : FakeWrapperLink.AggregatingVersion };
+        WrapperPeer peer = node.Connect(link);
+        node.Broadcaster.OnAnnounce(peer, new([Describe(wrapper)]));
+        Answer(node, peer, link, wrapper);
+        await WrapperTestNode.Until(() => node.Broadcaster.FetchCount == 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Is.Empty);
+            Assert.That(node.Pending.Select(static t => t.Hash), eth75 ? Is.Empty : Is.EquivalentTo(transactions.Select(static t => t.Hash)));
+            Assert.That(node.Broadcaster.IsStored(Describe(wrapper).Hash), Is.EqualTo(!eth75));
+            Assert.That(peer.IsDeprioritized, Is.False);
+        }
+    }
+
+    // EIP-8518 mixed-version peers: a wrapper discarded as unsupported on an eth/75 connection is neither marked invalid nor kept
+    // from an aggregating peer announcing it before or after the discard; another eth/75 announcement of it is not fetched again.
+    [Test]
+    public async Task Other_scheme_served_on_eth75_is_still_fetched_from_an_aggregating_peer([Values] bool aggregatingAnnouncesFirst)
+    {
+        using WrapperTestNode node = new();
+        Transaction transaction = FrameTransaction(1, Eip8288Constants.LeanStarkScheme);
+        byte[] wrapper = DirectWrapper(transaction);
+        ValueHash256 hash = Describe(wrapper).Hash;
+        FakeWrapperLink eth75Link = new("eth75") { ProtocolVersion = EthVersions.Eth75 }, otherEth75Link = new("eth75-other") { ProtocolVersion = EthVersions.Eth75 };
+        FakeWrapperLink aggregatingLink = new("eth76");
+        WrapperPeer eth75 = node.Connect(eth75Link), otherEth75 = node.Connect(otherEth75Link), aggregating = node.Connect(aggregatingLink);
+        node.Broadcaster.OnAnnounce(eth75, new([Describe(wrapper)]));
+        if (aggregatingAnnouncesFirst) node.Broadcaster.OnAnnounce(aggregating, new([Describe(wrapper)]));
+        Answer(node, eth75, eth75Link, wrapper);
+        if (!aggregatingAnnouncesFirst)
+        {
+            await WrapperTestNode.Until(() => node.Broadcaster.FetchCount == 0);
+            node.Broadcaster.OnAnnounce(aggregating, new([Describe(wrapper)]));
+        }
+        await WrapperTestNode.Until(() => aggregatingLink.Sent<GetProofWrappersMessage>().Length != 0);
+        node.Broadcaster.OnAnnounce(otherEth75, new([Describe(wrapper)]));
+        Answer(node, aggregating, aggregatingLink, wrapper);
+        await WrapperTestNode.Until(() => node.Broadcaster.IsStored(hash) && node.Broadcaster.FetchCount == 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Broadcaster.IsTombstoned(hash), Is.False);
+            Assert.That(node.Pending.Select(static t => t.Hash), Is.EqualTo(new[] { transaction.Hash }));
+            Assert.That(otherEth75Link.Sent<GetProofWrappersMessage>(), Is.Empty);
+            Assert.That(eth75Link.Penalties.Concat(otherEth75Link.Penalties).Concat(aggregatingLink.Penalties), Is.Empty);
+        }
+    }
+
+    // EIP-8437: claims found false against a held wrapper of the announced hash, or metadata found false against a transaction
+    // held in a validated wrapper, are discarded with their sender before any fetch; true metadata for a held transaction is not,
+    // nor a pooled size a consensus hash does not bind, which is checked against the wrapper once fetched.
+    [TestCase("held wrapper, false metadata", true)]
+    [TestCase("held wrapper, false length", true)]
+    [TestCase("held transaction, false gas", true)]
+    [TestCase("held transaction, true metadata", false)]
+    [TestCase("held transaction, other size", false)]
+    public void Announced_claims_are_checked_against_held_wrappers_and_transactions(string scenario, bool penalized)
+    {
+        using WrapperTestNode node = new();
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2), c = FrameTransaction(3);
+        byte[] held = DirectWrapper(a), other = DirectWrapper(a, c);
+        node.AddPending(a);
+        Assert.That(node.Broadcaster.PublishWrapper(held), Is.True);
+        FakeWrapperLink link = new() { ProtocolVersion = EthVersions.Eth75 };
+        WrapperPeer peer = node.Connect(link);
+        WrapperAnnouncement truth = Describe(held), otherTruth = Describe(other);
+        WrapperAnnouncement announcement = scenario switch
+        {
+            "held wrapper, false metadata" => Announcement(0, truth.Length, truth.Hash, null, WrapperMetadata.InlineFor(DirectWrapper(b))),
+            "held wrapper, false length" => Announcement(0, truth.Length + 1, truth.Hash, null, truth.Metadata),
+            "held transaction, false gas" => Announcement(0, otherTruth.Length, otherTruth.Hash, null,
+                WrapperMetadata.Of(other, static (ref Eth75RlpReader _) => 1)),
+            "held transaction, other size" => Announcement(0, otherTruth.Length, otherTruth.Hash, null, WithSizesIncremented(otherTruth.Metadata!, otherTruth.Length)),
+            _ => Announcement(0, otherTruth.Length, otherTruth.Hash, null, otherTruth.Metadata)
+        };
+
+        node.Broadcaster.OnAnnounce(peer, new([announcement]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Has.Length.EqualTo(penalized ? 1 : 0));
+            Assert.That(link.Sent<GetProofWrappersMessage>(), penalized ? Is.Empty : Has.Length.EqualTo(1));
+        }
+    }
+
+    private static WrapperMetadata WithSizesIncremented(WrapperMetadata metadata, int announcedLength)
+    {
+        Eth75RlpReader outer = new(metadata.Encoded);
+        Eth75RlpReader fields = outer.ReadList();
+        Eth75RlpReader sizes = fields.ReadList();
+        List<byte[]> items = [];
+        while (sizes.HasMore) items.Add(Eth75Rlp.EncodeUInt(sizes.ReadUInt64() + 1));
+        List<byte[]> rest = [];
+        while (fields.HasMore) rest.Add(fields.ReadItem().ToArray());
+        return WrapperMetadata.Decode(Eth75Rlp.EncodeList([Eth75Rlp.EncodeList([.. items]), .. rest]), announcedLength, Eth75Protocol.MaxInlineTransactions);
+    }
+
+    // EIP-8437 lets metadata choose fetches: a mode-0 wrapper listing only pending transactions adds no coverage and is not
+    // fetched, unless an eth/75 peer, which is served only direct witnesses, is connected and no held mode-0 wrapper carries them.
+    [Test]
+    public void Direct_wrapper_of_pending_transactions_is_fetched_only_for_eth75_peers_lacking_them([Values] bool eth75Peer, [Values] bool heldDirect)
+    {
+        using WrapperTestNode node = new();
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
+        node.AddPending(a, b);
+        if (heldDirect) Assert.That(node.Broadcaster.PublishWrapper(DirectWrapper(a, b)), Is.True);
+        if (eth75Peer) node.Connect(new FakeWrapperLink("eth75") { ProtocolVersion = EthVersions.Eth75 });
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+
+        node.Broadcaster.OnAnnounce(peer, new([Describe(DirectWrapper(a))]));
+
+        Assert.That(link.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(eth75Peer && !heldDirect ? 1 : 0));
+    }
+
+    // EIP-8437: metadata that differs from what the returned wrapper's transactions give is a mismatch of its server, checked
+    // before proof verification.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void False_inline_metadata_from_the_server_is_a_violation_before_verification(bool omitted)
+    {
+        using WrapperTestNode node = new();
+        byte[] wrapper = DirectWrapper(FrameTransaction(1));
+        WrapperAnnouncement truth = Describe(wrapper);
+        WrapperMetadata? claim = omitted ? null : WrapperMetadata.InlineFor(DirectWrapper(FrameTransaction(2)));
+        FakeWrapperLink link = new() { ProtocolVersion = EthVersions.Eth75 };
+        WrapperPeer peer = node.Connect(link);
+        node.Broadcaster.OnAnnounce(peer, new([Announcement(truth.Mode, truth.Length, truth.Hash, null, claim)]));
+        node.Broadcaster.OnProofWrappers(peer, new(link.Sent<GetProofWrappersMessage>().Single().RequestId, [Entry(wrapper)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Has.One.Contains("transaction metadata"));
+            Assert.That(node.Pending, Is.Empty, "the wrapper is discarded before validation");
         }
     }
 }

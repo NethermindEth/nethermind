@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
 internal enum WrapperEvent
 {
@@ -24,7 +24,9 @@ internal enum WrapperEvent
     ReferenceMissed,
     ReferenceSent,
     EquivalentSkipped,
-    BudgetDropped
+    BudgetDropped,
+    HeldSkipped,
+    UnsupportedScheme
 }
 
 internal static class WrapperMetrics
@@ -33,7 +35,8 @@ internal static class WrapperMetrics
     [
         "announced", "announcement_received", "requested", "received", "validated", "invalid", "malformed", "local_failure",
         "expired", "published", "served", "request_expired", "violation", "upgrade_dropped", "announcement_suppressed",
-        "reference_resolved", "reference_missed", "reference_sent", "equivalent_skipped", "budget_dropped"
+        "reference_resolved", "reference_missed", "reference_sent", "equivalent_skipped", "budget_dropped",
+        "held_skipped", "unsupported_scheme"
     ];
 
     public static void Record(WrapperEvent wrapperEvent, long count = 1) =>

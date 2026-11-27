@@ -46,7 +46,7 @@ public class LightTransaction : Transaction
         // Derived here or the cap never counts a blob-carrying frame tx: the pool holds this frameless
         // record, so the paymaster is no longer recoverable from the frame list once the full tx is gone.
         PersistedPaymaster = PendingPaymasterCache.KeyFor(fullTx);
-        // Kept so a blob-carrying EIP-8288 dependency-bearing record still takes the eth/73 cell path once frameless.
+        // Kept so a blob-carrying EIP-8288 dependency-bearing record still takes the eth/75 cell path once frameless.
         PersistedDependencyBearing = Eip8288Dependencies.IsDependencyBearing(fullTx);
         BlobCellMask = (fullTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
         _consensusEncodingSize = fullTx.GetLength(shouldCountBlobs: false);

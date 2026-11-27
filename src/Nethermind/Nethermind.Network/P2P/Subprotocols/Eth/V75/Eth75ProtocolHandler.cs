@@ -3,6 +3,8 @@
 
 using System;
 using System.Threading;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -14,22 +16,23 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V74;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
 /// <summary>
-/// EIP-8437 <c>eth/73</c>: <c>eth/72</c> plus announcement and retrieval of EIP-8288 proof wrappers, which carry their full
-/// transactions.
+/// EIP-8437 <c>eth/75</c>: <c>eth/74</c> plus announcement and retrieval of EIP-8288 direct-witness proof wrappers, which carry
+/// their full transactions.
 /// </summary>
-/// <remarks>The protocol version and the message IDs <c>0x16</c> to <c>0x18</c> are provisional. As on every <c>eth</c>
+/// <remarks>The protocol version and the message IDs <c>0x18</c> to <c>0x1a</c> are provisional. As on every <c>eth</c>
 /// version, dependency-bearing transactions never travel through the transaction messages.</remarks>
-public class Eth73ProtocolHandler(
+public class Eth75ProtocolHandler(
     ISession session,
     IMessageSerializationService serializer,
     INodeStatsManager nodeStatsManager,
@@ -43,30 +46,33 @@ public class Eth73ProtocolHandler(
     IChainHeadSpecProvider specProvider,
     IBlobCustodyTracker blobCustodyTracker,
     ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
+    IBlockFinder blockFinder,
+    IDependencyProofStore proofStore,
     ProofWrapperBroadcaster wrapperBroadcaster,
     ITxGossipPolicy? transactionsGossipPolicy = null)
-    : Eth72ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo,
-        logManager, txPoolConfig, specProvider, blobCustodyTracker, sparseBlobPoolPeerRegistry, transactionsGossipPolicy), IStaticProtocolInfo,
+    : Eth74ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo,
+        logManager, txPoolConfig, specProvider, blobCustodyTracker, sparseBlobPoolPeerRegistry, blockFinder, proofStore, transactionsGossipPolicy),
+    IStaticProtocolInfo,
     IWrapperLink
 {
     private WrapperPeer? _wrapperPeer;
     private int _disposed;
 
-    public override string Name => "eth73";
+    public override string Name => "eth75";
 
-    /// <summary>Gets the eth/73 protocol version.</summary>
-    public new static byte Version => EthVersions.Eth73;
+    /// <summary>Gets the eth/75 protocol version.</summary>
+    public new static byte Version => EthVersions.Eth75;
     public override byte ProtocolVersion => Version;
-    public override int MessageIdSpaceSize => Eth73Protocol.MessageIdSpaceSize;
+    public override int MessageIdSpaceSize => Eth75Protocol.MessageIdSpaceSize;
 
-    string IWrapperLink.Description => Session.ToString() ?? "eth/73 peer";
+    string IWrapperLink.Description => Session.ToString() ?? "eth/75 peer";
 
     PublicKey? IWrapperLink.NodeId => Session.Node.Id;
 
     /// <summary>Whether wrapper exchange runs on this connection, which the blob availability of wrapped transactions needs.</summary>
     private bool WrapperExchangeActive => wrapperBroadcaster.IsEnabled && Volatile.Read(ref _wrapperPeer) is not null;
 
-    /// <remarks>EIP-8437: EIP-8070 applies on <c>eth/73</c> to blob-carrying frame transactions.</remarks>
+    /// <remarks>EIP-8437: EIP-8070 applies on <c>eth/75</c> to blob-carrying frame transactions.</remarks>
     protected override bool ExchangesFrameBlobsAsCells => true;
 
     /// <remarks>A blob-carrying frame transaction's cells are announced like a type-3 one's; a dependency-bearing one's only once
@@ -85,7 +91,7 @@ public class Eth73ProtocolHandler(
         int size = message.Content.ReadableBytes;
         if (message.PacketType == Eth69MessageCode.Status)
         {
-            // Status is unchanged from eth/72; peers negotiate no verifier.
+            // Status is unchanged; peers negotiate no verifier.
             bool handled = base.HandleMessageCore(message);
             if (Volatile.Read(ref _wrapperPeer) is null && wrapperBroadcaster.Accept(this) is { } accepted)
                 // The interlocked publish fences against OnDisposed: either it sees the peer or this sees the disposal.
@@ -93,27 +99,27 @@ public class Eth73ProtocolHandler(
             if (Volatile.Read(ref _disposed) != 0 && Volatile.Read(ref _wrapperPeer) is { } registered) wrapperBroadcaster.Remove(registered);
             return handled;
         }
-        if (!Eth73MessageCode.IsWrapperMessage(message.PacketType)) return base.HandleMessageCore(message);
+        if (!Eth75MessageCode.IsWrapperMessage(message.PacketType)) return base.HandleMessageCore(message);
         // A wrapper message before Status is a protocol violation, rejected like any other eth message before this is reached.
         // Until EIP-8288 is enabled for local mempool validation, wrapper messages are ignored without penalty (EIP-8437).
         if (!wrapperBroadcaster.IsEnabled || Volatile.Read(ref _wrapperPeer) is not { } peer)
         {
-            ReportIn($"eth/73 wrapper message {message.PacketType} ignored without wrapper exchange", size);
+            ReportIn($"eth/75 wrapper message {message.PacketType} ignored without wrapper exchange", size);
             return true;
         }
         switch (message.PacketType)
         {
-            case Eth73MessageCode.NewProofWrapperHashes:
+            case Eth75MessageCode.NewProofWrapperHashes:
                 wrapperBroadcaster.OnAnnounce(peer, Deserialize<NewProofWrapperHashesMessage>(message.Content));
                 break;
-            case Eth73MessageCode.GetProofWrappers:
+            case Eth75MessageCode.GetProofWrappers:
                 wrapperBroadcaster.OnGetProofWrappers(peer, Deserialize<GetProofWrappersMessage>(message.Content));
                 break;
-            case Eth73MessageCode.ProofWrappers:
+            case Eth75MessageCode.ProofWrappers:
                 wrapperBroadcaster.OnProofWrappers(peer, Deserialize<ProofWrappersMessage>(message.Content));
                 break;
         }
-        ReportIn($"eth/73 wrapper message {message.PacketType}", size);
+        ReportIn($"eth/75 wrapper message {message.PacketType}", size);
         return true;
     }
 

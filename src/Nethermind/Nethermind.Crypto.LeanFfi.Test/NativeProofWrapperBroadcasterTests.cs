@@ -25,8 +25,8 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -38,17 +38,17 @@ using NUnit.Framework;
 
 namespace Nethermind.Crypto.LeanFfi.Test;
 
-/// <summary>EIP-8437 <c>eth/73</c> wrapper propagation over production DI wiring with the native verifier.</summary>
+/// <summary>EIP-8437 <c>eth/75</c> wrapper propagation over production DI wiring with the native verifier.</summary>
 [NonParallelizable]
 public class NativeProofWrapperBroadcasterTests
 {
     private sealed record WireMessage(int PacketType, byte[] Body);
 
-    private sealed class Context(BasicTestBlockchain chain, ISession session, Eth73ProtocolHandler handler) : IDisposable
+    private sealed class Context(BasicTestBlockchain chain, ISession session, Eth75ProtocolHandler handler) : IDisposable
     {
         public BasicTestBlockchain Chain { get; } = chain;
         public ISession Session { get; } = session;
-        public Eth73ProtocolHandler Handler { get; } = handler;
+        public Eth75ProtocolHandler Handler { get; } = handler;
         public Action<WireMessage>? Post { get; set; }
         public ConcurrentQueue<string> Disconnects { get; } = new();
         public ProofWrapperBroadcaster Broadcaster => Chain.Container.Resolve<ProofWrapperBroadcaster>();
@@ -68,12 +68,12 @@ public class NativeProofWrapperBroadcasterTests
         session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 1000, true));
         session.RemoteNodeId.Returns(TestItem.PublicKeyA);
         session.HasAgreedCapability(Arg.Any<Capability>())
-            .Returns(call => call.Arg<Capability>().ProtocolCode == Protocol.Eth && call.Arg<Capability>().Version == EthVersions.Eth73);
+            .Returns(call => call.Arg<Capability>().ProtocolCode == Protocol.Eth && call.Arg<Capability>().Version == EthVersions.Eth75);
         IProtocolHandler? handler = null;
         foreach (IProtocolHandlerFactory factory in chain.Container.Resolve<IProtocolHandlerFactory[]>())
-            if (factory.ProtocolCode == Protocol.Eth && factory.TryCreate(session, EthVersions.Eth73, out handler)) break;
-        Assert.That(handler, Is.TypeOf<Eth73ProtocolHandler>());
-        Context context = new(chain, session, (Eth73ProtocolHandler)handler!);
+            if (factory.ProtocolCode == Protocol.Eth && factory.TryCreate(session, EthVersions.Eth75, out handler)) break;
+        Assert.That(handler, Is.TypeOf<Eth75ProtocolHandler>());
+        Context context = new(chain, session, (Eth75ProtocolHandler)handler!);
         session.When(s => s.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
             .Do(call => context.Disconnects.Enqueue(call.Arg<string>()));
         Route<StatusMessage69>(context);
@@ -150,6 +150,7 @@ public class NativeProofWrapperBroadcasterTests
     }
 
     [Test]
+    [Ignore("eth/75 carries mode-0 wrappers only; eth/76 relays recursive ones")]
     public async Task Real_recursive_wrapper_is_fetched_whole_and_validated_before_admission()
     {
         byte[] proof = NativeLeanProofVerifierTests.MixedProof();
@@ -195,7 +196,7 @@ public class NativeProofWrapperBroadcasterTests
     }
 
     [Test]
-    public async Task Eth73_status_registers_the_peer_and_disposal_removes_it()
+    public async Task Eth75_status_registers_the_peer_and_disposal_removes_it()
     {
         using Context context = await Create();
         Receive(context, Init(context));

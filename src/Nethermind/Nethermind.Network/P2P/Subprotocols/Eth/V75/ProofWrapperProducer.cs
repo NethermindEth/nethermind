@@ -9,10 +9,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
 /// <summary>Drives background aggregation on the EIP-8288 cadence, producing mode-1 wrappers over bounded subsets that together
-/// cover the pending dependency-bearing transactions, and offers each new one over <c>eth/73</c>.</summary>
+/// cover the pending dependency-bearing transactions, and offers each new one over <c>eth/75</c>.</summary>
 /// <remarks>Peers fetch the announced wrapper on demand, so an unchanged wrapper is never sent or announced again.</remarks>
 public sealed class ProofWrapperProducer(ProofWrapperService wrappers, ProofWrapperBroadcaster broadcaster, ILogManager logManager,
     TimeProvider? timeProvider = null) : IAsyncDisposable, IDisposable

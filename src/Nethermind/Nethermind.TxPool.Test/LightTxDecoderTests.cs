@@ -278,7 +278,7 @@ public class LightTxDecoderTests
         }
     }
 
-    // EIP-8437: a reloaded record has no frames, so whether it is EIP-8288 dependency-bearing, which picks its eth/73 paths, is
+    // EIP-8437: a reloaded record has no frames, so whether it is EIP-8288 dependency-bearing, which picks its eth/75 paths, is
     // persisted. A record without the slot, as earlier builds wrote, reads as unknown.
     [TestCase(false, false)]
     [TestCase(true, false)]

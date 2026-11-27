@@ -295,7 +295,7 @@ public class Eth72ProtocolHandler(
     /// <summary>Whether <paramref name="tx"/> is announced with a cell mask and its blobs exchanged as EIP-8070 cells.</summary>
     protected virtual bool AnnouncesCells(Transaction tx) => tx.SupportsBlobs;
 
-    /// <summary>Whether blob-carrying frame transactions exchange their blobs as EIP-8070 cells, as on <c>eth/73</c>
+    /// <summary>Whether blob-carrying frame transactions exchange their blobs as EIP-8070 cells, as on <c>eth/75</c>
     /// (EIP-8437); on <c>eth/72</c> they travel whole.</summary>
     protected virtual bool ExchangesFrameBlobsAsCells => false;
 
@@ -599,7 +599,7 @@ public class Eth72ProtocolHandler(
         }
 
         // On eth/72 a type-6 is announced at its full network size and never joins the cell protocol, so the
-        // requester can neither size-match nor refill the elided record: its sidecar must travel with it. On eth/73
+        // requester can neither size-match nor refill the elided record: its sidecar must travel with it. On eth/75
         // it is served elided, like a type-3 one.
         if (!IsBlobCarryingFrameTransaction(tx) || ExchangesFrameBlobsAsCells)
         {
@@ -1753,7 +1753,7 @@ public class Eth72ProtocolHandler(
 
         if (!containsBlobTransaction)
         {
-            // A mask without a type-3 entry matters only for the wrapped cells of eth/73 frame transactions.
+            // A mask without a type-3 entry matters only for the wrapped cells of eth/75 frame transactions.
             return message.CellMask.Length == BlobCellMask.FixedByteLength ? BlobCellMask.FromBytes(message.CellMask) : BlobCellMask.Empty;
         }
 
@@ -1812,7 +1812,7 @@ public class Eth72ProtocolHandler(
 
         if (!tx.Type.SupportsBlobs())
         {
-            // On eth/72 a type-6 sidecar arrives whole and is verified here; on eth/73 it may arrive elided, like a type-3
+            // On eth/72 a type-6 sidecar arrives whole and is verified here; on eth/75 it may arrive elided, like a type-3
             // one, with its cells verified in a later Cells response.
             return !IsBlobCarryingFrameTransaction(tx)
                 || (IsSparseFrameTransaction(tx) ? ValidateSparsePooledBlobTransaction(tx) : ValidateFullPooledBlobSidecar(tx));

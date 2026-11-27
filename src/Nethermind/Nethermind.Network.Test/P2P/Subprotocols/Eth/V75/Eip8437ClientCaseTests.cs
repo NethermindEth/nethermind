@@ -6,15 +6,18 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V73.WrapperTestObjects;
+using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V75.WrapperTestObjects;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V75;
 
 /// <summary>The client integration cases EIP-8437 lists under Test Cases, with valid dependency-bearing transactions A and B
 /// under a fixed target verifier unless stated otherwise.</summary>
@@ -88,7 +91,7 @@ public class Eip8437ClientCaseTests
         }
     }
 
-    // Before local activation, ignore wrapper messages without penalties and send none (see also Eth73ProtocolHandlerTests).
+    // Before local activation, ignore wrapper messages without penalties and send none (see also Eth75ProtocolHandlerTests).
     [Test]
     public void Inactive_transport_sends_nothing()
     {
@@ -105,18 +108,24 @@ public class Eip8437ClientCaseTests
         }
     }
 
-    // A peer connected before activation exchanges wrappers once EIP-8288 activates.
-    [Test]
-    public void Peer_connected_before_activation_is_announced_to_after_it()
+    // EIP-8437 mempool fork: a peer connected before EIP-8288's configured timestamp is sent nothing until the local clock
+    // reaches it, independently of the head, which here stays on one side of the fork while the clock crosses it.
+    [TestCase(900UL, TestName = "Head before the fork")]
+    [TestCase(1_100UL, TestName = "Head after the fork")]
+    public void Peer_connected_before_activation_is_announced_to_once_the_clock_reaches_it(ulong headTimestamp)
     {
-        using WrapperTestNode node = new();
-        node.Tree.Head.Returns((Block?)null);
+        using WrapperTestNode node = new(new CustomSpecProvider(((ForkActivation)0, Eip8141Prototype.Instance),
+            (new ForkActivation(0, 1_000), Eip8288Prototype.Instance)));
+        node.Tree.Head.Returns(Build.A.Block.WithNumber(10).WithTimestamp(headTimestamp).TestObject);
+        node.Clock.Set(DateTime.UnixEpoch.AddSeconds(999));
         FakeWrapperLink link = new();
         node.Broadcaster.Accept(link);
         node.Tick(WrapperTransportLimits.Tick);
-        node.Tree.Head.Returns(Build.A.Block.WithNumber(10).TestObject);
-        node.Tick(WrapperTransportLimits.Tick);
         byte[] wrapper = Wrapper(64, FrameTransaction(1));
+        Assert.That(node.Broadcaster.PublishWrapper(wrapper), Is.False, "EIP-8288 is not enabled before the clock reaches the fork");
+
+        node.Clock.Set(DateTime.UnixEpoch.AddSeconds(1_000));
+        node.Tick(WrapperTransportLimits.Tick);
         Assert.That(node.Broadcaster.PublishWrapper(wrapper), Is.True);
         node.Tick(WrapperTransportLimits.Tick);
         Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(wrapper).Hash }));
@@ -126,6 +135,7 @@ public class Eip8437ClientCaseTests
     // mismatched announced hashes remain penalizable (see ProofWrapperBroadcasterTests for the verifier change).
     [TestCase("proof", false)]
     [TestCase("dependency union", false)]
+    [TestCase("reserved scheme", false)]
     [TestCase("announced hash", true)]
     public async Task Proof_and_dependency_failures_are_discarded_without_penalty(string scenario, bool penalized)
     {
@@ -133,6 +143,7 @@ public class Eip8437ClientCaseTests
         byte[] wrapper = scenario switch
         {
             "dependency union" => MismatchedUnion(a, b),
+            "reserved scheme" => DirectWrapper(a, FrameTransaction(2, 0x12)),
             _ => Wrapper(64, a, b)
         };
         using WrapperTestNode node = new();

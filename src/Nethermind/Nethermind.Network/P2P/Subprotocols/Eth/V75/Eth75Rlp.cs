@@ -6,23 +6,23 @@ using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
-/// <summary>Strict reader for EIP-8437 <c>eth/73</c> message data: canonical RLP with exact field counts and bounded nesting.</summary>
+/// <summary>Strict reader for EIP-8437 <c>eth/75</c> message data: canonical RLP with exact field counts and bounded nesting.</summary>
 /// <remarks>
 /// Rejects nonminimal length prefixes, single bytes below 0x80 wrapped in a prefix, integers with leading zeros,
 /// wrong string/list types and trailing bytes. Every list descent is charged against
-/// <see cref="Eth73Protocol.MaxRlpDepth"/>.
+/// <see cref="Eth75Protocol.MaxRlpDepth"/>.
 /// </remarks>
-public ref struct Eth73RlpReader
+public ref struct Eth75RlpReader
 {
     private readonly ReadOnlySpan<byte> _data;
     private readonly int _depth;
     private int _position;
 
-    public Eth73RlpReader(ReadOnlySpan<byte> data) : this(data, 0) { }
+    public Eth75RlpReader(ReadOnlySpan<byte> data) : this(data, 0) { }
 
-    private Eth73RlpReader(ReadOnlySpan<byte> data, int depth)
+    private Eth75RlpReader(ReadOnlySpan<byte> data, int depth)
     {
         _data = data;
         _depth = depth;
@@ -35,12 +35,12 @@ public ref struct Eth73RlpReader
     public readonly bool IsListNext => HasMore && _data[_position] >= 0xc0;
 
     /// <summary>Reads a list and returns a reader over its content; the caller must call <see cref="End"/> on it.</summary>
-    public Eth73RlpReader ReadList()
+    public Eth75RlpReader ReadList()
     {
-        if (_depth + 1 > Eth73Protocol.MaxRlpDepth) throw new RlpException("RLP nesting exceeds MAX_RLP_DEPTH");
+        if (_depth + 1 > Eth75Protocol.MaxRlpDepth) throw new RlpException("RLP nesting exceeds MAX_RLP_DEPTH");
         (bool isList, int offset, int length) = ReadHeader();
         if (!isList) throw new RlpException("Expected an RLP list");
-        return new Eth73RlpReader(_data.Slice(offset, length), _depth + 1);
+        return new Eth75RlpReader(_data.Slice(offset, length), _depth + 1);
     }
 
     /// <summary>Reads a byte string's content.</summary>
@@ -58,8 +58,8 @@ public ref struct Eth73RlpReader
         (bool isList, int offset, int length) = ReadHeader();
         if (isList)
         {
-            Eth73RlpReader nested = new(_data.Slice(offset, length), _depth + 1);
-            if (_depth + 1 > Eth73Protocol.MaxRlpDepth) throw new RlpException("RLP nesting exceeds MAX_RLP_DEPTH");
+            Eth75RlpReader nested = new(_data.Slice(offset, length), _depth + 1);
+            if (_depth + 1 > Eth75Protocol.MaxRlpDepth) throw new RlpException("RLP nesting exceeds MAX_RLP_DEPTH");
             while (nested.HasMore) nested.ReadItem();
         }
         return _data[start.._position];
@@ -75,6 +75,26 @@ public ref struct Eth73RlpReader
         return value;
     }
 
+    /// <summary>Reads a canonical integer of any width.</summary>
+    /// <returns>Whether it fits 64 bits; <paramref name="value"/> is 0 otherwise.</returns>
+    public bool ReadUInt(out ulong value)
+    {
+        ReadOnlySpan<byte> bytes = ReadInteger(int.MaxValue);
+        value = 0;
+        if (bytes.Length > sizeof(ulong)) return false;
+        foreach (byte b in bytes) value = value << 8 | b;
+        return true;
+    }
+
+    /// <summary>Reads a canonical integer of at most <paramref name="maxBytes"/> bytes, returning its big-endian content.</summary>
+    public ReadOnlySpan<byte> ReadInteger(int maxBytes)
+    {
+        ReadOnlySpan<byte> bytes = ReadBytes();
+        if (bytes.Length > maxBytes) throw new RlpException($"Integer exceeds {maxBytes} bytes");
+        if (bytes.Length > 0 && bytes[0] == 0) throw new RlpException("Integer has a leading zero");
+        return bytes;
+    }
+
     public ValueHash256 ReadHash()
     {
         ReadOnlySpan<byte> bytes = ReadBytes();
@@ -85,7 +105,7 @@ public ref struct Eth73RlpReader
     /// <summary>Counts the remaining items without decoding them, failing once <paramref name="max"/> is exceeded.</summary>
     public readonly int CountRemaining(int max)
     {
-        Eth73RlpReader copy = this;
+        Eth75RlpReader copy = this;
         int count = 0;
         while (copy.HasMore)
         {
@@ -137,8 +157,8 @@ public ref struct Eth73RlpReader
     }
 }
 
-/// <summary>Canonical RLP writer for EIP-8437 <c>eth/73</c> message data.</summary>
-public static class Eth73Rlp
+/// <summary>Canonical RLP writer for EIP-8437 <c>eth/75</c> message data.</summary>
+public static class Eth75Rlp
 {
     public static int LengthOfBytes(ReadOnlySpan<byte> value) =>
         value.Length == 1 && value[0] < 0x80 ? 1 : LengthOfPrefix(value.Length) + value.Length;

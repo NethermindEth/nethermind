@@ -16,16 +16,17 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75;
+using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NSubstitute;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V75;
 
 /// <summary>Accepts every proof unless told otherwise, counting recursive STARK checks.</summary>
 internal sealed class WrapperTestVerifier : ILeanProofVerifier
@@ -58,6 +59,10 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 
     public string Description => name;
     public PublicKey? NodeId { get; init; }
+    /// <summary>An aggregating link by default, which exchanges both wrapper modes; <c>eth/75</c> exchanges only mode 0.</summary>
+    public byte ProtocolVersion { get; init; } = AggregatingVersion;
+
+    public const byte AggregatingVersion = EthVersions.Eth75 + 1;
 
     public void Send(P2PMessage message)
     {
@@ -79,7 +84,9 @@ internal sealed class WrapperTestNode : IDisposable
         Time = new ManualTimeProvider();
         ISpecProvider specs = specProvider ?? new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance);
         Tree.ChainId.Returns(1UL);
-        Tree.Head.Returns(Build.A.Block.WithNumber(10).TestObject);
+        Block head = Build.A.Block.WithNumber(10).TestObject;
+        Tree.Head.Returns(head);
+        Clock = new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(head.Timestamp));
         Pool.GetPendingTransactions().Returns(_ => { lock (Pending) return [.. Pending]; });
         Pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         Pool.TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction?>()).Returns(call =>
@@ -94,11 +101,14 @@ internal sealed class WrapperTestNode : IDisposable
             lock (Pending) Pending.Add(call.Arg<Transaction>());
             return AcceptTxResult.Accepted;
         });
-        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, new ForwardingBlobAdmission(this));
+        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, new ForwardingBlobAdmission(this), Clock);
         Broadcaster = new ProofWrapperBroadcaster(Wrappers, LimboLogs.Instance, Time);
     }
 
     public ManualTimeProvider Time { get; }
+
+    /// <summary>The wall clock that selects the EIP-8437 mempool fork.</summary>
+    public ManualTimestamper Clock { get; }
     public IBlockTree Tree { get; } = Substitute.For<IBlockTree>();
     public ITxPool Pool { get; } = Substitute.For<ITxPool>();
     public WrapperTestVerifier Verifier { get; } = new();
@@ -121,9 +131,11 @@ internal sealed class WrapperTestNode : IDisposable
     }
 
     /// <summary>Moves the local head to <paramref name="number"/> at <paramref name="timestamp"/>, with a parent one EIP-7843 slot
-    /// of <paramref name="slotLength"/> seconds earlier, so the target fork is the one active at <c>timestamp + slotLength</c>.</summary>
+    /// of <paramref name="slotLength"/> seconds earlier, and the clock to the next slot, so the mempool fork is the one active at
+    /// <c>timestamp + slotLength</c>.</summary>
     public void SetHead(ulong number, ulong timestamp, ulong slotLength = 10)
     {
+        Clock.Set(DateTime.UnixEpoch.AddSeconds(timestamp + slotLength));
         BlockHeader parent = Build.A.BlockHeader.WithNumber(number - 1).WithTimestamp(timestamp - slotLength).WithSlotNumber(number - 1).TestObject;
         Block head = Build.A.Block.WithParent(parent).WithNumber(number).WithTimestamp(timestamp).WithSlotNumber(number).TestObject;
         Tree.FindHeader(parent.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
@@ -236,10 +248,9 @@ internal static class WrapperTestObjects
     /// <summary>Describes bytes that need not parse as a wrapper, as mode 1 with zero hints.</summary>
     public static WrapperAnnouncement DescribeOpaque(byte[] wrapper) => Announcement(1, wrapper.Length, ValueKeccak.Compute(wrapper));
 
-    /// <summary>An announcement entry with arbitrary, possibly false, metadata.</summary>
-    public static WrapperAnnouncement Announcement(int mode, int length, in ValueHash256 hash, WrapperCoverage coverage = default) =>
-        WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)mode), Eth73Rlp.EncodeUInt((ulong)length),
-            Eth73Rlp.EncodeBytes(hash.Bytes), Eth73Rlp.EncodeBytes(coverage.DepsHash.Bytes), Eth73Rlp.EncodeBytes(coverage.TxsHash.Bytes)));
+    /// <summary>An announcement entry with arbitrary, possibly false, claims.</summary>
+    public static WrapperAnnouncement Announcement(int mode, int length, in ValueHash256 hash, WrapperCoverage? coverage = default,
+        WrapperMetadata? metadata = null) => new(mode, length, hash, coverage, metadata);
 
     /// <summary>A ProofWrappers entry pairing <paramref name="wrapper"/> with its canonical hash.</summary>
     public static ProofWrapperEntry Entry(byte[] wrapper) => new(ValueKeccak.Compute(wrapper), wrapper);
