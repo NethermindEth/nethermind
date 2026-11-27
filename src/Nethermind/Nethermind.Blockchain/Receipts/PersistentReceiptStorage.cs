@@ -542,7 +542,8 @@ namespace Nethermind.Blockchain.Receipts
                 RlpReader items = ReceiptArrayStorageDecoder.EnterCompactReceiptList<OffFlag>(ref reader);
                 RlpBehaviors behaviors = RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput
                     | (_eip7668EverEnabled && _specProvider.GetSpec(header).IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
-                CompactReceiptStorageDecoder decoder = CompactReceiptStorageDecoder.Instance;
+                IRlpDecoder<TxReceipt> decoder = ReceiptArrayStorageDecoder.GetCompactDecoder();
+                IReceiptRefDecoder refDecoder = (IReceiptRefDecoder)decoder;
                 TxReceipt? found = null;
                 ulong gasUsedBefore = 0;
                 int logsBefore = 0;
@@ -554,7 +555,7 @@ namespace Nethermind.Blockchain.Receipts
 
                     if (count < index)
                     {
-                        decoder.DecodeStructRef(ref items, RlpBehaviors.Storage | RlpBehaviors.TrustedInput, out TxReceiptStructRef previous);
+                        refDecoder.DecodeStructRef(ref items, RlpBehaviors.Storage | RlpBehaviors.TrustedInput, out TxReceiptStructRef previous);
                         gasUsedBefore = previous.GasUsedTotal;
                         RlpReader logs = new RlpReader(previous.LogsRlp).EnterSequence<OffFlag>(out _);
                         logsBefore += logs.CountItems<OffFlag>(int.MaxValue);
