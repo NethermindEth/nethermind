@@ -10,10 +10,14 @@ public class FlatDbConfig : IFlatDbConfig
 {
     /// <summary>
     /// EIP-8252 REORG_RETENTION_WINDOW: 262144 blocks = 8192 epochs x 32 slots = 2^18 (~36.4 days at
-    /// 12s slots). The inactivity-leak-bounded non-finality span across which an execution client MUST
-    /// be able to reconstruct any canonical block's post-state (measured from head, not from finalized)
-    /// without external sync. Used as the default long-finality force-persist backstop depth, i.e. the
-    /// deepest reorg the persisted-snapshot tier retains reconstructable state for while finality stalls.
+    /// 12s slots). The inactivity-leak-bounded cap on how far non-finality can extend. EIP-8252 requires
+    /// retention only across non-finality: during a finality stall the client must be able to reconstruct
+    /// post-state back to the block where finality was lost, up to this many blocks, without external sync.
+    /// Under healthy finality the client is NOT required to keep every block within head-W; state folds
+    /// toward the finalized boundary as usual (see PersistenceManager), and this window only bounds how
+    /// deep the retained span may grow while finality is stuck. Used as the default long-finality
+    /// force-persist backstop depth: the deepest non-finality span the persisted-snapshot tier keeps
+    /// reconstructable before forcing a persist to bound memory.
     /// </summary>
     public const ulong ReorgRetentionWindow = 262_144;
 
