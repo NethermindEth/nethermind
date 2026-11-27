@@ -1007,6 +1007,11 @@ public static class BasePersistence
         private TFlatWriteBatch _flatWriter = flatWriteBatch;
         private TTrieWriteBatch _trieWriteBatch = trieWriteBatch;
 
+        /// <summary>Whether <see cref="Abort"/> was called; the disposer of a store's batch then commits nothing.</summary>
+        internal bool IsAborted { get; private set; }
+
+        public void Abort() => IsAborted = true;
+
         public void Dispose() => disposer.Dispose();
 
         public void SelfDestruct(Address addr)

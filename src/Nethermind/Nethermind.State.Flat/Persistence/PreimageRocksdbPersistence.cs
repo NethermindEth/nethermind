@@ -155,7 +155,10 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
 
         StateId fromCopy = from;
         StateId toCopy = to;
-        return new BasePersistence.WriteBatch<FakeHashWriter<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
+
+        // Read by the disposer below, which runs only after the assignment.
+        BasePersistence.WriteBatch<FakeHashWriter<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch> writeBatch = null!;
+        writeBatch = new(
             flatWriter,
             trieWriteBatch,
             batch.GetColumnBatch(FlatDbColumns.Metadata),
@@ -166,6 +169,10 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 bool batchWritten = false;
                 try
                 {
+                    // Before anything is committed or recorded: the finally clears the RocksDB batch, and the log batch,
+                    // disposed without a commit, truncates what it appended.
+                    if (writeBatch.IsAborted) return;
+
                     logBatch.Commit();
                     if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                         BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
@@ -186,7 +193,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 {
                     if (!batchWritten)
                     {
-                        // The log side failed, so nothing of this batch may reach RocksDB.
+                        // Aborted, or the log side failed, so nothing of this batch may reach RocksDB.
                         batch.Clear();
                         batch.Dispose();
                     }
@@ -196,6 +203,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 }
             })
         );
+        return writeBatch;
     }
 
     private struct FakeHashWriter<TWriteBatch>(

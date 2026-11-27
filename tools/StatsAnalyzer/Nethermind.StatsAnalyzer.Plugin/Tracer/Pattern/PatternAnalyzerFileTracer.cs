@@ -54,7 +54,8 @@ public class PatternAnalyzerFileTracer : StatsAnalyzerFileTracer<PatternAnalyzer
 
     protected override void ResetBufferAndTracer()
     {
-        _buffer = new ResettableList<Instruction>(_buffer.Count);
+        // ResettableList.Reset never grows a zero start capacity, which an empty or skipped block would leave.
+        _buffer = new ResettableList<Instruction>(Math.Max(_buffer.Count, Resettable.StartCapacity));
         Tracer = new PatternStatsAnalyzerTxTracer(_buffer, _ignore, _patternStatsAnalyzer, Sort,
             Ct);
     }

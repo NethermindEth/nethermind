@@ -119,7 +119,10 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
 
         StateId fromCopy = from;
         StateId toCopy = to;
-        return new BasePersistence.WriteBatch<BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
+
+        // Read by the disposer below, which runs only after the assignment.
+        BasePersistence.WriteBatch<BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch> writeBatch = null!;
+        writeBatch = new(
             new BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>(
                 new BaseFlatPersistence.WriteBatch(
                     (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateNodes),
@@ -139,6 +142,10 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
                 bool batchWritten = false;
                 try
                 {
+                    // Before anything is committed or recorded: the finally clears the RocksDB batch, and the log batch,
+                    // disposed without a commit, truncates what it appended.
+                    if (writeBatch.IsAborted) return;
+
                     logBatch.Commit();
                     if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                         BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
@@ -159,7 +166,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
                 {
                     if (!batchWritten)
                     {
-                        // The log side failed, so nothing of this batch may reach RocksDB.
+                        // Aborted, or the log side failed, so nothing of this batch may reach RocksDB.
                         batch.Clear();
                         batch.Dispose();
                     }
@@ -169,5 +176,6 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
                 }
             })
         );
+        return writeBatch;
     }
 }

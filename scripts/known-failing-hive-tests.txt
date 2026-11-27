@@ -59,15 +59,5 @@ Blob Transaction Ordering, Multiple Clients (Cancun) (nethermind)
 
 #devp2p
 
-BlobViolations (nethermind)
-ENRRequest (nethermind)
-Findnode/BasicFindnode (nethermind)
-Findnode/UnsolicitedNeighbors (nethermind)
-FindnodeResults (nethermind)
-GetNonexistentBlockHeaders (nethermind)
-nethermind
-PingMultiIP (nethermind)
-TalkRequest (nethermind)
-SimultaneousRequests (nethermind)
-TestBlobTxWithMismatchedSidecar (nethermind)
-TestBlobTxWithoutSidecar (nethermind)
+# Expects the peer that served invalid cells to be disconnected at once; Nethermind treats a cell proof failure as ambiguous when the body and the cells came from different peers (ethereum/go-ethereum#36185).
+BlobTxWithInvalidCells (nethermind)

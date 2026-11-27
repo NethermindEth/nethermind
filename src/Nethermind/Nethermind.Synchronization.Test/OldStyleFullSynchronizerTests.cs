@@ -328,6 +328,38 @@ namespace Nethermind.Synchronization.Test
             Assert.That(data.Count, Is.EqualTo(2));
         }
 
+        /// <remarks>The response has one item per key looked up, so its count is the number of lookups.</remarks>
+        [TestCase(2047, 2047)]
+        [TestCase(2048, 2048)]
+        [TestCase(2049, 2048)]
+        public void Node_values_response_stops_after_the_lookup_limit(int keyCount, int expectedCount)
+        {
+            Hash256[] keys = new Hash256[keyCount];
+            Array.Fill(keys, TestItem.KeccakA);
+            using IByteArrayList data = SyncServer.GetNodeData(keys, CancellationToken.None);
+
+            Assert.That(data.Count, Is.EqualTo(expectedCount));
+        }
+
+        [Test]
+        public void Node_values_response_holds_the_first_keys_up_to_the_lookup_limit()
+        {
+            _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
+            _stateDb.Set(TestItem.KeccakC, TestItem.RandomDataC);
+            Hash256[] keys = new Hash256[2049];
+            Array.Fill(keys, TestItem.KeccakB);
+            keys[0] = TestItem.KeccakA;
+            keys[^1] = TestItem.KeccakC;
+            using IByteArrayList data = SyncServer.GetNodeData(keys, CancellationToken.None);
+
+            Assert.That(data.Count, Is.EqualTo(2048));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(data[0], Is.SequenceEqualTo(TestItem.RandomDataA), "the first key is looked up");
+                Assert.That(data[2047].IsEmpty, Is.True, "the last key looked up is a miss");
+            }
+        }
+
         [Test]
         public void Can_retrieve_empty_receipts()
         {
