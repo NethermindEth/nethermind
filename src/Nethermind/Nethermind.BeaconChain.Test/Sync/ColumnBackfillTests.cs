@@ -146,7 +146,7 @@ public partial class ColumnBackfillTests
         PubkeyCache pubkeys = new();
         pubkeys.Build(gloas.PostState.Validators!);
         BlockImporterFactory factory = new(spec, store, pubkeys, new SignedGloasChain.EnvelopeEngine(),
-            new BeaconChainConfig(), LimboLogs.Instance, pool, clock);
+            new BeaconChainConfig(), LimboLogs.Instance, pool, clock, committees: new());
         BlockImporter importer = (BlockImporter)factory.Create(new ForkedBeaconState.OfGloas(gloas.PostState), gloas.Forked, gloas.Root);
         using (Assert.EnterMultipleScope())
         {

@@ -237,7 +237,7 @@ public static partial class BeaconStateAccessors
         return proposerIndices;
     }
 
-    public static partial Hash256 GetShufflingDecisionRoot(this BeaconStateFulu state, ulong epoch);
+    public static partial Hash256 GetShufflingDecisionRoot(this BeaconStateElectra state, ulong epoch);
     public static partial ulong[] GetAttestingIndices(this BeaconStateFulu state, Attestation attestation, CommitteeCache committees);
     public static partial IndexedAttestation GetIndexedAttestation(this BeaconStateFulu state, Attestation attestation, CommitteeCache committees);
 }

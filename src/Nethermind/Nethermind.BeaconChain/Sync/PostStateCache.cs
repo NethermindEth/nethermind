@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 namespace Nethermind.BeaconChain.Sync;
 
 /// <summary>
@@ -61,8 +62,10 @@ internal sealed class PostStateCache(
     ILogManager? logManager = null,
     Func<Hash256, bool>? isAboveFinalized = null,
     PubkeyCache? pubkeys = null,
-    Func<Hash256, IEnumerable<Hash256>>? ancestors = null) : IForkChoiceStateProvider, IGloasBlockStateProvider
+    Func<Hash256, IEnumerable<Hash256>>? ancestors = null,
+    CommitteeCacheLru? committees = null) : IForkChoiceStateProvider, IGloasBlockStateProvider
 {
+    private readonly CommitteeCacheLru _committees = committees ?? new();
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<PostStateCache>();
 
     private const int RetainedStateCount = 8;
@@ -213,7 +216,7 @@ internal sealed class PostStateCache(
             ForkedBeaconState.OfFulu fulu => new ForkedBeaconState.OfFulu(fulu.State.Clone()),
             _ => throw new NotSupportedException($"Unhandled state {ancestorState.GetType().Name}"),
         };
-        EpochCache cache = new() { Hasher = new CachedBeaconStateHasher() };
+        EpochCache cache = new(_committees) { Hasher = new CachedBeaconStateHasher() };
         try
         {
             for (int i = replay.Count - 1; i >= 0; i--)

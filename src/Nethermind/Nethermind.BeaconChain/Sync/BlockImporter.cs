@@ -9,6 +9,7 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Storage;
@@ -75,7 +76,7 @@ public sealed class BlockImporter : IBlockImporter
         if (_preparedSlot is { } held && held.Parent == headRoot && held.State.Slot == nextSlot) return;
         if (_states.GetHeldBlockState(headRoot) is not { } parent) return;
         BeaconStateFulu copy = parent.CloneForImport(_lineageCache.Hasher, headRoot);
-        EpochCache cache = headRoot == _states.LineageRoot ? _lineageCache.ForSpeculativeImport() : new EpochCache { Hasher = _lineageCache.Hasher };
+        EpochCache cache = headRoot == _states.LineageRoot ? _lineageCache.ForSpeculativeImport() : new EpochCache(_committees) { Hasher = _lineageCache.Hasher };
         cache.SigningSpec = _spec;
         SlotProcessing.ProcessSlots(copy, nextSlot, cache);
         _preparedSlot = new(headRoot, parent, copy, cache);
@@ -101,7 +102,8 @@ public sealed class BlockImporter : IBlockImporter
     /// Bounded by <see cref="MaxDeferredBlocks"/> and pruned at finalization.</summary>
     private readonly Dictionary<Hash256, DeferredBlock> _deferred = [];
 
-    private EpochCache _lineageCache = new() { Hasher = new CachedBeaconStateHasher() };
+    private readonly CommitteeCacheLru _committees;
+    private EpochCache _lineageCache;
 
     private bool _lineageBlockStartsEpoch = true;
 
@@ -112,7 +114,7 @@ public sealed class BlockImporter : IBlockImporter
     /// <summary>The last Gloas block imported; only its children may reuse <see cref="_gloasLineageCache"/>, which refuses a memo built on another branch.</summary>
     private Hash256? _gloasLineageRoot;
 
-    private EpochCache _gloasLineageCache = new() { Hasher = new CachedBeaconStateHasher() };
+    private EpochCache _gloasLineageCache;
 
     private readonly Hash256? _fuluProposerDomain;
 
@@ -159,8 +161,12 @@ public sealed class BlockImporter : IBlockImporter
         Hash256 anchorRoot,
         ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
         ProposerLookaheadHolder? proposerLookaheads = null,
-        FailedBlockRoots? failedBlocks = null)
+        FailedBlockRoots? failedBlocks = null,
+        CommitteeCacheLru? committees = null)
     {
+        _committees = committees ?? new CommitteeCacheLru();
+        _lineageCache = new(_committees) { Hasher = new CachedBeaconStateHasher() };
+        _gloasLineageCache = new(_committees) { Hasher = new CachedBeaconStateHasher() };
         _spec = spec;
         _store = store;
         _pubkeys = pubkeys;
@@ -176,16 +182,16 @@ public sealed class BlockImporter : IBlockImporter
         switch (anchorState, anchorBlock)
         {
             case (ForkedBeaconState.OfFulu { State: BeaconStateFulu fuluState }, ForkedSignedBeaconBlock.OfFulu { Block: SignedBeaconBlock fuluBlock }):
-                _states = new PostStateCache(store, spec, anchorRoot, fuluState, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots);
-                _runner = new ForkChoiceRunner(spec, fuluState, fuluBlock.Message!, _states, pubkeys, _states, logManager);
+                _states = new PostStateCache(store, spec, anchorRoot, fuluState, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots, _committees);
+                _runner = new ForkChoiceRunner(spec, fuluState, fuluBlock.Message!, _states, pubkeys, _states, logManager, _committees);
                 _fuluProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, fuluState.Fork!.CurrentVersion!, fuluState.GenesisValidatorsRoot!);
                 _gloasProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, spec.GloasForkVersion, fuluState.GenesisValidatorsRoot!);
                 break;
             case (ForkedBeaconState.OfGloas { State: BeaconStateGloas gloasState }, ForkedSignedBeaconBlock.OfGloas { Block: SignedBeaconBlockGloas gloasBlock }):
                 // specs/gloas/fork-choice.md get_forkchoice_store: block_states holds the anchor state, the finalized checkpoint's.
-                _states = new PostStateCache(store, spec, null, null, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots);
+                _states = new PostStateCache(store, spec, null, null, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots, _committees);
                 _states.PinGloas(anchorRoot, gloasState);
-                _runner = new ForkChoiceRunner(spec, gloasState, gloasBlock.Message!, _states, pubkeys, _states, logManager);
+                _runner = new ForkChoiceRunner(spec, gloasState, gloasBlock.Message!, _states, pubkeys, _states, logManager, _committees);
                 _fuluProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, spec.VersionForEpoch(spec.FuluForkEpoch), gloasState.GenesisValidatorsRoot!);
                 _gloasProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, gloasState.Fork!.CurrentVersion!, gloasState.GenesisValidatorsRoot!);
                 break;
@@ -563,7 +569,7 @@ public sealed class BlockImporter : IBlockImporter
             {
                 if (_logger.IsDebug) _logger.Debug($"Importing block {blockRoot} at slot {block.Slot} on a copy of its parent's state: the lineage is at {_states.LineageRoot}");
                 state = parentState.CloneForImport(_lineageCache.Hasher, parentRoot);
-                cache = new EpochCache { Hasher = _lineageCache.Hasher };
+                cache = new EpochCache(_committees) { Hasher = _lineageCache.Hasher };
             }
 
             ImportVerdict verdict = new(_engine);
@@ -750,7 +756,7 @@ public sealed class BlockImporter : IBlockImporter
         }
 
         bool extendsLineage = parentRoot == _gloasLineageRoot;
-        EpochCache cache = extendsLineage ? _gloasLineageCache : new EpochCache { Hasher = _gloasLineageCache.Hasher };
+        EpochCache cache = extendsLineage ? _gloasLineageCache : new EpochCache(_committees) { Hasher = _gloasLineageCache.Hasher };
         cache.RequestRegistry = _requestRegistry;
         BeaconStateGloas postState;
         try
@@ -1015,7 +1021,7 @@ public sealed class BlockImporter : IBlockImporter
                     return refused;
 
                 proposerState = ancestorState.Clone();
-                GloasSlotProcessing.ProcessSlots(proposerState, block.Slot, new EpochCache { SigningSpec = _spec, Hasher = _gloasLineageCache.Hasher });
+                GloasSlotProcessing.ProcessSlots(proposerState, block.Slot, new EpochCache(_committees) { SigningSpec = _spec, Hasher = _gloasLineageCache.Hasher });
             }
 
             refusal = CheckProposal(signedBlock, proposerState, proposerSignatureValid);
@@ -1261,7 +1267,7 @@ public sealed class BlockImporter : IBlockImporter
             PersistAnchor(finalized.Root, finalizedSlot, BeaconStateGloas.Encode(gloasState), gloasState.ValidatorBuffer!.Items);
             _states.PinGloas(finalized.Root, gloasState);
             // No Fulu block can extend the lineage below a Gloas finalized checkpoint; release its hasher trees and registry index.
-            _lineageCache = new EpochCache();
+            _lineageCache = new EpochCache(_committees);
         }
         else if (!gloasFinalized && _states.GetBlockState(finalized.Root) is { } finalizedState)
         {
@@ -1514,7 +1520,7 @@ public sealed class BlockImporter : IBlockImporter
         if (_logger.IsInfo) _logger.Info($"Beacon chain reorg: adopting head {head} at slot {_runner.GetBlockSlot(head)} (was {lineageRoot})");
         _states.Retain(lineageRoot, lineageState);
         _states.SetLineage(head, headState);
-        _lineageCache = new EpochCache { Hasher = new CachedBeaconStateHasher() };
+        _lineageCache = new EpochCache(_committees) { Hasher = new CachedBeaconStateHasher() };
         // Unknown here; forces retention at the next epoch advance, which is harmless.
         _lineageBlockStartsEpoch = true;
     }
@@ -1673,6 +1679,7 @@ public sealed class BlockImporterFactory(
     ILogManager logManager,
     DataColumnSidecarPool pool,
     SlotClock clock,
+    CommitteeCacheLru committees,
     BeaconDiscovery? discovery = null,
     ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
     ProposerLookaheadHolder? proposerLookaheads = null,
@@ -1697,7 +1704,8 @@ public sealed class BlockImporterFactory(
             anchorRoot,
             forkChoiceSnapshots,
             proposerLookaheads,
-            failedBlocks)
+            failedBlocks,
+            committees)
         {
             RecoverLocalColumns = block =>
             {

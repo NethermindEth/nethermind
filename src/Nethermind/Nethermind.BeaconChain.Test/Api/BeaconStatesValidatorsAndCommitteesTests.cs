@@ -8,6 +8,7 @@ using System.Text.Json;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -27,23 +28,27 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
     private const ulong StateSlot = StateEpoch * 32;
 
     [Test]
-    public async Task Committee_cache_shares_concurrent_requests_and_isolates_states_and_epochs([Values] bool gloas)
+    public async Task Committee_cache_shares_transition_and_concurrent_api_requests_and_isolates_roots_and_epochs([Values] bool gloas)
     {
-        StateCommitteeCache cache = new();
+        CommitteeCacheLru shared = new();
+        StateCommitteeCache cache = new(shared);
         BeaconStateFulu state = RichState(Spec, StateSlot);
+        CommitteeCache transition = new EpochCache(shared).GetCommitteeCache(state, StateEpoch);
         ApiState apiState = gloas
-            ? ApiState.Of(new BeaconStateGloas { Slot = state.Slot, Validators = state.Validators, RandaoMixes = state.RandaoMixes })
+            ? ApiState.Of(new BeaconStateGloas { Slot = state.Slot, Validators = state.Validators, RandaoMixes = state.RandaoMixes, BlockRoots = state.BlockRoots })
             : ApiState.Of(BeaconFork.Fulu, state);
         CommitteeCache[] results = await Task.WhenAll(Enumerable.Range(0, 32)
             .Select(_ => Task.Run(() => cache.Get(apiState, StateEpoch))));
         ApiState sameState = gloas ? ApiState.Of(apiState.Gloas!) : ApiState.Of(BeaconFork.Fulu, state);
         BeaconStateFulu replacement = RichState(Spec, StateSlot);
         replacement.Validators = [replacement.Validators![0]];
+        Array.Fill(replacement.BlockRoots!, TestRoot(0xEE));
         CommitteeCache replaced = cache.Get(ApiState.Of(BeaconFork.Fulu, replacement), StateEpoch);
 
         using IDisposable scope = Assert.EnterMultipleScope();
         foreach (CommitteeCache result in results) Assert.That(result, Is.SameAs(results[0]));
-        Assert.That(cache.Get(sameState, StateEpoch), Is.SameAs(results[0]));
+        Assert.That(cache.Get(sameState, StateEpoch), Is.SameAs(transition));
+        Assert.That(results[0].ShuffledIndices.ToArray(), Is.EqualTo(CommitteeCache.Build(state, StateEpoch).ShuffledIndices.ToArray()));
         Assert.That(replaced.ActiveValidatorCount, Is.EqualTo(1));
         Assert.That(results[0].ActiveValidatorCount, Is.EqualTo(3));
         foreach (ulong epoch in new[] { StateEpoch - 1, StateEpoch, StateEpoch + 1 })
@@ -54,7 +59,7 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
     [Test]
     public void Committee_cache_does_not_retain_expired_states()
     {
-        StateCommitteeCache cache = new();
+        StateCommitteeCache cache = new(new CommitteeCacheLru());
         WeakReference state = CacheTemporaryState(cache);
         GC.Collect();
         GC.WaitForPendingFinalizers();
@@ -328,6 +333,7 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         BeaconStateFulu state = MinimalState(Spec, StateSlot,
             new Fork { PreviousVersion = [5, 0, 0, 0], CurrentVersion = [6, 0, 0, 0], Epoch = StateEpoch },
             validators, balances, randaoMixes);
+        state.BlockRoots = Enumerable.Repeat(root, (int)Presets.SlotsPerHistoricalRoot).ToArray();
 
         byte[] ssz = BeaconStateFulu.Encode(state);
         _host.Store.PutState(root, ssz);

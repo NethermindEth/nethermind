@@ -65,7 +65,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         apiConfig.Host = "127.0.0.1";
         apiConfig.Port = 0;
         Host = new BeaconApiHost(apiConfig, spec, StatusHolder, Clock, Store,
-            metadataSource, engine ?? new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots, headSnapshots: headSnapshots, driver: driver);
+            metadataSource, engine ?? new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, new(), peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots, headSnapshots: headSnapshots, driver: driver);
     }
 
     public static async Task<BeaconApiTestHost> StartAsync(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
