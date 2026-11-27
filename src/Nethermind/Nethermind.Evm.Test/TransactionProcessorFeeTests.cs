@@ -14,6 +14,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -533,6 +534,8 @@ public class TransactionProcessorFeeTests
 
     public enum SettlementPath { Success, Revert, ExceptionalHalt, ContractCollision, CodeDepositFailure, SimpleTransfer }
 
+    public enum SettlementRejector { Hook, Refund }
+
     private const ulong SettlementBaseFee = 1;
     private const ulong SettlementPriorityFee = 2;
 
@@ -543,7 +546,7 @@ public class TransactionProcessorFeeTests
         _spec.FeeCollector = TestItem.AddressC;
         Block block = BuildSettlementPathBlock(path, out EvmExceptionType expectedException);
         Transaction tx = block.Transactions[0];
-        GasAdjustingTransactionProcessor processor = CreateGasAdjustingProcessor(gasRefund, reject: false);
+        GasAdjustingTransactionProcessor processor = CreateGasAdjustingProcessor(gasRefund, rejector: null);
 
         FeesTracer feesTracer = new();
         BlockReceiptsTracer receiptsTracer = new();
@@ -573,17 +576,21 @@ public class TransactionProcessorFeeTests
     }
 
     [Test]
-    public void Settled_gas_adjustment_can_reject_transaction([Values(SettlementPath.Success, SettlementPath.SimpleTransfer)] SettlementPath path)
+    public void Invalid_settlement_rejects_transaction(
+        [Values(SettlementPath.Success, SettlementPath.SimpleTransfer)] SettlementPath path, [Values] SettlementRejector rejector)
     {
         Block block = BuildSettlementPathBlock(path, out _);
-        GasAdjustingTransactionProcessor processor = CreateGasAdjustingProcessor(gasRefund: 0, reject: true);
+        GasAdjustingTransactionProcessor processor = CreateGasAdjustingProcessor(gasRefund: 0, rejector);
 
         TransactionResult result = processor.Execute(block.Transactions[0], new BlockExecutionContext(block.Header, _spec), NullTxTracer.Instance);
 
+        bool hookRejects = rejector == SettlementRejector.Hook;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-            Assert.That(processor.Calls, Is.EqualTo(1));
+            Assert.That(result.Error, Is.EqualTo(hookRejects
+                ? TransactionResult.ErrorType.MalformedTransaction
+                : TransactionResult.ErrorType.StateGasInvariantViolated));
+            Assert.That(processor.Calls, Is.EqualTo(hookRejects ? 1 : 0));
             Assert.That(block.Header.GasUsed, Is.Zero);
             Assert.That(_stateProvider.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
         }
@@ -640,25 +647,33 @@ public class TransactionProcessorFeeTests
         return TestItem.AddressD;
     }
 
-    private GasAdjustingTransactionProcessor CreateGasAdjustingProcessor(ulong gasRefund, bool reject) =>
+    private GasAdjustingTransactionProcessor CreateGasAdjustingProcessor(ulong gasRefund, SettlementRejector? rejector) =>
         new(_specProvider, _stateProvider,
             new EthereumVirtualMachine(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance),
-            new EthereumCodeInfoRepository(_stateProvider), gasRefund, reject);
+            new EthereumCodeInfoRepository(_stateProvider), gasRefund, rejector);
 
-    /// <summary>Lowers each transaction's settled gas by <paramref name="gasRefund"/> and credits the sender for it, or rejects the transaction.</summary>
+    /// <summary>Lowers each transaction's settled gas by <paramref name="gasRefund"/> and credits the sender for it, unless <paramref name="rejector"/> rejects the transaction.</summary>
     private sealed class GasAdjustingTransactionProcessor(
-        ISpecProvider specProvider, IWorldState worldState, IVirtualMachine virtualMachine, ICodeInfoRepository codeInfoRepository, ulong gasRefund, bool reject)
+        ISpecProvider specProvider, IWorldState worldState, IVirtualMachine virtualMachine, ICodeInfoRepository codeInfoRepository, ulong gasRefund, SettlementRejector? rejector)
         : EthereumTransactionProcessorBase(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, LimboLogs.Instance)
     {
         public int Calls { get; private set; }
         public ulong SpentGasBeforeAdjustment { get; private set; }
+
+        protected override RefundResult Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+            in TransactionSubstate substate, in EthereumGasPolicy unspentGas, in UInt256 gasPrice, ulong codeInsertRefunds, in EthereumGasPolicy floorGas,
+            in EthereumGasPolicy intrinsicGasStandard, long postIntrinsicStateReservoir, bool topLevelCreateStateGasCharged = false) =>
+            rejector == SettlementRejector.Refund
+                ? RefundResult.Invalid(TransactionResult.ErrorType.StateGasInvariantViolated)
+                : base.Refund(tx, header, spec, opts, in substate, in unspentGas, in gasPrice, codeInsertRefunds, in floorGas,
+                    in intrinsicGasStandard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);
 
         protected override RefundResult AdjustSettledGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
             in UInt256 effectiveGasPrice, in GasConsumed gas)
         {
             Calls++;
             SpentGasBeforeAdjustment = gas.SpentGas;
-            if (reject) return RefundResult.Invalid(TransactionResult.MalformedTransaction);
+            if (rejector == SettlementRejector.Hook) return RefundResult.Invalid(TransactionResult.MalformedTransaction);
 
             PayRefund(tx, gasRefund * effectiveGasPrice, spec);
             return gas with { SpentGas = gas.SpentGas - gasRefund, OperationGas = gas.OperationGas - gasRefund };

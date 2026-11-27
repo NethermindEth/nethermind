@@ -1997,9 +1997,11 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <remarks>
         /// Runs once per executed non-frame transaction, whatever its outcome. Receipt gas and fees follow
         /// <see cref="GasConsumed.SpentGas"/>; block gas used follows <see cref="GasConsumed.EffectiveBlockGas"/>, plus
-        /// <see cref="GasConsumed.BlockStateGas"/> under EIP-8037. Unspent gas is already refunded, so an override that
-        /// lowers the gas credits the sender the difference through <see cref="PayRefund"/>. Returning
-        /// <see cref="RefundResult.Invalid"/> rejects the transaction, but block building does not roll back its state changes.
+        /// <see cref="GasConsumed.BlockStateGas"/> under EIP-8037. Return an adjusted copy of <paramref name="gas"/>: a bare
+        /// <c>ulong</c> converts to a result with zero <see cref="GasConsumed.BlockGas"/> and <see cref="GasConsumed.BlockStateGas"/>.
+        /// Unspent gas is already refunded, so an override that lowers the gas credits the sender the difference through
+        /// <see cref="PayRefund"/>. Returning <see cref="RefundResult.Invalid"/> rejects the transaction, but block building
+        /// does not roll back its state changes.
         /// </remarks>
         /// <param name="effectiveGasPrice">The price unspent gas is refunded at.</param>
         protected virtual RefundResult AdjustSettledGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
