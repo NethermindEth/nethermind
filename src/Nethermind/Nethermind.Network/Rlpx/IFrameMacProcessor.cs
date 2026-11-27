@@ -7,17 +7,14 @@ namespace Nethermind.Network.Rlpx
 {
     public interface IFrameMacProcessor : IDisposable
     {
-        void AddMac(byte[] input, int offset, int length, bool isHeader);
+        void UpdateEgressMac(ReadOnlySpan<byte> input);
 
-        void UpdateEgressMac(byte[] input);
+        void UpdateIngressMac(ReadOnlySpan<byte> input, bool isHeader);
 
-        void UpdateIngressMac(byte[] input, bool isHeader);
+        bool CheckMac(ReadOnlySpan<byte> mac, bool isHeader);
 
-        bool CheckMac(byte[] mac, bool isHeader);
+        void CalculateMac(Span<byte> mac);
 
-        void CalculateMac(byte[] output);
-
-        void AddMac(byte[] input, int offset, int length, byte[] output, int outputOffset, bool isHeader);
-        void CheckMac(byte[] input, int offset, int length, bool isHeader);
+        void AddMac(ReadOnlySpan<byte> input, Span<byte> mac, bool isHeader);
     }
 }
