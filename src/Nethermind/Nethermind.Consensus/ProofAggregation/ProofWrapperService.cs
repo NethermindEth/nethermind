@@ -54,15 +54,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private Hash256? _selectionHead;
     private uint _selectedBuckets;
 
-    /// <summary>Statements, by <c>get_deps_hash</c>, whose held proof may stand for a bucket: those this node built and those of
-    /// peer wrappers it admitted and relayed; guarded by itself.</summary>
-    /// <remarks>Admission caches a peer's proof before pool admission, so a proof whose transactions the pool rejected is held but
-    /// never relayed; it must not stop this node proving the bucket.</remarks>
-    private readonly HashSet<ValueHash256> _standingStatements = [];
-    private readonly Queue<ValueHash256> _standingOrder = [];
-
-    internal const int MaxStandingStatements = 4096;
-
     /// <summary>The best aggregate of each bucket this node built or relayed, kept in the store's recursive cache every cycle;
     /// guarded by itself.</summary>
     /// <remarks>The store evicts its cached recursive proofs least recently used first, so a flood of valid wrappers could
@@ -437,10 +428,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if ((admission.IsSuccess || admitted != 0 && rejected <= admitted) && relay is not null && RefreshVerifier() == verifier)
             {
                 if (decoded.RecursiveStark is { } relayed)
-                {
-                    MarkStanding(Eip8288Dependencies.ComputeDepsHash(decoded.Deps));
                     KeepBucketAggregate(decoded.Transactions, decoded.Deps, relayed.StarkProof, verifier);
-                }
                 WrapperValidated?.Invoke(relay, verifier);
             }
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
@@ -857,7 +845,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// has elapsed, so prover work per cycle stays bounded; the next cycle resumes the rotation where this one stopped. A busy
     /// node skips: a cycle already running or a prover busy with block production proves nothing now, and the bucket is retried
     /// on a later cycle at the same head. A bucket whose dependency set a peer offers is skipped while
-    /// <see cref="IsDependencySetOffered"/> defers it, and one a held aggregate already covers is not proven again.</remarks>
+    /// <see cref="IsDependencySetOffered"/> defers it, and one whose held aggregate already carries its transactions is not proven
+    /// again.</remarks>
     /// <returns>Success when at least one wrapper is current; otherwise the first failure.</returns>
     public Result RefreshWrapper(Action? produced = null, TimeSpan? budget = null, TimeProvider? clock = null,
         CancellationToken cancellationToken = default)
@@ -1061,16 +1050,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
     }
 
-    private void MarkStanding(in ValueHash256 depsHash)
-    {
-        lock (_standingStatements)
-        {
-            if (!_standingStatements.Add(depsHash)) return;
-            _standingOrder.Enqueue(depsHash);
-            if (_standingOrder.Count > MaxStandingStatements) _standingStatements.Remove(_standingOrder.Dequeue());
-        }
-    }
-
     /// <summary>Keeps <paramref name="proof"/> as its bucket's aggregate when every one of <paramref name="transactions"/> is in that
     /// bucket and it covers at least as many pending transactions as the one held.</summary>
     private void KeepBucketAggregate(IReadOnlyList<Transaction> transactions, IReadOnlyList<FrameDependency> deps, byte[] proof,
@@ -1119,9 +1098,18 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
     }
 
-    private bool IsStanding(in ValueHash256 depsHash)
+    /// <summary>Whether the aggregate held for the bucket of <paramref name="transactions"/> under <paramref name="verifier"/>
+    /// carries every one of them.</summary>
+    private bool IsCarriedByBucketAggregate(List<Transaction> transactions, Eip8288Verifier verifier)
     {
-        lock (_standingStatements) return _standingStatements.Contains(depsHash);
+        lock (_bucketAggregates)
+        {
+            if (_bucketAggregates[BucketOf(transactions[0].Hash!)] is not { } held || held.Verifier != verifier) return false;
+            HashSet<ValueHash256> carried = [.. held.Transactions];
+            foreach (Transaction transaction in transactions)
+                if (!carried.Contains(transaction.Hash!.ValueHash256)) return false;
+            return true;
+        }
     }
 
     /// <summary>The bucket of a transaction: the top <c>log2(</c><see cref="BucketCount"/><c>)</c> bits of its hash.</summary>
@@ -1290,10 +1278,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
             if (!leanProofStore.TryGetRecursiveProof(deps, out byte[]? proof))
             {
-                // EIP-8288 proof reuse: an aggregate this node built, or a peer's it admitted and relayed, over a superset stands for
-                // the bucket. A smaller held proof of other origin only means proving again.
-                if (leanProofStore.SmallestProving(deps) is { } covering && IsStanding(Eip8288Dependencies.ComputeDepsHash(covering.InnerDeps)))
-                    return Result<byte[]>.Fail(CoveredByHeldAggregate);
+                // EIP-8288 proof reuse: the bucket's aggregate this node built, or a peer's it admitted and relayed, stands for the
+                // bucket while it carries every planned transaction. One proving only their dependencies carries other transactions.
+                if (IsCarriedByBucketAggregate(transactions, verifier)) return Result<byte[]>.Fail(CoveredByHeldAggregate);
                 if (AwaitsOffer(deps, clock)) return Result<byte[]>.Fail(AwaitingOfferedProof);
                 HashSet<FrameDependency> required = [.. deps];
                 if (cached is not null && cached.Verifier == verifier && HasOverlap(cached.Parent.InnerDeps, required))
@@ -1335,7 +1322,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 return Result<byte[]>.Fail("Proof wrapper selection changed while aggregating; retry with the current pool.");
             RecursiveProofInput parent = new(deps, proof!);
             // Only a statement published as a wrapper may stand for its bucket.
-            MarkStanding(hash);
             KeepBucketAggregate(transactions, deps, proof!, verifier);
             Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), parent, verifier));
             return Result<byte[]>.Success(returnEncoded ? encoded : []);

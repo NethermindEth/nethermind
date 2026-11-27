@@ -934,6 +934,31 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // A wrapper covers its transactions, not just their dependencies: an aggregate of one bucket whose dependencies also cover
+    // another bucket's does not carry that bucket's transactions, so it is still proven.
+    [Test]
+    public void Aggregate_of_another_bucket_proving_its_dependencies_does_not_stand_for_a_bucket()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Transaction[] transactions = [.. Enumerable.Range(0, 3).SelectMany(wrapper =>
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"shared:{wrapper}"), default);
+            store.AddVerified([dependency], [[1]], null);
+            return Enumerable.Range(0, 18).Select(i => CreateTransaction(dependency, Keccak.Compute($"{wrapper}:{i}")));
+        })];
+        ProofWrapperService service = CreateService(transactions, store, new FakeLeanProofVerifier(true));
+        List<MempoolWrapper> produced = [];
+
+        Result refreshed = service.RefreshWrapper(() => produced.Add(Decode(service.GetLatestWrapper().Data!)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refreshed, Is.EqualTo(Result.Success));
+            Assert.That(produced.SelectMany(static wrapper => wrapper.Transactions).Select(static tx => tx.Hash),
+                Is.EquivalentTo(transactions.Select(static tx => tx.Hash)));
+        }
+    }
+
     // Within a bucket aggregation takes the highest fees first, as many as fit one wrapper, and carries them in canonical order.
     [Test]
     public void Bucket_takes_its_highest_fees_first_and_carries_them_in_canonical_order()
