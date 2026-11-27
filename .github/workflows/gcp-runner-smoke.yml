@@ -110,7 +110,7 @@ jobs:
         run: |
           dotnet build src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj -c Release
           dotnet run -c Release --no-build --project src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj \
-            -- --filter '*BlockProcessingBenchmark*' --job Dry --exporters json --artifacts "${RUNNER_TEMP}/bdn"
+            -- --filter '*BlockProcessingBenchmark.SingleTransfer*' --exporters json --artifacts "${RUNNER_TEMP}/bdn"
           ls "${RUNNER_TEMP}/bdn/results"
 
       - name: Check out rpc-tests
