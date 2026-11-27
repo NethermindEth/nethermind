@@ -1352,6 +1352,42 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Find_headers_reverse_returns_only_ancestors_of_origin([Values(0, 1, 2)] int skip, [Values] bool sideChainOrigin)
+    {
+        // Main chain 0-4 and a suggested branch 2b-4b that forks at 1
+        BlockTree blockTree = BuildBlockTree();
+        Block[] main = new Block[5];
+        main[0] = Build.A.Block.WithNumber(0).TestObject;
+        AddToMain(blockTree, main[0]);
+        for (int i = 1; i < main.Length; i++)
+        {
+            main[i] = Build.A.Block.WithParent(main[i - 1]).TestObject;
+            AddToMain(blockTree, main[i]);
+        }
+
+        Block[] branch = new Block[5];
+        branch[1] = main[1];
+        for (int i = 2; i < branch.Length; i++)
+        {
+            branch[i] = Build.A.Block.WithParent(branch[i - 1]).WithExtraData([1]).TestObject;
+            blockTree.SuggestBlock(branch[i]);
+        }
+
+        // With a skip, a side origin cannot tell an ancestor from a block of another branch by number, so it finds only itself
+        Block[] expected = (sideChainOrigin, skip) switch
+        {
+            (true, 0) => [branch[4], branch[3], branch[2]],
+            (true, _) => [branch[4]],
+            (false, 0) => [main[4], main[3], main[2]],
+            (false, 1) => [main[4], main[2], main[0]],
+            (false, _) => [main[4], main[1]],
+        };
+
+        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders((sideChainOrigin ? branch[4] : main[4]).Hash, 3, skip, true);
+        Assert.That(headers.TakeWhile(static header => header is not null).Select(static header => header.Hash), Is.EqualTo(expected.Select(static block => block.Hash)));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_headers_reverse()
     {
         BlockTree blockTree = BuildBlockTree();

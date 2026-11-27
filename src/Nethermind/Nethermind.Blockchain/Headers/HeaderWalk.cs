@@ -34,7 +34,10 @@ public static class HeaderWalk
     /// walk goes back from the header at the last number, and finds the headers by number when that header is not
     /// stored or does not descend from <paramref name="hash"/>. Headers found by number must descend from the previous
     /// one: by parent hash when contiguous, otherwise by the previous header still being the block its number resolves
-    /// to and the next header being on the main chain.
+    /// to and the next header being on the main chain. Reverse with a skip, the walk stops when the previous number no
+    /// longer resolves (<see cref="IBlockTree.FindHash"/>) to the header already found, so a request from a header that
+    /// its number does not resolve to finds only that header. Before the merge a level without a main chain block
+    /// resolves to its best block, so a reverse walk from or through that block goes on by number.
     /// </remarks>
     public static ArrayPoolList<TItem> FindHeaders<TItem, TSource>(
         IBlockTree blockTree, ref TSource source, in ValueHash256 hash, ulong number, int numberOfBlocks, int skip, bool reverse)
@@ -90,9 +93,10 @@ public static class HeaderWalk
             ulong nextNumber = reverse ? number - offset : number + offset;
             if (blockTree.FindHash(nextNumber) is not { } nextHash || !source.TryGet(in nextHash.ValueHash256, nextHash, nextNumber, out TItem next, out ValueHash256 nextParentHash)) break;
 
-            if (!reverse && (skip == 0
-                    ? nextParentHash != previousHash
-                    : blockTree.FindHash(previousNumber) != previousHash || blockTree.FindCanonicalBlockInfo(nextNumber)?.BlockHash != nextHash))
+            if (skip == 0
+                    ? !reverse && nextParentHash != previousHash
+                    : blockTree.FindHash(previousNumber) != previousHash
+                      || (!reverse && blockTree.FindCanonicalBlockInfo(nextNumber)?.BlockHash != nextHash))
             {
                 break;
             }

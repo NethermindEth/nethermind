@@ -37,6 +37,10 @@ public interface IPersistenceManager
     /// <remarks>
     /// Does not wait for the persistence lock. The batch goes from <paramref name="expected"/> to itself, so
     /// <paramref name="write"/> must not change any value a reader of that state sees, as when copying state from another store.
+    /// An exception from <paramref name="write"/> aborts the batch (<see cref="IPersistence.IWriteBatch.Abort"/>) before it is
+    /// disposed, so a store that honours the abort commits nothing it wrote. If abort and disposal complete, the caller receives
+    /// the callback exception; a disposal that fails, as when the store cannot roll the batch back, throws its own exception
+    /// instead.
     /// </remarks>
     /// <returns>False, writing nothing, when a persist holds the lock or the persisted state is no longer <paramref name="expected"/>.</returns>
     bool TryWriteOnPersistedState(in StateId expected, Action<IPersistence.IWriteBatch> write);

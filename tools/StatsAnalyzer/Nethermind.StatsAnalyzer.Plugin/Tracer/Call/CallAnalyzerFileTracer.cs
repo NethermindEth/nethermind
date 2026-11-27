@@ -49,7 +49,8 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
 
     protected override void ResetBufferAndTracer()
     {
-        _buffer = new ResettableList<Address>(_buffer.Count);
+        // ResettableList.Reset never grows a zero start capacity, which an empty or skipped block would leave.
+        _buffer = new ResettableList<Address>(Math.Max(_buffer.Count, Resettable.StartCapacity));
         Tracer = new CallStatsAnalyzerTxTracer(_buffer, _callStatsAnalyzer, Sort,
             Ct);
     }

@@ -4,21 +4,17 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
-using System.IO;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
-using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
 using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats.Model;
-using Snappier;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers;
 
@@ -43,35 +39,26 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
     {
         IByteBuffer content = input.Buffer;
         int readableBytes = content.ReadableBytes;
-        if (readableBytes > SnappyParameters.MaxSnappyLength)
+        if (!SnappyDecoder.IsWithinSizeLimit(readableBytes))
         {
             _session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
             return;
         }
         if (SnappyEnabled)
         {
-            ReadOnlySpan<byte> snappyInput = content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, readableBytes);
+            ReadOnlyMemory<byte> snappyInput = content.Array.AsMemory(content.ArrayOffset + content.ReaderIndex, readableBytes);
             int uncompressedLength;
             try
             {
-                uncompressedLength = Snappy.GetUncompressedLength(snappyInput);
+                if (!SnappyDecoder.TryGetUncompressedLength(snappyInput, out uncompressedLength, _logger))
+                {
+                    _session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
+                    return;
+                }
             }
-            catch (InvalidDataException exception)
+            catch (InvalidFrameException exception)
             {
-                LogSnappyDecompressionFailure(_logger, content, readableBytes);
-                throw new CorruptedFrameException(exception);
-            }
-
-            if ((uint)uncompressedLength > (uint)SnappyParameters.MaxSnappyLength)
-            {
-                _session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
-                return;
-            }
-
-            if (!SnappyBlockValidator.IsValid(snappyInput, uncompressedLength))
-            {
-                LogSnappyDecompressionFailure(_logger, content, readableBytes);
-                throw new CorruptedFrameException("Invalid Snappy block");
+                throw exception.ToCorruptedFrameException();
             }
 
             if (readableBytes > SnappyParameters.MaxSnappyLength / 4)
@@ -89,16 +76,13 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             try
             {
                 _snappyOutputWriter.Buffer = output;
-                // The writer overload decompresses directly into our buffer, avoiding Snappier's temporary rental and copy.
-                Snappy.Decompress(new ReadOnlySequence<byte>(content.Array.AsMemory(content.ArrayOffset + content.ReaderIndex, readableBytes)),
-                    _snappyOutputWriter);
+                SnappyDecoder.Decompress(snappyInput, _snappyOutputWriter, _logger);
                 Debug.Assert(output.ReadableBytes == uncompressedLength, "Validated Snappy output must match its declared length.");
             }
-            catch (InvalidDataException exception)
+            catch (InvalidFrameException exception)
             {
                 output.SafeRelease();
-                LogSnappyDecompressionFailure(_logger, content, readableBytes);
-                throw new CorruptedFrameException(exception);
+                throw exception.ToCorruptedFrameException();
             }
             catch (Exception)
             {
@@ -223,15 +207,6 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 
     private static string GetClientId(ISession? session) =>
         session?.Node?.ToString(Node.Format.Console) ?? $"unknown {session?.RemoteHost}";
-
-    private static void LogSnappyDecompressionFailure(ILogger logger, IByteBuffer content, int readableBytes)
-    {
-        if (logger.IsDebug)
-        {
-            ReadOnlyMemory<byte> prefix = content.Array.AsMemory(content.ArrayOffset + content.ReaderIndex, Math.Min(32, readableBytes));
-            logger.Debug($"Snappy decompression failed for {readableBytes} bytes: {prefix.ToHexString()}");
-        }
-    }
 
     public void EnableSnappy() => SnappyEnabled = true;
 
