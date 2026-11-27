@@ -1196,7 +1196,7 @@ public class GloasBlockImporterTests
         PubkeyCache pubkeys = new();
         pubkeys.Build(_chain.AnchorState.Validators!);
         BlockImporterFactory factory = new(_chain.Spec, _chain.CreateStore(), pubkeys, engine, new BeaconChainConfig(), LimboLogs.Instance, new DataColumnSidecarPool(),
-            clock: new SlotClock(_chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(_chain.Spec.GenesisTime + (ForkSlot + 1) * _chain.Spec.SecondsPerSlot))));
+            clock: new SlotClock(_chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(_chain.Spec.GenesisTime + (ForkSlot + 1) * _chain.Spec.SecondsPerSlot))), committees: new());
         IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(_chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(_chain.AnchorBlock), _chain.AnchorRoot);
         SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1, blobCommitments: [default]);
         importer.Import(first.Forked, first.Root, verifySignatures: true);

@@ -52,5 +52,5 @@ internal sealed class ApiState
     public Hash256 GetRandaoMix(ulong epoch) => Electra is { } e ? e.GetRandaoMix(epoch) : Gloas!.GetRandaoMix(epoch);
     /// <summary>The beacon committees of <paramref name="epoch"/> on the state's own layout.</summary>
     /// <exception cref="BeaconStateException">No validator is active at <paramref name="epoch"/>, or its seed is outside the randao window.</exception>
-    public CommitteeCache BuildCommittees(ulong epoch) => Electra is { } e ? CommitteeCache.Build(e, epoch) : CommitteeCache.Build(Gloas!, epoch);
+    public CommitteeCache GetCommittees(CommitteeCacheLru cache, ulong epoch) => Electra is { } e ? cache.GetOrBuild(e, epoch) : cache.GetOrBuild(Gloas!, epoch);
 }

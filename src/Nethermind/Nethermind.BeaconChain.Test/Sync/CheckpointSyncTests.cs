@@ -417,7 +417,7 @@ public class CheckpointSyncTests
             config,
             BeaconChainSpec.Mainnet,
             store,
-            new BlockImporterFactory(BeaconChainSpec.Mainnet, store, new PubkeyCache(), engine, config, logManager, new DataColumnSidecarPool(), new SlotClock(BeaconChainSpec.Mainnet, Timestamper.Default)),
+            new BlockImporterFactory(BeaconChainSpec.Mainnet, store, new PubkeyCache(), engine, config, logManager, new DataColumnSidecarPool(), new SlotClock(BeaconChainSpec.Mainnet, Timestamper.Default), new()),
             engine,
             pool,
             new RangeSync(pool, logManager, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, RangeSyncTests.ClockAtGenesis(BeaconChainSpec.Mainnet)),

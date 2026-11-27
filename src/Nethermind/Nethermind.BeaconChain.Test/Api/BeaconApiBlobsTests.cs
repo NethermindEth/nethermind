@@ -260,7 +260,7 @@ public class BeaconApiBlobsTests : BeaconApiFixture
     {
         ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
         BeaconApiContext ctx = new(Spec, _host.StatusHolder, new SlotClock(Spec, time), _host.Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null);
+            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, new(), null, null, null);
         using BlockingResponse first = new();
         using BlockingResponse second = new();
         Task firstRequest = GetBlobs(Request(first));

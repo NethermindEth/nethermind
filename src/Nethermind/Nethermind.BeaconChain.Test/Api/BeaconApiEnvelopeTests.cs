@@ -228,7 +228,7 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         host.Store.PutBlock(headRoot, head);
         ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
         BeaconApiContext ctx = new(Spec, host.StatusHolder, new SlotClock(Spec, time), host.Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null, snapshots);
+            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, new(), null, null, null, snapshots);
 
         ctx = ctx.ForRequest();
         EventsEndpoint.EventCache cache = new();

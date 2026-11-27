@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Config;
@@ -65,6 +66,7 @@ public class BeaconChainModule : Module
                 return spec;
             })
             .AddSingleton<BeaconChainStore>()
+            .AddSingleton<CommitteeCacheLru>()
             .AddSingleton<PubkeyCache, BeaconChainSpec>(static spec => new PubkeyCache { SignatureVerifier = spec.SignatureVerifier })
             .AddSingleton<CheckpointSync>()
             .AddSingleton<BeaconChainStatusHolder>()

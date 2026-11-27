@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Config;
@@ -37,6 +38,7 @@ public sealed class BeaconApiHost(
     IEngineDriver engine,
     IProcessExitSource processExitSource,
     ILogManager logManager,
+    CommitteeCacheLru committees,
     BeaconP2P? p2p = null,
     PeerManager? peerManager = null,
     BeaconDiscovery? discovery = null,
@@ -64,7 +66,7 @@ public sealed class BeaconApiHost(
         builder.Logging.ClearProviders();
         builder.WebHost.UseKestrelCore().UseUrls($"http://{apiConfig.Host}:{apiConfig.Port}");
         builder.Services.AddRoutingCore();
-        BeaconApiContext ctx = new(spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, columnPool);
+        BeaconApiContext ctx = new(spec, statusSource, slotClock, store, metadataSource, engine, logManager, committees, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, columnPool);
         BeaconApiEndpoints.AddServices(builder.Services, ctx);
 
         WebApplication app = builder.Build();

@@ -9,6 +9,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
@@ -34,6 +35,7 @@ internal sealed record BeaconApiContext(
     LocalMetadataSource MetadataSource,
     IEngineDriver Engine,
     ILogManager LogManager,
+    CommitteeCacheLru CommitteeCache,
     BeaconP2P? P2P,
     PeerManager? PeerManager,
     BeaconDiscovery? Discovery,
@@ -51,7 +53,7 @@ internal sealed record BeaconApiContext(
     internal CheckpointStateSnapshot? GetCheckpointState(string stateId) => (StatusSource as FrozenHead)?.GetCheckpointState(stateId);
     public ForkChoiceSnapshot? ForkChoiceSnapshot { get; private init; }
     internal ValidatorIndexCache ValidatorIndices { get; } = new();
-    internal StateCommitteeCache Committees { get; } = new();
+    internal StateCommitteeCache Committees { get; } = new(CommitteeCache);
     /// <summary>Bounds the blob rebuilds of this host's getBlobs requests that run at once; a request past it is refused, never queued.</summary>
     public ConcurrencyLimiter BlobRebuilds { get; } = new(new ConcurrencyLimiterOptions { PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds, QueueLimit = 0 });
 

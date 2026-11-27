@@ -134,10 +134,15 @@ public class GloasSeedAndEpochCacheTests
             AssertCommittees(CommitteeCache.Build(gloas, epoch), epoch, expected, "gloas");
         }
 
-        EpochCache cache = new();
-        CommitteeCache builtFromFulu = cache.GetCommitteeCache(fulu, epoch);
-        Assert.That(cache.GetCommitteeCache(gloas, epoch), Is.SameAs(builtFromFulu),
-            "a lineage that crosses the fork keeps its EpochCache, so the post-fork lookup must hit the pre-fork entry");
+        CommitteeCacheLru shared = new();
+        EpochCache beforeUpgrade = new(shared);
+        EpochCache afterUpgrade = new(shared);
+        CommitteeCache builtFromFulu = beforeUpgrade.GetCommitteeCache(fulu, epoch);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterUpgrade.GetCommitteeCache(gloas, epoch), Is.SameAs(builtFromFulu));
+            Assert.That(afterUpgrade.ForSpeculativeImport().GetCommitteeCache(gloas, epoch), Is.SameAs(builtFromFulu));
+        }
     }
 
     private const ulong UpgradeEpoch = 10;

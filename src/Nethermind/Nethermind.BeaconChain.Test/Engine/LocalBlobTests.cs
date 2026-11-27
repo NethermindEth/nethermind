@@ -41,7 +41,7 @@ public class LocalBlobTests
         DataColumnSidecarPool pool = new();
         NodeColumnCustody custody = new(discovery.LocalCustody.NodeId, config.CustodyGroupCount);
         BlockImporterFactory factory = new(chain.Spec, store, chain.Pubkeys, TestEngineDriver.Create(EngineTests.CreateDetector(engine, out _), custody: custody),
-            config, LimboLogs.Instance, pool, chain.ClockAtSlot(1), discovery);
+            config, LimboLogs.Instance, pool, chain.ClockAtSlot(1), committees: new(), discovery);
         IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
         if (!validSignature) chain.Block.Signature = default;
 
