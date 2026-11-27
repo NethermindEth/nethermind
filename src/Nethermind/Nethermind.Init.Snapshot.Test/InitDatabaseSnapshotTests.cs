@@ -685,6 +685,22 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [Test]
+    public void BeginExtraction_FileAtTheDatabasePath_ReportsItAsContent()
+    {
+        // A file that took the database path after admission. The check before the create reports it as content; without
+        // that check, creating the directory would fail on the file with a bare I/O error.
+        File.WriteAllBytes(_dbPath, [1, 2, 3]);
+
+        IOException exception = Assert.Throws<IOException>(() => SnapshotDatabase.BeginExtraction(_dbPath))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("holds content when the snapshot extraction would begin"), "the check before the create must report the file as content");
+            Assert.That(File.ReadAllBytes(_dbPath), Is.EqualTo(new byte[] { 1, 2, 3 }), "the file must keep its bytes");
+        }
+    }
+
     [TestCase(false, TestName = "Execute_DatabaseDirectoryThatCannotBeSearched_StopsWithoutTakingItForADatabase")]
     [TestCase(true, TestName = "Execute_DatabaseDirectoryThatCannotBeSearchedWithMaskedPaths_StopsAndRedactsTheWholeChain")]
     [Platform(Include = "Linux")] // Unix permissions
