@@ -542,10 +542,8 @@ namespace Nethermind.Blockchain.Receipts
                 RlpReader items = ReceiptArrayStorageDecoder.EnterCompactReceiptList<OffFlag>(ref reader);
                 RlpBehaviors behaviors = RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput
                     | (_eip7668EverEnabled && _specProvider.GetSpec(header).IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
-                IRlpDecoder<TxReceipt> decoder = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Storage)
-                    ?? CompactReceiptStorageDecoder.Instance;
-                IReceiptRefDecoder refDecoder = decoder as IReceiptRefDecoder
-                    ?? throw new RlpReaderException($"The registered compact receipt decoder must implement {nameof(IReceiptRefDecoder)}.");
+                IRlpDecoder<TxReceipt> decoder = ReceiptArrayStorageDecoder.GetCompactDecoder();
+                IReceiptRefDecoder refDecoder = (IReceiptRefDecoder)decoder;
                 TxReceipt? found = null;
                 ulong gasUsedBefore = 0;
                 int logsBefore = 0;
