@@ -87,12 +87,13 @@ namespace Nethermind.Consensus.Processing
                 HashSet<Transaction> consideredTx = [with(ByHashTxComparer.Instance)];
                 HashSet<Transaction>? executedAndSkippedTx = null;
                 BlockAccessListItemBudget itemBudget = CreateItemBudget(block);
+                FrameTxDependencyProof.Budget? proofBudget = _spec?.IsEip8141Enabled == true ? new() : null;
                 foreach (Transaction currentTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, out bool executed);
+                    TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, proofBudget, out bool executed);
                     if (action == TxAction.Stop) break;
 
                     consideredTx.Add(currentTx);
@@ -161,7 +162,7 @@ namespace Nethermind.Consensus.Processing
                                             continue;
                                         }
 
-                                        TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, out bool executed);
+                                        TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, proofBudget, out bool executed);
                                         if (action == TxAction.Stop)
                                         {
                                             added = false;
@@ -246,6 +247,7 @@ namespace Nethermind.Consensus.Processing
                 ProcessingOptions processingOptions,
                 HashSet<Transaction> transactionsInBlock,
                 ref BlockAccessListItemBudget itemBudget,
+                FrameTxDependencyProof.Budget? proofBudget,
                 out bool executed)
             {
                 executed = false;
@@ -256,6 +258,14 @@ namespace Nethermind.Consensus.Processing
                     stateProvider,
                     receiptsTracer.CumulativeExecutionGasUsed,
                     receiptsTracer.BlockStateGasUsed);
+
+                FrameTxDependencyProof.Dependency[] addedDependencies = [];
+                int addedProofLength = 0;
+                if (args.Action == TxAction.Add && proofBudget is not null && currentTx.Type == TxType.FrameTx
+                    && !proofBudget.TryFit(currentTx, out addedDependencies, out addedProofLength, out string? proofError))
+                {
+                    args.Set(TxAction.Skip, proofError!);
+                }
 
                 if (args.Action != TxAction.Add)
                 {
@@ -280,6 +290,7 @@ namespace Nethermind.Consensus.Processing
                     }
                     else if (result)
                     {
+                        proofBudget?.Include(addedDependencies, addedProofLength);
                         _transactionProcessed?.Invoke(this,
                             new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
                         balManager.NextTransaction();

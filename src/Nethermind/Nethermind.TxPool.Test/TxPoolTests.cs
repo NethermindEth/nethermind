@@ -4832,6 +4832,29 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // The hash does not commit to the witnesses, so a copy rejected for its witnesses must not keep the genuine one out.
+        [Test]
+        public void Frame_transaction_rejected_for_its_witnesses_does_not_shadow_a_valid_copy()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            Transaction valid = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            SignFrame(valid, FrameSignatureDefect.None);
+            valid.Hash = valid.CalculateHash();
+            Transaction forged = new();
+            valid.CopyTo(forged);
+            forged.ClaimWitnesses = [new byte[Eip8141Constants.Secp256k1WitnessLength]];
+            forged.Hash = forged.CalculateHash();
+
+#pragma warning disable NUnit2045 // Each admission depends on the pool state the previous one left.
+            Assert.That(forged.Hash, Is.EqualTo(valid.Hash));
+            Assert.That(_txPool.SubmitTx(forged, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Invalid));
+            Assert.That(_txPool.IsKnown(valid.Hash!), Is.False, "an announcement of the hash is still requested");
+            Assert.That(_txPool.ForgetInvalidBlobProofs(valid.Hash!), Is.True);
+            Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
+        }
+
         // The EVM resolves P256VERIFY through the code-info repository, so gating it on a fork flag here would
         // refuse — and disconnect the peer over — a transaction the processor accepts.
         [TestCase(true, false, true, TestName = "P256VERIFY reached through EIP-7951")]

@@ -237,7 +237,11 @@ public partial class BlockProcessor(
         // EIP-8141: a block being validated hands its transactions their witnesses from the dependency proof; a block
         // being produced builds the proof from its transactions' witnesses once they are chosen.
         bool isProducing = _blockTransactionsExecutor is IBlockProductionTransactionsExecutor;
-        if (spec.IsEip8141Enabled && !isProducing && !options.ContainsFlag(ProcessingOptions.NoValidation)) FrameTxDependencyProof.AssignWitnesses(block);
+        if (spec.IsEip8141Enabled && !isProducing && !options.ContainsFlag(ProcessingOptions.NoValidation))
+        {
+            FrameTxDependencyProof.AssignWitnesses(block);
+            FrameTxDependencyProof.CheckVerifiersDeployed(block, _stateProvider, spec);
+        }
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 

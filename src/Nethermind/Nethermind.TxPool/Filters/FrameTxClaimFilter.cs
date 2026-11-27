@@ -49,7 +49,7 @@ internal sealed class FrameTxClaimFilter(
 
         if (!FrameTxClaimVerifier.CheckWitnesses(tx, allowPlaceholders: false, out string? error))
         {
-            return Reject(tx, error!);
+            return Reject(tx, error!, ref state);
         }
 
         IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
@@ -73,15 +73,16 @@ internal sealed class FrameTxClaimFilter(
                 return AcceptTxResult.FrameSimulationDeferred.WithMessage(TxPoolErrorMessages.FrameSignatureVerificationDeferred);
             }
 
-            return Reject(tx, error!);
+            return Reject(tx, error!, ref state);
         }
 
         state.FrameClaimsVerified = !hasSkippedClaims;
         return AcceptTxResult.Accepted;
     }
 
-    private AcceptTxResult Reject(Transaction tx, string error)
+    private AcceptTxResult Reject(Transaction tx, string error, ref TxFilteringState state)
     {
+        state.SidecarRejected = FrameTxClaimVerifier.IsWitnessError(error);
         Metrics.PendingTransactionsFrameTxSignatureInvalid++;
         if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, {error}.");
         return AcceptTxResult.Invalid.WithMessage(error);

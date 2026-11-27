@@ -25,6 +25,11 @@ public static class FrameTxClaimVerifier
     public const string InvalidWitnessLength = "frame transaction claim witness has the wrong length";
     public const string P256NotSupported = "frame transaction P256 claims require the secp256r1 precompile";
 
+    /// <summary>Whether <paramref name="error"/> rejects a transaction's witnesses rather than its body, which its hash
+    /// does not commit to, so a copy carrying other witnesses still has to be judged.</summary>
+    public static bool IsWitnessError(string? error) =>
+        error is InvalidClaim or MissingWitnesses or WitnessCountMismatch or InvalidWitnessLength;
+
     /// <summary>Address of the secp256r1 (P256VERIFY) precompile — EIP-7951 / RIP-7212.</summary>
     public static readonly Address P256VerifyPrecompileAddress = PrecompiledAddresses.P256Verify;
 

@@ -1811,7 +1811,7 @@ namespace Nethermind.TxPool
                 return AcceptTxResult.Invalid;
             }
 
-            if ((handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0 && tx.CarriesBlobs && tx.Hash is { } localHash)
+            if ((handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0 && (tx.CarriesBlobs || tx.FrameClaims is { Length: > 0 }) && tx.Hash is { } localHash)
             {
                 _hashCache.TryDeleteInvalidBlobProofs(localHash);
             }
@@ -1915,6 +1915,7 @@ namespace Nethermind.TxPool
             else if (!(state.FrameValidationYielded && _retryCache.TryAwaitAnnouncement(tx.Hash!))
                 && accepted != AcceptTxResult.Invalid
                 && accepted != AcceptTxResult.InvalidBlobProofs
+                && !state.SidecarRejected
                 && !(accepted == AcceptTxResult.AlreadyKnown && _retryCache.IsAwaitingAnnouncement(tx.Hash!)))
             {
                 _retryCache.Received(tx.Hash!);

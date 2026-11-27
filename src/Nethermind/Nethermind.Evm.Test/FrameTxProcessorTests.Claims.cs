@@ -218,10 +218,11 @@ public partial class FrameTxProcessorTests
         Assert.That(result.TransactionExecuted, Is.EqualTo(!withData), result.ErrorDescription);
     }
 
-    /// <summary>A missing witness list is not checked: only a replay of a validated block, whose witnesses the dependency
-    /// proof was checked for, or a call runs without one.</summary>
-    [Test]
-    public void Execute_ClaimsWithoutAWitnessList_AreNotChecked()
+    /// <summary>A missing witness list fails validated execution closed; only a call, or a replay of a validated block,
+    /// which skip validation, runs without one.</summary>
+    [TestCase(true, TestName = "Execute_ClaimsWithoutAWitnessList_AreRefused")]
+    [TestCase(false, TestName = "CallAndRestore_ClaimsWithoutAWitnessList_AreNotChecked")]
+    public void ClaimsWithoutAWitnessList(bool validate)
     {
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
@@ -229,7 +230,13 @@ public partial class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.FrameClaims = [FrameTxTestFrames.Secp256k1Claim(null)];
 
-        Assert.That(Process(tx).TransactionExecuted, Is.True);
+        TransactionResult result = validate ? Process(tx) : CallAndRestore(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(!validate), result.ErrorDescription);
+            if (validate) Assert.That(result.ErrorDescription, Does.Contain(FrameTxClaimVerifier.MissingWitnesses));
+        }
     }
 
     private void AssertPureVerifier(byte[] code, bool holds)

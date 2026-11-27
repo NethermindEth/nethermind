@@ -1029,9 +1029,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         new(ReadOnlyMemory<byte>.Empty, refund: 0, destroyList: null, logs: null, shouldRevert: false);
 
     /// <summary>Checks every claim of <paramref name="tx"/> against its segregated witness before any frame executes.</summary>
-    /// <remarks>A transaction without a witness list is not checked. Block validation assigns every frame transaction
-    /// its witnesses from the dependency proof, and the pool, and so block production, refuses one without them, so
-    /// only a replay of an already validated block or a call runs without.</remarks>
+    /// <remarks>Block validation assigns every frame transaction its witnesses from the dependency proof, and the pool,
+    /// and so block production, refuses one without them. A transaction without a witness list is therefore refused
+    /// unless placeholders are allowed: a replay of an already validated block or a call, whose claims go unchecked.</remarks>
     /// <param name="sigHash">The canonical signature hash when the caller has it; otherwise <see langword="null"/>,
     /// set here only if a claim is over it.</param>
     /// <param name="allowPlaceholders">Accepts an empty witness as a placeholder for a claim that is then not
@@ -1041,12 +1041,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     private bool VerifyFrameClaims(Transaction tx, ref ValueHash256? sigHash, IReleaseSpec spec, bool allowPlaceholders, bool skipVerification, out string? error)
     {
         error = null;
+        TxFrameClaim[] claims = tx.FrameClaims ?? [];
         byte[][]? witnesses = tx.ClaimWitnesses;
-        if (witnesses is null) return true;
+        if (witnesses is null)
+        {
+            if (allowPlaceholders || claims.Length == 0) return true;
+            error = FrameTxClaimVerifier.MissingWitnesses;
+            return false;
+        }
+
         if (!FrameTxClaimVerifier.CheckWitnesses(tx, allowPlaceholders, out error)) return false;
         if (skipVerification) return true;
-
-        TxFrameClaim[] claims = tx.FrameClaims ?? [];
 
         Address sender = tx.SenderAddress!;
         IPrecompile? p256Precompile = null;

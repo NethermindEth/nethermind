@@ -9,6 +9,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
@@ -97,20 +98,25 @@ public class FrameTxSimulationFilterTests
         }
     }
 
-    [Test]
-    public void Accept_OpaquePrefixFailsSimulation_Rejected()
+    /// <summary>A claim failing its witness rejects only that copy: the hash does not commit to the witnesses.</summary>
+    [TestCase("banned opcode", false)]
+    [TestCase(FrameTxClaimVerifier.InvalidClaim, true)]
+    public void Accept_OpaquePrefixFailsSimulation_Rejected(string reason, bool sidecarRejected)
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("banned opcode"));
+        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject(reason));
+        FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
 
-        AcceptTxResult result = Accept(state, simulator, tx);
+        AcceptTxResult result = filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationFailed));
             Assert.That(tx.PayerAddress, Is.Null);
+            Assert.That(filteringState.SidecarRejected, Is.EqualTo(sidecarRejected));
         }
     }
 

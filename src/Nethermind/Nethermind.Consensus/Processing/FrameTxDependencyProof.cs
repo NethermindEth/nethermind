@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
@@ -26,6 +28,7 @@ public static class FrameTxDependencyProof
     public const string WitnessCountMismatch = "dependency proof must carry exactly one witness per block dependency";
     public const string WitnessLengthMismatch = "dependency proof witness has the wrong length";
     public const string MissingWitness = "frame transaction carries no witness for its claim";
+    public const string VerifierNotDeployed = "custom claim verifier has no code in the block's pre-state";
 
     private static readonly RlpLimit WitnessesCountLimit = RlpLimit.For<Block>(Eip8141Constants.MaxDependencyProofBytes, nameof(Block.DependencyProof));
 
@@ -120,8 +123,9 @@ public static class FrameTxDependencyProof
     /// frame transaction the witnesses of its claims, which its processing then verifies.</summary>
     /// <remarks>A custom verifier runs in the pure context, which reads nothing a transaction before it can change but
     /// the verifier's own code, so verifying each claim as its transaction executes reaches the verdict the block's
-    /// pre-state does, except for a verifier deployed earlier in the same block.</remarks>
-    /// <exception cref="InvalidBlockException">The proof is missing, does not match the header, or does not fit the dependencies.</exception>
+    /// pre-state does once <see cref="CheckVerifiersDeployed"/> has ruled out a verifier deployed earlier in the same block.</remarks>
+    /// <exception cref="InvalidBlockException">The proof does not match the header, or does not fit the dependencies.</exception>
+    /// <exception cref="InvalidOperationException">The proof is not available, so no verdict can be reached.</exception>
     public static void AssignWitnesses(Block block)
     {
         // Only a header committing to a proof has one to check; a fork block's header is validated to carry the hash.
@@ -132,7 +136,9 @@ public static class FrameTxDependencyProof
         {
             // A block without dependencies commits to the empty proof, which needs no carrying.
             if (block.Header.DependencyProofHash == Keccak.OfAnEmptyString && !HasClaims(block)) return;
-            throw new InvalidBlockException(block, Unavailable);
+            // The proof travels only with newPayload and is not stored, so a block read back from the database has
+            // none; that is no fault of the block, which must not be marked invalid for it.
+            throw new InvalidOperationException($"{Unavailable} for block {block.ToString(Block.Format.Short)}");
         }
 
         if (proof.Length > Eip8141Constants.MaxDependencyProofBytes) throw new InvalidBlockException(block, TooLarge);
@@ -170,6 +176,27 @@ public static class FrameTxDependencyProof
         }
     }
 
+    /// <summary>Checks every custom verifier <paramref name="block"/>'s claims name is a precompile or carries
+    /// non-delegated code in <paramref name="preState"/>.</summary>
+    /// <remarks>EIP-8141 verifies every dependency against the block's pre-state. A verifier the pre-state lacks fails
+    /// there, and deployed code is immutable (EIP-6780), so with this check verifying each claim as its transaction
+    /// executes reaches the pre-state verdict.</remarks>
+    /// <exception cref="InvalidBlockException">A custom verifier has no code, or delegated code, in the pre-state.</exception>
+    public static void CheckVerifiersDeployed(Block block, IReadOnlyStateProvider preState, IReleaseSpec spec)
+    {
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.Type != TxType.FrameTx) continue;
+
+            foreach (TxFrameClaim claim in tx.FrameClaims ?? [])
+            {
+                Address verifier = claim.Verifier;
+                if (claim.IsProtocolVerifier || spec.IsPrecompile(verifier)) continue;
+                if (!preState.IsContract(verifier) || preState.IsDelegatedCode(verifier)) throw new InvalidBlockException(block, VerifierNotDeployed);
+            }
+        }
+    }
+
     /// <summary>Builds the dependency proof of a block being produced from its frame transactions' witnesses, and
     /// commits the header to it.</summary>
     /// <exception cref="InvalidBlockException">A transaction lacks a witness, or the proof exceeds <c>MAX_DEPENDENCY_PROOF_BYTES</c>.</exception>
@@ -195,6 +222,56 @@ public static class FrameTxDependencyProof
 
         block.DependencyProof = proof;
         block.Header.DependencyProofHash = Keccak.Compute(proof);
+    }
+
+    /// <summary>The dependency proof a block being produced accumulates, so a transaction that would leave it
+    /// unbuildable is skipped rather than failing the whole build.</summary>
+    internal sealed class Budget
+    {
+        private readonly HashSet<Dependency> _included = [];
+        private int _contentLength;
+
+        /// <summary>Whether <paramref name="tx"/>'s witnesses fit beside those already included.</summary>
+        /// <param name="added">The dependencies <paramref name="tx"/> adds, to pass to <see cref="Include"/> once it is in the block.</param>
+        /// <param name="error">Why the transaction does not fit, or <see langword="null"/>.</param>
+        public bool TryFit(Transaction tx, out Dependency[] added, out int addedLength, out string? error)
+        {
+            added = [];
+            addedLength = 0;
+            error = null;
+            TxFrameClaim[] claims = tx.FrameClaims ?? [];
+            if (claims.Length == 0) return true;
+
+            byte[][]? witnesses = tx.ClaimWitnesses;
+            Dependency[] resolved = Resolve(tx);
+            HashSet<Dependency> fresh = [];
+            for (int c = 0; c < resolved.Length; c++)
+            {
+                if (witnesses is null || c >= witnesses.Length || (ulong)witnesses[c].Length != resolved[c].WitnessLength)
+                {
+                    error = MissingWitness;
+                    return false;
+                }
+
+                if (!_included.Contains(resolved[c]) && fresh.Add(resolved[c])) addedLength += Rlp.LengthOf(witnesses[c]);
+            }
+
+            if (1 + Rlp.LengthOfSequence(_contentLength + addedLength) > Eip8141Constants.MaxDependencyProofBytes)
+            {
+                error = TooLarge;
+                return false;
+            }
+
+            added = [.. fresh];
+            return true;
+        }
+
+        /// <summary>Records the dependencies a transaction added once it is in the block.</summary>
+        public void Include(Dependency[] added, int addedLength)
+        {
+            _included.UnionWith(added);
+            _contentLength += addedLength;
+        }
     }
 
     private static bool HasClaims(Block block)
