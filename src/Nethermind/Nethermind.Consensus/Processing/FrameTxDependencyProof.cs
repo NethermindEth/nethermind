@@ -29,6 +29,7 @@ public static class FrameTxDependencyProof
     public const string WitnessLengthMismatch = "dependency proof witness has the wrong length";
     public const string MissingWitness = "frame transaction carries no witness for its claim";
     public const string VerifierNotDeployed = "custom claim verifier has no code in the block's pre-state";
+    public const string VerifierGasExceedsBlockGasLimit = "dependency verification exceeds the block gas limit";
 
     private static readonly RlpLimit WitnessesCountLimit = RlpLimit.For<Block>(Eip8141Constants.MaxDependencyProofBytes, nameof(Block.DependencyProof));
 
@@ -152,6 +153,9 @@ public static class FrameTxDependencyProof
         }
         else
         {
+            // Every claim charges its full gas limit to its transaction, so a valid block never needs more verifier
+            // gas than its own gas limit; checked before any verifier runs, as a bound on their work.
+            if (ExceedsGasLimit(dependencies, block.Header.GasLimit)) throw new InvalidBlockException(block, VerifierGasExceedsBlockGasLimit);
             if (!TryDecode(proof, out witnesses)) throw new InvalidBlockException(block, Malformed);
             if (witnesses.Length != dependencies.Length) throw new InvalidBlockException(block, WitnessCountMismatch);
         }
@@ -272,6 +276,17 @@ public static class FrameTxDependencyProof
             _included.UnionWith(added);
             _contentLength += addedLength;
         }
+    }
+
+    private static bool ExceedsGasLimit(Dependency[] dependencies, ulong gasLimit)
+    {
+        foreach (Dependency dependency in dependencies)
+        {
+            if (dependency.GasLimit > gasLimit) return true;
+            gasLimit -= dependency.GasLimit;
+        }
+
+        return false;
     }
 
     private static bool HasClaims(Block block)
