@@ -46,6 +46,7 @@ public sealed class BeaconNodeValidatorApi(
     /// <summary>phase0/p2p-interface.md <c>ATTESTATION_SUBNET_COUNT</c>.</summary>
     private const ulong AttestationSubnetCount = 64;
 
+    // Keep this separate from the import worker's non-thread-safe cache; concurrent API requests lock this instance.
     private readonly CommitteeCacheLru _committees = new();
 
     /// <summary>Publishes a gossip message on a topic, subscribed or not; tests script it, otherwise <see cref="BeaconP2P.Publish"/>.</summary>
