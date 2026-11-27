@@ -75,7 +75,7 @@
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.2.0" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.Quic" Version="1.2.0" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.Yamux" Version="1.2.0" />
-    <PackageVersion Include="Nethermind.MclBindings" Version="4.30.0.119" />
+    <PackageVersion Include="Nethermind.MclBindings" Version="4.30.0.124" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.15.0" />
     <PackageVersion Include="Nethermind.OpenVM.Runtime" Version="[2.1.0.83]" />
     <PackageVersion Include="Nethermind.RocksDbBindings" Version="[11.13.2.218]" />
