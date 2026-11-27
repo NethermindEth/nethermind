@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Precompiles;
@@ -200,6 +201,30 @@ public partial class FrameTxProcessorTests
         }
 
         Assert.That(Measure(withClaim: true), Is.EqualTo(Measure(withClaim: false)));
+    }
+
+    /// <summary>Claims are verified against the block's pre-state, outside any transaction, so nothing a custom
+    /// verifier reads, its own code or a precompile it calls, enters the block access list.</summary>
+    [Test]
+    public void PureVerifier_RecordsNothingInTheBlockAccessList([Values] bool parallel)
+    {
+        DeployContract(Verifier, Prepare.EvmCode.StaticCall(IdentityPrecompile.Address, 10_000).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor(parallel);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameClaims = [CustomClaim(Verifier)];
+        tx.ClaimWitnesses = [[]];
+
+        TransactionResult result = Process(tracedProcessor, tx);
+
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(bal.GetAccountChanges(Sender), Is.Not.Null);
+            Assert.That(bal.GetAccountChanges(Verifier), Is.Null);
+            Assert.That(bal.GetAccountChanges(IdentityPrecompile.Address), Is.Null);
+        }
     }
 
     /// <summary>The default code refuses a <c>VERIFY</c> frame carrying data, even with the claim it needs.</summary>

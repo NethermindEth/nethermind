@@ -30,7 +30,6 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         TExecutionPayload executionPayload = ExecutionPayloadV3.Create<TExecutionPayload>(block);
         executionPayload.BlockAccessList = block.EncodedBlockAccessList ?? (block.BlockAccessList is null ? null : Rlp.Encode(block.BlockAccessList));
         executionPayload.SlotNumber = block.SlotNumber;
-        executionPayload.DependencyProof = block.Header.DependencyProofHash is null ? null : block.DependencyProof;
         return executionPayload;
     }
 
@@ -71,16 +70,6 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         block.EncodedBlockAccessList = encodedBlockAccessList;
         block.Header.BlockAccessListHash = blockAccessListHash;
         block.Header.SlotNumber = SlotNumber;
-        if (DependencyProof is not null)
-        {
-            if (DependencyProof.Length > Eip8141Constants.MaxDependencyProofBytes)
-            {
-                return Result<Block>.Fail($"{nameof(DependencyProof)} exceeds MAX_DEPENDENCY_PROOF_BYTES");
-            }
-
-            block.DependencyProof = DependencyProof;
-            block.Header.DependencyProofHash = Keccak.Compute(DependencyProof);
-        }
 
         return baseResult;
     }
@@ -244,8 +233,9 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     {
         IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
         // V5 and V6 share this payload type and differ only by the inclusion list beside it, so the
-        // fork decides which version is valid.
+        // fork decides which version is valid. EIP-8141 moves to ExecutionPayloadV5.
         return spec.IsAmsterdamEnabled
+            && !spec.IsEip8141Enabled
             && spec.IsBogotaEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V6);
     }
 

@@ -50,6 +50,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
@@ -3488,7 +3489,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_return_capabilities()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)

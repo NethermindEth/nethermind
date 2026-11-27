@@ -31,5 +31,8 @@ namespace Ethereum.Test.Base
         public byte[]?[]? BlobVersionedHashes { get; set; }
         [JsonConverter(typeof(SaturatingNullableUInt256Converter))]
         public UInt256? MaxFeePerBlobGas { get; set; }
+
+        /// <summary>The EIP-8141 segregated witnesses of a frame transaction's claims, which its <c>txbytes</c> omit.</summary>
+        public byte[][]? Witnesses { get; set; }
     }
 }

@@ -465,7 +465,9 @@ jobs:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,engineXTest,blockTest,stateTest,syncTest,engineReorgTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
+      # The frame lanes (frameTest, frameBlockTest, frameTxTest) are off until a tests-bogota-devnet release ships
+      # EIP-8141 declarative claims (ethereum/execution-specs#4092): every fixture in the pinned release predates them.
+      test_types: engineTest,engineXTest,blockTest,stateTest,syncTest,engineReorgTest,txTest,zkevmTest,focilTest
       setup_group: all
 
   tests-consensus-spec:

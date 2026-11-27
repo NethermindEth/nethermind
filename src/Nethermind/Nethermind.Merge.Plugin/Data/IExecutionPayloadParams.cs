@@ -274,9 +274,9 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Fail;
         }
 
-        if (spec.IsEip8141Enabled != executionPayload.DependencyProof is not null)
+        if (version < EngineApiVersions.NewPayload.V7 && executionPayload.DependencyProof is not null)
         {
-            error = spec.IsEip8141Enabled ? "Dependency proof must be set" : "Dependency proof must not be set before EIP-8141";
+            error = "Dependency proof must not be set before engine_newPayloadV7";
             return ValidationResult.Fail;
         }
 

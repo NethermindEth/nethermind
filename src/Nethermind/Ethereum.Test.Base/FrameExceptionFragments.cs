@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -77,6 +78,26 @@ public static class FrameExceptionFragments
         FrameTxClaimVerifier.WitnessCountMismatch,
         FrameTxClaimVerifier.InvalidWitnessLength,
         FrameTxClaimVerifier.P256NotSupported,
+        // A claim the block's dependency proof cannot satisfy, which the fixtures derived from state tests name as
+        // their transaction's invalid claim.
+        FrameTxDependencyProof.WitnessLengthMismatch,
+        FrameTxDependencyProof.VerifierNotDeployed,
+    ];
+
+    /// <summary>
+    /// Rejections of a block's dependency proof, labelled <c>BlockException.INVALID_DEPENDENCY_PROOF</c>. Outside the
+    /// pairwise-disjoint invariant, like <see cref="Decode"/>: these are block-level, and a witness the proof carries
+    /// that does not verify surfaces from the transaction it is assigned to.
+    /// </summary>
+    public static readonly string[] DependencyProof =
+    [
+        FrameTxDependencyProof.TooLarge,
+        FrameTxDependencyProof.Malformed,
+        FrameTxDependencyProof.WitnessCountMismatch,
+        FrameTxDependencyProof.WitnessLengthMismatch,
+        FrameTxDependencyProof.VerifierNotDeployed,
+        FrameTxDependencyProof.VerifierGasExceedsBlockGasLimit,
+        FrameTxClaimVerifier.InvalidClaim,
     ];
 
     /// <summary>

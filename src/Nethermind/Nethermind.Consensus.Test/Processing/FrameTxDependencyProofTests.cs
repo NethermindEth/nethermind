@@ -166,6 +166,24 @@ public class FrameTxDependencyProofTests
             Throws.InstanceOf<InvalidBlockException>().With.Message.Contains(expectedError));
     }
 
+    /// <summary>Claim gas is part of each transaction's intrinsic gas, so verifier gas past the block gas limit
+    /// invalidates the block before the proof is even decoded, let alone verified.</summary>
+    [TestCase(Eip8141Constants.Secp256k1VerificationGasCost + 10_000, FrameTxDependencyProof.Malformed)]
+    [TestCase(Eip8141Constants.Secp256k1VerificationGasCost + 9_999, FrameTxDependencyProof.VerifierGasExceedsBlockGasLimit)]
+    public void AssignWitnesses_VerifierGasPastTheBlockGasLimit_InvalidatesTheBlock(ulong gasLimit, string expectedError)
+    {
+        TxFrameClaim custom = new(TestItem.AddressF, default, default, gasLimit: 10_000, witnessLength: 1);
+        Block block = Build.A.Block.WithGasLimit(gasLimit)
+            .WithTransactions(FrameTxWith(TestItem.AddressA, FrameTxTestFrames.Secp256k1Claim(null), custom)).TestObject;
+        // Malformed, so a block within the limit fails on decoding instead.
+        byte[] proof = [Eip8141Constants.DependencyProofVersionRaw, 0xc2, 0x80];
+        block.DependencyProof = proof;
+        block.Header.DependencyProofHash = Keccak.Compute(proof);
+
+        Assert.That(() => FrameTxDependencyProof.AssignWitnesses(block),
+            Throws.InstanceOf<InvalidBlockException>().With.Message.Contains(expectedError));
+    }
+
     /// <summary>The proof is not stored, so a block read back from the database has none: no verdict, not an invalid block.</summary>
     [Test]
     public void AssignWitnesses_UnavailableProof_ReachesNoVerdict()
