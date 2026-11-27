@@ -5,11 +5,13 @@
 
 using System;
 using System.Threading;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
@@ -82,6 +84,104 @@ public class ProcessingBranchBuilderTests
     }
 
     [Test]
+    public void Side_ancestor_is_a_base_only_if_it_was_processed([Values] bool sideWasProcessed)
+    {
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        (IBlockTree blockTree, Block fork, Block head, Block side2, Block side3) = BuildSideBranch(container);
+        if (sideWasProcessed)
+        {
+            blockTree.MarkChainAsProcessed([side2]);
+        }
+
+        ProcessingBranchBuilder builder = new(blockTree, StateOnlyFor(fork, head, side2), [], LimboLogs.Instance.GetClassLogger<ProcessingBranchBuilder>());
+
+        using ProcessingBranch branch = builder.PrepareProcessingBranch(side3, ProcessingOptions.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.IsMainChain(side2.Header), Is.False);
+            Assert.That(branch.BaseBlock?.Hash, Is.EqualTo(sideWasProcessed ? side2.Hash : fork.Hash));
+            Assert.That(branch.Blocks.Count, Is.EqualTo(sideWasProcessed ? 1 : 2));
+        }
+    }
+
+    [Test]
+    public void Side_ancestor_with_state_is_a_base_only_if_it_is_the_sync_pivot([Values("fork", "side", "head")] string pivot)
+    {
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        (IBlockTree blockTree, Block fork, Block head, Block side2, Block side3) = BuildSideBranch(container);
+        Block pivotBlock = pivot switch { "fork" => fork, "side" => side2, _ => head };
+        blockTree.SyncPivot = (pivotBlock.Number, pivotBlock.Hash!);
+        bool notPivot = pivotBlock != side2;
+
+        ProcessingBranchBuilder builder = new(blockTree, StateOnlyFor(fork, head, side2), [], LimboLogs.Instance.GetClassLogger<ProcessingBranchBuilder>());
+
+        using ProcessingBranch branch = builder.PrepareProcessingBranch(side3, ProcessingOptions.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(branch.BaseBlock?.Hash, Is.EqualTo(notPivot ? fork.Hash : side2.Hash));
+            Assert.That(branch.Blocks.Count, Is.EqualTo(notPivot ? 2 : 1));
+        }
+    }
+
+    [Test]
+    public void Processed_side_ancestor_without_state_is_processed_again()
+    {
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        (IBlockTree blockTree, Block fork, Block head, Block side2, Block side3) = BuildSideBranch(container);
+        blockTree.MarkChainAsProcessed([side2]);
+
+        ProcessingBranchBuilder builder = new(blockTree, StateOnlyFor(fork, head), [], LimboLogs.Instance.GetClassLogger<ProcessingBranchBuilder>());
+
+        using ProcessingBranch branch = builder.PrepareProcessingBranch(side3, ProcessingOptions.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(branch.BaseBlock?.Hash, Is.EqualTo(fork.Hash));
+            Assert.That(branch.Blocks.Count, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Main_chain_ancestor_with_state_is_the_base()
+    {
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        (IBlockTree blockTree, Block fork, Block head, _, _) = BuildSideBranch(container);
+        Block next = ChildOf(head, nonce: 3);
+        blockTree.SuggestBlock(next);
+
+        ProcessingBranchBuilder builder = new(blockTree, StateOnlyFor(fork, head), [], LimboLogs.Instance.GetClassLogger<ProcessingBranchBuilder>());
+
+        using ProcessingBranch branch = builder.PrepareProcessingBranch(next, ProcessingOptions.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(branch.BaseBlock?.Hash, Is.EqualTo(head.Hash));
+            Assert.That(branch.Blocks.Count, Is.EqualTo(1));
+        }
+    }
+
+    private static (IBlockTree BlockTree, Block Fork, Block Head, Block Side2, Block Side3) BuildSideBranch(IContainer container)
+    {
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        genesis.Header.TotalDifficulty = genesis.Header.Difficulty;
+        blockTree.SuggestBlock(genesis);
+        blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, preloadedBlocks: [genesis]);
+
+        Block fork = ChildOf(genesis, nonce: 1);
+        Block head = ChildOf(fork, nonce: 2);
+        foreach (Block block in new[] { fork, head })
+        {
+            blockTree.SuggestBlock(block);
+            blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, preloadedBlocks: [block]);
+        }
+
+        Block side2 = ChildOf(fork, nonce: 102, difficulty: 1);
+        Block side3 = ChildOf(side2, nonce: 103);
+        blockTree.SuggestBlock(side2);
+        blockTree.SuggestBlock(side3);
+        return (blockTree, fork, head, side2, side3);
+    }
+
+    [Test]
     public void First_block_parent_is_taken_from_the_branch_base()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -97,17 +197,17 @@ public class ProcessingBranchBuilderTests
         stateReader.Received(1).HasStateForBlock(parent);
     }
 
-    private static IStateReader StateOnlyFor(Block? block = null)
+    private static IStateReader StateOnlyFor(params Block[] blocks)
     {
         IStateReader stateReader = Substitute.For<IStateReader>();
         stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(false);
-        if (block is not null)
+        foreach (Block block in blocks)
         {
             stateReader.HasStateForBlock(Arg.Is<BlockHeader?>(h => h != null && h.Hash == block.Hash)).Returns(true);
         }
         return stateReader;
     }
 
-    private static Block ChildOf(Block parent, int nonce) =>
-        Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent).WithNonce((ulong)nonce).WithDifficulty(2).TestObject;
+    private static Block ChildOf(Block parent, int nonce, ulong difficulty = 2) =>
+        Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent).WithNonce((ulong)nonce).WithDifficulty(difficulty).TestObject;
 }

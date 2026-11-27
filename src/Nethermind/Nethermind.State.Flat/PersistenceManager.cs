@@ -19,6 +19,7 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History.Test")]
@@ -63,6 +64,8 @@ public class PersistenceManager(
     private StateId? _lastWarnedStall;
     private bool _warnedHeldPastBackstop;
     private const int InitialShutdownTailCapacity = 256;
+    private static readonly StableStringLabel _stateNodesLabel = StableStringLabel.Get("state_nodes");
+    private static readonly StableStringLabel _storageNodesLabel = StableStringLabel.Get("storage_nodes");
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -104,7 +107,9 @@ public class PersistenceManager(
     ///   → seed = canonical state at
     ///   the next boundary block (<c>persistedBlock + CompactSize</c>). Looked up via
     ///   <see cref="IStateHeaderProvider"/> — the boundary is always locally synced even
-    ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.</item>
+    ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.
+    ///   A persisted-tier candidate that stops short of the boundary from an aligned base is skipped
+    ///   until <c>head - nextBoundary &gt;= MinReorgDepth + CompactSize</c>, waiting for the full chunk.</item>
     ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
     ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long
     ///   finality is enabled, otherwise <c>MaxReorgDepth</c>, raised to at least
@@ -153,7 +158,9 @@ public class PersistenceManager(
             {
                 (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersist(
                     new StateId(nextBoundary, canonicalRoot), currentPersistedState, _compactSize);
-                if (persisted is not null || inMemory is not null)
+                if (IsDeferrablePartialChunk(persisted, currentPersistedState, nextBoundary, latestSnapshot))
+                    persisted!.Dispose();
+                else if (persisted is not null || inMemory is not null)
                     return (persisted, inMemory, null);
             }
         }
@@ -203,6 +210,29 @@ public class PersistenceManager(
 
         return (null, null, conversion);
     }
+
+    /// <summary>
+    /// Whether a finalized-driven persisted-tier candidate stops short of the next compaction boundary and
+    /// can wait one more compaction window for the full chunk.
+    /// </summary>
+    /// <remarks>
+    /// When persistence outruns the persisted-snapshot compactor, the walk only finds the oldest small piece
+    /// of the range, and draining it piece by piece (1, 2, 4, 8, 16 blocks) costs one RocksDB batch each
+    /// instead of one per range. Deferring is bounded: once the head is a full window past the
+    /// <c>MinReorgDepth</c> gate, the partial chunk is persisted as before. Only a base on a compaction
+    /// boundary, or one no persisted snapshot ends at (left by an in-memory persist, so the compactor
+    /// restarts its range there), defers. A base left mid-window by a persisted-tier persist keeps its
+    /// persisted snapshot and the compactor builds boundary-aligned ranges, so no range would start at
+    /// the base and waiting gains nothing. A fresh database never defers: from <c>PreGenesis</c> the full
+    /// chunk spans more than <c>CompactSize</c> and can never be persisted whole.
+    /// </remarks>
+    private bool IsDeferrablePartialChunk(PersistedSnapshot? persisted, in StateId currentPersistedState, ulong nextBoundary, in StateId latestSnapshot) =>
+        persisted is not null
+        && persisted.To.BlockNumber != nextBoundary
+        && currentPersistedState != StateId.PreGenesis
+        && (nextBoundary - currentPersistedState.BlockNumber == _compactSize
+            || !snapshotRepository.HasBasePersistedSnapshot(currentPersistedState))
+        && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) < _minReorgDepth + _compactSize;
 
     private StateId ForcedPersistSeed(in StateId latestSnapshot) =>
         snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
@@ -393,7 +423,7 @@ public class PersistenceManager(
     {
         // Ownership of allStateIds transfers to the compactor on the EnqueueAsync handoff below; until then
         // this method owns it and must dispose it on any early exit (e.g. conversion cancellation).
-        ArrayPoolList<StateId> allStateIds = new(64);
+        ArrayPoolList<StateId> allStateIds = [with(64)];
         bool handedOff = false;
         try
         {
@@ -569,7 +599,8 @@ public class PersistenceManager(
     /// <remarks>
     /// Requires stopped block processing and persistence workers. Keeps the tail reorgable in the
     /// persisted-snapshot tier without advancing RocksDB; blocks become durable oldest first.
-    /// Without long finality there is no persisted tier. Restarted snapshots remain uncompacted until finality.
+    /// Without long finality there is no persisted tier. The next start compacts what this converts
+    /// (<see cref="CompactReloadedSnapshots"/>).
     /// </remarks>
     public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken)
     {
@@ -611,6 +642,14 @@ public class PersistenceManager(
         }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Takes no lock: it runs before the workers start, so nothing else uses the tier yet.</remarks>
+    public int CompactReloadedSnapshots(CancellationToken cancellationToken) =>
+        // An empty tier is the steady state, a crash and a new node: nothing is read and nothing is written.
+        snapshotRepository.PersistedSnapshotCount == 0
+            ? 0
+            : compactor.CompactReloaded(GetCurrentPersistedStateId().BlockNumber, cancellationToken);
+
     public void ResetPersistedStateId()
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
@@ -621,6 +660,38 @@ public class PersistenceManager(
     {
         using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
         snapshotRepository.RemoveUnreachableFrom(head, GetCurrentPersistedStateId());
+    }
+
+    public bool TryWriteOnPersistedState(in StateId expected, Action<IPersistence.IWriteBatch> write)
+    {
+        if (!_persistenceLock.Wait(0)) return false;
+        try
+        {
+            // Bypasses the reader caches, which may still serve the state before the last persist.
+            using (IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync))
+            {
+                if (reader.CurrentState != expected) return false;
+            }
+
+            // Held until the batch is disposed: a from == to batch rewrites the state pointer on dispose without
+            // checking it again, so a persist committed meanwhile would be rolled back.
+            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(expected, expected);
+            try
+            {
+                write(batch);
+            }
+            catch
+            {
+                // Disposal alone would commit the part written so far.
+                batch.Abort();
+                throw;
+            }
+            return true;
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
     }
 
     public void Dispose()
@@ -653,49 +724,58 @@ public class PersistenceManager(
         long sw = Stopwatch.GetTimestamp();
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
+            try
             {
-                if (toSelfDestructStorage.Value)
+                foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
                 {
-                    continue;
+                    if (toSelfDestructStorage.Value)
+                    {
+                        continue;
+                    }
+
+                    batch.SelfDestruct(toSelfDestructStorage.Key.Key);
                 }
 
-                batch.SelfDestruct(toSelfDestructStorage.Key.Key);
-            }
+                foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
+                {
+                    batch.SetAccount(kv.Key.Key, kv.Value);
+                }
 
-            foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
+                foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
+                {
+                    (Address addr, UInt256 slot) = kv.Key.Key;
+
+                    batch.SetStorage(addr, slot, kv.Value);
+                }
+
+                // Traversal skips nodes written before the snapshot's pin, so only this snapshot's nodes are persisted.
+                long stateNodesSize = 0;
+                foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
+                {
+                    ReadOnlySpan<byte> rlp = record.Rlp;
+
+                    stateNodesSize += rlp.Length;
+                    batch.SetStateTrieNode(path, rlp);
+                }
+
+                long storageNodesSize = 0;
+                foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
+                {
+                    ReadOnlySpan<byte> rlp = record.Rlp;
+
+                    storageNodesSize += rlp.Length;
+                    batch.SetStorageTrieNode(address, path, rlp);
+                }
+
+                Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: _stateNodesLabel);
+                Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: _storageNodesLabel);
+            }
+            catch
             {
-                batch.SetAccount(kv.Key.Key, kv.Value);
+                // Disposal alone would commit the part written so far and record snapshot.To as persisted.
+                batch.Abort();
+                throw;
             }
-
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
-            {
-                (Address addr, UInt256 slot) = kv.Key.Key;
-
-                batch.SetStorage(addr, slot, kv.Value);
-            }
-
-            // Traversal skips nodes written before the snapshot's pin, so only this snapshot's nodes are persisted.
-            long stateNodesSize = 0;
-            foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
-            {
-                ReadOnlySpan<byte> rlp = record.Rlp;
-
-                stateNodesSize += rlp.Length;
-                batch.SetStateTrieNode(path, rlp);
-            }
-
-            long storageNodesSize = 0;
-            foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
-            {
-                ReadOnlySpan<byte> rlp = record.Rlp;
-
-                storageNodesSize += rlp.Length;
-                batch.SetStorageTrieNode(address, path, rlp);
-            }
-
-            Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
-            Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
@@ -718,28 +798,38 @@ public class PersistenceManager(
         WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
-            // same per-address inner table, so one outer pass + TryResolveAll resolves all
-            // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
-            // is preserved within the row; cross-address ordering is irrelevant to the
-            // write batch.
-            foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
+            try
             {
-                if (entry.SelfDestructFlag is false)
-                    batch.SelfDestruct(entry.Address);
+                // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
+                // same per-address inner table, so one outer pass + TryResolveAll resolves all
+                // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
+                // is preserved within the row; cross-address ordering is irrelevant to the
+                // write batch.
+                foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
+                {
+                    Address address = entry.Address.ToAddress();
+                    if (entry.SelfDestructFlag is false)
+                        batch.SelfDestruct(address);
 
-                if (entry.HasAccount)
-                    batch.SetAccount(entry.Address, entry.Account);
+                    if (entry.HasAccount)
+                        entry.WriteAccount(batch, address);
 
-                foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
-                    batch.SetStorage(entry.Address, slot.Slot, slot.Value);
+                    foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
+                        batch.SetStorage(address, slot.Slot, slot.Value);
+                }
+
+                foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
+                    entry.Write(batch);
+
+                foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
+                    entry.Write(batch);
             }
-
-            foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
-                batch.SetStateTrieNode(entry.Path, entry.Rlp);
-
-            foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
-                batch.SetStorageTrieNode(entry.AddressHash.ToCommitment(), entry.Path, entry.Rlp);
+            catch
+            {
+                // Disposal alone would commit the part written so far and record snapshot.To as persisted.
+                batch.Abort();
+                throw;
+            }
         }
 
         // The CompactSized is now in RocksDB — drop the prefetched base blob ranges from the

@@ -18,6 +18,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -377,7 +378,7 @@ public class TxValidatorTests
             TxValidator txValidator = new(BlockchainIds.Mainnet);
             return txValidator.IsWellFormed(tx, London.Instance);
         }
-        catch (Exception e) when (e is RlpException or ArgumentException)
+        catch (Exception e) when (e is RlpReaderException or ArgumentException)
         {
             return false; // RLP or Argument Exception means that we rejected transaction
         }
@@ -519,16 +520,16 @@ public class TxValidatorTests
 
     private static IEnumerable<TestCaseData> OversizedWrapperFieldCases()
     {
-        yield return new TestCaseData(new Action<ShardBlobNetworkWrapper>(w => w.Blobs[0] = new byte[Ckzg.BytesPerBlob + 1]))
+        yield return new TestCaseData(new Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper>(static w => w with { Blobs = [new byte[Ckzg.BytesPerBlob + 1], .. w.Blobs[1..]] }))
             .SetName("IsWellFormed_BlobTxHasBlobOverTheSizeLimit_ReturnFalse");
-        yield return new TestCaseData(new Action<ShardBlobNetworkWrapper>(w => w.Commitments[0] = new byte[Ckzg.BytesPerCommitment + 1]))
+        yield return new TestCaseData(new Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper>(static w => w with { Commitments = [new byte[Ckzg.BytesPerCommitment + 1], .. w.Commitments[1..]] }))
             .SetName("IsWellFormed_BlobTxHasCommitmentOverTheSizeLimit_ReturnFalse");
-        yield return new TestCaseData(new Action<ShardBlobNetworkWrapper>(w => w.Proofs[0] = new byte[Ckzg.BytesPerProof + 1]))
+        yield return new TestCaseData(new Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper>(static w => w with { Proofs = new byte[w.Proofs.Length + 1] }))
             .SetName("IsWellFormed_BlobTxHasProofOverTheSizeLimit_ReturnFalse");
     }
 
     [TestCaseSource(nameof(OversizedWrapperFieldCases))]
-    public void IsWellFormed_BlobTxHasWrapperFieldOverTheSizeLimit_ReturnFalse(Action<ShardBlobNetworkWrapper> corrupt)
+    public void IsWellFormed_BlobTxHasWrapperFieldOverTheSizeLimit_ReturnFalse(Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper> corrupt)
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
@@ -538,7 +539,7 @@ public class TxValidatorTests
             .SignedAndResolved()
             .TestObject;
 
-        corrupt((ShardBlobNetworkWrapper)tx.NetworkWrapper!);
+        tx.NetworkWrapper = corrupt((ShardBlobNetworkWrapper)tx.NetworkWrapper!);
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
@@ -584,7 +585,7 @@ public class TxValidatorTests
     {
         Transaction tx = BuildBlobCarryingFrameTx(Eip8141Prototype.Instance.BlobProofVersion);
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-        wrapper.Proofs[0].AsSpan().Clear(); // break the KZG cell proof while keeping the length valid
+        wrapper.Proofs.AsSpan(0, Ckzg.BytesPerProof).Clear(); // break the KZG cell proof while keeping the length valid
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.False);
@@ -979,7 +980,6 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(cap + 1, cap)));
-            Assert.That(result.IsIntrinsicGasError, Is.False);
         }
 
         static Transaction TxWithGasLimit(ulong gasLimit) => Build.A.Transaction
@@ -1008,7 +1008,6 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
-            Assert.That(result.IsIntrinsicGasError, Is.True);
             Assert.That(tx.IntrinsicGasMemo, skipMemo ? Is.Null : Is.Not.Null);
             Assert.That(result.Error, skipErrorDetails
                 ? Is.SameAs(TxErrorMessages.IntrinsicGasTooLow)
@@ -1293,7 +1292,7 @@ public class TxValidatorTests
                 ExpectedResult = false
             };
             yield return new TestCaseData(Cancun.Instance, MakeTestObject()
-                .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[0][1] ^= 0xFF)
+                .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[1] ^= 0xFF)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Proofs are not valid",
@@ -1640,6 +1639,54 @@ public class FrameTxStructuralAdmissionTests
             Assert.That(result.AsBool, Is.EqualTo(expected), result.Error);
             Assert.That(result.Error, expected ? Is.Null : Is.EqualTo(FrameTxValidation.FrameExecutionGasExceedsCap(cap + overshoot, cap)));
         }
+    }
+
+    // EIP-8141 bounds the frame gas sum by 2^64 - 1 and nothing more: the intrinsic gas may carry the budget past
+    // it, and the transaction is then left to the block, whose gas limit its state gas exceeds.
+    [TestCase(0ul, true, TestName = "a frame gas sum of 2^64 - 1 is admitted")]
+    [TestCase(1ul, false, TestName = "a frame gas sum of 2^64 is rejected as an overflow")]
+    public void IsWellFormed_BoundsTheFrameGasSumAlone(ulong overshoot, bool expected)
+    {
+        Transaction tx = OnChain(SelfVerify(10_000),
+            new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, 10_000, ulong.MaxValue - 20_000 + overshoot, UInt256.Zero, default));
+
+        ValidationResult result = Validate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.EqualTo(expected), result.Error);
+            Assert.That(result.Error, expected ? Is.Null : Is.EqualTo(FrameTxValidation.FrameGasOverflow));
+        }
+    }
+
+    // The reservation saturates at 2^64 - 1 for block accounting, but the error reports the real intrinsic plus
+    // execution gas, so it never names 2^64 - 1 for a larger amount.
+    [Test]
+    public void IsWellFormed_ExecutionGasAtTheMaximum_IsRejectedByTheTransactionGasCap()
+    {
+        ulong cap = Eip7825Constants.DefaultTxGasLimitCap;
+
+        ValidationResult result = Validate(OnChain(SelfVerify(ulong.MaxValue)));
+
+        Assert.That(result.Error, Is.EqualTo(FrameTxValidation.FrameExecutionGasExceedsCap((UInt128)IntrinsicGas() + ulong.MaxValue, cap)));
+    }
+
+    [Test]
+    public void IsWellFormed_ExecutionGasSummingTo2To64_ReportsTheRealSumInTheCapError()
+    {
+        ulong executionGas = (ulong)(((UInt128)1 << 64) - IntrinsicGas());
+
+        ValidationResult result = Validate(OnChain(SelfVerify(executionGas)));
+
+        Assert.That(result.Error, Is.EqualTo("frame intrinsic and execution gas (18446744073709551616) exceeds the transaction gas cap of 16777216"));
+    }
+
+    /// <summary>The intrinsic gas of a single-frame transaction, which its frame's gas limit does not change.</summary>
+    private static ulong IntrinsicGas()
+    {
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(OnChain(SelfVerify(0)), Eip8141Prototype.Instance, out ulong intrinsicGas, out _, out _),
+            Is.True, "an unpriced probe would hand back an intrinsic gas of 0");
+        return intrinsicGas;
     }
 
     /// <summary>The execution gas a single-frame transaction may budget before its reservation reaches <paramref name="cap"/>.</summary>

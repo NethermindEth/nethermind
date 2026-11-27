@@ -27,6 +27,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
+using Nethermind.Core.Utils;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -196,7 +197,19 @@ public abstract partial class BaseEngineModuleTests
         /// newPayload answers on the block's verdict, before its state is committed and it is marked processed; a test
         /// that reads the block's state, receipts or processed flag right after VALID waits here first.
         /// </summary>
-        public Task WaitForCommitted(Hash256 blockHash) => BlockProcessingQueue.WaitUntilRemovedAsync(blockHash).AsTask();
+        /// <exception cref="TimeoutException">The block is still in the processing queue when the test timeout ends.</exception>
+        public virtual async Task WaitForCommitted(Hash256 blockHash)
+        {
+            using AutoCancelTokenSource cts = CreateCancellationSource();
+            try
+            {
+                await BlockProcessingQueue.WaitUntilRemovedAsync(blockHash).AsTask().WaitAsync(cts.Token);
+            }
+            catch (OperationCanceledException e) when (cts.Token.IsCancellationRequested)
+            {
+                throw new TimeoutException($"Block {blockHash} did not leave the processing queue within {TestTimeout} ms", e);
+            }
+        }
 
         public IBeaconPivot BeaconPivot => Container.Resolve<IBeaconPivot>();
 

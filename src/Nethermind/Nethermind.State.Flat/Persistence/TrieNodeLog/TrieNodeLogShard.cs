@@ -182,7 +182,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         {
             Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending = Interlocked.Exchange(ref _pendingPool, null) ?? [];
             using Lock.Scope _ = _lock.EnterScope();
-            return new TrieNodeLogWriteBatch(this, version ?? ++_version, new ArrayPoolList<TrieNodeLogGeneration>(2), pending);
+            return new TrieNodeLogWriteBatch(this, version ?? ++_version, [with(2)], pending);
         }
         catch
         {
@@ -198,7 +198,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     internal void EnterExclusive()
     {
         if (Volatile.Read(ref _poisoned) != 0)
-            throw new InvalidOperationException($"Trie node log shard {Name} holds records RocksDB never confirmed; restart the node to recover");
+            throw new InvalidOperationException($"Trie node log shard {Name} may hold records RocksDB never confirmed; restart the node to recover");
         if (Interlocked.CompareExchange(ref _openBatch, 1, 0) != 0)
             throw new InvalidOperationException($"A trie node log write batch is open on shard {Name}");
     }
@@ -209,7 +209,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     internal void Poison()
     {
         Volatile.Write(ref _poisoned, 1);
-        if (_logger.IsError) _logger.Error($"Trie node log shard {Name} holds records RocksDB never confirmed; it takes no more writes until the node is restarted");
+        if (_logger.IsError) _logger.Error($"Trie node log shard {Name} may hold records RocksDB never confirmed; it takes no more writes until the node is restarted");
     }
 
     internal void ReturnPending(Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending)
@@ -247,7 +247,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// <summary><see cref="Drain"/> for a caller holding the gate through <see cref="EnterExclusive"/>.</summary>
     internal void DrainExclusive()
     {
-        SealActive();
+        SealAll();
         FlushSealedGenerations(mergeLag: 0);
         _secondLevel?.Drain();
     }
@@ -333,7 +333,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     private ArrayPoolList<TrieNodeLogGeneration> PinAllNoLock()
     {
-        ArrayPoolList<TrieNodeLogGeneration> pinned = new(_generations.Count);
+        ArrayPoolList<TrieNodeLogGeneration> pinned = [with(_generations.Count)];
         foreach (TrieNodeLogGeneration generation in _generations)
         {
             if (generation.TryAcquire()) pinned.Add(generation);
@@ -366,9 +366,16 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         try
         {
             generation.WriteFileHeader();
+            // Durable before any commit can confirm this generation or a newer one: a commit syncs only the
+            // generations it wrote to, and a batch aborted after rolling leaves this one with its header only.
+            generation.Fsync();
         }
         catch
         {
+            // The number stays unused: the next roll reuses it and its file name, and rewrites the file through
+            // OpenOrCreate with a full header and a sync. The name must never be queued for deletion, as a deferred
+            // delete would remove the generation that roll creates.
+            generation.PreserveOnDispose();
             generation.Dispose();
             throw;
         }
@@ -453,11 +460,15 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     internal void OnBatchAborted() => Volatile.Write(ref _openBatch, 0);
 
-    private void SealActive()
+    /// <summary>
+    /// Seals every generation, so a drain merges each of them in order: a batch aborted after rolling leaves older
+    /// generations unsealed, and merging a newer one past them would move the merged marker over records only they hold.
+    /// For a caller holding the gate, so no batch is open to append to any of them.
+    /// </summary>
+    private void SealAll()
     {
         using Lock.Scope _ = _lock.EnterScope();
-        if (_active is null) return;
-        _active.IsSealed = true;
+        foreach (TrieNodeLogGeneration generation in _generations) generation.IsSealed = true;
         _active = null;
     }
 
@@ -772,8 +783,10 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         try
         {
             generation.Truncate(frontier);
-            // Durable before later versions are committed, which would confirm a cut tail that a crash brings back.
-            if (frontier < fileLength) generation.Fsync();
+            // Durable before it is retained, as a later commit confirms its records or a newer generation while syncing
+            // only the files it writes to: a cut tail would come back after a crash, and a header that a roll interrupted
+            // before its sync would be lost.
+            generation.Fsync();
 
             // Second pass: index the surviving records; a later record of the same key replaces the earlier slot.
             Span<byte> buffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];

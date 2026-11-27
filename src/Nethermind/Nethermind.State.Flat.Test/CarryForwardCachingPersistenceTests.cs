@@ -16,6 +16,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -137,6 +139,135 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
+    public async Task GetAccount_WrittenAccount_InvalidatedOnCommit([Values] bool slim)
+    {
+        FakePersistence inner = new();
+        await using CarryForwardCachingPersistence cache = new(inner);
+        Account account = new(1, 100);
+
+        ReadAccount(cache, Address);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+        {
+            if (slim) batch.SetSlimAccount(Address, AccountDecoder.Slim.Encode(account));
+            else batch.SetAccount(Address, account);
+        }
+        inner.ReaderState = Basis1;
+        ReadAccount(cache, Address);
+
+        Assert.That(inner.AccountReads, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task WriteBatch_Aborted_EvictsItsWritesAndKeepsTheBasis()
+    {
+        FakePersistence inner = new();
+        await using CarryForwardCachingPersistence cache = new(inner);
+        ReadAccount(cache, TestItem.AddressA);
+        ReadAccount(cache, TestItem.AddressB);
+        using IPersistence.IPersistenceReader openedBefore = cache.CreateReader();
+
+        // The inner store discards the batch, so it stays at Basis0.
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+        {
+            batch.SetAccount(TestItem.AddressB, new Account(2, 200));
+            batch.Abort();
+        }
+
+        openedBefore.GetAccount(TestItem.AddressB);
+        int readsBefore = inner.AccountReads;
+        ReadAccount(cache, TestItem.AddressA);
+        ReadAccount(cache, TestItem.AddressB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.LastWriteBatch!.AbortCount, Is.EqualTo(1), "the abort reaches the inner batch");
+            Assert.That(inner.LastWriteBatch.DisposeCount, Is.EqualTo(1));
+            Assert.That(readsBefore, Is.EqualTo(3), "a reader opened before the abort reads the evicted account from the store");
+            Assert.That(inner.AccountReads - readsBefore, Is.EqualTo(1),
+                "at the kept basis the unwritten account is served from the cache; the evicted one, which the reader opened before did not refill, is read again");
+            Assert.That(cache.HasSpareWrittenAccounts, Is.True, "the written set is returned");
+        }
+    }
+
+    // A store that ignores the abort commits the batch on dispose, here at the same state id, so the cache must not serve
+    // what it held before the batch, to a reader opened before the close or after it. A self-destruct makes the close clear
+    // the whole cache rather than evict the written keys.
+    [Test]
+    public async Task WriteBatch_AbortedOverAStoreThatCommitsAnyway_ServesWhatTheStoreHolds([Values] bool selfDestruct)
+    {
+        ModelPersistence model = new(addresses: 1, slotsPerAddress: 1);
+        await using CarryForwardCachingPersistence cache = new(model);
+        Address address = TestItem.Addresses[0];
+        UInt256 slot = 0;
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(model.Current.Id, new StateId(1, Keccak.EmptyTreeHash)))
+        {
+            batch.SetAccount(address, new Account(1, 100));
+            batch.SetStorage(address, slot, BaseFlatPersistence.DecodeSlotValue([0x11]));
+        }
+
+        // Fills the cache.
+        CheckReads(cache.CreateReader(), model.Current, "the first reader");
+        ModelPersistence.State before = model.Current;
+        IPersistence.IPersistenceReader openedBefore = cache.CreateReader();
+
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(model.Current.Id, model.Current.Id))
+        {
+            if (selfDestruct) batch.SelfDestruct(address);
+            else batch.SetStorage(address, slot, BaseFlatPersistence.DecodeSlotValue([0x22]));
+            batch.SetAccount(address, new Account(2, 200));
+            batch.Abort();
+        }
+
+        // In this order: a reader opened before the close that filled the cache would show in the reader opened after it.
+        CheckReads(openedBefore, before, "a reader opened before the close");
+        CheckReads(cache.CreateReader(), model.Current, "a reader opened after the close");
+
+        void CheckReads(IPersistence.IPersistenceReader reader, ModelPersistence.State expected, string which)
+        {
+            using (reader)
+            {
+                UInt256 value = default;
+                bool found = reader.TryGetSlot(address, slot, ref value);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(reader.GetAccount(address), Is.EqualTo(expected.Accounts.GetValueOrDefault(address)), $"account read by {which}");
+                    Assert.That(found ? (UInt256?)value : null, Is.EqualTo(expected.Slots.TryGetValue((address, slot), out UInt256 stored) ? (UInt256?)stored : null), $"slot read by {which}");
+                }
+            }
+        }
+    }
+
+    // A reader whose inner snapshot is pinned before an aborted close, over a store that commits it anyway, must not join
+    // the generation the close starts: it would refill the evicted account from its older snapshot, and a later commit
+    // that does not touch the account would carry that value forward.
+    [Test]
+    public async Task CreateReader_OpenedAcrossAnAbortedClose_DoesNotRefillTheCache([Values] bool sameId)
+    {
+        ModelPersistence model = new(addresses: 1, slotsPerAddress: 1);
+        await using CarryForwardCachingPersistence cache = new(model);
+        Address address = TestItem.Addresses[0];
+        Account oldAccount = new(1, 100);
+        Account newAccount = new(2, 200);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(model.Current.Id, Basis1))
+            batch.SetAccount(address, oldAccount);
+
+        model.AfterPin = () =>
+        {
+            StateId to = sameId ? model.Current.Id : new StateId(2, Keccak.EmptyTreeHash);
+            using IPersistence.IWriteBatch batch = cache.CreateWriteBatch(model.Current.Id, to);
+            batch.SetAccount(address, newAccount);
+            batch.Abort();
+        };
+        using (IPersistence.IPersistenceReader acrossTheClose = cache.CreateReader())
+            Assert.That(acrossTheClose.GetAccount(address), Is.EqualTo(oldAccount), "the reader reads its own snapshot");
+
+        using (cache.CreateWriteBatch(model.Current.Id, new StateId(3, Keccak.EmptyTreeHash))) { }
+
+        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+        Assert.That(reader.GetAccount(address), Is.EqualTo(newAccount));
+    }
+
+    [Test]
     public async Task GetAccount_WhenCapacityExceeded_EvictsAllThenReCaches()
     {
         FakePersistence inner = new();
@@ -209,7 +340,7 @@ public class CarryForwardCachingPersistenceTests
         using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
         {
             // A raw write clears everything, as every snap sync and healing batch does.
-            batch.SetAccountRaw(default, new Account(1, 100));
+            batch.SetAccountRaw(default, new AccountStruct(1, 100));
         }
 
         Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(256 * 1024));
@@ -724,7 +855,7 @@ public class CarryForwardCachingPersistenceTests
         yield return ClearingScenario("self_destruct_clears_cache", batch => batch.SelfDestruct(Address));
         yield return ClearingScenario("delete_account_range_clears_cache", batch => batch.DeleteAccountRange(default, default));
         yield return ClearingScenario("delete_storage_range_clears_cache", batch => batch.DeleteStorageRange(default, default, default));
-        yield return ClearingScenario("set_account_raw_clears_cache", batch => batch.SetAccountRaw(default, new Account(1, 100)));
+        yield return ClearingScenario("set_account_raw_clears_cache", batch => batch.SetAccountRaw(default, new AccountStruct(1, 100)));
         yield return ClearingScenario("set_storage_raw_encoded_clears_cache", batch => batch.SetStorageRawEncoded(default, default, default));
 
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((cache, _) =>
@@ -896,9 +1027,15 @@ public class CarryForwardCachingPersistenceTests
 
         public State Current => Volatile.Read(ref _state);
 
+        /// <summary>Run once by the next <see cref="CreateReader"/>, right after it pins its state.</summary>
+        public Action? AfterPin { get; set; }
+
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
         {
             State state = Current;
+            Action? afterPin = AfterPin;
+            AfterPin = null;
+            afterPin?.Invoke();
             _lastReaderState = state;
             return new Reader(state);
         }
@@ -953,7 +1090,7 @@ public class CarryForwardCachingPersistenceTests
                         Pattern(keyToClear, block).ToBigEndian());
                     break;
                 case 2:
-                    batch.SetAccountRaw(HashOf(clearedAddress), new Account(block + 1, (UInt256)keyToClear));
+                    batch.SetAccountRaw(HashOf(clearedAddress), new AccountStruct(block + 1, (UInt256)keyToClear));
                     break;
                 case 3:
                     ValueHash256 slotHash = HashOf(clearedSlot);
@@ -1009,10 +1146,11 @@ public class CarryForwardCachingPersistenceTests
             }
 
             public StateId CurrentState => state.Id;
-            public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
-            public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+            public MigrationCursor? GetMigrationCursor() => null;
             public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
             public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
             public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
             public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
             public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
@@ -1044,7 +1182,7 @@ public class CarryForwardCachingPersistenceTests
             public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
                 _slots[(model._addressesByHash[addrHash], model._slotsByHash[slotHash])] = new UInt256(rlpValue, isBigEndian: true);
 
-            public void SetAccountRaw(in ValueHash256 addrHash, Account account) => _accounts[model._addressesByHash[addrHash]] = account;
+            public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) => _accounts[model._addressesByHash[addrHash]] = account.ToAccount();
 
             public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
             {
@@ -1059,19 +1197,20 @@ public class CarryForwardCachingPersistenceTests
             public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
                 RemoveSlots(model._addressesByHash[addressHash], fromPath, toPath, all: toPath == ValueKeccak.Zero);
 
-            public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+            public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount)
             {
                 foreach (Address address in model._addresses)
                 {
                     ValueHash256 hash = HashOf(address);
-                    if (hash.CompareTo(fromPath) >= 0 && hash.CompareTo(toPath) <= 0) RemoveSlots(address, ValueKeccak.Zero, ValueKeccak.Zero, all: true);
+                    if (hash.CompareTo(fromPath) >= 0 && hash.CompareTo(toPath) <= 0 && hash != keptAccount) RemoveSlots(address, ValueKeccak.Zero, ValueKeccak.Zero, all: true);
                 }
             }
 
             public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
-            public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
+            public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
             public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
             public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
+            public void SetMigrationCursor(in MigrationCursor? cursor) { }
 
             public void Dispose() => Volatile.Write(ref model._state, new State(block, _accounts.ToImmutable(), _slots.ToImmutable()));
 
@@ -1099,9 +1238,10 @@ public class CarryForwardCachingPersistenceTests
         public readonly List<Address> PlannedAccounts = [];
         public readonly List<StorageCell> PlannedSlots = [];
         public IPersistence.PrefetchColumns Plan = IPersistence.PrefetchColumns.All;
+        public FakeWriteBatch? LastWriteBatch;
 
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => new Reader(this);
-        public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new FakeWriteBatch();
+        public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => LastWriteBatch = new FakeWriteBatch();
         public void Flush() { }
         public void Clear() { }
 
@@ -1122,10 +1262,11 @@ public class CarryForwardCachingPersistenceTests
             }
 
             public StateId CurrentState => parent.ReaderState;
-            public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
-            public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+            public MigrationCursor? GetMigrationCursor() => null;
             public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
             public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
             public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
             public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
             public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();

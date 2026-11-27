@@ -45,6 +45,113 @@ public class ExecutionPayloadV4Tests
         Assert.That(result.Error, Does.Not.Contain(Environment.NewLine));
     }
 
+    [TestCase(5UL, false)]
+    [TestCase(6UL, true)]
+    public void TryGetBlock_checks_the_block_access_list_item_limit_before_decoding(ulong itemLimit, bool decoded)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(0, 1, 2).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(0).TestObject)
+            .TestObject;
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(bal),
+            SlotNumber = 0,
+            BlockNumber = 1,
+            GasLimit = itemLimit * Eip7928Constants.ItemCost,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+        };
+
+        Result<Block> result = payload.TryGetBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.EqualTo(!decoded));
+            if (!decoded) Assert.That(result.Error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
+    }
+
+    [Test]
+    public void TryGetBlock_keeps_a_deferred_block_access_list_encoded()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(0, 1, 2).TestObject)
+            .TestObject;
+        byte[] encoded = BlockAccessListDecoder.EncodeToBytes(bal);
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = encoded,
+            SlotNumber = 0,
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+        };
+
+        bool deferred = payload.TryDeferBlockAccessListDecode(out string? error);
+        Block block = payload.TryGetBlock().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deferred, Is.True, error);
+            Assert.That(block.BlockAccessList, Is.Null);
+            Assert.That(block.EncodedBlockAccessList, Is.SameAs(encoded));
+            Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(Keccak.Compute(encoded)));
+        }
+    }
+
+    [Test]
+    public void TryDeferBlockAccessListDecode_checks_the_item_limit()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(0, 1, 2).TestObject)
+            .TestObject;
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(bal),
+            GasLimit = 3 * Eip7928Constants.ItemCost,
+        };
+
+        bool deferred = payload.TryDeferBlockAccessListDecode(out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deferred, Is.False);
+            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
+    }
+
+    [Test]
+    public void TryGetBlock_checks_the_item_limit_of_a_cached_block_access_list()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(0, 1, 2).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(0).TestObject)
+            .TestObject;
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(bal),
+            SlotNumber = 0,
+            BlockNumber = 1,
+            GasLimit = 6 * Eip7928Constants.ItemCost,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+        };
+
+        Result<Block> withinLimit = payload.TryGetBlock();
+        payload.GasLimit = 5 * Eip7928Constants.ItemCost;
+        Result<Block> overLimit = payload.TryGetBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withinLimit.IsError, Is.False);
+            Assert.That(overLimit.Error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
+    }
+
     [Test]
     public void TryGetBlock_reuses_cached_block_access_list_for_wire_hash()
     {
@@ -89,7 +196,11 @@ public class ExecutionPayloadV4Tests
     {
         string genesis = $$"""
             {
-              "config": { "chainId": 1, "homesteadBlock": 0, "amsterdamTime": 15, "{{label}}": 15 },
+              "config": {
+                "chainId": 1, "homesteadBlock": 0, "eip150Block": 0, "eip155Block": 0, "eip158Block": 0, "byzantiumBlock": 0,
+                "constantinopleBlock": 0, "petersburgBlock": 0, "istanbulBlock": 0, "berlinBlock": 0, "londonBlock": 0,
+                "shanghaiTime": 0, "amsterdamTime": 15, "{{label}}": 15
+              },
               "difficulty": "0x1",
               "gasLimit": "0x8000000",
               "alloc": {}

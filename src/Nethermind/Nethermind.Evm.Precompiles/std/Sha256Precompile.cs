@@ -5,6 +5,7 @@ using System;
 using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -15,8 +16,11 @@ public partial class Sha256Precompile : IPrecompile<Sha256Precompile>
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         byte[] output = new byte[SHA256.HashSizeInBytes];
+        ReadOnlySpan<byte> input = inputData.Span;
+        if (ThreadSha256.TryHashDataArm(input, output))
+            return output;
 
-        bool success = SHA256.TryHashData(inputData.Span, output, out int bytesWritten);
+        bool success = SHA256.TryHashData(input, output, out int bytesWritten);
 
         return success && bytesWritten == SHA256.HashSizeInBytes ? output : Errors.Failed;
     }

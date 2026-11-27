@@ -99,7 +99,7 @@ namespace Nethermind.Facade.Filters.Topics
             return result;
         }
 
-        public bool Equals(SequenceTopicsFilter other) => _expressions.SequenceEqual(other._expressions);
+        public bool Equals(SequenceTopicsFilter? other) => other is not null && _expressions.SequenceEqual(other._expressions);
 
         public override bool Equals(object? obj)
         {
@@ -109,7 +109,17 @@ namespace Nethermind.Facade.Filters.Topics
             return Equals((SequenceTopicsFilter)obj);
         }
 
-        public override int GetHashCode() => _expressions.GetHashCode();
+        public override int GetHashCode()
+        {
+            // The same expressions in the same order as Equals, so equal filters built from separate arrays hash alike.
+            HashCode hash = new();
+            for (int i = 0; i < _expressions.Length; i++)
+            {
+                hash.Add(_expressions[i]);
+            }
+
+            return hash.ToHashCode();
+        }
 
         public override string ToString() => $"[{string.Join<TopicExpression>(',', _expressions)}]";
     }

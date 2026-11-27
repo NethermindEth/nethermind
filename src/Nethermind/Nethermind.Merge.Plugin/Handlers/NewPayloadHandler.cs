@@ -32,6 +32,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -71,10 +72,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     /// <summary>The copies this handler handed to the processing queue that have not left it yet.</summary>
     /// <remarks>
-    /// Replaced whole and only by the request in progress: the engine API runs one newPayload at a time, so a
-    /// request finds here what the requests before it left behind and nothing changes it meanwhile.
+    /// The engine API runs one newPayload at a time, so a request finds here what the requests before it left
+    /// behind. The lock is uncontended then; it keeps the list whole on a node that serves newPayload through two
+    /// engine modules, each with its own request lock.
     /// </remarks>
-    private QueuedCopy[] _queuedCopies = [];
+    private readonly List<QueuedCopy> _queuedCopies = [];
+    private readonly Lock _queuedCopiesLock = new();
 
     private ulong _lastBlockNumber;
     private ulong _lastBlockGasLimit;
@@ -265,6 +268,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
             }
 
+            if (block.EncodedBlockAccessList is not null) block.BlockAccessList = null;
+
             // possible that headers sync finished before this was called, so blocks in cache weren't inserted
             if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
             {
@@ -276,6 +281,18 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
             _blockCacheService.TryAddBlock(block);
             return NewPayloadV1Result.Syncing;
+        }
+
+        if (block.BlockAccessList is null && block.EncodedBlockAccessList is { } encodedBlockAccessList && block.Header.BlockAccessListHash is not null)
+        {
+            if (!ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, PayloadTransactionCountGuard.GetParentBoundedGasLimit(block.Header.GasLimit, parentHeader, _specProvider.GetSpec(block.Header), block.Number), out ReadOnlyBlockAccessList? blockAccessList, out string? blockAccessListError, out bool isOverItemLimit))
+            {
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, blockAccessListError));
+                Hash256 parentHeaderHash = parentHeader.GetOrCalculateHash();
+                return NewPayloadV1Result.Invalid(isOverItemLimit && _blockTree.WasProcessed(parentHeader.Number, parentHeaderHash) ? parentHeaderHash : null, blockAccessListError);
+            }
+
+            block.BlockAccessList = blockAccessList;
         }
 
         if (_simulateBlockProduction)
@@ -335,9 +352,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // The parent may have been answered VALID a moment ago and still be committing: its processed flag and its
         // state land when it leaves the processing queue. Judged before that, this block would be taken for one whose
         // parent we do not have, inserted for beacon sync and answered SYNCING. Nothing in flight returns at once.
-        if (!await WriteReceivedIfWaiting(receivedLine, WaitForParentCommitAsync(parentHeader, deadline))) return NewPayloadV1Result.Syncing;
+        Hash256 parentHash = parentHeader.GetOrCalculateHash();
+        BlockInfo? parentBlockInfo = _blockTree.GetInfo(parentHeader.Number, parentHash).Info;
+        if (parentBlockInfo is { WasProcessed: false })
+        {
+            if (!await WriteReceivedIfWaiting(receivedLine, WaitForParentCommitAsync(parentHeader, parentHash, deadline))) return NewPayloadV1Result.Syncing;
+            parentBlockInfo = _blockTree.GetInfo(parentHeader.Number, parentHash).Info;
+        }
 
-        if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
+        if (!ShouldProcessBlock(block, parentHeader, parentBlockInfo, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
             // Inserting a canonical block as a beacon block would arm the beacon pivot behind the head, and
             // validating it first could record a failure that marks every descendant, the head included, INVALID.
@@ -351,7 +374,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
                 RecordBadBlock(block);
-                return NewPayloadV1Result.Invalid(error);
+                return NewPayloadV1Result.Invalid(null, error);
             }
 
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
@@ -548,7 +571,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 ReadOnlyBlockAccessList? stored = _blockAccessListStore?.Get(block.Number, block.GetOrCalculateHash());
                 return stored?.WireHash == commitment ? stored : null;
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot recheck inclusion list for {block.Hash}: its BAL does not decode. {exception.Message}");
                 return null;
@@ -644,6 +667,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </summary>
     /// <param name="block">Block</param>
     /// <param name="parent">Parent header</param>
+    /// <param name="parentBlockInfo">The parent's info, read again after any wait for the parent's commit.</param>
     /// <param name="processingOptions">Options that should be used for processing</param>
     /// <returns>Options which should be used for block processing. Null if we shouldn't process the block.</returns>
     /// <remarks>
@@ -658,11 +682,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     ///
     /// Scenario 2 proved to be quite common on testnets which produced multiple transition blocks.
     /// </remarks>
-    private bool ShouldProcessBlock(Block block, BlockHeader parent, out ProcessingOptions processingOptions)
+    private bool ShouldProcessBlock(Block block, BlockHeader parent, BlockInfo? parentBlockInfo, out ProcessingOptions processingOptions)
     {
         processingOptions = _defaultProcessingOptions;
 
-        BlockInfo? parentBlockInfo = _blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Info;
         bool parentProcessed = parentBlockInfo is { WasProcessed: true } && _stateReader.HasStateForBlock(parent);
 
         // During the transition we can have a case of NP built over a transition block that wasn't processed.
@@ -723,11 +746,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// Waits, within the request's budget, for a parent that is still in the processing queue; <c>false</c> when it
     /// did not leave in time, which is answered SYNCING as an unprocessed parent always was.
     /// </summary>
-    private async Task<bool> WaitForParentCommitAsync(BlockHeader parent, long deadline)
+    private async Task<bool> WaitForParentCommitAsync(BlockHeader parent, Hash256 parentHash, long deadline)
     {
-        Hash256 parentHash = parent.GetOrCalculateHash();
-        if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
-
         bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline), _timeProvider);
         if (!inTime && _logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
         return inTime;
@@ -931,11 +951,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         bool tracked = false;
         List<Task>? anotherList = null;
-        foreach (QueuedCopy copy in _queuedCopies)
+        lock (_queuedCopiesLock)
         {
-            if (copy.BlockHash != blockHash || copy.Left.IsCompleted) continue;
-            tracked = true;
-            if (copy.InclusionListDigest != ilDigest) (anotherList ??= []).Add(copy.Left);
+            foreach (QueuedCopy copy in _queuedCopies)
+            {
+                if (copy.BlockHash != blockHash || copy.Left.IsCompleted) continue;
+                tracked = true;
+                if (copy.InclusionListDigest != ilDigest) (anotherList ??= []).Add(copy.Left);
+            }
         }
 
         bool carriesSameList = anotherList is null && (tracked || ilDigest == default);
@@ -947,8 +970,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private void TrackQueuedCopy(Hash256 blockHash, ValueHash256? inclusionListDigest, Task left)
     {
-        QueuedCopy[] stillQueued = Array.FindAll(_queuedCopies, static copy => !copy.Left.IsCompleted);
-        _queuedCopies = [.. stillQueued, new QueuedCopy(blockHash, inclusionListDigest, left)];
+        lock (_queuedCopiesLock)
+        {
+            _queuedCopies.RemoveAll(static copy => copy.Left.IsCompleted);
+            _queuedCopies.Add(new QueuedCopy(blockHash, inclusionListDigest, left));
+        }
     }
 
     private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)

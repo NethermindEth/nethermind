@@ -11,8 +11,10 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public record CallFrame
 {
+    [NoScriptAccess]
     public string? Type { get; set; }
 
+    [NoScriptAccess]
     public Address From
     {
         get => _from;
@@ -23,6 +25,7 @@ public record CallFrame
         }
     }
 
+    [NoScriptAccess]
     public Address To
     {
         get => _to;
@@ -33,6 +36,7 @@ public record CallFrame
         }
     }
 
+    [NoScriptAccess]
     public ReadOnlyMemory<byte> Input
     {
         get => _input;
@@ -43,8 +47,10 @@ public record CallFrame
         }
     }
 
+    [NoScriptAccess]
     public ulong Gas { get; set; }
 
+    [NoScriptAccess]
     public UInt256? Value
     {
         get => _value;
@@ -66,8 +72,8 @@ public record CallFrame
 
     // ReSharper disable InconsistentNaming
     public string? getType() => Type;
-    public ITypedArray<byte> getFrom() => _fromConverted ??= From.Bytes.ToArray().ToTypedScriptArray();
-    public ITypedArray<byte> getTo() => _toConverted ??= To.Bytes.ToArray().ToTypedScriptArray();
+    public ITypedArray<byte> getFrom() => _fromConverted ??= From.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte> getTo() => _toConverted ??= To.Bytes.ToTypedScriptArray();
     public ITypedArray<byte> getInput() => _inputConverted ??= Input.ToTypedScriptArray();
     public ulong getGas() => Gas;
     public dynamic getValue() => (_valueConverted ??= Value?.ToBigInteger()) ?? Undefined.Value;

@@ -87,17 +87,20 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
         /// <remarks>Deliberately narrower than the tracer-requirement test the non-frame path uses: a frame
         /// transaction reads its own logs from an ASSERT frame (EIP-7906), which no tracer flag describes.
-        /// A cancellation wrapper that traces nothing of its own is looked through.</remarks>
+        /// The run is unobserved when the tracer traces nothing, whatever wraps it.</remarks>
         private protected static bool ShouldSuppressLogs(ExecutionOptions opts, ITxTracer tracer) =>
             opts.HasFlag(ExecutionOptions.Warmup)
-            && (ReferenceEquals(tracer, NullTxTracer.Instance)
-                || tracer is CancellationTxTracer { InnerTracer: NullTxTracer } && !tracer.IsTracing);
+            && !tracer.IsTracing && !tracer.IsTracingState && !tracer.IsTracingStorage && !tracer.IsCollectingLogs;
 
         private protected static RefundResult InvalidStateGas(ILogger logger, string message)
         {
             if (logger.IsError) logger.Error(message);
             return RefundResult.Invalid(TransactionResult.ErrorType.StateGasInvariantViolated.WithDetail(message));
         }
+
+        /// <summary>Without validation (simulations, replays), a transaction that already carries a sender runs as that sender.</summary>
+        private protected static bool KeepsSender(Transaction tx, ExecutionOptions opts) =>
+            tx.SenderAddress is not null && opts.HasFlag(ExecutionOptions.SkipValidation);
 
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
         {
@@ -160,7 +163,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected EthereumEcdsa Ecdsa { get; }
         protected ILogger Logger { get; }
         protected ISpecProvider SpecProvider { get; }
-        protected IWorldState WorldState { get; }
+        protected IWorldState WorldState { get; private set; }
         protected IVirtualMachine<TGasPolicy> VirtualMachine { get; }
         protected readonly ICodeInfoRepository _codeInfoRepository;
         private readonly bool _isCodeOverridable;
@@ -252,11 +255,13 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual SystemTransactionProcessor<TGasPolicy> CreateSystemTransactionProcessor() =>
             new(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
 
+        protected virtual bool UsesSystemTransactionProcessor(Transaction tx) => tx.IsSystem();
+
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             // Warmup keeps real fee/nonce semantics, so it must not route to the system processor.
-            TransactionResult result = tx.IsSystem() || opts == ExecutionOptions.SkipValidation
+            TransactionResult result = UsesSystemTransactionProcessor(tx) || opts == ExecutionOptions.SkipValidation
                 ? GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts)
                 : Execute(tx, tracer, opts);
 
@@ -275,6 +280,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec = GetSpec(header);
             if (tx.Type == TxType.FrameTx)
             {
+                IWorldState worldState = WorldState;
                 IBlockAccessListSource? diffRecorder = BeginAssertFrameDiffRecording(tx, opts, spec);
                 try
                 {
@@ -285,6 +291,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 finally
                 {
                     diffRecorder?.SetGeneratingBlockAccessList(null);
+                    WorldState = worldState;
                     // The VM holds its last TxExecutionContext, and RPC processors are pooled, so the
                     // view's diff and log payload would stay rooted while the processor sits idle.
                     if (VirtualMachine.TxExecutionContext.FrameTxContext is { } frameContext)
@@ -293,20 +300,20 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                 }
             }
-            RecoverSenderBeforeIntrinsicGas(tx, spec);
+            RecoverSenderBeforeIntrinsicGas(tx, spec, opts);
             IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
             return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
         }
 
         // A sender still missing here is one the background recovery has not reached yet (blocks are
         // processed while it runs); EIP-2780 self-transfer pricing additionally needs the actual signer,
-        // so both resolve before intrinsic gas.
-        private void RecoverSenderBeforeIntrinsicGas(Transaction tx, IReleaseSpec spec)
+        // so both resolve before intrinsic gas. A run without validation keeps a given sender.
+        private void RecoverSenderBeforeIntrinsicGas(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
             if (tx.Signature is null) return;
 
             if (tx.SenderAddress is null
-                || (spec.IsEip2780Enabled && tx.IsMessageCall && !WorldState.AccountExists(tx.SenderAddress)))
+                || (spec.IsEip2780Enabled && tx.IsMessageCall && !WorldState.AccountExists(tx.SenderAddress) && !KeepsSender(tx, opts)))
             {
                 tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
             }
@@ -487,6 +494,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out RefundResult refundResult) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out refundResult);
 
+            if (refundResult.Result)
+                refundResult = AdjustSettledGas(tx, header, spec, opts, in opcodeGasPrice, refundResult.Gas);
+
             if (!refundResult.Result)
                 return InvalidStateGasResult(tx, spec, restore, deleteCallerAccount, in senderReservedGasPayment, refundResult.Result);
 
@@ -494,31 +504,32 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, in opcodeGasPrice, blobBaseFee, statusCode);
 
-            // EIP-8037+EIP-7708: process destroy list after PayFees so burn logs include
-            // the priority fee in the destroyed account's balance.
-            if (eip8037 && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
+            // EIP-8037: process destroy list after PayFees so the burn, and the EIP-7708 burn log,
+            // include the priority fee in the destroyed account's balance.
+            if (eip8037 && statusCode == StatusCode.Success)
             {
                 JournalSet<Address>? destroyList = substate.DestroyList;
                 if (destroyList is not null)
                 {
                     bool removeSelfdestructBurn = spec.IsEip8246Enabled;
+                    bool logBurn = spec.IsEip7708Enabled && !removeSelfdestructBurn;
                     bool tracingRefunds = _tracerFlags.IsTracingRefunds;
                     bool tracingLogs = _tracerFlags.IsTracingLogs;
                     long destroyRefund = (long)spec.GasCosts.DestroyRefund;
                     foreach (Address toBeDestroyed in destroyList)
                     {
                         // A restore run must be able to undo the destroy, so it takes the journaled clear.
-                        FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed, commit && !restore, removeSelfdestructBurn, tracer, tracingLogs);
+                        FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed, commit && !restore, removeSelfdestructBurn, logBurn, tracer, tracingLogs);
                         if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                     }
                 }
 
-                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool commit, bool removeSelfdestructBurn, ITxTracer tracer, bool tracingLogs)
+                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool commit, bool removeSelfdestructBurn, bool logBurn, ITxTracer tracer, bool tracingLogs)
                 {
                     UInt256 balance = worldState.GetBalance(toBeDestroyed);
                     // Post-fee path: the burn covers the whole balance incl. priority fees, hence a
                     // Burn (not SelfDestruct) log; EIP-8246 removes the burn and its log entirely.
-                    if (!balance.IsZero && !removeSelfdestructBurn)
+                    if (!balance.IsZero && logBurn)
                     {
                         LogEntry burnLog = TransferLog.CreateBurn(toBeDestroyed, balance);
                         substate.Logs!.Add(burnLog);
@@ -619,6 +630,9 @@ namespace Nethermind.Evm.TransactionProcessing
             TGasPolicy standardGas = intrinsicGas.Standard;
             long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
             RefundResult refundResult = Refund(tx, header, spec, opts, in substate, in gasAvailable, in opcodeGasPrice, codeInsertRefunds: 0, in floorGas, in standardGas, postIntrinsicStateReservoir);
+            if (refundResult.Result)
+                refundResult = AdjustSettledGas(tx, header, spec, opts, in opcodeGasPrice, refundResult.Gas);
+
             if (!refundResult.Result)
                 return InvalidStateGasResult(tx, spec, restore, deleteCallerAccount, in senderReservedGasPayment, refundResult.Result);
 
@@ -730,7 +744,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
+            // A restore run discards the fee payment, so skip it unless a tracer can see it.
+            if (!opts.HasFlag(ExecutionOptions.Restore) || tracer.IsObservingFeePayment)
+            {
+                PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -821,14 +839,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
             codeInsertRefunds = 0;
             long preAuthorizationStateGasUsed = TGasPolicy.GetStateGasUsed(in gasAvailable);
-            // Tracks each authority's delegation status as of tx start, so AUTH_BASE refills can tell
-            // a pre-existing delegation from one installed earlier in the same tx.
-            Dictionary<Address, bool>? delegatedBeforeTx = null;
+            // Authorities delegated when first seen or set earlier in the tx. Only an authority's own tuples
+            // change its delegation, so a first sighting sees the pre-tx status and AUTH_BASE is charged once.
             HashSet<Address>? delegationSetFor = spec.IsEip8037Enabled ? [] : null;
             HashSet<Address>? writtenAccounts = null;
             if (spec.IsEip8037Enabled)
             {
-                writtenAccounts = new HashSet<Address>(Address.EqualityComparer) { tx.SenderAddress! };
+                writtenAccounts = [with(Address.EqualityComparer), tx.SenderAddress!];
                 if (!tx.ValueRef.IsZero && tx.To is not null)
                 {
                     writtenAccounts.Add(tx.To);
@@ -846,13 +863,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
                     if (spec.IsEip8037Enabled)
                     {
-                        delegatedBeforeTx ??= [];
-                        if (!delegatedBeforeTx.TryGetValue(authority, out bool delegatedBefore))
-                        {
-                            delegatedBefore = hasDelegation;
-                            delegatedBeforeTx[authority] = delegatedBefore;
-                        }
-
                         bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
 
                         if (!accountExists && !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost()))
@@ -869,13 +879,10 @@ namespace Nethermind.Evm.TransactionProcessing
                             }
                         }
 
-                        if (!clearsDelegation)
+                        if ((!clearsDelegation || hasDelegation) && delegationSetFor!.Add(authority) && !hasDelegation
+                            && !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetPerAuthBaseStateCost()))
                         {
-                            if (!delegatedBefore && delegationSetFor!.Add(authority)
-                                && !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetPerAuthBaseStateCost()))
-                            {
-                                return false;
-                            }
+                            return false;
                         }
                     }
 
@@ -893,7 +900,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    _codeInfoRepository.SetDelegation(authTuple.CodeAddress, authority, spec);
+                    _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
                 }
             }
 
@@ -1007,7 +1014,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.NonceOverflow;
             }
 
-            if (tx.IsAboveInitCode(spec))
+            if (IsAboveInitCode(tx, spec))
             {
                 if (Logger.IsTrace) TraceLogInvalidTx(tx, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {tx.DataLength} > {spec.MaxInitCodeSize}");
                 return TransactionResult.TransactionSizeOverMaxInitCodeSize;
@@ -1070,6 +1077,8 @@ namespace Nethermind.Evm.TransactionProcessing
             return ValidateGas(tx, header, spec, in standard, minGasRequired, validate);
         }
 
+        protected virtual bool IsAboveInitCode(Transaction tx, IReleaseSpec spec) => tx.IsAboveInitCode(spec);
+
         protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, in TGasPolicy intrinsicGas, ulong minGasRequired, bool validate)
         {
             if (tx.GasLimit < minGasRequired)
@@ -1128,8 +1137,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
                 // Message calls under EIP-2780 were re-recovered against this state before intrinsic gas;
-                // repeating it here would only redo that work.
-                if (tx.Signature is not null && (!spec.IsEip2780Enabled || !tx.IsMessageCall))
+                // repeating it here would only redo that work. A run without validation keeps a given sender.
+                if (tx.Signature is not null && (!spec.IsEip2780Enabled || !tx.IsMessageCall) && !KeepsSender(tx, opts))
                     tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
                 if (sender != tx.SenderAddress)
@@ -1408,7 +1417,6 @@ namespace Nethermind.Evm.TransactionProcessing
                             ref gasAvailable,
                             spec,
                             in accessTracker,
-                            isTracingAccess: false,
                             delegationAddress);
 
                         if (topFrameOutOfGas)
@@ -1430,6 +1438,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
+            // A guest whose memory is swizzled takes call input laid out the same way (see EvmPooledMemory.LoadInputAfterGas).
+            if (EvmPooledMemory.IsSwizzled && !inputData.IsEmpty) inputData = SwizzledMemory.FromNatural(inputData.Span);
             env = ExecutionEnvironment.Rent(
                 codeInfo: codeInfo,
                 executingAccount: recipient,
@@ -1538,8 +1548,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer) // no GVM trick for ZK
                     : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
 
-                Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
-                VirtualMachine.FlushMetricsCounters();
                 gasAvailable = state.Gas;
 
                 if (_tracerFlags.IsTracingAccess)
@@ -1583,7 +1591,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                     // EIP-8037: defer destroy list processing to after PayFees so that
                     // burn logs include the priority fee in the balance.
-                    bool deferFinalization = spec.IsEip7708Enabled && spec.IsEip8037Enabled;
+                    bool deferFinalization = spec.IsEip8037Enabled;
                     JournalSet<Address>? destroyList = substate.DestroyList;
                     if (!deferFinalization && destroyList?.Count > 0)
                     {
@@ -1861,7 +1869,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (VirtualMachine.TxExecutionContext.BalDataMeter?.TryMeter((ulong)code.Length) == false)
                 return false;
 
-            _codeInfoRepository.InsertCode(code, codeOwner, spec);
+            _codeInfoRepository.InsertCode(WorldState, code, codeOwner, spec);
 
             unspentGas = gasAfterCodeDeposit;
             return true;
@@ -1887,13 +1895,17 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             UInt256 fees = premiumPerGas * spentGas;
 
-            // n.b. destroyed accounts already set to zero balance
-            // EIP-8037: always pay coinbase — deferred finalization will burn the balance
-            bool gasBeneficiaryNotDestroyed = !substate.DestroyListContains(header.GasBeneficiary);
-            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed || spec.IsEip8037Enabled)
+            // Without EIP-8037 the destroy list is already finalized, so a destroyed beneficiary of a successful tx is paid
+            // only when EIP-8246 keeps a destroyed account's balance.
+            // EIP-8037 defers finalization past PayFees, so it always pays and the fee is burned with the balance unless
+            // EIP-8246 keeps it.
+            if (statusCode == StatusCode.Failure || !substate.DestroyListContains(header.GasBeneficiary) || spec.IsEip8037Enabled || spec.IsEip8246Enabled)
             {
                 WorldState.AddToBalanceAndCreateIfNotEmpty(header.GasBeneficiary!, fees, spec);
             }
+
+            bool isTracingFees = tracer.IsTracingFees;
+            if (spec.FeeCollector is null && !isTracingFees) return;
 
             // Cap collected base fee at the effective price paid — a no-op for validated blocks; prevents fee-collector minting in validation-off eth_simulateV1 where maxFeePerGas < baseFee.
             UInt256 effectiveBaseFee = UInt256.Min(header.BaseFeePerGas, effectiveGasPrice);
@@ -1910,7 +1922,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
             }
 
-            if (tracer.IsTracingFees)
+            if (isTracingFees)
             {
                 tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
             }
@@ -1972,11 +1984,25 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ulong spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
 
-            if (ShouldRefundGas(tx, opts, in gasPrice))
+            if (ShouldRefundGas(tx, opts, in gasPrice) && (spec.IsEip8037Enabled || substate.ShouldRevert || substate.IsError || !substate.DestroyListContains(tx.SenderAddress)))
                 PayRefund(tx, (tx.GasLimit - spentGasAfterFloor) * gasPrice, spec);
 
             return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, (ulong)blockStateGas, Math.Max(spentGas, floorGasLong), refund > 0 ? (ulong)refund : 0);
         }
+
+        /// <summary>Adjusts a transaction's settled gas before it is added to the block's gas used and fees are paid on it.</summary>
+        /// <remarks>
+        /// Runs once per executed non-frame transaction, whatever its outcome. Receipt gas and fees follow
+        /// <see cref="GasConsumed.SpentGas"/>; block gas used follows <see cref="GasConsumed.EffectiveBlockGas"/>, plus
+        /// <see cref="GasConsumed.BlockStateGas"/> under EIP-8037. Return an adjusted copy of <paramref name="gas"/>: a bare
+        /// <c>ulong</c> converts to a result with zero <see cref="GasConsumed.BlockGas"/> and <see cref="GasConsumed.BlockStateGas"/>.
+        /// Unspent gas is already refunded, so an override that lowers the gas credits the sender the difference through
+        /// <see cref="PayRefund"/>. Returning <see cref="RefundResult.Invalid"/> rejects the transaction, but block building
+        /// does not roll back its state changes.
+        /// </remarks>
+        /// <param name="effectiveGasPrice">The price unspent gas is refunded at.</param>
+        protected virtual RefundResult AdjustSettledGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+            in UInt256 effectiveGasPrice, in GasConsumed gas) => gas;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long CalculateTopLevelCreateIntrinsicStateRefund(

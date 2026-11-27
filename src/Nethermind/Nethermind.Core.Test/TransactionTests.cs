@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -15,7 +17,7 @@ public class TransactionTests
     [Test]
     public void Wrapper_equality_ignores_pool_ownership()
     {
-        ShardBlobNetworkWrapper wrapper = new([[1]], [[2]], [[3]], ProofVersion.V0);
+        ShardBlobNetworkWrapper wrapper = new([[1]], [[2]], [3], ProofVersion.V0);
         ShardBlobNetworkWrapper pooled = wrapper with { PooledBuffers = new(wrapper.Blobs) };
         using (Assert.EnterMultipleScope())
         {
@@ -26,7 +28,7 @@ public class TransactionTests
             Assert.That(pooled == wrapper, Is.True);
             Assert.That(pooled.Equals(wrapper with { Blobs = [[1]] }), Is.False);
             Assert.That(pooled.Equals(wrapper with { Commitments = [[2]] }), Is.False);
-            Assert.That(pooled.Equals(wrapper with { Proofs = [[3]] }), Is.False);
+            Assert.That(pooled.Equals(wrapper with { Proofs = [3] }), Is.False);
             Assert.That(pooled.Equals(wrapper with { Version = ProofVersion.V1 }), Is.False);
             Assert.That(pooled.Equals(wrapper with { CellMask = BlobCellMask.Full }), Is.False);
             Assert.That(pooled.Equals(wrapper with { Cells = [[4]] }), Is.False);
@@ -70,8 +72,10 @@ public class TransactionTests
         new PooledBlobBuffers(held).Return();
     }
 
+    public enum CopyKind { CopyTo, CopyToWithHash, ShallowCopy }
+
     [Test]
-    public void Returning_a_copied_transaction_keeps_shared_blob_data([Values] bool copyHash)
+    public void Returning_a_copied_transaction_keeps_shared_blob_data([Values] CopyKind kind)
     {
         byte[] data = new byte[PooledBlobBuffers.BlobSize];
         Array.Fill(data, (byte)0x11);
@@ -83,8 +87,16 @@ public class TransactionTests
                 PooledBuffers = new(blobs)
             }
         };
-        Transaction copy = new();
-        source.CopyTo(copy, copyHash);
+        Transaction copy;
+        if (kind == CopyKind.ShallowCopy)
+        {
+            copy = source.ShallowCopy();
+        }
+        else
+        {
+            copy = new();
+            source.CopyTo(copy, copyHash: kind == CopyKind.CopyToWithHash);
+        }
         new Transaction.PoolPolicy().Return(source);
 
         Array.Fill(data, (byte)0x22);
@@ -123,12 +135,12 @@ public class TransactionTests
     public void ShardBlobNetworkWrapper_should_preserve_legacy_constructor_and_deconstructor()
     {
         Type wrapperType = typeof(ShardBlobNetworkWrapper);
-        Type[] constructorParameters = [typeof(byte[][]), typeof(byte[][]), typeof(byte[][]), typeof(ProofVersion)];
+        Type[] constructorParameters = [typeof(byte[][]), typeof(byte[][]), typeof(byte[]), typeof(ProofVersion)];
         Type[] deconstructorParameters =
         [
             typeof(byte[][]).MakeByRefType(),
             typeof(byte[][]).MakeByRefType(),
-            typeof(byte[][]).MakeByRefType(),
+            typeof(byte[]).MakeByRefType(),
             typeof(ProofVersion).MakeByRefType(),
         ];
 
@@ -261,6 +273,43 @@ public class TransactionTests
         {
             Assert.That(destination.Frames, Is.SameAs(source.Frames), nameof(Transaction.Frames));
             Assert.That(destination.FrameSignatures, Is.SameAs(source.FrameSignatures), nameof(Transaction.FrameSignatures));
+        }
+    }
+
+    [Test]
+    public void ShallowCopy_keeps_the_subclass_its_state_and_the_hash()
+    {
+        byte[] encoded = [0xc0];
+        NamedTransaction source = new() { Name = "subclass", Nonce = 5 };
+        source.SetPreHash(encoded);
+
+        Transaction copy = source.ShallowCopy();
+        bool preHashShared = !copy.PreHash.IsEmpty;
+        copy.Nonce = 6;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copy, Is.Not.SameAs(source).And.TypeOf<NamedTransaction>());
+            Assert.That(((NamedTransaction)copy).Name, Is.EqualTo(source.Name));
+            Assert.That(preHashShared, Is.False, "the pre-hash memory has a single owner");
+            Assert.That(copy.Hash, Is.EqualTo(Keccak.Compute(encoded)));
+            Assert.That(source.Hash, Is.EqualTo(copy.Hash));
+            Assert.That(source.Nonce, Is.EqualTo(5UL));
+        }
+    }
+
+    [Test]
+    public void TryJoinProofs_joins_only_proofs_of_48_bytes([Values(null, 0, 47, 48, 49)] int? lastProofLength)
+    {
+        byte[] first = Enumerable.Repeat((byte)1, ShardBlobNetworkWrapper.BytesPerProof).ToArray();
+        byte[]? last = lastProofLength is { } length ? Enumerable.Repeat((byte)2, length).ToArray() : null;
+
+        bool joined = ShardBlobNetworkWrapper.TryJoinProofs([first, last], out byte[]? proofs);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(joined, Is.EqualTo(lastProofLength == ShardBlobNetworkWrapper.BytesPerProof));
+            Assert.That(proofs, Is.EqualTo(joined ? first.Concat(last!).ToArray() : null));
         }
     }
 }

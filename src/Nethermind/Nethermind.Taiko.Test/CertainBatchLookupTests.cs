@@ -353,6 +353,7 @@ public class CertainBatchLookupTests
     [TestCase(new ulong[] { 6, 4, 4 }, 0, 5UL, null, 1, TestName = "Batch missing between proposals")]
     [TestCase(new ulong[] { 6, 5, 5 }, 0, 5UL, 2UL, 1, TestName = "Steps past newer batch")]
     [TestCase(new ulong[] { 5, 5, 4 }, 1, 5UL, 2UL, 1, TestName = "Skips preconf head of same batch")]
+    [TestCase(new ulong[] { 5, 5, 5 }, 2, 6UL, null, 0, TestName = "Batch newer than preconf head")]
     public void TestBatchLookup_ScanPathFollowsProposalIds(ulong[] proposalIds, int preconfBlocks, ulong batchId, ulong? expectedBlockId, int expectedBlocksLoaded)
     {
         ulong headNumber = (ulong)proposalIds.Length;

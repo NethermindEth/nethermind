@@ -1,0 +1,125 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Runtime.CompilerServices;
+using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.BeaconChain.Api.Common;
+
+/// <summary>Derives the beacon-api response envelope flags and the <c>Eth-Consensus-Version</c> header.</summary>
+internal static class ResponseEnvelope
+{
+    private static readonly ConditionalWeakTable<ForkChoiceSnapshot, Lazy<Dictionary<Hash256, ForkChoiceSnapshotNode>>> SnapshotNodes = [];
+    public const string ConsensusVersionHeader = "Eth-Consensus-Version";
+
+    public static string ForkName(BeaconFork fork) => fork switch
+    {
+        BeaconFork.Electra => "electra",
+        BeaconFork.Fulu => "fulu",
+        BeaconFork.Gloas => "gloas",
+        _ => throw new ArgumentOutOfRangeException(nameof(fork), fork, null),
+    };
+
+    /// <summary>
+    /// True while the current head has not been confirmed VALID by the execution layer.
+    /// </summary>
+    /// <remarks>
+    /// Reads the flag <see cref="Sync.BeaconSyncOrchestrator"/> itself sets after a
+    /// forkchoiceUpdated verdict, rather than a value computed independently, so this can never
+    /// disagree with what the driver believes about its own head. Before the first head step the
+    /// flag is false, which reports optimistic=true: nothing has been confirmed yet.
+    /// </remarks>
+    public static bool ExecutionOptimistic(IBeaconChainStatusSource statusSource) => !statusSource.ExecutionInSync;
+
+    /// <summary>Whether the referenced payload is unverified (Beacon API types/primitive.yaml ExecutionOptimistic).</summary>
+    public static bool ExecutionOptimistic(BeaconChainSpec spec, BeaconChainStore store, BeaconApiHead view, Hash256 root, ulong? blockSlot = null)
+    {
+        if (view.ForkChoiceSnapshot is { } snapshot)
+        {
+            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = IndexNodes(snapshot);
+            if (nodes.TryGetValue(root, out ForkChoiceSnapshotNode? node)) return node.ExecutionStatus is not (ExecutionStatus.Valid or ExecutionStatus.Irrelevant);
+
+            // types/primitive.yaml ExecutionOptimistic: only a verified checkpoint verifies its canonical ancestors.
+            ulong slot = blockSlot.GetValueOrDefault();
+            if (nodes.TryGetValue(snapshot.FinalizedCheckpoint.Root, out ForkChoiceSnapshotNode? finalizedNode)
+                && finalizedNode.ExecutionStatus is ExecutionStatus.Valid or ExecutionStatus.Irrelevant
+                && (blockSlot.HasValue || store.TryGetBlockSlot(root, out slot))
+                && slot <= snapshot.FinalizedCheckpoint.Epoch * spec.SlotsPerEpoch
+                && IsFinalized(spec, store, view, slot, root))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Whether the execution payload of the block is unverified (types/primitive.yaml ExecutionOptimistic); for a Gloas block, the payload its bid commits to.</summary>
+    /// <remarks>
+    /// A Gloas block's status covers the payload it builds on (ethereum/consensus-specs specs/gloas/fork-choice.md).
+    /// After pruning, its own payload needs a persisted VALID verdict or a verified child built on it (beacon-APIs types/primitive.yaml).
+    /// </remarks>
+    public static bool PayloadExecutionOptimistic(BeaconChainSpec spec, BeaconChainStore store, BeaconApiHead view, ResolvedBlock resolved)
+    {
+        if (resolved.Block is not ForkedSignedBeaconBlock.OfGloas { Block.Message.Body.SignedExecutionPayloadBid.Message.BlockHash: { } payloadHash })
+        {
+            return ExecutionOptimistic(spec, store, view, resolved.Root);
+        }
+
+        if (view.ForkChoiceSnapshot is not { } snapshot)
+        {
+            return !store.IsExecutionPayloadValid(resolved.Root);
+        }
+
+        if (IndexNodes(snapshot).TryGetValue(resolved.Root, out ForkChoiceSnapshotNode? node))
+        {
+            return node.ExecutionStatus == ExecutionStatus.Invalid || !node.PayloadValid;
+        }
+
+        if (store.IsExecutionPayloadValid(resolved.Root)) return false;
+
+        store.TryGetChildren(resolved.Root, out Hash256[] children, out _);
+        foreach (Hash256 child in children)
+        {
+            if (!ExecutionOptimistic(spec, store, view, child)
+                && store.TryGetStoredBlock(child, out StoredBlock childBlock)
+                && childBlock.IsGloas
+                && childBlock.Bid.ParentBlockHash == payloadHash)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static Dictionary<Hash256, ForkChoiceSnapshotNode> IndexNodes(ForkChoiceSnapshot snapshot) =>
+        SnapshotNodes.GetValue(snapshot, static current => new Lazy<Dictionary<Hash256, ForkChoiceSnapshotNode>>(() =>
+        {
+            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = [with(current.Nodes.Count)];
+            foreach (ForkChoiceSnapshotNode node in current.Nodes) nodes[node.Root] = node;
+            return nodes;
+        })).Value;
+
+    /// <summary>Whether the block is canonical at or before the finalized checkpoint's start slot (Beacon API types/primitive.yaml Finalized).</summary>
+    /// <remarks>A non-canonical block at a finalized epoch is exactly what finalization discarded, so the epoch alone must not vouch for it.</remarks>
+    public static bool IsFinalized(BeaconChainSpec spec, BeaconChainStore store, BeaconApiHead view, ulong slot, Hash256 root) =>
+        slot <= view.StatusSource.CurrentStatus.FinalizedEpoch * spec.SlotsPerEpoch
+        && store.TryGetCanonicalRoot(slot, out Hash256? canonicalRoot)
+        && canonicalRoot == root;
+
+    /// <summary>Whether the state stored under <paramref name="root"/> is part of finalized history.</summary>
+    /// <remarks>
+    /// A state is keyed by the root of the block it came from, but slot processing can advance it past
+    /// that block, so its own <c>Slot</c> may name an empty slot or one filled by a different block.
+    /// The canonical lookup must use the slot of the block the state is keyed by.
+    /// </remarks>
+    public static bool IsFinalized(BeaconChainSpec spec, BeaconChainStore store, BeaconApiHead view, ApiState state, Hash256 root) =>
+        state.Slot <= view.StatusSource.CurrentStatus.FinalizedEpoch * spec.SlotsPerEpoch
+        && IsFinalized(spec, store, view, state.LatestBlockHeader.Slot, root);
+}

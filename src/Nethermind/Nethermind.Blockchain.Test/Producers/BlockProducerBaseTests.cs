@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -13,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -46,6 +49,12 @@ public partial class BlockProducerBaseTests
 
         public Block Prepare(BlockHeader header) => PrepareBlock(header);
 
+        public Exception? ProductionFailure { get; init; }
+
+        protected override Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
+            PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
+            => ProductionFailure is { } failure ? Task.FromException<Block?>(failure) : base.TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes, flags);
+
         private class TimestampDifficultyCalculator : IDifficultyCalculator
         {
             public UInt256 Calculate(BlockHeader header, BlockHeader parent) => header.Timestamp;
@@ -71,6 +80,51 @@ public partial class BlockProducerBaseTests
 
         Block block = producerUnderTest.Prepare();
         Assert.That(new UInt256(block.Timestamp), Is.EqualTo(block.Difficulty));
+    }
+
+    [TestCase(typeof(OperationCanceledException), false)]
+    [TestCase(typeof(TaskCanceledException), false)]
+    [TestCase(typeof(InvalidOperationException), true)]
+    public async Task Only_a_failure_other_than_cancellation_is_reported(Type exceptionType, bool reported)
+    {
+        TestErrorLogManager logManager = new();
+        ProducerUnderTest producerUnderTest = new(
+            EmptyTxSource.Instance,
+            Substitute.For<IBlockchainProcessor>(),
+            NullSealEngine.Instance,
+            Build.A.BlockTree().TestObject,
+            Substitute.For<IWorldState>(),
+            Substitute.For<IGasLimitCalculator>(),
+            new IncrementalTimestamper(),
+            logManager,
+            new BlocksConfig())
+        {
+            ProductionFailure = (Exception)Activator.CreateInstance(exceptionType)!
+        };
+
+        await Assert.ThatAsync(() => producerUnderTest.BuildBlock(Build.A.BlockHeader.TestObject), Throws.InstanceOf(exceptionType));
+        Assert.That(logManager.Errors, reported ? Is.Not.Empty : Is.Empty);
+    }
+
+    [TestCase(typeof(OperationCanceledException), 0L)]
+    [TestCase(typeof(InvalidOperationException), 1L)]
+    [NonParallelizable]
+    public async Task Runner_counts_only_a_failure_other_than_cancellation(Type exceptionType, long counted)
+    {
+        IBlockProductionTrigger trigger = Substitute.For<IBlockProductionTrigger>();
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader?>(), Arg.Any<IBlockTracer?>(), Arg.Any<PayloadAttributes?>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<Block?>((Exception)Activator.CreateInstance(exceptionType)!));
+        StandardBlockProducerRunner runner = new(trigger, Build.A.BlockTree().TestObject, producer);
+        runner.Start();
+        long failedBefore = Metrics.FailedBlockSeals;
+        BlockProductionEventArgs args = new(Build.A.BlockHeader.TestObject);
+
+        trigger.TriggerBlockProduction += Raise.EventWith(args);
+
+        await Assert.ThatAsync(() => args.BlockProductionTask, Throws.InstanceOf(exceptionType));
+        Assert.That(Metrics.FailedBlockSeals - failedBefore, Is.EqualTo(counted));
+        await runner.StopAsync();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

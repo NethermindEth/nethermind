@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.400-resolute@sha256:e9d9e903cc6eb4049f3c07d8a86ffdccdd0511a91c3d459c4c4e68d1dab91adf AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0.100-resolute@sha256:2794448a07118a6eaf00f29ab5d2bf44928517ce5ff86505a63a69230374f599 AS build
 
 ARG BUILD_CONFIG=release
 ARG CI=true
@@ -30,7 +30,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     -p:SaveDiskSpace=true \
     -p:SourceRevisionId=$COMMIT_HASH
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.11-resolute@sha256:655461545edac45015401bee7e52be93373caf15ceddeadd07f0dfe3e0aa9f19
+FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-resolute-chiseled@sha256:045ba65412b8edcc2f70a779163bf4353d450f72535a0dddf6188d6d945bfaef
 
 ARG COMMIT_HASH=unknown
 ARG VERSION=unknown
@@ -57,8 +57,9 @@ VOLUME /nethermind-bootnode/data
 EXPOSE 30303/udp 8546 6060
 
 COPY --from=build /publish .
-COPY tools/Bootnode/docker-entrypoint.sh .
 
-RUN chmod +x docker-entrypoint.sh
+# Run as root: the base's non-root user can neither create the key in a new data volume, whose root is
+# root-owned, nor read the root-owned 0600 key of volumes written by earlier images
+USER root
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+ENTRYPOINT ["./Nethermind.Bootnode"]

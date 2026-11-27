@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -21,6 +23,7 @@ internal sealed class WitnessCall(
     IBlockFinder blockFinder,
     IBlockchainBridge blockchainBridge,
     ISpecProvider specProvider,
+    IPoSSwitcher poSSwitcher,
     IJsonRpcConfig jsonRpcConfig)
 {
     /// <summary>
@@ -29,7 +32,7 @@ internal sealed class WitnessCall(
     /// <c>eth_call</c>); in-VM failures (revert, out-of-gas, ...) are surfaced in the payload alongside
     /// the witness so a verifier can re-prove them.
     /// </summary>
-    public ResultWrapper<CallResultWithProof> Execute(TransactionForRpc callRequest, BlockParameter? blockParameter)
+    public ResultWrapper<CallResultWithProof> Execute(TransactionForRpc callRequest, BlockParameter? blockParameter, CancellationToken cancellationToken = default)
     {
         blockParameter ??= BlockParameter.Latest;
 
@@ -65,7 +68,7 @@ internal sealed class WitnessCall(
         BlockHeader callHeader = sourceHeader.Clone();
         callHeader.GasUsed = 0;
         callHeader.MixHash = sourceHeader.MixHash;
-        callHeader.IsPostMerge = sourceHeader.Difficulty == 0;
+        poSSwitcher.RestorePostMergeForCall(callHeader);
 
         IReleaseSpec releaseSpec = specProvider.GetSpec(callHeader);
         if (!callRequest.ShouldSetBaseFee())
@@ -91,8 +94,7 @@ internal sealed class WitnessCall(
         // EVM then throws OperationCanceledException, which JsonRpcService maps to a Timeout error. A
         // MissingTrieNodeException from a reorg/prune between header lookup and witness execution is
         // likewise mapped (to ResourceNotFound) by JsonRpcService, so no local catch is needed here.
-        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
-        SingleCallWitnessResult result = blockchainBridge.GenerateExecutionWitness(callHeader, tx, timeout.Token);
+        SingleCallWitnessResult result = blockchainBridge.GenerateExecutionWitness(callHeader, tx, cancellationToken);
         return CallResultWithProof.FromWitnessResult(result, tx.GasLimit);
     }
 }

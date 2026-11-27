@@ -40,7 +40,7 @@ namespace Nethermind.Db.FullPruning
             _settings = settings;
             _dbFactory = dbFactory;
             _updateDuplicateWriteMetrics = updateDuplicateWriteMetrics;
-            _currentDb = CreateDb(_settings).WithEOACompressed();
+            _currentDb = CreateDb(_settings);
         }
 
         private IDb CreateDb(DbSettings settings) => _dbFactory.CreateDb(settings);
@@ -85,6 +85,23 @@ namespace Nethermind.Db.FullPruning
             }
 
             return memoryManager;
+        }
+
+        public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            PruningContext? pruningContext = _pruningContext;
+            if (pruningContext?.DuplicateReads != true || (flags & ReadFlags.SkipDuplicateRead) != 0)
+            {
+                return _currentDb.TryGet(key, flags, action, arg); // we are reading from the main DB
+            }
+
+            // Copies rather than wrapping the callback: passing a TArg-wrapping type to the interface's TryGet is generic recursion
+            // through a Nethermind.Core parameter, which bflat's ILC fails to compile in the zkVM guests.
+            byte[]? value = Get(key, flags);
+            if (value is null) return false;
+
+            action(value, arg);
+            return true;
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -143,8 +160,6 @@ namespace Nethermind.Db.FullPruning
         public IDbMeta.DbMetric GatherMetric() => _currentDb.GatherMetric();
 
         public string Name => _settings.DbName;
-
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => _currentDb[keys];
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _currentDb.GetAll(ordered);
 

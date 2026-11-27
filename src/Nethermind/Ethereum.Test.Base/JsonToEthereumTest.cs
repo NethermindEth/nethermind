@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -56,6 +57,30 @@ namespace Ethereum.Test.Base
 
             transitionInfo = transitionInfo.RemoveEnd(kSuffix);
             return ForkActivation.TimestampOnly(ulong.Parse(transitionInfo) * 1000);
+        }
+
+        /// <summary>
+        /// Reads the terminal total difficulty of a retesteth <c>AtDiff</c> transition, such as <c>DiffC0000</c> in
+        /// <c>ArrowGlacierToParisAtDiffC0000</c>: hex digits without a <c>0x</c> prefix.
+        /// </summary>
+        /// <exception cref="FormatException">The suffix starts with <c>Diff</c> but is not followed by hex digits.</exception>
+        private static bool TryParseTerminalTotalDifficulty(string transitionInfo, out UInt256 terminalTotalDifficulty)
+        {
+            const string totalDifficultyPrefix = "Diff";
+            terminalTotalDifficulty = default;
+            if (!transitionInfo.StartsWith(totalDifficultyPrefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string digits = transitionInfo[totalDifficultyPrefix.Length..];
+            if (digits.Length == 0 || digits.Length > 64 || !digits.All(Uri.IsHexDigit))
+            {
+                throw new FormatException($"Total difficulty transition '{transitionInfo}' is not 'Diff' followed by hex digits.");
+            }
+
+            terminalTotalDifficulty = UInt256.Parse(digits, NumberStyles.HexNumber);
+            return true;
         }
 
         public static BlockHeader Convert(TestBlockHeaderJson? headerJson)
@@ -162,7 +187,7 @@ namespace Ethereum.Test.Base
                     decoded.SenderAddress ??= privateKey?.Address ?? new EthereumEcdsa(chainId).RecoverAddress(decoded);
                     return decoded;
                 }
-                catch (RlpException)
+                catch (RlpReaderException)
                 {
                     // Undecodable txbytes: fall back to the template; non-signature invalidity
                     // (e.g. intrinsic gas) is still caught by tx validation at execution time.
@@ -372,6 +397,11 @@ namespace Ethereum.Test.Base
                 return new BlockchainTest { Name = name, Category = category, LoadFailure = testJson.LoadFailure };
             }
 
+            if (testJson.Pre is null && testJson.PreHash is null)
+            {
+                return new BlockchainTest { Name = name, Category = category, LoadFailure = "Missing pre-state: neither pre nor preHash is set." };
+            }
+
             BlockchainTest test = new()
             {
                 Name = name,
@@ -380,12 +410,15 @@ namespace Ethereum.Test.Base
                 Network = testJson.EthereumNetwork,
                 NetworkAfterTransition = testJson.EthereumNetworkAfterTransition,
                 TransitionForkActivation = testJson.TransitionForkActivation,
+                TransitionTerminalTotalDifficulty = testJson.TransitionTerminalTotalDifficulty,
                 LastBlockHash = new Hash256(testJson.LastBlockHash),
-                GenesisRlp = testJson.GenesisRlp is null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp)),
+                GenesisRlp = testJson.GenesisRlp is null ? null : Bytes.FromHexString(testJson.GenesisRlp),
                 GenesisBlockHeader = testJson.GenesisBlockHeader,
                 Blocks = testJson.Blocks,
                 EngineNewPayloads = testJson.EngineNewPayloads,
-                Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value)
+                Pre = testJson.Pre?.ToDictionary(p => p.Key, p => p.Value),
+                PreHash = testJson.PreHash,
+                PostStateDiff = testJson.PostStateDiff
             };
 
             HalfBlockchainTestJson half = testJson as HalfBlockchainTestJson;
@@ -496,21 +529,56 @@ namespace Ethereum.Test.Base
             List<BlockchainTest> testsByName = [];
             foreach ((string testName, BlockchainTestJson testSpec) in testsInFile)
             {
-                string[] transitionInfo = testSpec.Network.Split("At");
-                string[] networks = transitionInfo[0].Split("To");
-
-                testSpec.EthereumNetwork = WithZeroNonceStorageAccounts(LoadSpec(networks[0], testSpec.Config?.BlobSchedule), testSpec.Config);
-                if (transitionInfo.Length > 1)
-                {
-                    testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = WithZeroNonceStorageAccounts(LoadSpec(TransitionTarget(networks[0], networks[1]), testSpec.Config?.BlobSchedule), testSpec.Config);
-                }
-
+                ResolveNetworks(testSpec);
                 (string name, string category) = GetNameAndCategory(testName);
-                testsByName.Add(Convert(name, category, testSpec));
+                BlockchainTest test = Convert(name, category, testSpec);
+                test.FixtureId = testName;
+                testsByName.Add(test);
             }
 
             return testsByName;
+        }
+
+        public static IEnumerable<BlockchainTest> ConvertToEngineReorgTests(ReadOnlySpan<byte> json)
+        {
+            List<BlockchainTest> tests = [];
+            foreach ((string testName, EngineReorgTestJson testSpec) in _serializer.Deserialize<Dictionary<string, EngineReorgTestJson>>(json))
+            {
+                ResolveNetworks(testSpec);
+                (string name, string category) = GetNameAndCategory(testName);
+                tests.Add(new EngineReorgTest
+                {
+                    Name = name,
+                    Category = category,
+                    FixtureId = testName,
+                    ForkName = testSpec.Network,
+                    Network = testSpec.EthereumNetwork,
+                    NetworkAfterTransition = testSpec.EthereumNetworkAfterTransition,
+                    TransitionForkActivation = testSpec.TransitionForkActivation,
+                    GenesisBlockHeader = testSpec.GenesisBlockHeader,
+                    Pre = testSpec.Pre,
+                    ReorgBlocks = testSpec.Blocks ?? [],
+                    Steps = testSpec.Steps ?? [],
+                });
+            }
+
+            return tests;
+        }
+
+        private static void ResolveNetworks(BlockchainTestJson testSpec)
+        {
+            string[] transitionInfo = testSpec.Network.Split("At");
+            string[] networks = transitionInfo[0].Split("To");
+
+            testSpec.EthereumNetwork = WithZeroNonceStorageAccounts(LoadSpec(networks[0], testSpec.Config?.BlobSchedule), testSpec.Config);
+            if (transitionInfo.Length > 1)
+            {
+                if (TryParseTerminalTotalDifficulty(transitionInfo[1], out UInt256 terminalTotalDifficulty))
+                    testSpec.TransitionTerminalTotalDifficulty = terminalTotalDifficulty;
+                else
+                    testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
+                testSpec.EthereumNetworkAfterTransition = WithZeroNonceStorageAccounts(LoadSpec(TransitionTarget(networks[0], networks[1]), testSpec.Config?.BlobSchedule), testSpec.Config);
+            }
         }
 
         private static IReleaseSpec WithZeroNonceStorageAccounts(IReleaseSpec spec, ConfigJson? config) =>

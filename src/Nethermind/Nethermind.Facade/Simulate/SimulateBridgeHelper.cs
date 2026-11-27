@@ -11,11 +11,11 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -49,16 +49,33 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         stateProvider.CommitTree(blockNumber);
     }
 
+    /// <summary>The state and processor used to execute a simulated chain.</summary>
+    public readonly record struct ExecutionEnvironment(IWorldState WorldState, ISpecProvider SpecProvider,
+        IOverridableCodeInfoRepository CodeInfoRepository, SimulateRequestState Request, IBlockProcessor BlockProcessor);
+
+    /// <summary>Processes blocks over the base state, returning any simulation error with the completed results.</summary>
+    /// <param name="parent">The simulation base header.</param>
+    /// <param name="payload">The prepared simulation input.</param>
+    /// <param name="tracer">The tracer to use across all simulated blocks.</param>
+    /// <param name="env">The already open simulation environment.</param>
+    /// <param name="gasCapLimit">The total gas budget for this simulation.</param>
+    /// <param name="cancellationToken">Cancels block and transaction processing.</param>
+    /// <param name="blockTree">The full node's temporary block tree, if used for block lookup.</param>
+    /// <param name="blockFinalized">Publishes the finalized simulated block to callers with a separate hash index.</param>
+    /// <param name="propagateException">Identifies errors that require the caller to abandon or retry the attempt.</param>
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
-        SimulateReadOnlyBlocksProcessingScope env,
+        ExecutionEnvironment env,
         ulong gasCapLimit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IBlockTree? blockTree = null,
+        Action<Block>? blockFinalized = null,
+        Predicate<Exception>? propagateException = null)
     {
         int blockCount = payload.BlockStateCalls?.Count ?? 0;
-        List<SimulateBlockResult<TTrace>> list = new(blockCount);
+        List<SimulateBlockResult<TTrace>> list = [with(blockCount)];
         SimulateOutput<TTrace> result = new()
         {
             Items = list
@@ -66,26 +83,25 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         try
         {
-            Simulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken);
+            if (blockTree is not null) parent = GetParent(parent, blockTree);
+            Simulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken, blockTree, blockFinalized);
         }
-        catch (ArgumentException ex)
+        catch (Exception exception) when (propagateException?.Invoke(exception) != true)
         {
-            result.Error = ex.Message;
-            result.IsInvalidInput = true;
-        }
-        catch (InvalidTransactionException ex)
-        {
-            result.Error = ex.Reason.ErrorDescription;
-            result.TransactionResult = ex.Reason;
-        }
-        catch (InsufficientBalanceException ex)
-        {
-            result.Error = ex.Message;
-            result.TransactionResult = TransactionResult.InsufficientSenderBalance;
-        }
-        catch (Exception ex)
-        {
-            result.Error = ex.Message;
+            result.Error = exception.Message;
+            switch (exception)
+            {
+                case ArgumentException:
+                    result.IsInvalidInput = true;
+                    break;
+                case InvalidTransactionException invalidTransaction:
+                    result.Error = invalidTransaction.Reason.ErrorDescription;
+                    result.TransactionResult = invalidTransaction.Reason;
+                    break;
+                case InsufficientBalanceException:
+                    result.TransactionResult = TransactionResult.InsufficientSenderBalance;
+                    break;
+            }
         }
 
         return result;
@@ -94,85 +110,82 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private void Simulate<TTrace>(BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
-        SimulateReadOnlyBlocksProcessingScope env,
+        ExecutionEnvironment env,
         List<SimulateBlockResult<TTrace>> output,
         ulong gasCapLimit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IBlockTree? blockTree,
+        Action<Block>? blockFinalized)
     {
-        IBlockTree blockTree = env.BlockTree;
-        IWorldState stateProvider = env.WorldState;
-        parent = GetParent(parent, payload, blockTree);
-
-        env.SimulateRequestState.TotalGasLeft = gasCapLimit;
-
-        if (payload.BlockStateCalls is not null)
+        SimulateRequestState request = env.Request;
+        request.TotalGasLeft = gasCapLimit;
+        IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
+        ProcessingOptions processingFlags = payload.Validation
+            ? SimulateProcessingOptions
+            : SimulateProcessingOptions | ProcessingOptions.NoValidation;
+        foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls ?? [])
         {
-            Dictionary<Address, ulong> nonceCache = [];
-            IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
+            (BlockHeader callHeader, IReleaseSpec spec) = GetCallHeader(env.SpecProvider, blockCall, parent, payload.Validation);
+            request.BlockGasLeft = callHeader.GasLimit;
+            request.BlockStateGasLeft = callHeader.GasLimit;
+            callHeader.Hash = callHeader.CalculateHash();
 
-            foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
+            TransactionWithSourceDetails[] calls = blockCall.Calls ?? [];
+            request.Calls = calls;
+            PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
+            Block callBlock = new(callHeader, AssembleBody(calls, blockCall.BlockOverrides?.Withdrawals, spec));
+
+            request.Validate = payload.Validation;
+            request.BlobBaseFeeOverride = spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null;
+
+            (Block processedBlock, _) = env.BlockProcessor.ProcessOne(callBlock, processingFlags, cancellationBlockTracer, spec, cancellationToken);
+            Hash256 blockHash = FinalizeBlock(processedBlock, spec, env.WorldState, tracer);
+            if (blockTree is not null)
             {
-                nonceCache.Clear();
-
-                (BlockHeader callHeader, IReleaseSpec spec) = GetCallHeader(env.SpecProvider, blockCall, parent, payload.Validation);
-                env.SimulateRequestState.BlockGasLeft = callHeader.GasLimit;
-                env.SimulateRequestState.BlockStateGasLeft = callHeader.GasLimit;
-                callHeader.Hash = callHeader.CalculateHash();
-
-                TransactionWithSourceDetails[] calls = blockCall.Calls ?? [];
-
-                env.SimulateRequestState.Calls = calls;
-
-                PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
-
-                BlockBody body = AssembleBody(calls, blockCall.BlockOverrides?.Withdrawals, stateProvider, nonceCache, spec);
-                Block callBlock = new(callHeader, body);
-
-                ProcessingOptions processingFlags = payload.Validation
-                    ? SimulateProcessingOptions
-                    : SimulateProcessingOptions | ProcessingOptions.NoValidation;
-
-                env.SimulateRequestState.Validate = payload.Validation;
-                env.SimulateRequestState.BlobBaseFeeOverride = spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null;
-
-                (Block processedBlock, TxReceipt[] receipts) = env.BlockProcessor.ProcessOne(
-                    callBlock,
-                    processingFlags,
-                    cancellationBlockTracer,
-                    spec,
-                    cancellationToken);
-
-                stateProvider.CommitTree(processedBlock.Number);
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
-                blockTree.UpdateHeadBlock(processedBlock.Hash!);
-
-                if (tracer is SimulateBlockTracer simulateTracer)
-                {
-                    simulateTracer.ReapplyBlockHash(processedBlock.Hash);
-                }
-
-                SimulateBlockResult<TTrace> blockResult = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
-                {
-                    Calls = [.. tracer.BuildResult()],
-                };
-
-                output.Add(blockResult);
-                parent = processedBlock.Header;
+                blockTree.UpdateHeadBlock(blockHash);
             }
+            blockFinalized?.Invoke(processedBlock);
+
+            output.Add(new SimulateBlockResult<TTrace>(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
+            {
+                Calls = [.. tracer.BuildResult()],
+            });
+            parent = processedBlock.Header;
         }
     }
 
-    private BlockBody AssembleBody(
+    /// <summary>
+    /// Commits the simulated state and returns the block hash shared by the trace and the next block's parent link.
+    /// </summary>
+    /// <remarks>
+    /// The default header encoding drops a zero base fee when no later field follows. Force the EIP-1559 encoding
+    /// before publishing the simulated block's hash.
+    /// </remarks>
+    private static Hash256 FinalizeBlock(Block block, IReleaseSpec spec, IWorldState state, IBlockTracer tracer)
+    {
+        block.ExecutionRequests = null;
+        if (spec.IsEip1559Enabled && block.Header.BaseFeePerGas.IsZero)
+        {
+            block.Header.Hash = block.Header.CalculateHash(RlpBehaviors.Eip1559Header);
+            block.EncodedSize = (Rlp.GetDecoder<Block>() ?? new BlockDecoder()).GetLength(block, RlpBehaviors.Eip1559Header);
+        }
+
+        state.CommitTree(block.Number);
+        Hash256 hash = block.Hash!;
+        if (tracer is SimulateBlockTracer simulateTracer) simulateTracer.ReapplyBlockHash(hash);
+        return hash;
+    }
+
+    private static BlockBody AssembleBody(
         TransactionWithSourceDetails[] calls,
         Withdrawal[]? withdrawalOverrides,
-        IWorldState stateProvider,
-        Dictionary<Address, ulong> nonceCache,
         IReleaseSpec spec)
     {
         Transaction[] transactions = new Transaction[calls.Length];
         for (int i = 0; i < calls.Length; i++)
         {
-            transactions[i] = CreateTransaction(calls[i], stateProvider, nonceCache);
+            transactions[i] = CreateTransaction(calls[i]);
         }
 
         Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? withdrawalOverrides ?? [] : null;
@@ -181,7 +194,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return body;
     }
 
-    private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
+    private static BlockHeader GetParent(BlockHeader parent, IBlockTree blockTree)
     {
         Block? latestBlock = blockTree.FindLatestBlock();
         ulong latestBlockNumber = latestBlock?.Number ?? 0;
@@ -191,50 +204,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             parent = latestBlock?.Header ?? blockTree.Head!.Header;
         }
 
-        BlockStateCall<TransactionWithSourceDetails>? firstBlock =
-            payload.BlockStateCalls is { Count: > 0 } blockStateCalls
-                ? blockStateCalls[0]
-                : null;
-
-        ulong lastKnown = latestBlockNumber;
-        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
-        {
-            Block? searchResult = blockTree.FindBlock(firstBlock.BlockOverrides.Number.Value - 1);
-            if (searchResult is not null)
-            {
-                parent = searchResult.Header;
-            }
-        }
-
         return parent;
     }
 
-    private Transaction CreateTransaction(
-        TransactionWithSourceDetails transactionDetails,
-        IWorldState stateProvider,
-        Dictionary<Address, ulong> nonceCache)
+    private static Transaction CreateTransaction(TransactionWithSourceDetails transactionDetails)
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
-
-        if (!transactionDetails.HadNonceInRequest)
-        {
-            ref ulong cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
-            if (!exist)
-            {
-                if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
-                {
-                    cachedNonce = test.Nonce;
-                }
-                // else // Todo think if we shall create account here
-            }
-            else
-            {
-                cachedNonce++;
-            }
-
-            transaction.Nonce = cachedNonce;
-        }
 
         if (transaction.SupportsBlobs && transaction.BlobVersionedHashes is null) transaction.BlobVersionedHashes = [];
         if (transaction.AccessList is not null && transaction.AccessList.IsEmpty) transaction.AccessList = null;

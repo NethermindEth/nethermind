@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -25,9 +27,9 @@ public class ReceiptDecoderTests
         OptimismCompactReceiptStorageDecoder decoder = new();
         CompactReceiptStorageDecoder core = CompactReceiptStorageDecoder.Instance;
 
-        byte[] encoded = decoder.EncodeAsBytes(receipt, encodeBehaviors);
-        TxReceipt? decoded = decoder.Decode(encoded, decodeBehaviors);
-        TxReceipt? expected = core.Decode(encoded, decodeBehaviors);
+        byte[] encoded = decoder.Encode(receipt, encodeBehaviors);
+        TxReceipt? decoded = Decode(decoder, encoded, decodeBehaviors);
+        TxReceipt? expected = Decode(core, encoded, decodeBehaviors);
         RlpReader reader = new(encoded);
         decoder.DecodeStructRef(ref reader, decodeBehaviors, out TxReceiptStructRef item);
         RlpReader coreReader = new(encoded);
@@ -37,13 +39,13 @@ public class ReceiptDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(encoded, Is.EqualTo(core.EncodeAsBytes(receipt, encodeBehaviors)));
+            Assert.That(encoded, Is.EqualTo(core.Encode(receipt, encodeBehaviors)));
             Assert.That(decoder.GetLength(receipt, encodeBehaviors), Is.EqualTo(encoded.Length));
             Assert.That(decoded, Is.TypeOf<OptimismTxReceipt>());
             decoded.AssertEquivalentTo(new OptimismTxReceipt(expected!));
             Assert.That(decoded!.Bloom.IsZeroLength, Is.EqualTo(eip7668));
             Assert.That(itemFields, Is.EqualTo(expectedItemFields));
-            Assert.That(reader.Position, Is.EqualTo(coreReader.Position));
+            Assert.That(reader.BytesRead, Is.EqualTo(coreReader.BytesRead));
         }
     }
 
@@ -58,9 +60,9 @@ public class ReceiptDecoderTests
             DepositReceiptVersion = version
         };
         OptimismCompactReceiptStorageDecoder decoder = new();
-        byte[] encoded = decoder.EncodeAsBytes(receipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+        byte[] encoded = decoder.Encode(receipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
-        OptimismTxReceipt? decoded = decoder.Decode(encoded, RlpBehaviors.Storage) as OptimismTxReceipt;
+        OptimismTxReceipt? decoded = Decode(decoder, encoded, RlpBehaviors.Storage) as OptimismTxReceipt;
         RlpReader reader = new(encoded);
         decoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef item);
         TxType itemType = item.TxType;
@@ -71,8 +73,14 @@ public class ReceiptDecoderTests
             Assert.That(decoded?.DepositReceiptVersion, Is.EqualTo(version));
             Assert.That(decoded?.TxType, Is.Not.EqualTo(TxType.FrameTx));
             Assert.That(itemType, Is.Not.EqualTo(TxType.FrameTx));
-            Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+            Assert.That(reader.BytesRead, Is.EqualTo(encoded.Length));
         }
+    }
+
+    private static TxReceipt? Decode(RlpDecoder<TxReceipt> decoder, byte[] encoded, RlpBehaviors rlpBehaviors)
+    {
+        RlpReader reader = new(encoded);
+        return decoder.Decode(ref reader, rlpBehaviors);
     }
 
     private static TxReceipt FrameReceipt()
@@ -96,11 +104,15 @@ public class ReceiptDecoderTests
     }
 
     [Test]
+    public void Topics_decoded_one_at_a_time_match_DecodeTopics([ValueSource(typeof(LogEntryDecoderTests), nameof(LogEntryDecoderTests.TopicsRlpCases))] string topicsRlp) =>
+        LogEntryDecoderTests.AssertTopicsDecodedOneAtATimeMatchDecodeTopics(new OptimismCompactReceiptStorageDecoder(), Bytes.FromHexString(topicsRlp));
+
+    [Test]
     public void Null_receipt_roundtrips()
     {
         OptimismReceiptMessageDecoder decoder = new();
-        Rlp encoded = decoder.Encode((TxReceipt?)null);
-        RlpReader reader = new(encoded.Bytes);
+        byte[] encoded = decoder.Encode((TxReceipt?)null);
+        RlpReader reader = new(encoded);
 
         Assert.That(decoder.Decode(ref reader), Is.Null);
     }
@@ -117,7 +129,7 @@ public class ReceiptDecoderTests
 
         Assert.That(
             () => decoder.Encode(receipt),
-            Throws.TypeOf<RlpException>());
+            Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -132,7 +144,7 @@ public class ReceiptDecoderTests
 
         Assert.That(
             () => decoder.Encode(receipt),
-            Throws.TypeOf<RlpException>());
+            Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -141,7 +153,7 @@ public class ReceiptDecoderTests
         byte[] encoded = EncodeReceiptWithNullBloom();
         OptimismReceiptMessageDecoder decoder = new();
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>());
 
         void Decode()
         {
@@ -174,7 +186,7 @@ public class ReceiptDecoderTests
     {
         byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
 
-        Assert.That(() => DecodeMessageReceipt(encoded), Throws.TypeOf<RlpException>());
+        Assert.That(() => DecodeMessageReceipt(encoded), Throws.TypeOf<RlpReaderException>());
     }
 
     [TestCase(0)]
@@ -189,13 +201,13 @@ public class ReceiptDecoderTests
     [Test]
     public void Optimism_compact_receipt_storage_decoding_normalizes_invalid_post_state_length_to_rlp_exception([Values(5, 31, 33, 34)] int length)
     {
-        byte[] encoded = Rlp.Encode(Rlp.Encode(new byte[length])).Bytes;
+        byte[] encoded = Rlp.Encode(new byte[length]);
 
         Assert.That(() =>
         {
             RlpReader reader = new(encoded);
             new OptimismCompactReceiptStorageDecoder().Decode(ref reader);
-        }, Throws.TypeOf<RlpException>());
+        }, Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -214,7 +226,7 @@ public class ReceiptDecoderTests
     public void Optimism_compact_receipt_storage_struct_ref_decoding_returns_default_for_empty_log_entry()
     {
         OptimismCompactReceiptStorageDecoder decoder = new();
-        RlpReader reader = new(Rlp.OfEmptyList.Bytes);
+        RlpReader reader = new(RlpTestHelper.OfEmptyList);
 
         decoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef logEntry);
 
@@ -236,7 +248,7 @@ public class ReceiptDecoderTests
             OptimismTxReceipt decodedReceipt = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
 
             byte[] encodedBytes = new byte[decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
-            RlpWriter writer = new(encodedBytes);
+            RlpWriter writer = RlpWriter.ContentWriter(encodedBytes);
             decoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             using (Assert.EnterMultipleScope())
@@ -254,7 +266,7 @@ public class ReceiptDecoderTests
             OptimismCompactReceiptStorageDecoder decoder = new();
 
             byte[] encodedRlp = new byte[decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
-            RlpWriter writer = new(encodedRlp);
+            RlpWriter writer = RlpWriter.ContentWriter(encodedRlp);
             decoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             RlpReader reader = new(encodedRlp);
@@ -273,7 +285,7 @@ public class ReceiptDecoderTests
         {
             OptimismReceiptTrieDecoder trieDecoder = new();
             byte[] encodedTrieRlp = new byte[trieDecoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
-            RlpWriter writer = new(encodedTrieRlp);
+            RlpWriter writer = RlpWriter.ContentWriter(encodedTrieRlp);
 
             trieDecoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
@@ -303,9 +315,9 @@ public class ReceiptDecoderTests
         };
 
         OptimismCompactReceiptStorageDecoder decoder = new();
-        Rlp rlp = decoder.Encode(receipt, RlpBehaviors.Eip658Receipts);
+        byte[] rlp = decoder.Encode(receipt, RlpBehaviors.Eip658Receipts);
 
-        RlpReader reader = new(rlp.Bytes);
+        RlpReader reader = new(rlp);
         OptimismTxReceipt decoded = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts);
 
         Assert.That(decoded.Sender, Is.Null);
@@ -321,7 +333,7 @@ public class ReceiptDecoderTests
             Logs = [Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).TestObject]
         };
         OptimismCompactReceiptStorageDecoder decoder = new();
-        RlpReader reader = new(decoder.Encode(receipt, RlpBehaviors.Eip658Receipts).Bytes);
+        RlpReader reader = new(decoder.Encode(receipt, RlpBehaviors.Eip658Receipts));
 
         CompactReceiptDecoderTests.AssertDecodedBloom(decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts), null, new Bloom(receipt.Logs));
     }
@@ -416,6 +428,68 @@ public class ReceiptDecoderTests
         }
     }
 
+    [TestCase(TxType.Legacy, false)]
+    [TestCase(TxType.EIP1559, false)]
+    [TestCase(TxType.EIP1559, true)]
+    [TestCase(TxType.DepositTx, false)]
+    [TestCase(TxType.DepositTx, true)]
+    public void Optimism_receipt_message_decoding_accepts_a_trailing_item(TxType txType, bool afterReceipt)
+    {
+        OptimismReceiptMessageDecoder decoder = new();
+        byte[] canonical = decoder.Encode(CreateReceiptWithTrailingFields(txType), RlpBehaviors.Eip658Receipts);
+        byte[] encoded;
+        if (txType == TxType.Legacy)
+        {
+            encoded = RlpTestHelper.WithTrailingItem(canonical);
+        }
+        else
+        {
+            RlpReader wrapper = new(canonical);
+            byte[] envelope = wrapper.ReadBytes().ToArray();
+            byte[] payload = afterReceipt
+                ? [.. envelope.AsSpan(1), Rlp.EmptyByteArrayByte]
+                : RlpTestHelper.WithTrailingItem(envelope.AsSpan(1));
+            encoded = Rlp.Encode([envelope[0], .. payload]);
+        }
+
+        Assert.That(decoder.Encode(DecodeMessageReceipt(encoded), RlpBehaviors.Eip658Receipts), Is.EqualTo(canonical));
+    }
+
+    [Test]
+    public void Optimism_compact_receipt_storage_decoding_accepts_a_trailing_item([Values] bool asStructRef)
+    {
+        OptimismCompactReceiptStorageDecoder decoder = new();
+        OptimismTxReceipt receipt = CreateReceiptWithTrailingFields(TxType.DepositTx);
+        byte[] canonical = decoder.Encode(receipt, RlpBehaviors.Eip658Receipts);
+        byte[] encoded = RlpTestHelper.WithTrailingItem(canonical);
+        RlpReader reader = new(encoded);
+
+        if (asStructRef)
+        {
+            decoder.DecodeStructRef(ref reader, RlpBehaviors.Eip658Receipts, out TxReceiptStructRef decoded);
+            Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
+        }
+        else
+        {
+            OptimismTxReceipt decoded = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts);
+            Assert.That((decoded.GasUsedTotal, decoded.DepositNonce, decoded.DepositReceiptVersion),
+                Is.EqualTo((receipt.GasUsedTotal, receipt.DepositNonce, receipt.DepositReceiptVersion)));
+        }
+
+        Assert.That(reader.BytesRead, Is.EqualTo(encoded.Length));
+    }
+
+    private static OptimismTxReceipt CreateReceiptWithTrailingFields(TxType txType) => new()
+    {
+        TxType = txType,
+        StatusCode = 1,
+        GasUsedTotal = 21_000,
+        Bloom = Bloom.Empty,
+        Logs = [Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).TestObject],
+        DepositNonce = txType == TxType.DepositTx ? 5UL : null,
+        DepositReceiptVersion = txType == TxType.DepositTx ? 1UL : null
+    };
+
     private static TxReceipt? DecodeMessageReceipt(byte[] encoded)
     {
         RlpReader reader = new(encoded);
@@ -429,7 +503,7 @@ public class ReceiptDecoderTests
             + 1
             + Rlp.LengthOfSequence(0);
         byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(encoded);
+        RlpWriter writer = RlpWriter.ContentWriter(encoded);
         writer.StartSequence(contentLength);
         writer.Encode((byte)1);
         writer.Encode(1UL);
@@ -446,7 +520,7 @@ public class ReceiptDecoderTests
             + Rlp.LengthOf(1UL)
             + Rlp.LengthOfSequence(logsContentLength);
         byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(encoded);
+        RlpWriter writer = RlpWriter.ContentWriter(encoded);
         writer.StartSequence(contentLength);
         writer.Encode((byte)1);
         writer.Encode(Address.Zero);

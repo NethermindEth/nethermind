@@ -1,0 +1,38 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Logging;
+using Nethermind.Network.Config;
+
+namespace Nethermind.Network.IP
+{
+    class NetworkConfigLocalIPSource(INetworkConfig config, ILogManager logManager) : IIPSource
+    {
+        private readonly INetworkConfig _config = config;
+        private readonly ILogger _logger = logManager.GetClassLogger<NetworkConfigLocalIPSource>();
+
+        public Task<(bool, IPAddress)> TryGetIP(CancellationToken cancellationToken = default)
+        {
+            if (_config.LocalIp is not null)
+            {
+                bool result = IPAddress.TryParse(_config.LocalIp, out IPAddress ipAddress);
+
+                if (result)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Using the local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp:hide}");
+                }
+                else
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp:hide} has incorrect format.");
+                }
+
+                return Task.FromResult((result, ipAddress));
+            }
+
+            return Task.FromResult((false, (IPAddress)null));
+        }
+    }
+}

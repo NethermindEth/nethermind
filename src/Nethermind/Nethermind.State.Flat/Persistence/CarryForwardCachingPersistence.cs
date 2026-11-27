@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Migration;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -82,17 +83,19 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        IPersistence.IPersistenceReader reader = _inner.CreateReader(flags);
-        if ((flags & ReaderFlags.Sync) != 0) return reader;
+        if ((flags & ReaderFlags.Sync) != 0) return _inner.CreateReader(flags);
 
-        long generation;
-        bool atBasis;
+        // If a batch closed while the inner reader was being opened, the reader may predate writes the cache already
+        // evicted, so only a reader opened within one generation joins the cache.
+        long generation = Volatile.Read(ref _generation);
+        IPersistence.IPersistenceReader reader = _inner.CreateReader(flags);
+
+        bool admitted;
         using (_lock.EnterScope())
         {
-            atBasis = reader.CurrentState == _basis;
-            generation = _generation;
+            admitted = _generation == generation && reader.CurrentState == _basis;
         }
-        return atBasis && _slots.TryLease() ? new CachingReader(this, reader, generation) : reader;
+        return admitted && _slots.TryLease() ? new CachingReader(this, reader, generation) : reader;
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
@@ -178,12 +181,19 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         }
     }
 
-    private void OnCommitted(in StateId to, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
+    /// <param name="aborted">
+    /// Whether the batch was aborted. Its writes are evicted all the same, as an inner batch that ignores the abort commits
+    /// them, but an abort supplies no new basis: a store that honours it did not reach <paramref name="to"/>, the request
+    /// does not tell the cache what the store did, and a reader at <paramref name="to"/> must not be served entries cached
+    /// before the batch's writes are in. The generation bump excludes a reader from the cache when it lands between that
+    /// reader's sample in <see cref="CreateReader"/> and its admission.
+    /// </param>
+    private void OnClosed(in StateId to, bool aborted, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
     {
         using (_lock.EnterScope())
         {
             _generation++;
-            _basis = to;
+            if (!aborted) _basis = to;
 
             if (clearAll)
             {
@@ -292,11 +302,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return found;
         }
 
+        public MigrationCursor? GetMigrationCursor() => inner.GetMigrationCursor();
         public StateId CurrentState => inner.CurrentState;
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => inner.TryLoadStateRlp(path, flags, action, arg);
         public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => inner.TryLoadStorageRlp(address, path, flags, action, arg);
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => inner.TryLoadStateRlp(path, hash, flags, action, arg);
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => inner.TryLoadStorageRlp(address, path, hash, flags, action, arg);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => inner.GetAccountRaw(addrHash);
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => inner.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);
@@ -367,6 +378,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         private HashSet<Address>? _writtenAccounts;
         private HashSet<(Address, UInt256)>? _writtenSlots;
         private bool _clearAll;
+        private bool _aborted;
 
         public void SelfDestruct(Address addr)
         {
@@ -378,6 +390,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             if (!_clearAll) TrackWrite(_writtenAccounts ??= parent.RentWrittenAccounts(), addr);
             inner.SetAccount(addr, account);
+        }
+
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp)
+        {
+            if (!_clearAll) TrackWrite(_writtenAccounts ??= parent.RentWrittenAccounts(), addr);
+            inner.SetSlimAccount(addr, slimRlp);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
@@ -406,7 +424,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
         }
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account)
         {
             _clearAll = true;
             inner.SetAccountRaw(addrHash, account);
@@ -424,21 +442,28 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.DeleteStorageRange(addressHash, fromPath, toPath);
         }
 
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount)
         {
             _clearAll = true;
-            inner.SelfDestructRange(fromPath, toPath);
+            inner.SelfDestructRange(fromPath, toPath, keptAccount);
         }
 
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
+        public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => inner.DeleteStateTrieNodeRange(from, to);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
+        public void SetMigrationCursor(in MigrationCursor? cursor) => inner.SetMigrationCursor(cursor);
+
+        public void Abort()
+        {
+            _aborted = true;
+            inner.Abort();
+        }
 
         public void Dispose()
         {
             inner.Dispose();
-            parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
+            parent.OnClosed(to, _aborted, _writtenAccounts, _writtenSlots, _clearAll);
             parent.ReturnWrittenSets(_writtenAccounts, _writtenSlots);
             _writtenAccounts = null;
             _writtenSlots = null;

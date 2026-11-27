@@ -8,9 +8,6 @@ namespace Nethermind.Consensus.Validators;
 
 public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : IBlockValidator
 {
-    public bool ValidateWithdrawals(Block block, out string? error) =>
-        baseBlockValidator.ValidateWithdrawals(block, out error);
-
     public bool ValidateOrphanedBlock(Block block, out string? error) =>
         baseBlockValidator.ValidateOrphanedBlock(block, out error);
 

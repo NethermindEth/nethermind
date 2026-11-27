@@ -27,7 +27,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly long? _maxBatchResponseBodySize;
     private readonly JsonRpcContext _jsonRpcContext;
 
-    private readonly SocketSendLock _sendLock = new();
+    private readonly SocketSendLock _sendLock;
     private readonly CancellationTokenSource _sendFailure = new();
     private readonly Channel<ProcessRequest> _processChannel;
 
@@ -57,13 +57,16 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         int concurrency = 1,
         long? maxRequestBodySize = null,
         IPAddress? remoteAddress = null,
-        StringValues forwardedFor = default)
+        StringValues forwardedFor = default,
+        long maxUnsentResponseSize = 0,
+        int sendTimeout = 0)
         : base(clientName, stream, jsonSerializer, RequestSizeLimit(maxRequestBodySize))
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
         _jsonRpcContext = new JsonRpcContext(endpointType, this, url) { RemoteAddress = remoteAddress, ForwardedFor = forwardedFor };
+        _sendLock = _jsonRpcContext.IsAuthenticated ? new SocketSendLock() : new SocketSendLock(maxUnsentResponseSize, sendTimeout);
         _processChannel = Channel.CreateBounded<ProcessRequest>(new BoundedChannelOptions(concurrency)
         {
             SingleWriter = true
@@ -75,6 +78,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         (int)Math.Min(maxRequestBodySize ?? MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
     public bool IsClosed => Volatile.Read(ref _disposed) == 1;
+
+    public bool IsAuthenticated => _jsonRpcContext.IsAuthenticated;
 
     /// <remarks>Idempotent: a subscription can disconnect a lagging client while its owner still holds it.</remarks>
     public override void Dispose()
@@ -98,7 +103,17 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         data.AsSpan().CopyTo(memoryOwner.Memory.Span);
         Memory<byte> memory = memoryOwner.Memory[..data.Count];
 
-        await _processChannel.Writer.WriteAsync(new ProcessRequest(memory, memoryOwner), cancellationToken);
+        ProcessRequest request = new(memory, memoryOwner);
+        try
+        {
+            await _processChannel.Writer.WriteAsync(request, cancellationToken);
+        }
+        catch
+        {
+            // Not handed off to a worker (e.g. cancelled while the channel is full), so return the rental here.
+            await request.DisposeAsync();
+            throw;
+        }
     }
 
     public override async Task ReceiveLoopAsync(CancellationToken cancellationToken)
@@ -119,11 +134,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
                 sendFailedBeforeClose = _sendLock.IsFaulted;
                 _processChannel.Writer.Complete();
             }
-        }));
+        }, CancellationToken.None));
 
         for (int i = 0; i < _workerTaskCount; i++)
         {
-            allTasks.Add(Task.Run(() => WorkerLoop(cts.Token)));
+            allTasks.Add(Task.Run(() => WorkerLoop(cts.Token), CancellationToken.None));
         }
 
         try

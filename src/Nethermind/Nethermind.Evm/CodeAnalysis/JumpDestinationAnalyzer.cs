@@ -137,7 +137,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     /// </summary>
     /// <param name="n"></param>
     /// <returns>how many ints are required to store n bytes</returns>
-    private static int GetInt64ArrayLengthFromBitLength(int n) =>
+    internal static int GetInt64ArrayLengthFromBitLength(int n) =>
         (n - 1 + (1 << BitShiftPerInt64)) >>> BitShiftPerInt64;
 
     [MethodImpl(MethodImplOptions.NoInlining)]

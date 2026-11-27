@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -83,7 +87,7 @@ public class TrieNodeLogTests
     private byte[]? ReadTop()
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        return reader.TryLoadStateRlp(TopPath, ReadFlags.None);
+        return reader.LoadStateRlp(TopPath, ReadFlags.None);
     }
 
     /// <summary>Reads the trie columns directly, bypassing the log.</summary>
@@ -110,6 +114,103 @@ public class TrieNodeLogTests
         Metrics.TrieNodeLogSecondLevelStoredBytes.TryGetValue(TrieNodeLogLabel.State, out long bytes) ? bytes : 0;
 
     [Test]
+    public void TrimFlushedGenerations_WithFlushedPrefix_ReleasesOnlyThatPrefix(
+        [Values(0, 1, 7)] int flushedCount, [Values(0, 1, 4)] int retainedCount)
+    {
+        using ArrayPoolList<TrieNodeLogGeneration> pinned = new(flushedCount + retainedCount);
+        List<TrieNodeLogGeneration> generations = [];
+        try
+        {
+            for (int i = 0; i < flushedCount + retainedCount; i++)
+            {
+                TrieNodeLogGeneration generation = CreateTrimGeneration(i);
+                generations.Add(generation);
+                pinned.Add(generation);
+            }
+
+            Assert.That(pinned.Count, Is.EqualTo(flushedCount + retainedCount), "precondition: the list owns every generation");
+
+            TrieNodeLogView.TrimFlushedGenerations(pinned, (ulong)flushedCount);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.Count, Is.EqualTo(retainedCount), "only generations after the flushed marker remain pinned");
+                for (int i = 0; i < generations.Count; i++)
+                {
+                    Assert.That(generations[i].Handle.IsClosed, Is.EqualTo(i < flushedCount), "the removed prefix releases its files while the suffix stays live");
+                }
+                for (int i = 0; i < retainedCount; i++)
+                {
+                    Assert.That(pinned[i], Is.SameAs(generations[flushedCount + i]), "survivors retain their original order and leases");
+                }
+            }
+        }
+        finally
+        {
+            foreach (TrieNodeLogGeneration generation in generations)
+            {
+                if (!generation.Handle.IsClosed) generation.Dispose();
+            }
+        }
+    }
+
+    [Test]
+    public void TrimFlushedGenerations_WhenCleanupFails_DropsReleasedEntriesAndRetainsUntouchedLeases()
+    {
+        IFile file = Substitute.For<IFile>();
+        IFileSystem failingFileSystem = Substitute.For<IFileSystem>();
+        failingFileSystem.File.Returns(file);
+        file.OpenHandle(Arg.Any<string>(), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite)
+            .Returns(call => FileSystem.File.OpenHandle(call.ArgAt<string>(0), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite));
+        file.When(f => f.Delete(Arg.Any<string>())).Do(static _ => throw new IOException("delete failed"));
+
+        using ArrayPoolList<TrieNodeLogGeneration> pinned = new(4);
+        List<TrieNodeLogGeneration> generations = [];
+        try
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                TrieNodeLogGeneration generation = CreateTrimGeneration(i, i == 1 ? failingFileSystem : FileSystem);
+                generations.Add(generation);
+                pinned.Add(generation);
+            }
+            Assert.That(pinned.Count, Is.EqualTo(4), "precondition: three flushed generations precede a retained generation");
+
+            Assert.That(() => TrieNodeLogView.TrimFlushedGenerations(pinned, 3),
+                Throws.TypeOf<IOException>().With.Message.EqualTo("delete failed"));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.Count, Is.EqualTo(2), "both released entries must leave the list even when the second cleanup throws");
+                Assert.That(generations[0].Handle.IsClosed, Is.True, "the first generation was released normally");
+                Assert.That(generations[1].Handle.IsClosed, Is.True, "the failing cleanup already released its file handle");
+                Assert.That(pinned[0], Is.SameAs(generations[2]), "the unvisited flushed generation keeps its lease and position");
+                Assert.That(pinned[1], Is.SameAs(generations[3]), "the retained generation stays after the unvisited prefix");
+            }
+
+            TrieNodeLogView.TrimFlushedGenerations(pinned, 3);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(generations[2].Handle.IsClosed, Is.True, "retry releases only the remaining flushed entry");
+                Assert.That(pinned.Count, Is.EqualTo(1), "released entries must not be disposed a second time");
+                Assert.That(pinned[0], Is.SameAs(generations[3]), "retry preserves the retained generation");
+            }
+        }
+        finally
+        {
+            foreach (TrieNodeLogGeneration generation in generations)
+            {
+                if (!generation.Handle.IsClosed) generation.Dispose();
+            }
+        }
+    }
+
+    // Propagate deletion failure to exercise the same lease invariant as a Handle.Dispose failure.
+    private TrieNodeLogGeneration CreateTrimGeneration(int index, IFileSystem? fileSystem = null) =>
+        new((ulong)index + 1, Path.Combine(_directory.Path, $"trim-{index}.log"), fileSystem ?? FileSystem, 1024,
+            static (_, exception) => throw exception);
+
+    [Test]
     public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges()
     {
         using IPersistence.IPersistenceReader before = _persistence.CreateReader();
@@ -123,11 +224,11 @@ public class TrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(before.TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
-            Assert.That(atV1.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(atV2.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(afterMerge.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(before.LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(atV1.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(atV2.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(afterMerge.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
             Assert.That(LogFiles(), Is.Not.Empty, "the merged generation stays on disk while a reader pins it");
         }
 
@@ -156,9 +257,9 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3));
-            Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "tombstone hides the RocksDB value");
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3));
+            Assert.That(reader.LoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "tombstone hides the RocksDB value");
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
         }
 
         long flushedBefore = FlushedStateBytes();
@@ -166,9 +267,35 @@ public class TrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3));
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3));
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
             Assert.That(FlushedStateBytes() - flushedBefore, Is.EqualTo(3 + Rlp3.Length + 8), "one 3-byte top key with its latest value and one 8-byte tombstone key");
+        }
+    }
+
+    [Test]
+    public void A_null_span_deletes_and_an_empty_value_is_stored()
+    {
+        WriteTop(0, 1, Rlp1);
+        using (IPersistence.IWriteBatch batch = Batch(1, 2))
+        {
+            batch.SetStateTrieNode(TopPath, default);
+            batch.SetStateTrieNode(MediumPath, Array.Empty<byte>());
+        }
+
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(reader.LoadStateRlp(MediumPath, ReadFlags.None), Is.Empty);
+        }
+
+        _log.Drain();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.Empty);
         }
     }
 
@@ -188,22 +315,22 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.TryLoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1), "fallback nodes bypass the log");
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(reader.TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
-            Assert.That(Raw().TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.Null);
+            Assert.That(reader.LoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1), "fallback nodes bypass the log");
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(reader.LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(reader.LoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStorageRlp(address, StoragePath, ReadFlags.None), Is.Null);
         }
 
         _log.Drain();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(Raw().TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));
         }
     }
 
@@ -211,7 +338,7 @@ public class TrieNodeLogTests
     public void Sync_batch_drains_the_log_and_writes_directly()
     {
         WriteTop(0, 1, Rlp1);
-        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+        Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
 
         using (IPersistence.IWriteBatch sync = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
         {
@@ -220,8 +347,8 @@ public class TrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
             Assert.That(ReadTop(), Is.EqualTo(Rlp1));
         }
         Assert.That(LogFiles, Is.Empty.After(5000, 20));
@@ -254,8 +381,8 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(large));
-            Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(large));
+            Assert.That(reader.LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
         }
     }
 
@@ -309,19 +436,19 @@ public class TrieNodeLogTests
         WriteTop(1, 2, Value(2)); // seals generation 1
         WriteTop(2, 3, Value(3)); // generation 2
 
-        Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.Null, "a lag of one keeps generation 1 unmerged until generation 2 is sealed");
+        Assert.That(Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.Null, "a lag of one keeps generation 1 unmerged until generation 2 is sealed");
 
         WriteTop(3, 4, Value(4)); // seals generation 2, so generation 1 is merged
-        Assert.That(() => Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
+        Assert.That(() => Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "rewritten in generation 2, so not merged from generation 1");
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null, "rewritten in generation 2, so not merged from generation 1");
             Assert.That(ReadTop(), Is.EqualTo(Value(4)));
         }
         Assert.That(LogFiles, Has.Length.EqualTo(1).After(5000, 20), "generation 1 deleted, generation 2 sealed and waiting for a newer one");
 
         _log.Drain();
-        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)));
+        Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)));
     }
 
     private async Task ReopenWithSecondLevel(int secondLevelMergeLag)
@@ -348,7 +475,7 @@ public class TrieNodeLogTests
     private byte[]? ReadNode(ulong block)
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        return reader.TryLoadStateRlp(DistinctPath(block), ReadFlags.None);
+        return reader.LoadStateRlp(DistinctPath(block), ReadFlags.None);
     }
 
     /// <summary>
@@ -389,8 +516,8 @@ public class TrieNodeLogTests
             Assert.That(ShardFiles("state-0-l2"), Is.Not.Empty);
             Assert.That(SecondLevelStoredStateBytes() - secondLevelStoredBefore, Is.EqualTo(TrieNodeLogRecord.HeaderLength * 3 + 3 + 3000 + 3 + Rlp1.Length),
                 "the latest top record and the cold record, each with a 3-byte key, plus a commit record");
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
-            Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.Null);
             Assert.That(ReadTop(), Is.EqualTo(Value(2)));
         }
 
@@ -401,14 +528,14 @@ public class TrieNodeLogTests
             batch.SetStateTrieNode(TopPath, Value(3));
         }
         WriteTop(3, 4, Value(4)); // seals first-level generation 2, whose copy fills the second level's generation
-        Assert.That(() => Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)).After(5000, 20));
+        Assert.That(() => Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)).After(5000, 20));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(beforeMedium.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "the second-level copy is newer than the reader's version");
-            Assert.That(beforeMedium.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(2)));
-            Assert.That(beforeMedium.TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(beforeMedium.LoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "the second-level copy is newer than the reader's version");
+            Assert.That(beforeMedium.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(2)));
+            Assert.That(beforeMedium.LoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1));
         }
 
         beforeMedium.Dispose();
@@ -421,7 +548,7 @@ public class TrieNodeLogTests
         _log.Drain();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(6)));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(6)));
             Assert.That(LogFiles, Is.Empty.After(5000, 20));
         }
     }
@@ -443,13 +570,13 @@ public class TrieNodeLogTests
         }
         for (ulong block = 1; block < 4; block++) WriteTop(block, block + 1, Value((byte)(block + 1)));
         Assert.That(() => ShardFiles("state-0"), Is.Empty.After(5000, 20), "a first-level lag of zero merges every sealed generation");
-        Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.Null, "a second-level lag of one keeps second-level generation 1 until generation 2 is sealed");
+        Assert.That(Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.Null, "a second-level lag of one keeps second-level generation 1 until generation 2 is sealed");
 
         for (ulong block = 4; block < 8; block++) WriteTop(block, block + 1, Value((byte)(block + 1)));
-        Assert.That(() => Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
+        Assert.That(() => Raw().LoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "rewritten in second-level generation 2, so not merged from generation 1");
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null, "rewritten in second-level generation 2, so not merged from generation 1");
             Assert.That(ReadTop(), Is.EqualTo(Value(8)));
         }
     }
@@ -483,8 +610,8 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(large));
-            Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(large));
+            Assert.That(reader.LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
         }
 
         WriteTop(3, 4, Rlp3);
@@ -494,8 +621,8 @@ public class TrieNodeLogTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(LogFiles(), Is.Empty);
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3), "the first level's newer record is merged after the second level's");
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3), "the first level's newer record is merged after the second level's");
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
         }
     }
 
@@ -515,15 +642,15 @@ public class TrieNodeLogTests
             Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-0")), Is.Not.Empty);
             Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-1")), Is.Not.Empty);
             Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "storage-0")), Is.Empty, "storage nodes have their own partition");
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(reader.TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(reader.LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(reader.LoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
         }
 
         _log.Drain();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
         }
     }
 
@@ -546,7 +673,7 @@ public class TrieNodeLogTests
         _log.Drain();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(value));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(value));
             Assert.That(LogFiles, Is.Empty.After(5000, 20));
         }
     }
@@ -562,7 +689,7 @@ public class TrieNodeLogTests
             batch.SetStateTrieNode(MediumPath, Rlp3);
         }
         await _log.DisposeAsync();
-        Assert.That(Raw().TryLoadStateRlp(highPath, ReadFlags.None), Is.Null);
+        Assert.That(Raw().LoadStateRlp(highPath, ReadFlags.None), Is.Null);
 
         TrieNodeLog.MergeAllOnDisk(_directory.Path, FileSystem, _db, LimboLogs.Instance);
 
@@ -573,10 +700,10 @@ public class TrieNodeLogTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Directory.GetDirectories(_directory.Path).Where(static directory => Directory.GetFiles(directory).Length > 0), Is.Empty);
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(Raw().TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp3));
-            Assert.That(reader.TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().LoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp3));
+            Assert.That(reader.LoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
         }
     }
 
@@ -625,14 +752,14 @@ public class TrieNodeLogTests
     {
         WriteTop(0, 1, Rlp1);
         await _log.DisposeAsync();
-        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "by default the log is kept for the next start");
+        Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null, "by default the log is kept for the next start");
 
         _config.TrieNodeLogDrainOnShutdown = true;
         Open();
         await _log.DisposeAsync();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
             Assert.That(LogFiles(), Is.Empty);
         }
     }
@@ -675,6 +802,474 @@ public class TrieNodeLogTests
     }
 
     [Test]
+    public async Task An_aborted_batch_leaves_no_record_and_the_log_takes_the_next_batch([Values] bool beyondOneStagingChunk)
+    {
+        WriteTop(0, 1, Rlp1);
+        TreePath[] paths = WriteAbortedBatch(beyondOneStagingChunk ? 24 : 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadTop(), Is.EqualTo(Rlp1));
+            Assert.That(paths.Select(ReadState), Has.All.Null, "no aborted record is readable");
+            Assert.That(LogFiles().Select(static file => new FileInfo(file).Length), Has.All.LessThan(AbortedRecordLength), "the appended records are truncated");
+            Assert.That(BasePersistence.ReadCurrentState(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.EqualTo(State(1)));
+        }
+
+        WriteTop(1, 2, Rlp3);
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the log takes the next batch");
+
+        await Reopen();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadTop(), Is.EqualTo(Rlp3));
+            Assert.That(paths.Select(ReadState), Has.All.Null, "no aborted record is recovered");
+        }
+    }
+
+    // A power loss keeps the directory entry of a file whose content was never synced, but can drop that content. The
+    // generations an aborted batch rolled hold only their header, and the next commit confirms a newer generation of the
+    // shard; unless those headers were synced, the first open after the loss drops the emptied files and the next open finds
+    // generations the database confirms missing.
+    [Test]
+    public async Task Generations_an_aborted_batch_rolled_survive_a_power_loss_after_the_next_commit()
+    {
+        FileSystemProbe probe = new();
+        await _log.DisposeAsync();
+        OpenProbed(probe);
+        // A generation's header is durable before the roll publishes it, and so before the next one is created.
+        probe.BeforeFlush = (path, length) =>
+        {
+            if (length == TrieNodeLogGeneration.FileHeaderLength && _log.Shards.Any(shard => shard.Active is { } active && Path.GetFullPath(active.Path) == path))
+                probe.OrderViolations.Enqueue($"{path} was published before its header was synced");
+        };
+
+        WriteTop(0, 1, Rlp1);
+        WriteAbortedBatch(24);
+        WriteTop(1, 2, Rlp3);
+        await _log.DisposeAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LogFiles().Select(static file => new FileInfo(file).Length), Has.Some.EqualTo(TrieNodeLogGeneration.FileHeaderLength),
+                "the aborted batch left header-only generations between the two committed ones");
+            Assert.That(probe.OrderViolations, Is.Empty);
+        }
+        LoseUnsyncedHeaders(probe);
+
+        Open();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the first open after the loss");
+        await Reopen();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the second open after the loss");
+    }
+
+    // A process that exits between a roll's header write and its sync leaves a header-only file the OS still holds. The
+    // warm restart that adopts it must make it durable, as the next commit confirms a newer generation of the shard.
+    [Test]
+    public async Task A_header_only_generation_adopted_on_restart_survives_a_power_loss_after_the_next_commit()
+    {
+        FileSystemProbe probe = new();
+        await _log.DisposeAsync();
+        OpenProbed(probe);
+        WriteTop(0, 1, Rlp1);
+        await _log.DisposeAsync();
+
+        // The file image of the exit: generation 2 holds its header, never synced.
+        string path = Path.Combine(_directory.Path, "state-0", "gen-00000002.log");
+        using (TrieNodeLogGeneration interrupted = new(2, path, FileSystem, 1024, static (_, exception) => throw exception))
+        {
+            interrupted.WriteFileHeader();
+            interrupted.PreserveOnDispose();
+        }
+
+        OpenProbed(probe);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(probe.DurableLength.GetValueOrDefault(Path.GetFullPath(path)), Is.GreaterThanOrEqualTo(TrieNodeLogGeneration.FileHeaderLength),
+                "the open made the adopted header durable");
+            Assert.That(ReadTop(), Is.EqualTo(Rlp1), "the warm restart");
+        }
+        WriteTop(1, 2, Rlp3);
+        await _log.DisposeAsync();
+        LoseUnsyncedHeaders(probe);
+
+        Open();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the first open after the loss");
+        await Reopen();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the second open after the loss");
+    }
+
+    public enum RollFault
+    {
+        HeaderWrite,
+        PartialHeaderWrite,
+        HeaderSync,
+    }
+
+    // A roll whose header write or sync fails leaves its number unused and its file behind. The next roll takes the same
+    // number and file name and rewrites the file with a full header and a sync, so the failed roll must not delete the
+    // file, now or through a deletion queued for later, which would remove the generation that next roll commits.
+    [Test]
+    public async Task A_failed_roll_is_retried_into_the_same_number([Values] RollFault fault)
+    {
+        IOException failure = new("roll failed");
+        int fired = 0;
+        bool FirstFault(string path) => IsStateGeneration(path, 1) && Interlocked.Exchange(ref fired, 1) == 0;
+        FileSystemProbe probe = new()
+        {
+            FailWrite = (path, offset, length) => fault != RollFault.HeaderSync && offset == 0 && length == TrieNodeLogGeneration.FileHeaderLength && FirstFault(path)
+                ? (failure, fault == RollFault.PartialHeaderWrite ? TrieNodeLogGeneration.FileHeaderLength / 2 : 0)
+                : null,
+            FailFlush = (path, length) => fault == RollFault.HeaderSync && length == TrieNodeLogGeneration.FileHeaderLength && FirstFault(path) ? failure : null,
+            FailDelete = static path => IsStateGeneration(path, 1),
+        };
+        _config.TrieNodeLogSecondLevelMergeLag = -1; // a merge goes straight to RocksDB, whose trie column flush fails below
+        await _log.DisposeAsync();
+        OpenProbed(probe, logDb: WithUnflushable(static column => column != FlatDbColumns.Metadata));
+
+        IOException? thrown = Assert.Throws<IOException>(() => WriteTop(0, 1, Rlp1));
+        WriteTop(0, 1, Rlp3);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(failure), "the roll's own failure reaches the caller");
+            Assert.That(_log.Shards[0].Active?.Number, Is.EqualTo(1UL), "the retry rolled into the same number, with no restart");
+            Assert.That(ReadTop(), Is.EqualTo(Rlp3));
+        }
+
+        // A merge pass first retries the deletions queued for later; its flush fails, so the merged marker stays below the
+        // recorded generation and the file the retry committed into is still required.
+        Assert.That(() => _log.Drain(), Throws.TypeOf<AggregateException>().With.InnerException.TypeOf<IOException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(probe.DeleteAttempts.GetValueOrDefault(Path.GetFullPath(Path.Combine(_directory.Path, "state-0", "gen-00000001.log"))), Is.Zero,
+                "the failed roll's file is never deleted");
+            Assert.That(FlushedGeneration(_log.Shards[0]), Is.LessThan(RecordedGeneration(_log.Shards[0])));
+        }
+
+        await _log.DisposeAsync();
+        Open();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the first open");
+        await Reopen();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the second open");
+    }
+
+    // A batch aborted after rolling leaves the generations before its last roll unsealed, the oldest of them holding the only
+    // copy of a committed record. A drain merges every generation in order, so its marker never passes over that record.
+    [Test]
+    public async Task A_drain_after_a_rolled_abort_merges_every_generation([Values] bool secondLevel)
+    {
+        _config.TrieNodeLogMergeLag = 1000; // nothing is merged before the drain
+        _config.TrieNodeLogSecondLevelMergeLag = secondLevel ? 1000 : -1;
+        await Reopen();
+
+        WriteTop(0, 1, Rlp1);
+        Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null, "the committed node is only in the log");
+        int filesBefore = ShardFiles("state-0").Length;
+        TreePath[] aborted = WriteAbortedBatch(24);
+        string[] files = ShardFiles("state-0");
+        Assert.That(files, Has.Length.GreaterThan(filesBefore), "the aborted batch rolled");
+        ulong lastGeneration = files.Max(GenerationNumber);
+
+        _persistence.Flush();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1), "the drain merged the committed node into RocksDB");
+            Assert.That(ReadTop(), Is.EqualTo(Rlp1));
+            Assert.That(aborted.Select(ReadState), Has.All.Null);
+            Assert.That(FlushedGeneration(_log.Shards[0]), Is.EqualTo(lastGeneration), "the marker covers the last drained file");
+        }
+
+        await Reopen();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp1), "the first open");
+        await Reopen();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp1), "the second open");
+    }
+
+    // A first-level merge copies a sealed generation into the second level, whose roll can fail. The copy is retried, and a
+    // write waiting on the merge backlog completes once it succeeds, with no restart.
+    [Test]
+    public async Task A_failed_second_level_copy_is_retried_and_the_waiting_write_completes()
+    {
+        IOException failure = new("second-level header sync failed");
+        using ManualResetEventSlim copyFailed = new();
+        int fired = 0;
+        FileSystemProbe probe = new()
+        {
+            FailFlush = (path, length) =>
+            {
+                if (length != TrieNodeLogGeneration.FileHeaderLength || ShardOf(path) != "state-0-l2" || Interlocked.Exchange(ref fired, 1) != 0) return null;
+                copyFailed.Set();
+                return failure;
+            },
+            FailDelete = static path => ShardOf(path) == "state-0-l2",
+        };
+        _config.TrieNodeLogMergeBacklogMargin = 1; // one sealed, unmerged generation makes the next roll wait
+        _config.TrieNodeLogSecondLevelMergeLag = 1000;
+        await _log.DisposeAsync();
+        OpenProbed(probe, mergeLag: 0);
+
+        // Fills its generation, so the commit seals it and the merge copies it at once.
+        byte[] first = Value(1, 5000);
+        WriteTop(0, 1, first);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copyFailed.Wait(TimeSpan.FromSeconds(10)), Is.True, "the copy reached the second level's roll");
+            Assert.That(FlushedGeneration(_log.Shards[0]), Is.Zero, "a failed copy leaves the source unmerged");
+        }
+
+        TreePath secondPath = TreePath.FromHexString("1abcd");
+        byte[] second = Value(2, 5000);
+        Task write = Task.Run(() =>
+        {
+            using IPersistence.IWriteBatch batch = Batch(1, 2);
+            batch.SetStateTrieNode(secondPath, second);
+        });
+        Assert.That(write.Wait(TimeSpan.FromSeconds(20)), Is.True, "the write waiting on the backlog completed, with no restart");
+
+        await _log.DisposeAsync();
+        LoseUnsyncedHeaders(probe);
+        Open();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadTop(), Is.EqualTo(first), "the first open");
+            Assert.That(ReadState(secondPath), Is.EqualTo(second), "the first open");
+        }
+        await Reopen();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadTop(), Is.EqualTo(first), "the second open");
+            Assert.That(ReadState(secondPath), Is.EqualTo(second), "the second open");
+        }
+    }
+
+    // A commit can sync its records into one file and fail to sync them into the next. Its rollback truncates both files
+    // without a sync, so after a power loss the first file may still end with the failed version's commit record, for a
+    // later version to confirm. The shard takes no batch until a restart, whose recovery cuts that tail.
+    [Test]
+    public async Task A_commit_that_synced_only_part_of_its_records_stops_the_shard_until_a_restart()
+    {
+        IOException failure = new("commit record sync failed");
+        int fired = 0;
+        FileSystemProbe probe = new()
+        {
+            FailFlush = (path, length) => length > TrieNodeLogGeneration.FileHeaderLength && IsStateGeneration(path, 2) && Interlocked.Exchange(ref fired, 1) == 0 ? failure : null,
+        };
+        await _log.DisposeAsync();
+        OpenProbed(probe);
+        WriteTop(0, 1, Rlp1); // the confirmed value, at version 1 in generation 1
+        string firstFile = Path.GetFullPath(Path.Combine(_directory.Path, "state-0", "gen-00000001.log"));
+        TreePath rolledPath = TreePath.FromHexString("12346"); // the same shard as the top node
+        TreePath unrelatedPath = TreePath.FromHexString("1abcd"); // the same shard again
+
+        // Version 2 overwrites the value with one that fills generation 1, so its next record rolls into generation 2.
+        Exception? thrown = Assert.Catch(() =>
+        {
+            using IPersistence.IWriteBatch batch = Batch(1, 2);
+            batch.SetStateTrieNode(TopPath, Value(9, 6000));
+            batch.SetStateTrieNode(rolledPath, Rlp2);
+        });
+        byte[] syncedFirstFile = probe.DurableImage[firstFile];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown is AggregateException aggregate ? aggregate.InnerException : thrown, Is.SameAs(failure));
+            Assert.That(ShardFiles("state-0"), Has.Length.EqualTo(2), "the version-2 batch rolled into generation 2");
+            Assert.That(syncedFirstFile, Has.Length.GreaterThan(6000), "generation 1 was synced with the failed version's records");
+            Assert.That(() => WriteTop(1, 2, Rlp3), Throws.InvalidOperationException.With.Message.Contains("restart"), "a version-advancing write is refused until a restart");
+        }
+
+        // The power loss: generation 1's truncation by the rollback was never synced.
+        await _log.DisposeAsync();
+        File.WriteAllBytes(firstFile, syncedFirstFile);
+        Open();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp1), "the first open");
+        using (IPersistence.IWriteBatch batch = Batch(1, 2)) batch.SetStateTrieNode(unrelatedPath, Rlp3);
+        await Reopen();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadTop(), Is.EqualTo(Rlp1), "the second open, after a later commit");
+            Assert.That(ReadState(unrelatedPath), Is.EqualTo(Rlp3));
+        }
+    }
+
+    /// <summary>Whether <paramref name="path"/> is generation <paramref name="number"/> of the first state shard.</summary>
+    private static bool IsStateGeneration(string path, ulong number) =>
+        ShardOf(path) == "state-0" && Path.GetFileName(path) == $"gen-{number:D8}.log";
+
+    private static string? ShardOf(string path) => Path.GetFileName(Path.GetDirectoryName(path));
+
+    private static ulong GenerationNumber(string path) => ulong.Parse(Path.GetFileNameWithoutExtension(path)["gen-".Length..]);
+
+    private ulong FlushedGeneration(TrieNodeLogShard shard) => ReadMetadata(shard.FlushedGenerationKey);
+
+    private ulong RecordedGeneration(TrieNodeLogShard shard) => ReadMetadata(shard.GenerationKey);
+
+    private ulong ReadMetadata(byte[] key) =>
+        _db.GetColumnDb(FlatDbColumns.Metadata).Get(key) is { Length: 8 } bytes ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
+
+    private const int AbortedRecordLength = 60_000;
+
+    /// <summary>
+    /// Aborts a batch from state 1 that overwrites the top node and writes <paramref name="keys"/> large records to the
+    /// first state shard; past one 1 MiB staging chunk the records are appended to its files, rolling generations, before
+    /// the batch is disposed.
+    /// </summary>
+    /// <returns>The paths of the large records.</returns>
+    private TreePath[] WriteAbortedBatch(int keys)
+    {
+        TreePath[] paths = new TreePath[keys];
+        for (int i = 0; i < keys; i++) paths[i] = TreePath.FromHexString($"1{i:x4}");
+        using IPersistence.IWriteBatch batch = Batch(1, 2);
+        batch.SetStateTrieNode(TopPath, Rlp2);
+        for (int i = 0; i < keys; i++) batch.SetStateTrieNode(paths[i], Value((byte)i, AbortedRecordLength));
+        batch.Abort();
+        return paths;
+    }
+
+    private byte[]? ReadState(TreePath path)
+    {
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        return reader.LoadStateRlp(path, ReadFlags.None);
+    }
+
+    /// <summary>
+    /// Opens the log over the real file system as <paramref name="probe"/> observes and faults it, with a merge lag by
+    /// default so high that nothing is merged and every generation stays confirmed.
+    /// </summary>
+    /// <param name="logDb">The database the log itself uses; the store always uses the test database.</param>
+    private void OpenProbed(FileSystemProbe probe, int mergeLag = 1000, IColumnsDb<FlatDbColumns>? logDb = null)
+    {
+        _config.TrieNodeLogMergeLag = mergeLag;
+        _log = new TrieNodeLog(_directory.Path, ProbedFileSystem(probe), logDb ?? _db, _config, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, _log);
+    }
+
+    /// <summary>Models a power loss: a log file whose header no flush made durable keeps its directory entry and loses its content.</summary>
+    private void LoseUnsyncedHeaders(FileSystemProbe probe)
+    {
+        foreach (string file in LogFiles())
+        {
+            if (probe.DurableLength.GetValueOrDefault(Path.GetFullPath(file)) < TrieNodeLogGeneration.FileHeaderLength)
+                File.WriteAllBytes(file, Array.Empty<byte>());
+        }
+    }
+
+    /// <summary>What <see cref="ProbedFileSystem"/> observed, and the faults it injects. Paths are full paths.</summary>
+    private sealed class FileSystemProbe
+    {
+        /// <summary>Per file, the longest file length a successful flush made durable.</summary>
+        public ConcurrentDictionary<string, long> DurableLength { get; } = new();
+
+        /// <summary>Per file, its content at its last successful flush.</summary>
+        public ConcurrentDictionary<string, byte[]> DurableImage { get; } = new();
+
+        /// <summary>Per file, how many times its deletion was attempted.</summary>
+        public ConcurrentDictionary<string, int> DeleteAttempts { get; } = new();
+
+        /// <summary>A generation file created before its predecessor's header was durable, or flushed after it was published.</summary>
+        public ConcurrentQueue<string> OrderViolations { get; } = new();
+
+        /// <summary>The exception the flush of a file (by path and length) throws instead of flushing, or null.</summary>
+        public Func<string, long, Exception?> FailFlush { get; init; } = static (_, _) => null;
+
+        /// <summary>The exception a write (by path, offset and length) throws instead, after writing a prefix of the given length; or null.</summary>
+        public Func<string, long, int, (Exception Failure, int Prefix)?> FailWrite { get; init; } = static (_, _, _) => null;
+
+        /// <summary>Whether the deletion of a file throws instead of deleting.</summary>
+        public Func<string, bool> FailDelete { get; init; } = static _ => false;
+
+        /// <summary>Called with each file and its length before it is flushed.</summary>
+        public Action<string, long>? BeforeFlush { get; set; }
+
+        private readonly ConcurrentDictionary<string, byte> _created = new();
+
+        /// <summary>Records a generation file being created, checking that the previous one of its shard has a durable header.</summary>
+        public void OnCreated(string path)
+        {
+            if (Path.GetFileName(path).StartsWith("gen-", StringComparison.Ordinal))
+            {
+                string previous = Path.Combine(Path.GetDirectoryName(path)!, $"gen-{GenerationNumber(path) - 1:D8}.log");
+                if (_created.ContainsKey(previous) && DurableLength.GetValueOrDefault(previous) < TrieNodeLogGeneration.FileHeaderLength)
+                    OrderViolations.Enqueue($"{path} was created before the header of {previous} was durable");
+            }
+            _created[path] = 0;
+        }
+    }
+
+    /// <summary>The real file system, as <paramref name="probe"/> observes and faults it.</summary>
+    private static IFileSystem ProbedFileSystem(FileSystemProbe probe)
+    {
+        ConcurrentDictionary<SafeFileHandle, string> paths = new();
+        IFile file = Substitute.For<IFile>();
+        file.OpenHandle(Arg.Any<string>(), Arg.Any<FileMode>(), Arg.Any<FileAccess>(), Arg.Any<FileShare>(), Arg.Any<FileOptions>(), Arg.Any<long>())
+            .Returns(call =>
+            {
+                string path = Path.GetFullPath(call.ArgAt<string>(0));
+                bool created = call.ArgAt<FileMode>(1) != FileMode.Open && !FileSystem.File.Exists(path);
+                SafeFileHandle handle = FileSystem.File.OpenHandle(path, call.ArgAt<FileMode>(1), call.ArgAt<FileAccess>(2), call.ArgAt<FileShare>(3), call.ArgAt<FileOptions>(4), call.ArgAt<long>(5));
+                paths[handle] = path;
+                if (created) probe.OnCreated(path);
+                return handle;
+            });
+        file.Exists(Arg.Any<string?>()).Returns(static call => FileSystem.File.Exists(call.ArgAt<string?>(0)));
+        file.When(static f => f.Delete(Arg.Any<string>())).Do(call =>
+        {
+            string path = Path.GetFullPath(call.ArgAt<string>(0));
+            probe.DeleteAttempts.AddOrUpdate(path, 1, static (_, attempts) => attempts + 1);
+            if (probe.FailDelete(path)) throw new IOException($"deleting {path} failed");
+            FileSystem.File.Delete(path);
+        });
+
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.File.Returns(file);
+        fileSystem.Directory.Returns(FileSystem.Directory);
+        fileSystem.FileInfo.Returns(FileSystem.FileInfo);
+        fileSystem.Path.Returns(FileSystem.Path);
+        fileSystem.RandomAccess.Returns(new ProbedRandomAccess(FileSystem.RandomAccess, probe, paths));
+        return fileSystem;
+    }
+
+    /// <summary>Forwards to the real random access; a flush records what it made durable, and a flush or write may throw the probe's fault.</summary>
+    private sealed class ProbedRandomAccess(IRandomAccess inner, FileSystemProbe probe, ConcurrentDictionary<SafeFileHandle, string> paths) : IRandomAccess
+    {
+        public IFileSystem FileSystem => inner.FileSystem;
+
+        public void FlushToDisk(SafeFileHandle handle)
+        {
+            string path = paths[handle];
+            long length = inner.GetLength(handle);
+            probe.BeforeFlush?.Invoke(path, length);
+            if (probe.FailFlush(path, length) is { } failure) throw failure;
+            inner.FlushToDisk(handle);
+
+            byte[] image = new byte[length];
+            int read = 0;
+            while (read < image.Length && inner.Read(handle, image.AsSpan(read), read) is > 0 and int count) read += count;
+            probe.DurableImage[path] = image[..read];
+            probe.DurableLength.AddOrUpdate(path, length, (_, durable) => Math.Max(durable, length));
+        }
+
+        public void Write(SafeFileHandle handle, ReadOnlySpan<byte> buffer, long fileOffset)
+        {
+            if (probe.FailWrite(paths[handle], fileOffset, buffer.Length) is { } fault)
+            {
+                if (fault.Prefix > 0) inner.Write(handle, buffer[..fault.Prefix], fileOffset);
+                throw fault.Failure;
+            }
+            inner.Write(handle, buffer, fileOffset);
+        }
+
+        public long GetLength(SafeFileHandle handle) => inner.GetLength(handle);
+        public int Read(SafeFileHandle handle, Span<byte> buffer, long fileOffset) => inner.Read(handle, buffer, fileOffset);
+        public long Read(SafeFileHandle handle, IReadOnlyList<Memory<byte>> buffers, long fileOffset) => inner.Read(handle, buffers, fileOffset);
+        public ValueTask<int> ReadAsync(SafeFileHandle handle, Memory<byte> buffer, long fileOffset, CancellationToken cancellationToken = default) => inner.ReadAsync(handle, buffer, fileOffset, cancellationToken);
+        public ValueTask<long> ReadAsync(SafeFileHandle handle, IReadOnlyList<Memory<byte>> buffers, long fileOffset, CancellationToken cancellationToken = default) => inner.ReadAsync(handle, buffers, fileOffset, cancellationToken);
+        public void SetLength(SafeFileHandle handle, long length) => inner.SetLength(handle, length);
+        public void Write(SafeFileHandle handle, IReadOnlyList<ReadOnlyMemory<byte>> buffers, long fileOffset) => inner.Write(handle, buffers, fileOffset);
+        public ValueTask WriteAsync(SafeFileHandle handle, ReadOnlyMemory<byte> buffer, long fileOffset, CancellationToken cancellationToken = default) => inner.WriteAsync(handle, buffer, fileOffset, cancellationToken);
+        public ValueTask WriteAsync(SafeFileHandle handle, IReadOnlyList<ReadOnlyMemory<byte>> buffers, long fileOffset, CancellationToken cancellationToken = default) => inner.WriteAsync(handle, buffers, fileOffset, cancellationToken);
+    }
+
+    [Test]
     public void A_commit_failing_after_the_log_is_durable_poisons_the_log()
     {
         using (IColumnsWriteBatch<FlatDbColumns> rocksDbBatch = _db.StartWriteBatch())
@@ -698,7 +1293,7 @@ public class TrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "the drain preceded the snapshot the range delete scanned");
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null, "the drain preceded the snapshot the range delete scanned");
             Assert.That(ReadTop(), Is.Null);
         }
     }
@@ -834,7 +1429,7 @@ public class TrieNodeLogTests
         await _log.DisposeAsync();
         using (Assert.EnterMultipleScope())
         {
-            for (ulong block = 0; block < 5; block++) Assert.That(Raw().TryLoadStateRlp(DistinctPath(block), ReadFlags.None), Is.EqualTo(Value((byte)block, 4096)));
+            for (ulong block = 0; block < 5; block++) Assert.That(Raw().LoadStateRlp(DistinctPath(block), ReadFlags.None), Is.EqualTo(Value((byte)block, 4096)));
             Assert.That(LogFiles(), Is.Empty);
         }
     }
@@ -958,7 +1553,6 @@ public class TrieNodeLogTests
     private sealed class UnflushableDb(IDb inner) : IDb
     {
         public string Name => inner.Name;
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);
@@ -1054,7 +1648,7 @@ public class TrieNodeLogTests
             using IPersistence.IWriteBatch sync = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
             sync.SetStateTrieNode(TreePath.FromHexString($"{index:x}bcdef"), Rlp2);
         }), Throws.Nothing);
-        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1), "the first bypass batch drained the log");
+        Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1), "the first bypass batch drained the log");
     }
 
     [Test]

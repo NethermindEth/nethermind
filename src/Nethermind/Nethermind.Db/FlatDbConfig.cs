@@ -38,12 +38,14 @@ public class FlatDbConfig : IFlatDbConfig
     public int ArchiveProofFineEpochs { get; set; } = 0;
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool DropPruningTrieState { get; set; } = false;
+    public bool MigrateFromPruningTrieState { get; set; } = false;
+    public int MigrationChunkNodes { get; set; } = 1000;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
     public bool DeferStorageTrieCommit { get; set; } = true;
     public bool ApplyStorageWritesOnIdleThread { get; set; } = true;
-    public FlatLayout Layout { get; set; } = FlatLayout.Flat;
+    public FlatLayout Layout { get; set; } = FlatLayout.Auto;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
     public ulong MaxInMemorySnapshotBytes { get; set; } = 0;

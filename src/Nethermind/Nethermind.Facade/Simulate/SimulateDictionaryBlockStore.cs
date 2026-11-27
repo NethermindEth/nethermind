@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
@@ -24,6 +25,10 @@ public class SimulateDictionaryBlockStore(IBlockStore baseBlockStore) : IBlockSt
         _blockDict[block.Hash] = block;
         _blockNumDict[block.Number] = block;
     }
+
+    /// <remarks>Simulation builds blocks and never receives encoded bodies.</remarks>
+    public void Insert(BlockHeader header, ReadOnlySpan<byte> body, WriteFlags writeFlags = WriteFlags.None) =>
+        throw new NotSupportedException();
 
     public void DeleteRange(ulong fromInclusive, ulong toExclusive)
     {
@@ -69,7 +74,7 @@ public class SimulateDictionaryBlockStore(IBlockStore baseBlockStore) : IBlockSt
     {
         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
         {
-            return _blockDecoder.Encode(block).Bytes;
+            return _blockDecoder.Encode(block);
         }
         return baseBlockStore.GetRlp(blockNumber, blockHash);
     }

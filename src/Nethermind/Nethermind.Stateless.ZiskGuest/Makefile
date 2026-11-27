@@ -33,14 +33,14 @@ OPT_FLAGS += \
 	--codegenopt JitOptRepeatCount=2 \
 	--codegenopt JitEnableHeadTailMerge=0
 
-ZISK_IMAGE ?= nethermindeth/zisk:1.3.2-alpha@sha256:31a0c7f9de175765e7e81da719bdc2409060de8d23ec8683672d7ee22b798a3f
+ZISK_IMAGE ?= nethermindeth/zisk:1.4.0-alpha@sha256:76bc753857e1807b724979a119ba919af0d857b3ea5deda982fd84b1be2cb930
 
 run:
 	@$(REQUIRE_INPUT)
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
 		$(ZISK_IMAGE) \
-		ziskemu -e /n/nethermind -i /n/$(INPUT)
+		ziskemu -e /n/$(GUEST_NAME) -i /n/$(INPUT)
 
 # Step count and the prover cost model for one input. Both are exact - the emulator is
 # deterministic - so a single run is the measurement, with no warm-up or repetition.
@@ -49,6 +49,6 @@ stats:
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
 		$(ZISK_IMAGE) \
-		ziskemu -e /n/nethermind -i /n/$(INPUT) -X --no-thousands-sep
+		ziskemu -e /n/$(GUEST_NAME) -i /n/$(INPUT) -X --no-thousands-sep
 
 .PHONY: stats

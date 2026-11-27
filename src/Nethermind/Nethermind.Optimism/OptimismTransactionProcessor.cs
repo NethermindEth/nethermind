@@ -25,6 +25,7 @@ public class OptimismTransactionProcessor(
     ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     private UInt256? _currentTxL1Cost;
+    private bool _chargesRollupFees;
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -35,8 +36,16 @@ public class OptimismTransactionProcessor(
         }
 
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+        if (tx.IsDeposit() && tx.IsOPSystemTransaction && opSpecHelper.IsRegolith(header))
+        {
+            return TransactionResult.WithDetail(TransactionResult.ErrorType.MalformedTransaction, "system deposit not supported after Regolith");
+        }
+
         IReleaseSpec spec = SpecProvider.GetSpec(header);
         _currentTxL1Cost = null;
+        // Matches op-geth, which charges neither the L1 data fee nor the operator fee for eth_call and eth_estimateGas.
+        // Replays of mined transactions also run with SkipValidation, so only the restoring call mode is exempt.
+        _chargesRollupFees = !opts.HasFlag(ExecutionOptions.CommitAndRestore);
         if (tx.IsDeposit())
         {
             WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
@@ -58,13 +67,19 @@ public class OptimismTransactionProcessor(
             {
                 WorldState.IncrementNonce(tx.SenderAddress!);
             }
-            header.GasUsed += tx.GasLimit;
-            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.ErrorDescription}");
+            ulong gasUsed = tx.IsOPSystemTransaction ? 0UL : tx.GasLimit;
+            header.GasUsed += gasUsed;
+            tracer.MarkAsFailed(tx.To!, gasUsed, [], $"failed deposit: {result.ErrorDescription}");
             result = TransactionResult.Ok;
         }
 
         return result;
     }
+
+    protected override bool UsesSystemTransactionProcessor(Transaction tx) => !tx.IsDeposit() && base.UsesSystemTransactionProcessor(tx);
+
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, in EthereumGasPolicy intrinsicGas, ulong minGasRequired, bool validate) =>
+        base.ValidateGas(tx, header, spec, in intrinsicGas, minGasRequired, validate && !(tx.IsDeposit() && tx.IsOPSystemTransaction));
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
@@ -77,7 +92,7 @@ public class OptimismTransactionProcessor(
 
         UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
 
-        if (tx.IsDeposit() && !tx.IsOPSystemTransaction && senderBalance < tx.ValueRef)
+        if (tx.IsDeposit() && senderBalance < tx.ValueRef)
         {
             return TransactionResult.InsufficientSenderBalance;
         }
@@ -98,8 +113,8 @@ public class OptimismTransactionProcessor(
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, header, WorldState);
-            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState);
+            UInt256 l1Cost = _chargesRollupFees ? (_currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, header, WorldState)) : UInt256.Zero;
+            UInt256 maxOperatorCost = _chargesRollupFees ? costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState) : UInt256.Zero;
 
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost + maxOperatorCost, out balanceLeft))
             {
@@ -121,7 +136,7 @@ public class OptimismTransactionProcessor(
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            senderReservedGasPayment += l1Cost; // no overflow here, otherwise previous check would fail
+            senderReservedGasPayment += l1Cost + maxOperatorCost; // no overflow here, otherwise previous check would fail
         }
 
         if (!senderReservedGasPayment.IsZero)
@@ -129,6 +144,10 @@ public class OptimismTransactionProcessor(
 
         return TransactionResult.Ok;
     }
+
+    // Deposits skip the EIP-3860 init code size check: https://specs.optimism.io/protocol/deposits.html#execution
+    protected override bool IsAboveInitCode(Transaction tx, IReleaseSpec spec) =>
+        !tx.IsDeposit() && base.IsAboveInitCode(tx, spec);
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -149,6 +168,9 @@ public class OptimismTransactionProcessor(
         {
             // Skip coinbase payments for deposit tx in Regolith
             base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, in effectiveGasPrice, blobGasFee, statusCode);
+
+            if (!_chargesRollupFees)
+                return;
 
             if (opSpecHelper.IsBedrock(header))
             {

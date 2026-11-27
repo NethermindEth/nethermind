@@ -11,8 +11,6 @@ namespace Nethermind.Api
 {
     public interface IApiWithNetwork : IApiWithBlockchain
     {
-        (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
-
         IIPResolver IpResolver { get; }
         IProtocolsManager? ProtocolsManager { get; }
 

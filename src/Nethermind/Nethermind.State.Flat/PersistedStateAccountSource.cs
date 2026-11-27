@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
@@ -66,7 +67,7 @@ public sealed class PersistedStateAccountSource(IPersistence persistence, ILogMa
             if (path.Path.Bytes[0] != partition) return;
 
             RlpReader accountReader = new(node.Value.AsSpan());
-            sink(path.Path, _decoder.Decode(ref accountReader)!);
+            sink(path.Path, _decoder.Decode(ref accountReader, RlpBehaviors.TrustedInput)!);
         }
 
         public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account) { }
@@ -83,7 +84,11 @@ public sealed class PersistedStateAccountSource(IPersistence persistence, ILogMa
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags | ReadFlags.HintCacheMiss);
+        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = null;
+            reader.TryLoadStateRlp(path, hash.ValueHash256, flags | ReadFlags.HintCacheMiss, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            return rlp;
+        }
     }
 }

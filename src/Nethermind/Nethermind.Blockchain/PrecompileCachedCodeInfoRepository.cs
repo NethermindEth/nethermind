@@ -47,8 +47,10 @@ public class PrecompileCachedCodeInfoRepository : ICodeInfoRepository
     {
         if (vmSpec.IsPrecompile(codeSource) && TryGetCachedPrecompile(codeSource, out CodeInfo? cachedCodeInfo))
         {
-            // EIP-7928: mirror base CodeInfoRepository.GetCachedCodeInfo precompile path so the read lands in the BAL.
+            // Mirror the base CodeInfoRepository.GetCachedCodeInfo precompile path, so the read lands in the BAL
+            // (EIP-7928) and the account in a witness being generated.
             _worldState.AddAccountRead(codeSource);
+            _worldState.RecordAccountAccess(codeSource);
             delegationAddress = null;
             return cachedCodeInfo;
         }
@@ -79,14 +81,14 @@ public class PrecompileCachedCodeInfoRepository : ICodeInfoRepository
     public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
         _baseCodeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        _baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
+    public void InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        _baseCodeInfoRepository.InsertCode(worldState, code, codeOwner, spec);
 
-    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        _baseCodeInfoRepository.InsertTransientCode(code, codeOwner, spec);
+    public void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        _baseCodeInfoRepository.InsertTransientCode(worldState, code, codeOwner, spec);
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
-        _baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
+    public void SetDelegation(IWorldState worldState, Address codeSource, Address authority, IReleaseSpec spec) =>
+        _baseCodeInfoRepository.SetDelegation(worldState, codeSource, authority, spec);
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec,
         [NotNullWhen(true)] out Address? delegatedAddress) =>

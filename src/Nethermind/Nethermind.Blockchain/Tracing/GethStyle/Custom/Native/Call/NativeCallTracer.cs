@@ -43,6 +43,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly Address? _sender;
     private readonly TxFrame[]? _frames;
     private readonly Transaction? _frameTx;
+    private readonly Transaction? _creationTx;
     private readonly IReleaseSpec? _frameTxSpec;
     private readonly NativeCallTracerConfig _config;
     private readonly BlockLogIndex? _blockLogIndex;
@@ -51,6 +52,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private NativeCallTracerBuffer _buffer;
 
     private EvmExceptionType? _error;
+    private NativeCallTracerCallFrame? _pendingSelfDestruct;
     private ulong _logIndexStart;
     private ulong _logIndex;
     private bool _framesCollapsed = false;
@@ -76,10 +78,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _sender = tx.SenderAddress;
         _frames = _isFrameTx ? tx.Frames : null;
         _frameTx = _isFrameTx ? tx : null;
+        _creationTx = tx.IsContractCreation ? tx : null;
         _frameTxSpec = _isFrameTx ? spec : null;
 
         _config = NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
-        _callStack = new(1024);
+        _callStack = [with(1024)];
 
         if (_config.WithLog)
         {
@@ -87,7 +90,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             _blockLogIndex = options.LogIndex;
             _logIndexStart = (ulong)(_blockLogIndex?.Next ?? 0);
             _logIndex = _logIndexStart;
-            _logIndexAtEntry = new ArrayPoolList<ulong>(16);
+            _logIndexAtEntry = [with(16)];
         }
     }
 
@@ -124,6 +127,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
         // BuildResult already removed the frame it handed to the trace, so everything still here is ours.
         _callStack.DisposeRecursive();
+        _pendingSelfDestruct?.Dispose();
         _logIndexAtEntry?.Dispose();
         _buffer.Release();
     }
@@ -176,7 +180,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             index,
             (ulong)callFrame.CallsSpan.Length);
 
-        callFrame.Logs ??= new ArrayPoolList<NativeCallTracerLogEntry>(8);
+        callFrame.Logs ??= [with(8)];
         callFrame.Logs.Add(callLog);
     }
 
@@ -207,10 +211,10 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// Like Geth, records a call or creation that failed its precheck or collided as a frame that failed with that
     /// error; a failed creation drops its <c>to</c>.
     /// </summary>
-    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to,
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
-        ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+        ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         OnError(gasLeft, error);
     }
 
@@ -228,19 +232,24 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         base.ReportActionRevert(gas, output);
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The SELFDESTRUCT frame is added when the halted frame ends: the opcode can still run out of gas after this call,
+    /// and Geth then reports no frame. Geth also reports the frame after the EIP-7708 transfer log, which so takes the
+    /// frame's <c>position</c>.
+    /// </remarks>
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
         base.ReportSelfDestruct(address, balance, refundAddress);
         if (!_config.OnlyTopCall && _callStack.Count > 0)
         {
-            NativeCallTracerCallFrame callFrame = new()
+            _pendingSelfDestruct = new()
             {
                 Type = Instruction.SELFDESTRUCT,
                 From = address,
                 To = refundAddress,
                 Value = balance
             };
-            _callStack[^1].Calls.Add(callFrame);
         }
     }
 
@@ -268,6 +277,20 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _blockLogIndex?.Next = (int)_logIndexStart + KeptFrameLogCount();
 
         CollapseFrameRoots();
+        if (_callStack.Count == 0 && _creationTx is not null && error == nameof(EvmExceptionType.TransactionCollision))
+        {
+            // A creation colliding with an existing account fails before its frame starts; Geth still reports the frame.
+            _error = EvmExceptionType.TransactionCollision;
+            _callStack.Add(new NativeCallTracerCallFrame
+            {
+                Type = Instruction.CREATE,
+                From = _sender,
+                Gas = _gasLimit,
+                Value = _creationTx.Value,
+                Input = _creationTx.Data
+            });
+        }
+
         if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
@@ -404,8 +427,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
                 // Uniform across dispatched and undispatched frames, where the VM's own figures would be the
                 // execution dimension net of the pre-dispatch charges.
-                frameCallFrame.Gas = _frames[i].GasLimit;
-                frameCallFrame.GasUsed = frameReceipt.GasUsed;
+                frameCallFrame.Gas = _frames[i].ExecutionGasLimit;
+                frameCallFrame.GasUsed = frameReceipt.ExecutionGasUsed;
 
                 if (_config.WithLog && frameReceipt.Logs.Length == 0)
                 {
@@ -473,6 +496,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
     private void OnExit(ulong gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
     {
+        if (_pendingSelfDestruct is not null)
+        {
+            if (error is null) _callStack[^1].Calls.Add(_pendingSelfDestruct);
+            else _pendingSelfDestruct.Dispose();
+            _pendingSelfDestruct = null;
+        }
+
         if (_logIndexAtEntry is not null)
         {
             // Logs of a halted frame never reach the receipt, so they do not consume an index.
@@ -519,10 +549,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// <remarks>
     /// A CREATE, CREATE2 or TCREATE frame that halted deployed no contract, so its <c>to</c> is dropped —
     /// the execution-apis <c>CallFrame</c> schema requires it to be omitted there.
+    /// A stack overflow uses Geth's text, which is always the same: no opcode grows the stack by more than one item,
+    /// so it overflows only on a full stack of 1024 items against a limit of 1023.
     /// </remarks>
     private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
     {
-        callFrame.Error ??= error.GetEvmExceptionDescription();
+        callFrame.Error ??= error == EvmExceptionType.StackOverflow
+            ? "stack limit reached 1024 (1023)"
+            : error.GetEvmExceptionDescription();
         if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE)
         {
             callFrame.To = null;

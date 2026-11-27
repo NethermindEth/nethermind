@@ -27,6 +27,16 @@ internal sealed class ConsecutiveBlockOverlays(int maxBlocks = ConsecutiveBlockO
     public void Publish(BlockChangesets block, RangeOverlay? earlierBlocks, IReadOnlySet<AddressAsKey> excluded)
     {
         bool continues = earlierBlocks is not null && earlierBlocks.Length < maxBlocks && earlierBlocks.Entries < maxEntries;
-        _byLastBlock.Set(block.Number, RangeOverlay.Extend(continues ? earlierBlocks : null, block.FoldAll(), block.Hash, excluded));
+        // The chain node copies what it keeps, so the folded block is given back as soon as the node is built.
+        MidBlockOverlay folded = MidBlockOverlay.Rent(block.Number);
+        try
+        {
+            block.FoldAll(folded);
+            _byLastBlock.Set(block.Number, RangeOverlay.Extend(continues ? earlierBlocks : null, folded, block.Hash, excluded));
+        }
+        finally
+        {
+            MidBlockOverlay.Return(folded);
+        }
     }
 }

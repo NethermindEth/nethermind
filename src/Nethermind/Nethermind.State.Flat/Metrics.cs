@@ -25,6 +25,30 @@ public static class Metrics
 
     public static void RecordUnreadableTransactionChangesetRow() => Interlocked.Increment(ref _unreadableTransactionChangesetRows);
 
+    private static long _snapshotFileDeleteFailures;
+
+    [CounterMetric]
+    [Description("Arena or blob files of persisted snapshots that could not be deleted when released and were left on disk")]
+    public static long SnapshotFileDeleteFailures
+    {
+        get => Volatile.Read(ref _snapshotFileDeleteFailures);
+        set => Interlocked.Exchange(ref _snapshotFileDeleteFailures, value);
+    }
+
+    public static void RecordSnapshotFileDeleteFailure() => Interlocked.Increment(ref _snapshotFileDeleteFailures);
+
+    private static long _trieWarmerDroppedJobs;
+
+    [CounterMetric]
+    [Description("Trie warmer jobs dropped because the trie node was already gone or the scope was disposed mid-warmup")]
+    public static long TrieWarmerDroppedJobs
+    {
+        get => Volatile.Read(ref _trieWarmerDroppedJobs);
+        set => Interlocked.Exchange(ref _trieWarmerDroppedJobs, value);
+    }
+
+    public static void RecordTrieWarmerDroppedJob() => Interlocked.Increment(ref _trieWarmerDroppedJobs);
+
     [DetailedMetric]
     [Description("Time to publish the trie nodes a bulk set wrote into the snapshot bundle (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
@@ -77,6 +101,16 @@ public static class Metrics
     [CounterMetric]
     [Description("Importer entries count flat")]
     public static long ImporterEntriesCountFlat { get; set; }
+
+    [CounterMetric]
+    [Description("Trie nodes the online migration from the pruning trie state has copied into the flat DB")]
+    public static long HalfPathMigratedNodes { get; set; }
+
+    [CounterMetric]
+    [Description("Account and slot reads that walked the trie because the online migration from the pruning trie state has not copied them yet")]
+    public static long HalfPathFallbackWalks => _halfPathFallbackWalks.Sum;
+    private static readonly StripedLong _halfPathFallbackWalks = new();
+    internal static void IncrementHalfPathFallbackWalks() => _halfPathFallbackWalks.Increment();
 
     [GaugeMetric]
     [Description("Active snapshot bundles")]

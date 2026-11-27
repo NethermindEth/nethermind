@@ -60,6 +60,75 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         TracerConfig = config is not null ? JsonSerializer.Deserialize<JsonElement>(config) : null
     };
 
+    [TestCase("99", "unknown panic code: 0x99", false)]
+    [TestCase("99", "unknown panic code: 0x99", true)]
+    [TestCase("10000000000000000", "unknown panic code: 0x10000000000000000", false)]
+    [TestCase("10000000000000000", "unknown panic code: 0x10000000000000000", true)]
+    [TestCase("22", "invalid encoded storage byte array accessed", false)]
+    [TestCase("22", "invalid encoded storage byte array accessed", true)]
+    public void Call_tracer_decodes_panic_reason(string code, string expected, bool nested)
+    {
+        byte[] output = Bytes.FromHexString("4e487b71" + code.PadLeft(64, '0'));
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        tracer.ReportAction(79000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        if (nested)
+            tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportActionRevert(40000, output);
+        if (nested)
+        {
+            tracer.ReportActionEnd(30000, ReadOnlyMemory<byte>.Empty);
+            tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(49000, 49000), [], []);
+        }
+        else
+            tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(39000, 39000), output, TransactionSubstate.GetErrorMessage(output));
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult!.Value, SerializerOptions));
+        JsonElement frame = nested ? json.RootElement.GetProperty("calls")[0] : json.RootElement;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            Assert.That(frame.GetProperty("revertReason").GetString(), Is.EqualTo(expected));
+            Assert.That(frame.GetProperty("output").GetString(), Is.EqualTo(output.ToHexString(withZeroX: true)));
+        }
+    }
+
+    [Test]
+    public void Call_tracer_omits_empty_decoded_revert_reason([Values] bool nested, [Values("", " ", "reason")] string reason)
+    {
+        const int abiWordLength = 32;
+        int selectorLength = TransactionSubstate.ErrorFunctionSelector.Length;
+        int stringDataOffset = selectorLength + 2 * abiWordLength;
+        byte[] output = new byte[stringDataOffset + (reason.Length == 0 ? 0 : abiWordLength)];
+        TransactionSubstate.ErrorFunctionSelector.CopyTo(output, 0);
+        output[selectorLength + abiWordLength - 1] = abiWordLength;
+        output[stringDataOffset - 1] = (byte)reason.Length;
+        Encoding.ASCII.GetBytes(reason).CopyTo(output, stringDataOffset);
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        tracer.ReportAction(79000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        if (nested)
+            tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportActionRevert(40000, output);
+        if (nested)
+            tracer.ReportActionEnd(60000, ReadOnlyMemory<byte>.Empty);
+        else
+            tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(39000, 39000), output, TransactionSubstate.GetErrorMessage(output));
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult!.Value, SerializerOptions));
+        JsonElement frame = nested ? json.RootElement.GetProperty("calls")[0] : json.RootElement;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            Assert.That(frame.GetProperty("output").GetString(), Is.EqualTo(output.ToHexString(withZeroX: true)));
+            Assert.That(frame.TryGetProperty("revertReason", out JsonElement decoded), Is.EqualTo(reason.Length != 0));
+            if (reason.Length != 0)
+                Assert.That(decoded.GetString(), Is.EqualTo(reason));
+        }
+    }
+
     [Test]
     public void Call_tracer_records_insufficient_balance_attempt(
         [Values(null, WithLog, OnlyTopCall)] string? config,
@@ -83,6 +152,32 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             Assert.That(calls[0].GetProperty("type").GetString(), Is.EqualTo(opcode.ToString()));
             Assert.That(calls[0].GetProperty("input").GetString(), Is.EqualTo(withInput ? "0xdeadbeef" : "0x"));
             Assert.That(calls[0].GetProperty("to").GetString(), Is.EqualTo("0x000000000000000000000000000000000000beef"));
+        }
+    }
+
+    [Test]
+    public void Depth_rejected_frame_preserves_call_type_and_value(
+        [Values(ExecutionType.CALL, ExecutionType.CALLCODE, ExecutionType.DELEGATECALL, ExecutionType.STATICCALL)] ExecutionType callType,
+        [Values(null, OnlyTopCall)] string? config)
+    {
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(config));
+        tracer.ReportAction(79000, 1, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportRejectedAction(10000, 10000, 1, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, callType, EvmExceptionType.CallDepthExceeded);
+        tracer.ReportActionEnd(70000, ReadOnlyMemory<byte>.Empty);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        Assert.That(root.Calls, Has.Count.EqualTo(config == OnlyTopCall ? 0 : 1));
+        if (config == OnlyTopCall) return;
+
+        NativeCallTracerCallFrame child = root.Calls[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(child.Type, Is.EqualTo(callType.ToInstruction()));
+            Assert.That(child.Error, Is.EqualTo("max call depth exceeded"));
+            Assert.That(child.GasUsed, Is.Zero);
+            Assert.That(child.Gas, Is.EqualTo(10000));
+            Assert.That(child.Value, callType == ExecutionType.STATICCALL ? Is.Null : Is.EqualTo((UInt256)1));
         }
     }
 
@@ -228,6 +323,10 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         new("600060006000600073000000000000000000000000000000000000beef6000f4", 23000UL, "out of gas: out of gas", 100UL)
     ];
 
+    /// <remarks>
+    /// As in Geth, the struct loggers report a failing step's cost as zero; the EIP-3155 file tracer keeps the cost
+    /// the step could not pay.
+    /// </remarks>
     [TestCaseSource(nameof(OpcodeFaultCases))]
     public void Opcode_fault_preserves_error_and_calculated_cost(string bytecode, ulong gasLimit, string expectedError, ulong expectedCost)
     {
@@ -238,7 +337,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Entries[^1].Error, Is.EqualTo(expectedError));
-            Assert.That(result.Entries[^1].GasCost, Is.EqualTo(expectedCost));
+            Assert.That(result.Entries[^1].GasCost, Is.Zero);
             Assert.That(result.Gas, Is.EqualTo(gasLimit));
         }
 
@@ -262,12 +361,12 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(last.GetProperty("error").GetString(), Is.EqualTo(expectedError), "streaming error");
-            Assert.That(last.GetProperty("gasCost").GetUInt64(), Is.EqualTo(expectedCost), "streaming gas cost");
+            Assert.That(last.GetProperty("gasCost").GetUInt64(), Is.Zero, "streaming gas cost");
         }
     }
 
     [TestCaseSource(nameof(OpcodeFaultCases))]
-    public void Child_opcode_fault_keeps_diagnostics_and_parent_resumes(string bytecode, ulong gasLimit, string expectedError, ulong expectedCost)
+    public void Child_opcode_fault_keeps_diagnostics_and_parent_resumes(string bytecode, ulong gasLimit, string expectedError, ulong _)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(bytecode), CancunSpec);
@@ -285,7 +384,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(entry.Error, Is.EqualTo(expectedError));
-                Assert.That(entry.GasCost, Is.EqualTo(expectedCost));
+                Assert.That(entry.GasCost, Is.Zero);
                 Assert.That(entry.Depth, Is.EqualTo(2));
             }
         }
@@ -298,11 +397,17 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
-    [Test]
-    public void Static_storage_fault_keeps_dynamic_gas_error()
+    [TestCase("600160005500", "SSTORE", "out of gas: write protection")]
+    [TestCase("ff", "SELFDESTRUCT", "stack underflow (0 <=> 1)")]
+    // The MSTORE8 at 0x25ec0 leaves 4922 gas, short of the constant charge Geth takes before write protection.
+    [TestCase("5f62025ec05361beefff", "SELFDESTRUCT", "out of gas")]
+    // Geth rejects LOG while executing it, so its write protection carries no out-of-gas prefix.
+    [TestCase("5f5f5f5fa2", "LOG2", "write protection")]
+    [TestCase("5f5f60205fa2", "LOG2", "write protection")]
+    public void Static_storage_fault_keeps_dynamic_gas_error(string childCode, string opcode, string error)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("600160005500"), CancunSpec);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), CancunSpec);
         TestState.Commit(CancunSpec);
         byte[] code = Prepare.EvmCode.StaticCall(TestItem.AddressC, 65535).Op(Instruction.STOP).Done;
         (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
@@ -312,8 +417,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         GethTxTraceEntry storage = result.Entries[^2];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage.Opcode, Is.EqualTo("SSTORE"));
-            Assert.That(storage.Error, Is.EqualTo("out of gas: write protection"));
+            Assert.That(storage.Opcode, Is.EqualTo(opcode));
+            Assert.That(storage.Error, Is.EqualTo(error));
             Assert.That(storage.GasCost, Is.Zero);
             Assert.That(result.Failed, Is.False);
             Assert.That(result.Entries[^1].Opcode, Is.EqualTo("STOP"));
@@ -333,17 +438,18 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     private static System.Collections.Generic.IEnumerable<TestCaseData> NonGasOpcodeFaultCases()
     {
-        yield return new("fe", 0UL, null, 100000UL);
-        yield return new("0c", 0UL, null, 100000UL);
-        yield return new("01", 3UL, "stack underflow (0 <=> 2)", 100000UL);
-        yield return new("600156", 8UL, null, 100000UL);
-        yield return new("6001600060003e", 9UL, null, 100000UL);
-        yield return new("60006000fd", 0UL, null, 100000UL);
-        yield return new("fe", 0UL, null, 21000UL);
-        yield return new("fe", 0UL, null, 21009UL);
-        yield return new("600101", 3UL, "stack underflow (1 <=> 2)", 100000UL);
-        yield return new("600160006110003e", 425UL, "out of gas", 21100UL);
-        yield return new("600160006110003e", 425UL, null, 22000UL);
+        yield return new("fe", 0UL, "invalid opcode: INVALID", 100000UL);
+        yield return new("0c", 0UL, "invalid opcode: opcode 0xc not defined", 100000UL);
+        yield return new("01", 0UL, "stack underflow (0 <=> 2)", 100000UL);
+        yield return new("600156", 0UL, "invalid jump destination", 100000UL);
+        yield return new("6001600060003e", 0UL, "return data out of bounds", 100000UL);
+        // REVERT is not an exceptional halt, so it keeps its cost and has no error.
+        yield return new("60206000fd", 3UL, null, 100000UL);
+        yield return new("fe", 0UL, "invalid opcode: INVALID", 21000UL);
+        yield return new("fe", 0UL, "invalid opcode: INVALID", 21009UL);
+        yield return new("600101", 0UL, "stack underflow (1 <=> 2)", 100000UL);
+        yield return new("600160006110003e", 0UL, "out of gas", 21100UL);
+        yield return new("600160006110003e", 0UL, "return data out of bounds", 22000UL);
     }
 
     [TestCaseSource(nameof(NonGasOpcodeFaultCases))]
@@ -381,15 +487,15 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     {
         foreach (ForkActivation activation in new[] { MainnetSpecProvider.CancunActivation, MainnetSpecProvider.PragueActivation })
         {
-            yield return new TestCaseData(activation, "6000600055", 24000UL, 1UL, 5000UL, "out of gas");
-            yield return new TestCaseData(activation, "6002600055", 24000UL, 1UL, 5000UL, "out of gas");
+            yield return new TestCaseData(activation, "6000600055", 24000UL, 1UL, 0UL, "out of gas");
+            yield return new TestCaseData(activation, "6002600055", 24000UL, 1UL, 0UL, "out of gas");
             yield return new TestCaseData(activation, "6001600055", 23307UL, 1UL, 2200UL, null);
             yield return new TestCaseData(activation, "60016000556002600055", 45412UL, 0UL, 0UL, "out of gas: not enough gas for reentrancy sentry");
         }
         foreach (ForkActivation activation in new ForkActivation[] { new(MainnetSpecProvider.IstanbulBlockNumber), new(MainnetSpecProvider.BerlinBlockNumber - 1), new(MainnetSpecProvider.BerlinBlockNumber) })
         {
-            yield return new TestCaseData(activation, "6000600055", 24000UL, 1UL, 5000UL, "out of gas");
-            yield return new TestCaseData(activation, "6002600055", 24000UL, 1UL, 5000UL, "out of gas");
+            yield return new TestCaseData(activation, "6000600055", 24000UL, 1UL, 0UL, "out of gas");
+            yield return new TestCaseData(activation, "6002600055", 24000UL, 1UL, 0UL, "out of gas");
         }
     }
 
@@ -421,10 +527,10 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(result, SerializerOptions));
             JsonElement storageEntry = json.RootElement.GetProperty("structLogs")[result.Entries.IndexOf(lastStorage)];
             bool hasStorage = storageEntry.TryGetProperty("storage", out JsonElement storage);
-            Assert.That(hasStorage, Is.True);
+            Assert.That(hasStorage, Is.EqualTo(expectedError is null));
             if (hasStorage)
                 Assert.That(storage.GetProperty("0x" + new string('0', 64)).GetString(), Is.EqualTo("0x" + expectedValue.ToString("x64")));
-            Assert.That(lastStorage.Refund, Is.EqualTo(expectedValue == 0 ? (long?)spec.GasCosts.SClearRefund : null));
+            Assert.That(lastStorage.Refund, Is.Null, "the counter before the SSTORE");
         }
 
         using JsonDocument streamed = ExecuteStreamingTrace(block, tx, GethTraceOptions.Default with { DisableStack = disableStack });
@@ -542,6 +648,25 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Call_trace_decodes_non_ascii_and_padded_offset_revert_reasons(
+        [Values("réverted ✓", "a\nb\tc")] string reason, [Values(32, 64)] int offset, [Values] bool nested)
+    {
+        byte[] payload = TransactionSubstateTests.ErrorStringPayload(reason, offset);
+        byte[] revertCode = Prepare.EvmCode.StoreDataInMemory(0, payload).Revert(payload.Length, 0).Done;
+        byte[] code = revertCode;
+        if (nested)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, revertCode, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressC, 50000).STOP().Done;
+        }
+
+        using JsonDocument trace = JsonDocument.Parse(ExecuteCallTrace(code));
+        JsonElement frame = nested ? trace.RootElement.GetProperty("calls")[0] : trace.RootElement;
+        Assert.That(frame.GetProperty("revertReason").GetString(), Is.EqualTo(reason));
+    }
+
     private static TestCaseData[] ActionDiagnosticCompositionCases =>
     [
         new("01", 100000UL, "stack underflow (0 <=> 2)"),
@@ -567,12 +692,16 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     private static System.Collections.Generic.IEnumerable<TestCaseData> PartialPopUnderflowCases()
     {
-        foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL, Instruction.EXTCODECOPY, Instruction.CREATE2 })
+        foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL, Instruction.EXTCODECOPY, Instruction.CREATE2,
+                     Instruction.KECCAK256, Instruction.EXP, Instruction.BLOCKHASH, Instruction.BLOBHASH, Instruction.MCOPY, Instruction.LOG4, Instruction.SELFDESTRUCT })
         {
             int required = opcode switch
             {
                 Instruction.CALL or Instruction.CALLCODE => 7,
-                Instruction.DELEGATECALL or Instruction.STATICCALL => 6,
+                Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.LOG4 => 6,
+                Instruction.KECCAK256 or Instruction.EXP => 2,
+                Instruction.BLOCKHASH or Instruction.BLOBHASH or Instruction.SELFDESTRUCT => 1,
+                Instruction.MCOPY => 3,
                 _ => 4
             };
             for (int depth = 0; depth < required; depth++)
@@ -623,7 +752,13 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         public override bool IsTracingActions => true;
         public bool HaltsLeftNoGas { get; private set; } = true;
         public int Errors { get; private set; }
+        public int CodeDepositDetails { get; private set; }
         public override void ReportActionRemainingGas(ulong gas) => _actionGas = gas;
+
+        public override void ReportActionErrorDetails(string error)
+        {
+            if (error is "contract creation code storage out of gas" or "max code size exceeded") CodeDepositDetails++;
+        }
 
         public override void ReportActionError(EvmExceptionType evmExceptionType)
         {
@@ -635,9 +770,125 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     public enum ChildOutcome { StackUnderflow, InvalidInstruction, InvalidJumpDestination, StackOverflow, StaticCallViolation, PrecompileFailure, OutOfGas, Revert }
 
-    public enum FailedCreate { StackUnderflow, InvalidInstruction, DepositOutOfGas, InvalidDeposit, Revert }
+    public enum FailedCreate { StackUnderflow, InvalidInstruction, DepositOutOfGas, InvalidDeposit, Revert, ExecutionOutOfGas, Oversize, InvalidDepositOutOfGas }
 
     public enum TraceDispatch { Untraced, Cancelable, Traced }
+
+    [Test]
+    public void Invalid_opcode_action_detail_does_not_change_struct_step(
+        [Values(Instruction.INVALID, (Instruction)0x0c, (Instruction)0xe0)] Instruction opcode,
+        [Values] bool child, [Values] TraceDispatch dispatch) =>
+        AssertOpcodeActionDetail(opcode, MainnetSpecProvider.ShanghaiActivation, opcode switch
+        {
+            Instruction.INVALID => "invalid opcode: INVALID",
+            (Instruction)0x0c => "invalid opcode: opcode 0xc not defined",
+            _ => "invalid opcode: RJUMP"
+        }, child, dispatch);
+
+    [Test]
+    public void Push0_action_detail_respects_active_fork([Values] bool shanghai, [Values] bool child, [Values] TraceDispatch dispatch)
+    {
+        ForkActivation activation = shanghai
+            ? MainnetSpecProvider.ShanghaiActivation
+            : new ForkActivation(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp - 1);
+        AssertOpcodeActionDetail(Instruction.PUSH0, activation, shanghai ? null : "invalid opcode: PUSH0", child, dispatch);
+    }
+
+    [Test]
+    public void Invalid_opcode_without_execution_gas_preserves_out_of_gas([Values] TraceDispatch dispatch) =>
+        AssertOpcodeActionDetail(Instruction.INVALID, MainnetSpecProvider.ShanghaiActivation, "out of gas", false, dispatch, 21000);
+
+    private void AssertOpcodeActionDetail(Instruction opcode, ForkActivation activation, string? expectedError,
+        bool child, TraceDispatch dispatch, ulong gasLimit = 100000)
+    {
+        byte[] code = [(byte)opcode];
+        if (child)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, code, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressC, (long)ChildGas).Op(Instruction.POP).STOP().Done;
+        }
+
+        (Block block, Transaction tx) = PrepareTx(activation, gasLimit, code);
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
+        NativeCallTracer native = new(tx, spec, GetGethTraceOptions(null));
+        GethLikeTxMemoryTracer? memory = dispatch == TraceDispatch.Traced ? new(tx, GethTraceOptions.Default) : null;
+        OpcodeDetailTracer instructionObserver = new(true, false);
+        OpcodeDetailTracer memoryObserver = new(false, true);
+        using ITxTracer tracer = dispatch switch
+        {
+            TraceDispatch.Untraced => native,
+            TraceDispatch.Cancelable => native.WithCancellation(CancellationToken.None),
+            _ => new CompositeTxTracer(native.WithCancellation(CancellationToken.None), memory!, instructionObserver, memoryObserver)
+                .WithCancellation(CancellationToken.None)
+        };
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        using GethLikeTxTrace callResult = native.BuildResult();
+        using GethLikeTxTrace? opcodeResult = memory?.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)callResult.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame frame = child ? root.Calls.AssertSingle() : root;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Error, Is.EqualTo(expectedError), "native frame error");
+            Assert.That(instructionObserver.Details, Is.Zero, "instruction tracers do not receive action-only opcode details");
+            Assert.That(memoryObserver.Details, Is.Zero, "memory tracers do not receive action-only opcode details");
+            Assert.That(frame.To, Is.EqualTo(child ? TestItem.AddressC : tx.To), "failing frame target");
+            if (child)
+            {
+                Assert.That(root.Error, Is.Null, "the caller survives the child's failure");
+                Assert.That(frame.Gas, Is.EqualTo(ChildGas), "forwarded gas");
+                Assert.That(frame.GasUsed, expectedError is null ? Is.LessThan(ChildGas) : Is.EqualTo(ChildGas), "child gas used");
+            }
+        }
+
+        if (opcodeResult is not null)
+        {
+            // The struct step names a byte by the active fork's opcode set and, as in Geth, gives INVALID no constant
+            // cost, so it reports the invalid opcode even where the native frame keeps running out of gas.
+            string expectedName = expectedError is null || opcode == Instruction.INVALID
+                ? OpcodeJsonNames.GetName(opcode)
+                : $"opcode 0x{(byte)opcode:x} not defined";
+            string? expectedStepError = expectedError is null ? null : $"invalid opcode: {expectedName}";
+            int matchingSteps = 0;
+            foreach (GethTxTraceEntry entry in opcodeResult.Entries)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    if (entry.ProgramCounter == 0 && entry.Depth == (child ? 2 : 1))
+                    {
+                        matchingSteps++;
+                        Assert.That(entry.Opcode, Is.EqualTo(expectedName), "struct step name");
+                        Assert.That(entry.Error, Is.EqualTo(expectedStepError), "struct step error");
+                        if (expectedError is not null)
+                            Assert.That(entry.GasCost, Is.Zero, "invalid opcode step gas cost");
+                    }
+                    else
+                    {
+                        Assert.That(entry.Error, Is.Null, $"struct step {entry.ProgramCounter} at depth {entry.Depth}");
+                    }
+                }
+            }
+            Assert.That(matchingSteps, Is.EqualTo(1), "the opcode's struct step is present exactly once");
+        }
+    }
+
+    private sealed class OpcodeDetailTracer : TxTracer
+    {
+        public int Details { get; private set; }
+
+        public OpcodeDetailTracer(bool instructions, bool memory)
+        {
+            IsTracingActions = true;
+            IsTracingInstructions = instructions;
+            IsTracingMemory = memory;
+        }
+
+        public override void ReportActionErrorDetails(string error)
+        {
+            if (error.StartsWith("invalid opcode:", StringComparison.Ordinal)) Details++;
+        }
+    }
 
     private const ulong ChildGas = 10000;
     private const ulong RevertGas = 6; // PUSH1 0, PUSH1 0, REVERT
@@ -692,6 +943,11 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 Assert.That(frame.Error, Is.EqualTo("execution reverted"), "revert error");
             }
 
+            if (outcome == ChildOutcome.StackOverflow)
+            {
+                Assert.That(frame.Error, Is.EqualTo("stack limit reached 1024 (1023)"), "stack overflow error");
+            }
+
             if (depth == 2)
             {
                 Assert.That(root.Calls[0].Error, Is.Null, "the middle frame survives its child's failure");
@@ -702,7 +958,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test(Description = "Like geth, a CREATE frame that halts or fails its code deposit reports all its gas as used")]
-    public void Failed_create_frame_reports_gas_used([Values] FailedCreate outcome, [Values] TraceDispatch dispatch)
+    public void Failed_create_frame_reports_gas_used([Values] FailedCreate outcome, [Values] TraceDispatch dispatch,
+        [Values(Instruction.CREATE, Instruction.CREATE2)] Instruction opcode)
     {
         byte[] initCode = outcome switch
         {
@@ -710,9 +967,15 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             FailedCreate.InvalidInstruction => [(byte)Instruction.INVALID],
             FailedCreate.DepositOutOfGas => Prepare.EvmCode.ForInitOf(new byte[1024]).Done,
             FailedCreate.InvalidDeposit => Prepare.EvmCode.ForInitOf([0xEF]).Done,
+            FailedCreate.InvalidDepositOutOfGas => DepositInitCode(1024, 0xEF),
+            FailedCreate.Oversize => DepositInitCode(checked((int)CancunSpec.MaxCodeSize + 1)),
+            FailedCreate.ExecutionOutOfGas => Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done,
             _ => Prepare.EvmCode.Revert(0, 0).Done
         };
-        byte[] code = Prepare.EvmCode.Create(initCode, 0).Op(Instruction.POP).STOP().Done;
+        Prepare create = opcode == Instruction.CREATE
+            ? Prepare.EvmCode.Create(initCode, 0)
+            : Prepare.EvmCode.Create2(initCode, new byte[32], 0);
+        byte[] code = create.Op(Instruction.POP).STOP().Done;
 
         using GethLikeTxTrace trace = TraceFailedFrame(code, dispatch, outcome == FailedCreate.Revert ? 0 : 1, out ulong spentGas);
         NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
@@ -720,8 +983,23 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(frame.Type, Is.EqualTo(Instruction.CREATE), "type");
+            Assert.That(frame.Type, Is.EqualTo(opcode), "type");
             Assert.That(frame.GasUsed, Is.EqualTo(outcome == FailedCreate.Revert ? RevertGas : frame.Gas), "gasUsed");
+            Assert.That(frame.To, Is.Null, "a failed CREATE deploys no contract");
+            Assert.That(frame.Output.IsEmpty, Is.True, "failed creation output");
+            Assert.That(root.Error, Is.Null, "the parent survives a failed creation");
+            if (outcome is FailedCreate.DepositOutOfGas or FailedCreate.InvalidDeposit or FailedCreate.InvalidDepositOutOfGas
+                or FailedCreate.Oversize or FailedCreate.ExecutionOutOfGas)
+            {
+                string expectedError = outcome switch
+                {
+                    FailedCreate.DepositOutOfGas => "contract creation code storage out of gas",
+                    FailedCreate.InvalidDeposit or FailedCreate.InvalidDepositOutOfGas => "invalid code: must not begin with 0xef",
+                    FailedCreate.Oversize => "max code size exceeded",
+                    _ => "out of gas"
+                };
+                Assert.That(frame.Error, Is.EqualTo(expectedError), "creation error precedence");
+            }
             Assert.That(frame.Error, Is.Not.Null, "error");
             if (outcome == FailedCreate.Revert)
             {
@@ -729,6 +1007,191 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             }
 
             Assert.That(root.GasUsed, Is.EqualTo(spentGas), "the root reports the transaction's gasUsed");
+        }
+    }
+
+    private static byte[] DepositInitCode(int length, byte firstByte = 0) => Prepare.EvmCode
+        .PushData(firstByte).PushData(0).Op(Instruction.MSTORE8)
+        .PushData(length).PushData(0).Op(Instruction.RETURN).Done;
+
+    public enum DepositOutcome { EnoughGas, InsufficientGas, InvalidCode, InvalidCodeAndInsufficientGas, Oversize, OversizeAndInvalidCode, ExecutionOutOfGas }
+
+    private static IEnumerable<TestCaseData> RootDepositCases()
+    {
+        ForkActivation[] forks = [new(0), new(MainnetSpecProvider.HomesteadBlockNumber), MainnetSpecProvider.CancunActivation, MainnetSpecProvider.OsakaActivation];
+        foreach (ForkActivation activation in forks)
+        {
+            foreach (TraceDispatch dispatch in Enum.GetValues<TraceDispatch>())
+            {
+                yield return new TestCaseData(activation, DepositOutcome.EnoughGas, dispatch);
+                yield return new TestCaseData(activation, DepositOutcome.InsufficientGas, dispatch);
+            }
+        }
+        foreach (DepositOutcome outcome in new[] { DepositOutcome.InvalidCode, DepositOutcome.InvalidCodeAndInsufficientGas, DepositOutcome.Oversize, DepositOutcome.OversizeAndInvalidCode, DepositOutcome.ExecutionOutOfGas })
+        {
+            foreach (TraceDispatch dispatch in Enum.GetValues<TraceDispatch>())
+            {
+                yield return new TestCaseData(MainnetSpecProvider.CancunActivation, outcome, dispatch);
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(RootDepositCases))]
+    public void Root_create_code_deposit_diagnostic(ForkActivation activation, DepositOutcome outcome, TraceDispatch dispatch)
+    {
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
+        int length = outcome switch
+        {
+            DepositOutcome.InsufficientGas or DepositOutcome.InvalidCodeAndInsufficientGas => 1024,
+            DepositOutcome.Oversize or DepositOutcome.OversizeAndInvalidCode => checked((int)spec.MaxCodeSize + 1),
+            _ => 1
+        };
+        byte[] initCode = outcome == DepositOutcome.ExecutionOutOfGas
+            ? Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done
+            : DepositInitCode(length, outcome is DepositOutcome.InvalidCode or DepositOutcome.InvalidCodeAndInsufficientGas or DepositOutcome.OversizeAndInvalidCode ? (byte)0xEF : (byte)0);
+        // 1024 bytes require 204800 deposit gas; this budget comfortably executes the short initcode,
+        // but cannot pay that deposit. The one-byte control requires only 200 deposit gas.
+        const ulong gasLimit = 100000;
+        (Block block, Transaction tx) = PrepareInitTx(activation, gasLimit, initCode);
+        Address address = ContractAddress.From(Sender, TestState.GetNonce(Sender));
+        GasSpentTracer receipt = new();
+        _processor.CallAndRestore(tx, block.Header, receipt);
+        using GethLikeTxMemoryTracer baseline = new(tx, GethTraceOptions.Default);
+        _processor.CallAndRestore(tx, block.Header, baseline);
+        using GethLikeTxTrace expectedStruct = baseline.BuildResult();
+
+        NativeCallTracer native = new(tx, spec, GetGethTraceOptions(null));
+        using GethLikeTxMemoryTracer memory = new(tx, GethTraceOptions.Default);
+        using ITxTracer tracer = dispatch switch
+        {
+            TraceDispatch.Untraced => native,
+            TraceDispatch.Cancelable => native.WithCancellation(CancellationToken.None),
+            _ => new CompositeTxTracer(memory.WithCancellation(CancellationToken.None),
+                new CompositeTxTracer(NullTxTracer.Instance, native).WithCancellation(CancellationToken.None))
+        };
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+        using GethLikeTxTrace result = native.BuildResult();
+        using GethLikeTxTrace actualStruct = memory.BuildResult();
+        NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)result.CustomTracerResult!.Value!;
+        bool frontierEmpty = activation.BlockNumber == 0 && outcome == DepositOutcome.InsufficientGas;
+        bool success = outcome == DepositOutcome.EnoughGas || frontierEmpty;
+        string? error = outcome switch
+        {
+            DepositOutcome.EnoughGas => null,
+            DepositOutcome.InsufficientGas => frontierEmpty ? null : "contract creation code storage out of gas",
+            DepositOutcome.InvalidCode or DepositOutcome.InvalidCodeAndInsufficientGas => "invalid code: must not begin with 0xef",
+            DepositOutcome.Oversize or DepositOutcome.OversizeAndInvalidCode => "max code size exceeded",
+            _ => "out of gas"
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Type, Is.EqualTo(Instruction.CREATE));
+            Assert.That(frame.Error, Is.EqualTo(error));
+            Assert.That(frame.Gas, Is.EqualTo(gasLimit));
+            Assert.That(frame.GasUsed, Is.EqualTo(receipt.SpentGas));
+            if (!success) Assert.That(frame.GasUsed, Is.EqualTo(gasLimit));
+            Assert.That(frame.To, Is.EqualTo(success ? address : null));
+            Assert.That(frame.Output.ToArray(), Is.EqualTo(receipt.Output));
+            Assert.That(TestState.AccountExists(address), Is.EqualTo(success));
+            if (success) Assert.That(TestState.GetCode(address).ToArray(), Is.EqualTo(frontierEmpty ? Array.Empty<byte>() : new byte[length]));
+        }
+        if (dispatch == TraceDispatch.Traced) AssertDepositStructTrace(actualStruct, expectedStruct);
+    }
+
+    private static IEnumerable<TestCaseData> ChildDepositCases()
+    {
+        foreach (ForkActivation activation in new ForkActivation[] { new(0), new(MainnetSpecProvider.HomesteadBlockNumber), MainnetSpecProvider.OsakaActivation })
+        {
+            foreach (int length in new[] { 1, 1024 })
+            {
+                yield return new TestCaseData(activation, Instruction.CREATE, length, false);
+            }
+        }
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.OsakaActivation);
+        int oversize = checked((int)spec.MaxCodeSize + 1);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, oversize, false);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, oversize, false);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1, false);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1024, false);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, 1024, true);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1024, true);
+    }
+
+    [TestCaseSource(nameof(ChildDepositCases))]
+    public void Child_create_code_deposit_diagnostic(ForkActivation activation, Instruction opcode, int length, bool onlyTopCall)
+    {
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
+        byte[] initCode = DepositInitCode(length);
+        byte[] salt = new byte[32];
+        Prepare create = opcode == Instruction.CREATE
+            ? Prepare.EvmCode.Create(initCode, 0)
+            : Prepare.EvmCode.Create2(initCode, salt, 0);
+        // Before EIP-150, a failed CREATE leaves no parent gas; STOP still exposes its result on the stack.
+        byte[] code = create.STOP().Done;
+        (Block block, Transaction tx) = PrepareTx(activation, 100000, code);
+        ulong nonce = TestState.GetNonce(Recipient);
+        Address address = opcode == Instruction.CREATE ? ContractAddress.From(Recipient, nonce) : ContractAddress.From(Recipient, salt, initCode);
+        UInt256 balance = TestState.GetBalance(Recipient);
+        GasSpentTracer receipt = new();
+        _processor.CallAndRestore(tx, block.Header, receipt);
+        using GethLikeTxMemoryTracer baseline = new(tx, GethTraceOptions.Default);
+        _processor.CallAndRestore(tx, block.Header, baseline);
+        using GethLikeTxTrace expectedStruct = baseline.BuildResult();
+        NativeCallTracer native = new(tx, spec, GetGethTraceOptions(onlyTopCall ? OnlyTopCall : null));
+        GethLikeTxMemoryTracer memory = new(tx, GethTraceOptions.Default);
+        using CompositeTxTracer tracer = new(memory.WithCancellation(CancellationToken.None),
+            new CompositeTxTracer(NullTxTracer.Instance, native).WithCancellation(CancellationToken.None));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+        using GethLikeTxTrace result = native.BuildResult();
+        using GethLikeTxTrace actualStruct = memory.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)result.CustomTracerResult!.Value!;
+        bool frontierEmpty = activation.BlockNumber == 0 && length == 1024;
+        bool success = length == 1 || frontierEmpty;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Error, Is.Null, "the parent survives");
+            Assert.That(root.GasUsed, Is.EqualTo(receipt.SpentGas));
+            Assert.That(root.Output.IsEmpty, Is.True);
+            Assert.That(actualStruct.Entries[^1].Opcode, Is.EqualTo("STOP"));
+            Assert.That(actualStruct.Entries[^1].Depth, Is.EqualTo(1));
+            Assert.That(actualStruct.Entries[^1].Stack?.ToArray(), Is.EqualTo(success ? address.Bytes.PadLeft(32) : new byte[32]));
+            Assert.That(root.Calls, Has.Count.EqualTo(onlyTopCall ? 0 : 1));
+            Assert.That(TestState.AccountExists(address), Is.EqualTo(success));
+            if (success) Assert.That(TestState.GetCode(address).ToArray(), Is.EqualTo(frontierEmpty ? Array.Empty<byte>() : new byte[length]));
+            Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(nonce + 1));
+            Assert.That(TestState.GetBalance(Recipient), Is.EqualTo(balance + tx.Value));
+        }
+        if (!onlyTopCall)
+        {
+            NativeCallTracerCallFrame child = root.Calls.AssertSingle();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(child.Type, Is.EqualTo(opcode));
+                string? error = success ? null : length > spec.MaxCodeSize ? "max code size exceeded" : "contract creation code storage out of gas";
+                Assert.That(child.Error, Is.EqualTo(error));
+                Assert.That(child.To, Is.EqualTo(success ? address : null));
+                Assert.That(child.Input.ToArray(), Is.EqualTo(initCode));
+                Assert.That(child.Output.ToArray(), Is.EqualTo(success ? new byte[length] : Array.Empty<byte>()));
+                if (frontierEmpty)
+                    Assert.That(child.GasUsed, Is.LessThan(child.Gas), "Frontier retains the child's unspent deposit gas");
+                else if (!success)
+                    Assert.That(child.GasUsed, Is.EqualTo(child.Gas));
+            }
+        }
+        AssertDepositStructTrace(actualStruct, expectedStruct);
+    }
+
+    private static void AssertDepositStructTrace(GethLikeTxTrace actual, GethLikeTxTrace expected)
+    {
+        Assert.That(actual.Entries, Has.Count.EqualTo(expected.Entries.Count));
+        for (int i = 0; i < expected.Entries.Count; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual.Entries[i].Error, Is.EqualTo(expected.Entries[i].Error), $"entry {i} error");
+                Assert.That(actual.Entries[i].GasCost, Is.EqualTo(expected.Entries[i].GasCost), $"entry {i} cost");
+                Assert.That(actual.Entries[i].Gas, Is.EqualTo(expected.Entries[i].Gas), $"entry {i} gas");
+            }
         }
     }
 
@@ -760,6 +1223,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             {
                 Assert.That(checkpoints.Errors, Is.EqualTo(expectedErrors), "action errors");
                 Assert.That(checkpoints.HaltsLeftNoGas, Is.True, "every action error follows a report of no gas left");
+                Assert.That(checkpoints.CodeDepositDetails, Is.Zero, "instruction tracers do not receive code-deposit detail");
             }
         }
 
@@ -770,13 +1234,14 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     private sealed class GasSpentTracer : TxTracer
     {
         public ulong SpentGas { get; private set; }
+        public byte[] Output { get; private set; } = [];
         public override bool IsTracingReceipt => true;
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
-            SpentGas = gasSpent.SpentGas;
+            (SpentGas, Output) = (gasSpent.SpentGas, output);
 
         public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) =>
-            SpentGas = gasSpent.SpentGas;
+            (SpentGas, Output) = (gasSpent.SpentGas, output);
     }
 
     [Test]
@@ -1021,7 +1486,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using NativeCallTracerCallFrame frame = new() { Type = Instruction.CALL, From = TestItem.AddressA, Gas = 0x5208 };
         string withoutLogs = JsonSerializer.Serialize(frame, EthereumJsonSerializer.JsonOptions);
 
-        frame.Logs = new ArrayPoolList<NativeCallTracerLogEntry>(logs);
+        frame.Logs = [with(logs)];
 
         string entries = string.Join(',', logs.Select(static log => JsonSerializer.Serialize(log, EthereumJsonSerializer.JsonOptions)));
         Assert.That(JsonSerializer.Serialize(frame, EthereumJsonSerializer.JsonOptions), Is.EqualTo($"{withoutLogs[..^1]},\"logs\":[{entries}]}}"));
@@ -1419,6 +1884,50 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
     }
 
+    [Test(Description = "Like geth, a SELFDESTRUCT that runs out of gas paying for the new beneficiary account reports no frame")]
+    public void Test_CallTrace_SelfDestruct_OutOfGas_OmitsFrame([Values] bool enoughGas)
+    {
+        Address beneficiary = new("0x00000000000000000000000000000000000000be");
+        byte[] childCode = Prepare.EvmCode.PushData(beneficiary).Op(Instruction.SELFDESTRUCT).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1);
+        TestState.InsertCode(TestItem.AddressC, childCode, Spec);
+        // The new account charge of 25000 runs after the beneficiary access, so 10000 gas reaches it but cannot pay it.
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, enoughGas ? 50000 : 10000).Op(Instruction.POP).STOP().Done;
+
+        (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        using GethLikeTxTrace trace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
+        NativeCallTracerCallFrame child = ((NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!).Calls.AssertSingle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(child.Error, Is.EqualTo(enoughGas ? null : "out of gas"));
+            Assert.That(child.Calls.Select(static frame => frame.Type), Is.EqualTo(enoughGas ? new[] { Instruction.SELFDESTRUCT } : Array.Empty<Instruction>()));
+        }
+    }
+
+    [Test(Description = "Like geth, the EIP-7708 transfer log of a SELFDESTRUCT comes before its frame")]
+    public void Test_CallTrace_SelfDestruct_TransferLog_Position()
+    {
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        LogEntry transferLog = new(TestItem.AddressA, [], [Keccak.Zero]);
+
+        tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportSelfDestruct(TestItem.AddressB, 1, TestItem.AddressC);
+        tracer.ReportLog(transferLog);
+        tracer.ReportActionEnd(90000, ReadOnlyMemory<byte>.Empty);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(10000, 10000), [], [transferLog]);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Logs.AssertSingle().Position, Is.Zero);
+            Assert.That(root.Calls.AssertSingle().Type, Is.EqualTo(Instruction.SELFDESTRUCT));
+        }
+    }
+
     public enum CreateOutcome { Success, Revert, InvalidOpcode, AddressCollision }
 
     [TestCase(CreateOutcome.Success, TestName = "TopLevelCreate_Success")]
@@ -1451,17 +1960,21 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
 
-        if (outcome == CreateOutcome.AddressCollision)
-        {
-            Assert.That(trace.CustomTracerResult, Is.Null,
-                "address-collision path never enters the EVM; no call frame should be produced");
-            return;
-        }
-
         NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
         Assert.That(frame, Is.Not.Null, "expected a top-level CREATE call frame");
         Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
-        if (outcome == CreateOutcome.Success)
+        if (outcome == CreateOutcome.AddressCollision)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frame.Error, Is.EqualTo("contract address collision"));
+                Assert.That(frame.To, Is.Null);
+                Assert.That(frame.Gas, Is.EqualTo(100000UL));
+                Assert.That(frame.GasUsed, Is.EqualTo(100000UL), "a collision consumes all the gas");
+                Assert.That(frame.Input.ToArray(), Is.EqualTo(initCode));
+            }
+        }
+        else if (outcome == CreateOutcome.Success)
         {
             using (Assert.EnterMultipleScope())
             {

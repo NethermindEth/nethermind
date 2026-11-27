@@ -18,7 +18,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
@@ -263,6 +262,74 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
 
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
         Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(0ul));
+    }
+
+    /// <summary>
+    /// eth_call runs with <see cref="ExecutionOptions.SkipValidation"/> and <see cref="ExecutionOptions.BuildUp"/>:
+    /// the regular processor runs it, and its changes stay in the world state, neither restored nor committed.
+    /// </summary>
+    [Test]
+    public void Call_without_validation_in_build_up_keeps_uncommitted_changes()
+    {
+        Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(1).WithGasPrice(1).WithGasLimit(21000)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).TestObject;
+        Block block = Build.A.Block.WithNumber(1ul).WithTransactions(tx).TestObject;
+        Snapshot snapshot = _stateProvider.TakeSnapshot();
+
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1ul), "the system processor does not increment the nonce");
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.One), "the value transfer is not restored");
+        }
+
+        _stateProvider.Restore(snapshot);
+        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(0ul), "the changes are not committed");
+    }
+
+    [Test]
+    public void Call_without_validation_completes_when_the_sender_self_destructs()
+    {
+        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.LondonBlockNumber).TestObject;
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        _stateProvider.InsertCode(TestItem.AddressA, Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done, spec);
+        Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressA).WithGasPrice(1).WithGasLimit(100_000)
+            .WithSenderAddress(TestItem.AddressA).TestObject;
+
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.AccountExists(TestItem.AddressA), Is.False);
+        }
+    }
+
+    [Test]
+    public void Call_without_validation_refunds_a_sender_whose_self_destruct_was_reverted()
+    {
+        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.LondonBlockNumber).TestObject;
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        _stateProvider.InsertCode(TestItem.AddressA, Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done, spec);
+        _stateProvider.CreateAccount(TestItem.AddressC, UInt256.Zero);
+        _stateProvider.InsertCode(TestItem.AddressC, Prepare.EvmCode.Call(TestItem.AddressA, 50_000).PushData(0).PushData(0).Op(Instruction.REVERT).Done, spec);
+        Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressC).WithGasPrice(1).WithGasLimit(100_000)
+            .WithSenderAddress(TestItem.AddressA).TestObject;
+        CallOutputTracer tracer = new();
+
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+        TransactionResult result = _transactionProcessor.Process(tx, tracer, ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.AccountExists(TestItem.AddressA), Is.True);
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(AccountBalance - tracer.GasSpent));
+        }
     }
 
     [Test]

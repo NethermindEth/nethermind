@@ -408,10 +408,12 @@ public class ArchiveProofTests
     }
 
     [Test]
-    public void Proofs_resolve_across_epoch_buckets([Values(1ul, 64ul, 127ul, 128ul, 130ul, Blocks)] ulong block)
+    public void Proofs_resolve_across_epoch_buckets(
+        [Values(1ul, 64ul, 127ul, 128ul, 130ul, Blocks)] ulong block,
+        [Values(1L, HistoryWalkVerifier.DefaultMaxRowsPerPartition)] long maxRowsPerPartition)
     {
         _policy = EpochPolicy;
-        BuildCommitments();
+        BuildCommitments(maxRowsPerPartition);
 
         foreach (Address address in new[] { _accounts[0], _accounts[AccountCount / 2], _accounts[^1], Contract })
         {
@@ -664,11 +666,11 @@ public class ArchiveProofTests
         ArchiveProofSource source = CreateSource(_policy);
         StateId head = _chain.StateIdAt(Blocks);
         source.CollectProof(new AccountProofCollector(Contract, ContractSlots), head, diagnostics: null);
-        AccountProofCollector collector = new(Contract, ContractSlots);
+        AccountProofCollector[] collectors = new AccountProofCollector[AllocationWindows.Count];
+        for (int i = 0; i < collectors.Length; i++) collectors[i] = new AccountProofCollector(Contract, ContractSlots);
+        int window = 0;
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        source.CollectProof(collector, head, diagnostics: null);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationWindows.AllocatedBytes(() => source.CollectProof(collectors[window++], head, diagnostics: null));
 
         Assert.That(allocated, Is.LessThan(WarmProofAllocationCeiling),
             "a warm proof follows only the key's path; no node objects are built for the siblings of each branch on it");
@@ -2716,13 +2718,13 @@ public class ArchiveProofTests
     private void CorruptEveryStorageRow()
     {
         IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory);
-        foreach (byte[] key in AllKeys(column)) column.PutSpan(key, Nethermind.Serialization.Rlp.Rlp.Encode(new byte[] { 0xEE, 0xEE }).Bytes);
+        foreach (byte[] key in AllKeys(column)) column.PutSpan(key, Nethermind.Serialization.Rlp.Rlp.Encode(new byte[] { 0xEE, 0xEE }));
     }
 
     private void CorruptAccountRowsOf(Address address)
     {
         IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory);
-        byte[] tampered = Nethermind.Serialization.Rlp.AccountDecoder.Slim.EncodeAsBytes(new Account(9999, 9999));
+        byte[] tampered = Nethermind.Serialization.Rlp.AccountDecoder.Slim.Encode(new Account(9999, 9999));
         byte[] accountPath = Keccak.Compute(address.Bytes).BytesToArray();
         foreach (byte[] key in AllKeys(column).Where(key => key.AsSpan().StartsWith(accountPath))) column.PutSpan(key, tampered);
     }
@@ -2730,7 +2732,7 @@ public class ArchiveProofTests
     private void CorruptEveryAccountRow()
     {
         IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory);
-        byte[] tampered = Nethermind.Serialization.Rlp.AccountDecoder.Slim.EncodeAsBytes(new Account(9999, 9999));
+        byte[] tampered = Nethermind.Serialization.Rlp.AccountDecoder.Slim.Encode(new Account(9999, 9999));
         foreach (byte[] key in AllKeys(column)) column.PutSpan(key, tampered);
     }
 

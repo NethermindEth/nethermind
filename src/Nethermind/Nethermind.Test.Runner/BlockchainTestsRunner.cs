@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -22,6 +23,10 @@ public readonly record struct BlockchainTestsRunnerOptions(
     bool SuppressOutput = false,
     bool? ParallelExecution = null,
     bool? ParallelExecutionBatchRead = null,
+    bool WithholdBlockAccessLists = false,
+    bool MatchExpectedExceptions = false,
+    PreWarmMode? PreWarming = null,
+    IBlockAccessListExecutionReport? BlockAccessListExecutionObserver = null,
     Func<bool, string?>? ProgressUpdateFactory = null);
 
 public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITestSourceLoader? testsSource = null) : BlockchainTestBase, IBlockchainTestRunner
@@ -31,6 +36,11 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
         _trace ? LimboLogs.Instance : _suppressOutput ? new TestLogManager(LogLevel.Error) : null;
     protected override bool? ParallelExecutionOverride => _parallelExecution;
     protected override bool? ParallelExecutionBatchReadOverride => _parallelExecutionBatchRead;
+    protected override bool WithholdBlockAccessLists => _withholdBlockAccessLists;
+    protected override PreWarmMode? PreWarmingOverride => _preWarming;
+    protected override IBlockAccessListExecutionReport? BlockAccessListExecutionObserver => _blockAccessListExecutionObserver;
+    // A rejection's reason is the consumer's to judge, from the client error each result reports, unless --match-exceptions asks for the reason check.
+    protected override bool MatchExpectedExceptions => _matchExpectedExceptions;
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
     private readonly ITestSourceLoader? _testsSource = testsSource;
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
@@ -44,12 +54,22 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     private readonly bool _suppressOutput = options.SuppressOutput;
     private readonly bool? _parallelExecution = options.ParallelExecution;
     private readonly bool? _parallelExecutionBatchRead = options.ParallelExecutionBatchRead;
+    private readonly bool _withholdBlockAccessLists = options.WithholdBlockAccessLists;
+    private readonly bool _matchExpectedExceptions = options.MatchExpectedExceptions;
+    private readonly PreWarmMode? _preWarming = options.PreWarming;
+    private readonly IBlockAccessListExecutionReport? _blockAccessListExecutionObserver = options.BlockAccessListExecutionObserver;
     private readonly Func<bool, string?>? _progressUpdateFactory = options.ProgressUpdateFactory;
 
     public BlockchainTestsRunner(ITestSourceLoader testsSource, in BlockchainTestsRunnerOptions options)
         : this(options, testsSource ?? throw new ArgumentNullException(nameof(testsSource)))
     {
     }
+
+    /// <summary>
+    /// Whether <see cref="RunTestsAsync"/> met a fixture file it could not load, which it reports on stderr and leaves out
+    /// of the results, or <see cref="RunEngineXGroupAsync"/> met a test it could not load.
+    /// </summary>
+    internal bool LoadFailed { get; private set; }
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
     {
@@ -64,6 +84,10 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
             if (result is null)
                 continue;
 
+            // Short names repeat across modules, so each result is reported under its fixture's full key.
+            if (loadedTest is BlockchainTest { FixtureId: not null } blockchainTest)
+                result.Name = blockchainTest.FixtureId;
+
             testResults.Add(result);
             ReportResult(result);
         }
@@ -76,6 +100,70 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
         return testResults;
     }
 
+    /// <summary>Runs the tests of <paramref name="group"/> that the filter selects, and reports each result.</summary>
+    /// <remarks>
+    /// Tests are parsed one at a time as they run. A test that cannot be loaded is reported as failed, and a group whose
+    /// client cannot start fails each of its tests.
+    /// </remarks>
+    internal async Task<List<EthereumTestResult>> RunEngineXGroupAsync(EngineXGroup group)
+    {
+        List<EthereumTestResult> loadFailures = [];
+        List<(string Name, string? ForkName)> started = [];
+        List<EthereumTestResult> results = [];
+        using IEnumerator<BlockchainTest> tests = LoadEngineXTests(group, loadFailures, started).GetEnumerator();
+        if (tests.MoveNext())
+        {
+            BlockchainTest first = tests.Current;
+            try
+            {
+                results.AddRange(await RunEngineXGroup(EngineXFixtures.CreateGroupTest(group, first), Remaining(first, tests)));
+            }
+            catch (Exception ex)
+            {
+                while (tests.MoveNext())
+                {
+                }
+
+                results.Clear();
+                foreach ((string name, string? forkName) in started)
+                    results.Add(new EthereumTestResult(name, forkName, $"pre-allocation group {group.PreHash}: {ex}") { Rejections = [] });
+            }
+        }
+
+        results.AddRange(loadFailures);
+        foreach (EthereumTestResult result in results)
+            ReportResult(result);
+        return results;
+
+        static IEnumerable<BlockchainTest> Remaining(BlockchainTest first, IEnumerator<BlockchainTest> rest)
+        {
+            yield return first;
+            while (rest.MoveNext())
+                yield return rest.Current;
+        }
+    }
+
+    private IEnumerable<BlockchainTest> LoadEngineXTests(EngineXGroup group, List<EthereumTestResult> loadFailures, List<(string Name, string? ForkName)> started)
+    {
+        foreach (EngineXTestRef testRef in group.Tests)
+        {
+            foreach (EthereumTest loadedTest in EngineXFixtures.LoadTests(testRef))
+            {
+                if (loadedTest is FailedToLoadTest)
+                {
+                    LoadFailed = true;
+                    loadFailures.Add(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure) { Rejections = [] });
+                }
+                else if (loadedTest is BlockchainTest test && (_filterRegex is null || test.Name is null || _filterRegex.IsMatch(test.Name)))
+                {
+                    test.ChainId = _chainId;
+                    started.Add((test.FixtureId ?? test.Name, test.ForkName));
+                    yield return test;
+                }
+            }
+        }
+    }
+
     public async Task<EthereumTestResult> RunSingleTestAsync(BlockchainTest test)
     {
         test.ChainId = _chainId;
@@ -85,7 +173,11 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     private async Task<EthereumTestResult?> ExecuteTestAsync(EthereumTest loadedTest)
     {
         if (loadedTest is FailedToLoadTest)
-            return new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure);
+        {
+            LoadFailed = true;
+            ReportResult(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure) { Rejections = [] });
+            return null;
+        }
 
         if (loadedTest is not BlockchainTest test)
             return null;
@@ -94,14 +186,19 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
             return null;
 
         if (test.LoadFailure is not null)
-            return new EthereumTestResult(test.Name, test.LoadFailure);
+            return new EthereumTestResult(test.Name, test.LoadFailure) { Rejections = [] };
 
         test.ChainId = _chainId;
+        // Kept outside the run so a test that throws still reports what was rejected before it did.
+        List<BlockRejection> rejections = [];
 
         try
         {
+            if (test is EngineReorgTest engineReorgTest)
+                return await RunEngineReorgTest(engineReorgTest);
+
             if (!_trace)
-                return await RunTest(test);
+                return await RunTest(test, rejections: rejections);
 
             ISpecProvider specProvider = CreateSpecProvider(test);
             // Intentionally created per test: each test emits an independent JSONL trace,
@@ -110,11 +207,11 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
                 new() { EnableMemory = _traceMemory, DisableStack = _excludeStack },
                 specProvider);
 
-            return await RunTest(test, tracer: tracer, specProvider: specProvider);
+            return await RunTest(test, tracer: tracer, specProvider: specProvider, rejections: rejections);
         }
         catch (Exception ex)
         {
-            return new EthereumTestResult(test.Name, test.ForkName, ex.ToString());
+            return new EthereumTestResult(test.Name, test.ForkName, ex.ToString()) { Rejections = rejections };
         }
     }
 

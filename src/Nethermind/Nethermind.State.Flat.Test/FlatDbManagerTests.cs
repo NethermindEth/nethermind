@@ -83,7 +83,7 @@ public class FlatDbManagerTests
         _buffer.Dispose();
     }
 
-    private FlatDbManager CreateManager() => new(
+    private FlatDbManager CreateManager(ILogManager? logManager = null) => new(
         _resourcePool,
         _processExitSource,
         _buffer,
@@ -93,7 +93,7 @@ public class FlatDbManagerTests
         _persistedSnapshotLoader,
         _config,
         _blocksConfig,
-        LimboLogs.Instance,
+        logManager ?? LimboLogs.Instance,
         enableDetailedMetrics: false);
 
     private static StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
@@ -162,6 +162,28 @@ public class FlatDbManagerTests
         bool result = manager.HasStateForBlock(stateId);
 
         Assert.That(result, Is.False);
+    }
+
+    // The compacted snapshots only shorten reads, so a start that cannot write them goes on with the reloaded ones.
+    [Test]
+    public async Task Constructor_starts_when_compacting_the_reloaded_snapshots_fails(
+        [Values(typeof(InvalidOperationException), typeof(OperationCanceledException))] Type failure,
+        [Values] bool stopping)
+    {
+        _persistenceManager.CompactReloadedSnapshots(Arg.Any<CancellationToken>()).Returns(_ => throw (Exception)Activator.CreateInstance(failure)!);
+        if (stopping) _cts.Cancel();
+        TestLogger logger = new();
+
+        await using FlatDbManager manager = CreateManager(new OneLoggerLogManager(new ILogger(logger)));
+
+        Received.InOrder(() =>
+        {
+            _persistedSnapshotLoader.Load();
+            _persistenceManager.CompactReloadedSnapshots(_cts.Token);
+        });
+        // A cancellation during a stop is quiet; any other failure, a cancellation without a stop included, is an Error.
+        Assert.That(logger.LogList.Exists(static line => line.StartsWith("Could not compact", StringComparison.Ordinal)),
+            Is.EqualTo(!(stopping && failure == typeof(OperationCanceledException))));
     }
 
     // Regression: flushing on dispose persisted the unfinalized tail as the single RocksDB state, so a
@@ -635,6 +657,42 @@ public class FlatDbManagerTests
     }
 
     [Test]
+    public async Task HasStateForBlock_requires_the_current_state_or_a_newer_snapshot()
+    {
+        StateId persisted = CreateStateId(5, rootByte: 5);
+        StateId sibling = CreateStateId(5, rootByte: 6);
+        StateId older = CreateStateId(4, rootByte: 4);
+        StateId newer = CreateStateId(6, rootByte: 7);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(persisted);
+        _snapshotRepository.HasState(Arg.Any<StateId>()).Returns(true);
+        await using FlatDbManager manager = CreateManager();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.HasStateForBlock(persisted), Is.True);
+            Assert.That(manager.HasStateForBlock(sibling), Is.False);
+            Assert.That(manager.HasStateForBlock(older), Is.False);
+            Assert.That(manager.HasStateForBlock(newer), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task HasStateForBlock_accepts_a_state_persisted_during_snapshot_lookup()
+    {
+        StateId persisted = CreateStateId(5, rootByte: 5);
+        StateId requested = CreateStateId(6, rootByte: 6);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(_ => persisted);
+        _snapshotRepository.HasState(requested).Returns(_ =>
+        {
+            persisted = requested;
+            return false;
+        });
+        await using FlatDbManager manager = CreateManager();
+
+        Assert.That(manager.HasStateForBlock(requested), Is.True);
+    }
+
+    [Test]
     public async Task GatherReadOnlySnapshotBundle_at_or_above_floor_still_serves_history()
     {
         _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
@@ -688,10 +746,52 @@ public class FlatDbManagerTests
         }
     }
 
-    private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => new(
+    [TestCase(false, TestName = "GatherReadOnlySnapshotBundle_repeated_on_one_block_reads_availability_once")]
+    [TestCase(true, TestName = "GatherReadOnlySnapshotBundle_repeated_on_one_block_reads_availability_once_with_a_floor")]
+    public async Task GatherReadOnlySnapshotBundle_repeated_on_one_block_reads_availability_once(bool withFloor)
+    {
+        const int Scopes = 8;
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        RecordHistoryWindow();
+
+        SnapshotableMemDb availableBlocks = new();
+        using (IWriteBatch batch = availableBlocks.StartWriteBatch())
+        {
+            for (ulong block = 0; block < HistoryBarrier; block++)
+            {
+                HistoryAvailability.MarkBlock(batch, block, CreateStateId(block, (byte)block).StateRoot, HistoryAvailability.FormatVersion);
+            }
+        }
+
+        HistoryAvailability availability = new(availableBlocks);
+        availability.PublishWatermark(HistoryBarrier - 1, HistoryAvailability.FormatVersion);
+        HistoryReader reader = new(_historyDb, _historyColumns, availability, HistoryRowFormat.Resolve(availability, _config), LimboLogs.Instance);
+        if (withFloor) availability.PublishGlobalFloor(10);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner, reader);
+        StateId state = CreateStateId(25, rootByte: 25);
+
+        ReadScope(manager, state);
+        long readsBefore = availableBlocks.ReadsCount;
+        for (int i = 1; i < Scopes; i++) ReadScope(manager, state);
+
+        Assert.That(availableBlocks.ReadsCount - readsBefore, Is.Zero, "every later scope on the same block answers availability from memory");
+
+        static void ReadScope(HistoricalFlatDbManager manager, in StateId state)
+        {
+            Assert.That(manager.HasStateForBlock(state), Is.True);
+            using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(state);
+            Assert.That(bundle.GetAccount(HistoryAddr)?.Balance, Is.EqualTo((UInt256)2000));
+        }
+    }
+
+    private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => WrapHistory(inner, _historyReader);
+
+    private HistoricalFlatDbManager WrapHistory(FlatDbManager inner, HistoryReader historyReader) => new(
         inner,
         _persistenceManager,
-        _historyReader,
+        historyReader,
         _resourcePool,
         enableDetailedMetrics: false,
         new HistoryScopeGate(),

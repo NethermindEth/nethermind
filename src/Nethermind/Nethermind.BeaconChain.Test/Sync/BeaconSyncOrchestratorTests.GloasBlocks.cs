@@ -1,0 +1,606 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.P2P;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Logging;
+using NSubstitute;
+using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
+
+namespace Nethermind.BeaconChain.Test.Sync;
+
+[HardTimeout(60_000)]
+public partial class BeaconSyncOrchestratorTests
+{
+    [Test]
+    public async Task Gossip_gloas_block_reaches_the_importer_as_a_gloas_block()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(AnchorSlot);
+        harness.Importer.Known.Add(anchorRoot);
+        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(150, anchorRoot));
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(block, CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Imports.Select(static i => i.Root), Is.EqualTo((Hash256[])[block.ComputeMessageRoot()]));
+        Assert.That(harness.Router.IsProposalSeen(150, block.ProposerIndex), Is.True, "an imported Gloas block marks its (slot, proposer) seen");
+    }
+
+    [Test]
+    public async Task Range_round_imports_past_the_fork()
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] fuluBlocks) = TestChain.BuildLinkedChain(AnchorSlot, 101, 102);
+        List<ForkedSignedBeaconBlock> chain = [.. fuluBlocks.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        Hash256 parentRoot = chain[^1].ComputeMessageRoot();
+        for (ulong slot = 103; slot <= WallSlot; slot++)
+        {
+            ForkedSignedBeaconBlock gloas = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(slot, parentRoot));
+            chain.Add(gloas);
+            parentRoot = gloas.ComputeMessageRoot();
+        }
+
+        RangeSyncTests.StubPeer peer = new("peer", WallSlot, (startSlot, count) => [.. chain.Where(b => b.Slot >= startSlot && b.Slot < startSlot + count)]);
+        Harness harness = CreateHarness(peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+
+        await harness.Orchestrator.FeedRangeSyncRoundAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo(chain.Select(static b => b.Slot)));
+        Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(WallSlot));
+    }
+
+    [TestCase(ExecutionPayloadEnvelopeImportResult.Valid, true)]
+    [TestCase(ExecutionPayloadEnvelopeImportResult.Optimistic, true)]
+    [TestCase(ExecutionPayloadEnvelopeImportResult.Invalid, false)]
+    [TestCase(ExecutionPayloadEnvelopeImportResult.DataUnavailable, false)]
+    public async Task Block_waiting_on_its_parents_payload_is_retried_and_re_driven_by_the_envelope(ExecutionPayloadEnvelopeImportResult envelopeResult, bool reDriven)
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(AnchorSlot);
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(150, anchorRoot));
+        Hash256 parentRoot = parent.ComputeMessageRoot();
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(151, parentRoot));
+        harness.Importer.Known.UnionWith([anchorRoot, parentRoot]);
+        harness.Importer.UnverifiedPayloads.Add(parentRoot);
+        harness.Importer.EnvelopeResult = envelopeResult;
+        BeaconSyncOrchestrator orchestrator = harness.Orchestrator;
+
+        await orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
+        await orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+        int attemptsBeforeEnvelope = harness.Importer.Imports.Count;
+        await orchestrator.ImportEnvelopeAsync(EnvelopeFor(parentRoot, WallSlot), CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(attemptsBeforeEnvelope, Is.EqualTo(2), "the slot tick retries the parked block");
+        Assert.That(harness.Router.IsProposalSeen(151, child.ProposerIndex), Is.True, "a parked block passed its proposer signature check, so a second block for its (slot, proposer) is a repeat");
+        Assert.That(harness.Importer.Imports, Has.Count.EqualTo(reDriven ? 3 : 2), "the envelope re-drives the parked block only when it records the payload");
+        Assert.That(harness.Importer.Known.Contains(child.ComputeMessageRoot()), Is.EqualTo(reDriven));
+    }
+
+    public enum ParkedBlockFate
+    {
+        FinalizedAway,
+        RetryInvalid,
+        RetryUnknownParent,
+    }
+
+    [Test]
+    public async Task Walk_holds_its_blocks_once_its_fetched_ancestor_waits_for_a_payload_elsewhere([Values] bool ancestorHeld)
+    {
+        ParkedParentScenario scenario = CreateParkedParentScenario();
+        Harness harness = scenario.Harness;
+        TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>> fetch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        scenario.Peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(fetch.Task);
+        ForkedSignedBeaconBlock ancestor = ancestorHeld ? scenario.Child : scenario.Parent;
+        ForkedSignedBeaconBlock walking = ancestorHeld ? scenario.Grandchild : scenario.Child;
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+        if (ancestorHeld)
+        {
+            await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, cts.Token);
+        }
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(walking, cts.Token);
+        await harness.Orchestrator.ProcessGossipBlockAsync(ancestor, cts.Token);
+        int heldWhileFetching = harness.Orchestrator.PendingGossipBlockCount;
+        fetch.SetResult([]);
+        await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
+        await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(scenario.FullRoot, WallSlot), cts.Token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ByRootRequestsFor(scenario.Peer, ancestor.ComputeMessageRoot()), Is.EqualTo(1), "fixture: the walk fetched the ancestor");
+        Assert.That(heldWhileFetching, Is.EqualTo(ancestorHeld ? 2 : 1), "the walking block is held while the fetch still runs");
+        Assert.That(harness.Importer.Known, Does.Contain(ancestor.ComputeMessageRoot()).And.Contain(walking.ComputeMessageRoot()));
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
+    }
+
+    [Test]
+    public async Task Overlapping_walks_resumed_by_a_payload_wait_hold_every_block()
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(NearHeadAnchorSlot);
+        ForkedSignedBeaconBlock full = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 1, anchorRoot));
+        Hash256 fullRoot = full.ComputeMessageRoot();
+        ForkedSignedBeaconBlock x = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 2, fullRoot));
+        ForkedSignedBeaconBlock a = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 3, x.ComputeMessageRoot()));
+        ForkedSignedBeaconBlock b = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 4, a.ComputeMessageRoot()));
+        ForkedSignedBeaconBlock c = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 5, b.ComputeMessageRoot()));
+        (Harness harness, IBeaconSyncPeer _, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches) = CreateWaitingByRootHarness();
+        harness.Importer.Known.UnionWith([anchorRoot, fullRoot]);
+        harness.Importer.UnverifiedPayloads.Add(fullRoot);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(c, cts.Token);
+        fetches[b.ComputeMessageRoot()].SetResult([b]);
+        await WaitForFetchAsync(fetches, a.ComputeMessageRoot(), harness, cts.Token);
+        fetches[a.ComputeMessageRoot()].SetResult([a]);
+        await WaitForFetchAsync(fetches, x.ComputeMessageRoot(), harness, cts.Token);
+        await harness.Orchestrator.ProcessGossipBlockAsync(b, cts.Token);
+        int aFetches = fetches.Count(f => f.Key == a.ComputeMessageRoot() && !f.Value.Task.IsCompleted);
+        await harness.Orchestrator.ProcessGossipBlockAsync(x, cts.Token);
+        int held = harness.Orchestrator.PendingGossipBlockCount;
+        CompleteOutstandingFetches(fetches);
+        await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
+        await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(fullRoot, WallSlot), cts.Token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(aFetches, Is.EqualTo(1), "fixture: gossip B waits on a second fetch of A");
+        Assert.That(held, Is.EqualTo(3), "A, B and C are held for X's parent payload");
+        Assert.That(harness.Importer.Known, Does.Contain(c.ComputeMessageRoot()));
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
+    }
+
+    [Test]
+    public async Task Fetched_copy_with_a_held_siblings_signature_is_not_taken_as_held()
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(NearHeadAnchorSlot);
+        ForkedSignedBeaconBlock full = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 1, anchorRoot));
+        Hash256 fullRoot = full.ComputeMessageRoot();
+        ForkedSignedBeaconBlock q = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 2, fullRoot));
+        SignedBeaconBlockGloas signedR = CreateMinimalGloasBlock(NearHeadAnchorSlot + 3, q.ComputeMessageRoot());
+        signedR.Signature = new BlsSignature(Enumerable.Repeat((byte)0x22, 96).ToArray());
+        SignedBeaconBlockGloas signedS = CreateMinimalGloasBlock(NearHeadAnchorSlot + 4, q.ComputeMessageRoot());
+        signedS.Signature = new BlsSignature(Enumerable.Repeat((byte)0x33, 96).ToArray());
+        ForkedSignedBeaconBlock r = new ForkedSignedBeaconBlock.OfGloas(signedR);
+        ForkedSignedBeaconBlock s = new ForkedSignedBeaconBlock.OfGloas(signedS);
+        ForkedSignedBeaconBlock forgedR = new ForkedSignedBeaconBlock.OfGloas(new SignedBeaconBlockGloas { Message = signedR.Message, Signature = signedS.Signature });
+        ForkedSignedBeaconBlock t = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 5, s.ComputeMessageRoot()));
+        ForkedSignedBeaconBlock g = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 6, r.ComputeMessageRoot()));
+        (Harness harness, IBeaconSyncPeer _, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches) = CreateWaitingByRootHarness();
+        harness.Importer.Known.UnionWith([anchorRoot, fullRoot]);
+        harness.Importer.UnverifiedPayloads.Add(fullRoot);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+
+        // R's walk, then T's walk through S, then G's walk through the forged R all wait on one fetch of Q, in that order.
+        await harness.Orchestrator.ProcessGossipBlockAsync(r, cts.Token);
+        await harness.Orchestrator.ProcessGossipBlockAsync(t, cts.Token);
+        fetches[s.ComputeMessageRoot()].SetResult([s]);
+        await ProcessUntilOneFetchRunsAsync(harness, cts.Token);
+        await harness.Orchestrator.ProcessGossipBlockAsync(g, cts.Token);
+        fetches[r.ComputeMessageRoot()].SetResult([forgedR]);
+        await ProcessUntilOneFetchRunsAsync(harness, cts.Token);
+        fetches[q.ComputeMessageRoot()].SetResult([q]);
+        CompleteOutstandingFetches(fetches);
+        await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
+
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(3), "R, S and T are held; G is not held behind the forged R");
+    }
+
+    private static async Task ProcessUntilOneFetchRunsAsync(Harness harness, CancellationToken token)
+    {
+        while (harness.Orchestrator.AncestorFetchesInFlight > 1)
+        {
+            await harness.Orchestrator.WaitForWorkAsync(token);
+            await harness.Orchestrator.ProcessQueuedAsync(token);
+        }
+    }
+
+    public enum HoldCheckFailure
+    {
+        Invalid,
+        LocalAdmission,
+        ParentForgotten,
+    }
+
+    [Test]
+    public async Task Gossip_children_of_a_fetched_gloas_parent_waiting_for_regeneration_are_held_and_import_with_it()
+    {
+        ulong anchorSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(anchorSlot + 1, anchorRoot));
+        Hash256 parentRoot = parent.ComputeMessageRoot();
+        ForkedSignedBeaconBlock first = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(anchorSlot + 2, parentRoot));
+        ForkedSignedBeaconBlock second = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(anchorSlot + 3, parentRoot));
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent]));
+        Harness harness = CreateHarness(anchorSlot: anchorSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.RegenerationRefused.Add(parentRoot);
+
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(first, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(second, CancellationToken.None);
+        int held = harness.Orchestrator.PendingGossipBlockCount;
+        harness.Importer.RegenerationRefused.Remove(parentRoot);
+        await harness.Orchestrator.ProcessSlotAsync(anchorSlot + 4, CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(held, Is.EqualTo(2));
+        Assert.That(harness.Importer.Known, Does.Contain(parentRoot), "fixture: the parent imports on the next slot");
+        Assert.That(harness.Importer.Known, Does.Contain(first.ComputeMessageRoot()));
+        Assert.That(harness.Importer.Known, Does.Contain(second.ComputeMessageRoot()));
+    }
+
+    /// <summary>Only proposer-signed children may occupy bounded retry space.</summary>
+    [Test]
+    public async Task Forged_children_do_not_crowd_out_the_real_child([Values] bool parentParked)
+    {
+        const int Capacity = 128;
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
+        SignedGloasChain.Block parent = parentParked ? chain.Next(first, 33, full: true, 0xC2) : first;
+        SignedGloasChain.Block child = parentParked
+            ? chain.Next(parent, 34, full: false, 0xC3)
+            : chain.Next(first, 33, full: true, 0xC2);
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain);
+        await orchestrator.ProcessGossipBlockAsync(first.Forked, CancellationToken.None);
+        if (parentParked)
+        {
+            await orchestrator.ProcessGossipBlockAsync(parent.Forked, CancellationToken.None);
+        }
+        byte[] childSsz = SignedBeaconBlockCodec.Encode(child.Forked, chain.Spec);
+        for (int i = 0; i < Capacity; i++)
+        {
+            ForkedSignedBeaconBlock.OfGloas forged = (ForkedSignedBeaconBlock.OfGloas)SignedBeaconBlockCodec.Decode(childSsz, chain.Spec);
+            forged.Block.Message!.Body!.Graffiti = Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures.Hash((byte)(0x80 + i));
+            await orchestrator.ProcessGossipBlockAsync(forged, CancellationToken.None);
+        }
+        await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+        int heldBeforeEnvelope = orchestrator.PendingGossipBlockCount;
+        await orchestrator.ImportEnvelopeAsync(first.Envelope, CancellationToken.None);
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (parentParked)
+        {
+            Assert.That(heldBeforeEnvelope, Is.EqualTo(1), "only the signed child is held");
+            Assert.That(importer.IsKnown(parent.Root), Is.True);
+        }
+        Assert.That(importer.IsKnown(child.Root), Is.True);
+    }
+
+    private sealed record ParkedParentScenario(Harness Harness, IBeaconSyncPeer Peer, Hash256 FullRoot, ForkedSignedBeaconBlock Parent, ForkedSignedBeaconBlock Child, ForkedSignedBeaconBlock Grandchild);
+
+    private static int ByRootRequestsFor(IBeaconSyncPeer peer, Hash256 root) =>
+        peer.ReceivedCalls().Count(c => c.GetMethodInfo().Name == nameof(IBeaconSyncPeer.RequestBlocksByRootAsync) && ((Hash256[])c.GetArguments()[0]!)[0] == root);
+
+    private static ParkedParentScenario CreateParkedParentScenario(bool farBehind = false)
+    {
+        ulong anchorSlot = farBehind ? WallSlot - 40 : WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
+        ForkedSignedBeaconBlock full = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(anchorSlot + 1, anchorRoot));
+        Hash256 fullRoot = full.ComputeMessageRoot();
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(anchorSlot + 2, fullRoot));
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(anchorSlot + 3, parent.ComputeMessageRoot()));
+        ForkedSignedBeaconBlock grandchild = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(anchorSlot + 4, child.ComputeMessageRoot()));
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent]));
+        Harness harness = CreateHarness(anchorSlot: anchorSlot, peers: [peer]);
+        harness.Importer.Known.UnionWith([anchorRoot, fullRoot]);
+        harness.Importer.UnverifiedPayloads.Add(fullRoot);
+        return new ParkedParentScenario(harness, peer, fullRoot, parent, child, grandchild);
+    }
+
+    public enum Fetch
+    {
+        RangeSync,
+        ByRootBackfill,
+    }
+
+    [Test]
+    public async Task Fetched_block_on_an_evicted_parent_imports_after_gossip_spent_the_regeneration_budget([Values] Fetch fetch)
+    {
+        SignedGloasChain chain = new();
+        List<SignedGloasChain.Block> blocks = [];
+        SignedGloasChain.Block? tip = null;
+        for (ulong slot = chain.Spec.SlotsPerEpoch; slot < 3 * chain.Spec.SlotsPerEpoch + 8; slot++)
+        {
+            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            blocks.Add(tip);
+        }
+
+        ulong wallSlot = tip!.Signed.Message!.Slot + 2;
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + wallSlot * chain.Spec.SecondsPerSlot + 1));
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain, clock: clock, peers: [peer], importOnClock: true);
+        List<BlockImportResult> fixture = [];
+        foreach (SignedGloasChain.Block block in blocks)
+        {
+            fixture.Add(await orchestrator.ImportBlockAsync(block.Forked, CancellationToken.None));
+        }
+
+        foreach (int i in new[] { 1, 2 })
+        {
+            SignedGloasChain.Block spender = chain.Next(blocks[i], 3 * chain.Spec.SlotsPerEpoch + (ulong)i, full: false, (byte)(0xF0 + i));
+            fixture.Add(await orchestrator.ImportBlockAsync(spender.Forked, CancellationToken.None));
+        }
+
+        // Past the chain's slots, so no imported block has marked their slot and proposer seen.
+        SignedGloasChain.Block fetched = chain.Next(blocks[3], wallSlot - 1, full: false, 0xF3);
+        SignedGloasChain.Block child = chain.Next(fetched, wallSlot, full: false, 0xF4);
+        BlockImportResult? asGossip = null;
+        if (fetch == Fetch.RangeSync)
+        {
+            await orchestrator.ImportBlockAsync(fetched.Forked, CancellationToken.None, rangeItem: new BeaconSyncOrchestrator.RangeBlockItem(fetched.Forked));
+        }
+        else
+        {
+            asGossip = await orchestrator.ImportBlockAsync(fetched.Forked, CancellationToken.None);
+            peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([fetched.Forked]));
+            await orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child.Forked, CancellationToken.None);
+        }
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+        Assert.That(importer.IsKnown(fetched.Root), Is.True);
+        if (fetch == Fetch.ByRootBackfill)
+        {
+            Assert.That(asGossip, Is.EqualTo(BlockImportResult.UnknownParent), "fixture: the spent budget refused the block from gossip");
+            Assert.That(importer.IsKnown(child.Root), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Fetched_parent_refused_by_the_regeneration_budget_imports_with_its_child_on_the_next_slot()
+    {
+        SignedGloasChain chain = new();
+        List<SignedGloasChain.Block> blocks = [];
+        SignedGloasChain.Block? tip = null;
+        for (ulong slot = chain.Spec.SlotsPerEpoch; slot < 3 * chain.Spec.SlotsPerEpoch + 4; slot++)
+        {
+            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            blocks.Add(tip);
+        }
+
+        ulong wallSlot = tip!.Signed.Message!.Slot + 6;
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + wallSlot * chain.Spec.SecondsPerSlot + 1));
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain, clock: clock, peers: [peer], importOnClock: true);
+        List<BlockImportResult> fixture = [];
+        foreach (SignedGloasChain.Block block in blocks)
+        {
+            fixture.Add(await orchestrator.ImportBlockAsync(block.Forked, CancellationToken.None));
+        }
+
+        (SignedGloasChain.Block Parent, SignedGloasChain.Block Child)[] pairs = [.. Enumerable.Range(1, 3).Select(i =>
+        {
+            SignedGloasChain.Block parent = chain.Next(blocks[i], wallSlot - 6 + (ulong)i, full: false, (byte)(0xE0 + i));
+            return (parent, chain.Next(parent, wallSlot - 3 + (ulong)i, full: false, (byte)(0xF0 + i)));
+        })];
+        foreach ((SignedGloasChain.Block parent, _) in pairs)
+        {
+            Hash256 parentRoot = parent.Root;
+            peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == parentRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent.Forked]));
+        }
+
+        foreach ((_, SignedGloasChain.Block child) in pairs)
+        {
+            await orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child.Forked, CancellationToken.None);
+        }
+
+        bool refusedThisSlot = !importer.IsKnown(pairs[2].Parent.Root);
+        clock.Add(TimeSpan.FromSeconds(chain.Spec.SecondsPerSlot));
+        await orchestrator.ProcessSlotAsync(wallSlot + 1, CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+        Assert.That(pairs.Take(2).Select(p => importer.IsKnown(p.Child.Root)), Is.All.True, "fixture: two fetched parents spend the budget");
+        Assert.That(refusedThisSlot, Is.True, "fixture: the third fetched parent waits for the next slot");
+        Assert.That(importer.IsKnown(pairs[2].Parent.Root), Is.True);
+        Assert.That(importer.IsKnown(pairs[2].Child.Root), Is.True);
+    }
+
+    [Test]
+    public async Task Replay_reads_stored_gloas_blocks()
+    {
+        BeaconChainSpec storeSpec = Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures.SyntheticSpec(gloasForkEpoch: 4);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), storeSpec);
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] fulu) = TestChain.BuildLinkedChain(AnchorSlot, 101);
+        TestChain.Persist(store, anchor, anchorRoot, fulu);
+        ForkedSignedBeaconBlock gloas = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(4 * storeSpec.SlotsPerEpoch, SszRoots.HashTreeRoot(fulu[0].Message!)));
+        store.PutForkedBlock(gloas.ComputeMessageRoot(), gloas);
+        store.SetCanonicalRoot(gloas.Slot, gloas.ComputeMessageRoot());
+
+        Harness harness = CreateHarness(store: store);
+        harness.Importer.Known.Add(anchorRoot);
+        await harness.Orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+
+        Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[101, gloas.Slot]));
+    }
+
+    [TestCase(ExecutionPayloadEnvelopeImportResult.Valid, 1)]
+    [TestCase(ExecutionPayloadEnvelopeImportResult.Invalid, 0)]
+    public async Task Envelope_that_re_drives_no_block_still_runs_a_head_step(ExecutionPayloadEnvelopeImportResult envelopeResult, int expectedFcus)
+    {
+        Harness harness = CreateHarness();
+        harness.Importer.EnvelopeResult = envelopeResult;
+        BeaconSyncOrchestrator orchestrator = harness.Orchestrator;
+
+        await orchestrator.ImportEnvelopeAsync(EnvelopeFor(TestItem.KeccakA, WallSlot), CancellationToken.None);
+        orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipAggregateItem(new SignedAggregateAndProof()));
+        await CompleteWorkerAsync(orchestrator, CancellationToken.None);
+
+        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(expectedFcus));
+    }
+
+    [Test]
+    public async Task Fulu_chain_crosses_into_gloas_and_a_full_child_imports_once_its_parents_envelope_does()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.FuluBlock lastFulu = chain.NextFulu(31);
+        SignedGloasChain.Block first = chain.NextOnFulu(lastFulu, 32, full: false, 0xC1);
+        SignedGloasChain.Block child = chain.Next(first, 33, full: true, 0xC2);
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, SignedGloasChain.EnvelopeEngine engine) = CreateGloasOrchestrator(chain);
+
+        await orchestrator.ProcessGossipBlockAsync(lastFulu.Forked, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(first.Forked, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+        bool childKnownBeforeEnvelope = importer.IsKnown(child.Root);
+        ExecutionPayloadEnvelopeImportResult? envelope = await orchestrator.ImportEnvelopeAsync(first.Envelope, CancellationToken.None);
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(importer.IsKnown(lastFulu.Root), Is.True, "the Fulu block past the anchor imports");
+        Assert.That(importer.IsKnown(first.Root), Is.True, "the first Gloas block imports across the fork");
+        Assert.That(childKnownBeforeEnvelope, Is.False, "the full child waits for its parent's payload");
+        Assert.That(envelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        Assert.That(importer.IsKnown(child.Root), Is.True, "the envelope re-drives the parked child");
+        Assert.That(orchestrator.SyncTip, Is.EqualTo((child.Root, 33UL)));
+        Assert.That(importer.ComputeHead().HeadRoot, Is.EqualTo(child.Root), "the re-driven child is the head");
+        Assert.That(engine.FcuCalls[^1].Head, Is.EqualTo(child.Bid.ParentBlockHash), "the child's own payload has not arrived, so the fcU head is its bid's parent_block_hash");
+    }
+
+    [Test]
+    public async Task Replay_imports_the_stored_envelope_after_its_block_so_a_full_child_imports_on_it()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
+        SignedGloasChain.Block child = chain.Next(first, 33, full: true, 0xC2);
+        BeaconChainStore store = chain.CreateStore();
+        store.PutForkedBlock(first.Root, first.Forked);
+        store.SetCanonicalRoot(first.Forked.Slot, first.Root);
+        store.PutExecutionPayloadEnvelope(first.Root, first.Envelope);
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + 34 * chain.Spec.SecondsPerSlot).AddSeconds(6));
+        GossipRouter router = new(chain.Spec, new SlotClock(chain.Spec, clock), LimboLogs.Instance);
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, SignedGloasChain.EnvelopeEngine engine) = CreateGloasOrchestrator(chain, store, clock, router);
+
+        await orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+        (Hash256 Head, Hash256 Safe, Hash256 Finalized)[] replayHeadStep = [.. engine.FcuCalls];
+        await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(engine.EnvelopeCalls, Is.EqualTo(1), "the stored envelope is verified again by the engine");
+        Assert.That(replayHeadStep.Select(call => call.Head), Does.Contain(first.Envelope.Message!.Payload!.BlockHash), "the replayed tip is head with its payload, before any child arrives");
+        Assert.That(router.IsEnvelopeSeen(first.Root, first.Envelope.Message!.BuilderIndex), Is.True, "replay records the envelope like any imported one");
+        Assert.That(importer.IsKnown(child.Root), Is.True, "the full child imports on the replayed payload");
+    }
+
+    [Test]
+    public async Task Replay_imports_the_stored_envelope_of_a_gloas_anchor_so_its_full_child_imports()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block anchor = chain.Next(null, 32, full: false, 0xC1);
+        SignedGloasChain.Block child = chain.Next(anchor, 33, full: true, 0xC2);
+        BeaconChainStore store = chain.CreateStore();
+        store.PutExecutionPayloadEnvelope(anchor.Root, anchor.Envelope);
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, SignedGloasChain.EnvelopeEngine engine) = CreateGloasOrchestrator(chain, store, gloasAnchor: anchor);
+
+        await orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(engine.EnvelopeCalls, Is.EqualTo(1));
+        Assert.That(importer.IsKnown(child.Root), Is.True, "the full child of the anchor imports on the replayed payload");
+    }
+
+    [Test]
+    public async Task Replay_skips_an_unreadable_stored_envelope()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
+        MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db, chain.Spec);
+        store.PutForkedBlock(first.Root, first.Forked);
+        store.SetCanonicalRoot(first.Forked.Slot, first.Root);
+        db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes).Set(first.Root.Bytes, [1, 2, 3]);
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, SignedGloasChain.EnvelopeEngine engine) = CreateGloasOrchestrator(chain, store);
+
+        await orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(importer.IsKnown(first.Root), Is.True);
+        Assert.That(orchestrator.SyncTip, Is.EqualTo((first.Root, 32UL)));
+        Assert.That(engine.EnvelopeCalls, Is.Zero);
+    }
+
+    [Test]
+    public async Task Dropping_a_parked_block_releases_the_importers_deferral_entries()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
+        SignedGloasChain.Block parked = chain.Next(first, 33, full: true, 0xC2);
+        SignedGloasChain.Block child = chain.Next(parked, 34, full: false, 0xC3);
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + 34 * chain.Spec.SecondsPerSlot).AddSeconds(6));
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain, clock: clock);
+        await orchestrator.ProcessGossipBlockAsync(first.Forked, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(parked.Forked, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+        int deferredBefore = GloasBlockImporterTests.DeferredCount(importer);
+
+        ulong expiredSlot = 34 + 3 * chain.Spec.SlotsPerEpoch;
+        clock.Set(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + expiredSlot * chain.Spec.SecondsPerSlot));
+        await orchestrator.ProcessSlotAsync(expiredSlot, CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(deferredBefore, Is.EqualTo(2), "fixture: the parked block and its held child are deferred");
+        Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero, "fixture: the child was dropped with its parent");
+        Assert.That(GloasBlockImporterTests.DeferredCount(importer), Is.Zero);
+    }
+
+    [Test]
+    public async Task Refusing_a_block_at_a_full_retry_set_releases_the_importers_deferral()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain);
+        await orchestrator.ProcessGossipBlockAsync(first.Forked, CancellationToken.None);
+        const int retryCapacity = 128;
+        for (int i = 0; i < retryCapacity; i++)
+        {
+            await orchestrator.ImportBlockAsync(chain.Next(first, 33, full: true, (byte)(0x10 + i)).Forked, CancellationToken.None);
+        }
+
+        int deferredWhenFull = GloasBlockImporterTests.DeferredCount(importer);
+        await orchestrator.ImportBlockAsync(chain.Next(first, 33, full: true, (byte)(0x10 + retryCapacity)).Forked, CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(retryCapacity), "fixture: the retry set is full");
+        Assert.That(deferredWhenFull, Is.EqualTo(retryCapacity), "fixture: every held block is deferred in the importer");
+        Assert.That(GloasBlockImporterTests.DeferredCount(importer), Is.EqualTo(retryCapacity), "the refused block keeps no deferral entry");
+    }
+
+    private static (BeaconSyncOrchestrator Orchestrator, BlockImporter Importer, SignedGloasChain.EnvelopeEngine Engine) CreateGloasOrchestrator(SignedGloasChain chain, BeaconChainStore? persisted = null, ManualTimestamper? clock = null, GossipRouter? router = null, SignedGloasChain.Block? gloasAnchor = null, IBeaconSyncPeer[]? peers = null, bool importOnClock = false, ExecutionPayloadEnvelopePool? envelopePool = null)
+    {
+        BeaconChainSpec spec = chain.Spec;
+        ManualTimestamper timestamper = clock ?? new(DateTime.UnixEpoch.AddSeconds(spec.GenesisTime + 34 * spec.SecondsPerSlot).AddSeconds(6));
+        SlotClock slotClock = new(spec, timestamper);
+        BeaconChainStore store = persisted ?? chain.CreateStore();
+        SignedGloasChain.EnvelopeEngine engine = new();
+        StubPool pool = new(peers ?? []);
+        BlockImporter importer = chain.CreateImporter(engine, store: store, gloasAnchor: gloasAnchor, clock: importOnClock ? slotClock : null);
+        BeaconSyncOrchestrator orchestrator = new(
+            new BeaconChainConfig(),
+            spec,
+            store,
+            new ScriptedFactory(importer),
+            engine,
+            pool,
+            new RangeSync(pool, LimboLogs.Instance, new DataColumnSidecarPool(), spec, RangeSyncTests.ClockAtGenesis(spec)),
+            slotClock,
+            router ?? new GossipRouter(spec, slotClock, LimboLogs.Instance),
+            new BeaconChainStatusHolder(spec, timestamper),
+            LimboLogs.Instance,
+            envelopePool: envelopePool);
+        orchestrator.Initialize(importer, gloasAnchor?.Forked ?? new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), gloasAnchor?.Root ?? chain.AnchorRoot);
+        orchestrator.GossipStarted = true;
+        return (orchestrator, importer, engine);
+    }
+}

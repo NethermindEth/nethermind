@@ -20,7 +20,10 @@ internal sealed class WarmedNodeRecordBuffer(INodeRecordBuffer global, WarmedNod
     public IDisposable PinAll() => global.PinAll();
 
     /// <inheritdoc/>
-    public bool TryLocate(ulong pointer, out NodeRecord record) =>
+    public bool TryLocate(ulong pointer, out NodeRecord record) => TryLocate(global, warmed, pointer, out record);
+
+    /// <summary>Locates <paramref name="pointer"/> in <paramref name="warmed"/> when it is transient, otherwise in <paramref name="global"/>.</summary>
+    internal static bool TryLocate(INodeRecordBuffer global, WarmedNodeBuffer warmed, ulong pointer, out NodeRecord record) =>
         NodeRecordCodec.IsTransient(pointer) ? warmed.TryLocate(pointer, out record) : global.TryLocate(pointer, out record);
 
     /// <inheritdoc/>

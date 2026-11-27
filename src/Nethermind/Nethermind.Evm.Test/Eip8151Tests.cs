@@ -32,7 +32,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
@@ -635,7 +634,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
     }
 
     /// <remarks>A well-formed <c>v</c> with <c>r = s = 0</c>, which recovers no public key.</remarks>
-    private static byte[] CreateUnrecoverableInput()
+    internal static byte[] CreateUnrecoverableInput()
     {
         byte[] input = new byte[128];
         input[63] = 27;

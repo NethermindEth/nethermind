@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -22,6 +23,50 @@ public sealed partial class KeccakHash
 
     /// <summary>Largest padded length the batch kernels are used with, four rate blocks.</summary>
     internal const int MaxBatchablePaddedLength = 4 * RateBlockLength;
+
+    internal static bool ArmSha3BatchSupported =>
+#if ZK_EVM
+        false;
+#else
+        System.Runtime.Intrinsics.Arm.Sha3.IsSupported;
+#endif
+
+    internal static int MaxBatchWidth => GetBatchWidth(8);
+
+    /// <summary>Returns the narrowest available kernel for the group, capped at the hardware width. Zero indicates scalar hashing.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static int GetBatchWidth(int count)
+    {
+        if (Avx512F.IsSupported && count > 4) return 8;
+        if (Avx2.IsSupported) return 4;
+        return ArmSha3BatchSupported ? 2 : 0;
+    }
+
+    /// <summary>Hashes consecutive, pre-padded messages of equal length into consecutive 32-byte digests.</summary>
+    /// <remarks>The caller supplies a supported kernel width, that many complete inputs, and 32 output bytes per lane.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void ComputePaddedBatch(ref byte inputs, int paddedLength, int width, ref byte output)
+    {
+        Debug.Assert(width is 2 or 4 or 8 && width == GetBatchWidth(width));
+        Debug.Assert(paddedLength > 0 && paddedLength % RateBlockLength == 0);
+#if !ZK_EVM
+        if (ArmSha3BatchSupported)
+        {
+            ComputePaddedPairArmSha3(ref inputs, paddedLength, ref output);
+            return;
+        }
+#endif
+        if (width == 8)
+        {
+            if (paddedLength == RateBlockLength) ComputePaddedBlocks8Avx512(ref inputs, ref output);
+            else ComputePaddedMultiBlocks8Avx512(ref inputs, paddedLength, ref output);
+        }
+        else
+        {
+            if (paddedLength == RateBlockLength) ComputePaddedBlocks4Avx2(ref inputs, ref output);
+            else ComputePaddedMultiBlocks4Avx2(ref inputs, paddedLength, ref output);
+        }
+    }
 
     private const int HASH_SIZE = 32;
     private const int STATE_SIZE = 200;
@@ -108,8 +153,9 @@ public sealed partial class KeccakHash
     /// handed them undefined — which is what lets <see cref="InitializeState"/> skip them there, and what
     /// makes a caller resuming a used sponge get a wrong digest on the guest and a right one on the host.
     /// The write drops seventeen loads and seventeen XORs per message; peeling the first block costs a host
-    /// more in register pressure than it saves, so the host form is the plain loop. See
-    /// <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    /// more in register pressure than it saves, so the host does not peel it: at the 136-byte rate it absorbs
+    /// all whole blocks in one scalar loop, except on AVX-512VL cores other than AMD Zen 5 and later, which
+    /// permute block by block. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     private static partial ReadOnlySpan<byte> AbsorbMessageIntoZeroState(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize);
 
     /// <summary>Absorbs the whole rate blocks of <paramref name="input"/>, of which there is at least one,
@@ -156,6 +202,11 @@ public sealed partial class KeccakHash
     /// it. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     internal static partial ValueHash256 ComputeHash256(ReadOnlySpan<byte> input);
 
+    /// <summary>Copies <paramref name="source"/> to the front of <paramref name="destination"/>, which it may overlap, and
+    /// computes its Keccak-256 digest.</summary>
+    /// <remarks>See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    internal static partial ValueHash256 CopyAndComputeHash256(ReadOnlySpan<byte> source, Span<byte> destination);
+
     /// <summary>Computes the Keccak-256 digest of each of the first <paramref name="count"/> of <paramref name="nodes"/>
     /// into the same index of <paramref name="hashes"/>.</summary>
     /// <remarks>The guest keeps <paramref name="nodes"/>, which must not change afterwards, with the sponge states the
@@ -174,13 +225,9 @@ public sealed partial class KeccakHash
     /// <remarks>A no-op on the host. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     internal static partial void DonateConsumedInput(ReadOnlySpan<byte> consumed);
 
-    /// <summary>Writes the Keccak-256 digest of <paramref name="input"/> to <paramref name="output"/> through
-    /// <see cref="ComputeHash256"/>, where that is the target's faster path.</summary>
+    /// <summary>Writes the Keccak-256 digest of <paramref name="input"/> to <paramref name="output"/>
+    /// when the target supplies a specialized one-shot implementation.</summary>
     /// <returns>Whether the digest was written.</returns>
-    /// <remarks>The host returns false and keeps <see cref="ComputeHash"/>'s own path: its
-    /// <see cref="ComputeHash256"/> goes through <see cref="ComputeHash"/>, so taking it here would recurse. The
-    /// guest takes its lean absorb for every 256-bit digest, callers that hash straight into their own storage
-    /// included. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     private static partial bool TryComputeHash256Into(ReadOnlySpan<byte> input, Span<byte> output);
 
     /// <summary>Computes the Keccak digest of <paramref name="input"/> in one shot.</summary>

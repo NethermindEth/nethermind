@@ -81,6 +81,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         persistedSnapshotLoader.Load();
 
         config.ValidateCompactSize();
+        // Also before any worker starts, so the first reads see the compacted tier.
+        CompactReloadedSnapshots(processExitSource.Token);
         _compactSize = (int)config.CompactSize;
 
         // We assume that the state must be able to be persisted in half the slot time at the very
@@ -103,6 +105,29 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _compactorTask = RunCompactor(_cancelTokenSource.Token);
         _persistenceTask = RunPersistence(_cancelTokenSource.Token);
         _clearBundleCacheTask = RunClearBundleCache(_cancelTokenSource.Token);
+    }
+
+    /// <summary>
+    /// Compacts the persisted snapshots the last run left one per block before anything reads them. Best-effort: they
+    /// only shorten reads, and the reloaded ones serve every state without them.
+    /// </summary>
+    private void CompactReloadedSnapshots(CancellationToken cancellationToken)
+    {
+        long start = Stopwatch.GetTimestamp();
+        try
+        {
+            int compacted = _persistenceManager.CompactReloadedSnapshots(cancellationToken);
+            if (compacted > 0 && _logger.IsInfo)
+                _logger.Info($"Compacted the state kept from the last run into {compacted} persisted snapshots in {Stopwatch.GetElapsedTime(start).TotalMilliseconds:N0} ms.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Stopping. What is left is read one snapshot per block, as before.
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Could not compact the persisted snapshots kept from the last run; reads walk one snapshot per block until they are persisted.", e);
+        }
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)
@@ -236,6 +261,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
         GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads: false);
 
+    /// <remarks>
+    /// A <see cref="ResourcePool.Usage.ReadOnlyProcessingEnv"/> bundle (block building, read-only queries) never hands its
+    /// snapshots to the repository, so its trie nodes go to a private buffer freed with the bundle. Written to the global
+    /// buffer, they would stay there for as long as any in-memory snapshot taken before them is retained.
+    /// </remarks>
     public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
@@ -244,11 +274,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             _nodeRecordBuffer,
             _resourcePool,
             usage: usage,
-            filterInMemorySlotReads: filterInMemorySlotReads);
+            filterInMemorySlotReads: filterInMemorySlotReads,
+            privateNodeRecords: usage == ResourcePool.Usage.ReadOnlyProcessingEnv);
     }
 
-    private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
-    private static readonly StringLabel _depthPersistedLabel = new("persisted");
+    private static readonly StableStringLabel _depthInMemoryLabel = StableStringLabel.Get("in_memory");
+    private static readonly StableStringLabel _depthPersistedLabel = StableStringLabel.Get("persisted");
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
         GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
@@ -330,7 +361,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReportBundleMetrics(assembled);
 
-            // Flagged bundles are one-off full scans (trie verification) that never read through the slot filter, so
+            // Flagged bundles are one-off full scans (trie verification, snap range serving) that never read through the slot filter, so
             // only shared bundles get bits per key. Nothing is built here: the first filtered read builds the filter.
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
                 new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics), _nodeRecordBuffer.PinAll(),
@@ -518,9 +549,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public bool HasStateForBlock(in StateId stateId)
     {
-        if (_snapshotRepository.HasState(stateId)) return true;
-        if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;
-        return false;
+        StateId persistedState = _persistenceManager.GetCurrentPersistedStateId();
+        if (stateId == persistedState) return true;
+        // The signed order places the PreGenesis and Sync sentinels before block zero.
+        if ((long)stateId.BlockNumber <= (long)persistedState.BlockNumber) return false;
+        // Persistence publishes its new state before removing the in-memory snapshot.
+        return _snapshotRepository.HasState(stateId) || _persistenceManager.GetCurrentPersistedStateId() == stateId;
     }
 
     public void DropStateNotReachableFrom(in StateId head)

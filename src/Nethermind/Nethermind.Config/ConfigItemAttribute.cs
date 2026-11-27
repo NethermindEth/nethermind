@@ -16,6 +16,7 @@ public class ConfigItemAttribute : Attribute
 
     public bool DisabledForCli { get; set; }
 
+    [Obsolete("Has no effect. The environment variable of a configuration item is derived from its category and name.")]
     public string EnvironmentVariable { get; set; } = "";
 
     public bool IsPortOption { get; set; }
@@ -27,4 +28,7 @@ public class ConfigItemAttribute : Attribute
     /// Such values must never be written to logs or other diagnostic surfaces.
     /// </summary>
     public bool IsSensitive { get; set; }
+
+    /// <summary>Marks a value to hide in diagnostic config output when sensitive-data masking is enabled.</summary>
+    public bool IsSensitiveWhenMasked { get; set; }
 }

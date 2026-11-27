@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
@@ -11,8 +12,30 @@ using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core.Collections;
 
+[assembly: SszPreset(typeof(Nethermind.Serialization.SszGenerator.Test.TestPreset), nameof(Nethermind.Serialization.SszGenerator.Test.TestPreset.Alternate))]
+
 namespace Nethermind.Serialization.SszGenerator.Test
 {
+    public static class TestPreset
+    {
+        public static bool Alternate { get; set; }
+    }
+
+    [SszContainer]
+    public partial class PresetVector
+    {
+        [SszVector(4, AlternateLength = 2)]
+        public ulong[] Values { get; set; } = [];
+    }
+
+    [SszContainer]
+    public partial class PresetContainer
+    {
+        public PresetVector Head { get; set; } = new();
+        [SszList(8, AlternateLimit = 4)]
+        public ulong[] Tail { get; set; } = [];
+    }
+
     [SszContainer]
     public partial struct ComplexStruct
     {
@@ -139,6 +162,40 @@ namespace Nethermind.Serialization.SszGenerator.Test
     {
         [SszList(3)]
         public SpanBuiltBytes? Bytes { get; set; }
+    }
+
+    /// <summary>A byte collection built from a span of its bytes, held in a struct as a decoded witness state node is.</summary>
+    public readonly struct SpanBuiltByteStruct(ReadOnlySpan<byte> bytes)
+    {
+        private readonly byte[] _bytes = bytes.ToArray();
+
+        public ReadOnlySpan<byte> AsSpan() => _bytes;
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct SpanBuiltByteStructListItself
+    {
+        [SszList(3)]
+        public SpanBuiltByteStruct Bytes { get; set; }
+    }
+
+    /// <summary>A member name that matches a local of the generated array decoder.</summary>
+    [SszContainer(isCollectionItself: true)]
+    public partial struct SpanBuiltByteListItselfNamedIndex
+    {
+        [SszList(3)]
+        public SpanBuiltBytes? Index { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct SpanBuiltByteStructListItselfWithConstructor
+    {
+        public SpanBuiltByteStructListItselfWithConstructor() => Marker = 7;
+
+        public readonly int Marker;
+
+        [SszList(3)]
+        public SpanBuiltByteStruct Bytes { get; set; }
     }
 
     [SszContainer]
@@ -496,6 +553,29 @@ namespace Nethermind.Serialization.SszGenerator.Test
     }
 
     [SszContainer]
+    public partial struct ProgressiveLeadingGapSample
+    {
+        [SszField(1)]
+        public ulong Head { get; set; }
+
+        [SszField(2)]
+        public ulong Tail { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct ProgressiveManyGapsSample
+    {
+        [SszField(3)]
+        public ulong Head { get; set; }
+
+        [SszField(10)]
+        public ulong Middle { get; set; }
+
+        [SszField(25)]
+        public ulong Tail { get; set; }
+    }
+
+    [SszContainer]
     public partial struct ProgressiveListContainer
     {
         [SszProgressiveList]
@@ -558,6 +638,47 @@ namespace Nethermind.Serialization.SszGenerator.Test
     public partial class ShadowDerived : ShadowBase
     {
         public new uint X { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct LeafContainer
+    {
+        public Hash256 Hash { get; set; }
+        public Address Address { get; set; }
+        public Bloom Bloom { get; set; }
+        public PrimitiveEnum Enum { get; set; }
+        public TestBytes48 Reference { get; set; }
+
+        [SszVector(2)]
+        public Hash256[] Hashes { get; set; }
+
+        [SszList(2)]
+        public Bloom[] Blooms { get; set; }
+
+        [SszList(2)]
+        public Address[] Addresses { get; set; }
+
+        [SszVector(2)]
+        public Address[] AddressVector { get; set; }
+
+        [SszList(2)]
+        public PrimitiveEnum[] Enums { get; set; }
+
+        [SszList(4)]
+        public byte[] Bytes { get; set; }
+    }
+
+    [SszContainer]
+    public partial class GenericContainer<T> where T : ISszCodec<T>, new()
+    {
+        public ulong Head { get; set; }
+        public T Value { get; set; } = new();
+    }
+
+    [SszContainer]
+    public partial class GenericContainerOwner
+    {
+        public GenericContainer<VariableC> Inner { get; set; } = new();
     }
 
     [SszContainer(isCollectionItself: true)]

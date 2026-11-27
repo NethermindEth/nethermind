@@ -38,10 +38,10 @@ internal static class ConfigFileLocator
         string name = Path.GetFileNameWithoutExtension(config);
 
         // Removed forms of a built-in name, such as configs/mainnet.json or mainnet.cfg.
-        string hint = BuiltInConfigs.Names.Contains(name, StringComparer.OrdinalIgnoreCase)
-            ? $" Did you mean '--config {name}'?"
-            : string.Empty;
+        string? builtInName = BuiltInConfigs.Names.FirstOrDefault(
+            candidate => string.Equals(candidate, name, StringComparison.OrdinalIgnoreCase));
+        string hint = builtInName is null ? string.Empty : $" Did you mean '--config {builtInName}'?";
 
-        return $"Configuration '{config}' not found. It is neither a file nor a built-in configuration.{hint} Built-in configurations: {string.Join(", ", BuiltInConfigs.Names)}";
+        return $"Configuration file not found. It is neither a file nor a built-in configuration.{hint} Built-in configurations: {string.Join(", ", BuiltInConfigs.Names)}";
     }
 }

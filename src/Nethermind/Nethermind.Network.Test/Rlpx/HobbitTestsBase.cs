@@ -6,7 +6,6 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
@@ -30,10 +29,10 @@ public abstract class HobbitTestsBase
         (EncryptionSecrets A, EncryptionSecrets B) = NetTestVectors.GetSecretsPair();
 
         _frameCipherA = new FrameCipher(A.AesSecret);
-        _macProcessorA = new FrameMacProcessor(TestItem.IgnoredPublicKey, A);
+        _macProcessorA = new FrameMacProcessor(A);
 
         _frameCipherB = new FrameCipher(B.AesSecret);
-        _macProcessorB = new FrameMacProcessor(TestItem.IgnoredPublicKey, B);
+        _macProcessorB = new FrameMacProcessor(B);
 
         _frame = new byte[16 + 16 + 16 + 16];
         _frame[2] = 16; // size
@@ -55,7 +54,7 @@ public abstract class HobbitTestsBase
 
             if (outbound == StackType.Zero)
             {
-                byte[] rlpPacketType = Rlp.Encode((long)packet.PacketType).Bytes;
+                byte[] rlpPacketType = Rlp.Encode((long)packet.PacketType);
                 IByteBuffer packetBuffer = embeddedChannel.Allocator.Buffer(rlpPacketType.Length + packet.Data.Length);
                 packetBuffer.WriteBytes(rlpPacketType);
                 packetBuffer.WriteBytes(packet.Data);
@@ -74,11 +73,11 @@ public abstract class HobbitTestsBase
 
             if (inbound == StackType.Zero)
             {
-                ZeroPacket decodedPacket = embeddedChannel.ReadInbound<ZeroPacket>();
+                NettyBufferPacket decodedPacket = embeddedChannel.ReadInbound<NettyBufferPacket>();
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
-                    Assert.That(decodedPacket.Content.ReadAllHex(), Is.EqualTo(packet.Data.ToHexString()));
+                    Assert.That(decodedPacket.Buffer.ReadAllHex(), Is.EqualTo(packet.Data.ToHexString()));
                 }
                 decodedPacket.Release();
             }

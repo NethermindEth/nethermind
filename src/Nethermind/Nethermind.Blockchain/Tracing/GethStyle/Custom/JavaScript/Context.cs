@@ -17,11 +17,13 @@ public class Context
     private ITypedArray<byte>? _inputConverted;
     private ITypedArray<byte>? _fromConverted;
     private ITypedArray<byte>? _toConverted;
+    private ITypedArray<byte>? _coinbaseConverted;
     private ITypedArray<byte>? _outputConverted;
     private dynamic? _valueConverted;
     private dynamic? _gasPriceConverted;
     private Address? _from;
     private Address? _to;
+    private Address? _coinbase;
     private ReadOnlyMemory<byte> _input;
     private byte[]? _output;
     private Hash256? _blockHash;
@@ -29,6 +31,7 @@ public class Context
     private UInt256 _value;
     private UInt256 _gasPrice;
 
+    [NoScriptAccess]
     public Address? From
     {
         get => _from;
@@ -39,6 +42,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public Address? To
     {
         get => _to;
@@ -49,6 +53,18 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
+    public Address? Coinbase
+    {
+        get => _coinbase;
+        set
+        {
+            _coinbase = value;
+            _coinbaseConverted = null;
+        }
+    }
+
+    [NoScriptAccess]
     public ReadOnlyMemory<byte> Input
     {
         get => _input;
@@ -59,6 +75,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public byte[]? Output
     {
         get => _output;
@@ -69,6 +86,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public Hash256? BlockHash
     {
         get => _blockHash;
@@ -79,6 +97,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public Hash256? TxHash
     {
         get => _txHash;
@@ -89,6 +108,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public UInt256 Value
     {
         get => _value;
@@ -99,6 +119,7 @@ public class Context
         }
     }
 
+    [NoScriptAccess]
     public UInt256 GasPrice
     {
         get => _gasPrice;
@@ -110,17 +131,18 @@ public class Context
     }
 
     public string type { get; set; } = null!;
-    public ITypedArray<byte>? from => _fromConverted ??= From?.Bytes.ToArray().ToTypedScriptArray();
-    public ITypedArray<byte>? to => _toConverted ??= To?.Bytes.ToArray().ToTypedScriptArray();
-    public ITypedArray<byte>? input => _inputConverted ??= Input.ToArray().ToTypedScriptArray();
+    public ITypedArray<byte>? from => _fromConverted ??= From?.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte>? to => _toConverted ??= To?.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte>? coinbase => _coinbaseConverted ??= Coinbase?.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte>? input => _inputConverted ??= Input.ToTypedScriptArray();
     public ulong gas { get; set; }
     public ulong gasUsed { get; set; }
     public IJavaScriptObject gasPrice => _gasPriceConverted ??= GasPrice.ToBigInteger();
     public IJavaScriptObject value => _valueConverted ??= Value.ToBigInteger();
     public ulong block { get; set; }
     public ITypedArray<byte>? output => _outputConverted ??= Output?.ToTypedScriptArray();
-    public ITypedArray<byte>? blockHash => _blockHashConverted ??= BlockHash?.BytesToArray().ToTypedScriptArray();
+    public ITypedArray<byte>? blockHash => _blockHashConverted ??= BlockHash?.Bytes.ToTypedScriptArray();
     public int? txIndex { get; set; }
-    public ITypedArray<byte>? txHash => _txHashConverted ??= TxHash?.BytesToArray().ToTypedScriptArray();
+    public ITypedArray<byte>? txHash => _txHashConverted ??= TxHash?.Bytes.ToTypedScriptArray();
     public dynamic? error { get; set; } = Undefined.Value;
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -14,7 +13,6 @@ namespace Nethermind.Network.Rlpx;
 /// </summary>
 public sealed class FrameMacProcessor : IFrameMacProcessor
 {
-    private readonly PublicKey _remoteNodeId;
     private readonly KeccakHash _egressMac;
     private readonly KeccakHash _ingressMac;
     private readonly KeccakHash _egressMacCopy;
@@ -22,9 +20,8 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
     private readonly IBlockCipher _aesEngine;
     private readonly byte[] _macSecret;
 
-    public FrameMacProcessor(PublicKey remoteNodeId, EncryptionSecrets secrets)
+    public FrameMacProcessor(EncryptionSecrets secrets)
     {
-        _remoteNodeId = remoteNodeId;
         _macSecret = secrets.MacSecret;
         _egressMac = secrets.EgressMac;
         _egressMacCopy = _egressMac.Copy();
@@ -44,30 +41,13 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
         return aesFastEngine;
     }
 
-    public void AddMac(byte[] input, int offset, int length, bool isHeader)
+    public void UpdateEgressMac(ReadOnlySpan<byte> input) => _egressMac.Update(input);
+
+    public void UpdateIngressMac(ReadOnlySpan<byte> input, bool isHeader)
     {
         if (isHeader)
         {
-            input.AsSpan(0, 32).CopyTo(_addMacBuffer);
-            UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, offset, input, offset + length, true); // TODO: confirm header is seed 
-        }
-        else
-        {
-            _egressMac.Update(input.AsSpan(offset, length));
-
-            // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
-            DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer); // frame MAC seed
-            UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, 0, input, offset + length, true);
-        }
-    }
-
-    public void UpdateEgressMac(byte[] input) => _egressMac.Update(input);
-
-    public void UpdateIngressMac(byte[] input, bool isHeader)
-    {
-        if (isHeader)
-        {
-            input.AsSpan().CopyTo(_checkMacBuffer.AsSpan(0, 16));
+            input.CopyTo(_checkMacBuffer.AsSpan(0, 16));
         }
         else
         {
@@ -75,26 +55,26 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
         }
     }
 
-    public void CalculateMac(byte[] output)
+    public void CalculateMac(Span<byte> mac)
     {
         DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer); // frame MAC seed
-        UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, 0, output, 0, true);
+        UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, mac);
     }
 
-    public void AddMac(byte[] input, int offset, int length, byte[] output, int outputOffset, bool isHeader)
+    public void AddMac(ReadOnlySpan<byte> input, Span<byte> mac, bool isHeader)
     {
         if (isHeader)
         {
-            input.AsSpan(0, 16).CopyTo(_addMacBuffer);
-            UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, offset, output, outputOffset, true); // TODO: confirm header is seed 
+            input[..16].CopyTo(_addMacBuffer);
+            UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, mac); // TODO: confirm header is seed
         }
         else
         {
-            _egressMac.Update(input.AsSpan(offset, length));
+            _egressMac.Update(input);
 
             // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
             DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer); // frame MAC seed
-            UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, 0, output, outputOffset, true);
+            UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, mac);
         }
     }
 
@@ -103,7 +83,7 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
     private readonly byte[] _ingressAesBlockBuffer;
     private readonly byte[] _egressAesBlockBuffer;
 
-    public bool CheckMac(byte[] mac, bool isHeader)
+    public bool CheckMac(ReadOnlySpan<byte> mac, bool isHeader)
     {
         if (!isHeader)
         {
@@ -139,30 +119,12 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
         return isMacSame;
     }
 
-    public void CheckMac(byte[] input, int offset, int length, bool isHeader)
-    {
-        if (isHeader)
-        {
-            input.AsSpan(0, 32).CopyTo(_checkMacBuffer);
-            UpdateMac(_ingressMac, _ingressMacCopy, _checkMacBuffer, offset, input, offset + length, false);
-        }
-        else
-        {
-            _ingressMac.Update(input.AsSpan(offset, length));
-
-            // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
-            DoFinalNoReset(_ingressMac, _ingressMacCopy, _checkMacBuffer); // frame MAC seed
-            UpdateMac(_ingressMac, _ingressMacCopy, _checkMacBuffer, 0, input, offset + length, false);
-        }
-    }
-
-
     /// <summary>
     /// adapted from ethereumJ
     /// </summary>
-    private void UpdateMac(KeccakHash mac, KeccakHash macCopy, byte[] seed, int offset, byte[] output, int outOffset, bool egress)
+    private void UpdateMac(KeccakHash mac, KeccakHash macCopy, byte[] seed, Span<byte> output)
     {
-        byte[] aesBlock = egress ? _egressAesBlockBuffer : _ingressAesBlockBuffer;
+        byte[] aesBlock = _egressAesBlockBuffer;
         DoFinalNoReset(mac, macCopy, aesBlock);
 
         _aesEngine.ProcessBlock(aesBlock, 0, aesBlock, 0);
@@ -171,34 +133,14 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
         int length = 16;
         for (int i = 0; i < length; i++)
         {
-            aesBlock[i] ^= seed[i + offset];
+            aesBlock[i] ^= seed[i];
         }
 
         mac.Update(aesBlock.AsSpan(0, length));
         byte[] result = seed;
         DoFinalNoReset(mac, macCopy, result);
 
-        if (egress)
-        {
-            Array.Copy(result, 0, output, outOffset, length);
-        }
-        else
-        {
-            bool isMacSame = true;
-            for (int i = 0; i < length; i++)
-            {
-                if (output[i + outOffset] != result[i])
-                {
-                    isMacSame = false;
-                    break;
-                }
-            }
-
-            if (!isMacSame)
-            {
-                throw new IOException($"MAC mismatch from {_remoteNodeId}");
-            }
-        }
+        result.AsSpan(0, length).CopyTo(output);
     }
 
     private static void DoFinalNoReset(KeccakHash mac, KeccakHash macCopy, byte[] output)

@@ -143,6 +143,57 @@ public class LogIndexFilterVisitorTests
         VerifyEnumerator<LogIndexFilterVisitor.UnionEnumerator>(s2, s1, expected);
     }
 
+    [TestCase(3, 0)]
+    [TestCase(3, 1)]
+    [TestCase(3, 50)]
+    [TestCase(10, 1)]
+    [TestCase(10, 50)]
+    [TestCase(100, 20)]
+    [TestCase(1000, 50)]
+    public void KWayUnionEnumerator_MatchesReferenceAndBinaryChain(int count, int maxLength)
+    {
+        Random random = new(42);
+        int[][] sequences = new int[count][];
+        for (int i = 0; i < sequences.Length; i++)
+            sequences[i] = RandomAscending(random, random.Next(maxLength + 1), random.Next(1, 20));
+
+        int[] expected = sequences.SelectMany(static s => s).Distinct().Order().ToArray();
+
+        using LogIndexFilterVisitor.KWayUnionEnumerator enumerator = new(ToEnumerators(sequences));
+        Assert.That(EnumerateOnce(enumerator), Is.EqualTo(expected));
+
+        enumerator.Reset();
+        Assert.That(EnumerateOnce(enumerator), Is.EqualTo(expected));
+
+        enumerator.Reset();
+        for (int i = 0; i < expected.Length / 2; i++)
+            enumerator.MoveNext();
+
+        enumerator.Reset();
+        Assert.That(EnumerateOnce(enumerator), Is.EqualTo(expected));
+
+        List<IEnumerator<int>> chainEnumerators = ToEnumerators(sequences);
+        IEnumerator<int> chain = chainEnumerators[0];
+        for (int i = 1; i < chainEnumerators.Count; i++)
+            chain = new LogIndexFilterVisitor.UnionEnumerator(chain, chainEnumerators[i]);
+
+        using (chain)
+            Assert.That(EnumerateOnce(chain), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void KWayUnionEnumerator_Dispose([Values(3, 10)] int count)
+    {
+        List<IEnumerator<int>> enumerators = [];
+        for (int i = 0; i < count; i++)
+            enumerators.Add(Substitute.ForPartsOf<EnumeratorWrapper>(new[] { i, i + 1 }));
+
+        using (LogIndexFilterVisitor.KWayUnionEnumerator enumerator = new(enumerators))
+            Assert.That(EnumerateOnce(enumerator), Is.EqualTo(Enumerable.Range(0, count + 1)));
+
+        enumerators.ForEach(static enumerator => enumerator.Received(1).Dispose());
+    }
+
     [TestCaseSource(nameof(FilterTestData))]
     public void FilterEnumerator(string name, LogFilter filter, List<int> expected)
     {
@@ -184,7 +235,7 @@ public class LogIndexFilterVisitorTests
 
         storage.EnumerateBlockNumbersFor(filter, FromBlock, ToBlock).ForEach(_ => { });
 
-        enumerators.ForEach(enumerator => enumerator.Received().Dispose());
+        enumerators.ForEach(static enumerator => enumerator.Received(1).Dispose());
 
         IEnumerator<int> MockEnumerator()
         {
@@ -230,6 +281,29 @@ public class LogIndexFilterVisitorTests
             );
 
             yield return new TestCaseData(
+                "AddressA or AddressB or AddressC",
+
+                BuildFilter()
+                    .WithAddresses(TestItem.AddressA, TestItem.AddressB, TestItem.AddressC)
+                    .Build(),
+
+                LogIndexRanges[TestItem.AddressA].Union(LogIndexRanges[TestItem.AddressB]).Union(LogIndexRanges[TestItem.AddressC])
+                    .Distinct().Order().ToList()
+            );
+
+            yield return new TestCaseData(
+                "AddressA or AddressB or AddressC or AddressD or AddressE",
+
+                BuildFilter()
+                    .WithAddresses(TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE)
+                    .Build(),
+
+                LogIndexRanges[TestItem.AddressA].Union(LogIndexRanges[TestItem.AddressB]).Union(LogIndexRanges[TestItem.AddressC])
+                    .Union(LogIndexRanges[TestItem.AddressD]).Union(LogIndexRanges[TestItem.AddressE])
+                    .Distinct().Order().ToList()
+            );
+
+            yield return new TestCaseData(
                 "TopicA",
 
                 BuildFilter()
@@ -260,6 +334,18 @@ public class LogIndexFilterVisitorTests
                     ).Build(),
 
                 LogIndexRanges[0, TestItem.KeccakA].Union(LogIndexRanges[0, TestItem.KeccakB])
+                    .Distinct().Order().ToList()
+            );
+
+            yield return new TestCaseData(
+                "TopicA or TopicB or TopicC",
+
+                BuildFilter()
+                    .WithTopicExpressions(
+                        TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC)
+                    ).Build(),
+
+                LogIndexRanges[0, TestItem.KeccakA].Union(LogIndexRanges[0, TestItem.KeccakB]).Union(LogIndexRanges[0, TestItem.KeccakC])
                     .Distinct().Order().ToList()
             );
 
@@ -355,6 +441,9 @@ public class LogIndexFilterVisitorTests
 
         return result;
     }
+
+    private static List<IEnumerator<int>> ToEnumerators(int[][] sequences) =>
+        sequences.Select(static s => (IEnumerator<int>)s.ToList().GetEnumerator()).ToList();
 
     private static void VerifyEnumerator<T>(int[] s1, int[] s2, int[] ex)
         where T : IEnumerator<int>

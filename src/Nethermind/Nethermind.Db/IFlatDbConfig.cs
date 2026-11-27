@@ -107,10 +107,16 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Delete the patricia-trie state DB on start once the flat DB owns the state, reclaiming its disk space. The kept trie is what a switch back to the patricia backend restarts from, replaying from the conversion block, so this is irreversible: switching back afterwards requires a resync.", DefaultValue = "false")]
     bool DropPruningTrieState { get; set; }
 
+    [ConfigItem(Description = "Migrate an existing pruning trie state DB to the flat DB while the node runs: the node switches to flat at once, serving what is not copied yet from the trie DB, which it keeps until the copy completes. Supported by the Flat and FlatInTrie layouts. Once started, the migration continues on every restart until it completes, whether or not this is still set.", DefaultValue = "false")]
+    bool MigrateFromPruningTrieState { get; set; }
+
+    [ConfigItem(Description = "Number of trie nodes the online migration from the pruning trie state copies per write, between which block processing takes over.", DefaultValue = "1000")]
+    int MigrationChunkNodes { get; set; }
+
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
 
-    [ConfigItem(Description = "Flat db layout", DefaultValue = "Flat")]
+    [ConfigItem(Description = "Flat db layout. `Auto` keeps the layout of an existing flat DB, and creates a new one as `FlatInTrie` below 16 GB of memory available to .NET (75% of a container's memory limit) and as `Flat` otherwise.", DefaultValue = "Auto")]
     FlatLayout Layout { get; set; }
 
     [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]

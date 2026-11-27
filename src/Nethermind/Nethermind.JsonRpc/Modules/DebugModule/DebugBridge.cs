@@ -22,7 +22,6 @@ using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -38,6 +37,7 @@ public class DebugBridge : IDebugBridge
     private readonly BlockTreeMutationLock _mutationLock;
     private readonly IBlockProcessingPauseControl _pauseControl;
     private readonly IBlockProcessingQueue _processingQueue;
+    private readonly BlockProcessingTracker _processingTracker;
     private readonly ILogger _logger;
     private readonly IConfigProvider _configProvider;
     private readonly IGethStyleTracer _tracer;
@@ -72,6 +72,7 @@ public class DebugBridge : IDebugBridge
         BlockTreeMutationLock mutationLock,
         IBlockProcessingPauseControl pauseControl,
         IBlockProcessingQueue processingQueue,
+        BlockProcessingTracker processingTracker,
         ISyncProgressResolver syncProgressResolver,
         ISyncPointers syncPointers,
         ITxPool txPool)
@@ -81,6 +82,7 @@ public class DebugBridge : IDebugBridge
         _mutationLock = mutationLock;
         _pauseControl = pauseControl;
         _processingQueue = processingQueue;
+        _processingTracker = processingTracker;
         _syncProgressResolver = syncProgressResolver;
         _syncPointers = syncPointers;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
@@ -121,7 +123,10 @@ public class DebugBridge : IDebugBridge
 
     public IEnumerable<Block> GetBadBlocks() => _badBlockStore.GetAll();
 
-    public byte[] GetDbValue(string dbName, byte[] key) => _dbMappings[dbName][key];
+    public byte[] GetDbValue(string dbName, byte[] key) =>
+        _dbMappings.TryGetValue(dbName, out IDb? db)
+            ? db[key]
+            : throw new ArgumentException($"Unknown database, expected one of: {string.Join(", ", _dbMappings.Keys)}");
 
     public ChainLevelInfo GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
 
@@ -294,7 +299,7 @@ public class DebugBridge : IDebugBridge
 
     private bool CanMutateChain()
     {
-        if (_pauseControl.IsPaused && _processingQueue.IsEmpty && !_blockTree.IsProcessingBlock) return true;
+        if (_pauseControl.IsPaused && _processingQueue.IsEmpty && !_processingTracker.IsProcessingBlock) return true;
         if (_logger.IsWarn) _logger.Warn("Cannot mutate the chain: pause block processing and wait for it to drain.");
         return false;
     }
@@ -356,7 +361,7 @@ public class DebugBridge : IDebugBridge
     public GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
-    public GethLikeTxTrace? GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+    public GethLikeTxTrace? GetTransactionTrace(byte[] blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
     public GethLikeTxTrace? GetTransactionTrace(Block block, Hash256 txHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
@@ -368,7 +373,7 @@ public class DebugBridge : IDebugBridge
     public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.TraceBlock(blockParameter, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
-    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(byte[] blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
     public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>

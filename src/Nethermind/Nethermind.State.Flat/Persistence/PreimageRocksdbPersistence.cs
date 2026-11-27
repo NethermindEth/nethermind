@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 
@@ -154,9 +155,13 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
 
         StateId fromCopy = from;
         StateId toCopy = to;
-        return new BasePersistence.WriteBatch<FakeHashWriter<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
+
+        // Read by the disposer below, which runs only after the assignment.
+        BasePersistence.WriteBatch<FakeHashWriter<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch> writeBatch = null!;
+        writeBatch = new(
             flatWriter,
             trieWriteBatch,
+            batch.GetColumnBatch(FlatDbColumns.Metadata),
             new Reactive.AnonymousDisposable(() =>
             {
                 // The log is made durable and its version put into this batch's metadata before RocksDB commits, and
@@ -164,6 +169,10 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 bool batchWritten = false;
                 try
                 {
+                    // Before anything is committed or recorded: the finally clears the RocksDB batch, and the log batch,
+                    // disposed without a commit, truncates what it appended.
+                    if (writeBatch.IsAborted) return;
+
                     logBatch.Commit();
                     if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                         BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
@@ -184,7 +193,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 {
                     if (!batchWritten)
                     {
-                        // The log side failed, so nothing of this batch may reach RocksDB.
+                        // Aborted, or the log side failed, so nothing of this batch may reach RocksDB.
                         batch.Clear();
                         batch.Dispose();
                     }
@@ -194,6 +203,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 }
             })
         );
+        return writeBatch;
     }
 
     private struct FakeHashWriter<TWriteBatch>(
@@ -225,6 +235,13 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             _flatWriteBatch.SetAccount(fakeAddrHash, rlp);
         }
 
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp)
+        {
+            ValueHash256 fakeAddrHash = ValueKeccak.Zero;
+            addr.Bytes.CopyTo(fakeAddrHash.BytesAsSpan);
+            _flatWriteBatch.SetAccount(fakeAddrHash, slimRlp);
+        }
+
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             ValueHash256 fakeAddrHash = ValueKeccak.Zero;
@@ -239,7 +256,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
@@ -248,7 +265,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
             throw new NotSupportedException("Snap sync not supported in preimage mode");
 
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) =>
             throw new NotSupportedException("Snap sync not supported in preimage mode");
     }
 
@@ -273,7 +290,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             }
 
             RlpReader ctx = new(valueBuffer[..responseSize]);
-            return AccountDecoder.Slim.Decode(ref ctx);
+            return AccountDecoder.Slim.Decode(ref ctx, RlpBehaviors.TrustedInput);
         }
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)

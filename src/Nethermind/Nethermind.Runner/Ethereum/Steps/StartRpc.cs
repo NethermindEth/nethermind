@@ -61,7 +61,7 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
                 : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, api.Timestamper, logger));
 
         // Added before the warmup, whose own RPC host would otherwise claim this entry.
-        ThisNodeInfo.AddInfo("JSON RPC     :", string.Join(" ; ", jsonRpcUrlCollection.Urls));
+        ThisNodeInfo.AddInfo("JSON RPC     :", string.Join(" ; ", jsonRpcUrlCollection.Urls), sensitive: true);
         if (GetPipelineWarmupSkipReason(api) is { } skipReason)
         {
             if (logger.IsDebug) logger.Debug($"Skipping startup payload pipeline warmup: {skipReason}");
@@ -94,7 +94,9 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
                 auth,
                 jsonRpcConfig.MaxBatchResponseBodySize,
                 jsonRpcConfig.WebSocketsProcessingConcurrency,
-                jsonRpcConfig.MaxRequestBodySize);
+                jsonRpcConfig.MaxRequestBodySize,
+                jsonRpcConfig.MaxUnsentWebSocketResponseSize,
+                jsonRpcConfig.Timeout);
 
             webSocketsManager!.AddModule(webSocketsModule, true);
         }
@@ -161,27 +163,53 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
         return null;
     }
 
-    private static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
+    internal static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
     {
-        string newPath = Path.GetFullPath(Path.Join(keyStoreConfig.KeyStoreDirectory, "jwt-secret"));
+        string keyStoreDirectory = keyStoreConfig.KeyStoreDirectory;
         string oldPath = Path.GetFullPath("keystore/jwt-secret");
+        bool sharedWorkingDirectory = IsWritableByOthers(Environment.CurrentDirectory);
+        if (sharedWorkingDirectory)
+            keyStoreDirectory = GetAppKeyStoreDirectory(keyStoreDirectory, oldPath, logger);
+
+        string newPath = Path.GetFullPath(Path.Join(keyStoreDirectory, "jwt-secret"));
         jsonRpcConfig.JwtSecretFile = newPath;
 
         // check if jwt-secret file already exists in previous default directory
-        if (!File.Exists(newPath) && File.Exists(oldPath))
+        if (!File.Exists(newPath) && !sharedWorkingDirectory && File.Exists(oldPath))
         {
             try
             {
                 File.Move(oldPath, newPath);
 
-                if (logger.IsWarn) logger.Warn($"Moved JWT secret from {oldPath} to {newPath}");
+                if (logger.IsWarn) logger.Warn($"Moved JWT secret from {oldPath:hide} to {newPath:hide}");
             }
             catch (Exception ex)
             {
-                if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath}.", ex);
+                if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath:hide}.", SensitiveLogMasking.Enabled ? null : ex);
 
                 jsonRpcConfig.JwtSecretFile = oldPath;
             }
         }
+        // Existing secrets keep their working-directory paths, which consensus clients are configured with.
+        else if (!File.Exists(newPath))
+        {
+            jsonRpcConfig.JwtSecretFile = Path.GetFullPath("jwt-secret".GetApplicationResourcePath(keyStoreDirectory));
+        }
     }
+
+    private static string GetAppKeyStoreDirectory(string keyStoreDirectory, string oldPath, ILogger logger)
+    {
+        string appKeyStoreDirectory = Path.GetFullPath(keyStoreDirectory, PathUtils.ExecutingDirectory);
+        string appSecretPath = Path.GetFullPath(Path.Join(appKeyStoreDirectory, "jwt-secret"));
+        string workingDirectorySecretPath = Path.GetFullPath(Path.Join(keyStoreDirectory, "jwt-secret"));
+        if (logger.IsWarn && (SecretMovedAway(workingDirectorySecretPath, appSecretPath) || SecretMovedAway(oldPath, appSecretPath)))
+            logger.Warn($"The working directory can be written by its group or by other users, so the JWT secret path changed to {appSecretPath:hide}. Set JsonRpc.JwtSecretFile to keep the previous path.");
+        return appKeyStoreDirectory;
+    }
+
+    private static bool SecretMovedAway(string previousPath, string newPath) =>
+        previousPath != newPath && File.Exists(previousPath);
+
+    private static bool IsWritableByOthers(string directory) =>
+        !OperatingSystem.IsWindows() && (File.GetUnixFileMode(directory) & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0;
 }

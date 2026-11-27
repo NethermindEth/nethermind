@@ -7,6 +7,8 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.Trie;
@@ -17,11 +19,10 @@ namespace Nethermind.State.Flat.History.Walk;
 internal static class NodeViews
 {
     private const int MaxNibbles = 2 * Hash256.Size;
-    private const int Avx2HashBatchSize = 4;
     private const int Avx512HashBatchSize = 8;
     private const int VectorByteLength = 32;
     private const int BranchHashBufferLength = Avx512HashBatchSize * (KeccakHash.Hash532InputLength + Hash256.Size);
-    private static int MinHashBatchSize => Avx512F.IsSupported ? 3 : Avx2HashBatchSize;
+    private static int MinHashBatchSize => Avx512F.IsSupported ? 3 : KeccakHash.MaxBatchWidth;
 
     public static NodeView FromRoot(TrieNode? root, int depth, ITrieNodeResolver resolver)
     {
@@ -72,7 +73,7 @@ internal static class NodeViews
     public static void FromChildrenRlp(ReadOnlySpan<byte[]?> children, Span<NodeView> views)
     {
         uint initialized = 0;
-        if (Avx2.IsSupported)
+        if (KeccakHash.MaxBatchWidth != 0)
         {
             uint candidates = 0;
 
@@ -102,7 +103,7 @@ internal static class NodeViews
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static uint InitializeBatched(ReadOnlySpan<byte[]?> children, Span<NodeView> views, uint candidates)
     {
-        int batchSize = Avx512F.IsSupported ? Avx512HashBatchSize : Avx2HashBatchSize;
+        int batchSize = KeccakHash.MaxBatchWidth;
         int inputLength = Avx512F.IsSupported ? KeccakHash.Hash532InputLength : KeccakHash.Hash532PaddedLength;
         Unsafe.SkipInit(out BranchHashBuffer buffer);
         Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
@@ -129,7 +130,7 @@ internal static class NodeViews
             if (Avx512F.IsSupported)
                 KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref hashes[0]);
             else
-                KeccakHash.ComputePaddedMultiBlocks4Avx2(ref inputs[0], inputLength, ref hashes[0]);
+                KeccakHash.ComputePaddedBatch(ref inputs[0], inputLength, batchSize, ref hashes[0]);
             for (int i = 0; i < count; i++)
             {
                 int index = BitOperations.TrailingZeroCount(batch);
@@ -233,16 +234,25 @@ internal static class NodeViews
     public static bool TryReadExtensionPath(ReadOnlySpan<byte> rlp, Span<byte> nibbles, out int nibbleCount)
     {
         nibbleCount = 0;
-        RlpReader reader = new(rlp);
-        int length = reader.ReadSequenceLength();
-        return reader.PeekNumberOfItemsRemaining(reader.Position + length, maxSearch: 3) == 2 && !DecodeShortNode(rlp, nibbles, out nibbleCount, out _);
+        RlpReader reader = new RlpReader(rlp).EnterSequence<OffFlag>(out _);
+        return CountUpToThreeItems(reader) == 2 && !DecodeShortNode(rlp, nibbles, out nibbleCount, out _);
+    }
+
+    private static int CountUpToThreeItems(RlpReader reader)
+    {
+        int count = 0;
+        for (; count < 3 && reader.HasNext; count++)
+        {
+            reader.SkipItem<OffFlag>();
+        }
+
+        return count;
     }
 
     private static bool DecodeShortNode(ReadOnlySpan<byte> rlp, Span<byte> nibbles, out int nibbleCount, out ReadOnlySpan<byte> payload)
     {
-        RlpReader reader = new(rlp);
-        reader.ReadSequenceLength();
-        ReadOnlySpan<byte> hexPrefix = reader.DecodeByteArraySpan();
+        RlpReader reader = new RlpReader(rlp).EnterSequence<OffFlag>(out _);
+        ReadOnlySpan<byte> hexPrefix = reader.ReadBytes<OffFlag>();
         bool isLeaf = (hexPrefix[0] & 0x20) != 0;
         nibbleCount = 0;
         if ((hexPrefix[0] & 0x10) != 0) nibbles[nibbleCount++] = (byte)(hexPrefix[0] & 0x0F);
@@ -254,18 +264,17 @@ internal static class NodeViews
 
         if (isLeaf)
         {
-            payload = reader.DecodeByteArraySpan();
+            payload = reader.ReadBytes<OffFlag>();
             return true;
         }
 
-        if (reader.IsSequenceNext())
+        if (reader.IsNextSequence)
         {
-            (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
-            payload = reader.Read(prefixLength + contentLength);
+            payload = reader.ReadEncodedItem<OffFlag>();
             return false;
         }
 
-        payload = reader.DecodeByteArraySpan();
+        payload = reader.ReadBytes<OffFlag>();
         return false;
     }
 }

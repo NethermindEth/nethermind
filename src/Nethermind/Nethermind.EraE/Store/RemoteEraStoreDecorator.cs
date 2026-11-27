@@ -104,6 +104,24 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         return (block, receipts);
     }
 
+    /// <inheritdoc/>
+    public async Task<(Block?, ArrayPoolList<byte>?, TxReceipt[]?)> FindEncodedBlockAndReceipts(
+        ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
+    {
+        if (_localStore is not null)
+        {
+            (Block? b, ArrayPoolList<byte>? body, TxReceipt[]? r) = await _localStore.FindEncodedBlockAndReceipts(number, ensureValidated, cancellation).ConfigureAwait(false);
+            if (b is not null) return (b, body, r);
+        }
+
+        uint epoch = (uint)(number / _maxEraSize);
+        string localPath = await EnsureEpochAvailableAsync(epoch, ensureValidated, cancellation).ConfigureAwait(false);
+
+        using EraRenter renter = RentReader(epoch, localPath);
+        if (number > renter.Reader.LastBlock) return (null, null, null);
+        return await renter.Reader.GetEncodedBlockByNumber(number, cancellation).ConfigureAwait(false);
+    }
+
     public bool HasEpoch(ulong blockNumber) => _localStore is not null && _localStore.HasEpoch(blockNumber);
 
     public ulong NextEraStart(ulong blockNumber)
@@ -173,8 +191,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         // First is exact: era epochs are aligned to maxEraSize boundaries.
         // Last is upper-bound estimate: avoids downloading the last (potentially huge) epoch file just for validation.
         // The actual last block may be slightly lower for a non-full final epoch.
-        // FindBlockAndReceipts returns (null, null) when number > reader.LastBlock, so importers that
-        // rely on this value (to=0 / auto mode) will stop naturally at the real end.
+        // Importers that rely on this value (to=0 / auto mode) resolve the real end via NextEraStart.
         return (minEpoch * _maxEraSize, (maxEpoch + 1) * _maxEraSize - 1);
     }
 

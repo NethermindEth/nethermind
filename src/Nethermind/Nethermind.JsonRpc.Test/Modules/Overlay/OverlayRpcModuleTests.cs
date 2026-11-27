@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -55,10 +56,12 @@ public class OverlayRpcModuleTests
         .Done;
 
     [Test]
-    public async Task CallConstructor_returns_runtime_code_of_new_creation_code()
+    public async Task CallConstructor_returns_runtime_code_of_new_creation_code([Values] bool sendersRecovered)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         Deployment deployment = await Deploy(chain);
+        // A block read back from the database carries no recovered senders.
+        if (!sendersRecovered) DebugRpcModuleTests.ClearSenders(chain, chain.BlockTree.FindBlock(deployment.First, BlockTreeLookupOptions.None)!);
         byte[] runtime = Emitter(TopicA, TopicB);
 
         using JsonDocument response = await Request(chain, "overlay_callConstructor", deployment.Contract, Prepare.EvmCode.ForInitOf(runtime).Done);
@@ -142,6 +145,25 @@ public class OverlayRpcModuleTests
         using JsonDocument response = JsonDocument.Parse(await RpcTest.TestSerializedRequest(factory.Create(), "overlay_callConstructor", deployment.Contract, ContextConstructor));
 
         Assert.That(Code(response)[12..32], Is.EqualTo(deployment.Contract.Bytes.ToArray()));
+    }
+
+    [Test]
+    public async Task CallConstructor_stops_on_the_cancelled_dispatcher_token()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Deployment deployment = await Deploy(chain);
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        await timeout.CancelAsync();
+
+        try
+        {
+            using JsonDocument response = await Request(chain, "overlay_callConstructor", deployment.Contract, ContextConstructor);
+            Assert.That(response.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.Timeout));
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
     }
 
     [Test]
@@ -271,7 +293,7 @@ public class OverlayRpcModuleTests
         Deployment deployment = await Deploy(chain);
         Block block = chain.BlockFinder.FindBlock(deployment.Last)!;
         ulong[] nonces = [.. block.Transactions.Select(static tx => tx.Nonce)];
-        byte[][] encoded = [.. block.Transactions.Select(static tx => Rlp.Encode(tx).Bytes)];
+        byte[][] encoded = [.. block.Transactions.Select(static tx => Rlp.Encode(tx))];
 
         using JsonDocument response = await Request(chain, "overlay_getLogs",
             new { fromBlock = deployment.Last.ToHexString(true), toBlock = deployment.Last.ToHexString(true) },
@@ -282,7 +304,30 @@ public class OverlayRpcModuleTests
         {
             Assert.That(response.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(2));
             Assert.That(reloaded.Transactions.Select(static tx => tx.Nonce), Is.EqualTo(nonces));
-            Assert.That(reloaded.Transactions.Select(static tx => Rlp.Encode(tx).Bytes), Is.EqualTo(encoded));
+            Assert.That(reloaded.Transactions.Select(static tx => Rlp.Encode(tx)), Is.EqualTo(encoded));
+        }
+    }
+
+    [Test]
+    public async Task GetLogs_replays_copies_that_keep_the_transaction_type([Values] bool stateOverride)
+    {
+        List<Transaction> replayed = [];
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, replayed)));
+
+        ReplayCopies.Stored stored = await ReplayCopies.MineSubclassTransaction(chain, TestItem.PrivateKeyA, replayed);
+        Block head = chain.BlockTree.Head!;
+
+        object filter = new { fromBlock = head.Number.ToHexString(true), toBlock = head.Number.ToHexString(true) };
+        using JsonDocument response = stateOverride
+            ? await Request(chain, "overlay_getLogs", filter,
+                new Dictionary<string, object> { [TestItem.AddressA.ToString()] = new { nonce = 1000UL.ToHexString(true) } })
+            : await Request(chain, "overlay_getLogs", filter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.RootElement.TryGetProperty("error", out _), Is.False, response.RootElement.ToString());
+            ReplayCopies.AssertReplayedCopies(replayed, 1, stored);
         }
     }
 
@@ -316,6 +361,63 @@ public class OverlayRpcModuleTests
             Assert.That(logs, Has.Length.EqualTo(expected));
             Assert.That(logs.Select(static l => l.GetProperty("address").GetString()), Is.All.EqualTo(address.ToString()));
         }
+    }
+
+    [Test]
+    public async Task GetLogs_applies_a_lone_storage_override([Values("state", "stateDiff")] string field)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Deployment deployment = await Deploy(chain);
+        string seven = $"0x{7:x64}";
+        // Logs slot 0 as the data word.
+        byte[] code = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).PushData(0).Op(Instruction.LOG0).STOP().Done;
+        Dictionary<string, string> storage = new() { [$"0x{0:x64}"] = seven };
+        Dictionary<string, object> account = new() { ["code"] = code.ToHexString(true), [field] = storage };
+
+        using JsonDocument response = await Request(chain, "overlay_getLogs",
+            new { fromBlock = deployment.Last.ToHexString(true), toBlock = deployment.Last.ToHexString(true) },
+            new Dictionary<string, object> { [deployment.Contract.ToString()] = account });
+
+        Assert.That(response.RootElement.GetProperty("result").EnumerateArray().Select(static l => l.GetProperty("data").GetString()), Is.EqualTo(new[] { seven, seven }));
+    }
+
+    [Test]
+    public async Task GetLogs_rejects_a_storage_conflict_over_empty_blocks()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Block empty = await chain.AddBlock();
+        Assert.That(empty.Transactions, Is.Empty, "precondition: the range has no transactions to replay");
+
+        using JsonDocument response = await Request(chain, "overlay_getLogs",
+            new { fromBlock = empty.Number.ToHexString(true), toBlock = empty.Number.ToHexString(true) },
+            new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { state = new { }, stateDiff = new { } } });
+
+        AssertStorageConflict(response, TestItem.AddressC);
+    }
+
+    [Test]
+    public async Task GetLogs_range_errors_win_over_a_storage_conflict([Values("pending", "future", "reversed", "range")] string range)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        await chain.AddBlock();
+        await chain.AddBlock();
+        chain.Container.Resolve<IJsonRpcConfig>().OverlayMaxBlockRange = 1;
+        object filter = range switch
+        {
+            "pending" => new { fromBlock = "pending", toBlock = "pending" },
+            "future" => new { fromBlock = "0xffff", toBlock = "0xffff" },
+            "reversed" => new { fromBlock = "0x2", toBlock = "0x1" },
+            _ => new { fromBlock = "0x1", toBlock = "0x2" },
+        };
+
+        using JsonDocument withConflict = await Request(chain, "overlay_getLogs", filter,
+            new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { state = new { }, stateDiff = new { } } });
+        using JsonDocument without = await Request(chain, "overlay_getLogs", filter);
+
+        JsonElement root = withConflict.RootElement;
+        Assert.That(root.TryGetProperty("error", out JsonElement error) ? error.GetRawText() : root.GetRawText(),
+            Is.EqualTo(without.RootElement.GetProperty("error").GetRawText()));
     }
 
     [Test]
@@ -435,6 +537,15 @@ public class OverlayRpcModuleTests
 
     private static int ErrorCode(JsonDocument response) =>
         response.RootElement.GetProperty("error").GetProperty("code").GetInt32();
+
+    private static void AssertStorageConflict(JsonDocument response, Address address)
+    {
+        JsonElement root = response.RootElement;
+        string actual = root.TryGetProperty("error", out JsonElement error)
+            ? $"{error.GetProperty("code").GetInt32()} {error.GetProperty("message").GetString()}"
+            : root.GetRawText();
+        Assert.That(actual, Is.EqualTo($"{ErrorCodes.InvalidInput} account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'"));
+    }
 
     private static long LogIndex(JsonElement log) => long.Parse(log.GetProperty("logIndex").GetString()![2..], NumberStyles.HexNumber);
 }

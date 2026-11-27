@@ -27,6 +27,8 @@ namespace Nethermind.Blockchain.Spec
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 
+        public bool GenesisStateUnavailable => _specProvider.GenesisStateUnavailable;
+
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
 
         public ulong? DaoBlockNumber => _specProvider.DaoBlockNumber;
@@ -36,6 +38,8 @@ namespace Nethermind.Blockchain.Spec
         public ulong NetworkId => _specProvider.NetworkId;
 
         public ulong ChainId => _specProvider.ChainId;
+
+        public string SealEngine => _specProvider.SealEngine;
 
         public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;
 

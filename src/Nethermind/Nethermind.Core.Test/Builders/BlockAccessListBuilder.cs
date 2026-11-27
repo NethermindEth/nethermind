@@ -10,7 +10,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public class BlockAccessListBuilder : BuilderBase<ReadOnlyBlockAccessList>
     {
-        private readonly SortedList<Address, ReadOnlyAccountChanges> _accounts = new(GenericComparer.GetOptimized<Address>());
+        private readonly SortedList<Address, ReadOnlyAccountChanges> _accounts = [with(GenericComparer.GetOptimized<Address>())];
 
         public BlockAccessListBuilder() => Rebuild();
 

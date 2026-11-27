@@ -18,7 +18,7 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
-public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingFilter
+public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingFilter, ITraceOperationStart
 {
     public const string PrestateTracer = "prestateTracer";
 
@@ -36,6 +36,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private TraceMemory _memoryTrace;
     private Instruction _op;
     private Address? _executingAccount;
+    // As in Geth, a storage opcode that fails before it executes reads no slot, so the slot it added is dropped.
+    private UInt256? _slotAddedByOperation;
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = [];
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
     private readonly HashSet<AddressAsKey> _createdAccounts;
@@ -235,6 +237,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
+        _slotAddedByOperation = null;
 
         IsTracingMemory = _op is Instruction.CREATE2 or Instruction.TCREATE;
         IsTracingStack = RequiresStack(_op)
@@ -267,9 +270,12 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         {
             case Instruction.SLOAD:
             case Instruction.SSTORE:
-                if (stackLen >= 1 && _transientCreates?.Contains(_executingAccount!) != true)
+                // As in Geth, an SSTORE missing its value underflows before it executes and reads no slot.
+                if (stackLen >= (_op == Instruction.SSTORE ? 2 : 1) && _transientCreates?.Contains(_executingAccount!) != true)
                 {
                     UInt256 index = stack.PeekUInt256(0);
+                    if (_prestate[_executingAccount!].Storage?.ContainsKey(index) != true)
+                        _slotAddedByOperation = index;
                     LookupStorage(_executingAccount!, index);
                 }
                 break;
@@ -312,29 +318,32 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             case Instruction.TCREATE:
                 if (stackLen >= 4)
                 {
+                    int offset = stack.Peek(1).ReadEthInt32();
+                    int length = stack.Peek(2).ReadEthInt32();
+                    ReadOnlySpan<byte> initCode;
                     try
                     {
-                        int offset = stack.Peek(1).ReadEthInt32();
-                        int length = stack.Peek(2).ReadEthInt32();
-                        ReadOnlySpan<byte> initCode = _memoryTrace.Slice(offset, length);
-                        ReadOnlySpan<byte> salt = stack.Peek(3);
-                        address = _op == Instruction.TCREATE
-                            ? ContractAddress.FromTransientCreate(_executingAccount!, salt, initCode)
-                            : ContractAddress.From(_executingAccount!, salt, initCode);
-                        LookupAccount(address);
-                        if (_diffMode)
-                            _createdAccounts.Add(address);
-                        if (_op == Instruction.TCREATE)
-                            (_transientCreates ??= []).Add(address);
+                        initCode = _memoryTrace.Slice(offset, length);
                     }
-                    catch
+                    catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
                     {
                         /*
                          * The init code cannot be read: an offset or length that does not fit, or a slice
                          * past the traced memory's 1 MiB padding limit (as in geth). The account is then not
                          * looked up; StartOperation resets the state for the next operation
                          */
+                        break;
                     }
+
+                    ReadOnlySpan<byte> salt = stack.Peek(3);
+                    address = _op == Instruction.TCREATE
+                        ? ContractAddress.FromTransientCreate(_executingAccount!, salt, initCode)
+                        : ContractAddress.From(_executingAccount!, salt, initCode);
+                    LookupAccount(address);
+                    if (_diffMode)
+                        _createdAccounts.Add(address);
+                    if (_op == Instruction.TCREATE)
+                        (_transientCreates ??= []).Add(address);
                 }
                 break;
             case Instruction.CREATE:
@@ -345,6 +354,17 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                     _createdAccounts.Add(address);
                 break;
         }
+    }
+
+    /// <inheritdoc/>
+    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth) { }
+
+    /// <inheritdoc/>
+    public void ReportOperationReady(ulong gasCost, string? error)
+    {
+        if (error is not null && _slotAddedByOperation is UInt256 slot)
+            _prestate[_executingAccount!].Storage?.Remove(slot);
+        _slotAddedByOperation = null;
     }
 
     /// <remarks>
@@ -439,10 +459,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 continue;
 
             _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
+            bool sameCodeHash = !_disableCode && prestateAccount.CodeHash is { } preCodeHash && preCodeHash == poststateAccountStruct.CodeHash;
             NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
-                _disableCode ? default : _worldState.GetCode(addr));
+                _disableCode ? default : sameCodeHash ? prestateAccount.Code : _worldState.GetCode(addr));
             NativePrestateTracerAccount? diffAccount = new();
 
             bool modified = false;
@@ -462,7 +483,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 modified = true;
                 diffAccount.CodeHash = postCodeHash;
             }
-            if (!_disableCode && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
+            if (!_disableCode && !sameCodeHash && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
             {
                 modified = true;
                 diffAccount.Code = poststateAccount.Code;

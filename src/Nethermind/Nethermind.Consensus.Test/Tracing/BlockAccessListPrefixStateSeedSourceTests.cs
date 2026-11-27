@@ -13,7 +13,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -338,7 +338,7 @@ public class BlockAccessListPrefixStateSeedSourceTests
     {
         IBlockAccessListStore store = Substitute.For<IBlockAccessListStore>();
         Block block = BuildBlock();
-        store.Get(ForkBlock, block.Hash).Returns(_ => throw new RlpException("corrupt"), _ => BuildAccessList(TestItem.KeccakA));
+        store.Get(ForkBlock, block.Hash).Returns(_ => throw new RlpReaderException("corrupt"), _ => BuildAccessList(TestItem.KeccakA));
         BlockAccessListPrefixStateSeedSource seeds = BuildSource(store);
         StateReadOverlaySlot slot = new();
 
@@ -404,6 +404,22 @@ public class BlockAccessListPrefixStateSeedSourceTests
         {
             Assert.That(disabled, Is.False, "a chain that never carries access lists can arm only what the source underneath arms");
             Assert.That(seeds.Enabled, Is.True, "an enabled source underneath still arms slots");
+        }
+    }
+
+    [Test]
+    public void MayCover_OnABlockBeforeTheFork_FollowsTheSourceUnderneath([Values] bool innerCovers)
+    {
+        IPrefixStateSeedSource inner = Substitute.For<IPrefixStateSeedSource>();
+        Block before = BuildBlock(ForkBlock - 1);
+        inner.MayCover(before).Returns(innerCovers);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)ForkBlock, Amsterdam.Instance));
+        BlockAccessListPrefixStateSeedSource seeds = new(inner, Substitute.For<IBlockAccessListStore>(), specProvider, LimboLogs.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.MayCover(before), Is.EqualTo(innerCovers), "a block before the fork is seeded by whatever sits underneath");
+            Assert.That(seeds.MayCover(BuildBlock(ForkBlock)), Is.True, "a block with an access list may be seeded from it");
         }
     }
 

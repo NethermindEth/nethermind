@@ -25,7 +25,7 @@ public class DefaultRequestHandler(
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error handling {request.Method}: {ex.Message}", ex);
+            _logger.Error($"Error handling {request.Method}: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error handling {request.Method}: {ex.Message}");
         }
     }

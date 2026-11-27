@@ -50,6 +50,23 @@ namespace Nethermind.Blockchain.Find
             return found && bloomMatches(header!.Bloom!.Bytes) ? header : null;
         }
 
+        /// <summary>
+        /// Finds the canonical headers of consecutive blocks from <paramref name="firstBlockNumber"/>, one per element of
+        /// <paramref name="headers"/>, as <see cref="FindCanonicalHeaderIfBloomMatches"/> does each one.
+        /// </summary>
+        /// <param name="firstBlockNumber">The number of the first block.</param>
+        /// <param name="bloomMatches">Tells whether a bloom is a match.</param>
+        /// <param name="headers">Receives each header whose bloom is a match, else <see langword="null"/>.</param>
+        /// <param name="found">Receives whether a canonical header is stored at each number, whether or not its bloom is a match.</param>
+        /// <remarks>An implementation can read the levels and the headers in batches.</remarks>
+        void FindCanonicalHeadersIfBloomMatches(ulong firstBlockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, Memory<BlockHeader?> headers, Memory<bool> found)
+        {
+            for (int i = 0; i < headers.Length; i++)
+            {
+                headers.Span[i] = FindCanonicalHeaderIfBloomMatches(firstBlockNumber + (ulong)i, bloomMatches, out found.Span[i]);
+            }
+        }
+
         Hash256? FindBlockHash(ulong blockNumber);
 
         /// <summary>
@@ -75,7 +92,12 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindHeadBlock() => Head;
 
-        public Block? FindEarliestBlock() => FindGenesisBlock();
+        /// <summary>Finds the lowest block this node serves, which the <c>earliest</c> block tag resolves to.</summary>
+        public Block? FindEarliestBlock() => EarliestBlockNumber switch
+        {
+            0 => FindGenesisBlock(),
+            var number => FindBlock(number, BlockTreeLookupOptions.RequireCanonical)
+        };
 
         public Block? FindLatestBlock() => FindHeadBlock();
 
@@ -91,7 +113,15 @@ namespace Nethermind.Blockchain.Find
 
         public BlockHeader FindGenesisHeader() => FindHeader(GenesisHash, BlockTreeLookupOptions.RequireCanonical) ?? throw new Exception("Genesis header could not be found");
 
-        public BlockHeader FindEarliestHeader() => FindGenesisHeader();
+        /// <summary>Finds the header of <see cref="FindEarliestBlock"/>, or <c>null</c> while it is not stored yet.</summary>
+        public BlockHeader? FindEarliestHeader() => EarliestBlockNumber switch
+        {
+            0 => FindGenesisHeader(),
+            var number => FindHeader(number, BlockTreeLookupOptions.RequireCanonical)
+        };
+
+        /// <remarks>The served floor is clamped to at least 1 because genesis is never synced, so a floor of 1 means no history is pruned.</remarks>
+        private ulong EarliestBlockNumber => LowestServedBlock is > 1 and var lowest ? lowest : 0;
 
         public BlockHeader? FindLatestHeader() => Head?.Header;
 

@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// a large memory or storage dump, so a slow reader holds execution back instead of letting the response
 /// buffer grow with the size of each entry.
 /// </remarks>
-public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOperationGasCost, ITraceOperationStart
+public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOperationGasCost, ITraceOperationStart, ITxTracer
 {
     internal const int DefaultFlushThresholdBytes = 1024 * 1024;
     private const int EvmWordSize = EvmPooledMemory.WordSize;
@@ -47,14 +47,19 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private bool _hasPendingOpcode;
     private int _pendingPc;
     private Instruction _pendingOpcode;
+    private bool _actionOnlyDetailReported;
+    private bool _pendingUndefined;
     private ulong _pendingGas;
     private ulong _pendingGasCost;
     private int _pendingDepth;
     private string? _pendingError;
     private long _pendingRefund;
     private bool _gasCostAlreadySet;
-    private bool _gasCostReported;
     private ulong? _calculatedGasCost;
+    private string? _gasError;
+    private string? _stackFailure;
+    private byte _immediate;
+    private int _stackHead;
     private bool _pendingStorageTouched;
 
     private UInt256[]? _stackBuffer;
@@ -66,11 +71,13 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private byte[]? _returnDataBuffer;
     private int _returnDataByteCount;
 
-    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = new(InitialStorageMapCapacity);
+    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = [with(InitialStorageMapCapacity)];
     private readonly Stack<PooledDictionary<UInt256, UInt256>> _storageMapPool = new();
     private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
     private readonly long _limit;
+    private readonly long _stepLimit;
+    private long _capturedSteps;
     private long _resultSize;
     private long _flushedBytes;
     private bool _disposed;
@@ -90,6 +97,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
 
         _transaction = transaction;
         _limit = options.Limit;
+        _stepLimit = options.OpcodeStepLimit;
         _writer = writer;
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
@@ -107,14 +115,17 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _hasPendingOpcode = false;
         _pendingPc = 0;
         _pendingOpcode = default;
+        _actionOnlyDetailReported = false;
+        _pendingUndefined = false;
         _pendingGas = 0;
         _pendingGasCost = 0;
         _pendingDepth = 0;
         _pendingError = null;
         _pendingRefund = 0;
         _gasCostAlreadySet = false;
-        _gasCostReported = false;
         _calculatedGasCost = null;
+        _gasError = null;
+        _stackFailure = null;
         _pendingStorageTouched = false;
         ResetRefund();
         _stackCount = 0;
@@ -130,6 +141,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _storageByAddress.Dispose();
         _pendingStorageMap = null;
         _resultSize = 0;
+        _capturedSteps = 0;
         ResetTrace();
     }
 
@@ -142,19 +154,23 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         FinalizePendingOpcode();
-        if (_limit != 0 && _resultSize > _limit) return;
+        if ((_limit != 0 && _resultSize > _limit) || (_stepLimit > 0 && _capturedSteps >= _stepLimit)) return;
 
         _hasPendingOpcode = true;
         _pendingPc = pc;
         _pendingOpcode = opcode;
+        _actionOnlyDetailReported = false;
+        _pendingUndefined = false;
         _pendingGas = gas;
         _pendingGasCost = 0;
         _pendingDepth = env.GetGethTraceDepth();
+        _immediate = ReadEip8024Immediate(opcode, pc, in env);
         _pendingError = null;
         _pendingRefund = CurrentRefund;
         _gasCostAlreadySet = false;
-        _gasCostReported = false;
         _calculatedGasCost = null;
+        _gasError = null;
+        _stackFailure = null;
         _pendingStorageTouched = false;
         _pendingStorageMap = null;
         _stackCount = 0;
@@ -165,8 +181,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     public override void ReportOperationRemainingGas(ulong gas)
     {
         if (_gasCostAlreadySet || !_hasPendingOpcode) return;
-        _pendingGasCost = _pendingGas - gas;
-        _pendingRefund = CurrentRefund;
+        _pendingGasCost = GetGasCost(_pendingGas, gas, _calculatedGasCost);
         _gasCostAlreadySet = true;
     }
 
@@ -177,15 +192,23 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         {
             _pendingGasCost = gasCost;
             _gasCostAlreadySet = true;
-            _gasCostReported = true;
         }
     }
 
     /// <inheritdoc/>
-    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth) => _calculatedGasCost = gasCost;
+    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth)
+    {
+        _calculatedGasCost = gasCost;
+        _stackHead = stackHead;
+        _stackFailure = GetStackFailure(_pendingOpcode, stackHead, stackInputs, stackGrowth);
+    }
 
     /// <inheritdoc/>
-    public void ReportOperationReady(ulong gasCost, string? error) => _calculatedGasCost = gasCost;
+    public void ReportOperationReady(ulong gasCost, string? error)
+    {
+        _calculatedGasCost = gasCost;
+        _gasError = error;
+    }
 
     /// <inheritdoc/>
     public override void ReportActionErrorDetails(string error)
@@ -194,27 +217,31 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
             _pendingError = error;
     }
 
-    public override void ReportOperationError(EvmExceptionType error)
+    /// <remarks>
+    /// Only the handler for opcodes the active fork does not define sends an action-only detail on a step that fails as a
+    /// bad instruction; defined opcodes that fail as one, and code deposit errors, do not.
+    /// </remarks>
+    void ITxTracer.ReportActionErrorDetails(string error, bool actionOnly)
     {
-        if (!_hasPendingOpcode) return;
-        if (_pendingOpcode == Instruction.INVALID)
-        {
-            _pendingGasCost = 0;
-            return;
-        }
-        if (error == EvmExceptionType.BadInstruction) _pendingGasCost = 0;
-        // As in Geth, an opcode that runs out of gas reports the cost it could not pay rather than the gas it had.
-        if (error == EvmExceptionType.OutOfGas && !_gasCostReported && _calculatedGasCost is ulong gasCost)
-            _pendingGasCost = gasCost;
-        if (error == EvmExceptionType.StaticCallViolation && _pendingOpcode == Instruction.SSTORE)
-            _pendingError = "out of gas: write protection";
-        if (!IsExecutionFault(error)) _pendingError ??= GetErrorDescription(error);
+        if (actionOnly)
+            _actionOnlyDetailReported = true;
+        else
+            ReportActionErrorDetails(error);
     }
 
     /// <inheritdoc/>
-    public override void ReportStorageRefund(long refund)
+    /// <remarks>As in Geth, a step that halts exceptionally carries its error and a zero gas cost.</remarks>
+    public override void ReportOperationError(EvmExceptionType error)
     {
-        if (_hasPendingOpcode) _pendingRefund = CurrentRefund + refund;
+        if (!_hasPendingOpcode || IsRejectedActionPrecheck(error)) return;
+        if (error == EvmExceptionType.BadInstruction && _actionOnlyDetailReported)
+        {
+            _pendingUndefined = true;
+            _pendingError ??= $"invalid opcode: {OpcodeJsonNames.GetUndefinedName(_pendingOpcode)}";
+        }
+        _pendingError ??= GetStepError(error, _pendingOpcode, _immediate, _stackHead, _stackFailure, _pendingGas,
+            _calculatedGasCost, _gasError);
+        _pendingGasCost = 0;
     }
 
     public override void SetOperationMemorySize(ulong newSize)
@@ -267,7 +294,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         {
             contractStorage = _storageMapPool.TryPop(out PooledDictionary<UInt256, UInt256>? pooled)
                 ? pooled
-                : new PooledDictionary<UInt256, UInt256>(InitialStorageMapCapacity);
+                : [with(InitialStorageMapCapacity)];
             _storageByAddress[address] = contractStorage;
         }
         contractStorage[storageIndex] = new UInt256(value, isBigEndian: true);
@@ -340,7 +367,10 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         // Exclude the array separator: Geth counts individually serialized log objects.
         long entryStart = _writer.BytesCommitted + _writer.BytesPending - 1;
         _writer.WriteNumber("pc"u8, _pendingPc);
-        _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
+        if (_pendingUndefined)
+            _writer.WriteString("op"u8, OpcodeJsonNames.GetUndefinedName(_pendingOpcode));
+        else
+            _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
         _writer.WriteNumber("gas"u8, _pendingGas);
         _writer.WriteNumber("gasCost"u8, _pendingGasCost);
         _writer.WriteNumber("depth"u8, _pendingDepth);
@@ -355,6 +385,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         if (IsTracingReturnData && _returnDataByteCount > 0) WriteReturnDataValue();
 
         _writer.WriteEndObject();
+        if (_stepLimit > 0) _capturedSteps++;
         if (_limit > 0)
             _resultSize += _writer.BytesCommitted + _writer.BytesPending - entryStart;
     }

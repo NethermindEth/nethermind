@@ -6,6 +6,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 using NUnit.Framework;
@@ -37,7 +38,7 @@ public class RlpDecoderTests
         Transaction tx = BuildDepositTx();
 
         byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(rlp);
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
         _decoder.Encode(ref writer, tx);
 
         Assert.That(rlp.ToHexString(), Is.EqualTo(DepositTxRlpHex));
@@ -54,7 +55,7 @@ public class RlpDecoderTests
         Transaction tx = BuildDepositTx();
 
         byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(rlp);
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
         _decoder.Encode(ref writer, tx);
 
         Transaction? decodedTx = Rlp.Decode<Transaction?>(rlp);
@@ -68,7 +69,7 @@ public class RlpDecoderTests
         Transaction tx = BuildDepositTransaction(to: null);
 
         byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(rlp);
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
         _decoder.Encode(ref writer, tx);
 
         RlpReader ctx = new(rlp);

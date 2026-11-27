@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using static Nethermind.Serialization.Rlp.Rlp;
 
@@ -14,24 +15,28 @@ namespace Nethermind.Optimism;
 
 [Decoder(RlpDecoderKey.Storage)]
 public class OptimismCompactReceiptStorageDecoder :
-    RlpDecoder<TxReceipt>, IReceiptRefDecoder
+    RlpDecoder<TxReceipt>, IReceiptRefTopicDecoder
 {
     private static readonly CompactLogEntryDecoder LogEntryDecoder = CompactLogEntryDecoder.Instance;
 
     protected override OptimismTxReceipt? DecodeInternal(ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            ? Decode<OffFlag>(ref decoderContext, rlpBehaviors)
+            : Decode<OnFlag>(ref decoderContext, rlpBehaviors);
+
+    private static OptimismTxReceipt? Decode<TCanonicalChecks>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
+        where TCanonicalChecks : struct, IFlag
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryReadEmptySequence())
         {
-            decoderContext.ReadByte();
             return null;
         }
 
-        int receiptStart = decoderContext.Position;
         OptimismTxReceipt txReceipt = new();
-        int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+        RlpReader fields = decoderContext.EnterSequence<TCanonicalChecks>(out int receiptLength);
 
-        byte[] firstItem = decoderContext.DecodeByteArray();
+        ReadOnlySpan<byte> firstItem = fields.ReadBytes<TCanonicalChecks>();
         if (firstItem.Length == 1)
         {
             txReceipt.StatusCode = firstItem[0];
@@ -46,52 +51,41 @@ public class OptimismCompactReceiptStorageDecoder :
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
         }
 
-        txReceipt.Sender = decoderContext.DecodeAddressOrNull();
-        txReceipt.GasUsedTotal = decoderContext.DecodeULong();
+        txReceipt.Sender = fields.DecodeAddressOrNull();
+        txReceipt.GasUsedTotal = fields.DecodeULong<TCanonicalChecks>();
 
-        int sequenceLength = decoderContext.ReadSequenceLength();
-        int logEntriesCheck = sequenceLength + decoderContext.Position;
+        RlpReader logs = fields.EnterSequence<TCanonicalChecks>(out int logsLength);
 
         // Don't know the size exactly, I'll just assume its just an address and add some margin
-        using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
-        while (decoderContext.Position < logEntriesCheck)
+        using ArrayPoolListRef<LogEntry> logEntries = new(logs.Remaining * 2 / LengthOfAddressRlp);
+        while (logs.HasNext)
         {
-            LogEntry? logEntry = LogEntryDecoder.Decode(
-                ref decoderContext,
-                RlpBehaviors.AllowExtraBytes);
+            LogEntry? logEntry = LogEntryDecoder.Decode(ref logs, rlpBehaviors);
             if (logEntry is not null)
             {
                 logEntries.Add(logEntry);
             }
         }
 
+        fields.ExitSequence(in logs, logsLength);
         txReceipt.Logs = [.. logEntries];
 
-        if (IsFrameExtensionNext(decoderContext, lastCheck))
+        if (IsFrameExtensionNext<TCanonicalChecks>(fields))
         {
-            decoderContext.Position = receiptStart;
             return new OptimismTxReceipt(CompactReceiptStorageDecoder.Instance.Decode(ref decoderContext, rlpBehaviors)!);
         }
 
-        if (lastCheck > decoderContext.Position)
+        if (fields.HasNext)
         {
-            int remainingItems = decoderContext.PeekNumberOfItemsRemaining(lastCheck);
-            if (remainingItems > 0)
-            {
-                txReceipt.DepositNonce = decoderContext.DecodeULong();
-            }
-
-            if (remainingItems > 1)
-            {
-                txReceipt.DepositReceiptVersion = decoderContext.DecodeULong();
-            }
+            txReceipt.DepositNonce = fields.DecodeULong<TCanonicalChecks>();
         }
 
-        bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-        if (!allowExtraBytes)
+        if (fields.HasNext)
         {
-            decoderContext.Check(lastCheck);
+            txReceipt.DepositReceiptVersion = fields.DecodeULong<TCanonicalChecks>();
         }
+
+        decoderContext.ExitSequenceIgnoringRest(in fields, receiptLength);
 
         // EIP-7668: as in CompactReceiptStorageDecoder, the bloom would be discarded.
         if ((rlpBehaviors & RlpBehaviors.Eip7668Receipts) != 0)
@@ -103,23 +97,35 @@ public class OptimismCompactReceiptStorageDecoder :
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedPostStateLength(int length)
-            => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
+            => throw new RlpReaderException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
     }
 
     public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item)
     {
+        if ((rlpBehaviors & RlpBehaviors.TrustedInput) != 0)
+        {
+            DecodeStructRef<OffFlag>(ref decoderContext, out item);
+        }
+        else
+        {
+            DecodeStructRef<OnFlag>(ref decoderContext, out item);
+        }
+    }
+
+    private static void DecodeStructRef<TCanonicalChecks>(scoped ref RlpReader decoderContext, out TxReceiptStructRef item)
+        where TCanonicalChecks : struct, IFlag
+    {
         // Note: This method runs at 2.5 million times/sec on my machine
         item = new TxReceiptStructRef();
 
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryReadEmptySequence())
         {
-            decoderContext.ReadByte();
             return;
         }
 
-        int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+        RlpReader fields = decoderContext.EnterSequence<TCanonicalChecks>(out int receiptLength);
 
-        ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
+        ReadOnlySpan<byte> firstItem = fields.DecodeByteArraySpan<TCanonicalChecks>(RlpLimit.L32);
         if (firstItem.Length == 1)
         {
             item.StatusCode = firstItem[0];
@@ -130,20 +136,27 @@ public class OptimismCompactReceiptStorageDecoder :
                 firstItem.Length == 0 ? new Hash256StructRef() : new Hash256StructRef(firstItem);
         }
 
-        decoderContext.DecodeAddressStructRef(out item.Sender);
-        item.GasUsedTotal = decoderContext.DecodeULong();
+        fields.DecodeAddressStructRef(out item.Sender);
+        item.GasUsedTotal = fields.DecodeULong<TCanonicalChecks>();
+        item.LogsRlp = fields.ReadEncodedItem<TCanonicalChecks>();
 
-        (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
-        int logsBytes = contentLength + prefixLength;
-        item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
-        decoderContext.SkipItem();
-
-        if (IsFrameExtensionNext(decoderContext, lastCheck))
+        if (IsFrameExtensionNext<TCanonicalChecks>(fields))
         {
             item.TxType = TxType.FrameTx;
         }
 
-        decoderContext.Position = lastCheck;
+        // The deposit nonce and the deposit receipt version, or the frame-receipt extension.
+        if (fields.HasNext)
+        {
+            fields.SkipItem<TCanonicalChecks>();
+        }
+
+        if (fields.HasNext)
+        {
+            fields.SkipItem<TCanonicalChecks>();
+        }
+
+        decoderContext.ExitSequenceIgnoringRest(in fields, receiptLength);
     }
 
     /// <summary>
@@ -151,27 +164,31 @@ public class OptimismCompactReceiptStorageDecoder :
     /// rather than the deposit nonce and receipt version.
     /// </summary>
     /// <remarks>The deposit fields are integers, so only a frame receipt has a list in second place.</remarks>
-    private static bool IsFrameExtensionNext(RlpReader reader, int receiptEnd)
+    private static bool IsFrameExtensionNext<TCanonicalChecks>(RlpReader fields) where TCanonicalChecks : struct, IFlag
     {
-        if (reader.Position >= receiptEnd || reader.PeekNumberOfItemsRemaining(receiptEnd) < 2) return false;
+        if (!fields.HasNext) return false;
 
-        reader.SkipItem();
-        return reader.IsSequenceNext();
+        fields.SkipItem<TCanonicalChecks>();
+        return fields.HasNext && fields.IsNextSequence;
     }
 
     public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none,
         out LogEntryStructRef current) => CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
-    public Hash256[] DecodeTopics(RlpReader reader) => CompactLogEntryDecoder.DecodeTopics(reader);
+    public Hash256[] DecodeTopics(RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => CompactLogEntryDecoder.DecodeTopics(reader, rlpBehaviors);
+
+    public RlpReader StartDecodingTopics(scoped ref RlpReader reader) => CompactLogEntryDecoder.StartDecodingTopics(ref reader);
+
+    public void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic) => CompactLogEntryDecoder.DecodeTopic(ref reader, topic);
 
     // Refstruct decode does not generate bloom
     public bool CanDecodeBloom => false;
 
-    public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            writer.WriteByte(Rlp.EmptyListByte);
+            writer.EncodeNullObject();
             return;
         }
 
@@ -186,7 +203,7 @@ public class OptimismCompactReceiptStorageDecoder :
         bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
         // Note: Any byte saved here is about 3GB on mainnet.
-        writer.StartSequence(totalContentLength);
+        RlpSequence sequence = writer.StartSequence(totalContentLength);
         if (isEip658receipts)
         {
             writer.Encode(item.StatusCode);
@@ -199,13 +216,15 @@ public class OptimismCompactReceiptStorageDecoder :
         writer.Encode(item.Sender);
         writer.Encode(item.GasUsedTotal);
 
-        writer.StartSequence(logsLength);
+        RlpSequence logsSequence = writer.StartSequence(logsLength);
 
         LogEntry[] logs = GetLogs(item);
         for (int i = 0; i < logs.Length; i++)
         {
             LogEntryDecoder.Encode(ref writer, logs[i]);
         }
+
+        writer.EndSequence(logsSequence);
 
         if (item.IsOptimismTxReceipt(out OptimismTxReceipt? opItem) && opItem.DepositNonce is not null)
         {
@@ -216,6 +235,8 @@ public class OptimismCompactReceiptStorageDecoder :
                 writer.Encode(opItem.DepositReceiptVersion.Value);
             }
         }
+
+        writer.EndSequence(sequence);
     }
 
     private static (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
@@ -268,7 +289,7 @@ public class OptimismCompactReceiptStorageDecoder :
     }
 
     private static LogEntry[] GetLogs(TxReceipt item)
-        => item.Logs ?? throw new RlpException("Receipt logs are null.");
+        => item.Logs ?? throw new RlpReaderException("Receipt logs are null.");
 
     public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
