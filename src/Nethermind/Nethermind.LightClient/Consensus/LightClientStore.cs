@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Ssz;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.LightClient.Consensus;
 
@@ -592,7 +592,7 @@ internal sealed class LightClientStore
             bool right = (generalizedIndex & 1) != 0;
             value.CopyTo(pair.Slice(right ? 32 : 0, 32));
             branch[i].Bytes.CopyTo(pair.Slice(right ? 0 : 32, 32));
-            SHA256.HashData(pair, value);
+            ThreadSha256.HashData(pair, value);
             generalizedIndex >>= 1;
         }
         return value.SequenceEqual(root.Bytes);

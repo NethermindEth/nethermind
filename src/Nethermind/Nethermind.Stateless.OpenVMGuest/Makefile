@@ -10,7 +10,7 @@ SRC_DIR := /nethermind/src
 GUEST_LIBC := openvm
 # The order of the moduli and curves in the package is part of the ABI: a guest
 # and a VM that disagree compute in the wrong field and do not fail to load.
-# Package 2.1.0.73 agrees with SdkVmConfig::standard() of the runner; check it
+# Package 2.1.0.83 agrees with SdkVmConfig::standard() of the runner; check it
 # again whenever the pin of Nethermind.OpenVM.Runtime moves.
 GUEST_PACKAGE := Nethermind.OpenVM.Runtime
 

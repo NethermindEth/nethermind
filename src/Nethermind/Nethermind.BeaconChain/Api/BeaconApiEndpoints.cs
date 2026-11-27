@@ -8,9 +8,16 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Api.Endpoints;
+using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
+using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Api;
@@ -22,11 +29,38 @@ internal static class BeaconApiEndpoints
     /// sentence, not whatever the codec put in its exception.</summary>
     internal const string UnsupportedForkMessage = "This node cannot decode the requested beacon state: its fork predates Electra, the first fork this driver decodes";
 
-    /// <summary>Registers the view of <paramref name="ctx"/> each request reads, and configures parameter binding.</summary>
-    public static void AddServices(IServiceCollection services, BeaconApiContext ctx) => services
-        .ConfigureHttpJsonOptions(static options => options.SerializerOptions.PropertyNameCaseInsensitive = false)
-        .AddScoped(_ => ctx.ForRequest())
-        .AddSingleton(services => new EventsEndpoint(ctx, services.GetRequiredService<IHostApplicationLifetime>()));
+    /// <summary>Registers endpoint dependencies and the head view captured for each request.</summary>
+    public static void AddServices(IServiceCollection services,
+        BeaconChainSpec spec, IBeaconChainStatusSource statusSource, SlotClock slotClock,
+        BeaconChainStore store, LocalMetadataSource metadataSource, IEngineDriver engine,
+        ILogManager logManager, CommitteeCacheLru committees, BeaconP2P? p2p = null, PeerManager? peerManager = null,
+        BeaconDiscovery? discovery = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
+        HeadSnapshotHolder? headSnapshots = null, DataColumnSidecarPool? columnPool = null)
+    {
+        Func<BeaconApiHead> captureHead = () => BeaconApiHead.Capture(statusSource, headSnapshots, forkChoiceSnapshots);
+        services.ConfigureHttpJsonOptions(static options => options.SerializerOptions.PropertyNameCaseInsensitive = false);
+        services.AddSingleton(spec);
+        services.AddSingleton(slotClock);
+        services.AddSingleton(store);
+        services.AddSingleton(metadataSource);
+        services.AddSingleton(engine);
+        services.AddSingleton(logManager);
+        if (p2p is not null) services.AddSingleton(p2p);
+        if (peerManager is not null) services.AddSingleton(peerManager);
+        if (discovery is not null) services.AddSingleton(discovery);
+        if (columnPool is not null) services.AddSingleton(columnPool);
+        services.AddSingleton(captureHead);
+        services.AddScoped(_ => captureHead());
+        services.AddSingleton<ValidatorIndexCache>();
+        services.AddSingleton(committees);
+        services.AddSingleton<StateCommitteeCache>();
+        services.AddSingleton(_ => new System.Threading.RateLimiting.ConcurrencyLimiter(new()
+        {
+            PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds,
+            QueueLimit = 0,
+        }));
+        services.AddSingleton<EventsEndpoint>();
+    }
 
     public static void UseMiddleware(WebApplication app, ILogManager logManager)
     {
@@ -79,7 +113,7 @@ internal static class BeaconApiEndpoints
         }
 
         // Captured before the request is judged, so a node that cannot produce a view answers 500 whatever was asked.
-        c.RequestServices.GetRequiredService<BeaconApiContext>();
+        c.RequestServices.GetRequiredService<BeaconApiHead>();
         if (ContentNegotiation.Negotiate(c, negotiated.Ssz) is null)
         {
             await ContentNegotiation.WriteNotAcceptable(c);

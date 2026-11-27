@@ -35,7 +35,7 @@ COMMA := ,
 # .NET 11, not 10: both pass the soft-float suite, but 11 is the line it is
 # maintained on. It costs ~2.6% more SP1 cycles and ~2.5% more ZisK steps over
 # the nine stateless-tests blocks, and gives ~6.5% smaller binaries.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:eadcaf8cd2fdcf4008c902fb47cfc4fe2c27c016@sha256:9aba9c8f58944e91d935863a12a00df25edc0adbfe8d05107d3548f9a22b4217
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:3e6703196d4a350e61344168b1332b77ed3e8092@sha256:7433a423863fee75426a5c544cf70b997cdafdf76f70f57f8488261e1750b5cc
 
 # Every rv64 target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.

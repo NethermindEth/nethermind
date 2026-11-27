@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Migration;
@@ -86,6 +87,54 @@ public class ClearColumnsTests
         {
             Assert.That(BasePersistence.ReadWipedForSync(db.GetColumnDb(FlatDbColumns.Metadata)), Is.EqualTo(expectedWiped));
             Assert.That(reader.CurrentState, Is.EqualTo(syncBatch ? StateId.PreGenesis : to));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> PersistenceCases()
+    {
+        foreach ((string name, Func<IColumnsDb<FlatDbColumns>, IPersistence> create) in PersistenceFactories())
+            yield return new TestCaseData(create).SetArgDisplayNames(name);
+    }
+
+    // The format markers are recorded by the first batch a persistence commits, so an aborted first batch must leave
+    // them for the next one, along with the wipe marker and the state pointer.
+    [TestCaseSource(nameof(PersistenceCases))]
+    public void An_aborted_first_batch_records_nothing_and_the_next_batch_records_it_all(Func<IColumnsDb<FlatDbColumns>, IPersistence> create)
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        IPersistence persistence = create(db);
+        persistence.Clear();
+        StateId to = new(1, ValueKeccak.EmptyTreeHash);
+        Account account = new(1, 100);
+
+        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, to))
+        {
+            batch.SetAccount(TestItem.AddressA, account);
+            batch.Abort();
+        }
+
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
+            Assert.That(reader.GetAccount(TestItem.AddressA), Is.Null);
+            Assert.That(BasePersistence.ReadLayout(metadata), Is.Null);
+            Assert.That(BasePersistence.ReadSlotEncoding(metadata), Is.Null);
+            Assert.That(BasePersistence.ReadWipedForSync(metadata), Is.True);
+        }
+
+        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, to))
+            batch.SetAccount(TestItem.AddressA, account);
+
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(to));
+            Assert.That(reader.GetAccount(TestItem.AddressA), Is.EqualTo(account));
+            Assert.That(BasePersistence.ReadLayout(metadata), Is.Not.Null);
+            Assert.That(BasePersistence.ReadSlotEncoding(metadata), Is.EqualTo(BasePersistence.SlotEncodingRlp));
+            Assert.That(BasePersistence.ReadWipedForSync(metadata), Is.False);
         }
     }
 

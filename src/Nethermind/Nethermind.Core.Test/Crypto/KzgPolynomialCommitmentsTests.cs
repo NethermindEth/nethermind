@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using CkzgLib;
 using Nethermind.Core.Test.IO;
@@ -17,6 +18,46 @@ namespace Nethermind.Core.Test.Crypto;
 public class KzgPolynomialCommitmentsTests
 {
     private delegate bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> proof);
+
+    [Test]
+    public void Commitment_hash_matches_versioned_sha256([Values(-16, 0, 1, 32, 48)] int destinationOffset)
+    {
+        const int inputOffset = 17;
+        byte[] buffer = new byte[100];
+        new Random(42).NextBytes(buffer);
+        Span<byte> commitment = buffer.AsSpan(inputOffset, Ckzg.BytesPerCommitment);
+        byte[] expected = (byte[])buffer.Clone();
+        Span<byte> expectedHash = expected.AsSpan(inputOffset + destinationOffset, SHA256.HashSizeInBytes);
+        SHA256.HashData(commitment, expectedHash);
+        expectedHash[0] = 0x01;
+
+        bool success = KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment,
+            buffer.AsSpan(inputOffset + destinationOffset, SHA256.HashSizeInBytes));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.True);
+            Assert.That(buffer, Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Commitment_hash_rejects_invalid_input_before_checking_destination([Values(0, 47, 49)] int length)
+    {
+        byte[] destination = [0xab];
+
+        bool success = KzgPolynomialCommitments.TryComputeCommitmentHashV1(new byte[length], destination);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(destination[0], Is.EqualTo(0xab));
+        }
+    }
+
+    [Test]
+    public void Commitment_hash_requires_exact_destination_length([Values(0, 31, 33)] int length) =>
+        Assert.That(() => KzgPolynomialCommitments.TryComputeCommitmentHashV1(new byte[Ckzg.BytesPerCommitment], new byte[length]),
+            Throws.TypeOf<ArgumentOutOfRangeException>().With.Property("ParamName").EqualTo("hashBuffer"));
 
     [Test]
     public void Setup_waits_for_the_in_flight_load() => WithFreshSetupState(kzg =>

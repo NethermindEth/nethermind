@@ -10,7 +10,6 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
@@ -89,8 +88,8 @@ public class ZeroNettyFrameMergerTests
     public void Decodes_encrypted_packets_across_socket_read_boundaries([Values(-1, 0, 1, 17, 4096)] int readSize, [Values] bool combinedEncoder)
     {
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
-        using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor outboundMac = new(a);
+        using FrameMacProcessor inboundMac = new(b);
         EmbeddedChannel outbound = combinedEncoder
             ? new(new ZeroPacketSplitter(new FrameCipher(a.AesSecret), outboundMac))
             : new(new ZeroFrameEncoder(new FrameCipher(a.AesSecret), outboundMac), new ZeroPacketSplitter());
@@ -212,6 +211,22 @@ public class ZeroNettyFrameMergerTests
         {
             channel.FinishAndReleaseAll();
         }
+    }
+
+    [Test]
+    public void Frame_merger_drops_the_packet_in_progress_when_a_frame_fails_its_checks([Values] bool malformedHeader)
+    {
+        FrameMerger merger = new();
+        using DisposableByteBuffer firstChunk = BuildFrame([2, 0], contextId: 1, totalPacketSize: 4).AsDisposable();
+        Assert.That(merger.Read(firstChunk.AsSpan()).IsComplete, Is.False, "the first chunk must leave a packet in progress");
+
+        using DisposableByteBuffer failingFrame = BuildFrame([0, 0], contextId: 1).AsDisposable();
+        if (malformedHeader) failingFrame.SetByte(3, 0xf7);
+        else failingFrame.SetWriterIndex(failingFrame.WriterIndex - 1);
+        Assert.That(() => merger.Read(failingFrame.AsSpan()), Throws.InstanceOf<InvalidFrameException>());
+
+        using DisposableByteBuffer standalone = BuildFrame([3, 99], contextId: 0).AsDisposable();
+        Assert.That(merger.Read(standalone.AsSpan()).Kind, Is.EqualTo(MergedFrameKind.SinglePacket));
     }
 
     [Test]
@@ -579,14 +594,76 @@ public class ZeroNettyFrameMergerTests
         const int continuationContextIdOffset = Frame.HeaderSize + Frame.DefaultMaxFrameSize + ContextIdOffsetInHeader;
         frames.SetByte(continuationContextIdOffset, frames.GetByte(continuationContextIdOffset) + 1);
 
-        Assert.That(() => wrapper.Decode(frames),
-            Throws.InstanceOf<CorruptedFrameException>(),
+        CorruptedFrameException exception = Assert.Throws<CorruptedFrameException>(() => wrapper.Decode(frames),
             "a frame from another context id must not be merged into the in-progress packet");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.Message, Does.Contain("does not match in-progress packet context id"));
+            Assert.That(exception.InnerException, Is.Null, "a failed check carries its own message");
+        }
+    }
+
+    [Test]
+    public void Accepts_a_fresh_packet_after_storing_a_chunk_fails()
+    {
+        // The in-progress packet cannot grow, so storing the second of three chunks fails after the merger has accepted
+        // it and while the packet is still in progress.
+        IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
+        allocator.Buffer(Arg.Any<int>(), Arg.Any<int>()).Returns(call => Unpooled.Buffer(call.ArgAt<int>(0), call.ArgAt<int>(0)));
+        ZeroFrameMergerTestWrapper wrapper = new(allocator);
+
+        using DisposableByteBuffer frames = BuildFrames(3).AsDisposable();
+        Assert.That(() => wrapper.Decode(frames), Throws.Exception);
+
+        using DisposableByteBuffer recoveryInput = BuildFrames(1).AsDisposable();
+        NettyBufferPacket recovered = wrapper.Decode(recoveryInput);
+        try
+        {
+            Assert.That(recovered, Is.Not.Null, "the merger must drop the packet whose chunk could not be stored");
+        }
+        finally
+        {
+            recovered?.Release();
+        }
+    }
+
+    [Test]
+    public void Passes_a_chunked_packet_on_when_its_first_frame_carries_all_of_it()
+    {
+        ZeroFrameMergerTestWrapper wrapper = new();
+        byte[] payload = [2, 10, 11, 12, 13, 14];
+        using DisposableByteBuffer frame = BuildFrame(payload, contextId: 1, totalPacketSize: payload.Length).AsDisposable();
+
+        NettyBufferPacket packet = wrapper.Decode(frame);
+        try
+        {
+            Assert.That(packet, Is.Not.Null, "the first frame completes the declared packet");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(packet.PacketType, Is.EqualTo(2));
+                Assert.That(packet.Buffer.AsSpan(), Is.SequenceEqualTo(payload[1..]));
+            }
+        }
+        finally
+        {
+            packet?.Release();
+        }
+
+        using DisposableByteBuffer next = BuildFrames(1).AsDisposable();
+        NettyBufferPacket nextPacket = wrapper.Decode(next);
+        try
+        {
+            Assert.That(nextPacket, Is.Not.Null, "no packet is left in progress");
+        }
+        finally
+        {
+            nextPacket?.Release();
+        }
     }
 
     [Test]
     [TestCaseSource(nameof(MalformedPacketTypePayloads))]
-    public void Throws_when_packet_type_prefix_is_invalid_or_exceeds_frame_size(byte[] payloadPrefix, int frameSize)
+    public void Throws_when_packet_type_prefix_is_invalid_or_exceeds_frame_size(byte[] payloadPrefix, int frameSize, bool parserFailure)
     {
         ZeroFrameMergerTestWrapper wrapper = new();
 
@@ -605,17 +682,18 @@ public class ZeroNettyFrameMergerTests
         frame.WriteBytes(payloadPrefix);
         frame.WriteZero(frameSize - payloadPrefix.Length + paddingSize);
 
-        Assert.That(() => wrapper.Decode(frame),
-            Throws.InstanceOf<CorruptedFrameException>(),
+        CorruptedFrameException exception = Assert.Throws<CorruptedFrameException>(() => wrapper.Decode(frame),
             "malformed packet type RLP must be rejected as corrupted frame");
+        Assert.That(exception!.InnerException, parserFailure ? Is.InstanceOf<RlpReaderException>() : Is.Null,
+            "a parser failure is carried as the inner exception, a failed check as the message");
     }
 
     private static IEnumerable<TestCaseData> MalformedPacketTypePayloads()
     {
-        yield return new TestCaseData(new byte[] { 0x85, 0x01 }, 5).SetName("Packet_type_length_exceeds_frame_size");
-        yield return new TestCaseData(new byte[] { 0xb8, 0x38 }, 5).SetName("Packet_type_integer_length_exceeds_supported_width");
+        yield return new TestCaseData(new byte[] { 0x85, 0x01 }, 5, false).SetName("Packet_type_length_exceeds_frame_size");
+        yield return new TestCaseData(new byte[] { 0xb8, 0x38 }, 5, true).SetName("Packet_type_integer_length_exceeds_supported_width");
         // 256 would otherwise be truncated to 0 and delivered as a Hello.
-        yield return new TestCaseData(new byte[] { 0x82, 0x01, 0x00 }, 5).SetName("Packet_type_value_does_not_fit_in_a_byte");
+        yield return new TestCaseData(new byte[] { 0x82, 0x01, 0x00 }, 5, false).SetName("Packet_type_value_does_not_fit_in_a_byte");
     }
 
     [Test]
