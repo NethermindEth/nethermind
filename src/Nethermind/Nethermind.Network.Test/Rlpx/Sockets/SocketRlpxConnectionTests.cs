@@ -220,6 +220,31 @@ public class SocketRlpxConnectionTests
     }
 
     [Test]
+    public async Task Fills_a_receive_segment_with_reads_smaller_than_it()
+    {
+        TaskCompletionSource decoding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using ConnectionUnderTest test = await ConnectionUnderTest.StartAsync(maxReceiveLength: 1024, beforeDecoding: () => new ValueTask(decoding.Task));
+        byte[] content = Content(16 * 1024, 1);
+        byte[] packet = test.Peer.Encode(0x10, content, EncodingMode.Framed);
+        long received = test.Socket.Received;
+        int segments = test.ReceivePool.Rentals;
+
+        await test.Peer.SendAsync(packet);
+        Assert.That(() => test.Socket.Received, Is.EqualTo(received + packet.Length).After(5000, 10), "the packet is in the pipe");
+        int packetSegments = test.ReceivePool.Rentals - segments;
+        decoding.SetResult();
+        await test.WaitForEventsAsync(1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(packetSegments, Is.LessThanOrEqualTo(3), "1 KiB reads share 16 KiB segments");
+            Assert.That(test.Packets, Is.EqualTo(new (byte, byte[])[] { (0x10, content) }));
+        }
+
+        await test.StopAndAssertBuffersReturnedAsync();
+    }
+
+    [Test]
     public async Task Handles_an_error_raised_by_a_packet_before_the_next_packet()
     {
         TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -602,6 +627,26 @@ public class SocketRlpxConnectionTests
         public PayloadMessage Deserialize(ReadOnlySpan<byte> data) => throw new NotSupportedException();
     }
 
+    /// <summary>Rents from the shared memory pool and counts the rentals.</summary>
+    private sealed class CountingMemoryPool : MemoryPool<byte>
+    {
+        private int _rentals;
+
+        public int Rentals => Volatile.Read(ref _rentals);
+
+        public override int MaxBufferSize => Shared.MaxBufferSize;
+
+        public override IMemoryOwner<byte> Rent(int minBufferSize = -1)
+        {
+            Interlocked.Increment(ref _rentals);
+            return Shared.Rent(minBufferSize);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+        }
+    }
+
     /// <summary>A connection on an in-memory socket, its scripted peer, and a session that records what it is given.</summary>
     private sealed class ConnectionUnderTest : IAsyncDisposable
     {
@@ -635,7 +680,8 @@ public class SocketRlpxConnectionTests
                 LimboLogs.Instance,
                 sendLatency,
                 ZeroFrameDecoder.DefaultMaxInboundFrameSize,
-                Pool)
+                Pool,
+                ReceivePool)
             {
                 ReadTimeout = readTimeout ?? SocketRlpxConnection.DefaultReadTimeout,
                 BeforeDecoding = beforeDecoding
@@ -669,6 +715,8 @@ public class SocketRlpxConnectionTests
         public RlpxProcessingThreads Threads { get; }
 
         public TrackingArrayPool Pool { get; } = new();
+
+        public CountingMemoryPool ReceivePool { get; } = new();
 
         public ConcurrentQueue<string> Events { get; } = new();
 

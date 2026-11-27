@@ -46,6 +46,7 @@ namespace Nethermind.Network.Rlpx.Sockets;
 /// <param name="sendLatency">The simulated latency of every packet sent, for tests and benchmarks.</param>
 /// <param name="maxInboundFrameSize">The largest frame payload accepted.</param>
 /// <param name="pool">The pool of the connection's buffers; the shared one unless a test counts rentals.</param>
+/// <param name="receivePool">The pool of the receive pipe's segments; the shared one unless a test counts rentals.</param>
 internal sealed class SocketRlpxConnection(
     IRlpxSocket socket,
     HandshakeRole role,
@@ -55,7 +56,8 @@ internal sealed class SocketRlpxConnection(
     ILogManager logManager,
     TimeSpan sendLatency,
     int maxInboundFrameSize,
-    ArrayPool<byte>? pool = null) : IRlpxConnection, IPacketSender
+    ArrayPool<byte>? pool = null,
+    MemoryPool<byte>? receivePool = null) : IRlpxConnection, IPacketSender
 {
     /// <summary>The largest handshake message, with its 2-byte size prefix, as DotNetty's length field decoder allows.</summary>
     internal const int MaxHandshakeLength = ushort.MaxValue;
@@ -67,6 +69,10 @@ internal sealed class SocketRlpxConnection(
     internal const int SendBatchSize = 64 * 1024;
 
     private const int ReceiveSegmentSize = 16 * 1024;
+
+    // A read goes into the rest of the current segment while at least this much is free, so that small reads fill a
+    // segment instead of each starting a new one.
+    private const int MinReceiveBufferSize = ReceiveSegmentSize / 2;
     private const int MaxRetainedSnappyOutputCapacity = 64 * 1024;
 
     private readonly ArrayPool<byte> _pool = pool ?? ArrayPool<byte>.Shared;
@@ -79,6 +85,7 @@ internal sealed class SocketRlpxConnection(
     private readonly long _sendLatencyMs = (long)sendLatency.TotalMilliseconds;
     private readonly int _maxInboundFrameSize = maxInboundFrameSize;
     private readonly Pipe _pipe = new(new PipeOptions(
+        pool: receivePool,
         pauseWriterThreshold: 1_000_000,
         resumeWriterThreshold: 500_000,
         minimumSegmentSize: ReceiveSegmentSize,
@@ -218,7 +225,7 @@ internal sealed class SocketRlpxConnection(
             {
                 // Waits for data without holding a buffer, so idle peers hold none.
                 await _socket.ReceiveAsync(Memory<byte>.Empty, cancellation);
-                int received = await _socket.ReceiveAsync(writer.GetMemory(ReceiveSegmentSize), cancellation);
+                int received = await _socket.ReceiveAsync(writer.GetMemory(MinReceiveBufferSize), cancellation);
                 if (received == 0)
                 {
                     break;
