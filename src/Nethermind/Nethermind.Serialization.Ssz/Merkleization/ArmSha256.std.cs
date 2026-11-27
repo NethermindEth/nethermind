@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
+using System.Security.Cryptography;
 
 namespace Nethermind.Serialization.Ssz.Merkleization;
 
-/// <summary>Hashes 64-byte SSZ parents using the Arm SHA-256 instructions.</summary>
+/// <summary>Hashes short messages and 64-byte SSZ parents using the Arm SHA-256 instructions.</summary>
 internal static class ArmSha256
 {
     private static Vector128<uint> InitialAbcd => Vector128.Create(0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au);
@@ -40,8 +42,24 @@ internal static class ArmSha256
         0xc39c91f2, 0x9eccabbd, 0xb5c9a0e6, 0x532fb63c, 0xd2c741c6, 0x07237ea3, 0xa4954b68, 0x4c191d76,
     ];
 
+    internal static bool TryHashData(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        if (destination.Length < SHA256.HashSizeInBytes)
+            return false;
+
+        ref byte output = ref MemoryMarshal.GetReference(destination);
+        if (source.Length == 64)
+            HashOne(ref MemoryMarshal.GetReference(source), ref output);
+        else if (source.Length <= 55)
+            HashShort(source, ref output);
+        else
+            return false;
+
+        return true;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void HashOne(ref byte input, ref byte output)
+    private static State CompressFirstBlock(ref byte input)
     {
         Schedule schedule = new(ref input);
         State state = new(InitialAbcd, InitialEfgh);
@@ -56,6 +74,26 @@ internal static class ArmSha256
         state.Round(schedule.W1 + Vector128.LoadUnsafe(ref constants, 52));
         state.Round(schedule.W2 + Vector128.LoadUnsafe(ref constants, 56));
         state.Round(schedule.W3 + Vector128.LoadUnsafe(ref constants, 60));
+        return state;
+    }
+
+    [SkipLocalsInit]
+    private static void HashShort(ReadOnlySpan<byte> input, ref byte output)
+    {
+        Span<byte> block = stackalloc byte[64];
+        block.Clear();
+        input.CopyTo(block);
+        block[input.Length] = 0x80;
+        BinaryPrimitives.WriteUInt16BigEndian(block[62..], (ushort)(input.Length * 8));
+
+        State state = CompressFirstBlock(ref MemoryMarshal.GetReference(block));
+        state.WriteDigest(new(InitialAbcd, InitialEfgh), ref output);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void HashOne(ref byte input, ref byte output)
+    {
+        State state = CompressFirstBlock(ref input);
         state.Abcd += InitialAbcd;
         state.Efgh += InitialEfgh;
         State previous = state;
