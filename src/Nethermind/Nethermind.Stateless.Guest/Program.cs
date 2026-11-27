@@ -43,12 +43,14 @@ partial class Program
         return 0;
     }
 
-    // Diagnostic only: the bump pointer and heap floor cells of the ZisK runtime (zisk.ld).
+    // Diagnostic only: the bump pointer and heap floor cells of the ZisK runtime (zisk.ld) and of the
+    // OpenVM platform below 512 MiB (openvm.ld).
     private static unsafe void PrintHeapUse()
     {
-        const ulong HeapTop = 0xbffbffe8;
-        ulong bump = *(ulong*)0xbffbfff8UL;
-        ulong floor = *(ulong*)0xbffbfff0UL;
+        ulong cell = Nethermind.Core.OpenVmFlag.IsActive ? 0x1ffffff8UL : 0xbffbfff8UL;
+        ulong HeapTop = cell - 16;
+        ulong bump = *(ulong*)cell;
+        ulong floor = *(ulong*)(cell - 8);
         IO.PrintLine($"HEAPUSE used={HeapTop - bump} free={bump - floor} floor={floor:x}");
     }
 

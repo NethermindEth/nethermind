@@ -1,0 +1,173 @@
+# Diagnostic only, not for master: runs the heaviest tests-zkevm-benchmark blocks (.github/diag/openvm-heavy.json,
+# picked by ZisK heap use) through the OpenVM guest linked against a bflat-openvm CI run's package, on the runner
+# image that run built, and prints each block's heap use and input size.
+name: Diag OpenVM heavy blocks
+
+on:
+  workflow_dispatch:
+    inputs:
+      bflat_openvm_run:
+        description: bflat-openvm build-release.yml run id (package and runner image)
+        type: string
+        required: true
+      release:
+        description: Release tag
+        type: string
+        default: tests-zkevm-benchmark@v21.0.7
+      gas:
+        description: Gas value of the selected blocks
+        type: string
+        default: 200M
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: OpenVM ${{ inputs.gas }} heavy blocks
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ inputs.bflat_openvm_run }}
+      RELEASE: ${{ inputs.release }}
+      GAS: ${{ inputs.gas }}
+      GUEST_DIR: src/Nethermind/Nethermind.Stateless.OpenVMGuest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Free disk
+        run: sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Build the guest against the candidate package
+        run: |
+          set -euo pipefail
+          line=$(dotnet run --file .github/zkvm-ab/fetch-extlib.cs -- "openvm=run:$RUN_ID" "$RUNNER_TEMP/candidate")
+          echo "$line"
+          FORMATS=ssz EXTLIB_PATH=$(echo "$line" | awk '{print $3}') CANDIDATE_DIR="$RUNNER_TEMP/candidate" \
+            dotnet run --file .github/zkvm-ab/build.cs -- openvm Nethermind.Stateless.OpenVMGuest . "$RUNNER_TEMP/elf"
+          python3 - "$RUNNER_TEMP/elf/nethermind" <<'EOF'
+          import struct, sys
+          d = open(sys.argv[1], 'rb').read()
+          entry, phoff = struct.unpack_from('<QQ', d, 24)
+          pe, pn = struct.unpack_from('<HH', d, 54)
+          top = 0
+          for i in range(pn):
+              t, _, _, va, _, _, ms, _ = struct.unpack_from('<IIQQQQQQ', d, phoff + i * pe)
+              if t == 1:
+                  print(f'PT_LOAD 0x{va:x}-0x{va + ms:x}')
+                  top = max(top, va + ms)
+          print(f'entry 0x{entry:x}')
+          sys.exit(0 if entry < 0x20000000 and top <= 0x20000000 else 'the guest image is not below 512 MiB')
+          EOF
+
+      - name: Load the runner image
+        run: |
+          set -euo pipefail
+          gh run download "$RUN_ID" -R NethermindEth/bflat-openvm -n openvm-runner -D "$RUNNER_TEMP/runner"
+          gunzip -c "$RUNNER_TEMP/runner/openvm-runner.tar.gz" | docker load
+
+      - name: Prepare inputs
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/fixtures.tar.gz"
+          curl -fsSL --retry 3 \
+            "https://github.com/ethereum/execution-specs/releases/download/$RELEASE/fixtures_zkevm-benchmark_$(printf '%04d' "${GAS%M}")M.tar.gz" \
+            -o "$archive"
+          fixtures="$RUNNER_TEMP/fixtures"
+          mkdir -p "$fixtures" "$RUNNER_TEMP/inputs"
+          tar -xzf "$archive" -C "$fixtures" fixtures/.meta/index.json
+          shards=$(( (${GAS%M} * 8 + 29) / 30 ))
+          : > "$RUNNER_TEMP/selected.tsv"
+          for shard in $(jq -r '.[].shard' .github/diag/openvm-heavy.json | sort -un); do
+            scripts/zkevm-benchmark/inputs.cs paths --index "$fixtures/fixtures/.meta/index.json" --shard "$shard" --shards "$shards" \
+              | sed 's|^|fixtures/|' > "$RUNNER_TEMP/paths.txt"
+            tar -xzf "$archive" -C "$fixtures" -T "$RUNNER_TEMP/paths.txt"
+            out="$RUNNER_TEMP/shard-$shard"
+            mkdir -p "$out"
+            scripts/zkevm-benchmark/inputs.cs frame --index "$fixtures/fixtures/.meta/index.json" --shard "$shard" --shards "$shards" \
+              --root "$fixtures/fixtures" --out "$out" --manifest "$out/manifest.json"
+            jq -r --argjson s "$shard" --slurpfile sel .github/diag/openvm-heavy.json '
+              ($sel[0] | map(select(.shard == $s)) | map(.id)) as $ids
+              | .[] | select(.id as $i | $ids | index($i)) | "\(.input)\t\(.output)\t\(.id)"' "$out/manifest.json" \
+              | while IFS=$'\t' read -r input output id; do
+                  name="s${shard}-${input%.ssz}"
+                  python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; open(sys.argv[2],'wb').write(b[8:8+n])" \
+                    "$out/$input" "$RUNNER_TEMP/inputs/$name.raw"
+                  printf '%s\t%s\t%s\n' "$name" "$output" "$id" >> "$RUNNER_TEMP/selected.tsv"
+                done
+            rm -rf "$out" "$fixtures/fixtures/blockchain_tests" "$fixtures/fixtures/blockchain_tests_engine" 2>/dev/null || true
+          done
+          rm "$archive"
+          cp "$RUNNER_TEMP/elf/nethermind" "$RUNNER_TEMP/inputs/nethermind"
+          echo "selected $(wc -l < "$RUNNER_TEMP/selected.tsv") of $(jq length .github/diag/openvm-heavy.json) blocks"
+          [ "$(wc -l < "$RUNNER_TEMP/selected.tsv")" = "$(jq length .github/diag/openvm-heavy.json)" ]
+
+      - name: Run the blocks
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/keccak.py" <<'EOF'
+          import sys
+          RC = [0x0000000000000001, 0x0000000000008082, 0x800000000000808A, 0x8000000080008000, 0x000000000000808B,
+                0x0000000080000001, 0x8000000080008081, 0x8000000000008009, 0x000000000000008A, 0x0000000000000088,
+                0x0000000080008009, 0x000000008000000A, 0x000000008000808B, 0x800000000000008B, 0x8000000000008089,
+                0x8000000000008003, 0x8000000000008002, 0x8000000000000080, 0x000000000000800A, 0x800000008000000A,
+                0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008]
+          ROT = [[0, 36, 3, 41, 18], [1, 44, 10, 45, 2], [62, 6, 43, 15, 61], [28, 55, 25, 21, 56], [27, 20, 39, 8, 14]]
+          M = (1 << 64) - 1
+          rol = lambda v, n: ((v << n) | (v >> (64 - n))) & M if n else v
+          def f(s):
+              for rc in RC:
+                  c = [s[x][0] ^ s[x][1] ^ s[x][2] ^ s[x][3] ^ s[x][4] for x in range(5)]
+                  d = [c[(x - 1) % 5] ^ rol(c[(x + 1) % 5], 1) for x in range(5)]
+                  s = [[s[x][y] ^ d[x] for y in range(5)] for x in range(5)]
+                  b = [[0] * 5 for _ in range(5)]
+                  for x in range(5):
+                      for y in range(5):
+                          b[y][(2 * x + 3 * y) % 5] = rol(s[x][y], ROT[x][y])
+                  s = [[b[x][y] ^ (~b[(x + 1) % 5][y] & b[(x + 2) % 5][y]) for y in range(5)] for x in range(5)]
+                  s[0][0] ^= rc
+              return s
+          def keccak256(data):
+              rate = 136
+              data = bytearray(data) + b'\x01'
+              data += b'\x00' * (-len(data) % rate)
+              data[-1] |= 0x80
+              s = [[0] * 5 for _ in range(5)]
+              for o in range(0, len(data), rate):
+                  for i in range(rate // 8):
+                      s[i % 5][i // 5] ^= int.from_bytes(data[o + 8 * i:o + 8 * i + 8], 'little')
+                  s = f(s)
+              return b''.join(s[i % 5][i // 5].to_bytes(8, 'little') for i in range(4))
+          print(keccak256(bytes.fromhex(sys.argv[1])).hex())
+          EOF
+          run_block() {
+            local name=$1 output=$2 id=$3 log="$RUNNER_TEMP/logs/$1.log" status=0 verdict=ok
+            local start=$(date +%s)
+            timeout 120m docker run --rm -v "$RUNNER_TEMP/inputs:/n" openvm-divrem-test /n/nethermind "/n/$name.raw" > "$log" 2>&1 || status=$?
+            local digest=$(python3 "$RUNNER_TEMP/keccak.py" "$output")
+            if [ "$status" -ne 0 ]; then verdict="exit $status"
+            elif ! grep -q "$output" "$log"; then verdict="output mismatch"
+            elif ! grep -q "public_values=$digest" "$log"; then verdict="public values mismatch"
+            elif grep -qE 'Exception|Invalid Block|ran out of memory' "$log"; then verdict="exception in log"
+            fi
+            local heap=$(grep -oE 'HEAPUSE used=[0-9]+ free=[0-9]+' "$log" | head -1)
+            local size=$(stat -c%s "$RUNNER_TEMP/inputs/$name.raw")
+            printf '%s\t%s\tinput=%s\t%ss\t%s\n' "$verdict" "${heap:-HEAPUSE missing}" "$size" "$(( $(date +%s) - start ))" "$id" > "$RUNNER_TEMP/logs/$name.result"
+          }
+          export -f run_block
+          mkdir -p "$RUNNER_TEMP/logs"
+          xargs -r -P 3 -n 1 -a "$RUNNER_TEMP/selected.tsv" -d '\n' bash -c 'IFS=$'"'"'\t'"'"' read -r n o i <<< "$1"; run_block "$n" "$o" "$i"' _
+          failed=0
+          for r in "$RUNNER_TEMP"/logs/*.result; do
+            n=$(basename "$r" .result)
+            echo "::group::$n"; cat "$RUNNER_TEMP/logs/$n.log"; echo "::endgroup::"
+            cat "$r"
+            cut -f1 "$r" | grep -qx ok || failed=$((failed + 1))
+          done
+          { echo '| verdict | heap | input | time | id |'; echo '|---|---|---|---|---|'; sed 's/\t/ | /g; s/^/| /; s/$/ |/' "$RUNNER_TEMP"/logs/*.result; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$failed" -eq 0 ] || { echo "::error::$failed block(s) failed"; exit 1; }
