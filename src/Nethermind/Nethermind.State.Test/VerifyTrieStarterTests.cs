@@ -13,12 +13,17 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
+using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
 
 public class VerifyTrieStarterTests
 {
+    // A failsafe bound for waits on the background run; a passing run needs a few milliseconds.
+    private const int FailsafeMs = 10_000;
+    private const int PollMs = 10;
+
     [Test]
     public void Logs_cancellation_not_error_when_verify_trie_is_cancelled_as_aggregate()
     {
@@ -55,21 +60,73 @@ public class VerifyTrieStarterTests
         Assert.That(logManager.Infos, Has.None.Contains("Verify trie cancelled"));
     }
 
+    [Test]
+    public void Starts_again_after_a_verification_completes()
+    {
+        int calls = 0;
+        VerifyTrieStarter starter = CreateStarter(_ =>
+        {
+            Interlocked.Increment(ref calls);
+            return true;
+        });
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        Assert.That(starter.TryStartVerifyTrie(header), Is.True);
+        Assert.That(() => starter.TryStartVerifyTrie(header), Is.True.After(FailsafeMs, PollMs));
+        Assert.That(() => Volatile.Read(ref calls), Is.EqualTo(2).After(FailsafeMs, PollMs));
+    }
+
+    // The same exception takes the error path without process exit and the cancellation path with it.
+    [Test]
+    public void Starts_again_after_a_verification_throws([Values] bool processExiting)
+    {
+        VerifyTrieStarter starter = CreateStarter(static _ => throw new OperationCanceledException(), processExiting: processExiting);
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        Assert.That(starter.TryStartVerifyTrie(header), Is.True);
+        Assert.That(() => starter.TryStartVerifyTrie(header), Is.True.After(FailsafeMs, PollMs));
+    }
+
+    [Test]
+    public async Task Refuses_a_start_while_a_verification_runs_and_accepts_one_after_it_ends()
+    {
+        TaskCompletionSource running = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        VerifyTrieStarter starter = CreateStarter(_ =>
+        {
+            running.TrySetResult();
+            return gate.Task.Wait(FailsafeMs);
+        });
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        Assert.That(starter.TryStartVerifyTrie(header), Is.True);
+        await running.Task.WaitAsync(TimeSpan.FromMilliseconds(FailsafeMs));
+        Assert.That(starter.TryStartVerifyTrie(header), Is.False, "a second verification started while the first one runs");
+
+        gate.SetResult();
+        Assert.That(() => starter.TryStartVerifyTrie(header), Is.True.After(FailsafeMs, PollMs));
+    }
+
     private static CapturingLogManager RunVerifyTrieThatThrows(Exception toThrow, bool processExiting = true)
+    {
+        CapturingLogManager logManager = new();
+        VerifyTrieStarter starter = CreateStarter(_ => throw toThrow, logManager, processExiting);
+
+        Assert.That(starter.TryStartVerifyTrie(Build.A.BlockHeader.TestObject), Is.True);
+        return logManager;
+    }
+
+    private static VerifyTrieStarter CreateStarter(Func<CallInfo, bool> verifyTrie, ILogManager? logManager = null, bool processExiting = false)
     {
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         worldStateManager
             .VerifyTrie(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
-            .Returns(_ => throw toThrow);
+            .Returns(verifyTrie);
 
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
         exitSource.Token.Returns(new CancellationToken(processExiting));
 
-        CapturingLogManager logManager = new();
-        VerifyTrieStarter starter = new(worldStateManager, exitSource, logManager);
-
-        Assert.That(starter.TryStartVerifyTrie(Build.A.BlockHeader.TestObject), Is.True);
-        return logManager;
+        return new VerifyTrieStarter(worldStateManager, exitSource, logManager ?? LimboLogs.Instance);
     }
 
     private sealed class CapturingLogManager : ILogManager
