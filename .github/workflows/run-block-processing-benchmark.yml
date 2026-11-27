@@ -17,6 +17,8 @@ permissions:
   pull-requests: write
 
 env:
+  # The runner service enables invariant globalization, under which the culture-bound [GeneratedRegex] in Nethermind.Core fails to compile.
+  DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "false"
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
   BENCHMARK_PROJECT: src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj
@@ -73,10 +75,48 @@ jobs:
             echo "filter=${filter}"
           } >> "${GITHUB_OUTPUT}"
 
-  benchmark:
+  create-runner:
+    name: Create benchmark runner
     needs: resolve-inputs
     if: needs.resolve-inputs.outputs.should_run == 'true'
-    runs-on: benchmark
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Create a runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: block-processing-benchmark-${{ github.run_id }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          machine_type: c2-standard-4
+          local_ssd_count: 1
+          provisioning_model: SPOT
+          spot_fallback_to_standard: true
+          max_run_duration: 1h
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+  benchmark:
+    needs: [resolve-inputs, create-runner]
+    if: needs.resolve-inputs.outputs.should_run == 'true'
+    runs-on: block-processing-benchmark-${{ github.run_id }}
     timeout-minutes: 30
     steps:
       # Sibling checkouts, so neither tree picks up the other's Directory.*.props and both build at once.
@@ -394,3 +434,38 @@ jobs:
             ${{ runner.temp }}/bdn-base/results/
             ${{ runner.temp }}/bdn-pr/results/
           retention-days: 30
+
+  destroy-runner:
+    name: Destroy benchmark runner
+    needs: [create-runner, benchmark]
+    # Also runs on cancellation. A failed create still needs teardown: creation may have got part way.
+    if: always() && needs.create-runner.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Destroy runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: block-processing-benchmark-${{ github.run_id }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          expect_instance: ${{ needs.create-runner.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}

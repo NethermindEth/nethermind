@@ -24,8 +24,8 @@ permissions:
 jobs:
   check-trigger:
     name: Check if EVM benchmark needed
-    # Fork-author guard: block fork PRs from dispatching downstream jobs to the
-    # self-hosted `benchmark` runner pool. Matches the guard used by sibling
+    # Fork-author guard: block fork PRs from creating the self-hosted benchmark
+    # runner and dispatching jobs to it. Matches the guard used by sibling
     # benchmark workflows (run-block-processing-benchmark.yml, run-expb-reproducible-benchmarks.yml).
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
@@ -66,13 +66,53 @@ jobs:
           fi
           echo "should_run=false" >> "$GITHUB_OUTPUT"
 
-  compare-evm-opcodes:
-    name: Compare EVM opcode benchmarks (base vs PR)
+  create-runner:
+    name: Create benchmark runner
     needs: check-trigger
     if: needs.check-trigger.outputs.should_run == 'true'
-    runs-on: benchmark
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Create a runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: evm-opcode-benchmark-${{ github.run_id }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          machine_type: c2-standard-4
+          local_ssd_count: 1
+          provisioning_model: SPOT
+          spot_fallback_to_standard: true
+          max_run_duration: 13h
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+  compare-evm-opcodes:
+    name: Compare EVM opcode benchmarks (base vs PR)
+    needs: [check-trigger, create-runner]
+    if: needs.check-trigger.outputs.should_run == 'true'
+    runs-on: evm-opcode-benchmark-${{ github.run_id }}
     timeout-minutes: 720
     env:
+      # The runner service enables invariant globalization, under which the culture-bound [GeneratedRegex] in Nethermind.Core fails to compile.
+      DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "false"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
       # EvmOpcodesBenchmarkConfig sets OutlierMode.RemoveAll; the Median / Error / StdDev
@@ -357,3 +397,38 @@ jobs:
             git worktree remove --force "${BASE_WORKTREE}" >/dev/null 2>&1 || true
           fi
           git worktree prune || true
+
+  destroy-runner:
+    name: Destroy benchmark runner
+    needs: [create-runner, compare-evm-opcodes]
+    # Also runs when a newer push cancels the run. A failed create still needs teardown: creation may have got part way.
+    if: always() && needs.create-runner.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Destroy runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: evm-opcode-benchmark-${{ github.run_id }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          expect_instance: ${{ needs.create-runner.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
