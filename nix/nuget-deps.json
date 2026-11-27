@@ -496,8 +496,8 @@
   },
   {
     "pname": "Nethermind.Crypto.SecP256k1",
-    "version": "0.8.0.42",
-    "hash": "sha256-vD2tgPHg0RTtHZrJE+IFmmkxekcdCIIjOUUEFg40ruM="
+    "version": "0.8.0.52",
+    "hash": "sha256-4nway6gOqprLEcrZo6Fu13Krww9F26In2ICaoHVMSy0="
   },
   {
     "pname": "Nethermind.Crypto.SecP256r1",
@@ -591,8 +591,8 @@
   },
   {
     "pname": "Nethermind.MclBindings",
-    "version": "4.30.0.119",
-    "hash": "sha256-X/NGefftZllJBt7DOhVJcTc3bq+kiJBpF3annajayhQ="
+    "version": "4.30.0.124",
+    "hash": "sha256-xLvJd9LeclQiiLPQi+XwmoYxh+f8fAju6XJ9sdrgcYo="
   },
   {
     "pname": "Nethermind.Multiformats.Address",

@@ -158,6 +158,116 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
+    public async Task WriteBatch_Aborted_EvictsItsWritesAndKeepsTheBasis()
+    {
+        FakePersistence inner = new();
+        await using CarryForwardCachingPersistence cache = new(inner);
+        ReadAccount(cache, TestItem.AddressA);
+        ReadAccount(cache, TestItem.AddressB);
+        using IPersistence.IPersistenceReader openedBefore = cache.CreateReader();
+
+        // The inner store discards the batch, so it stays at Basis0.
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+        {
+            batch.SetAccount(TestItem.AddressB, new Account(2, 200));
+            batch.Abort();
+        }
+
+        openedBefore.GetAccount(TestItem.AddressB);
+        int readsBefore = inner.AccountReads;
+        ReadAccount(cache, TestItem.AddressA);
+        ReadAccount(cache, TestItem.AddressB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.LastWriteBatch!.AbortCount, Is.EqualTo(1), "the abort reaches the inner batch");
+            Assert.That(inner.LastWriteBatch.DisposeCount, Is.EqualTo(1));
+            Assert.That(readsBefore, Is.EqualTo(3), "a reader opened before the abort reads the evicted account from the store");
+            Assert.That(inner.AccountReads - readsBefore, Is.EqualTo(1),
+                "at the kept basis the unwritten account is served from the cache; the evicted one, which the reader opened before did not refill, is read again");
+            Assert.That(cache.HasSpareWrittenAccounts, Is.True, "the written set is returned");
+        }
+    }
+
+    // A store that ignores the abort commits the batch on dispose, here at the same state id, so the cache must not serve
+    // what it held before the batch, to a reader opened before the close or after it. A self-destruct makes the close clear
+    // the whole cache rather than evict the written keys.
+    [Test]
+    public async Task WriteBatch_AbortedOverAStoreThatCommitsAnyway_ServesWhatTheStoreHolds([Values] bool selfDestruct)
+    {
+        ModelPersistence model = new(addresses: 1, slotsPerAddress: 1);
+        await using CarryForwardCachingPersistence cache = new(model);
+        Address address = TestItem.Addresses[0];
+        UInt256 slot = 0;
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(model.Current.Id, new StateId(1, Keccak.EmptyTreeHash)))
+        {
+            batch.SetAccount(address, new Account(1, 100));
+            batch.SetStorage(address, slot, BaseFlatPersistence.DecodeSlotValue([0x11]));
+        }
+
+        // Fills the cache.
+        CheckReads(cache.CreateReader(), model.Current, "the first reader");
+        ModelPersistence.State before = model.Current;
+        IPersistence.IPersistenceReader openedBefore = cache.CreateReader();
+
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(model.Current.Id, model.Current.Id))
+        {
+            if (selfDestruct) batch.SelfDestruct(address);
+            else batch.SetStorage(address, slot, BaseFlatPersistence.DecodeSlotValue([0x22]));
+            batch.SetAccount(address, new Account(2, 200));
+            batch.Abort();
+        }
+
+        // In this order: a reader opened before the close that filled the cache would show in the reader opened after it.
+        CheckReads(openedBefore, before, "a reader opened before the close");
+        CheckReads(cache.CreateReader(), model.Current, "a reader opened after the close");
+
+        void CheckReads(IPersistence.IPersistenceReader reader, ModelPersistence.State expected, string which)
+        {
+            using (reader)
+            {
+                UInt256 value = default;
+                bool found = reader.TryGetSlot(address, slot, ref value);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(reader.GetAccount(address), Is.EqualTo(expected.Accounts.GetValueOrDefault(address)), $"account read by {which}");
+                    Assert.That(found ? (UInt256?)value : null, Is.EqualTo(expected.Slots.TryGetValue((address, slot), out UInt256 stored) ? (UInt256?)stored : null), $"slot read by {which}");
+                }
+            }
+        }
+    }
+
+    // A reader whose inner snapshot is pinned before an aborted close, over a store that commits it anyway, must not join
+    // the generation the close starts: it would refill the evicted account from its older snapshot, and a later commit
+    // that does not touch the account would carry that value forward.
+    [Test]
+    public async Task CreateReader_OpenedAcrossAnAbortedClose_DoesNotRefillTheCache([Values] bool sameId)
+    {
+        ModelPersistence model = new(addresses: 1, slotsPerAddress: 1);
+        await using CarryForwardCachingPersistence cache = new(model);
+        Address address = TestItem.Addresses[0];
+        Account oldAccount = new(1, 100);
+        Account newAccount = new(2, 200);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(model.Current.Id, Basis1))
+            batch.SetAccount(address, oldAccount);
+
+        model.AfterPin = () =>
+        {
+            StateId to = sameId ? model.Current.Id : new StateId(2, Keccak.EmptyTreeHash);
+            using IPersistence.IWriteBatch batch = cache.CreateWriteBatch(model.Current.Id, to);
+            batch.SetAccount(address, newAccount);
+            batch.Abort();
+        };
+        using (IPersistence.IPersistenceReader acrossTheClose = cache.CreateReader())
+            Assert.That(acrossTheClose.GetAccount(address), Is.EqualTo(oldAccount), "the reader reads its own snapshot");
+
+        using (cache.CreateWriteBatch(model.Current.Id, new StateId(3, Keccak.EmptyTreeHash))) { }
+
+        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+        Assert.That(reader.GetAccount(address), Is.EqualTo(newAccount));
+    }
+
+    [Test]
     public async Task GetAccount_WhenCapacityExceeded_EvictsAllThenReCaches()
     {
         FakePersistence inner = new();
@@ -917,9 +1027,15 @@ public class CarryForwardCachingPersistenceTests
 
         public State Current => Volatile.Read(ref _state);
 
+        /// <summary>Run once by the next <see cref="CreateReader"/>, right after it pins its state.</summary>
+        public Action? AfterPin { get; set; }
+
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
         {
             State state = Current;
+            Action? afterPin = AfterPin;
+            AfterPin = null;
+            afterPin?.Invoke();
             _lastReaderState = state;
             return new Reader(state);
         }
@@ -1122,9 +1238,10 @@ public class CarryForwardCachingPersistenceTests
         public readonly List<Address> PlannedAccounts = [];
         public readonly List<StorageCell> PlannedSlots = [];
         public IPersistence.PrefetchColumns Plan = IPersistence.PrefetchColumns.All;
+        public FakeWriteBatch? LastWriteBatch;
 
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => new Reader(this);
-        public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new FakeWriteBatch();
+        public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => LastWriteBatch = new FakeWriteBatch();
         public void Flush() { }
         public void Clear() { }
 

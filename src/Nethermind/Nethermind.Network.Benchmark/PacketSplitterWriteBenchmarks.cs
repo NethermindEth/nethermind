@@ -35,10 +35,8 @@ public class PacketSplitterWriteBenchmarks
         Random random = new(42);
         byte[] aes = new byte[32];
         byte[] macSecret = new byte[32];
-        byte[] keyBytes = new byte[64];
         random.NextBytes(aes);
         random.NextBytes(macSecret);
-        random.NextBytes(keyBytes);
         KeccakHash macTemplate = KeccakHash.Create();
         macTemplate.Update(aes);
         EncryptionSecrets secrets = new()
@@ -54,7 +52,7 @@ public class PacketSplitterWriteBenchmarks
         random.NextBytes(_packet.AsSpan(0, PacketSize / 2));
         _packet[0] = 0x10;
 
-        _macProcessor = new FrameMacProcessor(new PublicKey(keyBytes), secrets);
+        _macProcessor = new FrameMacProcessor(secrets);
         ZeroPacketSplitter splitter = new(new FrameCipher(aes), _macProcessor);
         if (Snappy) splitter.EnableSnappy(NullLogManager.Instance);
         _channel = new EmbeddedChannel(splitter);

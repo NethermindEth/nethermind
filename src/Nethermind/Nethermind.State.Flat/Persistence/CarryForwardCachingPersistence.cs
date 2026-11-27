@@ -83,17 +83,19 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        IPersistence.IPersistenceReader reader = _inner.CreateReader(flags);
-        if ((flags & ReaderFlags.Sync) != 0) return reader;
+        if ((flags & ReaderFlags.Sync) != 0) return _inner.CreateReader(flags);
 
-        long generation;
-        bool atBasis;
+        // If a batch closed while the inner reader was being opened, the reader may predate writes the cache already
+        // evicted, so only a reader opened within one generation joins the cache.
+        long generation = Volatile.Read(ref _generation);
+        IPersistence.IPersistenceReader reader = _inner.CreateReader(flags);
+
+        bool admitted;
         using (_lock.EnterScope())
         {
-            atBasis = reader.CurrentState == _basis;
-            generation = _generation;
+            admitted = _generation == generation && reader.CurrentState == _basis;
         }
-        return atBasis && _slots.TryLease() ? new CachingReader(this, reader, generation) : reader;
+        return admitted && _slots.TryLease() ? new CachingReader(this, reader, generation) : reader;
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
@@ -179,12 +181,19 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         }
     }
 
-    private void OnCommitted(in StateId to, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
+    /// <param name="aborted">
+    /// Whether the batch was aborted. Its writes are evicted all the same, as an inner batch that ignores the abort commits
+    /// them, but an abort supplies no new basis: a store that honours it did not reach <paramref name="to"/>, the request
+    /// does not tell the cache what the store did, and a reader at <paramref name="to"/> must not be served entries cached
+    /// before the batch's writes are in. The generation bump excludes a reader from the cache when it lands between that
+    /// reader's sample in <see cref="CreateReader"/> and its admission.
+    /// </param>
+    private void OnClosed(in StateId to, bool aborted, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
     {
         using (_lock.EnterScope())
         {
             _generation++;
-            _basis = to;
+            if (!aborted) _basis = to;
 
             if (clearAll)
             {
@@ -369,6 +378,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         private HashSet<Address>? _writtenAccounts;
         private HashSet<(Address, UInt256)>? _writtenSlots;
         private bool _clearAll;
+        private bool _aborted;
 
         public void SelfDestruct(Address addr)
         {
@@ -444,10 +454,16 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
         public void SetMigrationCursor(in MigrationCursor? cursor) => inner.SetMigrationCursor(cursor);
 
+        public void Abort()
+        {
+            _aborted = true;
+            inner.Abort();
+        }
+
         public void Dispose()
         {
             inner.Dispose();
-            parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
+            parent.OnClosed(to, _aborted, _writtenAccounts, _writtenSlots, _clearAll);
             parent.ReturnWrittenSets(_writtenAccounts, _writtenSlots);
             _writtenAccounts = null;
             _writtenSlots = null;

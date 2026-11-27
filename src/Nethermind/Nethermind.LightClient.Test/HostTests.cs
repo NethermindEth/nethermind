@@ -302,6 +302,19 @@ public class HostTests
         }
     }
 
+    [TestCase("Nethermind.Core.KeccakCache.Compact", JsonValueKind.True)]
+    [TestCase("System.GC.Server", JsonValueKind.False)]
+    public void Runtime_config_sets_light_client_defaults(string setting, JsonValueKind expected)
+    {
+        string application = Path.GetDirectoryName(typeof(LightClientHost).Assembly.Location)!;
+        using FileStream file = File.OpenRead(Path.Combine(application, "Nethermind.LightClient.runtimeconfig.json"));
+        using JsonDocument config = JsonDocument.Parse(file);
+        JsonElement settings = config.RootElement.GetProperty("runtimeOptions").GetProperty("configProperties");
+
+        settings.TryGetProperty(setting, out JsonElement value);
+        Assert.That(value.ValueKind, Is.EqualTo(expected), setting);
+    }
+
     [Test]
     [NonParallelizable]
     [CancelAfter(45_000)]

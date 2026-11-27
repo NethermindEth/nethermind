@@ -13,7 +13,7 @@ public abstract class StatsAnalyzerTxTracer<TData, TStat, TTrace>(
     IStatsAnalyzer<TData, TStat> statsAnalyzer,
     SortOrder sort,
     CancellationToken ct)
-    : TxTracer, IStatsAnalyzerTxTracer<TTrace>
+    : TxTracer, IStatsAnalyzerTxTracer<TTrace>, IStatsAnalyzerIngest
 {
     protected readonly ResettableList<TData> Buffer = buffer;
     protected readonly CancellationToken Ct = ct;
@@ -26,6 +26,13 @@ public abstract class StatsAnalyzerTxTracer<TData, TStat, TTrace>(
     public void SetSkip(bool skip) => Skip = skip;
 
     public abstract TTrace BuildResult(ulong fromBlock = 0UL, ulong toBlock = 0UL);
+
+    // The file tracer retires this tracer before ingesting it, so no replacement queue is needed.
+    void IStatsAnalyzerIngest.Ingest()
+    {
+        Queue?.Dispose();
+        Queue = null;
+    }
 
     protected void Build()
     {
