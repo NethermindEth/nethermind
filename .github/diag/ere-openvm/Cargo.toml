@@ -1,0 +1,15 @@
+# Diagnostic only: executes a guest and computes its VK on the OpenVM that ere builds (han0110's patch/v2.1.0-preview),
+# with ere's VM configuration.
+[package]
+name = "ere-openvm-run"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+openvm-sdk = { git = "https://github.com/han0110/openvm.git", branch = "patch/v2.1.0-preview" }
+openvm-sdk-config = { git = "https://github.com/han0110/openvm.git", branch = "patch/v2.1.0-preview" }
+openvm-stark-sdk = { git = "https://github.com/han0110/stark-backend.git", branch = "patch/v2.1.0-preview" }
+hex = "0.4"
+
+[workspace]

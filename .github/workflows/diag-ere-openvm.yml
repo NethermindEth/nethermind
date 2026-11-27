@@ -1,0 +1,160 @@
+# Diagnostic only, not for master: runs the pinned blocks on the OpenVM that ere builds (v2.1.0-preview, ere's VM
+# configuration, no division hint) and computes the guest's VK as ere's docs/vk-generation.md does.
+name: Diag ere OpenVM
+
+on:
+  # workflow_dispatch needs the workflow on the default branch, so a push to this branch runs it with the defaults.
+  push:
+    branches: [diag/zkvm-guest-heap-use]
+    paths: [.github/workflows/diag-ere-openvm.yml, .github/diag/ere-openvm/**]
+
+permissions:
+  contents: read
+
+env:
+  RUN_ID: '46044364870'
+  RUST_TOOLCHAIN: nightly-2026-07-01
+
+jobs:
+  guest:
+    name: Guest without the division hint
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Free disk
+        run: sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Turn the division hint off
+        # Only the hint: the rest of OpenVmFlag (XORIN, input buffers) is standard OpenVM.
+        run: |
+          python3 - <<'EOF'
+          p = 'src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Arith256.zkevm.cs'
+          s = open(p).read()
+          head = '    private static bool TryMulModHint(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result)\n    {\n'
+          assert s.count(head) == 1
+          s = s.replace(head, head + '        if (OpenVmFlag.IsActive) { Unsafe.SkipInit(out result); return false; }\n')
+          open(p, 'w').write(s)
+          EOF
+          git diff
+
+      - name: Build the guest against the candidate package
+        run: |
+          set -euo pipefail
+          line=$(dotnet run --file .github/zkvm-ab/fetch-extlib.cs -- "openvm=run:$RUN_ID" "$RUNNER_TEMP/candidate")
+          echo "$line"
+          FORMATS=Ssz EXTLIB_PATH=$(echo "$line" | awk '{print $3}') CANDIDATE_DIR="$RUNNER_TEMP/candidate" \
+            dotnet run --file .github/zkvm-ab/build.cs -- openvm Nethermind.Stateless.OpenVMGuest . "$RUNNER_TEMP/elf"
+          python3 - "$RUNNER_TEMP/elf/nethermind" <<'EOF'
+          import struct, sys
+          d = open(sys.argv[1], 'rb').read()
+          entry, phoff = struct.unpack_from('<QQ', d, 24)
+          pe, pn = struct.unpack_from('<HH', d, 54)
+          top, phantoms = 0, 0
+          for i in range(pn):
+              t, flags, off, va, _, fs, ms, _ = struct.unpack_from('<IIQQQQQQ', d, phoff + i * pe)
+              if t != 1:
+                  continue
+              print(f'PT_LOAD 0x{va:x}-0x{va + ms:x} flags {flags}')
+              top = max(top, va + ms)
+              if flags & 1:
+                  for w in struct.iter_unpack('<I', d[off:off + fs - fs % 4]):
+                      phantoms += (w[0] & 0xfff0707f) == 0x4d10300b
+          print(f'entry 0x{entry:x}, division-hint phantoms in the image: {phantoms}')
+          sys.exit(0 if entry < 0x20000000 and top <= 0x20000000 else 'the guest image is not below 512 MiB')
+          EOF
+
+      - name: Upload the guest
+        uses: actions/upload-artifact@v7
+        with:
+          name: ere-guest
+          path: ${{ runner.temp }}/elf/nethermind
+
+  harness:
+    name: ere's OpenVM harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Cache the build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .github/diag/ere-openvm/target
+          key: ere-openvm-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('.github/diag/ere-openvm/Cargo.toml', '.github/diag/ere-openvm/src/**') }}
+
+      - name: Build
+        working-directory: .github/diag/ere-openvm
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          cargo +"$RUST_TOOLCHAIN" build --release
+          cp target/release/ere-openvm-run "$RUNNER_TEMP/"
+
+      - name: Upload the harness
+        uses: actions/upload-artifact@v7
+        with:
+          name: ere-harness
+          path: ${{ runner.temp }}/ere-openvm-run
+
+  run:
+    name: Pinned blocks and VK on ere's OpenVM
+    needs: [guest, harness]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Download the guest and the harness
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/bin
+          merge-multiple: true
+
+      - name: Run the pinned blocks
+        run: |
+          set -euo pipefail
+          dotnet run --file .github/zkvm-ab/inputs.cs -- . "$RUNNER_TEMP/inputs" Ssz
+          chmod +x "$RUNNER_TEMP/bin/ere-openvm-run"
+          : > "$RUNNER_TEMP/expected.tsv"
+          raws=()
+          while IFS=$'\t' read -r format block file output digest; do
+            [ "$format" = Ssz ] || continue
+            raw="$RUNNER_TEMP/inputs/$block.raw"
+            python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; open(sys.argv[2],'wb').write(b[8:8+n])" "$RUNNER_TEMP/inputs/$file" "$raw"
+            printf '%s\t%s\n' "$raw" "$digest" >> "$RUNNER_TEMP/expected.tsv"
+            raws+=("$raw")
+          done < "$RUNNER_TEMP/inputs/expected.tsv"
+          "$RUNNER_TEMP/bin/ere-openvm-run" run "$RUNNER_TEMP/bin/nethermind" "${raws[@]}" | tee "$RUNNER_TEMP/run.log"
+          failed=0
+          while IFS=$'\t' read -r raw digest; do
+            if grep -q "^RESULT $raw .* public_values=$digest" "$RUNNER_TEMP/run.log"; then
+              echo "ok $(basename "$raw")"
+            else
+              echo "::error::$(basename "$raw"): no public values starting with $digest"
+              failed=$((failed + 1))
+            fi
+          done < "$RUNNER_TEMP/expected.tsv"
+          echo "$(wc -l < "$RUNNER_TEMP/expected.tsv") blocks, $failed failed"
+          [ "$(wc -l < "$RUNNER_TEMP/expected.tsv")" -gt 0 ] && [ "$failed" -eq 0 ]
+
+      - name: Generate the VK
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/bin/ere-openvm-run" vk "$RUNNER_TEMP/bin/nethermind" "$RUNNER_TEMP/nethermind-openvm.vk"
+          [ "$(stat -c%s "$RUNNER_TEMP/nethermind-openvm.vk")" -eq 32 ]
+          echo "VK: 0x$(od -An -v -tx1 "$RUNNER_TEMP/nethermind-openvm.vk" | tr -d ' \n')" >> "$GITHUB_STEP_SUMMARY"
