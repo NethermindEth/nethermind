@@ -53,7 +53,8 @@ public partial class EngineModuleTests
             3 => (await rpc.engine_getPayloadV3(id)).ErrorCode,
             4 => (await rpc.engine_getPayloadV4(id)).ErrorCode,
             5 => (await rpc.engine_getPayloadV5(id)).ErrorCode,
-            _ => (await rpc.engine_getPayloadV6(id)).ErrorCode
+            6 => (await rpc.engine_getPayloadV6(id)).ErrorCode,
+            _ => (await rpc.engine_getPayloadV7(id)).ErrorCode
         };
 
         Assert.That(errorCode, Is.EqualTo(supported ? 0 : MergeErrorCodes.UnsupportedFork));
@@ -67,11 +68,14 @@ public partial class EngineModuleTests
             (Cancun.Instance, [3]),
             (Prague.Instance, [4]),
             (Osaka.Instance, [5]),
-            (Amsterdam.Instance, [6])
+            (Amsterdam.Instance, [6]),
+            // Only getPayloadV7 carries the EIP-8141 dependency proof, so it alone serves a frame fork, Osaka-based or not.
+            (new OverridableReleaseSpec(Osaka.Instance) { IsEip8141Enabled = true }, [7]),
+            (Eip8141Prototype.Instance, [7])
         ];
         foreach ((IReleaseSpec spec, int[] versions) in forks)
         {
-            for (int version = 1; version <= 6; version++)
+            for (int version = 1; version <= 7; version++)
             {
                 yield return new TestCaseData(spec, version, versions.Contains(version));
             }
