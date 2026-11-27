@@ -10,6 +10,8 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Specs;
@@ -268,9 +270,9 @@ public class MergeHeaderValidatorTests
         Assert.That(allocated, Is.Zero);
     }
 
-    [TestCase(true, TestName = "{m}(nonce)")]
-    [TestCase(false, TestName = "{m}(uncles hash)")]
-    public void Post_merge_header_with_a_wrong_pow_field_is_rejected(bool wrongNonce)
+    [TestCase(true, BlockErrorMessages.InvalidPostMergeNonce, TestName = "{m}(nonce)")]
+    [TestCase(false, BlockErrorMessages.InvalidPostMergeUnclesHash, TestName = "{m}(uncles hash)")]
+    public void Post_merge_header_with_a_wrong_pow_field_is_rejected(bool wrongNonce, string expectedError)
     {
         const ulong ttd = 10;
         TestSpecProvider specProvider = new(Paris.Instance) { TerminalTotalDifficulty = ttd };
@@ -291,6 +293,118 @@ public class MergeHeaderValidatorTests
         BlockHeader header = headerBuilder.TestObject;
         using IContainer ctx = BuildContainer(specProvider, Substitute.For<IHeaderValidator>());
 
-        Assert.That(ctx.Resolve<IHeaderValidator>().Validate(header, parent, false, out _, false), Is.False);
+        bool valid = ctx.Resolve<IHeaderValidator>().Validate(header, parent, false, out string? error, false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
+    }
+
+    private const ulong SubstituteTtd = 10;
+
+    // difficulty, nonce, wrong uncles hash, total difficulty (0 = not known), header flagged post-merge, expected error
+    [TestCase(1UL, 0UL, false, 0UL, true, BlockErrorMessages.InvalidPostMergeDifficulty, TestName = "{m}(difficulty)")]
+    [TestCase(0UL, 1UL, false, 0UL, true, BlockErrorMessages.InvalidPostMergeNonce, TestName = "{m}(nonce)")]
+    [TestCase(0UL, 0UL, true, 0UL, true, BlockErrorMessages.InvalidPostMergeUnclesHash, TestName = "{m}(uncles hash)")]
+    [TestCase(1UL, 1UL, true, 0UL, true, BlockErrorMessages.InvalidPostMergeDifficulty, TestName = "{m}(all three fields)")]
+    [TestCase(0UL, 1UL, true, 0UL, true, BlockErrorMessages.InvalidPostMergeNonce, TestName = "{m}(nonce and uncles hash)")]
+    [TestCase(0UL, 0UL, false, 9UL, true, BlockErrorMessages.InvalidTotalDifficulty, TestName = "{m}(total difficulty below TTD)")]
+    [TestCase(0UL, 0UL, false, 10UL, false, BlockErrorMessages.InvalidTotalDifficulty, TestName = "{m}(total difficulty at TTD on a header not flagged post-merge)")]
+    [TestCase(0UL, 1UL, false, 9UL, true, BlockErrorMessages.InvalidTotalDifficulty, TestName = "{m}(total difficulty and nonce)")]
+    public void Orphaned_post_merge_header_breaking_a_merge_rule_is_rejected_with_its_error(
+        ulong difficulty, ulong nonce, bool wrongUnclesHash, ulong totalDifficulty, bool flaggedPostMerge, string expectedError)
+    {
+        BlockHeader header = OrphanedHeader(difficulty, nonce, wrongUnclesHash, totalDifficulty, flaggedPostMerge);
+
+        // Warnings are off, so the error must not depend on them.
+        bool valid = PostMergeValidator(NullLogManager.Instance).ValidateOrphaned(header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
+    }
+
+    [TestCase(false, TestName = "{m}(uncles hash valid)")]
+    [TestCase(true, TestName = "{m}(uncles hash wrong too)")]
+    public void Orphaned_post_merge_header_breaking_the_total_difficulty_and_nonce_rules_warns_for_both_in_order(bool wrongUnclesHash)
+    {
+        TestLogger logger = new() { IsTrace = false, IsDebug = false, IsInfo = false, IsError = false };
+        BlockHeader header = OrphanedHeader(0, 1, wrongUnclesHash, SubstituteTtd - 1, true);
+
+        bool valid = PostMergeValidator(new OneLoggerLogManager(new ILogger(logger))).ValidateOrphaned(header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidTotalDifficulty));
+            // The field checks still run after the total difficulty check fails, and stop at the first wrong field.
+            Assert.That(logger.LogList, Has.Count.EqualTo(2), string.Join(Environment.NewLine, logger.LogList));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList[0], Does.Contain("total difficulty is incorrect because of TTD"));
+            Assert.That(logger.LogList[1], Does.Contain("the Nonce is incorrect"));
+        }
+    }
+
+    [Test]
+    public void Orphaned_post_merge_header_with_a_wrong_difficulty_and_nonce_warns_only_for_the_difficulty()
+    {
+        TestLogger logger = new() { IsTrace = false, IsDebug = false, IsInfo = false, IsError = false };
+        BlockHeader header = OrphanedHeader(1, 1, false, SubstituteTtd, true);
+
+        bool valid = PostMergeValidator(new OneLoggerLogManager(new ILogger(logger))).ValidateOrphaned(header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidPostMergeDifficulty));
+            // The total difficulty check passes, and the field checks stop at the first wrong field.
+            Assert.That(logger.LogList, Has.Count.EqualTo(1), string.Join(Environment.NewLine, logger.LogList));
+        }
+
+        Assert.That(logger.LogList[0], Does.Contain("the Difficulty is incorrect"));
+    }
+
+    [TestCase(10UL, true, TestName = "{m}(total difficulty at TTD)")]
+    [TestCase(9UL, false, TestName = "{m}(total difficulty below TTD on a header not flagged post-merge)")]
+    public void Orphaned_post_merge_header_keeping_the_merge_rules_is_valid(ulong totalDifficulty, bool flaggedPostMerge)
+    {
+        BlockHeader header = OrphanedHeader(0, 0, false, totalDifficulty, flaggedPostMerge);
+
+        bool valid = PostMergeValidator(NullLogManager.Instance).ValidateOrphaned(header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.True, error);
+            Assert.That(error, Is.Null);
+        }
+    }
+
+    /// <summary>A validator whose switcher classifies every header as post-merge and not terminal.</summary>
+    private static MergeHeaderValidator PostMergeValidator(ILogManager logManager)
+    {
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.TerminalTotalDifficulty.Returns((UInt256?)new UInt256(SubstituteTtd));
+        poSSwitcher.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
+        poSSwitcher.GetBlockConsensusInfo(Arg.Any<BlockHeader>()).Returns((false, true));
+        return new(poSSwitcher, Substitute.For<IHeaderValidator>(), Substitute.For<IBlockTree>(), MainnetSpecProvider.Instance, Always.Valid, logManager);
+    }
+
+    /// <summary>The header of <see cref="Orphaned_pos_header_is_validated_without_the_parent_rule"/> with the given merge fields.</summary>
+    private static BlockHeader OrphanedHeader(ulong difficulty, ulong nonce, bool wrongUnclesHash, ulong totalDifficulty, bool flaggedPostMerge)
+    {
+        BlockHeaderBuilder builder = Build.A.BlockHeader.WithDifficulty(difficulty).WithNonce(nonce);
+        if (wrongUnclesHash) builder = builder.WithUnclesHash(Keccak.Zero);
+        BlockHeader header = builder.TestObject;
+        header.TotalDifficulty = totalDifficulty == 0 ? null : (UInt256)totalDifficulty;
+        // PoSSwitcher writes its verdict back to the header; the substitute does not.
+        header.IsPostMerge = flaggedPostMerge;
+        return header;
     }
 }
