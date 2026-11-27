@@ -87,11 +87,7 @@ public class DiscoveryNodeLimiterTests
     [TestCase("192.0.2.1", "192.0.3.1", false)]
     [TestCase("2001:db8:1:2::1", "2001:db8:1:2::ffff", true)]
     [TestCase("2001:db8:1:2::1", "2001:db8:1:3::1", false)]
-    [TestCase("192.168.1.1", "192.168.1.1", true)]
-    [TestCase("192.168.1.1", "192.168.1.2", false)]
-    [TestCase("10.0.0.1", "10.0.0.1", true)]
-    [TestCase("10.0.0.1", "10.0.1.1", false)]
-    public void TryAdmit_keys_addresses_by_24_ipv6_64_or_exact_private_address(
+    public void TryAdmit_keys_public_addresses_by_24_ipv6_64(
         string firstAddress,
         string candidateAddress,
         bool sameKey)
@@ -127,6 +123,43 @@ public class DiscoveryNodeLimiterTests
         bucket.Add(second);
 
         Assert.That(limiter.TryAdmit(sameSubnetDifferentAddress, bucket.ToArray()), Is.True);
+    }
+
+    [Test]
+    public void Lan_addresses_bypass_table_and_bucket_limits_while_testnets_stay_capped()
+    {
+        DiscoveryNodeLimiter limiter = CreateLimiter();
+        List<Node> bucket = [];
+
+        // Same-host devnet: N loopback nodes on distinct ports, plus M private 10/8 nodes, all beyond the table cap.
+        for (int i = 0; i < 15; i++)
+        {
+            Node loopback = CreateNode(TestItem.PrivateKeys[i].PublicKey, "127.0.0.1", 30303 + i);
+            Assert.That(limiter.TryAdmit(loopback, bucket.ToArray()), Is.True);
+            Assert.That(limiter.WouldAdmit(loopback), Is.True);
+            bucket.Add(loopback);
+        }
+
+        for (int i = 15; i < 25; i++)
+        {
+            Node lan = CreateNode(TestItem.PrivateKeys[i].PublicKey, $"10.0.{i - 15}.1");
+            Assert.That(limiter.TryAdmit(lan, bucket.ToArray()), Is.True);
+            Assert.That(limiter.WouldAdmit(lan), Is.True);
+            bucket.Add(lan);
+        }
+
+        // LAN entries in the bucket consume no slot: two public nodes still fit alongside them.
+        Node first = CreateNode(TestItem.PrivateKeys[30].PublicKey, "192.0.2.1");
+        Node second = CreateNode(TestItem.PrivateKeys[31].PublicKey, "192.0.2.2");
+        Assert.That(limiter.TryAdmit(first, bucket.ToArray()), Is.True);
+        bucket.Add(first);
+        Assert.That(limiter.TryAdmit(second, bucket.ToArray()), Is.True);
+        bucket.Add(second);
+        Assert.That(limiter.TryAdmit(CreateNode(TestItem.PrivateKeys[32].PublicKey, "192.0.2.3"), bucket.ToArray()), Is.False);
+
+        // TEST-NET-1 is not LAN: the table cap still applies in a fresh bucket.
+        AdmitNodes(limiter, 8, firstKeyIndex: 40);
+        Assert.That(limiter.TryAdmit(CreateNode(TestItem.PrivateKeys[50].PublicKey, "192.0.2.200"), []), Is.False);
     }
 
     [Test]
@@ -310,4 +343,6 @@ public class DiscoveryNodeLimiterTests
     }
 
     private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303);
+
+    private static Node CreateNode(PublicKey id, string host, int port) => new(id, host, port);
 }

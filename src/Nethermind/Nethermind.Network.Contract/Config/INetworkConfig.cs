@@ -153,9 +153,9 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "true", Description = "When filtering by recent IP, bucket peers by subnet (e.g., IPv4 /24, IPv6 /64) so multiple IPs in the same subnet share a single entry. If false, use exact IP addresses only.")]
     bool FilterPeersBySameSubnet { get; set; }
 
-    [ConfigItem(DefaultValue = "true", Description = "Reject discovery nodes whose IP key was seen recently (time-windowed), using the peer IP filter.")]
+    [ConfigItem(DefaultValue = "true", Description = "Limit discovery table entries per subnet key (2/bucket, 10/table, LAN bypassed).")]
     bool FilterDiscoveryNodesByRecentIp { get; set; }
 
-    [ConfigItem(DefaultValue = "true", Description = "When filtering discovery nodes by recent IP, bucket discovery node IPs by subnet (e.g., IPv4 /24, IPv6 /64) so multiple discovery node IPs in the same subnet share a single entry. If false, use exact IP addresses only.")]
+    [ConfigItem(DefaultValue = "true", Description = "When limiting discovery nodes, bucket public IPs by subnet (IPv4 /24, IPv6 /64); LAN addresses bypass the limit (2/bucket, 10/table).")]
     bool FilterDiscoveryNodesBySameSubnet { get; set; }
 }

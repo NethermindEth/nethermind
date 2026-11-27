@@ -17,8 +17,9 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// </summary>
 /// <remarks>
 /// Limits follow geth v1.16.5 <c>table.go</c>: <c>tableIPLimit = 10</c> and <c>bucketIPLimit = 2</c>. The subnet
-/// key reuses <see cref="NodeFilter.IpSubnetKey"/> (IPv6 /64, exact address for private, loopback, link-local and
-/// CGNAT), so the limiter adds no filtering state of its own: <see cref="_counts"/> is bounded by routing-table
+/// key reuses <see cref="NodeFilter.IpSubnetKey"/> (IPv4 /24, IPv6 /64) for public addresses; loopback,
+/// private (incl. CGNAT 100.64.0.0/10), link-local and IPv6 ULA addresses bypass the limiter entirely
+/// (geth <c>table.go:addIP</c> <c>AddrIsLAN</c> parity), so the limiter adds no filtering state of its own: <see cref="_counts"/> is bounded by routing-table
 /// membership and <see cref="_held"/> mirrors it per identity.
 /// <para>
 /// Only active entries are counted. Identity exemptions (self, bootnodes, static, trusted)
@@ -81,7 +82,12 @@ internal sealed class DiscoveryNodeLimiter : IRoutingTableNodeLimiter<Node>
             return true;
         }
 
-        if (GetKey(node) is not { } key) return true;
+        if (GetKey(node) is not { } key)
+        {
+            // A public->LAN move must not leave the old subnet charged; mirrors the exemption path above.
+            ReleaseLocked(node);
+            return true;
+        }
 
         // A refresh of the identity in place neither consumes nor re-checks a slot.
         if (_held.TryGetValue(node.Id, out NodeFilter.IpSubnetKey existingKey) && existingKey.Equals(key)) return true;
@@ -171,6 +177,10 @@ internal sealed class DiscoveryNodeLimiter : IRoutingTableNodeLimiter<Node>
     {
         IPEndPoint? address = node.Address;
         if (address is null) return null;
+
+        // Matches geth table.go:addIP AddrIsLAN bypass (loopback, private, link-local, IPv6 ULA).
+        // Nethermind additionally treats CGNAT 100.64.0.0/10 as LAN, consistent with NodeFilter.DefaultKey.
+        if (address.Address.IsLoopbackOrPrivateOrLinkLocal) return null;
 
         // Same-subnet filtering disabled means every public address is keyed exactly, matching NodeFilter.
         if (!_networkConfig.FilterDiscoveryNodesBySameSubnet) return NodeFilter.IpSubnetKey.Exact(address.Address);
