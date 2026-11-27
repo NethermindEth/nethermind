@@ -5,6 +5,7 @@ using System;
 using System.Security.Cryptography;
 using CkzgLib;
 using Nethermind.Core;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.Crypto;
 
@@ -18,7 +19,7 @@ public static partial class KzgPolynomialCommitments
 
         ArgumentOutOfRangeException.ThrowIfNotEqual(hashBuffer.Length, Eip4844Constants.BytesPerBlobVersionedHash, nameof(hashBuffer));
 
-        if (SHA256.TryHashData(commitment, hashBuffer, out _))
+        if (ThreadSha256.TryHashDataArm(commitment, hashBuffer) || SHA256.TryHashData(commitment, hashBuffer, out _))
         {
             hashBuffer[0] = KzgBlobHashVersionV1;
             return true;
