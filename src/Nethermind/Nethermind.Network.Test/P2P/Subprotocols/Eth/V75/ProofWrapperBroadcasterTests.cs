@@ -1183,6 +1183,35 @@ public class ProofWrapperBroadcasterTests
         }
     }
 
+    // Support depends on the connection, not the wrapper: an eth/75 serve of another scheme neither tombstones the hash nor stops
+    // its fetch from an aggregating announcer, while another eth/75 announcement of it is not fetched again.
+    [Test]
+    public async Task Other_scheme_served_on_eth75_is_still_fetched_from_an_aggregating_peer()
+    {
+        using WrapperTestNode node = new();
+        Transaction transaction = FrameTransaction(1, Eip8288Constants.LeanStarkScheme);
+        byte[] wrapper = DirectWrapper(transaction);
+        ValueHash256 hash = Describe(wrapper).Hash;
+        FakeWrapperLink eth75Link = new("eth75") { ProtocolVersion = EthVersions.Eth75 }, otherEth75Link = new("eth75-other") { ProtocolVersion = EthVersions.Eth75 };
+        FakeWrapperLink aggregatingLink = new("eth76");
+        WrapperPeer eth75 = node.Connect(eth75Link), otherEth75 = node.Connect(otherEth75Link), aggregating = node.Connect(aggregatingLink);
+        node.Broadcaster.OnAnnounce(eth75, new([Describe(wrapper)]));
+        node.Broadcaster.OnAnnounce(aggregating, new([Describe(wrapper)]));
+        Answer(node, eth75, eth75Link, wrapper);
+        await WrapperTestNode.Until(() => aggregatingLink.Sent<GetProofWrappersMessage>().Length != 0);
+        node.Broadcaster.OnAnnounce(otherEth75, new([Describe(wrapper)]));
+        Answer(node, aggregating, aggregatingLink, wrapper);
+        await WrapperTestNode.Until(() => node.Broadcaster.IsStored(hash) && node.Broadcaster.FetchCount == 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Broadcaster.IsTombstoned(hash), Is.False);
+            Assert.That(node.Pending.Select(static t => t.Hash), Is.EqualTo(new[] { transaction.Hash }));
+            Assert.That(otherEth75Link.Sent<GetProofWrappersMessage>(), Is.Empty);
+            Assert.That(eth75Link.Penalties.Concat(otherEth75Link.Penalties).Concat(aggregatingLink.Penalties), Is.Empty);
+        }
+    }
+
     // EIP-8437: claims found false against a held wrapper of the announced hash, or metadata found false against a transaction
     // held in a validated wrapper, are discarded with their sender before any fetch; true metadata for a held transaction is not.
     [TestCase("held wrapper, false metadata", true)]

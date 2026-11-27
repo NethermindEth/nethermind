@@ -332,6 +332,10 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     /// with <c>compact = 0</c>.</summary>
     public bool RequiresComplete { get; set; }
 
+    /// <summary>Set once an <c>eth/75</c> peer served the wrapper with a scheme that version does not carry: only aggregating
+    /// sources are asked from then on.</summary>
+    public bool RequiresAggregating { get; set; }
+
     /// <summary>The peer that served the wrapper.</summary>
     public WrapperPeer? Server { get; set; }
     public byte[]? Wrapper { get; set; }
@@ -383,7 +387,7 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
         WrapperPeer? deprioritized = null;
         foreach (WrapperPeer peer in Sources)
         {
-            if (peer.Closed || Tried.Contains(peer)) continue;
+            if (peer.Closed || Tried.Contains(peer) || RequiresAggregating && !peer.Aggregates) continue;
             if (!peer.IsDeprioritized) return peer;
             if (deprioritized is null || peer.FailureScore < deprioritized.FailureScore) deprioritized = peer;
         }

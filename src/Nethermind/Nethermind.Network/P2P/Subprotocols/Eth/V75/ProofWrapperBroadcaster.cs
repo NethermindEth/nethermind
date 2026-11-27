@@ -41,6 +41,9 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
     // Wrappers that failed proof or dependency rules, keyed by InvalidKey with the verifier they were judged under: another
     // target fork verifier may accept them.
     private readonly WrapperBoundedSet _invalid = new(WrapperTransportLimits.MaxTombstones);
+    // Wrappers carrying a scheme eth/75 does not, recently served by an eth/75 peer: not fetched again on that version, while
+    // aggregating peers may still serve them.
+    private readonly WrapperBoundedSet _unsupportedOnEth75 = new(WrapperTransportLimits.MaxTombstones);
     // Received wrappers awaiting validation per server, dequeued round-robin so one peer's backlog cannot delay the others'.
     private readonly Dictionary<WrapperPeer, Queue<WrapperFetch>> _validation = [];
     private readonly Queue<WrapperPeer> _validationTurns = [];
