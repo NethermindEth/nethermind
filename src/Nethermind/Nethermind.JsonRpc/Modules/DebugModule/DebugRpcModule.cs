@@ -246,7 +246,7 @@ public class DebugRpcModule(
         if (tx.GetTipAboveFeeCapError(spec) is { } tipAboveFeeCap)
             return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(tipAboveFeeCap), ErrorCodes.InvalidInput);
 
-        GethTraceOptions effective = (options ?? GethTraceOptions.Default) with
+        GethTraceOptions effective = (WithOpcodeStepLimit(options) ?? GethTraceOptions.Default) with
         {
             NoBaseFee = !call.ShouldSetBaseFee(),
             EnforceExecutionDeadline = options?.EnforceExecutionDeadline == true

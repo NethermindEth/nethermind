@@ -1279,9 +1279,45 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    /// <remarks>
+    /// <c>debug_traceCallMany</c> keeps the byte budget that <c>debug_traceCall</c> used before <c>limit</c> counted
+    /// opcode steps there.
+    /// </remarks>
     [TestCaseSource(nameof(OpcodeLoggerLimitCases))]
-    public async Task Debug_traceCall_opcode_logger_limit(
+    public async Task Debug_traceCallMany_opcode_logger_limit(
         string code, bool disableStack, bool enableMemory, long limit, int expectedCount, bool streamMode)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [TestItem.AddressC.ToString()] = new { code = "0x" + code, state = new Dictionary<string, string>() },
+            ["0x0000000000000000000000000000000000009012"] = new { code = "0x602a60005260206000f3" }
+        };
+        object[] bundles = [new { transactions = new[] { new { to = TestItem.AddressC.ToString(), gas = "0x186a0" } } }];
+        string unlimitedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany",
+            bundles, "latest", new { streamMode, disableStack, enableMemory, enableReturnData = true, stateOverrides });
+        string limitedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany",
+            bundles, "latest", new { streamMode, disableStack, enableMemory, enableReturnData = true, limit = JsonSerializer.SerializeToElement(limit), stateOverrides });
+
+        JToken expected = JToken.Parse(unlimitedResponse)["result"]![0]![0]!;
+        JArray entries = (JArray)expected["structLogs"]!;
+        while (entries.Count > expectedCount)
+            entries.RemoveAt(entries.Count - 1);
+
+        JToken actual = JToken.Parse(limitedResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["error"], Is.Null, limitedResponse);
+            Assert.That(JToken.DeepEquals(actual["result"]?[0]?[0], expected), Is.True, limitedResponse);
+        }
+    }
+
+    /// <remarks>As in the other <c>debug_trace*</c> methods, <c>limit</c> counts opcode steps, also in a child frame.</remarks>
+    [Test]
+    public async Task Debug_traceCall_opcode_logger_limit_counts_steps(
+        [Values("602a60005260206000f3", "602a60005260206000fd", "6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3")] string code,
+        [Values(-1L, 0L, 1L, 3L, 9L, 2147483648L)] long limit,
+        [Values] bool streamMode)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
         Dictionary<string, object> stateOverrides = new()
@@ -1291,12 +1327,13 @@ public partial class DebugRpcModuleTests
         };
         object call = new { to = TestItem.AddressC.ToString(), gas = "0x186a0" };
         string unlimitedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            call, "latest", new { streamMode, disableStack, enableMemory, enableReturnData = true, stateOverrides });
+            call, "latest", new { streamMode, enableMemory = true, enableReturnData = true, stateOverrides });
         string limitedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            call, "latest", new { streamMode, disableStack, enableMemory, enableReturnData = true, limit = JsonSerializer.SerializeToElement(limit), stateOverrides });
+            call, "latest", new { streamMode, enableMemory = true, enableReturnData = true, limit = JsonSerializer.SerializeToElement(limit), stateOverrides });
 
         JToken expected = JToken.Parse(unlimitedResponse)["result"]!;
         JArray entries = (JArray)expected["structLogs"]!;
+        long expectedCount = limit switch { < 0 => 0, 0 => entries.Count, _ => limit };
         while (entries.Count > expectedCount)
             entries.RemoveAt(entries.Count - 1);
 
@@ -1314,7 +1351,7 @@ public partial class DebugRpcModuleTests
 
     [TestCase(false, 0L, 4)]
     [TestCase(false, long.MaxValue, 4)]
-    [TestCase(false, 224L, 1)]
+    [TestCase(false, 2L, 2)]
     [TestCase(false, -1L, 0)]
     [TestCase(true, 0L, 6)]
     public async Task Debug_traceCall_buffered_opcode_logs_are_capped_by_config(bool streamMode, long limit, int expectedCount)
