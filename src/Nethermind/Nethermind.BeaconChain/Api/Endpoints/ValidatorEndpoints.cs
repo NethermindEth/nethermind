@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
@@ -21,13 +20,12 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 internal sealed class ValidatorEndpoints(IBeaconNodeValidatorApi validatorApi)
 {
     [HttpPost("/eth/v1/validator/duties/attester/{epoch}"), Negotiated]
-    public async Task<IResult> AttesterDuties(string epoch, [FromBody] string[] ids, CancellationToken cancellationToken)
+    public async Task<IResult> AttesterDuties(string epoch, [FromBody] ulong[] indices, CancellationToken cancellationToken)
     {
         if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
-        if (!TryParseValidatorIndices(ids, out ulong[]? indices, out string? invalidId)) return Invalid($"Invalid validator index '{invalidId}'.");
         DutiesResult<AttesterDuty> duties = await validatorApi.GetAttesterDuties(parsedEpoch, indices, cancellationToken);
-        return Duties(duties, static duty => new AttesterDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.CommitteeIndex.ToString(),
-            duty.CommitteeLength.ToString(), duty.CommitteesAtSlot.ToString(), duty.ValidatorCommitteeIndex.ToString(), duty.Slot.ToString()));
+        return ApiResults.Json(ToDto(duties, static duty => new AttesterDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.CommitteeIndex.ToString(),
+            duty.CommitteeLength.ToString(), duty.CommitteesAtSlot.ToString(), duty.ValidatorCommitteeIndex.ToString(), duty.Slot.ToString())));
     }
 
     [HttpGet("/eth/v2/validator/duties/proposer/{epoch}"), Negotiated]
@@ -35,16 +33,15 @@ internal sealed class ValidatorEndpoints(IBeaconNodeValidatorApi validatorApi)
     {
         if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
         DutiesResult<ProposerDuty> duties = await validatorApi.GetProposerDuties(parsedEpoch, cancellationToken);
-        return Duties(duties, static duty => new ProposerDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.Slot.ToString()));
+        return ApiResults.Json(ToDto(duties, static duty => new ProposerDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.Slot.ToString())));
     }
 
     [HttpPost("/eth/v1/validator/duties/sync/{epoch}"), Negotiated]
-    public async Task<IResult> SyncDuties(string epoch, [FromBody] string[] ids, CancellationToken cancellationToken)
+    public async Task<IResult> SyncDuties(string epoch, [FromBody] ulong[] indices, CancellationToken cancellationToken)
     {
         if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
-        if (!TryParseValidatorIndices(ids, out ulong[]? indices, out string? invalidId)) return Invalid($"Invalid validator index '{invalidId}'.");
         DutiesResult<SyncDuty> duties = await validatorApi.GetSyncDuties(parsedEpoch, indices, cancellationToken);
-        return Duties(duties, static duty => new SyncDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), ToStrings(duty.ValidatorSyncCommitteeIndices)));
+        return ApiResults.Json(ToDto(duties, static duty => new SyncDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), ToStrings(duty.ValidatorSyncCommitteeIndices))));
     }
 
     [HttpGet("/eth/v1/validator/attestation_data"), Negotiated]
@@ -94,28 +91,11 @@ internal sealed class ValidatorEndpoints(IBeaconNodeValidatorApi validatorApi)
     public static Task NotServed(HttpContext c) => Task.FromException(
         new BeaconNodeApiException(BeaconNodeApiError.NotSupported, $"{c.Request.Method} {c.Request.Path} is not served by this node yet."));
 
-    private static bool TryParseValidatorIndices(string[] ids, [NotNullWhen(true)] out ulong[]? indices, out string? invalidId)
-    {
-        indices = new ulong[ids.Length];
-        for (int i = 0; i < indices.Length; i++)
-        {
-            if (!TryParseUInt(ids[i], out indices[i]))
-            {
-                invalidId = ids[i];
-                indices = null;
-                return false;
-            }
-        }
-
-        invalidId = null;
-        return true;
-    }
-
-    private static IResult Duties<TDuty, TDto>(DutiesResult<TDuty> duties, Func<TDuty, TDto> toDto)
+    private static DutiesDto<TDto> ToDto<TDuty, TDto>(DutiesResult<TDuty> duties, Func<TDuty, TDto> toDto)
     {
         TDto[] data = new TDto[duties.Duties.Count];
         for (int i = 0; i < data.Length; i++) data[i] = toDto(duties.Duties[i]);
-        return ApiResults.Json(new DutiesDto<TDto>(duties.DependentRoot?.ToString(), duties.ExecutionOptimistic, data));
+        return new DutiesDto<TDto>(duties.DependentRoot?.ToString(), duties.ExecutionOptimistic, data);
     }
 
     private static string[] ToStrings(IReadOnlyList<ulong> values)

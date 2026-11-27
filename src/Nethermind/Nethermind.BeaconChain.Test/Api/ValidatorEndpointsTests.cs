@@ -42,11 +42,14 @@ public class ValidatorEndpointsTests : BeaconApiFixture
                 .Returns(new ValueTask<DutiesResult<ProposerDuty>>(new DutiesResult<ProposerDuty>(Root, false, [new ProposerDuty(Key, 9, 160)])))),
             $$"""{"dependent_root":"{{Root}}","execution_optimistic":false,"data":[{"pubkey":"{{Key}}","validator_index":"9","slot":"160"}]}""")
             .SetName("Proposer duties");
-        yield return new TestCaseData(HttpMethod.Post, "/eth/v1/validator/duties/sync/256", """["1"]""",
-            (Action<IBeaconNodeValidatorApi>)(api => api.GetSyncDuties(256, Arg.Is<IReadOnlyList<ulong>>(indices => indices.SequenceEqual(new ulong[] { 1 })), Arg.Any<CancellationToken>())
-                .Returns(new ValueTask<DutiesResult<SyncDuty>>(new DutiesResult<SyncDuty>(null, false, [new SyncDuty(Key, 1, [0, 511])])))),
-            $$"""{"execution_optimistic":false,"data":[{"pubkey":"{{Key}}","validator_index":"1","validator_sync_committee_indices":["0","511"]}]}""")
-            .SetName("Sync duties carry no dependent root");
+        foreach (string indices in new[] { """["1"]""", "[1]" })
+        {
+            yield return new TestCaseData(HttpMethod.Post, "/eth/v1/validator/duties/sync/256", indices,
+                (Action<IBeaconNodeValidatorApi>)(api => api.GetSyncDuties(256, Arg.Is<IReadOnlyList<ulong>>(values => values.SequenceEqual(new ulong[] { 1 })), Arg.Any<CancellationToken>())
+                    .Returns(new ValueTask<DutiesResult<SyncDuty>>(new DutiesResult<SyncDuty>(null, false, [new SyncDuty(Key, 1, [0, 511])])))),
+                $$"""{"execution_optimistic":false,"data":[{"pubkey":"{{Key}}","validator_index":"1","validator_sync_committee_indices":["0","511"]}]}""")
+                .SetName($"Sync duties carry no dependent root ({indices})");
+        }
         yield return new TestCaseData(HttpMethod.Get, "/eth/v1/validator/attestation_data?slot=7&committee_index=3", null,
             (Action<IBeaconNodeValidatorApi>)(api => api.ProduceAttestationData(7, 3, Arg.Any<CancellationToken>()).Returns(new ValueTask<AttestationData>(Data()))),
             $$$$"""{"data":{"slot":"7","index":"0","beacon_block_root":"{{{{Root}}}}","source":{"epoch":"1","root":"{{{{Root}}}}"},"target":{"epoch":"2","root":"{{{{OtherRoot}}}}"}}}""")
@@ -83,7 +86,8 @@ public class ValidatorEndpointsTests : BeaconApiFixture
 
     [TestCase("POST", "/eth/v1/validator/duties/attester/x", """["1"]""", null, TestName = "An epoch that is not a uint64")]
     [TestCase("POST", "/eth/v1/validator/duties/attester/5", """["-1"]""", null, TestName = "A validator index that is not a uint64")]
-    [TestCase("POST", "/eth/v1/validator/duties/sync/5", "[1]", null, TestName = "Validator indices that are not strings")]
+    [TestCase("POST", "/eth/v1/validator/duties/attester/5", """["18446744073709551616"]""", null, TestName = "A validator index that overflows uint64")]
+    [TestCase("POST", "/eth/v1/validator/duties/sync/5", """["0x1"]""", null, TestName = "A hexadecimal validator index")]
     [TestCase("GET", "/eth/v1/validator/attestation_data", null, null, TestName = "Attestation data without a slot")]
     [TestCase("GET", "/eth/v1/validator/attestation_data?slot=1&committee_index=x", null, null, TestName = "Attestation data with a committee index that is not a uint64")]
     [TestCase("POST", "/eth/v2/beacon/pool/attestations", "[]", null, TestName = "Attestations without a consensus version")]

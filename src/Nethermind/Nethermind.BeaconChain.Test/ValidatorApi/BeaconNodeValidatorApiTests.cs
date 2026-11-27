@@ -167,10 +167,10 @@ public class BeaconNodeValidatorApiTests
     }
 
     [Test]
-    public async Task Attestation_data_votes_for_the_head_with_the_source_of_its_state_processed_to_the_slot([Values] bool crossesEpoch)
+    public async Task Attestation_data_votes_for_the_head_with_the_source_of_its_state_processed_to_the_slot([Values] bool crossesEpoch, [Values(1UL, 2UL)] ulong headLag)
     {
         ulong headSlot = crossesEpoch ? EpochStart - 1 : HeadSlot;
-        ulong slot = headSlot + 1;
+        ulong slot = headSlot + headLag;
         Hash256 headRoot = crossesEpoch ? ParentRoot : HeadRoot;
         BeaconStateFulu state = HeadState(headSlot);
         // Every validator voted for the head epoch's target, so epoch processing at its end justifies it.
@@ -188,6 +188,33 @@ public class BeaconNodeValidatorApiTests
         Assert.That((data.Slot, data.Index, data.BeaconBlockRoot), Is.EqualTo((slot, 0UL, headRoot)));
         Assert.That(CheckpointRef.From(data.Source!), Is.EqualTo(source), "phase0/validator.md: the source of the head state processed to the slot");
         Assert.That(CheckpointRef.From(data.Target!), Is.EqualTo(new CheckpointRef(HeadEpoch, crossesEpoch ? ParentRoot : BoundaryRoot)));
+    }
+
+    [Test]
+    public async Task Repeated_cross_epoch_attestation_requests_use_the_source_of_each_published_head()
+    {
+        using ValidatorNode node = new(Presets.FarFutureEpoch, EpochStart, AttestationTimeMs);
+        BeaconStateFulu state = HeadState(EpochStart - 1);
+        state.CurrentEpochParticipation = [.. Enumerable.Repeat((byte)(1 << Presets.TimelyTargetFlagIndex), ValidatorCount)];
+        CheckpointRef justified = new(HeadEpoch - 1, BlockRootAt(BeaconStateAccessors.ComputeStartSlotAtEpoch(HeadEpoch - 1)));
+        node.Heads.Current = Head(state, ParentRoot, executionInSync: true);
+        await AssertSource(justified, ParentRoot);
+
+        Hash256 reorgRoot = Keccak.Compute("reorg before the epoch boundary");
+        node.Heads.Current = Head(HeadState(EpochStart - 1), reorgRoot, executionInSync: true);
+        await AssertSource(Finalized, reorgRoot);
+
+        async Task AssertSource(CheckpointRef expected, Hash256 headRoot)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                AttestationData data = await node.Api.ProduceAttestationData(EpochStart, 0, CancellationToken.None);
+                using IDisposable scope = Assert.EnterMultipleScope();
+                Assert.That(CheckpointRef.From(data.Source!), Is.EqualTo(expected));
+                Assert.That(data.BeaconBlockRoot, Is.EqualTo(headRoot));
+                Assert.That(CheckpointRef.From(data.Target!), Is.EqualTo(new CheckpointRef(HeadEpoch, headRoot)));
+            }
+        }
     }
 
     private static IEnumerable<TestCaseData> Refusals()
@@ -211,8 +238,8 @@ public class BeaconNodeValidatorApiTests
             api => api.GetAttesterDuties(HeadEpoch + 1, [0], CancellationToken.None).AsTask(), BeaconNodeApiError.NotSupported);
         yield return Refused("Duties on a Gloas head", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Gloas,
             api => api.GetProposerDuties(HeadEpoch, CancellationToken.None).AsTask(), BeaconNodeApiError.NotSupported);
-        yield return Refused("Attestation data while the head lags", HeadSlot + 2, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
-            api => api.ProduceAttestationData(HeadSlot + 2, 0, CancellationToken.None).AsTask(), BeaconNodeApiError.NotReady);
+        yield return Refused("Attestation data more than an epoch ahead of the head", nextEpochStart + Presets.SlotsPerEpoch, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,
+            api => api.ProduceAttestationData(nextEpochStart + Presets.SlotsPerEpoch, 0, CancellationToken.None).AsTask(), BeaconNodeApiError.NotReady);
         yield return Refused("Attestation data on an optimistic head", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Optimistic,
             api => api.ProduceAttestationData(HeadSlot, 0, CancellationToken.None).AsTask(), BeaconNodeApiError.NotReady);
         yield return Refused("Attestation data for a slot other than the current one", HeadSlot, AttestationTimeMs, Presets.FarFutureEpoch, HeadKind.Synced,

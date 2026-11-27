@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.Runtime.CompilerServices;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
@@ -48,6 +49,7 @@ public sealed class BeaconNodeValidatorApi(
 
     // Keep this separate from the import worker's non-thread-safe cache; concurrent API requests lock this instance.
     private readonly CommitteeCacheLru _committees = new();
+    private readonly ConditionalWeakTable<BeaconStateFulu, Lazy<Checkpoint>> _unrealizedJustification = [];
 
     /// <summary>Publishes a gossip message on a topic, subscribed or not; tests script it, otherwise <see cref="BeaconP2P.Publish"/>.</summary>
     internal Action<string, byte[]> PublishGossip { get; set; } = p2p.Publish;
@@ -177,13 +179,13 @@ public sealed class BeaconNodeValidatorApi(
         (ulong earliestSlot, ulong latestSlot) = CurrentSlots();
         if (slot < earliestSlot || slot > latestSlot) throw InvalidRequest($"Slot {slot} is not the current slot {slotClock.CurrentSlot}.");
         (HeadSnapshot head, BeaconStateFulu state) = RequireHeadState();
-        SyncingStatus status = Status(head);
-        if (status.IsSyncing || status.IsOptimistic) throw NotReady(status.IsSyncing ? $"The node is syncing: its head is {status.SyncDistance} slots behind." : "The head's execution payload is not yet verified.");
-        if (slot < status.HeadSlot) throw InvalidRequest($"Slot {slot} is before the head at slot {status.HeadSlot}.");
+        if (!head.ExecutionInSync) throw NotReady("The head's execution payload is not yet verified.");
+        if (slot < head.Status.HeadSlot) throw InvalidRequest($"Slot {slot} is before the head at slot {head.Status.HeadSlot}.");
 
         ulong headEpoch = state.GetCurrentEpoch();
         Checkpoint source = epoch == headEpoch ? state.CurrentJustifiedCheckpoint!
-            : epoch == headEpoch + 1 ? EpochProcessing.ComputeJustificationAndFinalization(state, new EpochCache()).CurrentJustifiedCheckpoint
+            : epoch == headEpoch + 1 ? _unrealizedJustification.GetValue(state,
+                static snapshot => new(() => EpochProcessing.ComputeJustificationAndFinalization(snapshot, new EpochCache()).CurrentJustifiedCheckpoint)).Value
             : throw NotReady($"The head state at epoch {headEpoch} is not advanced to epoch {epoch}.");
         return new(new AttestationData
         {
@@ -342,9 +344,9 @@ public sealed class BeaconNodeValidatorApi(
         ReadOnlySpan<int> committee = committees.GetBeaconCommittee(data.Slot, (int)attestation.CommitteeIndex);
         int position = attestation.AttesterIndex < int.MaxValue ? committee.IndexOf((int)attestation.AttesterIndex) : -1;
         if (position < 0) return $"Validator {attestation.AttesterIndex} is not in committee {attestation.CommitteeIndex} at slot {data.Slot}.";
-        if (!IsSignatureValid(state, attestation.AttesterIndex, data, attestation.Signature)) return "The signature is invalid.";
         if (CheckpointBlock(nodes, blockRoot, epoch) != targetRoot) return $"Target {targetRoot} is not the checkpoint block of {blockRoot}.";
         if (CheckpointBlock(nodes, blockRoot, finalized.Epoch) != finalized.Root) return $"Block {blockRoot} does not descend from the finalized checkpoint {finalized}.";
+        if (!IsSignatureValid(state, attestation.AttesterIndex, data, attestation.Signature)) return "The signature is invalid.";
 
         // phase0/validator.md compute_subnet_for_attestation.
         subnet = ((ulong)committees.CommitteesPerSlot * (data.Slot % Presets.SlotsPerEpoch) + attestation.CommitteeIndex) % AttestationSubnetCount;
