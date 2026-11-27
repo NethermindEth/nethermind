@@ -128,6 +128,11 @@ namespace Nethermind.State
             DebugGuardInScope();
             _persistentStorageProvider.Get(in storageCell, out value);
         }
+        public void GetUnrecorded(in StorageCell storageCell, out UInt256 value)
+        {
+            DebugGuardInScope();
+            _persistentStorageProvider.GetUnrecorded(in storageCell, out value);
+        }
         public void Set(in StorageCell storageCell, in UInt256 newValue)
         {
             DebugGuardInScope();

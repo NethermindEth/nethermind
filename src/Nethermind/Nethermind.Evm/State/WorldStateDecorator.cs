@@ -85,6 +85,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void Get(in StorageCell storageCell, out UInt256 value)
         => State.Get(in storageCell, out value);
 
+    public virtual void GetUnrecorded(in StorageCell storageCell, out UInt256 value)
+        => State.GetUnrecorded(in storageCell, out value);
+
     public virtual void Set(in StorageCell storageCell, in UInt256 newValue)
         => State.Set(in storageCell, newValue);
 
