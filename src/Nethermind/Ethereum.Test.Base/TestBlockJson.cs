@@ -24,6 +24,9 @@ namespace Ethereum.Test.Base
         public string? StatelessOutputBytes { get; set; }
         public bool? ExecutionWitnessMutated { get; set; }
 
+        /// <summary>The EIP-8141 dependency proof delivered beside the block, which its RLP does not carry.</summary>
+        public string? DependencyProof { get; set; }
+
         /// <summary>The EIP-7928 access list delivered with the block, valid or not.</summary>
         [JsonIgnore]
         public BlockAccessListAccountJson[]? DeliveredBlockAccessList => BlockAccessList ?? RlpDecoded?.BlockAccessList;

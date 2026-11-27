@@ -116,6 +116,7 @@ namespace Ethereum.Test.Base
                 TxRoot = new Hash256(headerJson.TransactionsTrie),
                 WithdrawalsRoot = headerJson.WithdrawalsRoot is null ? null : new Hash256(headerJson.WithdrawalsRoot),
                 BlockAccessListHash = headerJson.BlockAccessListHash is null ? null : new Hash256(headerJson.BlockAccessListHash),
+                DependencyProofHash = headerJson.DependencyProofHash is null ? null : new Hash256(headerJson.DependencyProofHash),
             };
 
             if (headerJson.BaseFeePerGas is not null)
@@ -185,6 +186,7 @@ namespace Ethereum.Test.Base
                 {
                     Transaction decoded = Rlp.Decode<Transaction>(postStateJson.Txbytes, RlpBehaviors.SkipTypedWrapping);
                     decoded.SenderAddress ??= privateKey?.Address ?? new EthereumEcdsa(chainId).RecoverAddress(decoded);
+                    if (isFrameTx) decoded.ClaimWitnesses ??= transactionJson.Witnesses;
                     return decoded;
                 }
                 catch (RlpReaderException)
