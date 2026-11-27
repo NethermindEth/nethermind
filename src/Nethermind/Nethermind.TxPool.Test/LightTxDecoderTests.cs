@@ -554,7 +554,7 @@ public class LightTxDecoderTests
             tx.Frames = paymaster is null
                 ? [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas)]
                 : [FrameTxTestFrames.OnlyVerify(FrameTxTestFrames.PrefixFrameGas), FrameTxTestFrames.Pay(paymaster, FrameTxTestFrames.PrefixFrameGas)];
-            tx.FrameSignatures = [];
+            tx.FrameClaims = [];
         }
 
         if (deadline is not null)

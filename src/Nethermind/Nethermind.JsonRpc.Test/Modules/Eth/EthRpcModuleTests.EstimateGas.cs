@@ -14,6 +14,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -46,7 +47,7 @@ public partial class EthRpcModuleTests
             new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment },
             new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = new Address("0x000000000000000000000000000000000000dead"), Value = 1 },
         ],
-        Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
+        Claims = [new FrameClaimForRpc { Verifier = Eip8141Constants.Secp256k1VerifierAddress }],
     };
 
     private static FrameTransactionForRpc UnsignedFrameRequest() => new()
@@ -60,7 +61,7 @@ public partial class EthRpcModuleTests
             new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = 50_000 },
             new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGas = 50_000 },
         ],
-        Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
+        Claims = [new FrameClaimForRpc { Verifier = Eip8141Constants.Secp256k1VerifierAddress }],
     };
 
     [Test]
@@ -587,13 +588,13 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task FrameRpc_SimulateValidation_SkipsProtocolSignatureChecks([Values] bool placeholder, [Values] bool validation)
+    public async Task FrameRpc_SimulateValidation_SkipsProtocolClaimChecks([Values] bool placeholder, [Values] bool validation)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc transaction = UnsignedFrameRequest();
         transaction.Gas = 200_000;
         transaction.MaxFeePerGas = 1_000_000_000;
-        if (!placeholder) transaction.Signatures![0].Signature = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        transaction.Witnesses = [placeholder ? [] : new byte[Eip8141Constants.Secp256k1WitnessLength]];
         object payload = new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation };
 
         string response = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
@@ -608,21 +609,15 @@ public partial class EthRpcModuleTests
 
     [Test]
     public async Task FrameRpc_SimulateValidation_RetainsOtherChecks(
-        [Values("nonce", "signatureLength", "recoveryId", "verify")] string invalid, [Values] bool validation)
+        [Values("nonce", "witnessLength", "verify")] string invalid, [Values] bool validation)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc transaction = UnsignedFrameRequest();
         transaction.Gas = 200_000;
         transaction.MaxFeePerGas = 1_000_000_000;
         if (invalid == "nonce") transaction.Nonce = 100;
-        if (invalid == "signatureLength") transaction.Signatures![0].Signature = new byte[64];
-        if (invalid == "recoveryId")
-        {
-            byte[] signature = new byte[65];
-            signature[0] = 27;
-            transaction.Signatures![0].Signature = signature;
-        }
-        if (invalid == "verify") transaction.Signatures![0].Signer = TestItem.AddressB;
+        if (invalid == "witnessLength") transaction.Witnesses = [new byte[64]];
+        if (invalid == "verify") transaction.Claims![0].Key = TestItem.AddressB.Bytes.ToArray();
         object payload = new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation };
 
         string response = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
@@ -641,8 +636,7 @@ public partial class EthRpcModuleTests
         string error = invalid switch
         {
             "nonce" => "nonce",
-            "signatureLength" => "signature has the wrong length",
-            "recoveryId" => "recovery id",
+            "witnessLength" => FrameTxClaimVerifier.InvalidWitnessLength,
             _ => "VERIFY frame reverted"
         };
         Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(error), response);
@@ -692,7 +686,7 @@ public partial class EthRpcModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((JArray)parsed["result"]!["tx"]!["frames"]!, Has.Count.EqualTo(2));
-                Assert.That((JArray)parsed["result"]!["tx"]!["signatures"]!, Has.Count.EqualTo(1));
+                Assert.That((JArray)parsed["result"]!["tx"]!["claims"]!, Has.Count.EqualTo(1));
             }
         }
     }
@@ -750,15 +744,10 @@ public partial class EthRpcModuleTests
         foreach (FrameForRpc frame in placeholder.Frames!) frame.StateGas = 0;
         foreach (FrameForRpc frame in signed.Frames!) frame.StateGas = 0;
         signed.Nonce = ctx.Test.ReadOnlyState.GetNonce(TestItem.AddressC);
-        signed.Signatures![0].Signature = new byte[TxFrameSignature.Secp256k1SignatureLength];
         Transaction tx = signed.ToTransaction().Data!;
         tx.ChainId = ctx.Test.Bridge.GetChainId();
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        Signature signature = new Ecdsa().Sign(TestItem.PrivateKeyC, in sigHash);
-        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        vrs[0] = signature.RecoveryId;
-        signature.Bytes.CopyTo(vrs.AsSpan(1));
-        signed.Signatures![0].Signature = vrs;
+        signed.Witnesses = [FrameTxTestFrames.Secp256k1SignatureBytes(new Ecdsa().Sign(TestItem.PrivateKeyC, in sigHash))];
 
         string placeholderEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", placeholder);
         string signedEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", signed);

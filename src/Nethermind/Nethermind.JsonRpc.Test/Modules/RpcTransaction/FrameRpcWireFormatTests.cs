@@ -24,12 +24,12 @@ public class FrameRpcWireFormatTests
 {
     private const string PopulatedFrameTxJson =
         """
-        {"type":"0x6","frames":[{"mode":"0x1","flags":"0x3","target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x01020304"},{"mode":"0x0","flags":"0x4","executionGas":"0x5208","stateGas":"0x0","value":"0x5","data":"0x"}],"signatures":[{"scheme":"0x1","signer":"0x76e68a8696537e4141926f3e528733af9e237d69","msg":"0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20","signature":"0xfffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0dfdedddcdbdad9d8d7d6d5d4d3d2d1d0cfcecdcccbcac9c8c7c6c5c4c3c2c1c0bf"},{"scheme":"0x0","msg":"0x","signature":"0xaabb"}],"maxFee":"0x5f5e100","blobVersionedHashes":[],"maxPriorityFeePerGas":"0x1","maxFeePerGas":null,"accessList":[],"yParity":"0x0","chainId":"0x1","nonce":"0x326","to":null,"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","value":"0x0","input":"0x","gasPrice":"0x64","v":"0x0","r":"0x0","s":"0x0","hash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","transactionIndex":null,"blockHash":null,"blockNumber":null,"blockTimestamp":null,"gas":"0xf4240"}
+        {"type":"0x6","frames":[{"mode":"0x1","flags":"0x3","target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x01020304"},{"mode":"0x0","flags":"0x4","executionGas":"0x5208","stateGas":"0x0","value":"0x5","data":"0x"}],"claims":[{"verifier":"0x00000000000000000000000000000000000081a1","key":"0x76e68a8696537e4141926f3e528733af9e237d69","msg":"0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20","gasLimit":"0x0","witnessLen":"0x0"},{"verifier":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","key":"0x","msg":"0x","gasLimit":"0xa","witnessLen":"0x2"}],"maxFee":"0x5f5e100","blobVersionedHashes":[],"maxPriorityFeePerGas":"0x1","maxFeePerGas":null,"accessList":[],"yParity":"0x0","chainId":"0x1","nonce":"0x326","to":null,"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","value":"0x0","input":"0x","gasPrice":"0x64","v":"0x0","r":"0x0","s":"0x0","hash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","transactionIndex":null,"blockHash":null,"blockNumber":null,"blockTimestamp":null,"gas":"0xf4240"}
         """;
 
     private const string TxPoolContentJson =
         """
-        {"pending":{"0xb7705aE4c6F81B66cdB323C65f4E8133690fC099":{"806":{"type":"0x6","frames":[{"mode":"0x1","flags":"0x3","target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x01020304"},{"mode":"0x0","flags":"0x4","executionGas":"0x5208","stateGas":"0x0","value":"0x5","data":"0x"}],"signatures":[{"scheme":"0x1","signer":"0x76e68a8696537e4141926f3e528733af9e237d69","msg":"0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20","signature":"0xfffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0dfdedddcdbdad9d8d7d6d5d4d3d2d1d0cfcecdcccbcac9c8c7c6c5c4c3c2c1c0bf"},{"scheme":"0x0","msg":"0x","signature":"0xaabb"}],"maxFee":"0x5f5e100","blobVersionedHashes":[],"maxPriorityFeePerGas":"0x1","maxFeePerGas":null,"accessList":[],"yParity":"0x0","chainId":"0x1","nonce":"0x326","to":null,"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","value":"0x0","input":"0x","gasPrice":"0x64","v":"0x0","r":"0x0","s":"0x0","hash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","transactionIndex":null,"blockHash":null,"blockNumber":null,"blockTimestamp":null,"gas":"0xf4240"},"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111":{"type":"0x6","frames":[{"mode":"0x1","flags":"0x3","target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x01020304"},{"mode":"0x0","flags":"0x4","executionGas":"0x5208","stateGas":"0x0","value":"0x5","data":"0x"}],"signatures":[{"scheme":"0x1","signer":"0x76e68a8696537e4141926f3e528733af9e237d69","msg":"0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20","signature":"0xfffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0dfdedddcdbdad9d8d7d6d5d4d3d2d1d0cfcecdcccbcac9c8c7c6c5c4c3c2c1c0bf"},{"scheme":"0x0","msg":"0x","signature":"0xaabb"}],"maxFee":"0x5f5e100","blobVersionedHashes":[],"maxPriorityFeePerGas":"0x1","maxFeePerGas":null,"accessList":[],"yParity":"0x0","chainId":"0x1","nonce":"0x326","to":null,"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","value":"0x0","input":"0x","gasPrice":"0x64","v":"0x0","r":"0x0","s":"0x0","hash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":null,"blockHash":null,"blockNumber":null,"blockTimestamp":null,"gas":"0xf4240"}}},"queued":{}}
+        {"pending":{"0xb7705aE4c6F81B66cdB323C65f4E8133690fC099":{"806":{"type":"0x6","frames":[{"mode":"0x1","flags":"0x3","target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x01020304"},{"mode":"0x0","flags":"0x4","executionGas":"0x5208","stateGas":"0x0","value":"0x5","data":"0x"}],"claims":[{"verifier":"0x00000000000000000000000000000000000081a1","key":"0x76e68a8696537e4141926f3e528733af9e237d69","msg":"0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20","gasLimit":"0x0","witnessLen":"0x0"},{"verifier":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","key":"0x","msg":"0x","gasLimit":"0xa","witnessLen":"0x2"}],"maxFee":"0x5f5e100","blobVersionedHashes":[],"maxPriorityFeePerGas":"0x1","maxFeePerGas":null,"accessList":[],"yParity":"0x0","chainId":"0x1","nonce":"0x326","to":null,"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","value":"0x0","input":"0x","gasPrice":"0x64","v":"0x0","r":"0x0","s":"0x0","hash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","transactionIndex":null,"blockHash":null,"blockNumber":null,"blockTimestamp":null,"gas":"0xf4240"},"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111":{"type":"0x6","frames":[{"mode":"0x1","flags":"0x3","target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x01020304"},{"mode":"0x0","flags":"0x4","executionGas":"0x5208","stateGas":"0x0","value":"0x5","data":"0x"}],"claims":[{"verifier":"0x00000000000000000000000000000000000081a1","key":"0x76e68a8696537e4141926f3e528733af9e237d69","msg":"0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20","gasLimit":"0x0","witnessLen":"0x0"},{"verifier":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","key":"0x","msg":"0x","gasLimit":"0xa","witnessLen":"0x2"}],"maxFee":"0x5f5e100","blobVersionedHashes":[],"maxPriorityFeePerGas":"0x1","maxFeePerGas":null,"accessList":[],"yParity":"0x0","chainId":"0x1","nonce":"0x326","to":null,"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","value":"0x0","input":"0x","gasPrice":"0x64","v":"0x0","r":"0x0","s":"0x0","hash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":null,"blockHash":null,"blockNumber":null,"blockTimestamp":null,"gas":"0xf4240"}}},"queued":{}}
         """;
 
     private static readonly EthereumJsonSerializer Serializer = new();
@@ -38,8 +38,6 @@ public class FrameRpcWireFormatTests
     {
         byte[] msg = new byte[32];
         for (int i = 0; i < msg.Length; i++) msg[i] = (byte)(i + 1);
-        byte[] signature = new byte[65];
-        for (int i = 0; i < signature.Length; i++) signature[i] = (byte)(0xff - i);
 
         Transaction tx = new()
         {
@@ -56,11 +54,13 @@ public class FrameRpcWireFormatTests
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, TestItem.AddressB, 50_000, 1_000, (UInt256)0, new byte[] { 0x01, 0x02, 0x03, 0x04 }),
                 new TxFrame(FrameMode.Default, FrameFlags.AtomicBatch, null, 21_000, 0, (UInt256)5, ReadOnlyMemory<byte>.Empty),
             ],
-            FrameSignatures =
+            FrameClaims =
             [
-                new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, msg, signature),
-                new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0xaa, 0xbb }),
+                new TxFrameClaim(Eip8141Constants.Secp256k1VerifierAddress, TestItem.AddressC.Bytes.ToArray(), msg, 0, 0),
+                new TxFrameClaim(TestItem.AddressB, default, default, 10, 2),
             ],
+            // Not part of the transaction, so never reported.
+            ClaimWitnesses = [new byte[65], [0xaa, 0xbb]],
         };
         tx.Hash = TestItem.KeccakA;
         return tx;
@@ -115,15 +115,15 @@ public class FrameRpcWireFormatTests
     [Test]
     public void FrameTransaction_WhenByteFieldsAreJsonNull_ReadsThemAsEmpty()
     {
-        const string Json = """{"type":"0x6","frames":[{"mode":0,"flags":0,"executionGas":"0x1","stateGas":"0x0","value":"0x0","data":null}],"signatures":[{"scheme":0,"msg":null,"signature":null}]}""";
+        const string Json = """{"type":"0x6","frames":[{"mode":0,"flags":0,"executionGas":"0x1","stateGas":"0x0","value":"0x0","data":null}],"claims":[{"verifier":"0x0000000000000000000000000000000000000001","key":null,"msg":null}]}""";
 
         FrameTransactionForRpc rpc = (FrameTransactionForRpc)Serializer.Deserialize<TransactionForRpc>(Json)!;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rpc.Frames![0].Data.IsEmpty, Is.True);
-            Assert.That(rpc.Signatures![0].Msg.IsEmpty, Is.True);
-            Assert.That(rpc.Signatures[0].Signature.IsEmpty, Is.True);
+            Assert.That(rpc.Claims![0].Key.IsEmpty, Is.True);
+            Assert.That(rpc.Claims[0].Msg.IsEmpty, Is.True);
         }
     }
 

@@ -756,7 +756,7 @@ public partial class FrameTxFloodMeasurement
             Nonce = 0,
             SenderAddress = sender,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: HonestVerifyGas, UInt256.Zero, default)],
-            FrameSignatures = [],
+            FrameClaims = [],
             GasLimit = (long)HonestVerifyGas,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,

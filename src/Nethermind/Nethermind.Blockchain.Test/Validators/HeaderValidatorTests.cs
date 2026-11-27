@@ -227,6 +227,52 @@ public class HeaderValidatorTests
         }
     }
 
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(true, true, null)]
+    [TestCase(false, false, BlockErrorMessages.MissingDependencyProofHash)]
+    public void When_orphaned_eip8141_header_dependency_proof_hash_presence_matches_fork(bool withHash, bool expectedResult, string? expectedError)
+    {
+        TestSpecProvider specProvider = new(Eip8141Prototype.Instance);
+        _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider,
+            new OneLoggerLogManager(new(_testLogger)));
+
+        _block = Build.A.Block
+            .WithNumber(6)
+            .WithWithdrawalsRoot(Keccak.EmptyTreeHash)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithEmptyRequestsHash()
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .WithSlotNumber(3)
+            .TestObject;
+        _block.Header.DependencyProofHash = withHash ? Keccak.OfAnEmptyString : null;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_orphaned_pre_fork_header_has_dependency_proof_hash()
+    {
+        _block.Header.DependencyProofHash = Keccak.OfAnEmptyString;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.DependencyProofHashNotEnabled));
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_orphaned_pre_fork_header_has_slot_number()
     {

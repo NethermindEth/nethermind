@@ -110,7 +110,7 @@ internal static class FrameTxBlobMeasurementHarness
             MaxFee = 1.Ether,
             DecodedMaxFeePerGas = 1.GWei,
             Frames = [FrameTxTestFrames.OnlyVerify(gasLimit: 40_000), FrameTxTestFrames.Pay(TestItem.AddressF, gasLimit: 40_000)],
-            FrameSignatures = [],
+            FrameClaims = [],
             BlobVersionedHashes = versionedHashes,
             NetworkWrapper = wrapper,
         };

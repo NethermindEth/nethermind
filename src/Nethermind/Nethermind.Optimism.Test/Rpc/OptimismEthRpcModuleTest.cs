@@ -749,7 +749,7 @@ public class OptimismEthRpcModuleTest
                 MaxFee = 1.GWei,
                 MaxPriorityFeePerGas = 1,
                 Frames = [new FrameForRpc { Target = TestItem.AddressB, ExecutionGas = 50_000, StateGas = 0 }],
-                Signatures = [],
+                Claims = [],
             },
         };
 

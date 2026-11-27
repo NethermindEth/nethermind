@@ -205,8 +205,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.FRAMEDATALOAD] = OpcodeHandler<FrameDataLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
             lookup[(int)Instruction.FRAMEDATACOPY] = OpcodeHandler<FrameDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
             lookup[(int)Instruction.FRAMEPARAM] = OpcodeHandler<FrameParamOpcode<TTracingInst>, TTracingInst, TCancelable>();
-            lookup[(int)Instruction.SIGPARAM] = OpcodeHandler<SigParamOpcode<TTracingInst>, TTracingInst, TCancelable>();
-            lookup[(int)Instruction.SIGDATACOPY] = OpcodeHandler<SigDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.HASCLAIM] = OpcodeHandler<HasClaimOpcode<TTracingInst>, TTracingInst, TCancelable>();
         }
         if (spec.IsEip7906Enabled)
         {
@@ -1461,17 +1460,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     [SkipLocalsInit]
-    private readonly struct SigParamOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    private readonly struct HasClaimOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSigParam<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
-    }
-
-    [SkipLocalsInit]
-    private readonly struct SigDataCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
-    {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSigDataCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+            EvmInstructions.InstructionHasClaim<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]

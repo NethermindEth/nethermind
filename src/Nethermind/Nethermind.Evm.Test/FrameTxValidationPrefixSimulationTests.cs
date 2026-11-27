@@ -1566,25 +1566,25 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Simulate_PrefixCarriesAMismatchedSigner_RejectedByTheSignatureCheck()
+    public void Simulate_PrefixCarriesAMismatchedSigner_RejectedByTheClaimCheck()
     {
         DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [MismatchedSignerSignature()];
+        SetMismatchedSignerClaim(tx);
 
         (TransactionResult result, _) = Simulate(tx);
 
-        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxClaimVerifier.InvalidClaim));
     }
 
     [Test]
-    public void Simulate_CallerAssertsSignaturesPreValidated_SkipsTheDuplicateCheckAndResolvesThePayer()
+    public void Simulate_CallerAssertsClaimsPreVerified_SkipsTheDuplicateCheckAndResolvesThePayer()
     {
         DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [MismatchedSignerSignature()];
+        SetMismatchedSignerClaim(tx);
 
-        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx, extraOptions: ExecutionOptions.FrameSignaturesPreValidated);
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx, extraOptions: ExecutionOptions.FrameClaimsPreVerified);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1594,29 +1594,30 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Process_MainPathWithSignaturesPreValidated_VerifiesTheSignaturesAnyway()
+    public void Process_MainPathWithClaimsPreVerified_VerifiesTheClaimsAnyway()
     {
         // The assertion is only legible to the prefix simulation, so a caller that sets it on any other
         // path — block execution, eth_call, eth_estimateGas, eth_simulate, debug_traceCall — gains nothing.
         DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [MismatchedSignerSignature()];
+        SetMismatchedSignerClaim(tx);
         Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
 
-        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.FrameSignaturesPreValidated);
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.FrameClaimsPreVerified);
 
-        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxClaimVerifier.InvalidClaim));
     }
 
-    /// <summary>A canonical SECP256K1 entry that recovers to an address other than the declared signer.</summary>
+    /// <summary>A canonical SECP256K1 claim whose witness recovers to an address other than the claim's key.</summary>
     /// <remarks><c>1^3 + 7</c> is a quadratic residue, so <c>r = 1</c> recovers rather than failing verification.</remarks>
-    private static TxFrameSignature MismatchedSignerSignature()
+    private static void SetMismatchedSignerClaim(Transaction tx)
     {
-        byte[] raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        byte[] raw = new byte[Eip8141Constants.Secp256k1WitnessLength];
         raw[32] = 1; // r = 1
         raw[64] = 1; // s = 1
-        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, raw);
+        tx.FrameClaims = [FrameTxTestFrames.Secp256k1Claim(TestItem.AddressB)];
+        tx.ClaimWitnesses = [raw];
     }
 
     private static TestCaseData ParityCase(string name, byte param, bool approveWhenZero, bool expectedValid) =>
@@ -1758,7 +1759,7 @@ public class FrameTxValidationPrefixSimulationTests
             Nonce = nonce,
             SenderAddress = Sender,
             Frames = frames,
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             MaxFee = 1.Ether,
         };

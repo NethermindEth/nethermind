@@ -137,7 +137,7 @@ public class InclusionListValidatorTests
         SenderAddress = TestItem.AddressA,
         Nonce = 0,
         Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
-        FrameSignatures = [],
+        FrameClaims = [],
         GasLimit = 100_000,
         GasPrice = 1.GWei,
         DecodedMaxFeePerGas = 10.GWei,

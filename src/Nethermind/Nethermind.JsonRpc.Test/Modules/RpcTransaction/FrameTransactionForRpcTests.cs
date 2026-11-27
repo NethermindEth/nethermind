@@ -43,7 +43,7 @@ public class FrameTransactionForRpcTests
         [
             SelfVerify(PrefixFrameGas),
         ],
-        FrameSignatures = [],
+        FrameClaims = [],
     };
 
     private static readonly EthereumJsonSerializer Serializer = new();
@@ -145,61 +145,20 @@ public class FrameTransactionForRpcTests
     }
 
     [Test]
-    public void FrameSignature_DeserializesDefaultSigner(
-        [Values((byte)0, (byte)1, (byte)2)] byte scheme,
-        [Values(null, "null", "\"0x\"")] string? signer)
+    public void FrameClaim_DeserializesItsFields([Values] bool explicitKeyAndMsg)
     {
-        string signerField = signer is null ? "" : $"\"signer\":{signer},";
-        int signatureLength = scheme == TxFrameSignature.SchemeP256 ? 128 : 65;
-        string json = $"{{{signerField}\"scheme\":{scheme},\"signature\":\"0x{new string('1', signatureLength * 2)}\"}}";
+        string keyAndMsg = explicitKeyAndMsg ? $"\"key\":\"{TestItem.AddressB}\",\"msg\":\"{TestItem.KeccakA}\"," : "";
+        string json = $"{{\"verifier\":\"{TestItem.AddressD}\",{keyAndMsg}\"gasLimit\":\"0x10\",\"witnessLen\":\"0x3\"}}";
 
-        FrameSignatureForRpc rpc = Serializer.Deserialize<FrameSignatureForRpc>(json)!;
+        TxFrameClaim claim = Serializer.Deserialize<FrameClaimForRpc>(json)!.ToClaim();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rpc.ToSignature().Signer, Is.Null);
-            Assert.That(rpc.Signature.Length, Is.EqualTo(signatureLength));
-        }
-    }
-
-    [Test]
-    public void FrameSignature_DeserializesExplicitSigner()
-    {
-        string json = $"{{\"scheme\":1,\"signer\":\"{TestItem.AddressA}\"}}";
-        FrameSignatureForRpc rpc = Serializer.Deserialize<FrameSignatureForRpc>(json)!;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(rpc.Signer, Is.EqualTo(TestItem.AddressA));
-            Assert.That(rpc.Signature.IsEmpty, Is.True);
-        }
-    }
-
-    [TestCase("0x12", typeof(SafePublicMessageFormatException))]
-    [TestCase("0xzz", typeof(SafePublicMessageFormatException))]
-    public void FrameSignature_RejectsMalformedSigner(string signer, Type expectedException)
-    {
-        string json = $"{{\"scheme\":1,\"signer\":\"{signer}\"}}";
-
-        Assert.That(() => Serializer.Deserialize<FrameSignatureForRpc>(json), Throws.TypeOf(expectedException));
-    }
-
-    [Test]
-    public void FrameSignature_Signer_FollowsStrictHexFormat([Values] bool strictHexFormat)
-    {
-        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
-        options.Converters.Insert(0, new AddressConverter(strictHexFormat));
-        Address? ReadSigner(string signer) =>
-            JsonSerializer.Deserialize<FrameSignatureForRpc>($$"""{"scheme":1,"signer":"{{signer}}"}""", options)!.Signer;
-        string unprefixed = TestItem.AddressA.ToString(withZeroX: false, withEip55Checksum: false);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ReadSigner("0x"), Is.Null);
-            if (strictHexFormat)
-                Assert.That(() => ReadSigner(unprefixed), Throws.InstanceOf<FormatException>());
-            else
-                Assert.That(ReadSigner(unprefixed), Is.EqualTo(TestItem.AddressA));
+            Assert.That(claim.Verifier, Is.EqualTo(TestItem.AddressD));
+            Assert.That(claim.Key.ToArray(), Is.EqualTo(explicitKeyAndMsg ? TestItem.AddressB.Bytes.ToArray() : Array.Empty<byte>()));
+            Assert.That(claim.Msg.ToArray(), Is.EqualTo(explicitKeyAndMsg ? TestItem.KeccakA.BytesToArray() : Array.Empty<byte>()));
+            Assert.That(claim.GasLimit, Is.EqualTo(16UL));
+            Assert.That(claim.WitnessLength, Is.EqualTo(3UL));
         }
     }
 
@@ -253,19 +212,23 @@ public class FrameTransactionForRpcTests
     }
 
     [Test]
-    public void FrameTransactionForRpc_SerializesSignatures()
+    public void FrameTransactionForRpc_SerializesClaimsButNotWitnesses()
     {
         Transaction tx = BuildMinimalFrameTx();
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, msg: default, new byte[65])];
+        tx.FrameClaims = [new TxFrameClaim(TestItem.AddressD, default, default, 50_000, 3)];
+        tx.ClaimWitnesses = [[1, 2, 3]];
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
         using JsonDocument doc = SerializeToJson(rpc);
-        JsonElement signatures = doc.RootElement.GetProperty("signatures");
+        JsonElement claims = doc.RootElement.GetProperty("claims");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(signatures.GetArrayLength(), Is.EqualTo(1));
-            Assert.That(signatures[0].GetProperty("scheme").GetString(), Is.EqualTo("0x1"));
+            Assert.That(claims.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(claims[0].GetProperty("verifier").GetString(), Is.EqualTo(TestItem.AddressD.ToString()));
+            Assert.That(claims[0].GetProperty("gasLimit").GetString(), Is.EqualTo("0xc350"));
+            Assert.That(claims[0].GetProperty("witnessLen").GetString(), Is.EqualTo("0x3"));
+            Assert.That(doc.RootElement.TryGetProperty("witnesses", out _), Is.False, "witnesses are not part of the transaction");
         }
     }
 
@@ -281,7 +244,7 @@ public class FrameTransactionForRpcTests
         {
             Assert.That(roundTripped.Type, Is.EqualTo(TxType.FrameTx));
             Assert.That(roundTripped.Frames, Is.Not.Null);
-            Assert.That(roundTripped.FrameSignatures, Is.Not.Null);
+            Assert.That(roundTripped.FrameClaims, Is.Not.Null);
         }
     }
 
@@ -343,7 +306,7 @@ public class FrameTransactionForRpcTests
 
         // Priced over max_gas, which includes intrinsic gas, as the processor checks it.
 #pragma warning disable NUnit2045 // Gas calculation must succeed and its output remains in scope for subsequent checks.
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, FramesSpec, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, FramesSpec, out _, out _, out ulong maxGas), Is.True);
 #pragma warning restore NUnit2045
         Assert.That(maxGas, Is.GreaterThan(tx.GasLimit));
         UInt256 expected = (UInt256)(3 * (withSpec ? maxGas : tx.GasLimit)) + (blobs ? (UInt256)(5 * Eip4844Constants.GasPerBlob) : UInt256.Zero);
@@ -396,7 +359,8 @@ public class FrameTransactionForRpcTests
     /// dereference, so <c>eth_call</c> answered these requests with a <see cref="NullReferenceException"/>.
     /// </remarks>
     [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","frames":[null]}""", "frames", TestName = "ToTransaction_NullFrame_IsRejected")]
-    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","signatures":[null]}""", "signatures", TestName = "ToTransaction_NullSignature_IsRejected")]
+    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","claims":[null]}""", "claims", TestName = "ToTransaction_NullClaim_IsRejected")]
+    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","witnesses":[null]}""", "witnesses", TestName = "ToTransaction_NullWitness_IsRejected")]
     public void FrameTransactionForRpc_ToTransaction_RejectsANullListEntry(string json, string field)
     {
         TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json)!;
@@ -495,41 +459,40 @@ public class FrameTransactionForRpcTests
 
     private const int Secp256k1EntriesAtTheCap = (int)(GasCap / Eip8141Constants.Secp256k1VerificationGasCost);
 
-    /// <summary><paramref name="count"/> verifying SECP256K1 entries, each costing a full recovery.</summary>
-    /// <remarks>An explicit non-zero digest and a named signer, so every entry is structurally acceptable.</remarks>
-    private static FrameSignatureForRpc[] Secp256k1Signatures(int count)
+    /// <summary><paramref name="count"/> SECP256K1 claims, each costing a full recovery.</summary>
+    /// <remarks>An explicit non-zero digest and a named key, so every claim is structurally acceptable.</remarks>
+    private static FrameClaimForRpc[] Secp256k1Claims(int count)
     {
-        FrameSignatureForRpc[] signatures = new FrameSignatureForRpc[count];
+        FrameClaimForRpc[] claims = new FrameClaimForRpc[count];
         for (int i = 0; i < count; i++)
         {
-            signatures[i] = new FrameSignatureForRpc
+            claims[i] = new FrameClaimForRpc
             {
-                Scheme = TxFrameSignature.SchemeSecp256k1,
-                Signer = TestItem.AddressA,
+                Verifier = Eip8141Constants.Secp256k1VerifierAddress,
+                Key = TestItem.AddressA.Bytes.ToArray(),
                 Msg = TestItem.KeccakA.BytesToArray(),
-                Signature = new byte[TxFrameSignature.Secp256k1SignatureLength],
             };
         }
 
-        return signatures;
+        return claims;
     }
 
-    /// <summary>The RPC gas cap also bounds the signature verification a frame transaction asks for.</summary>
+    /// <summary>The RPC gas cap also bounds the claim verification a frame transaction asks for.</summary>
     /// <remarks>
-    /// The processor runs <c>validate_signature</c> over every entry before it derives any gas budget, so
-    /// capping the frame limits alone leaves the elliptic-curve work unpriced: a request can keep its frames
-    /// tiny and repeat a verifying SECP256K1 entry to buy arbitrarily many recoveries off one call.
+    /// The processor verifies every claim before it derives any gas budget, so capping the frame limits alone
+    /// leaves the verification work unpriced: a request can keep its frames tiny and repeat a SECP256K1 claim to
+    /// buy arbitrarily many recoveries off one call.
     /// </remarks>
-    [TestCase(Secp256k1EntriesAtTheCap, false, TestName = "ToTransaction_SignatureWorkAtTheCap_IsAccepted")]
-    [TestCase(Secp256k1EntriesAtTheCap + 1, true, TestName = "ToTransaction_SignatureWorkAboveTheCap_IsRejected")]
-    public void FrameTransactionForRpc_ToTransaction_CountsSignatureVerificationAgainstTheCap(int entries, bool expectedError)
+    [TestCase(Secp256k1EntriesAtTheCap, false, TestName = "ToTransaction_ClaimWorkAtTheCap_IsAccepted")]
+    [TestCase(Secp256k1EntriesAtTheCap + 1, true, TestName = "ToTransaction_ClaimWorkAboveTheCap_IsRejected")]
+    public void FrameTransactionForRpc_ToTransaction_CountsClaimVerificationAgainstTheCap(int entries, bool expectedError)
     {
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
-            // Deliberately free of frame gas, so only the signature list can breach the cap.
+            // Deliberately free of frame gas, so only the claim list can breach the cap.
             Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment }],
-            Signatures = Secp256k1Signatures(entries),
+            Claims = Secp256k1Claims(entries),
         };
 
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
@@ -539,36 +502,36 @@ public class FrameTransactionForRpcTests
 
     /// <remarks>
     /// The rejection reports the two terms apart, because the common one is a frame transaction carrying no
-    /// signatures at all: a single combined figure blames a verification cost that contributed nothing to it.
+    /// claims at all: a single combined figure blames a verification cost that contributed nothing to it.
     /// </remarks>
-    [TestCase(0, 0UL, TestName = "ToTransaction_AboveTheCapWithoutSignatures_ReportsAZeroVerificationTerm")]
-    [TestCase(2, 2 * Eip8141Constants.Secp256k1VerificationGasCost, TestName = "ToTransaction_AboveTheCapWithSignatures_ReportsBothTerms")]
-    public void FrameTransactionForRpc_ToTransaction_ReportsTheFrameAndSignatureTermsApart(int entries, ulong expectedSignatureGas)
+    [TestCase(0, 0UL, TestName = "ToTransaction_AboveTheCapWithoutClaims_ReportsAZeroVerificationTerm")]
+    [TestCase(2, 2 * Eip8141Constants.Secp256k1VerificationGasCost, TestName = "ToTransaction_AboveTheCapWithClaims_ReportsBothTerms")]
+    public void FrameTransactionForRpc_ToTransaction_ReportsTheFrameAndClaimTermsApart(int entries, ulong expectedClaimGas)
     {
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
             Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = GasCap + 1 }],
-            Signatures = Secp256k1Signatures(entries),
+            Claims = Secp256k1Claims(entries),
         };
 
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
 
         Assert.That(result.Error, Is.EqualTo(
-            $"frame gas limits ({GasCap + 1}) and signature verification ({expectedSignatureGas}) exceed the gas cap ({GasCap})"));
+            $"frame gas limits ({GasCap + 1}) and claim verification ({expectedClaimGas}) exceed the gas cap ({GasCap})"));
     }
 
-    /// <summary>Signature work is charged on top of the frame limits, so neither alone hides the other.</summary>
+    /// <summary>Claim work is charged on top of the frame limits, so neither alone hides the other.</summary>
     /// <remarks>The saturating case also pins that the combined reservation does not wrap to a value under the cap.</remarks>
-    [TestCase(GasCap, TestName = "ToTransaction_SignatureWorkOnTopOfFrameGasAtTheCap_IsRejected")]
-    [TestCase(ulong.MaxValue, TestName = "ToTransaction_SignatureWorkSaturatingTheReservation_IsRejected")]
-    public void FrameTransactionForRpc_ToTransaction_AddsSignatureWorkToTheFrameGas(ulong frameGas)
+    [TestCase(GasCap, TestName = "ToTransaction_ClaimWorkOnTopOfFrameGasAtTheCap_IsRejected")]
+    [TestCase(ulong.MaxValue, TestName = "ToTransaction_ClaimWorkSaturatingTheReservation_IsRejected")]
+    public void FrameTransactionForRpc_ToTransaction_AddsClaimWorkToTheFrameGas(ulong frameGas)
     {
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
             Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGas = frameGas }],
-            Signatures = Secp256k1Signatures(1),
+            Claims = Secp256k1Claims(1),
         };
 
         using (Assert.EnterMultipleScope())

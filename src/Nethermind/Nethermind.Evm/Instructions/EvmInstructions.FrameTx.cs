@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 
@@ -108,12 +109,11 @@ public static unsafe partial class EvmInstructions
             0x03 => stack.PushUInt256<TTracingInst>(ctx.MaxPriorityFeePerGas),
             0x04 => stack.PushUInt256<TTracingInst>(ctx.MaxFee),
             // 0x05 and 0x06 are undefined: the envelope has no per-gas fee caps, and max_cost depends on the
-            // including block's base fees.
+            // including block's base fees. 0x0B is undefined: claims are read only through HASCLAIM.
             0x07 => stack.PushUInt256<TTracingInst>((UInt256)(blobHashes?.Length ?? 0)),
             0x08 => stack.PushBytes<TTracingInst>(ctx.SigHash.BytesAsSpan),
             0x09 => stack.PushUInt256<TTracingInst>((UInt256)ctx.Frames.Length),
             0x0A => stack.PushUInt256<TTracingInst>((UInt256)ctx.CurrentFrameIndex),
-            0x0B => stack.PushUInt256<TTracingInst>((UInt256)ctx.Signatures.Length),
             0x0C => stack.PushUInt256<TTracingInst>((UInt256)(ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in gas))),
             0x0D when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.LegacyNonce),
             0x0E when TEip8250.IsActive => stack.PushUInt256<TTracingInst>((UInt256)(ctx.NonceKeys?.Length ?? 0)),
@@ -227,58 +227,22 @@ public static unsafe partial class EvmInstructions
         return stack.PushUInt32<TTracingInst, OnFlag>(status);
     }
 
-    /// <summary>SIGPARAM (0xb4): read a signature-scoped field.</summary>
+    /// <summary>HASCLAIM (0xb4): whether the transaction carries a verified claim matching (verifier, key, msg).</summary>
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionSigParam<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    public static EvmExceptionType InstructionHasClaim<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
-        // Spec stack order: signatureIndex on top, param second.
-        if (!stack.PopUInt256(out UInt256 signatureIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (!signatureIndex.IsUint64 || signatureIndex.u0 >= (ulong)ctx.Signatures.Length) return EvmExceptionType.BadInstruction;
-        if (!param.IsUint64 || param.u0 > 0x03) return EvmExceptionType.BadInstruction;
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        // Spec stack order: verifier on top, key second, msg third.
+        if (!stack.PopUInt256(out UInt256 verifier, out UInt256 key, out UInt256 msg)) return EvmExceptionType.StackUnderflow;
 
-        int index = (int)signatureIndex.u0;
-        TxFrameSignature signature = ctx.Signatures[index];
-
-        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        return param.u0 switch
-        {
-            0x00 => signature.Scheme == TxFrameSignature.SchemeArbitrary
-                ? EvmExceptionType.BadInstruction
-                : stack.PushAddress<TTracingInst>(ctx.ResolvedSigner(index)),
-            0x01 => stack.PushUInt32<TTracingInst, OnFlag>(signature.Scheme),
-            0x02 => signature.Msg.IsEmpty
-                ? stack.PushZero<TTracingInst, OnFlag>()
-                : stack.PushBytes<TTracingInst>(signature.Msg.Span),
-            0x03 => signature.Scheme == TxFrameSignature.SchemeArbitrary
-                ? stack.PushUInt256<TTracingInst>((UInt256)signature.Signature.Length)
-                : EvmExceptionType.BadInstruction,
-            _ => EvmExceptionType.BadInstruction,
-        };
-    }
-
-    /// <summary>SIGDATACOPY (0xb5): copy an ARBITRARY signature's raw bytes into memory (CALLDATACOPY semantics).</summary>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionSigDataCopy<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag
-    {
-        FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
-        if (ctx is null) return EvmExceptionType.BadInstruction;
-
-        // Spec stack order: memOffset, dataOffset, length, signatureIndex (top to bottom, matching CALLDATACOPY).
-        if (!stack.PopUInt256(out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length, out UInt256 signatureIndex))
-            return EvmExceptionType.StackUnderflow;
-        if (signatureIndex >= (UInt256)ctx.Signatures.Length) return EvmExceptionType.BadInstruction;
-
-        TxFrameSignature signature = ctx.Signatures[(int)signatureIndex.u0];
-        if (signature.Scheme != TxFrameSignature.SchemeArbitrary) return EvmExceptionType.BadInstruction;
-
-        return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in memOffset, in dataOffset, in length, signature.Signature.Span);
+        // A verifier word with any of its upper 12 bytes set names no address, so no claim matches it.
+        bool hasClaim = verifier.u3 == 0 && verifier.u2 >> 32 == 0
+            && ctx.HasClaim(new Address(verifier.ToBigEndian().AsSpan(12)), new ValueHash256(key.ToBigEndian()), new ValueHash256(msg.ToBigEndian()));
+        return hasClaim ? stack.PushOne<TTracingInst>() : stack.PushZero<TTracingInst, OnFlag>();
     }
 }

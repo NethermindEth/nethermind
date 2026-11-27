@@ -172,6 +172,15 @@ public class ExecutionPayload : IExecutionPayloadParams, IExecutionPayloadFactor
     public virtual ulong? SlotNumber { get; set; }
 
     /// <summary>
+    /// Gets or sets <see cref="Block.DependencyProof"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-8141">EIP-8141</see>.
+    /// </summary>
+    /// <remarks>Neither header nor body: its Keccak-256 becomes the header's <c>dependency_proof_hash</c> before the
+    /// block hash is checked.</remarks>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? DependencyProof { get; set; }
+
+    /// <summary>
     /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
     /// </summary>

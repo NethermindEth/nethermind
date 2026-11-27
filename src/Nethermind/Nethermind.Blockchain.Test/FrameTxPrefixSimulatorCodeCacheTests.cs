@@ -85,7 +85,7 @@ public class FrameTxPrefixSimulatorCodeCacheTests
             new TxFrame(FrameMode.Default, FrameFlags.None, Factory, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
             new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
         ],
-        FrameSignatures = [],
+        FrameClaims = [],
         GasPrice = 1.GWei,
         DecodedMaxFeePerGas = 1.GWei,
     };

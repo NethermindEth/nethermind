@@ -35,7 +35,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (TCancelable.IsActive && (nuint)programCounter < (nuint)stack.CodeLength && _txTracer.IsCancelled)
             ThrowOperationCanceledException();
 
-        if (TTracingInst.IsActive || _frameCodeRunner is null)
+        // A runner executes bytecode without the dispatch table, which is what enforces the EIP-8141 pure context.
+        if (TTracingInst.IsActive || _frameCodeRunner is null || _txExecutionContext.IsPureVerification)
             return RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
 
         // The out-of-line call takes a copy by reference, so the caller's own counter stays in a register on the

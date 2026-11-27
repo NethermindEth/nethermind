@@ -118,7 +118,7 @@ public class FrameTxRecentRootAdmissionTests
             Nonce = 0,
             SenderAddress = sender,
             Frames = frames,
-            FrameSignatures = [],
+            FrameClaims = [],
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,

@@ -32,8 +32,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager,
-        bool parallel = false)
-        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
+        bool parallel = false,
+        ILeanSphincsVerifier? leanSphincsVerifier = null)
+        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel, leanSphincsVerifier)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
     }
@@ -48,8 +49,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager,
-        bool parallel = false)
-        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel);
+        bool parallel = false,
+        ILeanSphincsVerifier? leanSphincsVerifier = null)
+        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel, leanSphincsVerifier);
 
     public class BlobBaseFeeCalculator : ITransactionProcessor.IBlobBaseFeeCalculator
     {
@@ -176,6 +178,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private ulong _blockCumulativeStateGas;
         private TracerFlags _tracerFlags;
         private bool _deferSenderDebit;
+        private readonly ILeanSphincsVerifier _leanSphincsVerifier;
         private UInt256 _deferredSenderDebit;
 
         protected TransactionProcessorBase(
@@ -185,7 +188,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IVirtualMachine<TGasPolicy>? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
             ILogManager? logManager,
-            bool parallel = false)
+            bool parallel = false,
+            ILeanSphincsVerifier? leanSphincsVerifier = null)
         {
             ArgumentNullException.ThrowIfNull(logManager);
             ArgumentNullException.ThrowIfNull(specProvider);
@@ -205,6 +209,7 @@ namespace Nethermind.Evm.TransactionProcessing
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
             _parallel = parallel;
+            _leanSphincsVerifier = leanSphincsVerifier ?? UnavailableLeanSphincsVerifier.Instance;
         }
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -2122,8 +2127,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager,
-        bool parallel = false)
-        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel);
+        bool parallel = false,
+        ILeanSphincsVerifier? leanSphincsVerifier = null)
+        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel, leanSphincsVerifier);
 
     public readonly struct TransactionResult : IEquatable<TransactionResult>
     {

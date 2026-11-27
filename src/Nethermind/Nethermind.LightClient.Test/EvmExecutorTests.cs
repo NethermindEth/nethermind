@@ -69,8 +69,10 @@ public class EvmExecutorTests
         Transaction transaction = CreateFrameSubmission(executionGas, stateGas);
         transaction.Nonce = scenario == "nonce" ? 41UL : 42UL;
         if (scenario == "signature")
-            transaction.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, Contract, default,
-                new byte[TxFrameSignature.Secp256k1SignatureLength])];
+        {
+            transaction.FrameClaims = [new TxFrameClaim(Eip8141Constants.Secp256k1VerifierAddress, Contract.Bytes.ToArray(), default, 0, 0)];
+            transaction.ClaimWitnesses = [new byte[Eip8141Constants.Secp256k1WitnessLength]];
+        }
         if (scenario is "blob-valid" or "blob-fee")
         {
             await AddFrameBlobAsync(transaction);
@@ -320,7 +322,7 @@ public class EvmExecutorTests
             GasPrice = 1,
             MaxFee = 1_000_000,
             BlobVersionedHashes = [],
-            FrameSignatures = [],
+            FrameClaims = [],
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null,
                 executionGas, stateGas, UInt256.Zero, data)],
         };
@@ -386,7 +388,7 @@ public class EvmExecutorTests
             maxFeePerGas = "0x1", maxPriorityFeePerGas = "0x1", maxFeePerBlobGas = "0x0", blobVersionedHashes = Array.Empty<string>(),
             frames = new[] { new { mode = "0x1", flags = "0x3", executionGas = omitLimits ? null : "0x30d40",
                 stateGas = omitLimits ? null : "0x30d40", value = "0x0", data = "0x" } },
-            signatures = Array.Empty<object>(),
+            claims = Array.Empty<object>(),
         }, "finalized" });
         object result = await rpc.InvokeAsync(method, parameters, CancellationToken.None);
         if (method == "eth_call") Assert.That(result, Is.EqualTo("0x"));

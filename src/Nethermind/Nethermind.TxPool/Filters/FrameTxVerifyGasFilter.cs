@@ -8,17 +8,17 @@ using Nethermind.Logging;
 namespace Nethermind.TxPool.Filters;
 
 /// <summary>
-/// Rejects an EIP-8141 frame transaction whose validation prefix and signature verification would cost more than
+/// Rejects an EIP-8141 frame transaction whose validation prefix and claim verification would cost more than
 /// the node's configured headroom to check, or whose validation prefix budgets more than
 /// <c>MAX_VERIFY_STATE_GAS</c> of state gas.
 /// </summary>
 /// <remarks>
 /// A public-mempool DoS bound, not a validity rule: a block carrying such a transaction stays valid. Must run after
 /// <see cref="MalformedTxFilter"/>, which guarantees the frame list is well-formed, and before
-/// <see cref="FrameTxSignatureFilter"/>, so the per-signature elliptic-curve recovery it gates stays bounded. A
-/// configured gas limit of 0 lifts the operator ceiling, matching the other per-sender pool limits; signature
+/// <see cref="FrameTxClaimFilter"/>, so the per-claim verification it gates stays bounded. A
+/// configured gas limit of 0 lifts the operator ceiling, matching the other per-sender pool limits; claim
 /// verification then falls back to the default <see cref="TxPoolConfig.DefaultFrameTxMaxVerifyGas"/>, so lifting the ceiling
-/// cannot uncap per-signature recovery.
+/// cannot uncap per-claim verification.
 /// </remarks>
 internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger logger) : IIncomingTxFilter
 {
@@ -46,11 +46,11 @@ internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger
         }
         else
         {
-            ulong signatureGas = FrameTxValidation.SignatureVerificationWorkGas(tx);
-            if (signatureGas > TxPoolConfig.DefaultFrameTxMaxVerifyGas)
+            ulong claimGas = FrameTxValidation.ClaimVerificationGas(tx);
+            if (claimGas > TxPoolConfig.DefaultFrameTxMaxVerifyGas)
             {
                 Metrics.PendingTransactionsFrameTxVerifyGasTooHigh++;
-                if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, signature verification costs {signatureGas} gas (max {TxPoolConfig.DefaultFrameTxMaxVerifyGas}).");
+                if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, claim verification costs {claimGas} gas (max {TxPoolConfig.DefaultFrameTxMaxVerifyGas}).");
                 return AcceptTxResult.FrameTxVerifyGasTooHigh;
             }
         }

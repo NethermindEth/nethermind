@@ -49,7 +49,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                return FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
         // The sponsor's pay-frame signature is unverified at admission, so a third party is never named natively.
@@ -58,7 +58,7 @@ public class FrameTxPayerResolverTests
             {
                 DefaultCodeAccount(state, Sender);
                 DefaultCodeAccount(state, Sponsor);
-                return FrameTx([OnlyVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Signature(Sender), Secp256k1Signature(Sponsor)]);
+                return FrameTx([OnlyVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Claim(Sender), Secp256k1Claim(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // A following pay frame can name a sponsor if the sender's balance drops below max cost, so the
@@ -68,18 +68,18 @@ public class FrameTxPayerResolverTests
             {
                 DefaultCodeAccount(state, Sender);
                 DefaultCodeAccount(state, Sponsor);
-                return FrameTx([SelfVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Signature(Sender), Secp256k1Signature(Sponsor)]);
+                return FrameTx([SelfVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Claim(Sender), Secp256k1Claim(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // A never-seen sender reads as default (empty) code, but approving payment also creates the
         // account, a state charge the frame's budget may not cover.
         yield return Case("SelfVerify_NonExistentSender_RequiresSimulation",
-            _ => FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]),
+            _ => FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]),
             FrameTxPayerOutcome.RequiresSimulation, null);
 
         // Budgeting the creation charge covers the worst case, so the shortcut needs no lookup to know it.
         yield return Case("SelfVerify_NonExistentSenderBudgetingItsCreation_PayerIsSender",
-            _ => FrameTx([SelfVerifyWithStateGas((ulong)GasCostOf.NewAccountState)], [Secp256k1Signature(Sender)]),
+            _ => FrameTx([SelfVerifyWithStateGas((ulong)GasCostOf.NewAccountState)], [Secp256k1Claim(Sender)]),
             FrameTxPayerOutcome.Resolved, Sender);
 
         // The default code halts before it runs unless the frame can pay its target's warm access, so a
@@ -88,14 +88,14 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([SelfVerify(Eip8038Constants.WarmAccess - 1)], [Secp256k1Signature(Sender)]);
+                return FrameTx([SelfVerify(Eip8038Constants.WarmAccess - 1)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         yield return Case("SelfVerify_FrameCoveringItsEntryCharge_PayerIsSender",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([SelfVerify(Eip8038Constants.WarmAccess)], [Secp256k1Signature(Sender)]);
+                return FrameTx([SelfVerify(Eip8038Constants.WarmAccess)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
         // EIP-8250: a fresh key's slot is a state charge, and a frame budgeting none of it cannot afford
@@ -104,7 +104,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                Transaction tx = FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                Transaction tx = FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
                 tx.NonceKeys = [UInt256.One];
                 return tx;
             }, FrameTxPayerOutcome.RequiresSimulation, null);
@@ -114,7 +114,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                Transaction tx = FrameTx([SelfVerifyWithStateGas(2 * (ulong)GasCostOf.SSetState)], [Secp256k1Signature(Sender)]);
+                Transaction tx = FrameTx([SelfVerifyWithStateGas(2 * (ulong)GasCostOf.SSetState)], [Secp256k1Claim(Sender)]);
                 tx.NonceKeys = [UInt256.One, (UInt256)2];
                 return tx;
             }, FrameTxPayerOutcome.Resolved, Sender);
@@ -123,7 +123,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                Transaction tx = FrameTx([SelfVerifyWithStateGas(2 * (ulong)GasCostOf.SSetState - 1)], [Secp256k1Signature(Sender)]);
+                Transaction tx = FrameTx([SelfVerifyWithStateGas(2 * (ulong)GasCostOf.SSetState - 1)], [Secp256k1Claim(Sender)]);
                 tx.NonceKeys = [UInt256.One, (UInt256)2];
                 return tx;
             }, FrameTxPayerOutcome.RequiresSimulation, null);
@@ -133,7 +133,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                Transaction tx = FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                Transaction tx = FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
                 tx.NonceKeys = [];
                 return tx;
             }, FrameTxPayerOutcome.Resolved, Sender);
@@ -142,7 +142,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([OnlyVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                return FrameTx([OnlyVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
         // NoPayer is code-independent: even a deployed sender cannot approve payment on a prefix with no
@@ -151,7 +151,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DeployedCodeAccount(state, Sender);
-                return FrameTx([OnlyVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                return FrameTx([OnlyVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
         // A leading deploy frame is skipped like the expiry frame, but it also falsifies the default-code
@@ -161,7 +161,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([DeployFrame(), SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                return FrameTx([DeployFrame(), SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // At most one deploy frame is skipped, so the second one is the frame that must name the payer and
@@ -170,21 +170,21 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([DeployFrame(), DeployFrame(), SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                return FrameTx([DeployFrame(), DeployFrame(), SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         yield return Case("DeployFrameOnly_NoPayer",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([DeployFrame()], [Secp256k1Signature(Sender)]);
+                return FrameTx([DeployFrame()], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
         yield return Case("SelfVerify_DeployedCodeSender_RequiresSimulation",
             state =>
             {
                 DeployedCodeAccount(state, Sender);
-                return FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                return FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         yield return Case("OnlyVerifyPay_DeployedCodePaymaster_RequiresSimulation",
@@ -192,19 +192,36 @@ public class FrameTxPayerResolverTests
             {
                 DefaultCodeAccount(state, Sender);
                 DeployedCodeAccount(state, Sponsor);
-                return FrameTx([OnlyVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Signature(Sender), Secp256k1Signature(Sponsor)]);
+                return FrameTx([OnlyVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Claim(Sender), Secp256k1Claim(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // A wrong signature shape isn't proof of invalidity (its placement is unsettled), so it's deferred, not dropped.
-        yield return Case("SelfVerify_WrongSignatureScheme_RequiresSimulation",
+        // A claim the default code does not accept isn't proof of invalidity, so it's deferred, not dropped.
+        yield return Case("SelfVerify_WrongVerifier_RequiresSimulation",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([SelfVerify(PrefixFrameGas)], [new TxFrameSignature(TxFrameSignature.SchemeP256, Sender, default, new byte[128])]);
+                return FrameTx([SelfVerify(PrefixFrameGas)], [new TxFrameClaim(Eip8141Constants.P256VerifierAddress, Sender.Bytes.ToArray(), default, 0, 0)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // An empty top-level signature list is deferred, not dropped: where the signature belongs is unsettled.
-        yield return Case("SelfVerify_EmptySignatureList_RequiresSimulation",
+        // The default code refuses a VERIFY frame carrying data, whatever claims the transaction carries.
+        yield return Case("SelfVerify_FrameData_RequiresSimulation",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                TxFrame verify = new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, PrefixFrameGas, UInt256.Zero, new byte[] { 1 });
+                return FrameTx([verify], [Secp256k1Claim(Sender)]);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
+
+        // The claim is looked up by its key, so its position in the list does not matter.
+        yield return Case("SelfVerify_SenderClaimAfterAnotherClaim_PayerIsSender",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sponsor), Secp256k1Claim(null)]);
+            }, FrameTxPayerOutcome.Resolved, Sender);
+
+        // An empty claim list is deferred, not dropped.
+        yield return Case("SelfVerify_EmptyClaimList_RequiresSimulation",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
@@ -216,7 +233,7 @@ public class FrameTxPayerResolverTests
             {
                 DefaultCodeAccount(state, Sender);
                 DefaultCodeAccount(state, Sponsor);
-                return FrameTx([OnlyVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Signature(Sender), Secp256k1Signature(Sender)]);
+                return FrameTx([OnlyVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Claim(Sender), Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // A leading expiry_verify frame is skipped for shape matching; the self relay still resolves.
@@ -224,7 +241,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([ExpiryAt(9999), SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                return FrameTx([ExpiryAt(9999), SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
         // A skipped expiry frame still has to run ahead of the self relay, and its predeploy target owes a cold
@@ -233,14 +250,14 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([ExpiryAt(9999, Eip8141Constants.ExpiryFrameExecutionGas), SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                return FrameTx([ExpiryAt(9999, Eip8141Constants.ExpiryFrameExecutionGas), SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
         yield return Case("ExpiryOneGasBelowItsCostThenSelfVerify_RequiresSimulation",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([ExpiryAt(9999, Eip8141Constants.ExpiryFrameExecutionGas - 1), SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                return FrameTx([ExpiryAt(9999, Eip8141Constants.ExpiryFrameExecutionGas - 1), SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // The only shape where both prefix skips apply; the deploy frame still forces simulation.
@@ -248,7 +265,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([ExpiryAt(9999), DeployFrame(), SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                return FrameTx([ExpiryAt(9999), DeployFrame(), SelfVerify(PrefixFrameGas)], [Secp256k1Claim(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         yield return Case("ExpiryFrameOnly_NoPayer",
@@ -260,14 +277,14 @@ public class FrameTxPayerResolverTests
     }
 
     [Test]
-    public void Resolve_Sponsored_DoesNotNamePayerFromUnverifiedSignature()
+    public void Resolve_Sponsored_DoesNotNamePayerFromAnUnverifiedClaim()
     {
-        // A forged pay-frame signature must not resolve to an arbitrary victim: frame signatures are
-        // unverified at admission, so a third-party payer is never named natively.
+        // A forged pay-frame claim must not resolve to an arbitrary victim: the pay frame's code is not run at
+        // admission, so a third-party payer is never named natively.
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(Sender, wei: 0, nonce: 1);
         state.CreateAccount(Sponsor, wei: Eth(3), nonce: 0);
-        Transaction tx = FrameTx([OnlyVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Signature(Sender), Secp256k1Signature(Sponsor)]);
+        Transaction tx = FrameTx([OnlyVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Claim(Sender), Secp256k1Claim(Sponsor)]);
 
         FrameTxPayerResolution resolution = Resolve(tx, state);
 
@@ -288,7 +305,7 @@ public class FrameTxPayerResolverTests
         TxFrame deploy = DeployFrame();
         TxFrame selfVerify = SelfVerify(PrefixFrameGas);
         TxFrame trailing = new(FrameMode.Default, flags: FrameFlags.None, target: null, gasLimit: 5_000_000, UInt256.Zero, default);
-        Transaction tx = FrameTx([deploy, selfVerify, trailing], [Secp256k1Signature(Sender)]);
+        Transaction tx = FrameTx([deploy, selfVerify, trailing], [Secp256k1Claim(Sender)]);
 
         FrameTxPayerResolution resolution = Resolve(tx, state);
         ulong verifyGas = FrameTxValidation.ValidationWorkGas(tx);
@@ -313,8 +330,8 @@ public class FrameTxPayerResolverTests
     private static void DeployedCodeAccount(TestReadOnlyStateProvider state, Address address) =>
         state.InsertCode([0x60, 0x00], address);
 
-    private static Transaction FrameTx(TxFrame[] frames, TxFrameSignature[] signatures) =>
-        FrameTxTestFrames.FrameTx(Sender, signatures, frames);
+    private static Transaction FrameTx(TxFrame[] frames, TxFrameClaim[] claims) =>
+        FrameTxTestFrames.FrameTx(Sender, claims, frames);
 
     private static TxFrame Frame(FrameMode mode) => new(mode, flags: FrameFlags.None, target: null, gasLimit: 50_000, UInt256.Zero, default);
 

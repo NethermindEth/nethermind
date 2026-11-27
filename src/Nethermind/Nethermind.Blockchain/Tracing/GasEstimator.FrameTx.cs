@@ -155,7 +155,7 @@ public partial class GasEstimator
         public bool TryPartitionRooms([NotNullWhen(false)] out string? error)
         {
             error = CannotEstimateGasExceeded;
-            if (!FrameTxValidation.TryCalculateGasBudget(_tx, _spec, out _, out _, out ulong totalGas, estimateSignatureBytes: true)) return false;
+            if (!FrameTxValidation.TryCalculateGasBudget(_tx, _spec, out _, out _, out ulong totalGas)) return false;
             if (totalGas > _gasCap)
             {
                 error = $"{GasExceedsAllowanceMsgPrefix} ({_gasCap})";
@@ -260,7 +260,7 @@ public partial class GasEstimator
 
         public bool FitsRooms() =>
             TryReserveBlockRooms(out _, out _)
-            && FrameTxValidation.TryCalculateGasBudget(_tx, _spec, out _, out _, out ulong totalGas, estimateSignatureBytes: true)
+            && FrameTxValidation.TryCalculateGasBudget(_tx, _spec, out _, out _, out ulong totalGas)
             && totalGas <= _gasCap;
 
         /// <summary>Runs the filled transaction at its real fees, which decides the outcome.</summary>
@@ -363,12 +363,12 @@ public partial class GasEstimator
         }
 
         private bool TryReserveBlockRooms(out ulong execution, out ulong state) =>
-            FrameTxValidation.TryCalculateBlockGasReservations(_tx, _spec, out execution, out state, estimateSignatureBytes: true)
+            FrameTxValidation.TryCalculateBlockGasReservations(_tx, _spec, out execution, out state)
             && execution <= _executionCap && state <= _stateCap;
 
         private ulong FixedGas()
         {
-            ulong fixedGas = FrameTxValidation.SignatureVerificationWorkGas(_tx);
+            ulong fixedGas = FrameTxValidation.ClaimVerificationGas(_tx);
             for (int i = 0; i < _frames.Length; i++)
                 fixedGas = fixedGas.SaturatingAdd(_fillExecution[i] ? 0 : _frames[i].ExecutionGasLimit).SaturatingAdd(_fillState[i] ? 0 : _frames[i].StateGasLimit);
             return fixedGas;
@@ -475,7 +475,7 @@ public partial class GasEstimator
             probe.GasLimit = FrameTxValidation.TotalGasLimit(_frames);
             if (_maxFeeAt is not null)
             {
-                probe.MaxFee = !FrameTxValidation.TryCalculateGasBudget(probe, _spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true)
+                probe.MaxFee = !FrameTxValidation.TryCalculateGasBudget(probe, _spec, out _, out _, out ulong maxGas)
                     ? UInt256.MaxValue
                     : verifying ? _maxFeeAt(maxGas) : SearchMaxFee(maxGas);
                 if (!verifying) probe.GasPrice = _searchTip;

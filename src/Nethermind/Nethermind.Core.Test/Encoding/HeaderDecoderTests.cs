@@ -493,6 +493,45 @@ public class HeaderDecoderTests
         }
     }
 
+    [Test]
+    public void Can_encode_decode_dependency_proof_hash_after_the_slot_number()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithRequestsHash(Keccak.Zero)
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .WithSlotNumber(1).TestObject;
+        header.DependencyProofHash = TestItem.KeccakA;
+        byte[] withoutHash = Rlp.Encode(new BlockHeader(header.ParentHash!, header.UnclesHash!, header.Beneficiary!, header.Difficulty,
+            header.Number, header.GasLimit, header.Timestamp, header.ExtraData)
+        {
+            BaseFeePerGas = header.BaseFeePerGas,
+            WithdrawalsRoot = header.WithdrawalsRoot,
+            BlobGasUsed = header.BlobGasUsed,
+            ExcessBlobGas = header.ExcessBlobGas,
+            ParentBeaconBlockRoot = header.ParentBeaconBlockRoot,
+            RequestsHash = header.RequestsHash,
+            BlockAccessListHash = header.BlockAccessListHash,
+            SlotNumber = header.SlotNumber,
+        });
+
+        byte[] encoded = Rlp.Encode(header);
+        BlockHeader decoded = DecodeHeader(encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.SlotNumber, Is.EqualTo(1));
+            Assert.That(decoded.DependencyProofHash, Is.EqualTo(TestItem.KeccakA));
+            // The field is the header's last: 33 bytes on top of the header that ends at the slot number.
+            Assert.That(encoded.Length - withoutHash.Length, Is.EqualTo(Rlp.LengthOf(TestItem.KeccakA)));
+            Assert.That(decoded.Hash, Is.EqualTo(Keccak.Compute(encoded)));
+        }
+    }
+
     private static BlockHeader DecodeHeader(byte[] rlp) =>
         Rlp.Decode<BlockHeader>(rlp) ?? throw new InvalidOperationException("Header decoding returned null.");
 

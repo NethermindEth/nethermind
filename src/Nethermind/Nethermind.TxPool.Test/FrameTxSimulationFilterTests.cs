@@ -29,13 +29,35 @@ public class FrameTxSimulationFilterTests
 
         // The payer filter resolves the legible prefix natively, then the simulation filter runs.
         RunPayerFilter(state, tx);
-        AcceptTxResult result = Accept(state, simulator, tx);
+        AcceptTxResult result = Accept(state, simulator, tx, signaturesVerified: true);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressA));
             simulator.DidNotReceiveWithAnyArgs().Simulate(default!);
+        }
+    }
+
+    /// <summary>A claim the claim filter left unverified, a custom verifier's or a leanSPHINCS one, is verified only by
+    /// the simulation, so a natively resolved payer does not skip it.</summary>
+    [Test]
+    public void Accept_NativelyResolvedPayerWithUnverifiedClaims_StillSimulates()
+    {
+        TestReadOnlyStateProvider state = new();
+        state.CreateAccount(TestItem.AddressA, 1 * Unit.Ether);
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<System.Threading.CancellationToken>(), Arg.Any<System.Func<bool>?>())
+            .Returns(FrameTxSimulationResult.Accept(TestItem.AddressA));
+
+        RunPayerFilter(state, tx);
+        AcceptTxResult result = Accept(state, simulator, tx, signaturesVerified: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            simulator.ReceivedWithAnyArgs(1).Simulate(default!);
         }
     }
 
@@ -71,7 +93,7 @@ public class FrameTxSimulationFilterTests
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressB));
-            simulator.Received(1).Simulate(tx, signaturesPreValidated: signaturesVerified);
+            simulator.Received(1).Simulate(tx, claimsPreVerified: signaturesVerified);
         }
     }
 
@@ -140,7 +162,7 @@ public class FrameTxSimulationFilterTests
     }
 
     private static Transaction SelfVerifyTx(Address sender) =>
-        FrameTx(sender, [Secp256k1Signature(sender)], SelfVerify(PrefixFrameGas));
+        FrameTx(sender, [Secp256k1Claim(sender)], SelfVerify(PrefixFrameGas));
 
     private static void RunPayerFilter(TestReadOnlyStateProvider state, Transaction tx)
     {
@@ -270,7 +292,7 @@ public class FrameTxSimulationFilterTests
         IChainHeadInfoProvider? headInfo = null)
     {
         FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>(), headInfo);
-        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { FrameSignaturesVerified = signaturesVerified };
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { FrameClaimsVerified = signaturesVerified };
         return filter.Accept(tx, ref filteringState, options);
     }
 }

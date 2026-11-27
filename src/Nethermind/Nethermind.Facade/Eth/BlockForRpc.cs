@@ -76,6 +76,11 @@ public class BlockForRpc
             SlotNumber = block.SlotNumber;
         }
 
+        if (spec.IsEip8141Enabled)
+        {
+            DependencyProofHash = block.Header.DependencyProofHash;
+        }
+
         // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded. A chain that
         // merges omits it for every block, pre-merge ones included, as the execution-apis test vectors expect. Such a
         // chain may not know its merge block (mainnet's chainspec has only a TTD), so the TTD also counts.
@@ -170,6 +175,9 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ulong? SlotNumber { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? DependencyProofHash { get; set; }
 
     private static BlockTransactions GetTransactionHashes(Transaction[] transactions)
     {

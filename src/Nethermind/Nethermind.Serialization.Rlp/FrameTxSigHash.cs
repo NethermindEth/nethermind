@@ -11,31 +11,25 @@ using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Serialization.Rlp;
 
-/// <summary>Computes the EIP-8141 canonical signature hash <c>keccak(FRAME_TX_TYPE || rlp(tx))</c>, replacing the raw
-/// signature bytes of canonical-hash (empty msg) entries with their length. Encodes to a scratch buffer, so the transaction is never mutated.</summary>
-// EIP8141-ISSUE: the spec pseudocode for compute_sig_hash mutates tx.signatures in place rather than a copy.
+/// <summary>Computes the EIP-8141 canonical signature hash <c>keccak(FRAME_TX_TYPE || 0x00 || rlp(tx_body))</c>.</summary>
+/// <remarks>The <c>0x00</c> separates it from the transaction hash, <c>keccak(FRAME_TX_TYPE || rlp(tx_body))</c>, so an
+/// off-chain signature over a transaction hash cannot authorize a transaction. The body carries no witness bytes, so
+/// nothing is elided and every claim with an empty <c>msg</c> shares the digest.</remarks>
 public static class FrameTxSigHash
 {
     private const int MaxStackLength = 512;
+    private const int PrefixLength = 2;
+    private const byte DomainSeparator = 0x00;
 
-    // SkipTypedWrapping makes the decoder emit exactly FRAME_TX_TYPE || rlp(tx).
-    private const RlpBehaviors Behaviors = RlpBehaviors.SkipTypedWrapping;
-
-    /// <summary>The digest a canonical-hash signature entry of <paramref name="transaction"/> signs.</summary>
+    /// <summary>The digest a canonical-hash claim of <paramref name="transaction"/> is over.</summary>
     /// <remarks>Allocates; prefer <see cref="ComputeValue"/> on the verification path, which this wraps.</remarks>
     public static Hash256 Compute(Transaction transaction) => new(ComputeValue(transaction));
 
-    /// <summary>The digest a canonical-hash signature entry of <paramref name="transaction"/> signs.</summary>
-    /// <remarks>
-    /// The preimage keeps only the length of the <see cref="TxFrameSignature.Signature"/> bytes of canonical-hash entries, so
-    /// every such entry of one transaction shares this digest and it is computed only once. An entry carrying an
-    /// explicit <see cref="TxFrameSignature.Msg"/> signs that digest instead, and its own signature bytes stay in
-    /// the preimage (EIP-8141 § Signature Hash), so they must be final before this is computed.
-    /// </remarks>
+    /// <summary>The digest a canonical-hash claim of <paramref name="transaction"/> is over.</summary>
     [SkipLocalsInit]
     public static ValueHash256 ComputeValue(Transaction transaction)
     {
-        int length = FrameTxDecoder.GetTransactionLength(transaction, Behaviors, forSigning: true);
+        int length = PrefixLength + Rlp.LengthOfSequence(FrameTxDecoder.GetContentLength(transaction));
         if (length <= MaxStackLength)
         {
             Span<byte> buffer = stackalloc byte[MaxStackLength];
@@ -48,9 +42,13 @@ public static class FrameTxSigHash
 
     private static ValueHash256 EncodeAndHash(Transaction transaction, Span<byte> buffer)
     {
-        RlpWriter writer = RlpWriter.ContentWriter(buffer);
-        FrameTxDecoder.EncodeTransaction(transaction, ref writer, Behaviors, forSigning: true);
-        Rlp.CheckLength(in writer, buffer.Length);
+        buffer[0] = (byte)TxType.FrameTx;
+        buffer[1] = DomainSeparator;
+        RlpWriter writer = RlpWriter.ContentWriter(buffer[PrefixLength..]);
+        RlpSequence sequence = writer.StartSequence(FrameTxDecoder.GetContentLength(transaction));
+        FrameTxDecoder.EncodePayload(transaction, ref writer);
+        writer.EndSequence(sequence);
+        Rlp.CheckLength(in writer, buffer.Length - PrefixLength);
         return ValueKeccak.Compute(buffer);
     }
 }

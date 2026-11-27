@@ -7966,9 +7966,7 @@ public class Eth72ProtocolHandlerTests
     // EIP-8141: a type-6 carrying blobs is not TxType.SupportsBlobs, so it takes the plain eth/72 path end to
     // end - announced at its full network size with no cell mask, then served, delivered and submitted whole
     // over a correlated response, with the sparse cell protocol staying type-3 only throughout.
-    // Both wrapper versions, because the sidecar validator accepts either from the wire regardless of the
-    // head's own proof version, and the per-blob proof count it must check differs between them.
-    [TestCase(ProofVersion.V0)]
+    // EIP-8141: the pooled wrapper's sidecar carries EIP-7594 cell proofs, so it implies V1.
     [TestCase(ProofVersion.V1)]
     public void should_carry_a_blob_bearing_frame_tx_over_the_plain_announcement_path(ProofVersion proofVersion)
     {
@@ -8091,7 +8089,7 @@ public class Eth72ProtocolHandlerTests
             .TestObject;
         tx.Type = TxType.FrameTx;
         tx.Frames = [];
-        tx.FrameSignatures = [];
+        tx.FrameClaims = [];
         tx.Hash = tx.CalculateHash();
         return tx;
     }

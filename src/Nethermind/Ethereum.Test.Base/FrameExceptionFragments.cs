@@ -27,7 +27,7 @@ namespace Ethereum.Test.Base;
 /// </para>
 /// <para>
 /// <c>BlockchainTestBase</c> maps all three labels. <c>TransactionTestBase</c> maps the first two: it runs
-/// <c>TxValidator.IsWellFormed</c> and then <c>FrameTxSignatureValidator</c>, the pair a transaction must
+/// <c>TxValidator.IsWellFormed</c> and then <c>FrameTxClaimVerifier</c>, the pair a transaction must
 /// clear to be accepted off the wire, but never the transaction processor, so no <see cref="Execution"/>
 /// message can reach it.
 /// </para>
@@ -54,30 +54,29 @@ public static class FrameExceptionFragments
         FrameTxValidation.FrameGasOverflow,
         FrameTxValidation.InvalidExpiryFrame,
         FrameTxValidation.MultipleExpiryFrames,
-        FrameTxValidation.InvalidSignatureScheme,
-        FrameTxValidation.ArbitrarySignatureWithSigner,
-        // A suffix of the decoder's and the signature validator's wordings of the same rule, so this
-        // one fragment covers all three places a bad msg length is caught.
+        FrameTxValidation.TooManyClaims,
+        FrameTxValidation.InvalidClaimKey,
+        FrameTxValidation.ClaimKeyNotAnAddress,
         FrameTxValidation.InvalidMsgLength,
         FrameTxValidation.ZeroDigestMsg,
         FrameTxValidation.KeyedNoncesNotEnabled,
         FrameTxValidation.LegacyNonceNotAllowed,
         FrameTxValidation.MalformedNonceKeySet,
-        // The fixtures file a signer that does not match as a format failure, and a signature that
-        // does not verify as a signature failure.
-        FrameTxSignatureValidator.InvalidSecp256k1Signer,
-        FrameTxSignatureValidator.InvalidP256Signer,
+        FrameTxValidation.ProtocolClaimWithGasOrWitnessLength,
+        FrameTxValidation.CustomClaimWithoutGas,
+        FrameTxValidation.ClaimWitnessTooLong,
+        FrameTxValidation.ClaimGasOverflow,
         "frame transaction must not carry a trailing element",
     ];
 
-    /// <summary>Signature verification — the spec <c>validate_signature</c> step.</summary>
+    /// <summary>Claim verification against the segregated witnesses.</summary>
     public static readonly string[] Signature =
     [
-        FrameTxSignatureValidator.InvalidSignature,
-        FrameTxSignatureValidator.InvalidSignatureLength,
-        FrameTxSignatureValidator.NonCanonicalSignature,
-        FrameTxSignatureValidator.NonCanonicalP256Signature,
-        FrameTxSignatureValidator.P256NotSupported,
+        FrameTxClaimVerifier.InvalidClaim,
+        FrameTxClaimVerifier.MissingWitnesses,
+        FrameTxClaimVerifier.WitnessCountMismatch,
+        FrameTxClaimVerifier.InvalidWitnessLength,
+        FrameTxClaimVerifier.P256NotSupported,
     ];
 
     /// <summary>

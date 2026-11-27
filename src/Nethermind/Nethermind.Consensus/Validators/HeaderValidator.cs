@@ -111,6 +111,7 @@ namespace Nethermind.Consensus.Validators
                    && ValidateRequestsHash(header, spec, ref error)
                    && ValidateBlockAccessListHash(header, spec, ref error)
                    && ValidateSlotNumber(header, spec, ref error)
+                   && ValidateDependencyProofHash(header, spec, ref error)
                    && ValidateBloom(header, spec, ref error);
         }
 
@@ -505,6 +506,20 @@ namespace Nethermind.Consensus.Validators
             }
 
             return true;
+        }
+
+        /// <summary>Checks the EIP-8141 dependency proof hash is present exactly when the fork enables it.</summary>
+        /// <remarks>A genesis header is exempt from the presence check: it has no transactions to depend on.</remarks>
+        protected bool ValidateDependencyProofHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip8141Enabled ? header.DependencyProofHash is not null || header.IsGenesis : header.DependencyProofHash is null)
+            {
+                return true;
+            }
+
+            error = spec.IsEip8141Enabled ? BlockErrorMessages.MissingDependencyProofHash : BlockErrorMessages.DependencyProofHashNotEnabled;
+            if (_logger.IsWarn) _logger.Warn(error);
+            return false;
         }
 
         /// <summary>Checks the logs bloom is zero-length exactly when EIP-7668 is active.</summary>

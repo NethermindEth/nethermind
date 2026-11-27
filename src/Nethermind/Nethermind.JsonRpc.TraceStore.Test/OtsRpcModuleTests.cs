@@ -179,10 +179,10 @@ public class OtsRpcModuleTests
         IReleaseSpec spec = Eip8141Prototype.Instance;
         using Fixture f = new(specProvider: new TestSpecProvider(spec));
         Assert.That(BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas), Is.True);
-        Transaction tx = FrameTxTestFrames.FrameTx(TestItem.AddressE, [FrameTxTestFrames.Secp256k1Signature(TestItem.AddressE)],
+        Transaction tx = FrameTxTestFrames.FrameTx(TestItem.AddressE, [FrameTxTestFrames.Secp256k1Claim(TestItem.AddressE)],
             FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas), FrameTxTestFrames.Execution());
         if (carriesBlobs) tx.BlobVersionedHashes = [new byte[32]];
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas), Is.True);
         tx.MaxFee = (UInt256)maxGas * baseFee + (UInt256)maxGas * 3 + maxGas / 2 + (UInt256)tx.GetBlobGas() * feePerBlobGas;
         tx.GasPrice = 100;
         tx.Hash = TestItem.KeccakB;

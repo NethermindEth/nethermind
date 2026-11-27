@@ -274,6 +274,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Fail;
         }
 
+        if (spec.IsEip8141Enabled != executionPayload.DependencyProof is not null)
+        {
+            error = spec.IsEip8141Enabled ? "Dependency proof must be set" : "Dependency proof must not be set before EIP-8141";
+            return ValidationResult.Fail;
+        }
+
         // Runs after the fork checks above, which also guard payloads not bound from JSON and keep their messages.
         if (executionPayload.HasUnboundField)
         {

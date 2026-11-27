@@ -19,81 +19,62 @@ public static class FrameTxTestFrames
 
     public static Transaction FrameTx(params TxFrame[] frames) => FrameTx(TestItem.AddressA, [], frames);
 
-    public static Transaction FrameTx(Address sender, TxFrameSignature[] signatures, params TxFrame[] frames) => new()
+    public static Transaction FrameTx(Address sender, TxFrameClaim[] claims, params TxFrame[] frames) => new()
     {
         Type = TxType.FrameTx,
         SenderAddress = sender,
         Frames = frames,
-        FrameSignatures = signatures,
+        FrameClaims = claims,
     };
 
-    /// <summary>A secp256k1 entry of the right shape, carrying placeholder signature bytes.</summary>
-    public static TxFrameSignature Secp256k1Signature(Address signer) =>
-        new(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength]);
+    /// <summary>A SECP256K1 claim over the canonical signature hash, keyed to <paramref name="signer"/> or, for
+    /// <see langword="null"/>, to the sender.</summary>
+    public static TxFrameClaim Secp256k1Claim(Address? signer) =>
+        new(Eip8141Constants.Secp256k1VerifierAddress, signer is null ? default : signer.Bytes.ToArray(), default, 0, 0);
 
-    /// <summary>Installs a single secp256k1 entry over <paramref name="tx"/>'s canonical signature hash.</summary>
-    /// <remarks>compute_sig_hash covers the entry's scheme, signer and msg, so a placeholder is installed and
-    /// replaced rather than returned for the caller to install.</remarks>
+    /// <summary>Installs a single SECP256K1 claim over <paramref name="tx"/>'s canonical signature hash, with its witness.</summary>
+    /// <remarks>The signature hash covers the claim but not the witness, so the claim is installed before signing.</remarks>
     public static void SignSecp256k1(Transaction tx, PrivateKey key, Address? signer)
     {
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
-        byte[] raw = Secp256k1SignatureBytes(new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx)));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, raw)];
+        tx.FrameClaims = [Secp256k1Claim(signer)];
+        tx.ClaimWitnesses = [Secp256k1SignatureBytes(new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx)))];
     }
 
     /// <summary>A signature in the EIP-8141 <c>v || r || s</c> encoding, <c>v</c> being the 0/1 recovery id.</summary>
     public static byte[] Secp256k1SignatureBytes(Signature signature)
     {
-        byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        byte[] bytes = new byte[Eip8141Constants.Secp256k1WitnessLength];
         bytes[0] = signature.RecoveryId;
         signature.Bytes.CopyTo(bytes.AsSpan(1));
         return bytes;
     }
 
-    /// <summary>A chain of secp256k1 entries that all require curve recovery, the last one failing signer
-    /// validation.</summary>
-    /// <remarks>The admission measurements need the worst case: no entry short-circuits before the mismatch,
+    /// <summary>A chain of SECP256K1 claims that all require curve recovery, the last one failing verification.</summary>
+    /// <remarks>The admission measurements need the worst case: no claim short-circuits before the mismatch,
     /// so the whole chain is recovered before the transaction is rejected.</remarks>
-    public static TxFrameSignature[] RecoveredSecp256k1Signatures(EthereumEcdsa ecdsa, int count)
+    public static (TxFrameClaim[] Claims, byte[][] Witnesses) RecoveredSecp256k1Claims(EthereumEcdsa ecdsa, int count)
     {
-        TxFrameSignature[] entries = new TxFrameSignature[count];
+        TxFrameClaim[] claims = new TxFrameClaim[count];
+        byte[][] witnesses = new byte[count][];
         for (int i = 0; i < count; i++)
         {
             byte[] msg = ValueKeccak.Compute(BitConverter.GetBytes(i)).ToByteArray();
             byte[] signed = i == count - 1 ? ValueKeccak.Compute("mismatch"u8).ToByteArray() : msg;
-            entries[i] = new TxFrameSignature(
-                TxFrameSignature.SchemeSecp256k1,
-                TestItem.PrivateKeyA.Address,
-                msg,
-                Secp256k1SignatureBytes(ecdsa.Sign(TestItem.PrivateKeyA, new Hash256(signed))));
+            claims[i] = new TxFrameClaim(Eip8141Constants.Secp256k1VerifierAddress, TestItem.PrivateKeyA.Address.Bytes.ToArray(), msg, 0, 0);
+            witnesses[i] = Secp256k1SignatureBytes(ecdsa.Sign(TestItem.PrivateKeyA, new Hash256(signed)));
         }
 
-        return entries;
+        return (claims, witnesses);
     }
 
-    /// <summary>A SECP256K1 entry by <paramref name="key"/> over an explicit digest, so entries can be built
-    /// independently of each other and of the transaction's signature hash.</summary>
-    public static TxFrameSignature DigestSignature(PrivateKey key, byte fill)
+    /// <summary>A SECP256K1 claim by <paramref name="key"/> over an explicit digest, with its witness, so claims can be
+    /// built independently of each other and of the transaction's signature hash.</summary>
+    public static (TxFrameClaim Claim, byte[] Witness) DigestClaim(PrivateKey key, byte fill)
     {
         byte[] digest = new byte[Hash256.Size];
         digest[31] = fill;
-        byte[] raw = Secp256k1SignatureBytes(new Ecdsa().Sign(key, new ValueHash256(digest)));
-        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, digest, raw);
-    }
-
-    /// <summary>New entries with the same content, as a node holds after decoding a gossiped transaction.</summary>
-    /// <remarks>An entry caches its recovered signer, so transactions sharing entries pay for each recovery only
-    /// once; a measurement that charges recovery per transaction must give each one its own.</remarks>
-    public static TxFrameSignature[] Fresh(TxFrameSignature[] entries)
-    {
-        TxFrameSignature[] copies = new TxFrameSignature[entries.Length];
-        for (int i = 0; i < entries.Length; i++)
-        {
-            TxFrameSignature entry = entries[i];
-            copies[i] = new TxFrameSignature(entry.Scheme, entry.Signer, entry.Msg, entry.Signature);
-        }
-
-        return copies;
+        byte[] witness = Secp256k1SignatureBytes(new Ecdsa().Sign(key, new ValueHash256(digest)));
+        return (new TxFrameClaim(Eip8141Constants.Secp256k1VerifierAddress, key.Address.Bytes.ToArray(), digest, 0, 0), witness);
     }
 
     public static TxFrame SelfVerify(ulong gasLimit = 1_000) =>

@@ -75,7 +75,7 @@ public class KeyedNonceDisjointnessFilterTests
             Nonce = 0,
             NonceKeys = nonceKeys,
             Frames = [],
-            FrameSignatures = [],
+            FrameClaims = [],
             GasLimit = 1_000_000,
             GasPrice = 1,
             DecodedMaxFeePerGas = 1,

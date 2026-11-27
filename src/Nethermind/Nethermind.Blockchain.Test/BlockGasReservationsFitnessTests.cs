@@ -52,7 +52,7 @@ public class BlockGasReservationsFitnessTests
             [
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, default),
             ],
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             DecodedMaxFeePerGas = 1,
         };

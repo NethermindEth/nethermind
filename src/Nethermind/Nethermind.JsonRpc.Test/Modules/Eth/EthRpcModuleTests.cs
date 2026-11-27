@@ -2767,7 +2767,7 @@ public partial class EthRpcModuleTests
                 new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = 50_000, StateGas = 0 },
                 new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGas = 50_000, StateGas = 0 },
             ],
-            Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
+            Claims = [new FrameClaimForRpc { Verifier = Eip8141Constants.Secp256k1VerifierAddress }],
         };
 
         string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", request);
@@ -2775,7 +2775,7 @@ public partial class EthRpcModuleTests
 #pragma warning disable NUnit2045 // The sent transaction must exist before calculating its gas budget.
         Assert.That(sent, Is.Not.Null, serialized);
 #pragma warning restore NUnit2045
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(sent!, Eip8141Prototype.Instance, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(sent!, Eip8141Prototype.Instance, out _, out _, out ulong maxGas), Is.True);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(maxGas, Is.GreaterThan(sent!.GasLimit), "the frame gas sum leaves out intrinsic gas");

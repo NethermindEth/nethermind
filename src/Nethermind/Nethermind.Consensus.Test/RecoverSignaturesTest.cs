@@ -109,41 +109,6 @@ public class RecoverSignaturesTest
     }
 
     [Test]
-    public void RecoverData_FrameTxOnlyBlock_RecoversSecp256k1Signer()
-    {
-        PrivateKey signer = TestItem.PrivateKeyB;
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = BlockchainIds.GenericNonRealNetwork,
-            SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, default, default)],
-            FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength])],
-            DecodedMaxFeePerGas = 100,
-        };
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        Signature signature = new Ecdsa().Sign(signer, in sigHash);
-        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        vrs[0] = signature.RecoveryId;
-        signature.Bytes.CopyTo(vrs.AsSpan(1));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer.Address, default, vrs)];
-
-        Block block = Build.A.Block.WithTransactions([tx]).TestObject;
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        RecoverSignatures sut = new(_ecdsa, specProvider, Substitute.For<ILogManager>());
-
-        sut.RecoverData(block);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tx.FrameSignatures[0].Recovered?.Signer, Is.EqualTo(signer.Address));
-            Assert.That(tx.FrameSignatures[0].Recovered?.Message, Is.EqualTo(sigHash));
-        }
-    }
-
-    [Test]
     public void RecoverData_SenderRecoveredButAuthorityMissing_RecoversAuthority()
     {
         PrivateKey signer = TestItem.PrivateKeyA;

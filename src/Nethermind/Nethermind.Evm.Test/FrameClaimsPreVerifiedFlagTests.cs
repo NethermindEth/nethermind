@@ -12,13 +12,13 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// Guards the blast radius of <see cref="ExecutionOptions.FrameSignaturesPreValidated"/>: it asserts a
+/// Guards the blast radius of <see cref="ExecutionOptions.FrameClaimsPreVerified"/>: it asserts a
 /// precondition only the transaction pool establishes, so a second production site would be a footgun.
 /// </summary>
 [TestFixture]
-public class FrameSignaturesPreValidatedFlagTests
+public class FrameClaimsPreVerifiedFlagTests
 {
-    private const string Flag = nameof(ExecutionOptions.FrameSignaturesPreValidated);
+    private const string Flag = nameof(ExecutionOptions.FrameClaimsPreVerified);
 
     /// <summary>Where the flag is declared, read, and set — every other production mention is a regression.</summary>
     private static readonly string[] ExpectedSites =

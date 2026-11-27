@@ -168,8 +168,7 @@ public enum Instruction : byte
     FRAMEDATALOAD = 0xb1,
     FRAMEDATACOPY = 0xb2,
     FRAMEPARAM = 0xb3,
-    SIGPARAM = 0xb4,
-    SIGDATACOPY = 0xb5,
+    HASCLAIM = 0xb4,
 
     // EIP-7906 transaction outcome assertions
     TXTRACE = 0xb6,

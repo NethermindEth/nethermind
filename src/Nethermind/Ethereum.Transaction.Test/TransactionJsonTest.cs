@@ -294,7 +294,7 @@ public class TransactionJsonTest : GeneralStateTestBase
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 50_000, 0, default),
                 new TxFrame(FrameMode.Sender, FrameFlags.None, Recipient, 50_000, TransferredValue, default),
             ],
-            FrameSignatures = [],
+            FrameClaims = [],
             DecodedMaxFeePerGas = 7,
         };
 

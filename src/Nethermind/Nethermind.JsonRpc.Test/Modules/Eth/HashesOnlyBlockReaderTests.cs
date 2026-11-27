@@ -645,7 +645,7 @@ public class HashesOnlyBlockReaderTests
             ChainId = BlockchainIds.Mainnet,
             SenderAddress = TestItem.AddressA,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, default, default)],
-            FrameSignatures = [],
+            FrameClaims = [],
         };
         transaction.Hash = transaction.CalculateHash();
         return transaction;

@@ -199,7 +199,8 @@ public class TransactionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(transaction.Frames, Is.Null, nameof(Transaction.Frames));
-            Assert.That(transaction.FrameSignatures, Is.Null, nameof(Transaction.FrameSignatures));
+            Assert.That(transaction.FrameClaims, Is.Null, nameof(Transaction.FrameClaims));
+            Assert.That(transaction.ClaimWitnesses, Is.Null, nameof(Transaction.ClaimWitnesses));
         }
     }
 
@@ -263,7 +264,8 @@ public class TransactionTests
         {
             Type = TxType.FrameTx,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 50_000, 0, default)],
-            FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[65])],
+            FrameClaims = [new TxFrameClaim(Eip8141Constants.Secp256k1VerifierAddress, default, default, 0, 0)],
+            ClaimWitnesses = [new byte[Eip8141Constants.Secp256k1WitnessLength]],
         };
         Transaction destination = new();
 
@@ -272,7 +274,8 @@ public class TransactionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(destination.Frames, Is.SameAs(source.Frames), nameof(Transaction.Frames));
-            Assert.That(destination.FrameSignatures, Is.SameAs(source.FrameSignatures), nameof(Transaction.FrameSignatures));
+            Assert.That(destination.FrameClaims, Is.SameAs(source.FrameClaims), nameof(Transaction.FrameClaims));
+            Assert.That(destination.ClaimWitnesses, Is.SameAs(source.ClaimWitnesses), nameof(Transaction.ClaimWitnesses));
         }
     }
 

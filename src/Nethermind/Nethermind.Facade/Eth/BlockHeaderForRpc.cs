@@ -51,6 +51,7 @@ public class BlockHeaderForRpc
             }
             if (spec.IsEip4788Enabled) ParentBeaconBlockRoot = header.ParentBeaconBlockRoot;
             if (spec.IsEip7843Enabled) SlotNumber = header.SlotNumber;
+            if (spec.IsEip8141Enabled) DependencyProofHash = header.DependencyProofHash;
         }
     }
 
@@ -113,6 +114,9 @@ public class BlockHeaderForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ulong? SlotNumber { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? DependencyProofHash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? BlockAccessListHash { get; set; }

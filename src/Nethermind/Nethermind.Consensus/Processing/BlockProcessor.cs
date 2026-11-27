@@ -234,7 +234,14 @@ public partial class BlockProcessor(
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
 
+        // EIP-8141: a block being validated hands its transactions their witnesses from the dependency proof; a block
+        // being produced builds the proof from its transactions' witnesses once they are chosen.
+        bool isProducing = _blockTransactionsExecutor is IBlockProductionTransactionsExecutor;
+        if (spec.IsEip8141Enabled && !isProducing && !options.ContainsFlag(ProcessingOptions.NoValidation)) FrameTxDependencyProof.AssignWitnesses(block);
+
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+
+        if (spec.IsEip8141Enabled && isProducing) FrameTxDependencyProof.Build(block);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below

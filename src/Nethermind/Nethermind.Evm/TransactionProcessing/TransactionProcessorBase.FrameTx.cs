@@ -15,6 +15,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Evm.TransactionProcessing;
@@ -160,14 +161,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
-        bool allowEmptySignatures = SkipSenderChecks || !ShouldValidate(opts);
+        // eth_call and the simulator may leave a witness out, as no signature exists yet; one they supply still verifies.
         ValueHash256? sigHash = null;
-        // EIP-7928: a tx that never takes the P256 branch never accesses the precompile, so no BAL entry.
-        IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
-        if (!FrameTxSignatureValidator.Validate(tx, ref sigHash, Ecdsa, p256Precompile, spec, out string? signatureError, allowEmptySignatures, skipVerification: SkipSenderChecks))
+        if (!VerifyFrameClaims(tx, ref sigHash, spec, allowPlaceholders: SkipSenderChecks || !ShouldValidate(opts), skipVerification: SkipSenderChecks, out string? claimError))
         {
             WorldState.Restore(txSnapshot);
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(claimError!);
         }
 
         TxFrame[] frames = tx.Frames!;
@@ -177,7 +176,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         // Fails only on a frame gas sum past 2^64 - 1, which IsWellFormed above already rejects; a larger budget saturates.
-        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit, estimateSignatureBytes: allowEmptySignatures))
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit))
         {
             WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
@@ -204,7 +203,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             sender,
             tx.Nonce,
             frames,
-            tx.FrameSignatures ?? [],
+            tx.FrameClaims ?? [],
             tx,
             sigHash,
             in maxCost,
@@ -765,21 +764,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         Address sender = tx.SenderAddress!;
         ValueHash256? sigHash = null;
-        if (!opts.HasFlag(ExecutionOptions.FrameSignaturesPreValidated))
+        if (!opts.HasFlag(ExecutionOptions.FrameClaimsPreVerified)
+            && !VerifyFrameClaims(tx, ref sigHash, spec, allowPlaceholders: false, skipVerification: false, out string? claimError))
         {
-            // As the main path does, so an unused P256 branch records no account access (EIP-7928).
-            IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
-            if (!FrameTxSignatureValidator.Validate(tx, ref sigHash, Ecdsa, p256Precompile, spec, out string? signatureError, allowEmptySignatures: false, skipVerification: false))
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
-            }
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(claimError!);
         }
 
-        // Signature-verification work counts against MAX_VERIFY_GAS.
-        foreach (TxFrameSignature signature in tx.FrameSignatures ?? [])
-        {
-            verifyGasUsed += FrameTxValidation.SignatureVerificationGas(signature.Scheme);
-        }
+        // Claim verification counts against MAX_VERIFY_GAS.
+        verifyGasUsed = FrameTxValidation.ClaimVerificationGas(tx);
         if (verifyGasUsed > maxVerifyGas)
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
@@ -794,7 +786,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
         frameContext = new FrameTxContext(
-            sender, tx.Nonce, tx.Frames!, tx.FrameSignatures ?? [], tx, sigHash,
+            sender, tx.Nonce, tx.Frames!, tx.FrameClaims ?? [], tx, sigHash,
             in maxCost, in tx.MaxPriorityFeePerGas,
             WorldState.GetNonce(sender),
             tx.NonceKeys);
@@ -977,11 +969,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>
-    /// EIP-8141 default code of a <c>VERIFY</c> frame whose target has no code: require a canonical-hash
-    /// SECP256K1 signature signed by the target, then APPROVE. The default code draws no execution gas of
+    /// EIP-8141 default code of a <c>VERIFY</c> frame whose target has no code: require empty frame data and a
+    /// canonical-hash SECP256K1 claim keyed to the target, then APPROVE. The default code draws no execution gas of
     /// its own beyond the frame's entry access charge, which is already accounted for.
-    /// The signature's cryptographic validity is already checked in pre-flight; default code checks
-    /// only the structural conditions the spec pins.
+    /// Every claim is verified in pre-flight, so default code only looks the claim up, as <c>HASCLAIM</c> would.
     /// </summary>
     /// <remarks>The approval runs the same guards and effects as the <c>APPROVE</c> opcode, so a default-code
     /// frame the approval context refuses fails exactly as an opcode approval would.</remarks>
@@ -1000,12 +991,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.Revert, isTracingInstructions);
         }
 
-        int sigIndex = (allowedScope & FrameFlags.ApproveExecution) != 0 ? 0 : 1;
-        TxFrameSignature[] signatures = frameContext.Signatures;
-        if (signatures.Length <= sigIndex
-            || signatures[sigIndex].Scheme != TxFrameSignature.SchemeSecp256k1
-            || !signatures[sigIndex].Msg.IsEmpty
-            || frameContext.ResolvedSigner(sigIndex) != resolvedTarget)
+        if (!frame.Data.IsEmpty
+            || !frameContext.HasClaim(Eip8141Constants.Secp256k1VerifierAddress, resolvedTarget.ToHash(), default))
         {
             return new TransactionSubstate(EvmExceptionType.Revert, isTracingInstructions);
         }
@@ -1040,6 +1027,113 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
     private static TransactionSubstate DefaultCodeSuccess() =>
         new(ReadOnlyMemory<byte>.Empty, refund: 0, destroyList: null, logs: null, shouldRevert: false);
+
+    /// <summary>Checks every claim of <paramref name="tx"/> against its segregated witness before any frame executes.</summary>
+    /// <remarks>A transaction without a witness list is not checked. Block validation assigns every frame transaction
+    /// its witnesses from the dependency proof, and the pool, and so block production, refuses one without them, so
+    /// only a replay of an already validated block or a call runs without.</remarks>
+    /// <param name="sigHash">The canonical signature hash when the caller has it; otherwise <see langword="null"/>,
+    /// set here only if a claim is over it.</param>
+    /// <param name="allowPlaceholders">Accepts an empty witness as a placeholder for a claim that is then not
+    /// checked; see <see cref="FrameTxClaimVerifier.CheckWitnesses"/>.</param>
+    /// <param name="skipVerification">Checks only the witnesses' shape: execution-apis#907 exempts signature checks
+    /// from eth_simulateV1.</param>
+    private bool VerifyFrameClaims(Transaction tx, ref ValueHash256? sigHash, IReleaseSpec spec, bool allowPlaceholders, bool skipVerification, out string? error)
+    {
+        error = null;
+        byte[][]? witnesses = tx.ClaimWitnesses;
+        if (witnesses is null) return true;
+        if (!FrameTxClaimVerifier.CheckWitnesses(tx, allowPlaceholders, out error)) return false;
+        if (skipVerification) return true;
+
+        TxFrameClaim[] claims = tx.FrameClaims ?? [];
+
+        Address sender = tx.SenderAddress!;
+        IPrecompile? p256Precompile = null;
+        for (int i = 0; i < claims.Length; i++)
+        {
+            TxFrameClaim claim = claims[i];
+            byte[] witness = witnesses[i];
+            // A placeholder: CheckWitnesses admits one only when placeholders are allowed.
+            if (witness.Length == 0 && claim.ResolvedWitnessLength != 0) continue;
+
+            ValueHash256 key = claim.ResolveKey(sender);
+            ValueHash256 msg = claim.ResolveMsg(claim.SignsCanonicalHash ? sigHash ??= FrameTxSigHash.ComputeValue(tx) : default);
+            bool verified = claim.IsProtocolVerifier
+                ? FrameTxClaimVerifier.VerifyProtocolClaim(claim.Verifier, in key, in msg, witness, Ecdsa,
+                    claim.Verifier == Eip8141Constants.P256VerifierAddress ? p256Precompile ??= _codeInfoRepository.GetPrecompile(FrameTxClaimVerifier.P256VerifyPrecompileAddress, spec) : null,
+                    _leanSphincsVerifier, spec, out error)
+                : ExecutePureVerifier(claim, in key, in msg, witness, spec);
+            if (!verified)
+            {
+                error ??= FrameTxClaimVerifier.InvalidClaim;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>EIP-8141 <c>execute_pure_verifier</c>: runs a custom verifier in the pure context.</summary>
+    /// <remarks>
+    /// The verifier is called with <c>resolved_key || resolved_msg || witness</c>, zero value and no state gas, under
+    /// <c>STATICCALL</c> restrictions tightened by the pure context the virtual machine enforces. Its EIP-2929 access set
+    /// is its own, with only the precompiles warm, and is discarded on exit, as is every state change, so neither the
+    /// payer's charge nor anything a frame observes depends on the witness. The claim holds if and only if the call
+    /// succeeds; the full <c>gas_limit</c> is charged through the intrinsic gas whatever the call uses.
+    /// </remarks>
+    private bool ExecutePureVerifier(TxFrameClaim claim, in ValueHash256 key, in ValueHash256 msg, byte[] witness, IReleaseSpec spec)
+    {
+        Address verifier = claim.Verifier;
+        bool isPrecompile = _codeInfoRepository.GetPrecompile(verifier, spec) is not null;
+        ulong entryExecution = spec.UseHotAndColdStorage
+            ? isPrecompile ? Eip8038Constants.WarmAccess : TGasPolicy.GetColdAccountAccessCost(spec)
+            : 0;
+        TGasPolicy gas = TGasPolicy.FromFrameLimits(claim.GasLimit, 0);
+        if (!TGasPolicy.TryConsume(ref gas, entryExecution)) return false;
+
+        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(verifier, followDelegation: false, spec, out Address? delegation);
+        // Only a precompile or a contract's own code can verify: an empty account, or an EIP-7702 delegation, halts.
+        if (!isPrecompile && (delegation is not null || codeInfo.IsEmpty)) return false;
+
+        byte[] input = new byte[2 * ValueHash256.MemorySize + witness.Length];
+        key.Bytes.CopyTo(input);
+        msg.Bytes.CopyTo(input.AsSpan(ValueHash256.MemorySize));
+        witness.CopyTo(input.AsSpan(2 * ValueHash256.MemorySize));
+        ReadOnlyMemory<byte> inputData = input;
+        if (EvmPooledMemory.IsSwizzled) inputData = SwizzledMemory.FromNatural(input);
+
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
+            codeInfo: codeInfo,
+            executingAccount: verifier,
+            caller: Eip8141Constants.EntryPointAddress,
+            codeSource: verifier,
+            callDepth: 0,
+            value: in UInt256.Zero,
+            inputData: in inputData);
+
+        Snapshot snapshot = WorldState.TakeSnapshot();
+        using StackAccessTracker accessTracker = new();
+        if (spec.UseHotAndColdStorage) accessTracker.WarmUp(verifier);
+
+        TxExecutionContext outerContext = VirtualMachine.TxExecutionContext;
+        VirtualMachine.SetTxExecutionContext(new TxExecutionContext(Eip8141Constants.EntryPointAddress, _codeInfoRepository, null, UInt256.Zero)
+        {
+            IsPureVerification = true
+        });
+
+        try
+        {
+            using VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gas, ExecutionType.STATICCALL, env, in accessTracker, in snapshot, isStatic: true);
+            TransactionSubstate substate = VirtualMachine.ExecuteTransaction(state, WorldState, NullTxTracer.Instance);
+            return !substate.IsError && !substate.ShouldRevert;
+        }
+        finally
+        {
+            WorldState.Restore(snapshot);
+            VirtualMachine.SetTxExecutionContext(in outerContext);
+        }
+    }
 }
 
 /// <summary>A point in the frame loop a later failure can unwind the transaction to.</summary>

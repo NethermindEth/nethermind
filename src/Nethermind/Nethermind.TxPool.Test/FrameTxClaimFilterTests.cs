@@ -6,7 +6,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -20,49 +19,52 @@ using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>The EIP-8141 <c>validate_signature</c> gate as the pool applies it: a frame transaction carries an
-/// explicit sender, so this is the only place a bad signature is caught before admission.</summary>
+/// <summary>The EIP-8141 claim gate as the pool applies it: a frame transaction carries an explicit sender, so this
+/// is the only place a bad witness is caught before admission.</summary>
 // The cases assert against the shared rejection counter.
 [NonParallelizable]
-internal class FrameTxSignatureFilterTests
+internal class FrameTxClaimFilterTests
 {
     private static readonly IEthereumEcdsa EthereumEcdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
 
-    private static IEnumerable<TestCaseData> SignatureCases()
+    private static IEnumerable<TestCaseData> ClaimCases()
     {
-        static TestCaseData Case(string name, Func<Transaction> build, string? expectedError) =>
-            new TestCaseData(build, expectedError).SetName($"Accept_{name}");
+        static TestCaseData Case(string name, Func<Transaction> build, string? expectedError, bool verified = true) =>
+            new TestCaseData(build, expectedError, verified).SetName($"Accept_{name}");
 
-        yield return Case("AnAbsentSignatureListPassesVacuously",
+        yield return Case("AnAbsentClaimListPassesVacuously",
             static () => FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas)), null);
 
-        yield return Case("ASignatureByTheSenderIsAdmissible",
+        yield return Case("AClaimByTheSenderIsAdmissible",
             static () => Signed(TestItem.PrivateKeyA, signer: null), null);
 
-        yield return Case("ASignatureNamingItsOwnSignerIsAdmissible",
+        yield return Case("AClaimNamingItsOwnKeyIsAdmissible",
             static () => Signed(TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address), null);
 
-        yield return Case("ASignatureOverAnExplicitDigestIsAdmissible",
+        yield return Case("AClaimOverAnExplicitDigestIsAdmissible",
             static () => SignedOverDigest(TestItem.PrivateKeyB), null);
 
-        yield return Case("ASignatureByAnotherKeyIsRejected",
+        yield return Case("AWitnessByAnotherKeyIsRejected",
             static () => Signed(TestItem.PrivateKeyB, signer: TestItem.PrivateKeyC.Address),
-            FrameTxSignatureValidator.InvalidSecp256k1Signer);
+            FrameTxClaimVerifier.InvalidClaim);
 
-        yield return Case("ASignatureOfTheWrongLengthIsRejected",
-            static () => FrameTx(TestItem.AddressA,
-                [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressA, default, new byte[64])],
-                SelfVerify(PrefixFrameGas)),
-            FrameTxSignatureValidator.InvalidSignatureLength);
+        yield return Case("AWitnessOfTheWrongLengthIsRejected", static () =>
+        {
+            Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Claim(TestItem.AddressA)], SelfVerify(PrefixFrameGas));
+            tx.ClaimWitnesses = [new byte[64]];
+            return tx;
+        }, FrameTxClaimVerifier.InvalidWitnessLength);
+
+        yield return Case("AClaimWithoutAWitnessIsRejected",
+            static () => FrameTx(TestItem.AddressA, [Secp256k1Claim(TestItem.AddressA)], SelfVerify(PrefixFrameGas)),
+            FrameTxClaimVerifier.MissingWitnesses);
 
         yield return Case("ALegacyRecoveryIdIsRejected", static () =>
         {
             Transaction tx = Signed(TestItem.PrivateKeyA, signer: null);
-            byte[] raw = tx.FrameSignatures![0].Signature.ToArray();
-            raw[0] += 27;
-            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, raw)];
+            tx.ClaimWitnesses![0][0] += 27;
             return tx;
-        }, FrameTxSignatureValidator.NonCanonicalSignature);
+        }, FrameTxClaimVerifier.InvalidClaim);
 
         // The signature hash covers the frame list, so the pool must refuse a payload edited after signing.
         yield return Case("AFrameEditedAfterSigningIsRejected", static () =>
@@ -70,18 +72,28 @@ internal class FrameTxSignatureFilterTests
             Transaction tx = Signed(TestItem.PrivateKeyA, signer: null);
             tx.Frames = [SelfVerify(PrefixFrameGas), Execution()];
             return tx;
-        }, FrameTxSignatureValidator.InvalidSecp256k1Signer);
+        }, FrameTxClaimVerifier.InvalidClaim);
 
-        // An ARBITRARY witness is verified by frame code, so the pool only checks its shape.
-        yield return Case("AnArbitraryWitnessIsLeftToFrameCode",
-            static () => FrameTx(TestItem.AddressA,
-                [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0xde, 0xad })],
-                SelfVerify(PrefixFrameGas)),
-            null);
+        // A custom verifier runs in the pure context against state, so the filter leaves it to the simulation.
+        yield return Case("ACustomVerifierClaimIsLeftToTheSimulation", static () =>
+        {
+            Transaction tx = FrameTx(TestItem.AddressA, [new TxFrameClaim(TestItem.AddressD, default, default, 1_000, 2)], SelfVerify(PrefixFrameGas));
+            tx.ClaimWitnesses = [[0xde, 0xad]];
+            return tx;
+        }, null, verified: false);
+
+        // The pool holds no leanSPHINCS verifier of its own, so the simulation verifies the claim.
+        yield return Case("ALeanSphincsClaimIsLeftToTheSimulation", static () =>
+        {
+            Transaction tx = FrameTx(TestItem.AddressA, [new TxFrameClaim(Eip8141Constants.LeanSphincsVerifierAddress, TestItem.KeccakA.BytesToArray(), default, 0, 0)],
+                SelfVerify(PrefixFrameGas));
+            tx.ClaimWitnesses = [new byte[Eip8141Constants.LeanSphincsSignatureSize]];
+            return tx;
+        }, null, verified: false);
     }
 
-    [TestCaseSource(nameof(SignatureCases))]
-    public void Accept_AppliesValidateSignatureBeforeAdmission(Func<Transaction> build, string? expectedError)
+    [TestCaseSource(nameof(ClaimCases))]
+    public void Accept_VerifiesTheClaimsBeforeAdmission(Func<Transaction> build, string? expectedError, bool expectedVerified)
     {
         Transaction tx = build();
         long before = Metrics.PendingTransactionsFrameTxSignatureInvalid;
@@ -96,7 +108,7 @@ internal class FrameTxSignatureFilterTests
                 Assert.That(result.ToString(), Does.Contain(expectedError));
             }
 
-            Assert.That(verified, Is.EqualTo(expectedError is null));
+            Assert.That(verified, Is.EqualTo(expectedError is null && expectedVerified));
             Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid,
                 Is.EqualTo(expectedError is null ? before : before + 1));
         }
@@ -120,10 +132,10 @@ internal class FrameTxSignatureFilterTests
     [TestCase(TxHandlingOptions.PersistentBroadcast, false, false, false)]
     public void Accept_DuringBlockWork_DefersOnlyAGossipedVerification(TxHandlingOptions options, bool carriesBlobs, bool refetchable, bool building)
     {
-        // Two signatures: the first verifying entry always runs, so only a later one can yield.
+        // Two claims: the first verification always runs, so only a later one can yield.
         Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
         if (carriesBlobs) tx.BlobVersionedHashes = [TestItem.KeccakA.BytesToArray()];
-        tx.FrameSignatures = [DigestSignature(TestItem.PrivateKeyB, 1), DigestSignature(TestItem.PrivateKeyC, 2)];
+        SetDigestClaims(tx, (TestItem.PrivateKeyB, 1), (TestItem.PrivateKeyC, 2));
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
         if (building) headInfo.IsBuildingBlock.Returns(true);
         else headInfo.IsProcessingBlock.Returns(true);
@@ -131,7 +143,7 @@ internal class FrameTxSignatureFilterTests
         long invalid = Metrics.PendingTransactionsFrameTxSignatureInvalid;
         long preempted = Metrics.FrameTxSignatureVerificationsPreempted;
 
-        FrameTxSignatureFilter filter = CreateFilter(headInfo);
+        FrameTxClaimFilter filter = CreateFilter(headInfo);
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         AcceptTxResult result = filter.Accept(tx, ref state, options);
@@ -139,7 +151,7 @@ internal class FrameTxSignatureFilterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted), result.ToString());
-            Assert.That(state.FrameSignaturesVerified, Is.EqualTo(!deferred));
+            Assert.That(state.FrameClaimsVerified, Is.EqualTo(!deferred));
             Assert.That(state.FrameValidationYielded, Is.EqualTo(refetchable));
             Assert.That(state.FrameValidationRan, Is.EqualTo(!deferred), "a yield is not charged to the sending peer's validation budget");
             Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid, Is.EqualTo(invalid), "a yield is not a verdict on the signature");
@@ -148,12 +160,12 @@ internal class FrameTxSignatureFilterTests
     }
 
     [Test]
-    public void Accept_DuringBlockWork_AdmitsASingleSignatureTransaction()
+    public void Accept_DuringBlockWork_AdmitsASingleClaimTransaction()
     {
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
         headInfo.IsProcessingBlock.Returns(true);
         headInfo.IsBuildingBlock.Returns(true);
-        FrameTxSignatureFilter filter = CreateFilter(headInfo);
+        FrameTxClaimFilter filter = CreateFilter(headInfo);
         Transaction tx = Signed(TestItem.PrivateKeyA, signer: null);
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
@@ -162,7 +174,7 @@ internal class FrameTxSignatureFilterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(state.FrameSignaturesVerified, Is.True);
+            Assert.That(state.FrameClaimsVerified, Is.True);
         }
     }
 
@@ -171,13 +183,10 @@ internal class FrameTxSignatureFilterTests
     {
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
         headInfo.IsProcessingBlock.Returns(true);
-        FrameTxSignatureFilter filter = CreateFilter(headInfo);
+        FrameTxClaimFilter filter = CreateFilter(headInfo);
         Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
-        tx.FrameSignatures =
-        [
-            DigestSignature(TestItem.PrivateKeyB, 1),
-            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, default, new byte[64]),
-        ];
+        SetDigestClaims(tx, (TestItem.PrivateKeyB, 1), (TestItem.PrivateKeyC, 2));
+        tx.ClaimWitnesses![1] = new byte[64];
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         long invalid = Metrics.PendingTransactionsFrameTxSignatureInvalid;
 
@@ -185,27 +194,27 @@ internal class FrameTxSignatureFilterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.ToString(), Does.Contain(FrameTxSignatureValidator.InvalidSignatureLength));
+            Assert.That(result.ToString(), Does.Contain(FrameTxClaimVerifier.InvalidWitnessLength));
             Assert.That(state.FrameValidationYielded, Is.False);
             Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid, Is.EqualTo(invalid + 1));
         }
     }
 
-    private static AcceptTxResult Accept(Transaction tx, out bool signaturesVerified)
+    private static AcceptTxResult Accept(Transaction tx, out bool claimsVerified)
     {
-        FrameTxSignatureFilter filter = CreateFilter();
+        FrameTxClaimFilter filter = CreateFilter();
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         AcceptTxResult result = filter.Accept(tx, ref state, TxHandlingOptions.None);
-        signaturesVerified = state.FrameSignaturesVerified;
+        claimsVerified = state.FrameClaimsVerified;
         return result;
     }
 
-    private static FrameTxSignatureFilter CreateFilter(IChainHeadInfoProvider? headInfo = null)
+    private static FrameTxClaimFilter CreateFilter(IChainHeadInfoProvider? headInfo = null)
     {
         IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
         specProvider.GetCurrentHeadSpec().Returns(Eip8141Prototype.Instance);
-        return new FrameTxSignatureFilter(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxSignatureFilterTests>(), headInfo);
+        return new FrameTxClaimFilter(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxClaimFilterTests>(), headInfo);
     }
 
     private static Transaction Signed(PrivateKey key, Address? signer)
@@ -217,12 +226,18 @@ internal class FrameTxSignatureFilterTests
 
     private static Transaction SignedOverDigest(PrivateKey key)
     {
-        byte[] digest = new byte[Hash256.Size];
-        digest[31] = 1;
         Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
-        // An explicit digest is signed as given, so the entry needs no canonical-hash round trip.
-        byte[] raw = Secp256k1SignatureBytes(new Ecdsa().Sign(key, new ValueHash256(digest)));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, digest, raw)];
+        SetDigestClaims(tx, (key, 1));
         return tx;
+    }
+
+    private static void SetDigestClaims(Transaction tx, params (PrivateKey Key, byte Fill)[] signers)
+    {
+        tx.FrameClaims = new TxFrameClaim[signers.Length];
+        tx.ClaimWitnesses = new byte[signers.Length][];
+        for (int i = 0; i < signers.Length; i++)
+        {
+            (tx.FrameClaims[i], tx.ClaimWitnesses[i]) = DigestClaim(signers[i].Key, signers[i].Fill);
+        }
     }
 }

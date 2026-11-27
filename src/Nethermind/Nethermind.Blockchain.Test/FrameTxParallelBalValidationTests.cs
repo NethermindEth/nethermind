@@ -100,7 +100,7 @@ public class FrameTxParallelBalValidationTests
             Nonce = 0,
             SenderAddress = Sender,
             Frames = [new TxFrame(FrameMode.Default, FrameFlags.None, Sender, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default)],
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,
         };

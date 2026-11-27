@@ -234,7 +234,7 @@ public class FrameTxVerifyDosMeasurement
             Nonce = 0,
             SenderAddress = Sender,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: (ulong)verifyGas, UInt256.Zero, default)],
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             MaxFee = 1.Ether,
         };

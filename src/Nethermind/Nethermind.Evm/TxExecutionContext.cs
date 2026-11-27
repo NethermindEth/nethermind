@@ -25,6 +25,9 @@ namespace Nethermind.Evm
         /// <summary>EIP-8279 block access list byte meter; <see langword="null"/> when the transaction is not metered.</summary>
         internal BalDataMeter? BalDataMeter { get; init; }
 
+        /// <summary>Whether the transaction is an EIP-8141 custom claim verifier running in the pure context.</summary>
+        internal bool IsPureVerification { get; init; }
+
         internal bool SuppressLogs { get; init; }
         internal bool MaterializeLogMemory { get; init; }
     }

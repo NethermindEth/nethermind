@@ -1285,7 +1285,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Type = TxType.FrameTx,
             SenderAddress = TestItem.AddressA,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, default, default)],
-            FrameSignatures = [],
+            FrameClaims = [],
         };
         frameTx.Hash = frameTx.CalculateHash();
         Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA)

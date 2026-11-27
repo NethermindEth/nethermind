@@ -40,17 +40,22 @@ public static class FrameTxValidation
         $"frame intrinsic and execution gas ({executionReservation}) exceeds the transaction gas cap of {gasLimitCap}";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
     public const string MultipleExpiryFrames = "at most one expiry verifier frame is allowed";
-    public const string InvalidSignatureScheme = "unknown signature scheme";
-    public const string ArbitrarySignatureWithSigner = "ARBITRARY signatures must not name a signer";
-    public const string InvalidMsgLength = "signature msg must be empty or a 32-byte digest";
-    public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
+    public const string TooManyClaims = "frame transaction must not carry more than 64 claims";
+    public const string InvalidClaimKey = "claim key must be empty or a non-zero 20-byte or 32-byte value";
+    public const string ClaimKeyNotAnAddress = "SECP256K1 and P256 claim keys must resolve to an address";
+    public const string InvalidMsgLength = "claim msg must be empty or a 32-byte digest";
+    public const string ZeroDigestMsg = "explicit claim msg must not be the zero digest";
+    public const string ProtocolClaimWithGasOrWitnessLength = "protocol verifier claims must have zero gas_limit and witness_len";
+    public const string CustomClaimWithoutGas = "custom verifier claims must have a non-zero gas_limit";
+    public const string ClaimWitnessTooLong = "custom verifier claim witness_len exceeds MAX_CLAIM_WITNESS_BYTES";
+    public const string ClaimGasOverflow = "total claim gas must not exceed 2^64 - 1";
     public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
     public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";
 
     /// <summary>
     /// Runs the EIP-8141 §Constraints checks a frame transaction can be judged on without state, over its frame
-    /// list, its signature entries and the fields the frame envelope adds.
+    /// list, its claims and the fields the frame envelope adds.
     /// </summary>
     /// <remarks>
     /// The decision is a pure function of <paramref name="transaction"/> and <paramref name="assertEnabled"/>: it
@@ -205,37 +210,31 @@ public static class FrameTxValidation
             totalFrameGas = accumulated;
         }
 
-        TxFrameSignature[]? signatures = transaction.FrameSignatures;
-        if (signatures is not null)
+        TxFrameClaim[]? claims = transaction.FrameClaims;
+        if (claims is not null)
         {
-            for (int i = 0; i < signatures.Length; i++)
+            if (claims.Length > Eip8141Constants.MaxClaims)
             {
-                TxFrameSignature signature = signatures[i];
+                error = TooManyClaims;
+                return false;
+            }
 
-                if (signature.Scheme > TxFrameSignature.SchemeP256)
+            ulong totalClaimGas = 0;
+            for (int i = 0; i < claims.Length; i++)
+            {
+                if (!IsWellFormedClaim(claims[i], out error))
                 {
-                    error = InvalidSignatureScheme;
                     return false;
                 }
 
-                if (signature.Scheme == TxFrameSignature.SchemeArbitrary && signature.Signer is not null)
+                ulong accumulated = totalClaimGas + claims[i].ResolvedGas;
+                if (accumulated < totalClaimGas)
                 {
-                    error = ArbitrarySignatureWithSigner;
+                    error = ClaimGasOverflow;
                     return false;
                 }
 
-                int msgLength = signature.Msg.Length;
-                if (msgLength != 0 && msgLength != 32)
-                {
-                    error = InvalidMsgLength;
-                    return false;
-                }
-
-                if (msgLength == 32 && signature.Msg.Span.IsZero())
-                {
-                    error = ZeroDigestMsg;
-                    return false;
-                }
+                totalClaimGas = accumulated;
             }
         }
 
@@ -248,14 +247,59 @@ public static class FrameTxValidation
             || (i > 0 && (frames[i - 1].Flags & FrameFlags.AtomicBatch) != 0);
     }
 
-    /// <summary>The gas charged for verifying a signature of the given EIP-8141 scheme.</summary>
-    public static ulong SignatureVerificationGas(byte scheme) => scheme switch
+    /// <summary>The per-claim checks of EIP-8141 § Constraints.</summary>
+    private static bool IsWellFormedClaim(TxFrameClaim claim, out string? error)
     {
-        TxFrameSignature.SchemeArbitrary => Eip8141Constants.ArbitraryVerificationGasCost,
-        TxFrameSignature.SchemeSecp256k1 => Eip8141Constants.Secp256k1VerificationGasCost,
-        TxFrameSignature.SchemeP256 => Eip8141Constants.P256VerificationGasCost,
-        _ => 0,
-    };
+        ReadOnlySpan<byte> key = claim.Key.Span;
+        if (key.Length is not (0 or Address.Size or 32) || (key.Length != 0 && key.IsZero()))
+        {
+            error = InvalidClaimKey;
+            return false;
+        }
+
+        bool isAddressScheme = claim.Verifier == Eip8141Constants.Secp256k1VerifierAddress
+                               || claim.Verifier == Eip8141Constants.P256VerifierAddress;
+        if (isAddressScheme && key.Length == 32 && !key[..(32 - Address.Size)].IsZero())
+        {
+            error = ClaimKeyNotAnAddress;
+            return false;
+        }
+
+        int msgLength = claim.Msg.Length;
+        if (msgLength != 0 && msgLength != 32)
+        {
+            error = InvalidMsgLength;
+            return false;
+        }
+
+        if (msgLength == 32 && claim.Msg.Span.IsZero())
+        {
+            error = ZeroDigestMsg;
+            return false;
+        }
+
+        if (claim.IsProtocolVerifier)
+        {
+            if (claim.GasLimit != 0 || claim.WitnessLength != 0)
+            {
+                error = ProtocolClaimWithGasOrWitnessLength;
+                return false;
+            }
+        }
+        else if (claim.GasLimit == 0)
+        {
+            error = CustomClaimWithoutGas;
+            return false;
+        }
+        else if (claim.WitnessLength > Eip8141Constants.MaxClaimWitnessBytes)
+        {
+            error = ClaimWitnessTooLong;
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
 
     /// <summary>The gas limits of <paramref name="frames"/>, saturating at <see cref="ulong.MaxValue"/>.</summary>
     /// <remarks>
@@ -282,7 +326,7 @@ public static class FrameTxValidation
 
     /// <summary>
     /// Upper bound on the public-mempool validation work of a frame transaction: its validation prefix's
-    /// execution limits (EIP-8141 <c>MAX_VERIFY_GAS</c>) plus signature verification, saturating at
+    /// execution limits (EIP-8141 <c>MAX_VERIFY_GAS</c>) plus claim verification, saturating at
     /// <see cref="ulong.MaxValue"/>. The prefix's <c>limits.state</c> is bounded separately by <c>MAX_VERIFY_STATE_GAS</c>.
     /// </summary>
     public static ulong ValidationWorkGas(Transaction transaction)
@@ -296,7 +340,7 @@ public static class FrameTxValidation
             total = total.SaturatingAdd(frames[i].ExecutionGasLimit);
         }
 
-        return total.SaturatingAdd(SignatureVerificationWorkGas(transaction));
+        return total.SaturatingAdd(ClaimVerificationGas(transaction));
     }
 
     /// <summary>
@@ -304,7 +348,7 @@ public static class FrameTxValidation
     /// which its width charge scales, saturating at <see cref="ulong.MaxValue"/>.
     /// </summary>
     /// <remarks>
-    /// The transaction's intrinsic gas, which prices its data, signature verification, EIP-8250 nonce key access and
+    /// The transaction's intrinsic gas, which prices its data, claim verification and witnesses, EIP-8250 nonce key access and
     /// EIP-8272 recent-root references, plus the validation prefix's declared execution limits through payment
     /// approval. Reading declared limits rather than a first simulation, it also covers
     /// a later revalidation that runs more work. Application execution past the prefix and the separately bounded state
@@ -317,27 +361,26 @@ public static class FrameTxValidation
             return ulong.MaxValue;
         }
 
-        ulong prefixExecutionGas = ValidationWorkGas(transaction) - SignatureVerificationWorkGas(transaction);
+        ulong prefixExecutionGas = ValidationWorkGas(transaction) - ClaimVerificationGas(transaction);
         return intrinsicGas.SaturatingAdd(prefixExecutionGas);
     }
 
     /// <summary>
-    /// The gas <c>validate_signature</c> spends verifying a frame transaction's signatures, saturating at
-    /// <see cref="ulong.MaxValue"/>. Scheme-weighted, so it reflects the elliptic-curve work each entry costs;
-    /// an ARBITRARY entry contributes only its cheap structural-check cost, its witness being verified by frame code.
+    /// EIP-8141 <c>claim_verification_cost</c>: the resolved verification gas of a frame transaction's claims,
+    /// saturating at <see cref="ulong.MaxValue"/>.
     /// </summary>
-    public static ulong SignatureVerificationWorkGas(Transaction transaction)
-        => SignatureVerificationWorkGas(transaction.FrameSignatures);
+    public static ulong ClaimVerificationGas(Transaction transaction)
+        => ClaimVerificationGas(transaction.FrameClaims);
 
-    /// <inheritdoc cref="SignatureVerificationWorkGas(Transaction)"/>
-    /// <remarks>Takes the entries directly, for a caller that holds them before a transaction exists —
+    /// <inheritdoc cref="ClaimVerificationGas(Transaction)"/>
+    /// <remarks>Takes the claims directly, for a caller that holds them before a transaction exists —
     /// the shape <see cref="TotalGasLimit"/> already has for frames.</remarks>
-    public static ulong SignatureVerificationWorkGas(TxFrameSignature[]? signatures)
+    public static ulong ClaimVerificationGas(TxFrameClaim[]? claims)
     {
         ulong total = 0;
-        foreach (TxFrameSignature signature in signatures ?? [])
+        foreach (TxFrameClaim claim in claims ?? [])
         {
-            total = total.SaturatingAdd(SignatureVerificationGas(signature.Scheme));
+            total = total.SaturatingAdd(claim.ResolvedGas);
         }
 
         return total;
@@ -687,7 +730,7 @@ public static class FrameTxValidation
     {
         gasPrice = UInt256.Zero;
         UInt256 maxFee = transaction.MaxFee;
-        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: HasEmptySignature(transaction))
+        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas)
             || UInt256.MultiplyOverflow((UInt256)transaction.GetBlobGas(), feePerBlobGas, out UInt256 blobFee)
             || !FrameTxFeeBudget.TryCalculate(in maxFee, in transaction.MaxPriorityFeePerGas, maxGas, in baseFee, in blobFee, out UInt256 requiredMaxFee, out UInt256 maxCost))
         {
@@ -698,17 +741,7 @@ public static class FrameTxValidation
         return true;
     }
 
-    private static bool HasEmptySignature(Transaction transaction)
-    {
-        foreach (TxFrameSignature signature in transaction.FrameSignatures ?? [])
-        {
-            if (signature.Signature.IsEmpty) return true;
-        }
-
-        return false;
-    }
-
-    private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes = false)
+    private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {
         intrinsicGas = 0;
         floorGas = 0;
@@ -746,33 +779,17 @@ public static class FrameTxValidation
             }
         }
 
-        ulong signatureVerificationCost = 0;
-        TxFrameSignature[]? signatures = transaction.FrameSignatures;
-        if (signatures is not null)
+        // Witnesses are priced as calldata whose bytes are all non-zero, by their resolved length, so the budget is
+        // fixed by the transaction body alone.
+        ulong claimVerificationCost = 0;
+        foreach (TxFrameClaim claim in transaction.FrameClaims ?? [])
         {
-            foreach (TxFrameSignature signature in signatures)
-            {
-                tokens += signature.Signer is null ? 0 : CountCalldataTokens(signature.Signer.Bytes, spec);
-                tokens += CountCalldataTokens(signature.Msg.Span, spec);
-                tokens += signature.SignsCanonicalHash
-                    ? (ulong)signature.Signature.Length * spec.GasCosts.TxDataNonZeroMultiplier
-                    : CountCalldataTokens(signature.Signature.Span, spec);
-                dataLength += (ulong)(signature.Signer is null ? 0 : Address.Size)
-                              + (ulong)signature.Msg.Length
-                              + (ulong)signature.Signature.Length;
-                if (estimateSignatureBytes && signature.Signature.IsEmpty)
-                {
-                    ulong length = signature.Scheme switch
-                    {
-                        TxFrameSignature.SchemeSecp256k1 => TxFrameSignature.Secp256k1SignatureLength,
-                        TxFrameSignature.SchemeP256 => TxFrameSignature.P256SignatureLength,
-                        _ => 0,
-                    };
-                    tokens += length * spec.GasCosts.TxDataNonZeroMultiplier;
-                    dataLength += length;
-                }
-                signatureVerificationCost += SignatureVerificationGas(signature.Scheme);
-            }
+            tokens += CountCalldataTokens(claim.Verifier.Bytes, spec)
+                      + CountCalldataTokens(claim.Key.Span, spec)
+                      + CountCalldataTokens(claim.Msg.Span, spec)
+                      + claim.ResolvedWitnessLength * spec.GasCosts.TxDataNonZeroMultiplier;
+            dataLength += (ulong)Address.Size + (ulong)claim.Key.Length + (ulong)claim.Msg.Length + claim.ResolvedWitnessLength;
+            claimVerificationCost = claimVerificationCost.SaturatingAdd(claim.ResolvedGas);
         }
 
         ulong keyedNonceAccessCost = 0;
@@ -784,14 +801,13 @@ public static class FrameTxValidation
             keyedNonceAccessCost = (ulong)nonceKeys.Length * Eip8250Constants.KeyedNonceAccessCost;
         }
 
-        ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
-                             + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
-                             + signatureVerificationCost
-                             + valueTransferCost
-                             + keyedNonceAccessCost;
+        ulong mandatoryGas = ((ulong)Eip8141Constants.IntrinsicGasCost
+                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
+                              + valueTransferCost
+                              + keyedNonceAccessCost).SaturatingAdd(claimVerificationCost);
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
-        floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
-        intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
+        floorGas = spec.IsEip7623Enabled ? mandatoryGas.SaturatingAdd(floorTokens * spec.GasCosts.TotalCostFloorPerToken) : 0;
+        intrinsicGas = mandatoryGas.SaturatingAdd(tokens * GasCostOf.TxDataZero);
 
         ulong standardGas = intrinsicGas.SaturatingAdd(totalFrameGas);
         ulong floorReservation = floorGas.SaturatingAdd(totalStateGas);
@@ -800,33 +816,14 @@ public static class FrameTxValidation
         return true;
     }
 
-    /// <inheritdoc cref="TryCalculateGasBudget(Transaction, IReleaseSpec, out ulong, out ulong, out ulong)"/>
-    /// <param name="estimateSignatureBytes">Prices each empty SECP256K1 or P256 signature at its full length, as the
-    /// signed transaction will carry it; for simulation, which accepts such placeholders. Such a budget is not memoized.</param>
-    public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes) =>
-        estimateSignatureBytes
-            ? CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas, estimateSignatureBytes: true)
-            : TryCalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas);
-
     /// <summary>Calculates the maximum execution and state gas a frame transaction can add to a block.</summary>
     public static bool TryCalculateBlockGasReservations(
         Transaction transaction,
         IReleaseSpec spec,
         out ulong executionReservation,
-        out ulong stateReservation) =>
-        TryCalculateBlockGasReservations(transaction, spec, out executionReservation, out stateReservation, estimateSignatureBytes: false);
-
-    /// <inheritdoc cref="TryCalculateBlockGasReservations(Transaction, IReleaseSpec, out ulong, out ulong)"/>
-    /// <param name="estimateSignatureBytes">Prices each empty SECP256K1 or P256 signature at its full length, as in
-    /// <see cref="TryCalculateGasBudget(Transaction, IReleaseSpec, out ulong, out ulong, out ulong, bool)"/>.</param>
-    public static bool TryCalculateBlockGasReservations(
-        Transaction transaction,
-        IReleaseSpec spec,
-        out ulong executionReservation,
-        out ulong stateReservation,
-        bool estimateSignatureBytes)
+        out ulong stateReservation)
     {
-        bool priced = CalculateBlockGasReservations(transaction, spec, out UInt128 execution, out stateReservation, estimateSignatureBytes);
+        bool priced = CalculateBlockGasReservations(transaction, spec, out UInt128 execution, out stateReservation);
         executionReservation = (ulong)UInt128.Min(execution, ulong.MaxValue);
         return priced;
     }
@@ -837,18 +834,17 @@ public static class FrameTxValidation
     /// <returns><c>false</c>, with 0, where <see cref="TryCalculateBlockGasReservations(Transaction, IReleaseSpec, out ulong, out ulong)"/>
     /// returns <c>false</c>.</returns>
     public static bool TryCalculateExecutionReservation(Transaction transaction, IReleaseSpec spec, out UInt128 executionReservation) =>
-        CalculateBlockGasReservations(transaction, spec, out executionReservation, out _, estimateSignatureBytes: false);
+        CalculateBlockGasReservations(transaction, spec, out executionReservation, out _);
 
     private static bool CalculateBlockGasReservations(
         Transaction transaction,
         IReleaseSpec spec,
         out UInt128 executionReservation,
-        out ulong stateReservation,
-        bool estimateSignatureBytes)
+        out ulong stateReservation)
     {
         executionReservation = 0;
         stateReservation = 0;
-        if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _, estimateSignatureBytes))
+        if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _))
         {
             return false;
         }

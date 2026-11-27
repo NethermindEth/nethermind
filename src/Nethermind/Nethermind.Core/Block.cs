@@ -48,11 +48,11 @@ public class Block
     )
     { }
 
-    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { DependencyProof = DependencyProof };
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList);
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { DependencyProof = DependencyProof };
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList);
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { DependencyProof = DependencyProof };
 
     public BlockHeader Header { get; }
 
@@ -135,6 +135,11 @@ public class Block
 
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }
+
+    /// <summary>The EIP-8141 <c>dependency_proof</c>: <c>null</c> when not available, empty for a block without dependencies.</summary>
+    /// <remarks>Neither header nor body: the header commits to it by hash, and it travels on the Engine API execution payload.</remarks>
+    [JsonIgnore]
+    public byte[]? DependencyProof { get; set; }
 
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }

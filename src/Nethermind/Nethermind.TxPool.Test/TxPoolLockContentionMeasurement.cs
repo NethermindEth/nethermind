@@ -189,7 +189,7 @@ public class TxPoolLockContentionMeasurement
         public int Total { get; private set; }
 
         public FrameTxSimulationResult Simulate(
-            Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default, Func<bool>? preempt = null)
+            Transaction tx, bool claimsPreVerified = false, bool local = false, CancellationToken token = default, Func<bool>? preempt = null)
         {
             Calls++;
             Total++;
@@ -280,7 +280,7 @@ public class TxPoolLockContentionMeasurement
             SenderAddress = sender,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default)],
             NonceKeys = nonceKeys,
-            FrameSignatures = [],
+            FrameClaims = [],
             GasLimit = TxGasLimit,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei

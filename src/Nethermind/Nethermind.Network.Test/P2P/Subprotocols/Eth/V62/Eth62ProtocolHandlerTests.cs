@@ -940,7 +940,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 tx.Type = TxType.FrameTx;
                 tx.Frames = [];
-                tx.FrameSignatures = [];
+                tx.FrameClaims = [];
                 tx.Hash = tx.CalculateHash();
             }
 

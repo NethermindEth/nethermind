@@ -151,19 +151,23 @@ public class Eip8141ScenarioTests
         }
     }
 
-    // EIP-8141 § Gas Accounting: intrinsic + per-frame + per-scheme verification
+    // EIP-8141 § Gas Accounting: intrinsic + per-frame + claim verification + claim metadata and witnesses as calldata
     // + max(standard token cost + frame gas consumed, floor token cost).
     [Test]
     public void ChargedGas_MatchesSpecIntrinsicFormula()
     {
         DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
+        Address verifier = TestItem.AddressF;
+        DeployContract(verifier, Prepare.EvmCode.Op(Instruction.STOP).Done, 0);
 
+        const ulong claimGas = 5_000;
         byte[] frameData = [0x00, 0x00, 0x01, 0x02];
         byte[] witnessBytes = [0xAA, 0x00, 0xBB];
         Transaction tx = FrameTx(Sender, nonce: 0,
             SelfVerifyFrame(),
             new TxFrame(FrameMode.Sender, 0, Recipient, gasLimit: 200_000, UInt256.Zero, frameData));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, witnessBytes)];
+        tx.FrameClaims = [new TxFrameClaim(verifier, default, default, claimGas, (ulong)witnessBytes.Length)];
+        tx.ClaimWitnesses = [witnessBytes];
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
@@ -179,11 +183,12 @@ public class Eip8141ScenarioTests
         }
 
         ulong frameGasUsed = FrameGasUsed(receipt);
-        ulong tokens = CalldataTokens(frameData) + (ulong)witnessBytes.Length * 4;
-        ulong floorTokens = (ulong)(frameData.Length + witnessBytes.Length) * 4;
+        // Witness bytes are priced as non-zero calldata whatever their value.
+        ulong tokens = CalldataTokens(frameData) + CalldataTokens(verifier.Bytes.ToArray()) + (ulong)witnessBytes.Length * 4;
+        ulong floorTokens = (ulong)(frameData.Length + Address.Size + witnessBytes.Length) * 4;
         ulong expected = (ulong)Eip8141Constants.IntrinsicGasCost
                          + 2 * 475UL
-                         + 100 // ARBITRARY signature verification cost
+                         + claimGas // charged in full, whatever the verifier used
                          + Math.Max(tokens * 4 + frameGasUsed, floorTokens * 16); // EIP-7976 floor rate
         using (Assert.EnterMultipleScope())
         {
@@ -1078,7 +1083,7 @@ public class Eip8141ScenarioTests
             Nonce = nonce,
             SenderAddress = sender,
             Frames = frames,
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             MaxFee = 1.Ether,
         };

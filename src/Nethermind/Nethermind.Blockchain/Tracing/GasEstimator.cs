@@ -221,8 +221,8 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
         if (tx.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
             return GasEstimation.Failure(FrameTxValidation.MissingFrames);
 
-        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true)
-            || !FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation, estimateSignatureBytes: true))
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas)
+            || !FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation))
             return GasEstimation.Failure(FrameTxGasLimitOverflows);
 
         if (gasCap != 0 && maxGas > gasCap)

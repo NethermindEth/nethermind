@@ -96,6 +96,10 @@ public class BlockHeader
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
     public ulong? SlotNumber { get; set; }
+
+    /// <summary>EIP-8141 <c>dependency_proof_hash</c>: the Keccak-256 of the block's dependency proof.</summary>
+    public Hash256? DependencyProofHash { get; set; }
+
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
@@ -150,6 +154,10 @@ public class BlockHeader
         if (SlotNumber is not null)
         {
             builder.AppendLine($"{indent}SlotNumber: {SlotNumber}");
+        }
+        if (DependencyProofHash is not null)
+        {
+            builder.AppendLine($"{indent}DependencyProofHash: {DependencyProofHash}");
         }
 
         return builder.ToString();
@@ -235,6 +243,7 @@ public class BlockHeader
         dst.IsPostMerge = IsPostMerge;
         dst.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         dst.SlotNumber = SlotNumber;
+        dst.DependencyProofHash = DependencyProofHash;
         dst.BlockAccessListHash = BlockAccessListHash;
         dst.BlobGasUsed = BlobGasUsed;
         dst.ExcessBlobGas = ExcessBlobGas;

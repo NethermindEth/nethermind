@@ -356,7 +356,7 @@ public class FrameTxBlockProductionTests
             Nonce = 0,
             SenderAddress = sender,
             Frames = frames,
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             DecodedMaxFeePerGas = 1,
         };

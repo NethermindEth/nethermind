@@ -765,7 +765,7 @@ public class FrameTxPayerExposureFilterTests
         Type = TxType.FrameTx,
         SenderAddress = TestItem.AddressA,
         Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, default)],
-        FrameSignatures = [],
+        FrameClaims = [],
         PayerAddress = payer ?? Payer,
     };
 

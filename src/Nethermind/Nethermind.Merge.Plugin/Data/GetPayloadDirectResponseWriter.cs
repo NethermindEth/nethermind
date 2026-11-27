@@ -135,6 +135,11 @@ internal static class GetPayloadDirectResponseWriter
             WriteBlockAccessList(writer, block);
             writer.Write(",\"slotNumber\":"u8);
             WriteNullableUlongHexString(writer, block.SlotNumber);
+            if (block.DependencyProof is { } dependencyProof)
+            {
+                writer.Write(",\"dependencyProof\":"u8);
+                HexWriter.WriteHexString(writer, dependencyProof, chunked: dependencyProof.Length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
+            }
         }
 
         writer.Write("}"u8);

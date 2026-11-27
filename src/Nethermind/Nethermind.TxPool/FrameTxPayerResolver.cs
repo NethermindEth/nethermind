@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.TxPool;
 
 /// <summary>Resolves the fee-payer of an EIP-8141 frame transaction from account state alone, without running any code.</summary>
-/// <remarks>A <see cref="FrameTxPayerOutcome.Resolved"/> payer is only trustworthy once <see cref="Filters.FrameTxSignatureFilter"/> has run; everything unrecognised defers to simulation.</remarks>
+/// <remarks>A <see cref="FrameTxPayerOutcome.Resolved"/> payer is only trustworthy once <see cref="Filters.FrameTxClaimFilter"/> has run; everything unrecognised defers to simulation.</remarks>
 internal static class FrameTxPayerResolver
 {
     /// <param name="senderAccount">The sender's chain-head account, already fetched by the caller.</param>
@@ -19,8 +20,6 @@ internal static class FrameTxPayerResolver
         {
             return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
-
-        TxFrameSignature[] signatures = tx.FrameSignatures ?? [];
 
         // A never-seen account is the zeroed struct whose code hash isn't empty-keccak, so HasCode
         // would wrongly report code on it.
@@ -59,8 +58,8 @@ internal static class FrameTxPayerResolver
                 return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
             }
 
-            // A non-matching signature shape is not proof of invalidity, so defer rather than drop.
-            return DefaultCodeApproves(signatures, sender)
+            // A non-matching claim shape is not proof of invalidity, so defer rather than drop.
+            return DefaultCodeApproves(verifyFrame, tx.FrameClaims ?? [], sender)
                 ? new FrameTxPayerResolution(FrameTxPayerOutcome.Resolved, sender)
                 : Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
@@ -135,19 +134,28 @@ internal static class FrameTxPayerResolver
         return worstCase <= verifyFrame.StateGasLimit;
     }
 
-    /// <summary>Structural check that index-0 is a canonical-hash (empty <c>msg</c>) secp256k1 signature by the sender.</summary>
+    /// <summary>Structural check that the default code would approve: empty frame data and a canonical-hash (empty
+    /// <c>msg</c>) SECP256K1 claim keyed to the sender.</summary>
     /// <remarks>Cryptographic verification is a separate upstream gate.</remarks>
-    private static bool DefaultCodeApproves(TxFrameSignature[] signatures, Address sender)
+    private static bool DefaultCodeApproves(TxFrame verifyFrame, TxFrameClaim[] claims, Address sender)
     {
-        if (signatures.Length == 0)
+        if (!verifyFrame.Data.IsEmpty)
         {
             return false;
         }
 
-        TxFrameSignature signature = signatures[0];
-        return signature.Scheme == TxFrameSignature.SchemeSecp256k1
-               && signature.Msg.IsEmpty
-               && (signature.Signer ?? sender) == sender;
+        ValueHash256 senderKey = sender.ToHash();
+        foreach (TxFrameClaim claim in claims)
+        {
+            if (claim.Verifier == Eip8141Constants.Secp256k1VerifierAddress
+                && claim.SignsCanonicalHash
+                && claim.ResolveKey(sender) == senderKey)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool HasFollowingPaymentFrame(TxFrame[] frames, int verifyIndex)

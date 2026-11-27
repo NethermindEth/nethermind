@@ -45,6 +45,49 @@ public class ExecutionPayloadV4Tests
         Assert.That(result.Error, Does.Not.Contain(Environment.NewLine));
     }
 
+    [Test]
+    public void TryGetBlock_commits_the_header_to_the_dependency_proof_and_Create_carries_it_back([Values] bool empty)
+    {
+        byte[] proof = empty ? [] : [Eip8141Constants.DependencyProofVersionRaw, 0xc1, 0x01];
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(Build.A.BlockAccessList.TestObject),
+            SlotNumber = 0,
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            DependencyProof = proof,
+        };
+
+        Block block = payload.TryGetBlock().Data!;
+        ExecutionPayloadV4 roundTripped = ExecutionPayloadV4.Create(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.DependencyProofHash, Is.EqualTo(Keccak.Compute(proof)));
+            Assert.That(block.DependencyProof, Is.SameAs(proof));
+            Assert.That(roundTripped.DependencyProof, Is.EqualTo(proof));
+        }
+    }
+
+    [Test]
+    public void TryGetBlock_refuses_a_dependency_proof_past_its_maximum()
+    {
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(Build.A.BlockAccessList.TestObject),
+            SlotNumber = 0,
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            DependencyProof = new byte[Eip8141Constants.MaxDependencyProofBytes + 1],
+        };
+
+        Assert.That(payload.TryGetBlock().Error, Does.Contain("MAX_DEPENDENCY_PROOF_BYTES"));
+    }
+
     [TestCase(5UL, false)]
     [TestCase(6UL, true)]
     public void TryGetBlock_checks_the_block_access_list_item_limit_before_decoding(ulong itemLimit, bool decoded)

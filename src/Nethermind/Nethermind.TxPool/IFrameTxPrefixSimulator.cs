@@ -17,8 +17,8 @@ public interface IFrameTxPrefixSimulator
     /// <remarks>Serialized node-wide and bounded by a per-simulation timeout, a cumulative per-head budget and
     /// <c>MAX_VERIFY_GAS</c>; the result says which of those, if any, ended it.</remarks>
     /// <param name="tx">The frame transaction to simulate. Any other type is rejected rather than executed.</param>
-    /// <param name="signaturesPreValidated">Assert only if this exact transaction has already passed
-    /// <c>validate_signature</c> at chain head; the simulation then trusts its signatures. The two sides read
+    /// <param name="claimsPreVerified">Assert only if every claim of this exact transaction has already verified
+    /// at chain head; the simulation then trusts them. The two sides read
     /// the head separately, so a head change between them can only mis-admit, never mis-reject.</param>
     /// <param name="local">Exempt from the per-head budget that rations simulation between gossiping peers,
     /// and the only caller that waits for a busy simulator rather than shedding, since it runs on the RPC
@@ -28,7 +28,7 @@ public interface IFrameTxPrefixSimulator
     /// to the serialized processing env; a busy simulator sheds immediately rather than waiting for it.</param>
     /// <param name="preempt">Checked at entry and polled with <paramref name="token"/>; once it returns true the
     /// simulation does not start or stops, and the result is a node-bound rejection.</param>
-    FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default, Func<bool>? preempt = null);
+    FrameTxSimulationResult Simulate(Transaction tx, bool claimsPreVerified = false, bool local = false, CancellationToken token = default, Func<bool>? preempt = null);
 
     /// <summary>Whether the current head's gossip simulation budget is already spent, read without the lock.</summary>
     /// <remarks>Advisory: lets admission defer before work the simulation would waste. <see cref="Simulate"/> stays

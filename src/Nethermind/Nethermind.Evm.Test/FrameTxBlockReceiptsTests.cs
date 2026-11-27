@@ -157,7 +157,7 @@ public class FrameTxBlockReceiptsTests
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 200_000, UInt256.Zero, default),
                 new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
             ],
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             MaxFee = 1.Ether,
         };
@@ -305,7 +305,7 @@ public class FrameTxBlockReceiptsTests
                 new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
                 new TxFrame(FrameMode.Assert, 0, Asserter, 200_000, UInt256.Zero, default),
             ],
-            FrameSignatures = [],
+            FrameClaims = [],
             GasPrice = 1,
             MaxFee = 1.Ether,
         };

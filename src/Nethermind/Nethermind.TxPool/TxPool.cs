@@ -366,7 +366,7 @@ namespace Nethermind.TxPool
                 new FrameTxMisplacedRecentRootFrameFilter(_logger, txPoolConfig.BlobsSupport.IsPersistentStorage()),
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new FrameTxVerifyGasFilter(txPoolConfig, _logger), // after MalformedTxFilter: reads gas limits from an already well-formed frame list
-                new FrameTxPayerlessFilter(_logger), // before FrameTxSignatureFilter: structural prefix verdicts need no signature work
+                new FrameTxPayerlessFilter(_logger), // before FrameTxClaimFilter: structural prefix verdicts need no signature work
                 new FrameTxVerifyAfterPrefixFilter(_logger), // after MalformedTxFilter: matches the prefix grammar against an already recovered sender
 
                 new TxTypeTxFilter(_transactions,
@@ -380,8 +380,8 @@ namespace Nethermind.TxPool
                 new UnderpricedReplacementFilter(_transactions, _blobTransactions), // before the filters that recover signatures
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
-                new FrameTxSimulationBudgetFilter(frameTxPrefixSimulator, _logger), // before FrameTxSignatureFilter: no recoveries for a transaction the spent budget will defer anyway
-                new FrameTxSignatureFilter(_specProvider, ecdsa, _logger, _headInfo), // last: elliptic-curve work per signature, up to what FrameTxVerifyGasFilter allows, so let the cheap filters reject first
+                new FrameTxSimulationBudgetFilter(frameTxPrefixSimulator, _logger), // before FrameTxClaimFilter: no recoveries for a transaction the spent budget will defer anyway
+                new FrameTxClaimFilter(_specProvider, ecdsa, _logger, _headInfo), // last: elliptic-curve work per signature, up to what FrameTxVerifyGasFilter allows, so let the cheap filters reject first
             ];
 
             if (incomingTxFilters is not null)
@@ -1604,7 +1604,7 @@ namespace Nethermind.TxPool
                     bool senderPaid = false;
                     try
                     {
-                        simulated = _frameTxPrefixSimulator.Simulate(tx, signaturesPreValidated: true, token: _cts.Token);
+                        simulated = _frameTxPrefixSimulator.Simulate(tx, claimsPreVerified: true, token: _cts.Token);
                         senderPaid = !simulated.NodeBound && _senderWidth.TrySpend(tx.SenderAddress!, widthCharge);
                     }
                     finally
