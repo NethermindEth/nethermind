@@ -221,6 +221,27 @@ public class KBucketTreeTests
     }
 
     [Test]
+    public void Same_subnet_node_landing_in_empty_child_after_split_is_admitted()
+    {
+        SubnetLimiter limiter = new(bucketLimit: 2, tableLimit: 10);
+        KBucketTree<int, int> tree = CreateTree(k: 2, beta: 32, limiter: limiter);
+
+        Assert.That(Add(tree, SecondBit, 100), Is.EqualTo(BucketAddResult.Added));
+        Assert.That(Add(tree, SecondBit | 1, 101), Is.EqualTo(BucketAddResult.Added));
+
+        // The root is full, so this insert splits it; the node lands in the empty right child,
+        // which holds no same-subnet nodes even though the pre-split leaf was saturated.
+        Assert.That(Add(tree, HighBit, 102), Is.EqualTo(BucketAddResult.Added));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.TryGet(HighBit, out _), Is.True);
+            Assert.That(limiter.CountFor(1), Is.EqualTo(3));
+        }
+        AssertCountsMatchActiveEntries(tree, limiter);
+    }
+
+    [Test]
     public void Rejected_refresh_does_not_evict_the_incumbent()
     {
         SubnetLimiter limiter = new(bucketLimit: 2, tableLimit: 10);
