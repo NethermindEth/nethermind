@@ -164,6 +164,8 @@ public class NativeProofWrapperBroadcasterTests
         source.Chain.Container.Resolve<LeanProofStore>().AddVerified(
             [NativeLeanProofVerifierTests.Dependency("sphincs"), NativeLeanProofVerifierTests.Dependency("stark")], null, proof);
         Assert.That(source.Chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        // The source proves every bucket, so its one transaction's bucket is never left undrawn.
+        source.Chain.Container.Resolve<ITxPoolConfig>().AggregationProbability = 1;
         await using ProofWrapperProducer producer = source.Chain.Container.Resolve<ProofWrapperProducer>();
         producer.Start();
 

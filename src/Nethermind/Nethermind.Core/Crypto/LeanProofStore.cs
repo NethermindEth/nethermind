@@ -757,6 +757,37 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         }
     }
 
+    /// <summary>The verified recursive proof proving every dependency in <paramref name="dependencies"/> that proves the most
+    /// dependencies outside <paramref name="covered"/>, or <c>null</c> when none proves them all.</summary>
+    /// <remarks>A block builder takes it so one aggregate stands for as much of a hash-prefix bucket as possible. Only records
+    /// proving the first dependency and the bounded generated cache are examined, as in <see cref="SmallestProving"/>.</remarks>
+    public RecursiveProofInput? WidestProving(IReadOnlyList<FrameDependency> dependencies, IReadOnlySet<FrameDependency> covered)
+    {
+        if (dependencies.Count == 0) return null;
+        HashSet<FrameDependency> wanted = [.. dependencies];
+        ProofRecord? best = null;
+        int bestNew = -1;
+        lock (_lock)
+        {
+            if (_holders.TryGetValue(dependencies[0], out List<ProofRecord>? holders))
+                foreach (ProofRecord record in holders) Consider(record);
+            foreach (ProofRecord record in _recursiveCache) Consider(record);
+        }
+        return best?.RecursiveInput;
+
+        void Consider(ProofRecord record)
+        {
+            if (record.RecursiveProof is null || _staged.ContainsKey(record) || record.Dependencies.Length <= bestNew
+                || !wanted.IsSubsetOf(record.Dependencies)) return;
+            int added = 0;
+            foreach (FrameDependency dependency in record.Dependencies)
+                if (!covered.Contains(dependency)) added++;
+            if (added <= bestNew) return;
+            best = record;
+            bestNew = added;
+        }
+    }
+
     /// <summary>The stored recursive proof of <paramref name="dependency"/> proving the most of <paramref name="required"/> not yet
     /// <paramref name="covered"/>, the one with the shorter dependency list on a tie, else <paramref name="covering"/>.</summary>
     /// <remarks>Greedy set cover: each recursive input costs about one in-circuit recursive verification whatever its size, while

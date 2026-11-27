@@ -126,10 +126,12 @@ internal static class DependencyProofPlanner
         private readonly (Address?, UInt256)[] _domains;
         private readonly bool[] _obligated;
         private readonly HashSet<(Address?, UInt256)> _blocked = [];
+        private readonly int[] _buckets;
 
         public IncludableTransactions(Block block)
         {
             Transaction[] transactions = block.Transactions;
+            _buckets = new int[transactions.Length];
             _dependencies = new List<FrameDependency>[transactions.Length];
             _domains = new (Address?, UInt256)[transactions.Length];
             _obligated = new bool[transactions.Length];
@@ -141,6 +143,7 @@ internal static class DependencyProofPlanner
                 _obligated[i] = transactions[i].Hash is { } hash && listed.Contains(hash);
                 _dependencies[i] = Eip8288Dependencies.ForTransaction(transactions[i], FrameTxSigHash.ComputeValue);
                 _domains[i] = (transactions[i].SenderAddress, transactions[i].NonceKeys is { Length: > 0 } keys ? keys[0] : UInt256.Zero);
+                _buckets[i] = transactions[i].Hash is { } bucketed ? ProofWrapperService.BucketOf(bucketed) : 0;
             }
         }
 
@@ -269,6 +272,67 @@ internal static class DependencyProofPlanner
                 foreach (FrameDependency dependency in _dependencies[i])
                     if (!kept[i] || uses[dependency] > 1) needed.Add(dependency);
             return needed;
+        }
+
+        /// <summary>The dependencies a deadline rebuild keeps: for each hash-prefix bucket the held proven statement keeping the most
+        /// of its transactions, then further held statements keeping the most of the rest, up to
+        /// <see cref="Eip8288Constants.MaxRecursiveInputsPerStep"/> statements in all.</summary>
+        /// <remarks>Mempool aggregation proves one aggregate per bucket, so a statement per bucket replaces the single proven
+        /// statement a rebuild otherwise keeps, and spare inputs of the merge step take individual held proofs. Only held proofs
+        /// are merged at the deadline; transactions with fresh witnesses alone are left to the scheduled statement.</remarks>
+        /// <param name="proven">The held proven statements within the body's dependencies.</param>
+        /// <returns>The limit and the number of transactions it keeps.</returns>
+        public (HashSet<FrameDependency> Limit, int Kept) ChooseBucketLimit(List<FrameDependency[]> proven)
+        {
+            List<HashSet<FrameDependency>> sets = new(proven.Count);
+            foreach (FrameDependency[] statement in proven) sets.Add([.. statement]);
+            HashSet<FrameDependency> limit = [];
+            int chosen = 0;
+            bool[] taken = new bool[sets.Count];
+            // Per bucket first, obligated inclusion-list transactions ahead as in ChooseProvenLimit; then the most kept overall.
+            for (int bucket = 0; bucket <= ProofWrapperService.BucketCount && chosen < Eip8288Constants.MaxRecursiveInputsPerStep; bucket++)
+            {
+                int best = -1;
+                (int Listed, int Kept) bestKept = default;
+                for (int s = 0; s < sets.Count; s++)
+                {
+                    if (taken[s]) continue;
+                    (int Listed, int Kept) kept = default;
+                    for (int i = 0; i < _dependencies.Length; i++)
+                        if ((bucket == ProofWrapperService.BucketCount || _buckets[i] == bucket) && _dependencies[i].Count != 0
+                            && !limit.IsSupersetOf(_dependencies[i]) && sets[s].IsSupersetOf(_dependencies[i]))
+                            kept = (kept.Listed + (_obligated[i] ? 1 : 0), kept.Kept + 1);
+                    if (kept.Kept != 0 && kept.CompareTo(bestKept) > 0) (best, bestKept) = (s, kept);
+                }
+                if (best < 0) continue;
+                taken[best] = true;
+                limit.UnionWith(sets[best]);
+                chosen++;
+                // The last pass, over every bucket, repeats until the step's inputs are spent or nothing more is kept.
+                if (bucket == ProofWrapperService.BucketCount) bucket--;
+            }
+            return (limit, Keep(limit, []));
+        }
+    }
+
+    /// <summary>Estimated cost (<see cref="DependencyProofAggregator.EstimatedCost"/>) a deadline rebuild may prove before its
+    /// deadline: merging one recursive input per hash-prefix bucket with one direct leaf of signatures.</summary>
+    internal const long MaxDeadlineMergeCost = Eip8288Constants.MaxRecursiveInputsPerStep * DependencyProofAggregator.MergeCost
+        + DependencyProofAggregator.DirectBatchSize * DependencyProofAggregator.SignatureCost;
+
+    /// <summary>Whether a deadline rebuild's body is proven now: it is limited to held statements, and merging its inputs stays
+    /// within <see cref="MaxDeadlineMergeCost"/>.</summary>
+    internal static bool MergesBeforeDeadline(BlockToProduce producing, List<FrameDependency> deps)
+    {
+        if (producing.LeanProduction.DependencyLimit is null) return false;
+        try
+        {
+            return DependencyProofAggregator.EstimatedCost(DependencyProofAggregator.Combine(producing.LeanProduction.ProofInputs, deps))
+                <= MaxDeadlineMergeCost;
+        }
+        catch (ArgumentException)
+        {
+            return false;
         }
     }
 }

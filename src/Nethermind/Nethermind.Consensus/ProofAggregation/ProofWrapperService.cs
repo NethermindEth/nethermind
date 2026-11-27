@@ -15,6 +15,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
@@ -30,10 +31,40 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// </remarks>
 /// <remarks>A blob-carrying transaction arrives with its blob data elided and is handed to <c>blobAdmission</c>, which admits it
 /// once EIP-8070 cell retrieval establishes availability; its dependency coverage stays pinned until then.</remarks>
+/// <param name="txPoolConfig">Supplies <see cref="ITxPoolConfig.AggregationProbability"/>; without it background aggregation
+/// proves every bucket.</param>
+/// <param name="random">The local randomness bucket selection draws from; <see cref="Random.Shared"/> when not given.</param>
+/// <param name="logManager">Reports an <see cref="ITxPoolConfig.AggregationProbability"/> outside <c>[0, 1]</c>.</param>
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
     IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier,
-    IWrappedBlobTransactionAdmission? blobAdmission = null)
+    IWrappedBlobTransactionAdmission? blobAdmission = null, ITxPoolConfig? txPoolConfig = null, Random? random = null,
+    ILogManager? logManager = null)
 {
+    /// <summary>Transaction-hash buckets mempool aggregation partitions candidates into: the recursive fan-in of one aggregation
+    /// step, so a builder's final step can take one aggregate of each.</summary>
+    /// <remarks>A power of two of at most 32, so a bucket is a prefix of the hash's first byte and a set of buckets fits a
+    /// <see cref="uint"/>. Every node must use the same partition for aggregates of a bucket to line up.</remarks>
+    internal const int BucketCount = Eip8288Constants.MaxRecursiveInputsPerStep;
+
+    private const uint AllBuckets = uint.MaxValue >> (32 - BucketCount);
+
+    private readonly Random _random = random ?? Random.Shared;
+    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<ProofWrapperService>();
+    private bool _reportedProbability;
+    private Hash256? _selectionHead;
+    private uint _selectedBuckets;
+
+    /// <summary>The best aggregate of each bucket this node built or relayed, kept in the store's recursive cache every cycle;
+    /// guarded by itself.</summary>
+    /// <remarks>The store evicts its cached recursive proofs least recently used first, so a flood of valid wrappers could
+    /// otherwise push out the aggregates a builder or inclusion list takes, whichever buckets this node proves. At most one per
+    /// bucket is kept, under the verifier it was validated with. A newer one replaces it only when covering at least as many
+    /// still-pending transactions, so a peer cannot displace it with a narrower one; it is dropped once none of its transactions
+    /// is pending.</remarks>
+    private readonly BucketAggregate?[] _bucketAggregates = new BucketAggregate?[BucketCount];
+
+    private sealed record BucketAggregate(ValueHash256[] Transactions, List<FrameDependency> Deps, byte[] Proof, Eip8288Verifier Verifier);
+
     /// <summary>Encoded transaction and dependency bytes a produced mode-1 wrapper may carry: <c>MAX_WRAPPER_BYTES</c> less the
     /// largest aggregate proof and the list framing.</summary>
     internal const int MaxWrapperContentBytes = Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes - 64;
@@ -395,7 +426,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             // Already pending transactions are free to include, so only newly admitted ones may carry rejected ones, at most one each.
             int rejected = decoded.Transactions.Count - pooled;
             if ((admission.IsSuccess || admitted != 0 && rejected <= admitted) && relay is not null && RefreshVerifier() == verifier)
+            {
+                if (decoded.RecursiveStark is { } relayed)
+                    KeepBucketAggregate(decoded.Transactions, decoded.Deps, relayed.StarkProof, verifier);
                 WrapperValidated?.Invoke(relay, verifier);
+            }
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
         }
         catch (RlpException)
@@ -802,12 +837,16 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         => BuildWrapper(true, cancellationToken);
 
     /// <summary>One <c>AGGREGATION_INTERVAL</c> cycle of background aggregation: builds the wrappers of the hash-prefix buckets
-    /// (see <see cref="PlanBuckets"/>), continuing the rotation, until every pending dependency-bearing transaction has been offered
-    /// to one, calling <paramref name="produced"/> after each new one, so it can be read through <see cref="GetLatestWrapper()"/>
-    /// and published.</summary>
-    /// <remarks>Stops at the first build failure, or before starting another build once <paramref name="budget"/> has elapsed,
-    /// so prover work per cycle stays bounded; the next cycle resumes the rotation where this one stopped. A bucket whose
-    /// dependency set a peer offers is skipped while <see cref="IsDependencySetOffered"/> defers it.</remarks>
+    /// (see <see cref="PlanBuckets"/>) this node proves at the current head, continuing the rotation, calling
+    /// <paramref name="produced"/> after each new one, so it can be read through <see cref="GetLatestWrapper()"/> and published.</summary>
+    /// <remarks>Each bucket is proven with probability <see cref="ITxPoolConfig.AggregationProbability"/>, drawn from local
+    /// randomness at each new head, so a fixed share of nodes proves each bucket whatever the network size and nothing a peer
+    /// sends can steer which. Stops at the first build failure, or before starting another build once <paramref name="budget"/>
+    /// has elapsed, so prover work per cycle stays bounded; the next cycle resumes the rotation where this one stopped. A busy
+    /// node skips: a cycle already running or a prover busy with block production proves nothing now, and the bucket is retried
+    /// on a later cycle at the same head. A bucket whose dependency set a peer offers is skipped while
+    /// <see cref="IsDependencySetOffered"/> defers it, and one whose held aggregate already carries its transactions is not proven
+    /// again.</remarks>
     /// <returns>Success when at least one wrapper is current; otherwise the first failure.</returns>
     public Result RefreshWrapper(Action? produced = null, TimeSpan? budget = null, TimeProvider? clock = null,
         CancellationToken cancellationToken = default)
@@ -819,7 +858,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             using IDisposable request = DependencyProofCache.Background(cancellationToken);
             if (RefreshVerifier() is not { } verifier) return Result.Fail(WrappersUnavailable);
-            List<Bucket> buckets = PlanBuckets(verifier, cancellationToken);
+            RetainBucketAggregates(verifier);
+            uint selected = SelectedBuckets();
+            if (selected == 0) return Result.Fail(NoBucketSelected);
+            List<Bucket> buckets = PlanBuckets(verifier, selected, cancellationToken);
             if (buckets.Count == 0) return Result.Fail(NoProofBackedTransactions);
             PruneOfferWaits(clock);
             int start = ResumeIndex(buckets);
@@ -837,7 +879,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                     any = true;
                     if (!unchanged) produced?.Invoke();
                 }
-                else if (result.Error == AwaitingOfferedProof) deferred = result.Error;
+                else if (result.Error is AwaitingOfferedProof or CoveredByHeldAggregate) deferred = result.Error;
                 else return any ? Result.Success : Result.Fail(result.Error!);
             }
             return any ? Result.Success : Result.Fail(deferred ?? NoProofBackedTransactions);
@@ -857,7 +899,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             cancellationToken.ThrowIfCancellationRequested();
             using IDisposable request = DependencyProofCache.Background(cancellationToken);
             if (RefreshVerifier() is not { } verifier) return Result<byte[]>.Fail(WrappersUnavailable);
-            List<Bucket> buckets = PlanBuckets(verifier, cancellationToken);
+            List<Bucket> buckets = PlanBuckets(verifier, AllBuckets, cancellationToken);
             int start = ResumeIndex(buckets);
             Result<byte[]> result = Result<byte[]>.Fail(NoProofBackedTransactions);
             for (int i = 0; i < buckets.Count; i++)
@@ -865,7 +907,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 int index = (start + i) % buckets.Count;
                 result = BuildBucket(buckets[index], verifier, returnEncoded, TimeProvider.System, cancellationToken, out _);
                 if (result.Error != DependencyProofCache.BackgroundBusyMessage) Advance(buckets, index);
-                if (result.Error != AwaitingOfferedProof) break;
+                if (result.Error is not (AwaitingOfferedProof or CoveredByHeldAggregate)) break;
             }
             return result;
         }
@@ -878,6 +920,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     private const string WrappersUnavailable = "EIP-8288 proof wrappers are unavailable.";
     private const string AwaitingOfferedProof = "A peer offers a proof of this dependency set; awaiting it before proving.";
+    internal const string CoveredByHeldAggregate = "A held verified aggregate already covers this bucket.";
+    internal const string NoBucketSelected = "No bucket is selected for aggregation at this head.";
 
     private const string NoProofBackedTransactions = "No proof-backed pending transactions.";
 
@@ -907,19 +951,22 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>A pending dependency-bearing transaction with its dependencies and encoded size.</summary>
     private readonly record struct Candidate(Transaction Transaction, List<FrameDependency> Deps, int EncodedLength);
 
-    /// <summary>A planned wrapper: a hash-prefix bucket of transactions, in canonical order, and the inputs proving their
+    /// <summary>A planned wrapper: transactions of one hash-prefix bucket, in canonical order, and the inputs proving their
     /// dependency union.</summary>
     private sealed record Bucket(List<Transaction> Transactions, List<FrameDependency> Deps, AggregationInput Input);
 
-    /// <summary>Partitions the pending dependency-bearing transactions into transaction-hash-prefix buckets that each fit one
-    /// mode-1 wrapper.</summary>
-    /// <remarks>EIP-8288 proof reuse: the candidates in canonical order start as one bucket, and a bucket exceeding the wrapper's
-    /// transaction and dependency bytes or the proving-cost budget is subdivided by successive hash bits.
-    /// Buckets do not depend on arrival order, but the cost check depends on the proofs held here, so nodes with the same pool view
-    /// share bucket boundaries only where their held proofs agree. A transaction exceeding the proving
-    /// budget alone is still a bucket of its own; one whose inputs are unavailable or exceed the wrapper is left out.
-    /// Only transactions executable at the head are candidates (see <see cref="AddExecutable"/>).</remarks>
-    private List<Bucket> PlanBuckets(Eip8288Verifier verifier, CancellationToken cancellationToken)
+    /// <summary>Held verified aggregates a bucket's proof may extend instead of folding every witness again.</summary>
+    private const int MaxHeldExtensions = 4;
+
+    /// <summary>Plans one mode-1 wrapper for each <paramref name="selected"/> bucket holding a pending dependency-bearing
+    /// transaction, in bucket order.</summary>
+    /// <remarks>EIP-8288 proof reuse: candidates are split into <see cref="BucketCount"/> buckets by transaction-hash prefix
+    /// (<see cref="BucketOf"/>), the same split on every node, and a node builds at most one wrapper per bucket, so aggregates of
+    /// a bucket from different nodes line up. A bucket takes its candidates highest fee first (<see cref="ByFee"/>) while they fit
+    /// the wrapper's transaction and dependency bytes and the proving-cost budget, and carries them in canonical order; the rest
+    /// wait for a later cycle. A transaction exceeding the proving budget alone is still a wrapper of its own; one whose inputs
+    /// are unavailable is passed over. Only transactions executable at the head are candidates (see <see cref="AddExecutable"/>).</remarks>
+    private List<Bucket> PlanBuckets(Eip8288Verifier verifier, uint selected, CancellationToken cancellationToken)
     {
         WrapperSnapshot? previous = Volatile.Read(ref _cachedWrapper);
         RecursiveProofInput? previousProof = previous is not null && previous.Verifier == verifier ? previous.Parent : null;
@@ -934,7 +981,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             if (!transaction.SupportsFrames) continue;
             ValueHash256 hash = transaction.Hash!.ValueHash256;
-            if (!_candidateShapes.TryGetValue(hash, out (List<FrameDependency> Deps, int EncodedLength) shape))
+            bool known = _candidateShapes.TryGetValue(hash, out (List<FrameDependency> Deps, int EncodedLength) shape);
+            if ((selected >> BucketOf(transaction.Hash!) & 1) == 0)
+            {
+                if (known) shapes[hash] = shape;
+                continue;
+            }
+            if (!known)
                 shape = (Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue),
                     Rlp.LengthOfSequence(TxDecoder.Instance.GetLength(transaction, MempoolWrapperDecoder.TransactionBehaviors)));
             shapes[hash] = shape;
@@ -945,42 +998,171 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         _candidateShapes = shapes;
         candidates.Sort(static (a, b) => a.Transaction.Hash!.Bytes.SequenceCompareTo(b.Transaction.Hash!.Bytes));
         List<Bucket> buckets = [];
-        Plan(0, candidates.Count, 0);
+        for (int start = 0, end; start < candidates.Count; start = end)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int bucket = BucketOf(candidates[start].Transaction.Hash!);
+            for (end = start + 1; end < candidates.Count && BucketOf(candidates[end].Transaction.Hash!) == bucket; end++) { }
+            if (PlanBucket(candidates.GetRange(start, end - start)) is { } planned) buckets.Add(planned);
+        }
         return buckets;
 
-        void Plan(int start, int end, int bit)
+        Bucket? PlanBucket(List<Candidate> ranked)
         {
-            if (start == end) return;
-            cancellationToken.ThrowIfCancellationRequested();
-            Bucket? bucket = TryBucket(start, end, out bool fits);
-            if (fits || end - start == 1 || bit == 8 * Hash256.Size)
+            ranked.Sort(ByFee);
+            HashSet<FrameDependency> dependencies = [];
+            foreach (Candidate candidate in ranked) dependencies.UnionWith(candidate.Deps);
+            List<RecursiveProofInput> parents = leanProofStore.ProvenOverlaps(dependencies, MaxHeldExtensions);
+            if (previousProof is { } own) parents.Add(own);
+            // A transaction that cannot be a wrapper on its own, such as one whose inputs are unavailable, would fail every prefix.
+            List<Candidate> usable = new(ranked.Count);
+            for (int i = 0; i < ranked.Count; i++)
+                if (TryBucket(ranked, i, 1, parents) is not null) usable.Add(ranked[i]);
+            ranked = usable;
+            // The longest fitting prefix by binary search. Extending a held aggregate trades discards as the prefix grows, so cost
+            // is not strictly monotone and the search may stop short of a prefix that fits; the rest only waits a cycle.
+            Bucket? best = null;
+            for (int low = 1, high = ranked.Count; low <= high;)
             {
-                if (bucket is not null) buckets.Add(bucket);
-                return;
+                int middle = low + (high - low) / 2;
+                if (TryBucket(ranked, 0, middle, parents) is { } fitting) (best, low) = (fitting, middle + 1);
+                else high = middle - 1;
             }
-            int middle = start;
-            while (middle < end && !HasBit(candidates[middle].Transaction.Hash!, bit)) middle++;
-            Plan(start, middle, bit + 1);
-            Plan(middle, end, bit + 1);
+            return best;
         }
 
-        Bucket? TryBucket(int start, int end, out bool fits)
+        Bucket? TryBucket(List<Candidate> ranked, int start, int count, List<RecursiveProofInput> parents)
         {
-            fits = false;
             long bytes = 0;
-            for (int i = start; i < end; i++) bytes += candidates[i].EncodedLength;
+            for (int i = start; i < start + count; i++) bytes += ranked[i].EncodedLength;
             if (bytes > MaxWrapperContentBytes) return null;
             List<FrameDependency> union = [];
-            for (int i = start; i < end; i++) union.AddRange(candidates[i].Deps);
+            for (int i = start; i < start + count; i++) union.AddRange(ranked[i].Deps);
             union = Eip8288Dependencies.Canonicalize(union);
             if (bytes + (long)union.Count * EncodedDependencyBytes > MaxWrapperContentBytes
-                || !leanProofStore.TryGetInput(union, out AggregationInput input) || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
+                || !leanProofStore.TryGetInput(union, out AggregationInput input) || input.Discards.Count > Eip8288Constants.MaxProofDependencies
+                || count != 1 && ProvingCost(input, union, parents) > MaxWrapperProvingCost)
                 return null;
-            fits = end - start == 1 || ProvingCost(input, union, previousProof) <= MaxWrapperProvingCost;
-            List<Transaction> transactions = new(end - start);
-            for (int i = start; i < end; i++) transactions.Add(candidates[i].Transaction);
+            List<Transaction> transactions = new(count);
+            for (int i = start; i < start + count; i++) transactions.Add(ranked[i].Transaction);
+            transactions.Sort(static (a, b) => a.Hash!.Bytes.SequenceCompareTo(b.Hash!.Bytes));
             return new(transactions, union, input);
         }
+    }
+
+    /// <summary>Keeps <paramref name="proof"/> as its bucket's aggregate when every one of <paramref name="transactions"/> is in that
+    /// bucket and it covers at least as many pending transactions as the one held.</summary>
+    private void KeepBucketAggregate(IReadOnlyList<Transaction> transactions, IReadOnlyList<FrameDependency> deps, byte[] proof,
+        Eip8288Verifier verifier)
+    {
+        if (transactions.Count == 0) return;
+        int bucket = BucketOf(transactions[0].Hash!);
+        ValueHash256[] hashes = new ValueHash256[transactions.Count];
+        for (int i = 0; i < transactions.Count; i++)
+        {
+            if (BucketOf(transactions[i].Hash!) != bucket) return;
+            hashes[i] = transactions[i].Hash!.ValueHash256;
+        }
+        lock (_bucketAggregates)
+        {
+            if (_bucketAggregates[bucket] is { } held && held.Verifier == verifier
+                && PendingCount(hashes) < PendingCount(held.Transactions)) return;
+            _bucketAggregates[bucket] = new(hashes, [.. deps], proof, verifier);
+        }
+    }
+
+    private int PendingCount(ValueHash256[] transactions)
+    {
+        int pending = 0;
+        foreach (ValueHash256 hash in transactions)
+            if (txPool.TryGetPendingTransaction(hash, out _)) pending++;
+        return pending;
+    }
+
+    /// <summary>Touches each bucket's kept aggregate in the store's recursive cache, dropping those of an earlier verifier.</summary>
+    private void RetainBucketAggregates(Eip8288Verifier verifier)
+    {
+        lock (_bucketAggregates)
+        {
+            for (int bucket = 0; bucket < _bucketAggregates.Length; bucket++)
+            {
+                if (_bucketAggregates[bucket] is not { } held) continue;
+                if (held.Verifier != verifier || !IsAnyPending(held.Transactions))
+                {
+                    _bucketAggregates[bucket] = null;
+                    continue;
+                }
+                lock (_commitLock)
+                    if (RefreshVerifier() == verifier) leanProofStore.AddCachedRecursive(held.Deps, held.Proof);
+            }
+        }
+    }
+
+    /// <summary>Whether the aggregate held for the bucket of <paramref name="transactions"/> under <paramref name="verifier"/>
+    /// carries every one of them.</summary>
+    private bool IsCarriedByBucketAggregate(List<Transaction> transactions, Eip8288Verifier verifier)
+    {
+        lock (_bucketAggregates)
+        {
+            if (_bucketAggregates[BucketOf(transactions[0].Hash!)] is not { } held || held.Verifier != verifier) return false;
+            HashSet<ValueHash256> carried = [.. held.Transactions];
+            foreach (Transaction transaction in transactions)
+                if (!carried.Contains(transaction.Hash!.ValueHash256)) return false;
+            return true;
+        }
+    }
+
+    /// <summary>The bucket of a transaction: the top <c>log2(</c><see cref="BucketCount"/><c>)</c> bits of its hash.</summary>
+    internal static int BucketOf(Hash256 hash) => hash.Bytes[0] * BucketCount >> 8;
+
+    /// <summary>The buckets this node proves at the current head, drawn again whenever the head changes.</summary>
+    /// <remarks>Called under the aggregation lock.</remarks>
+    private uint SelectedBuckets()
+    {
+        Hash256? head = blockFinder.Head?.Hash;
+        if (head is null || head != _selectionHead)
+        {
+            _selectedBuckets = DrawBuckets(_random, AggregationProbability());
+            _selectionHead = head;
+        }
+        return _selectedBuckets;
+    }
+
+    /// <summary>The configured probability, clamped to <c>[0, 1]</c> with NaN as <c>0</c>, reported once when out of range.</summary>
+    private double AggregationProbability()
+    {
+        double configured = txPoolConfig?.AggregationProbability ?? 1;
+        double probability = ClampProbability(configured);
+        if (probability != configured && !_reportedProbability)
+        {
+            _reportedProbability = true;
+            if (_logger.IsWarn) _logger.Warn($"TxPool.AggregationProbability {configured} is outside [0, 1]; using {probability}.");
+        }
+        return probability;
+    }
+
+    internal static double ClampProbability(double probability) => double.IsNaN(probability) ? 0 : Math.Clamp(probability, 0, 1);
+
+    /// <summary>A set of buckets taking each independently with probability <paramref name="probability"/>.</summary>
+    internal static uint DrawBuckets(Random random, double probability)
+    {
+        uint selected = 0;
+        for (int bucket = 0; bucket < BucketCount; bucket++)
+            if (random.NextDouble() < probability) selected |= 1u << bucket;
+        return selected;
+    }
+
+    /// <summary>Orders candidates highest fee first, by the pool's sender-bottlenecked effective gas price, then by sender and
+    /// nonce, so a sender's transactions keep their nonce order at equal fees, then by hash.</summary>
+    private static int ByFee(Candidate x, Candidate y)
+    {
+        Transaction a = x.Transaction, b = y.Transaction;
+        int byFee = (b.GasBottleneck ?? UInt256.Zero).CompareTo(a.GasBottleneck ?? UInt256.Zero);
+        if (byFee != 0) return byFee;
+        int bySender = a.SenderAddress!.Bytes.SequenceCompareTo(b.SenderAddress!.Bytes);
+        if (bySender != 0) return bySender;
+        int byNonce = a.Nonce.CompareTo(b.Nonce);
+        return byNonce != 0 ? byNonce : a.Hash!.Bytes.SequenceCompareTo(b.Hash!.Bytes);
     }
 
     /// <summary>The lowest fees per gas and per blob gas a transaction executable at the head may offer, at <see cref="Spec"/>.</summary>
@@ -1034,8 +1216,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private static bool IsPriced(Transaction transaction, in FeeFloors floors) => transaction.SupportsFrames
         ? floors.Spec is null || FrameTxValidation.CoversRequiredMaxFee(transaction, floors.Spec, floors.PerGas, floors.PerBlobGas)
         : transaction.MaxFeePerGas >= floors.PerGas && transaction.CanPayForBlobGas(floors.PerBlobGas);
-
-    private static bool HasBit(Hash256 hash, int bit) => (hash.Bytes[bit >> 3] >> (7 - (bit & 7)) & 1) != 0;
 
     /// <summary>The bucket after the one the previous build ended at, or the first.</summary>
     private int ResumeIndex(List<Bucket> buckets)
@@ -1098,13 +1278,24 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
             if (!leanProofStore.TryGetRecursiveProof(deps, out byte[]? proof))
             {
+                // EIP-8288 proof reuse: the bucket's aggregate this node built, or a peer's it admitted and relayed, stands for the
+                // bucket while it carries every planned transaction. One proving only their dependencies carries other transactions.
+                if (IsCarriedByBucketAggregate(transactions, verifier)) return Result<byte[]>.Fail(CoveredByHeldAggregate);
                 if (AwaitsOffer(deps, clock)) return Result<byte[]>.Fail(AwaitingOfferedProof);
-                if (cached is not null && cached.Verifier == verifier && HasOverlap(cached.Parent.InnerDeps, [.. deps]))
+                HashSet<FrameDependency> required = [.. deps];
+                if (cached is not null && cached.Verifier == verifier && HasOverlap(cached.Parent.InnerDeps, required))
                 {
                     AggregationInput incremental = DependencyProofAggregator.Combine(
                         [new() { RecursiveProofs = [cached.Parent] }, selectedInput], deps);
                     if (incremental.Discards.Count <= Eip8288Constants.MaxProofDependencies)
                         selectedInput = incremental;
+                }
+                foreach (RecursiveProofInput held in leanProofStore.ProvenOverlaps(required, MaxHeldExtensions))
+                {
+                    AggregationInput extended = DependencyProofAggregator.Combine([new() { RecursiveProofs = [held] }, bucket.Input], deps);
+                    if (extended.Discards.Count <= Eip8288Constants.MaxProofDependencies
+                        && DependencyProofAggregator.EstimatedCost(extended) < DependencyProofAggregator.EstimatedCost(selectedInput))
+                        selectedInput = extended;
                 }
                 proof = DependencyProofAggregator.Prove(selectedInput, leanProofVerifier, verifier, in hash, cancellationToken);
                 if (leanProofVerifier is not DependencyProofCache
@@ -1130,6 +1321,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (!ArePending(hashes))
                 return Result<byte[]>.Fail("Proof wrapper selection changed while aggregating; retry with the current pool.");
             RecursiveProofInput parent = new(deps, proof!);
+            // Only a statement published as a wrapper may stand for its bucket.
+            KeepBucketAggregate(transactions, deps, proof!, verifier);
             Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), parent, verifier));
             return Result<byte[]>.Success(returnEncoded ? encoded : []);
         }
@@ -1156,14 +1349,18 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 candidates.Add(elided);
     }
 
-    /// <summary>The estimated proving cost of <paramref name="input"/>, or of extending <paramref name="parent"/> with it when
-    /// that is cheaper, as the build does when the previous wrapper's statement overlaps.</summary>
-    private static long ProvingCost(AggregationInput input, IReadOnlyList<FrameDependency> required, RecursiveProofInput? parent)
+    /// <summary>The estimated proving cost of <paramref name="input"/>, or of extending one of <paramref name="parents"/> with it
+    /// when that is cheaper, as the build does when the previous wrapper's statement or a held aggregate overlaps.</summary>
+    private static long ProvingCost(AggregationInput input, IReadOnlyList<FrameDependency> required, IReadOnlyList<RecursiveProofInput> parents)
     {
         long cost = DependencyProofAggregator.EstimatedCost(input);
-        if (parent is not { } proven || cost == 0) return cost;
-        AggregationInput extended = DependencyProofAggregator.Combine([new() { RecursiveProofs = [proven] }, input], required);
-        return Math.Min(cost, DependencyProofAggregator.EstimatedCost(extended));
+        foreach (RecursiveProofInput proven in parents)
+        {
+            if (cost == 0) break;
+            AggregationInput extended = DependencyProofAggregator.Combine([new() { RecursiveProofs = [proven] }, input], required);
+            cost = Math.Min(cost, DependencyProofAggregator.EstimatedCost(extended));
+        }
+        return cost;
     }
 
     private static bool HasOverlap(IReadOnlyList<FrameDependency> dependencies, HashSet<FrameDependency> selected)

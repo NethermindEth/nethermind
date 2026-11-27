@@ -100,16 +100,23 @@ internal sealed class DependencyProofBlockProcessor(
             else
             {
                 BlockToProduce? producing = block as BlockToProduce;
-                // A pass with a deadline never waits for native proving, which takes longer than a slot: the statement
-                // is proven off the production path and the body is rebuilt from dependencies whose proofs exist.
-                if (producing is not null && token.CanBeCanceled && leanProofStore is not null)
+                // A pass with a deadline waits for no native proving but a rebuild's bounded merge of held proofs: the statement
+                // is proven off the production path, and the body is rebuilt from a held statement per bucket merged within
+                // MaxDeadlineMergeCost, or, when that merge does not fit, from one proven statement.
+                if (producing is not null && token.CanBeCanceled && leanProofStore is not null
+                    && !DependencyProofPlanner.MergesBeforeDeadline(producing, deps))
                 {
                     DependencyProofPlanner.OfferInclusionListProofs(producing, leanProofStore);
                     HashSet<FrameDependency> attempted = [.. deps];
                     DependencyProofPlanner.IncludableTransactions includable = new(block);
-                    (HashSet<FrameDependency> limit, int kept) = includable.ChooseProvenLimit(leanProofStore.ProvenSubsets(attempted));
-                    // Only the latest payload's unrestricted body is worth proving; a restricted rebuild is a subset of it.
-                    if (latest && producing.LeanProduction.DependencyLimit is null && !_dependencyProofCache.IsScheduledWithin(attempted))
+                    List<FrameDependency[]> proven = leanProofStore.ProvenSubsets(attempted);
+                    (HashSet<FrameDependency> limit, int kept) = producing.LeanProduction.DependencyLimit is null
+                        ? includable.ChooseBucketLimit(proven)
+                        : includable.ChooseProvenLimit(proven);
+                    // Only the latest payload is worth proving: its unrestricted body when the rebuild leaves some of it out, else a
+                    // rebuild whose bucket merge did not fit, unless a scheduled statement already covers it.
+                    if (latest && (producing.LeanProduction.DependencyLimit is not null || kept < block.Transactions.Length)
+                        && !_dependencyProofCache.IsScheduledWithin(attempted) && !_dependencyProofCache.IsScheduledCovering(attempted))
                         DependencyProofPlanner.ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept,
                             leanProofStore, verifier, _dependencyProofCache);
                     throw new LeanProofNotReadyException(limit);

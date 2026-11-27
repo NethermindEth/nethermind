@@ -16,6 +16,12 @@ internal sealed class LeanProofBudget
     private AggregationInput? _inclusionListInput;
     private HashSet<FrameDependency>? _inclusionListCoverage;
 
+    /// <summary>Dependencies the accepted inputs prove so far.</summary>
+    public IReadOnlySet<FrameDependency> Coverage => _coverage;
+
+    /// <summary>Distinct recursive proofs the accepted inputs take so far.</summary>
+    public int RecursiveInputs => _parents.Count;
+
     public List<FrameDependency> Missing(IReadOnlyList<FrameDependency> required)
     {
         List<FrameDependency> missing = [];

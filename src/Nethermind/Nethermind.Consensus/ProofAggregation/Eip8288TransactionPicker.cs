@@ -91,11 +91,35 @@ internal sealed class Eip8288TransactionPicker : BlockProcessor.IBlockProduction
         List<FrameDependency> missing = budget.Missing(required);
         AggregationInput candidateInput = new();
         if (missing.Count != 0 && !budget.TryUseInclusionList(production?.InclusionListProofInput, missing, out candidateInput)
-            && !_leanProofStore.TryGetInput(missing, out candidateInput))
+            && !TryGetInput(budget, missing, out candidateInput))
             return Skip(args, "Missing verified dependency witnesses");
         if (!budget.TryPrepare(candidateInput, required, out AggregationInput contribution, out string? proofError))
             return Skip(args, proofError!);
         production?.Prepare(args, contribution, required);
+        return true;
+    }
+
+    /// <summary>The witnesses proving <paramref name="missing"/>, or the held verified aggregate covering it that adds the most to
+    /// the block's coverage when the candidate costs a recursive input anyway.</summary>
+    /// <remarks>Mempool aggregation proves one aggregate per transaction-hash bucket, so taking the widest lets later transactions of
+    /// its bucket join without another recursive input. It is taken only while the block holds fewer recursive proofs than one
+    /// step's fan-in, and only when it adds more than <paramref name="missing"/>; what the block leaves out of it is discarded.
+    /// Signature-only witnesses fold into a direct leaf for far less than a recursive merge, and one recursive proof of exactly
+    /// <paramref name="missing"/> needs no discards, so both are kept.</remarks>
+    private bool TryGetInput(LeanProofBudget budget, List<FrameDependency> missing, out AggregationInput input)
+    {
+        bool found = _leanProofStore.TryGetInput(missing, out input);
+        if (found && (input.RecursiveProofs.Count == 0 && Eip8288Dependencies.CountLeanStark(input.Deps) == 0
+            || input.Deps.Count == 0 && input.RecursiveProofs is [{ } exact] && exact.InnerDeps.Count == missing.Count))
+            return true;
+        if (budget.RecursiveInputs >= Eip8288Constants.MaxRecursiveInputsPerStep
+            || _leanProofStore.WidestProving(missing, budget.Coverage) is not { } held)
+            return found;
+        int added = 0;
+        foreach (FrameDependency dependency in held.InnerDeps)
+            if (!budget.Coverage.Contains(dependency)) added++;
+        if (added <= missing.Count) return found;
+        input = new() { RecursiveProofs = [held] };
         return true;
     }
 

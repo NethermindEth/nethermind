@@ -194,6 +194,12 @@ public sealed class DependencyProofCache(ILeanProofVerifier verifier, ILogManage
         lock (_cacheLock) return _scheduled is { IsCompleted: false } && _scheduledDeps!.IsSubsetOf(needed);
     }
 
+    /// <summary>Whether a scheduled statement is still being proven and covers every dependency in <paramref name="needed"/>.</summary>
+    internal bool IsScheduledCovering(IReadOnlySet<FrameDependency> needed)
+    {
+        lock (_cacheLock) return _scheduled is { IsCompleted: false } && _scheduledDeps!.IsSupersetOf(needed);
+    }
+
     /// <summary>Records a production pass and reports whether no pass for a later slot or a higher block has started.</summary>
     /// <remarks>
     /// Payloads keep improving after the next slot's payload started, and a proposer also prepares the next slot on the

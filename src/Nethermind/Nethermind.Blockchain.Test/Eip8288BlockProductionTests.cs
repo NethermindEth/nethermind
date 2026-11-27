@@ -213,6 +213,9 @@ public class Eip8288BlockProductionTests
             ValueKeccak.Compute("background-second"), default);
         Transaction first = CreateTransaction(chain, firstDependency, [1]);
         Transaction second = CreateTransaction(chain, secondDependency, [2]);
+        // One background wrapper covers the body only when both transactions share a hash-prefix bucket.
+        for (UInt256 key = 3; ProofWrapperService.BucketOf(second.Hash!) != ProofWrapperService.BucketOf(first.Hash!); key++)
+            second = CreateTransaction(chain, secondDependency, [key]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
@@ -385,6 +388,8 @@ public class Eip8288BlockProductionTests
             {
                 Assert.That(cache.IsScheduledWithin(new HashSet<FrameDependency>([.. first, .. second])), Is.True, "a body extending it keeps it");
                 Assert.That(cache.IsScheduledWithin(new HashSet<FrameDependency>([.. first.Skip(1), .. second])), Is.False);
+                Assert.That(cache.IsScheduledCovering(new HashSet<FrameDependency>(first.Skip(1))), Is.True, "a restricted rebuild it covers is not queued again");
+                Assert.That(cache.IsScheduledCovering(new HashSet<FrameDependency>([.. first, .. second])), Is.False);
             }
             Schedule(second);
             Schedule(third);
@@ -1126,6 +1131,66 @@ public class Eip8288BlockProductionTests
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
+    // A deadline rebuild keeps a held aggregate of each hash-prefix bucket and merges them, rather than reusing one statement.
+    [Test]
+    public async Task Deadline_production_merges_a_held_aggregate_of_each_bucket()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("bucket-first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("bucket-second"), default);
+        Transaction firstTransaction = CreateTransaction(chain, first, [1]);
+        Transaction secondTransaction = CreateTransaction(chain, second, [2]);
+        for (UInt256 key = 3; ProofWrapperService.BucketOf(secondTransaction.Hash!) == ProofWrapperService.BucketOf(firstTransaction.Hash!); key++)
+            secondTransaction = CreateTransaction(chain, second, [key]);
+        foreach (FrameDependency dependency in (FrameDependency[])[first, second])
+        {
+            proofs.AddVerified([dependency], [[1]], null);
+            proofs.AddCachedRecursive([dependency], Eip8288Dependencies.ComputeDepsHash([dependency]).ToByteArray());
+        }
+        foreach (Transaction transaction in (Transaction[])[firstTransaction, secondTransaction])
+            Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        using CancellationTokenSource deadline = new();
+        Block? block = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        List<FrameDependency> both = Eip8288Dependencies.Canonicalize([first, second]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block!.Transactions, Is.EquivalentTo(new[] { firstTransaction, secondTransaction }));
+            Assert.That(block.DependencyProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(both).ToByteArray()));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the bucket statements are merged once, at the deadline");
+        }
+    }
+
+    // A rebuild whose inputs do not merge within the deadline bound, although held statements kept the whole body, falls back to
+    // one statement and still schedules the rest off path.
+    [Test]
+    public async Task Deadline_rebuild_too_wide_to_merge_still_schedules_its_body()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        UInt256 key = 1;
+        for (int bucket = 0; bucket < ProofWrapperService.BucketCount; bucket++)
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"wide-{bucket}"), default);
+            proofs.AddVerified([dependency], [[1]], null);
+            proofs.AddCachedRecursive([dependency], Eip8288Dependencies.ComputeDepsHash([dependency]).ToByteArray());
+            Transaction transaction = CreateTransaction(chain, dependency, [key++]);
+            while (ProofWrapperService.BucketOf(transaction.Hash!) != bucket) transaction = CreateTransaction(chain, dependency, [key++]);
+            Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        using CancellationTokenSource deadline = new();
+        Block? block = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Each leanSTARK witness is its own leaf, so folding sixteen of them exceeds MaxDeadlineMergeCost.
+        Assert.That(block!.Transactions, Has.Length.LessThan(ProofWrapperService.BucketCount));
+        Assert.That(() => verifier.ProofCalls, Is.Positive.After(5000, 20), "the rest of the body is proven off path");
+    }
+
     [Test]
     public async Task Deadline_production_prefers_the_proven_set_that_keeps_the_most_transactions()
     {
@@ -1291,7 +1356,7 @@ public class Eip8288BlockProductionTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(notReady!.Proven, Is.EquivalentTo(new[] { listedDependency }), "the list's statement wins over the larger unlisted one");
+            Assert.That(notReady!.Proven, Does.Contain(listedDependency), "the list's statement is kept, whatever else fills the step");
             Assert.That(proofs.TryGetRecursiveProof([listedDependency], out _), Is.True, "the rebuild reuses the verified list proof");
         }
     }
@@ -1370,12 +1435,18 @@ public class Eip8288BlockProductionTests
             return tx;
         }
 
+        // Each build takes the next hash-prefix bucket, so as many builds as buckets cover every one.
         static Hash256[] Aggregated(ProofWrapperService wrappers)
         {
-            Result<byte[]> built = wrappers.BuildWrapper();
-            if (!built.IsSuccess) return [];
-            RlpReader reader = new(built.Data!);
-            return [.. MempoolWrapperDecoder.Instance.Decode(ref reader)!.Transactions.Select(static tx => tx.Hash!)];
+            HashSet<Hash256> aggregated = [];
+            for (int i = 0; i < ProofWrapperService.BucketCount; i++)
+            {
+                Result<byte[]> built = wrappers.BuildWrapper();
+                if (!built.IsSuccess) continue;
+                RlpReader reader = new(built.Data!);
+                aggregated.UnionWith(MempoolWrapperDecoder.Instance.Decode(ref reader)!.Transactions.Select(static tx => tx.Hash!));
+            }
+            return [.. aggregated];
         }
     }
 

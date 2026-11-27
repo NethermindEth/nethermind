@@ -505,12 +505,14 @@ public class ProofWrapperServiceTests
     {
         FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first"), default);
         FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("second"), default);
-        Transaction a = CreateTransaction(first, TestItem.KeccakA);
-        Transaction b = CreateTransaction(second, TestItem.KeccakB);
+        FrameDependency third = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("third"), default);
+        Transaction a = InBucket(0, CreateTransaction(first, TestItem.KeccakA));
+        Transaction b = InBucket(0, CreateTransaction(second, TestItem.KeccakB));
+        Transaction c = InBucket(0, CreateTransaction(third, TestItem.KeccakC));
         Transaction[] pending = [a];
         ITxPool pool = Substitute.For<ITxPool>();
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        store.AddVerified([first, second], [[1], [1]], null);
+        store.AddVerified([first, second, third], [[1], [1], [1]], null);
         RecordingVerifier verifier = new();
         ProofWrapperService service = CreateService(pending, store, verifier, pool: pool);
         pool.GetPendingTransactions().Returns(_ => pending);
@@ -525,16 +527,17 @@ public class ProofWrapperServiceTests
             Assert.That(verifier.Inputs[1].RecursiveProofs, Has.Count.EqualTo(1));
             Assert.That(verifier.Inputs[1].RecursiveProofs[0].InnerDeps, Is.EqualTo(expectedParent));
         }
-        // Remove the dependency whose singleton proof was never retained.
-        pending = [b];
+        // Remove the dependency whose singleton proof was never retained, and add one the parent does not cover.
+        pending = [b, c];
         ValueHash256 parentHash = Eip8288Dependencies.ComputeDepsHash([first, second]);
         verifier.RejectedStatement = rejectDiscardedParent ? parentHash : null;
         int before = verifier.VerifiedStatements.Count;
         Result<byte[]> pruned = service.BuildWrapper();
+        FrameDependency[] expectedPrunedAddition = [third];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pruned.IsSuccess, Is.EqualTo(!rejectDiscardedParent), pruned.Error);
-            Assert.That(verifier.Inputs[2].Deps, Is.Empty);
+            Assert.That(verifier.Inputs[2].Deps, Is.EqualTo(expectedPrunedAddition));
             Assert.That(verifier.Inputs[2].RecursiveProofs, Has.Count.EqualTo(1));
             Assert.That(verifier.Inputs[2].Discards, Is.EqualTo(expectedParent));
             Assert.That(verifier.VerifiedStatements.Skip(before), Does.Contain(parentHash), "discarded origins still require authentication");
@@ -577,6 +580,16 @@ public class ProofWrapperServiceTests
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
         transaction.Hash = transaction.CalculateHash();
+        return transaction;
+    }
+
+    /// <summary>Raises <paramref name="transaction"/>'s nonce until its hash falls in <paramref name="bucket"/>, and hashes it.</summary>
+    /// <remarks>Only for transactions whose other fields already tell them apart, so two never meet at the same nonce.</remarks>
+    private static Transaction InBucket(int bucket, Transaction transaction)
+    {
+        for (transaction.Hash = transaction.CalculateHash(); ProofWrapperService.BucketOf(transaction.Hash) != bucket;
+             transaction.Hash = transaction.CalculateHash())
+            transaction.Nonce++;
         return transaction;
     }
 
@@ -634,7 +647,7 @@ public class ProofWrapperServiceTests
                 .Select(j => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"wide:{i}:{j}"), default)))];
             if (proven) store.AddVerified(dependencies, null, [(byte)(i + 1)]);
             else store.AddVerified(dependencies, [.. dependencies.Select(static _ => new byte[] { 1 })], null);
-            transactions[i] = new Transaction
+            transactions[i] = InBucket(0, new Transaction
             {
                 Type = TxType.FrameTx,
                 NonceKeys = [UInt256.Zero],
@@ -643,8 +656,7 @@ public class ProofWrapperServiceTests
                 Nonce = (ulong)i,
                 Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)dependencies.Length * Eip8288Constants.LeanSphincsVerificationGas,
                     UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))]
-            };
-            transactions[i].Hash = transactions[i].CalculateHash();
+            });
         }
         ProofWrapperService service = CreateService(transactions, store, new FakeLeanProofVerifier(true));
 
@@ -655,14 +667,14 @@ public class ProofWrapperServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(wrapper.Mode, Is.EqualTo(MempoolWrapper.ModeRecursive));
-            Assert.That(wrapper.Transactions, Has.Count.EqualTo(proven ? transactions.Length : 1));
-            Assert.That(wrapper.Deps, Has.Count.EqualTo((proven ? transactions.Length : 1) * Eip8288Constants.MaxSigsPerTx));
+            Assert.That(wrapper.Transactions, Has.Count.EqualTo(proven ? transactions.Length : 2));
+            Assert.That(wrapper.Deps, Has.Count.EqualTo((proven ? transactions.Length : 2) * Eip8288Constants.MaxSigsPerTx));
             Assert.That(MempoolWrapperValidator.Validate(wrapper, new FakeLeanProofVerifier(true), Eip8288Verifier.Pinned, out string? error), Is.True, error);
         }
     }
 
-    // EIP-8288 proof reuse: candidates are partitioned by transaction-hash prefix, oversized buckets subdivided by successive bits,
-    // so for a given pool and held-proof state the wrappers do not depend on the order transactions arrived in.
+    // EIP-8288 proof reuse: candidates are partitioned into fixed transaction-hash-prefix buckets, the same on every node, so for a
+    // given pool and held-proof state the wrappers do not depend on the order transactions arrived in.
     [Test]
     public void Produced_wrappers_are_hash_prefix_buckets_independent_of_arrival_order()
     {
@@ -679,9 +691,10 @@ public class ProofWrapperServiceTests
             Assert.That(second, Is.EqualTo(first));
             foreach (Hash256[] bucket in first)
             {
-                int prefix = CommonPrefixBits(bucket[0], bucket[^1]);
-                Assert.That(transactions.Where(t => !bucket.Contains(t.Hash!) && CommonPrefixBits(t.Hash!, bucket[0]) >= prefix), Is.Empty,
-                    "every transaction sharing the bucket's prefix is in it");
+                int index = ProofWrapperService.BucketOf(bucket[0]);
+                Assert.That(bucket.Select(ProofWrapperService.BucketOf), Is.All.EqualTo(index));
+                Assert.That(transactions.Where(t => !bucket.Contains(t.Hash!) && ProofWrapperService.BucketOf(t.Hash!) == index), Is.Empty,
+                    "every transaction of the bucket is in it");
             }
         }
 
@@ -692,12 +705,458 @@ public class ProofWrapperServiceTests
                 Is.EqualTo(Result.Success));
             return [.. produced.OrderBy(static bucket => bucket[0].ToString())];
         }
+    }
 
-        static int CommonPrefixBits(Hash256 a, Hash256 b)
+    // The bucket is the transaction hash's top log2(BucketCount) bits, so every node splits the pool the same way.
+    [TestCase(0x00, ExpectedResult = 0)]
+    [TestCase(0x0F, ExpectedResult = 0)]
+    [TestCase(0x10, ExpectedResult = 1)]
+    [TestCase(0x80, ExpectedResult = 8)]
+    [TestCase(0xFF, ExpectedResult = ProofWrapperService.BucketCount - 1)]
+    public int Bucket_is_the_transaction_hash_prefix(int firstByte)
+    {
+        byte[] hash = new byte[Hash256.Size];
+        hash[0] = (byte)firstByte;
+        hash[^1] = 0xFF;
+        return ProofWrapperService.BucketOf(new Hash256(hash));
+    }
+
+    // The bucket mask is a uint and BucketOf splits the hash's first byte, so the fan-in it is taken from must stay a power of two
+    // of at most 32.
+    [Test]
+    public void Bucket_count_is_a_power_of_two_of_at_most_32() =>
+        Assert.That(System.Numerics.BitOperations.IsPow2(ProofWrapperService.BucketCount) && ProofWrapperService.BucketCount <= 32, Is.True);
+
+    [TestCase(-1.0, ExpectedResult = 0.0)]
+    [TestCase(double.NaN, ExpectedResult = 0.0)]
+    [TestCase(0.02, ExpectedResult = 0.02)]
+    [TestCase(2.0, ExpectedResult = 1.0)]
+    public double Aggregation_probability_is_clamped_to_a_probability(double configured) => ProofWrapperService.ClampProbability(configured);
+
+    // Each bucket is drawn independently with the configured probability, so about that share of draws selects it.
+    [TestCase(0.0)]
+    [TestCase(0.02)]
+    [TestCase(0.25)]
+    [TestCase(1.0)]
+    public void Each_bucket_is_drawn_with_the_configured_probability(double probability)
+    {
+        const int draws = 10_000;
+        Random random = new(8288);
+        int[] selected = new int[ProofWrapperService.BucketCount];
+        for (int i = 0; i < draws; i++)
         {
-            for (int bit = 0; bit < 256; bit++)
-                if ((a.Bytes[bit >> 3] ^ b.Bytes[bit >> 3]) >> (7 - (bit & 7)) != 0) return bit;
-            return 256;
+            uint buckets = ProofWrapperService.DrawBuckets(random, probability);
+            for (int bucket = 0; bucket < selected.Length; bucket++) selected[bucket] += (int)(buckets >> bucket & 1);
+        }
+        double expected = draws * probability, tolerance = 5 * Math.Sqrt(draws * probability * (1 - probability));
+        Assert.That(selected, Is.All.InRange(expected - tolerance, expected + tolerance));
+    }
+
+    // Only the buckets drawn from local randomness at the head are proven, and the draw holds until the head changes.
+    [Test]
+    public void Only_buckets_drawn_at_the_head_are_proven_until_the_next_head()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Transaction[] transactions = OnePerBucket(store, [.. Enumerable.Range(0, ProofWrapperService.BucketCount)]);
+        ScriptedRandom random = new([.. Draw(0, 3), .. Draw(5)]);
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService(transactions, store, verifier, finder: finder, aggregationProbability: 0.5, random: random);
+
+        int[] first = ProducedBuckets(service);
+        int proofs = verifier.ProofCalls;
+        int[] again = ProducedBuckets(service);
+        int drawsAtHead = random.Draws;
+        finder.Head.Returns(Build.A.Block.WithNumber(2).TestObject);
+        int[] next = ProducedBuckets(service);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(new[] { 0, 3 }));
+            Assert.That(again, Is.SubsetOf(first));
+            Assert.That(drawsAtHead, Is.EqualTo(ProofWrapperService.BucketCount), "the draw holds at the same head");
+            Assert.That(verifier.ProofCalls, Is.EqualTo(proofs + 1), "the same head proves nothing again; the next proves its draw");
+            Assert.That(next, Is.EqualTo(new[] { 5 }));
+            Assert.That(random.Draws, Is.EqualTo(2 * ProofWrapperService.BucketCount));
+        }
+
+        static double[] Draw(params int[] buckets) =>
+            [.. Enumerable.Range(0, ProofWrapperService.BucketCount).Select(bucket => buckets.Contains(bucket) ? 0.0 : 0.99)];
+    }
+
+    // A node whose prover is busy skips the cycle without proving, and proves its drawn bucket on a later cycle at the same head
+    // without drawing again.
+    [Test]
+    public void Busy_node_skips_the_cycle_and_proves_its_drawn_bucket_later_at_the_same_head()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Transaction[] transactions = OnePerBucket(store, 0, 1);
+        ScriptedRandom random = new([0.99, 0.0]);
+        FakeLeanProofVerifier verifier = new(true);
+        bool busy = true;
+        verifier.OnProving = () =>
+        {
+            if (busy) throw new InvalidOperationException(DependencyProofCache.BackgroundBusyMessage);
+        };
+        ProofWrapperService service = CreateService(transactions, store, verifier, aggregationProbability: 0.5, random: random);
+        List<int> produced = [];
+
+        Result skipped = service.RefreshWrapper(() => produced.Add(BucketOfLatest(service)));
+        int skippedProduced = produced.Count;
+        busy = false;
+        Result proven = service.RefreshWrapper(() => produced.Add(BucketOfLatest(service)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(skipped.Error, Is.EqualTo(DependencyProofCache.BackgroundBusyMessage));
+            Assert.That(skippedProduced, Is.Zero);
+            Assert.That(proven, Is.EqualTo(Result.Success));
+            Assert.That(produced, Is.EqualTo(new[] { 1 }));
+            Assert.That(random.Draws, Is.EqualTo(ProofWrapperService.BucketCount));
+        }
+    }
+
+    // Bucket selection gates only this node's proving: a wrapper of a bucket it did not draw, mode 0 or mode 1, is still validated,
+    // admitted and relayed, so the pool does not fragment by bucket.
+    [Test]
+    public async Task Node_not_drawn_for_a_bucket_still_admits_and_relays_its_wrappers([Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)
+    {
+        LeanProofStore producerStore = new(FrameTxSigHash.ComputeValue);
+        Transaction transaction = OnePerBucket(producerStore, 5)[0];
+        byte[] wrapper = mode == MempoolWrapper.ModeDirect
+            ? DirectWrapper(transaction)
+            : CreateService([transaction], producerStore, new FakeLeanProofVerifier(true)).BuildWrapper().Data!;
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier, pool: pool,
+            aggregationProbability: 0);
+        List<byte[]> relayed = [];
+        service.WrapperValidated += (relay, _) => relayed.Add(relay);
+
+        ProofWrapperAcceptance accepted = await service.AcceptDetailedAsync(wrapper);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Decode(wrapper).Mode, Is.EqualTo(mode));
+            Assert.That(accepted.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+            Assert.That(relayed, Is.EqualTo(new[] { wrapper }));
+            pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == transaction.Hash), Arg.Any<TxHandlingOptions>());
+            Assert.That(service.RefreshWrapper().Error, Is.EqualTo(ProofWrapperService.NoBucketSelected));
+            Assert.That(verifier.ProofCalls, Is.Zero);
+        }
+    }
+
+    // A peer's bucket aggregate this node admitted and relayed stays held for its builder and inclusion lists, whether or not the
+    // node drew that bucket, through a narrower aggregate ground into the same bucket and a flood of other valid aggregates
+    // through the store's bounded recursive cache; it is let go once none of its transactions is pending.
+    [Test]
+    public async Task Relayed_bucket_aggregate_stays_held_through_a_flood_whatever_the_draw()
+    {
+        LeanProofStore peerStore = new(FrameTxSigHash.ComputeValue);
+        Transaction[] bucket = [.. new[] { TestItem.KeccakA, TestItem.KeccakB }.Select(key =>
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"bucket:5:{key}"), default);
+            peerStore.AddVerified([dependency], [[1]], null);
+            return InBucket(5, CreateTransaction(dependency, key));
+        })];
+        byte[] wrapper = CreateService(bucket, peerStore, new FakeLeanProofVerifier(true)).BuildWrapper().Data!;
+        byte[] narrow = CreateService([bucket[0]], peerStore, new FakeLeanProofVerifier(true)).BuildWrapper().Data!;
+        List<FrameDependency> deps = [.. Decode(wrapper).Deps];
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        // The node already holds the transactions' direct witnesses, as from their senders' mode-0 wrappers.
+        store.AddVerified(deps, [.. deps.Select(static _ => new byte[] { 1 })], null);
+        Transaction[] pending = bucket;
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        ProofWrapperService service = CreateService([], store, new FakeLeanProofVerifier(true), pool: pool, aggregationProbability: 0);
+        pool.GetPendingTransactions().Returns(_ => pending);
+
+        ProofWrapperAcceptanceStatus[] accepted = [(await service.AcceptDetailedAsync(wrapper)).Status, (await service.AcceptDetailedAsync(narrow)).Status];
+        Assert.That(accepted, Is.All.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        Flood(0);
+        Assert.That(store.TryGetRecursiveProof(deps, out _), Is.False, "the flood evicts it from the cache alone");
+        Result refreshed = service.RefreshWrapper();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refreshed.Error, Is.EqualTo(ProofWrapperService.NoBucketSelected));
+            Assert.That(store.TryGetRecursiveProof(deps, out _), Is.True, "the narrower aggregate does not displace it");
+            Assert.That(store.SmallestProving(deps)?.InnerDeps, Is.EqualTo(deps), "an inclusion list can attach it");
+            Assert.That(store.WidestProving(deps, new HashSet<FrameDependency>())?.InnerDeps, Is.EqualTo(deps), "a builder can take it");
+        }
+
+        pending = [];
+        service.RefreshWrapper();
+        Flood(1);
+        service.RefreshWrapper();
+        Assert.That(store.TryGetRecursiveProof(deps, out _), Is.False, "it is let go once none of its transactions is pending");
+
+        void Flood(int round)
+        {
+            for (int i = 0; i < 2048; i++)
+                store.AddCachedRecursive([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"flood:{round}:{i}"), default)], [2]);
+        }
+    }
+
+    // A flooded bucket costs a selected node one wrapper per cycle within the proving budget, highest fees first, and every other
+    // bucket's aggregate is still produced and held for the builder.
+    [Test]
+    public void Flooded_bucket_stays_within_its_budget_and_does_not_starve_the_others()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Transaction[] flood = [.. Enumerable.Range(0, 64).Select(i =>
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"flood:{i}"), default);
+            store.AddVerified([dependency], [[1]], null);
+            Transaction transaction = InBucket(0, CreateTransaction(dependency, TestItem.KeccakA));
+            transaction.GasBottleneck = (ulong)(1_000 + i);
+            return transaction;
+        })];
+        Transaction[] others = OnePerBucket(store, [.. Enumerable.Range(1, ProofWrapperService.BucketCount - 1)]);
+        foreach (Transaction transaction in others) transaction.GasBottleneck = 1;
+        ProofWrapperService service = CreateService([.. flood, .. others], store, new FakeLeanProofVerifier(true));
+        List<MempoolWrapper> produced = [];
+
+        Assert.That(service.RefreshWrapper(() => produced.Add(Decode(service.GetLatestWrapper().Data!))), Is.EqualTo(Result.Success));
+
+        MempoolWrapper flooded = produced.Single(static wrapper => ProofWrapperService.BucketOf(wrapper.Transactions[0].Hash!) == 0);
+        int taken = flooded.Transactions.Count;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(produced, Has.Count.EqualTo(ProofWrapperService.BucketCount));
+            Assert.That(taken, Is.InRange(1, flood.Length - 1), "the flooded bucket's wrapper stays within the proving budget");
+            Assert.That(flooded.Transactions.Select(static tx => tx.Hash),
+                Is.EquivalentTo(flood.OrderByDescending(static tx => tx.GasBottleneck).Take(taken).Select(static tx => tx.Hash)));
+            foreach (Transaction other in others)
+                Assert.That(store.SmallestProving(Eip8288Dependencies.ForTransaction(other, FrameTxSigHash.ComputeValue)), Is.Not.Null,
+                    "every other bucket's aggregate is held for the builder");
+        }
+    }
+
+    // A wrapper covers its transactions, not just their dependencies: an aggregate of one bucket whose dependencies also cover
+    // another bucket's does not carry that bucket's transactions, so it is still proven.
+    [Test]
+    public void Aggregate_of_another_bucket_proving_its_dependencies_does_not_stand_for_a_bucket()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Transaction[] transactions = [.. Enumerable.Range(0, 3).SelectMany(wrapper =>
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"shared:{wrapper}"), default);
+            store.AddVerified([dependency], [[1]], null);
+            return Enumerable.Range(0, 18).Select(i => CreateTransaction(dependency, Keccak.Compute($"{wrapper}:{i}")));
+        })];
+        ProofWrapperService service = CreateService(transactions, store, new FakeLeanProofVerifier(true));
+        List<MempoolWrapper> produced = [];
+
+        Result refreshed = service.RefreshWrapper(() => produced.Add(Decode(service.GetLatestWrapper().Data!)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refreshed, Is.EqualTo(Result.Success));
+            Assert.That(produced.SelectMany(static wrapper => wrapper.Transactions).Select(static tx => tx.Hash),
+                Is.EquivalentTo(transactions.Select(static tx => tx.Hash)));
+        }
+    }
+
+    // Within a bucket aggregation takes the highest fees first, as many as fit one wrapper, and carries them in canonical order.
+    [Test]
+    public void Bucket_takes_its_highest_fees_first_and_carries_them_in_canonical_order()
+    {
+        (ProofWrapperService service, _) = Create(6, 300 * 1024, out Transaction[] transactions, bucket: 0);
+        ulong[] fees = [5, 1, 6, 2, 4, 3];
+        for (int i = 0; i < transactions.Length; i++) transactions[i].GasBottleneck = fees[i];
+
+        MempoolWrapper wrapper = Decode(service.BuildWrapper().Data!);
+
+        string[] expected = [.. transactions.OrderByDescending(static tx => tx.GasBottleneck).Take(3).Select(static tx => tx.Hash!.ToString()).Order()];
+        Assert.That(wrapper.Transactions.Select(static tx => tx.Hash!.ToString()), Is.EqualTo(expected));
+    }
+
+    // EIP-8288 proof reuse: a held verified aggregate covering the bucket stands for it when this node built it, or admitted and
+    // relayed the peer wrapper carrying it. A peer proof cached by a wrapper the pool rejected, and so never relayed, does not stop
+    // this node proving the bucket.
+    [TestCase("own", true)]
+    [TestCase("admitted peer", true)]
+    [TestCase("rejected peer", false)]
+    public async Task Held_aggregate_covering_the_bucket_stands_for_it_only_when_built_or_relayed(string source, bool covered)
+    {
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("second"), default);
+        FrameDependency other = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other"), default);
+        Transaction a = InBucket(0, CreateTransaction(first, TestItem.KeccakA));
+        Transaction b = InBucket(0, CreateTransaction(second, TestItem.KeccakB));
+        Transaction c = InBucket(0, CreateTransaction(other, TestItem.KeccakC));
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified([first, second, other], [[1], [1], [1]], null);
+        Transaction[] pending = [a, b];
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(source == "rejected peer" ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted);
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService(pending, store, verifier, pool: pool);
+        pool.GetPendingTransactions().Returns(_ => pending);
+        if (source == "own")
+        {
+            Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+            pending = [a];
+        }
+        else
+        {
+            LeanProofStore peerStore = new(FrameTxSigHash.ComputeValue);
+            peerStore.AddVerified([first, second, other], [[1], [1], [1]], null);
+            byte[] peerWrapper = CreateService([a, b, c], peerStore, new FakeLeanProofVerifier(true)).BuildWrapper().Data!;
+            await service.AcceptDetailedAsync(peerWrapper);
+        }
+        int proofs = verifier.ProofCalls;
+
+        Result<byte[]> built = service.BuildWrapper();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built.Error, covered ? Is.EqualTo(ProofWrapperService.CoveredByHeldAggregate) : Is.Null);
+            Assert.That(verifier.ProofCalls, Is.EqualTo(covered ? proofs : proofs + 1));
+        }
+    }
+
+    // A transaction over the proving budget on its own, ranked first, is still a wrapper of its own rather than stalling its bucket,
+    // and the transactions behind it are taken once it leaves the pool.
+    [Test]
+    public void Over_budget_transaction_ranked_first_does_not_stall_its_bucket()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Dictionary<FrameDependency, byte[]> witnesses = [];
+        Transaction wide = InBucket(0, WitnessedTransaction(store, witnesses, 0, sphincs: (int)ProofWrapperService.MaxWrapperProvingCost + 1));
+        wide.GasBottleneck = 100;
+        Transaction small = InBucket(0, WitnessedTransaction(store, witnesses, 1, sphincs: 1));
+        small.GasBottleneck = 1;
+        Transaction[] pending = [wide, small];
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService(pending, store, new FakeLeanProofVerifier(true), pool: pool);
+        pool.GetPendingTransactions().Returns(_ => pending);
+
+        Result<byte[]> first = service.BuildWrapper();
+        pending = [small];
+        Result<byte[]> second = service.BuildWrapper();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.IsSuccess ? Decode(first.Data!).Transactions.Select(static tx => tx.Hash) : null, Is.EqualTo(new[] { wide.Hash }), first.Error);
+            Assert.That(second.IsSuccess ? Decode(second.Data!).Transactions.Select(static tx => tx.Hash) : null, Is.EqualTo(new[] { small.Hash }), second.Error);
+        }
+    }
+
+    // A proof whose wrapper was never published, as its selection changed while proving, does not stand for what is left of the
+    // bucket: that is proven and published.
+    [Test]
+    public void Unpublished_proof_does_not_stand_for_the_rest_of_its_bucket()
+    {
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("second"), default);
+        Transaction a = InBucket(0, CreateTransaction(first, TestItem.KeccakA));
+        Transaction b = InBucket(0, CreateTransaction(second, TestItem.KeccakB));
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified([first, second], [[1], [1]], null);
+        Transaction[] pending = [a, b];
+        ITxPool pool = Substitute.For<ITxPool>();
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService(pending, store, verifier, pool: pool);
+        pool.GetPendingTransactions().Returns(_ => pending);
+        verifier.OnProving = () => pending = [a];
+
+        Result<byte[]> changed = service.BuildWrapper();
+        verifier.OnProving = null;
+        Result<byte[]> rest = service.BuildWrapper();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changed.Error, Does.Contain("selection changed"));
+            Assert.That(rest.IsSuccess ? Decode(rest.Data!).Transactions.Select(static tx => tx.Hash) : null, Is.EqualTo(new[] { a.Hash }), rest.Error);
+        }
+    }
+
+    // Transactions whose inputs are unavailable, however many rank above the rest, are passed over rather than leaving the bucket
+    // unaggregated.
+    [Test]
+    public void Bucket_passes_over_any_number_of_unavailable_transactions_ranked_first()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Transaction[] unavailable = [.. Enumerable.Range(0, 8).Select(i =>
+        {
+            Transaction transaction = InBucket(0, CreateTransaction(
+                new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"unavailable:{i}"), default), TestItem.KeccakA));
+            transaction.GasBottleneck = 100;
+            return transaction;
+        })];
+        Transaction available = OnePerBucket(store, 0)[0];
+        available.GasBottleneck = 1;
+        ProofWrapperService service = CreateService([.. unavailable, available], store, new FakeLeanProofVerifier(true));
+
+        Result<byte[]> built = service.BuildWrapper();
+
+        Assert.That(built.IsSuccess ? Decode(built.Data!).Transactions.Select(static tx => tx.Hash) : null, Is.EqualTo(new[] { available.Hash }),
+            built.Error);
+    }
+
+    // EIP-8288 proof reuse: a bucket's proof extends a held aggregate of part of it rather than folding every witness again,
+    // which also lets the bucket take more transactions within the proving-cost budget.
+    [Test]
+    public void Bucket_proof_extends_a_held_aggregate_of_part_of_it()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency[] dependencies = [.. Enumerable.Range(0, 5)
+            .Select(static i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"stark:{i}"), default))];
+        Transaction[] transactions = [.. dependencies.Select(dependency =>
+        {
+            store.AddVerified([dependency], [[1]], null);
+            return InBucket(0, CreateTransaction(dependency, TestItem.KeccakA));
+        })];
+        List<FrameDependency> held = Eip8288Dependencies.Canonicalize(dependencies.Take(4));
+        store.AddCachedRecursive(held, [9]);
+        RecordingVerifier verifier = new();
+        ProofWrapperService service = CreateService(transactions, store, verifier);
+
+        Result<byte[]> result = service.BuildWrapper();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.True, result.Error);
+            Assert.That(Decode(result.Data!).Transactions, Has.Count.EqualTo(transactions.Length));
+            Assert.That(verifier.Inputs[0].RecursiveProofs.Single().InnerDeps, Is.EqualTo(held));
+            Assert.That(verifier.Inputs[0].Deps, Is.EqualTo(new[] { dependencies[4] }));
+        }
+    }
+
+    /// <summary>One transaction in each of <paramref name="buckets"/>, each with its own directly witnessed dependency.</summary>
+    private static Transaction[] OnePerBucket(LeanProofStore store, params int[] buckets) =>
+        [.. buckets.Select(bucket =>
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"bucket:{bucket}"), default);
+            store.AddVerified([dependency], [[1]], null);
+            return InBucket(bucket, CreateTransaction(dependency, TestItem.KeccakA));
+        })];
+
+    private static int BucketOfLatest(ProofWrapperService service) =>
+        ProofWrapperService.BucketOf(Decode(service.GetLatestWrapper().Data!).Transactions[0].Hash!);
+
+    private static int[] ProducedBuckets(ProofWrapperService service)
+    {
+        List<int> produced = [];
+        service.RefreshWrapper(() => produced.Add(BucketOfLatest(service)));
+        return [.. produced];
+    }
+
+    /// <summary>Returns the queued draws in order, then draws that select no bucket.</summary>
+    private sealed class ScriptedRandom(double[] draws) : Random
+    {
+        private readonly Queue<double> _draws = new(draws);
+
+        public int Draws { get; private set; }
+
+        public override double NextDouble()
+        {
+            Draws++;
+            return _draws.TryDequeue(out double draw) ? draw : 1.0;
         }
     }
 
@@ -779,7 +1238,7 @@ public class ProofWrapperServiceTests
     [Test]
     public void Rotation_does_not_reprove_an_unchanged_complete_selection()
     {
-        (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(3, 64);
+        (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(3, 64, out _, bucket: 0);
         byte[] first = service.BuildWrapper().Data!;
         byte[] second = service.BuildWrapper().Data!;
         using (Assert.EnterMultipleScope())
@@ -1336,7 +1795,7 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Large_wrapper_admission_yields_between_chunks()
     {
-        (ProofWrapperService largeProducer, _) = Create(ProofWrapperService.AdmissionChunk + 1, 0);
+        (ProofWrapperService largeProducer, _) = Create(ProofWrapperService.AdmissionChunk + 1, 0, out _, bucket: 0);
         (ProofWrapperService smallProducer, _) = Create(1, 10, out Transaction[] small);
         byte[] large = largeProducer.BuildWrapper().Data!;
         byte[] waiting = smallProducer.BuildWrapper().Data!;
@@ -1371,7 +1830,7 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Admission_cancelled_after_pooling_reports_an_interruption()
     {
-        (ProofWrapperService producer, _) = Create(3, 0);
+        (ProofWrapperService producer, _) = Create(3, 0, out _, bucket: 0);
         byte[] wrapper = producer.BuildWrapper().Data!;
         ITxPool pool = Substitute.For<ITxPool>();
         ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
@@ -1395,7 +1854,7 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Admission_cancelled_after_only_rejections_is_not_an_interruption()
     {
-        (ProofWrapperService producer, _) = Create(3, 0);
+        (ProofWrapperService producer, _) = Create(3, 0, out _, bucket: 0);
         byte[] wrapper = producer.BuildWrapper().Data!;
         ITxPool pool = Substitute.For<ITxPool>();
         ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
@@ -1795,25 +2254,30 @@ public class ProofWrapperServiceTests
     private static (ProofWrapperService, FakeLeanProofVerifier) Create(int count, int payloadBytes)
         => Create(count, payloadBytes, out _);
 
-    private static (ProofWrapperService, FakeLeanProofVerifier) Create(int count, int payloadBytes, out Transaction[] transactions)
+    /// <param name="bucket">The hash-prefix bucket every transaction falls in, or <c>null</c> for consecutive nonces from zero.</param>
+    private static (ProofWrapperService, FakeLeanProofVerifier) Create(int count, int payloadBytes, out Transaction[] transactions, int? bucket = null)
     {
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         byte[] payload = new byte[payloadBytes];
-        transactions = Enumerable.Range(0, count).Select(index => new Transaction
+        transactions = Enumerable.Range(0, int.MaxValue).Select(index =>
         {
-            Type = TxType.FrameTx,
-            NonceKeys = [UInt256.Zero],
-            ChainId = 1,
-            SenderAddress = Address.Zero,
-            Nonce = (ulong)index,
-            Frames =
-            [
-                new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
-                    UInt256.Zero, Eip8288Dependencies.Serialize([dependency])),
-                new(FrameMode.Sender, FrameFlags.None, Address.Zero, 100_000, UInt256.Zero, payload)
-            ]
-        }).ToArray();
-        foreach (Transaction transaction in transactions) transaction.Hash = transaction.CalculateHash();
+            Transaction transaction = new()
+            {
+                Type = TxType.FrameTx,
+                NonceKeys = [UInt256.Zero],
+                ChainId = 1,
+                SenderAddress = Address.Zero,
+                Nonce = (ulong)index,
+                Frames =
+                [
+                    new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                        UInt256.Zero, Eip8288Dependencies.Serialize([dependency])),
+                    new(FrameMode.Sender, FrameFlags.None, Address.Zero, 100_000, UInt256.Zero, payload)
+                ]
+            };
+            transaction.Hash = transaction.CalculateHash();
+            return transaction;
+        }).Where(transaction => bucket is null || ProofWrapperService.BucketOf(transaction.Hash!) == bucket).Take(count).ToArray();
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddVerified([dependency], [[1]], null);
         FakeLeanProofVerifier verifier = new(true);
@@ -1821,7 +2285,8 @@ public class ProofWrapperServiceTests
     }
 
     private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier, IReleaseSpec? spec = null, ITxPool? pool = null,
-        IWrappedBlobTransactionAdmission? blobAdmission = null, Block? head = null)
+        IWrappedBlobTransactionAdmission? blobAdmission = null, Block? head = null, IBlockFinder? finder = null, double aggregationProbability = 1,
+        Random? random = null)
     {
         pool ??= Substitute.For<ITxPool>();
         pool.GetPendingTransactions().Returns(transactions);
@@ -1835,9 +2300,10 @@ public class ProofWrapperServiceTests
         pool.GetPendingTransactionsBySender().Returns(_ => BySender(pendingPool.GetPendingTransactions()));
         pool.GetLatestPendingNonce(Arg.Any<Address>()).Returns(ulong.MaxValue);
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
-        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        finder ??= Substitute.For<IBlockFinder>();
         finder.Head.Returns(head ?? Build.A.Block.TestObject);
-        return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier, blobAdmission);
+        return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier, blobAdmission,
+            new TxPoolConfig { AggregationProbability = aggregationProbability }, random);
     }
 
     private static Dictionary<AddressAsKey, Transaction[]> BySender(Transaction[] transactions) =>
@@ -2006,12 +2472,13 @@ public class ProofWrapperServiceTests
         Transaction light = new LightTransaction(blob);
         AddBlobCandidate(pool, blob, light);
 
-        MempoolWrapper wrapper = Decode(service.BuildWrapper().Data!);
+        List<Transaction> produced = [];
+        service.RefreshWrapper(() => produced.AddRange(Decode(service.GetLatestWrapper().Data!).Transactions));
 
-        Transaction wrapped = wrapper.Transactions.Single(t => t.Hash == blob.Hash);
+        Transaction wrapped = produced.Single(t => t.Hash == blob.Hash);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(wrapper.Transactions.Select(static t => t.Hash), Is.EquivalentTo(new[] { plain.Hash, blob.Hash }));
+            Assert.That(produced.Select(static t => t.Hash), Is.EquivalentTo(new[] { plain.Hash, blob.Hash }));
             Assert.That(Eip8288Dependencies.IsDependencyBearing(light), Is.True, "the frameless pool record keeps its dependency flag");
             Assert.That(MempoolWrapperDecoder.EncodeTransaction(wrapped), Is.EqualTo(MempoolWrapperDecoder.EncodeTransaction(blob)));
             Assert.That(((ShardBlobNetworkWrapper)wrapped.NetworkWrapper!).Blobs, Is.Empty);
