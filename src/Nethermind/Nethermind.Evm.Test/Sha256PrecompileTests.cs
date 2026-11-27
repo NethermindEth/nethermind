@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Security.Cryptography;
 using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
@@ -9,6 +11,14 @@ namespace Nethermind.Evm.Test;
 // Test data from https://csrc.nist.gov/Projects/Cryptographic-Algorithm-Validation-Program/Secure-Hashing
 public class Sha256PrecompileTests : PrecompileTests<Sha256Precompile, Sha256PrecompileTests>
 {
+    [Test]
+    public void Hashes_input_at_padding_boundaries([Values(55, 56, 63, 64, 65)] int length)
+    {
+        byte[] source = new byte[length];
+        new Random(123).NextBytes(source);
+        RunTest(new TestCase(source, SHA256.HashData(source), true));
+    }
+
     [TestCase("", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", true)]
     [TestCase("d3", "28969cdfa74a12c82f3bad960b0b000aca2ac329deea5c2328ebc6f2ba9802c1", true)]
     [TestCase("74ba2521", "b16aa56be3880d18cd41e68384cf1ec8c17680c45a02b1575dc1518923ae8b0e", true)]
