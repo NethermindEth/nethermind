@@ -99,8 +99,8 @@ internal static class ContainerSidecar
         Target target = await InspectAsync(engine, container, cancellationToken);
         string image = await SidecarImageAsync(engine, cancellationToken);
         string imageId = await DockerAsync(engine, ["image", "inspect", "--format", "{{.Id}}", image], cancellationToken);
-        // The name carries the target's ID, which never changes, so a container that later takes the target's name gets its own sidecar.
-        string name = $"profmcp-{target.Name}-{target.Id[..12]}-{imageId.Replace("sha256:", "", StringComparison.Ordinal)[..12]}";
+        // Named by the target's ID, which never changes: a renamed target keeps its sidecar, and a container that later takes its name gets its own.
+        string name = $"profmcp-{target.Id[..12]}-{imageId.Replace("sha256:", "", StringComparison.Ordinal)[..12]}";
         if (await IsRunningAsync(engine, name, cancellationToken))
             return name;
 
@@ -116,7 +116,7 @@ internal static class ContainerSidecar
                 // Reaching the target's files through /proc/1/root needs it when the target runs as another user than root.
                 "--cap-add", "SYS_PTRACE",
                 .. perfmon,
-                "--volume", $"{VolumeName(target.Name, target.Id)}:/profmcp-home",
+                "--volume", $"{VolumeName(target.Id)}:/profmcp-home",
                 // The client finds diagnostic sockets in its temp folder; the sidecar's own runtime must not create one there.
                 "--env", $"TMPDIR={TargetRoot}{target.TempFolder}",
                 "--env", "DOTNET_EnableDiagnostics=0",
@@ -145,7 +145,7 @@ internal static class ContainerSidecar
     }
 
     /// <summary>The volume for a target's results, named after its ID as well as its name, so a container that later takes the name gets another.</summary>
-    internal static string VolumeName(string name, string id) => $"profmcp-home-{name}-{id[..12]}";
+    internal static string VolumeName(string id) => $"profmcp-home-{id[..12]}";
 
     /// <summary>Says why the sidecar cannot profile a target with the PID mode docker inspect reports, or returns null when it can.</summary>
     /// <remarks>
@@ -223,6 +223,61 @@ internal static class ContainerSidecar
         }
 
         return false;
+    }
+
+    /// <summary>Run inside the sidecar: says why each of the target's .NET processes that publish no diagnostics socket the sidecar sees cannot be profiled.</summary>
+    /// <param name="published">The processes whose socket the sidecar sees.</param>
+    /// <remarks>
+    /// The sidecar looks for sockets in the temp folder of the container's configuration, fixed when it starts. A process started by a script that
+    /// sets another TMPDIR, or that turns the diagnostics port off, would otherwise be missing from the listing with no reason given.
+    /// </remarks>
+    internal static List<string> UnreachableProcesses(IReadOnlySet<int> published)
+    {
+        string? ownMounts = new FileInfo("/proc/self/ns/mnt").LinkTarget;
+        string? configured = Environment.GetEnvironmentVariable(TargetTempVariable) is { Length: > 0 } temp ? temp : null;
+        List<string> unreachable = [];
+        foreach (string process in Directory.EnumerateDirectories("/proc"))
+        {
+            if (!int.TryParse(Path.GetFileName(process), out int pid) || published.Contains(pid))
+                continue;
+
+            try
+            {
+                if (new FileInfo(Path.Combine(process, "ns", "mnt")).LinkTarget == ownMounts || !File.ReadAllText(Path.Combine(process, "maps")).Contains("/libcoreclr.so", StringComparison.Ordinal))
+                    continue;
+
+                if (UnreachableReason(File.ReadAllText(Path.Combine(process, "environ")), configured) is { } reason)
+                    unreachable.Add($"PID {pid} ({File.ReadAllText(Path.Combine(process, "comm")).TrimEnd()}) {reason}.");
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // The process ended.
+            }
+        }
+
+        return unreachable;
+    }
+
+    /// <summary>Why a .NET process with the given <c>/proc/&lt;pid&gt;/environ</c> publishes no socket the sidecar sees, or null when nothing in it explains that.</summary>
+    /// <param name="configured">The TMPDIR of the container's configuration, or null when it sets none.</param>
+    internal static string? UnreachableReason(string environ, string? configured)
+    {
+        Dictionary<string, string> environment = [];
+        foreach (string entry in environ.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int equals = entry.IndexOf('=');
+            if (equals > 0)
+                environment[entry[..equals]] = entry[(equals + 1)..];
+        }
+
+        if (environment.GetValueOrDefault("DOTNET_EnableDiagnostics") == "0" || environment.GetValueOrDefault("DOTNET_EnableDiagnostics_IPC") == "0")
+            return "disables the .NET diagnostics port (DOTNET_EnableDiagnostics=0)";
+
+        string? tmpdir = environment.GetValueOrDefault("TMPDIR") is { Length: > 0 } set ? set : null;
+        return TempFolder(tmpdir) == TempFolder(configured)
+            ? null
+            : $"runs with TMPDIR={tmpdir ?? "unset (/tmp)"}, but the container's configuration has TMPDIR={configured ?? "unset (/tmp)"}, where the sidecar looks for diagnostics sockets; " +
+              "set the process's TMPDIR in the container's configuration instead of in its entrypoint, then recreate the container";
     }
 
     /// <summary>Whether a <c>/proc/&lt;pid&gt;/cmdline</c> is a server started in the sidecar, as opposed to its idle process or the target's.</summary>
@@ -367,11 +422,10 @@ internal static class ContainerSidecar
         return inTempFolder || !SidecarSystemFolders.Contains(segments[0]) ? null : $"is under /{segments[0]}, a system folder of the sidecar, so it is not linked";
     }
 
-    /// <param name="Name">The container's name, whichever of its name or IDs it was given by, so they all share one sidecar and volume.</param>
     /// <param name="TempFolder">Where the target's .NET runtime creates its diagnostic socket.</param>
     /// <param name="ExplicitTempFolder">Whether the target sets TMPDIR, so the diagnostics client looks for the socket at that literal path.</param>
     /// <param name="Id">The container's full ID, which identifies it for the sidecar's lifetime even if it is renamed.</param>
-    private sealed record Target(string Id, string Name, string Image, string TempFolder, bool ExplicitTempFolder);
+    private sealed record Target(string Id, string Image, string TempFolder, bool ExplicitTempFolder);
 
     private static async Task<Target> InspectAsync(string[] engine, string container, CancellationToken cancellationToken)
     {
@@ -403,12 +457,8 @@ internal static class ContainerSidecar
         if (tmpdir is not null && CheckTargetTempFolder(TempFolder(tmpdir)) is { } problem)
             throw new InvalidOperationException($"Container '{container}' sets TMPDIR={tmpdir}, which {problem}; the sidecar cannot reach its diagnostics socket there.");
 
-        return new Target(root.GetProperty("Id").GetString()!, ContainerName(root.GetProperty("Name").GetString()), config.GetProperty("Image").GetString()!, TempFolder(tmpdir), tmpdir is not null);
+        return new Target(root.GetProperty("Id").GetString()!, config.GetProperty("Image").GetString()!, TempFolder(tmpdir), tmpdir is not null);
     }
-
-    /// <summary>Turns the <c>.Name</c> docker inspect reports, such as <c>/nethermind-hoodi</c>, into the name the CLI takes.</summary>
-    internal static string ContainerName(string? inspectedName) =>
-        inspectedName?.TrimStart('/') is { Length: > 0 } name ? name : throw new InvalidOperationException("docker inspect reported no container name.");
 
     internal static string TempFolder(string? tmpdir) =>
         tmpdir is not { Length: > 0 } ? "/tmp" : tmpdir.TrimEnd('/') is { Length: > 0 } trimmed ? trimmed : "/";

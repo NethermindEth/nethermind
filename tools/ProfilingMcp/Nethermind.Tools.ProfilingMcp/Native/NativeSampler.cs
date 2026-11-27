@@ -151,13 +151,14 @@ public static class NativeSampler
     internal static bool WritesJitDumps(IReadOnlyDictionary<string, string> environment, bool jitDumpWritten) =>
         jitDumpWritten || Setting(environment, "PerfMapEnabled")?.Trim() is "1" or "2";
 
-    /// <summary>Whether <paramref name="path"/> was written since <paramref name="started"/>, as opposed to missing or left by an earlier process with the same PID.</summary>
+    /// <summary>Whether <paramref name="path"/> was certainly written since <paramref name="started"/>, as opposed to missing or possibly left by an earlier process with the same PID.</summary>
     /// <remarks>
     /// The runtime leaves its perf map behind when it exits, and a container's first process has the same PID after a restart. The start time is
-    /// known to within a second, so a file written up to a second before it counts as the running process's.
+    /// known to within a second, so a file written in the second after it may still be an earlier process's and does not count: a fresh map is
+    /// asked for instead. The running process's own map is rewritten as it compiles methods, so it soon falls outside that second.
     /// </remarks>
     internal static bool WrittenSince(string path, DateTime started) =>
-        File.Exists(path) && File.GetLastWriteTimeUtc(path).AddSeconds(1) >= started;
+        File.Exists(path) && File.GetLastWriteTimeUtc(path) >= started.AddSeconds(1);
 
     /// <summary>When <paramref name="pid"/> started, in UTC, or <see cref="DateTime.MinValue"/> when that cannot be read, so that any file counts as its own.</summary>
     private static DateTime StartTime(int pid)

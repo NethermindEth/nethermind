@@ -76,7 +76,7 @@ public class LiveEventPipeTests
 
     [Test]
     [CancelAfter(120_000)]
-    public async Task Cpu_sample_gives_up_on_a_target_that_stops_responding(CancellationToken cancellationToken)
+    public async Task Gives_up_on_a_target_that_stops_responding([Values] bool counters, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsLinux())
             Assert.Ignore("Stopping a process with SIGSTOP needs Linux.");
@@ -86,8 +86,12 @@ public class LiveEventPipeTests
         try
         {
             CpuSampler.StopTimeout = TimeSpan.FromSeconds(3);
-            Task sample = CpuSampler.CollectAsync(target.Id, TimeSpan.FromSeconds(2), _trace, cancellationToken);
-            while (!File.Exists(_trace) || new FileInfo(_trace).Length == 0)
+            Task sample = counters
+                ? EventPipeCollector.CollectCountersAsync(target.Id, TimeSpan.FromSeconds(2), 1, cancellationToken)
+                : CpuSampler.CollectAsync(target.Id, TimeSpan.FromSeconds(2), _trace, cancellationToken);
+            if (counters)
+                await Task.Delay(1000, cancellationToken);
+            while (!counters && (!File.Exists(_trace) || new FileInfo(_trace).Length == 0))
                 await Task.Delay(50, cancellationToken);
             await Signal("STOP", target.Id);
 

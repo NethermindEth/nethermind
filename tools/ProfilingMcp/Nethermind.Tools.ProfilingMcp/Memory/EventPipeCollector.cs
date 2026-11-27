@@ -8,6 +8,7 @@ using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Parsers.Clr;
+using Nethermind.Tools.ProfilingMcp.EventPipe;
 
 namespace Nethermind.Tools.ProfilingMcp.Memory;
 
@@ -142,8 +143,21 @@ internal static class EventPipeCollector
         }
         finally
         {
-            await session.StopAsync(CancellationToken.None);
-            await processing;
+            using CancellationTokenSource stopping = new(CpuSampler.StopTimeout);
+            try
+            {
+                await session.StopAsync(stopping.Token);
+                await processing.WaitAsync(stopping.Token);
+            }
+            catch (Exception e)
+            {
+                // As in CpuSampler.RecordAsync: disposing the session closes its stream, which ends the reading.
+                session.Dispose();
+                await processing.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                if (e is OperationCanceledException && stopping.IsCancellationRequested)
+                    throw new TimeoutException($"Process {pid} did not finish its EventPipe session within {CpuSampler.StopTimeout.TotalSeconds:N0} s of being asked to stop; it may have stopped responding.", e);
+                throw;
+            }
         }
     }
 }

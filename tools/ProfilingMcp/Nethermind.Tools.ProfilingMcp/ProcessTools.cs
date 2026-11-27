@@ -17,7 +17,8 @@ public sealed class ProcessTools
     public string ListProcesses([Description("Only processes whose name or path contains this text (case-insensitive).")] string? filter = null)
     {
         TextTable table = new("pid", "working set", "name", "path");
-        foreach (int pid in DiagnosticsClient.GetPublishedProcesses().Order())
+        HashSet<int> published = [.. DiagnosticsClient.GetPublishedProcesses()];
+        foreach (int pid in published.Order())
         {
             if (pid == Environment.ProcessId)
                 continue;
@@ -39,7 +40,10 @@ public sealed class ProcessTools
             }
         }
 
-        return table.Count == 0 ? "No matching .NET processes." : table.ToString();
+        string listing = table.Count == 0 ? "No matching .NET processes." : table.ToString();
+        return Environment.GetEnvironmentVariable(ContainerSidecar.NameVariable) is not null && ContainerSidecar.UnreachableProcesses(published) is { Count: > 0 } unreachable
+            ? $"{listing}\n\nNot profilable from here:\n{string.Join('\n', unreachable)}"
+            : listing;
     }
 
     [McpServerTool(Name = "list_containers", Title = "List Docker containers", ReadOnly = true, Idempotent = true, OpenWorld = true)]

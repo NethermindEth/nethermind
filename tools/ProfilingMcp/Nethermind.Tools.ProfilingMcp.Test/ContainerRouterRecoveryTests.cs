@@ -176,6 +176,20 @@ public class ContainerRouterRecoveryTests
         }
     }
 
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Leaves_list_containers_with_its_own_engine_argument_on_this_machine(CancellationToken cancellationToken)
+    {
+        CallToolResult local = new() { Content = [] };
+        ContainerRouter router = new((_, _) => throw new AssertionException("no sidecar should start"));
+        RequestContext<CallToolRequestParams> request = new(Sidecar.Placeholder, new JsonRpcRequest { Method = RequestMethods.ToolsCall },
+            new CallToolRequestParams { Name = "list_containers", Arguments = new Dictionary<string, JsonElement> { [ContainerRouter.DockerHostArgument] = JsonSerializer.SerializeToElement("node1") } });
+
+        CallToolResult result = await router.Route((_, _) => ValueTask.FromResult(local))(request, cancellationToken);
+
+        Assert.That(result, Is.SameAs(local));
+    }
+
     [TestCase("write_dump", false, true)]
     [TestCase("write_dump", true, false)]
     [TestCase("native_memory", false, true)]

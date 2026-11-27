@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -91,7 +92,7 @@ internal sealed class ContainerRouter : IAsyncDisposable
     public McpRequestHandler<CallToolRequestParams, CallToolResult> Route(McpRequestHandler<CallToolRequestParams, CallToolResult> next) =>
         async (request, cancellationToken) =>
         {
-            if (request.Params is not { } call || !TryTakeTarget(call.Arguments, out string? dockerHost, out string? container, out Dictionary<string, JsonElement> arguments))
+            if (request.Params is not { } call || Unrouted.Contains(call.Name) || !TryTakeTarget(call.Arguments, out string? dockerHost, out string? container, out Dictionary<string, JsonElement> arguments))
                 return await next(request, cancellationToken);
 
             // Connections are kept per container ID: a name can move to another container while a session runs.
@@ -195,14 +196,22 @@ internal sealed class ContainerRouter : IAsyncDisposable
 
     /// <summary>Splits the container and engine arguments from the ones for the tool.</summary>
     /// <returns>Whether the call names a container.</returns>
+    /// <exception cref="McpException">A target argument is given but is not a name: the call would otherwise run on another target.</exception>
     internal static bool TryTakeTarget(IDictionary<string, JsonElement>? arguments, out string? dockerHost, out string? container, out Dictionary<string, JsonElement> rest)
     {
         rest = arguments is null ? [] : [with(arguments)];
-        container = rest.Remove(ContainerArgument, out JsonElement value) ? Text(value) : null;
-        dockerHost = rest.Remove(DockerHostArgument, out value) ? Text(value) : null;
+        container = rest.Remove(ContainerArgument, out JsonElement value) ? Text(ContainerArgument, value) : null;
+        dockerHost = rest.Remove(DockerHostArgument, out value) ? Text(DockerHostArgument, value) : null;
+        if (dockerHost is not null && container is null)
+            throw new McpException($"'{DockerHostArgument}' is given without '{ContainerArgument}'; name the container to profile on that engine.");
         return container is not null;
 
-        static string? Text(JsonElement value) => value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text ? text : null;
+        static string? Text(string name, JsonElement value) => value.ValueKind switch
+        {
+            JsonValueKind.Null => null,
+            JsonValueKind.String when !string.IsNullOrWhiteSpace(value.GetString()) => value.GetString(),
+            _ => throw new McpException($"'{name}' must be a name, or left out for this machine; got {value.GetRawText()}."),
+        };
     }
 
     /// <remarks>New sidecars are refused from now on; ones still starting are waited for, so that none outlives the router.</remarks>

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Compression;
+using System.Net;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
@@ -22,6 +24,36 @@ public class DebuggingLibrariesTests
     [TestCase("/usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.14/libcoreclr.so", "s390x", ExpectedResult = null)]
     public string? Tells_the_runtime_pack_from_the_runtime_path(string coreclrPath, string architecture) =>
         DebuggingLibraries.Runtime(coreclrPath, architecture) is var (rid, version) ? $"{rid} {version}" : null;
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Gives_up_on_a_download_whose_body_stalls(CancellationToken cancellationToken)
+    {
+        // Sends the headers and the start of the body, then nothing more.
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        using CancellationTokenSource stalling = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task serving = Task.Run(async () =>
+        {
+            using TcpClient client = await listener.AcceptTcpClientAsync(stalling.Token);
+            NetworkStream stream = client.GetStream();
+            await stream.ReadAtLeastAsync(new byte[4096], 1, throwOnEndOfStream: false, stalling.Token);
+            await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\npartial"u8.ToArray(), stalling.Token);
+            await Task.Delay(Timeout.Infinite, stalling.Token);
+        }, CancellationToken.None);
+        using HttpClient http = new();
+        Uri url = new($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/pack.nupkg");
+
+        try
+        {
+            Assert.That(async () => await DebuggingLibraries.FetchAsync(http, url, TimeSpan.FromSeconds(1), cancellationToken), Throws.InstanceOf<TimeoutException>());
+        }
+        finally
+        {
+            await stalling.CancelAsync();
+            await serving.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
 
     [Test]
     public void Loads_its_own_or_a_supplied_dac_and_never_the_targets()

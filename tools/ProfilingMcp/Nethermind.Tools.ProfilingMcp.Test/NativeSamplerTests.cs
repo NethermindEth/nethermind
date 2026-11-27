@@ -130,7 +130,8 @@ public class NativeSamplerTests
         NativeSampler.WritesJitDumps(variable is null ? [] : new Dictionary<string, string> { [variable] = value! }, jitDumpWritten);
 
     [TestCase(-300.0, ExpectedResult = false)]
-    [TestCase(-0.5, ExpectedResult = true, Description = "the start time is known to within a second")]
+    [TestCase(-0.5, ExpectedResult = false)]
+    [TestCase(0.5, ExpectedResult = false, Description = "the start time is known to within a second, so this may be an earlier process's map")]
     [TestCase(300.0, ExpectedResult = true)]
     [TestCase(null, ExpectedResult = false)]
     public bool Tells_a_map_of_the_running_process_from_one_an_earlier_process_left(double? writtenSecondsAfterStart)
@@ -292,6 +293,32 @@ public class NativeSamplerTests
                 Assert.That(hotspots, Does.Contain("Hidden: 60.0 ms").And.Contain("25.0 ms waiting for locks").And.Contain("35.0 ms waiting for GCs"));
                 Assert.That(hotspots, Does.Not.Contain("Enter_Slowpath").And.Not.Contain("TryEnterSlow").And.Not.Contain("PollGCWorker"));
                 Assert.That(hotspots, Does.Contain("100.0 %").And.Contain("Work"), "the only remaining own time is the work");
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task Leaves_no_report_behind_when_cancelled()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}");
+        string stacks = Path.Combine(root, $"work{NativeSampler.Extension}");
+        Directory.CreateDirectory(root);
+        File.WriteAllLines(stacks, ["[thread a];Main;Work 40"]);
+        TraceTools tools = new(new NetTraceReader(), WorkspacePaths.At(root));
+        try
+        {
+            using CancellationTokenSource cancelled = new();
+            await cancelled.CancelAsync();
+
+            Assert.That(async () => await tools.ReportAsync(stacks, "report.html", cancellationToken: cancelled.Token), Throws.InstanceOf<OperationCanceledException>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Directory.GetFiles(root, "report.html*", SearchOption.AllDirectories), Is.Empty);
+                Assert.That(await tools.ReportAsync(stacks, "report.html"), Does.StartWith("Report written"), "a retry with the same name");
             }
         }
         finally

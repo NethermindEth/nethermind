@@ -234,9 +234,23 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
         int kept = CallTree.Prune(tree, maxNodes);
 
         output = Path.Combine(paths.Snapshots, ReportFileName(output) ?? WorkspacePaths.NewFileName(Path.GetFileNameWithoutExtension(snapshot), ".html"));
-        await using (FileStream file = new(output, FileMode.CreateNew, FileAccess.Write))
-        await using (StreamWriter writer = new(file))
-            await writer.WriteAsync(HtmlReport.Render(snapshot, functions, tree, nodesBeforePruning, BlockingWait.IsMatch).AsMemory(), cancellationToken);
+        if (File.Exists(output))
+            throw new IOException($"The file '{output}' already exists.");
+
+        // Written beside the page and renamed once complete, so a cancelled write leaves nothing under the name for a retry to trip on.
+        string partial = $"{output}.{Guid.NewGuid():N}.partial";
+        try
+        {
+            await using (FileStream file = new(partial, FileMode.CreateNew, FileAccess.Write))
+            await using (StreamWriter writer = new(file))
+                await writer.WriteAsync(HtmlReport.Render(snapshot, functions, tree, nodesBeforePruning, BlockingWait.IsMatch).AsMemory(), cancellationToken);
+            File.Move(partial, output, overwrite: false);
+        }
+        finally
+        {
+            File.Delete(partial);
+        }
+
         return $"Report written: {paths.ForPerson(output)}\nFlame graph shows {kept:N0} of {nodesBeforePruning:N0} call paths; {Percent(tree.WaitTime, tree.TotalTime)} of sampled time is in blocking waits (hidden by default on the page).";
     }
 

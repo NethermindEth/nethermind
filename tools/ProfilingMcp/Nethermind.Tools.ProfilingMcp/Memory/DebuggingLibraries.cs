@@ -36,7 +36,9 @@ internal static partial class DebuggingLibraries
 
     private const string CodeSigning = "1.3.6.1.5.5.7.3.3";
 
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
+    private static readonly TimeSpan DownloadTimeout = TimeSpan.FromMinutes(5);
+
+    private static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     /// <summary>
     /// Tools that load the DAC: native_memory, and the heap tools when given a dump instead of a PID. write_dump is included because
@@ -96,8 +98,8 @@ internal static partial class DebuggingLibraries
 
     /// <summary>Runs <paramref name="supply"/> for one runtime, returning why it failed instead of throwing, so the others are still supplied.</summary>
     /// <remarks>
-    /// <see cref="HttpClient"/> reports its own timeout as an <see cref="OperationCanceledException"/>, which is one runtime's failure like any
-    /// other; only the caller's cancellation ends the whole preparation.
+    /// A timeout, even one reported as an <see cref="OperationCanceledException"/>, is one runtime's failure like any other; only the caller's
+    /// cancellation ends the whole preparation.
     /// </remarks>
     internal static async Task<string?> TrySupplyAsync(Func<Task> supply, CancellationToken cancellationToken)
     {
@@ -203,9 +205,7 @@ internal static partial class DebuggingLibraries
 
         string package = $"microsoft.netcore.app.runtime.{rid}";
         Uri url = new($"https://api.nuget.org/v3-flatcontainer/{package}/{version}/{package}.{version}.nupkg");
-        await using Stream download = await Http.GetStreamAsync(url, cancellationToken);
-        await using MemoryStream buffer = new();
-        await download.CopyToAsync(buffer, cancellationToken);
+        await using MemoryStream buffer = await FetchAsync(Http, url, DownloadTimeout, cancellationToken);
         await VerifyAsync(buffer, cancellationToken);
         buffer.Position = 0;
         using ZipArchive archive = new(buffer, ZipArchiveMode.Read);
@@ -216,6 +216,32 @@ internal static partial class DebuggingLibraries
         await using (Stream source = entry.Open())
             await SaveAsync(source, dac, cancellationToken);
         return dac;
+    }
+
+    /// <summary>Downloads <paramref name="url"/> into memory, giving up once the whole download, body included, takes longer than <paramref name="timeout"/>.</summary>
+    /// <remarks><see cref="HttpClient.Timeout"/> ends with the response headers, so a body that stalls after them would hold the call until the caller cancels.</remarks>
+    /// <exception cref="TimeoutException">The download did not finish in time.</exception>
+    internal static async Task<MemoryStream> FetchAsync(HttpClient http, Uri url, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(timeout);
+        MemoryStream buffer = new();
+        try
+        {
+            await using Stream download = await http.GetStreamAsync(url, deadline.Token);
+            await download.CopyToAsync(buffer, deadline.Token);
+            return buffer;
+        }
+        catch (OperationCanceledException e) when (!cancellationToken.IsCancellationRequested)
+        {
+            await buffer.DisposeAsync();
+            throw new TimeoutException($"Downloading {url} took longer than {timeout.TotalSeconds:N0} s.", e);
+        }
+        catch
+        {
+            await buffer.DisposeAsync();
+            throw;
+        }
     }
 
     /// <summary>Checks that a runtime pack is signed by Microsoft and has not changed since it was signed.</summary>
