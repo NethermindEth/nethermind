@@ -157,7 +157,8 @@ public static class FrameTxDependencyProof
         {
             if (proof.Length != 0) throw new InvalidBlockException(block, Malformed);
         }
-        else if (proof is [Eip8288Constants.DependencyProofVersionAggregated, ..] && spec?.IsEip8288Enabled == true)
+        // The zkVM guests carry no dependency proof, so they leave EIP-8288 verification out of their image.
+        else if (!ZkEvmFlag.IsActive && proof is [Eip8288Constants.DependencyProofVersionAggregated, ..] && spec?.IsEip8288Enabled == true)
         {
             witnesses = AggregatedDependencyProof.Verify(block, dependencies, proof,
                 leanProofVerifier ?? throw new InvalidOperationException($"No EIP-8288 verifier to check block {block.ToString(Block.Format.Short)}"));
