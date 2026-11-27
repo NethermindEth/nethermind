@@ -228,7 +228,7 @@ internal sealed class WrapperEncodingBudget(long maxBytes)
 }
 
 /// <summary>Transaction encodings received in full within validated wrappers from one peer, keyed by encoding hash, from which
-/// that peer's hash references are resolved; LRU, bounded per peer and by a budget shared across peers.</summary>
+/// hash references are resolved; LRU, bounded per peer and by a budget shared across peers.</summary>
 internal sealed class WrapperEncodingCache(WrapperEncodingBudget budget, long maxBytes = WrapperTransportLimits.MaxCachedEncodingBytesPerPeer)
 {
     private readonly Lock _lock = new();

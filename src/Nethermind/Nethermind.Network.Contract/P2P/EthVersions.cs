@@ -27,4 +27,8 @@ public static class EthVersions
     /// <summary>EIP-8437 direct-witness proof wrapper propagation; extends <see cref="Eth74"/>, a provisional version that
     /// activates with EIP-8288.</summary>
     public const byte Eth75 = 75;
+
+    /// <summary>Aggregated proof wrapper propagation; extends <see cref="Eth75"/>, a provisional version that activates with
+    /// EIP-8288.</summary>
+    public const byte Eth76 = 76;
 }

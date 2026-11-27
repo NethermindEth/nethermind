@@ -288,7 +288,7 @@ namespace Nethermind.Network.P2P
 
         /// <remarks>Caps on the <c>eth/75</c> wrapper messages: NewProofWrapperHashes and GetProofWrappers by their largest valid
         /// encodings, ProofWrappers by this client's allowance for a whole wrapper of <c>MAX_WRAPPER_BYTES</c> under the soft
-        /// response limit; and on <c>eth/74</c> DependencyProofs likewise. Data within the smallest cap needs no protocol
+        /// response limit, and on <c>eth/76</c> its manifest messages too; and on <c>eth/74</c> DependencyProofs likewise. Data within the smallest cap needs no protocol
         /// lookup.</remarks>
         bool IMessageLimitSession.ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength)
         {
@@ -297,8 +297,10 @@ namespace Nethermind.Network.P2P
             return protocol == Protocol.Eth && _protocols.TryGetValue(Protocol.Eth, out IProtocolHandler? eth) && eth.ProtocolVersion switch
             {
                 EthVersions.Eth74 => Subprotocols.Eth.V74.Eth74Protocol.ExceedsMessageLimit(messageId, uncompressedLength),
-                >= EthVersions.Eth75 => Subprotocols.Eth.V74.Eth74Protocol.ExceedsMessageLimit(messageId, uncompressedLength)
+                EthVersions.Eth75 => Subprotocols.Eth.V74.Eth74Protocol.ExceedsMessageLimit(messageId, uncompressedLength)
                     || Subprotocols.Eth.V75.Eth75Protocol.ExceedsMessageLimit(messageId, uncompressedLength),
+                >= EthVersions.Eth76 => Subprotocols.Eth.V74.Eth74Protocol.ExceedsMessageLimit(messageId, uncompressedLength)
+                    || Subprotocols.Eth.V76.Eth76Protocol.ExceedsMessageLimit(messageId, uncompressedLength),
                 _ => false
             };
         }

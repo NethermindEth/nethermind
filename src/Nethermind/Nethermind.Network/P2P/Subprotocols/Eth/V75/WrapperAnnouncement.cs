@@ -49,6 +49,15 @@ public sealed class WrapperAnnouncement
     /// <summary>The canonical <c>eth/75</c> RLP encoding.</summary>
     public byte[] Encoded { get; }
 
+    /// <summary>The canonical <c>eth/76</c> RLP encoding <c>[mode, length, hash, deps-hash, txs-hash, txs-meta]</c>.</summary>
+    /// <exception cref="InvalidOperationException">The announcement has no coverage hints.</exception>
+    public byte[] Encoded76 => _encoded76 ??= Coverage is { } coverage
+        ? Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt((ulong)Mode), Eth75Rlp.EncodeUInt((ulong)Length), Eth75Rlp.EncodeBytes(Hash.Bytes),
+            Eth75Rlp.EncodeBytes(coverage.DepsHash.Bytes), Eth75Rlp.EncodeBytes(coverage.TxsHash.Bytes), Metadata?.Encoded ?? Eth75Rlp.EncodeList())
+        : throw new InvalidOperationException("Only an announcement with coverage hints has an eth/76 form");
+
+    private byte[]? _encoded76;
+
     /// <summary>Describes a canonical wrapper, reading its mode, coverage hints and inline metadata from the encoding.</summary>
     /// <exception cref="RlpException">The wrapper is not a canonical EIP-8288 wrapper.</exception>
     public static WrapperAnnouncement Create(ReadOnlySpan<byte> wrapper)
@@ -84,6 +93,35 @@ public sealed class WrapperAnnouncement
         if (!supported) return null;
         return new((int)mode, (int)length, hash, null,
             metadata.Length == 1 ? null : WrapperMetadata.Decode(metadata, (int)length, Eth75Protocol.MaxInlineTransactions));
+    }
+
+    /// <summary>Decodes an <c>eth/76</c> entry, returning null for a mode other than 0 or 1 once its encoding and length are
+    /// checked.</summary>
+    /// <remarks>Inline metadata is malformed on a mode-1 entry, and its hashes must be the preimage of <c>txs-hash</c>.</remarks>
+    /// <param name="hash">The announced hash, which orders entries of every mode.</param>
+    /// <exception cref="RlpException">The entry is malformed.</exception>
+    public static WrapperAnnouncement? Decode76(ReadOnlySpan<byte> encoded, out ValueHash256 hash)
+    {
+        Eth75RlpReader outer = new(encoded);
+        Eth75RlpReader fields = outer.ReadList();
+        outer.End();
+        bool supported = fields.ReadUInt(out ulong mode) && mode <= MempoolWrapper.ModeRecursive;
+        ulong length = fields.ReadUInt64();
+        if (length is 0 or > Eth75Protocol.MaxWrapperBytes) throw new RlpException("Wrapper length is out of bounds");
+        hash = fields.ReadHash();
+        WrapperCoverage coverage = new(fields.ReadHash(), fields.ReadHash());
+        if (!fields.IsListNext) throw new RlpException("Transaction metadata must be a list");
+        ReadOnlySpan<byte> encodedMetadata = fields.ReadItem();
+        fields.End();
+        if (!supported) return null;
+        WrapperMetadata? metadata = null;
+        if (encodedMetadata.Length != 1)
+        {
+            if (mode != MempoolWrapper.ModeDirect) throw new RlpException("A mode-1 announcement carries no inline metadata");
+            metadata = WrapperMetadata.Decode(encodedMetadata, (int)length, Eth75Protocol.MaxInlineTransactions);
+            if (metadata.TransactionsDigest != coverage.TxsHash) throw new RlpException("Transaction metadata does not match the announced txs-hash");
+        }
+        return new((int)mode, (int)length, hash, coverage, metadata);
     }
 
     public override string ToString() => $"mode-{Mode} wrapper {Hash.ToShortString()} ({Length} bytes)";

@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
@@ -103,8 +104,11 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
     internal sealed class Entry(WrapperAnnouncement announcement, byte[] wrapper, ValueHash256[] hashes, Eip8288Verifier verifier, WrapperShape shape,
         ValueHash256[] encodingHashes, WrapperMetadata manifest)
     {
-        /// <summary>The metadata of all the wrapper's transactions.</summary>
+        /// <summary>The metadata of all the wrapper's transactions, against which announced metadata is checked.</summary>
         public WrapperMetadata Manifest { get; } = manifest;
+
+        /// <summary>The wrapper's <c>eth/76</c> manifest, kept rather than derived per request.</summary>
+        public WrapperManifest HashManifest { get; } = WrapperManifest.Of(hashes);
 
         /// <summary>The encoding hashes of the wrapper's transactions, in order, against which hash references are made.</summary>
         public ValueHash256[] EncodingHashes { get; } = encodingHashes;
@@ -132,6 +136,9 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
     public long Bytes { get; private set; }
     public int Count => _objects.Count;
 
+    /// <summary>The held mode-1 wrappers.</summary>
+    public int RecursiveCount { get; private set; }
+
     public bool TryGet(in ValueHash256 wrapperHash, out Entry entry) => _objects.TryGetValue(wrapperHash, out entry!);
 
     public bool Contains(in ValueHash256 wrapperHash) => _objects.ContainsKey(wrapperHash);
@@ -144,6 +151,7 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         entry.Node = _order.AddLast(wrapperHash);
         _objects[wrapperHash] = entry;
         Bytes += entry.Bytes;
+        if (entry.Shape.Mode == MempoolWrapper.ModeRecursive) RecursiveCount++;
         foreach (ValueHash256 transaction in entry.Hashes)
         {
             if (!_byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders)) _byTransaction[transaction] = holders = [];
@@ -188,6 +196,7 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         if (!_objects.Remove(wrapperHash, out Entry? entry)) return;
         _order.Remove(entry.Node!);
         Bytes -= entry.Bytes;
+        if (entry.Shape.Mode == MempoolWrapper.ModeRecursive) RecursiveCount--;
         foreach (ValueHash256 transaction in entry.Hashes)
             if (_byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders) && holders.Remove(wrapperHash) && holders.Count == 0)
                 _byTransaction.Remove(transaction);
@@ -203,9 +212,9 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     public IWrapperLink Link { get; } = link;
     public bool Closed { get; set; }
 
-    /// <summary>Whether the connection runs above <c>eth/75</c>, which exchanges only mode-0 wrappers in full and announces them
-    /// without coverage hints.</summary>
-    public bool Aggregates => Link.ProtocolVersion > EthVersions.Eth75;
+    /// <summary>Whether the connection runs <c>eth/76</c>, which relays mode-1 wrappers, announces coverage hints and permits
+    /// compact retrieval; <c>eth/75</c> exchanges only mode-0 wrappers in full.</summary>
+    public bool Aggregates => Link.ProtocolVersion >= EthVersions.Eth76;
 
     /// <summary>Whether wrappers of <paramref name="shape"/> are announced and served to the peer: on <c>eth/75</c>, only mode-0
     /// wrappers whose dependencies are all leanSPHINCS (EIP-8437).</summary>
@@ -215,8 +224,8 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     /// may replace with hash references (EIP-8437).</summary>
     public WrapperBoundedSet Delivered { get; } = new(WrapperTransportLimits.MaxKnownPerPeer);
 
-    /// <summary>Encodings received in full from the peer within wrappers that validated, from which its references are
-    /// resolved; while it is empty, requests to the peer ask for complete wrappers.</summary>
+    /// <summary>Encodings received in full from the peer within wrappers that validated, from which any peer's references are
+    /// resolved; held per peer so one connection cannot evict another's, and released when it closes.</summary>
     public WrapperEncodingCache Received { get; } = new(encodingBudget);
 
     /// <summary>Wrapper hashes exchanged on the connection in either direction: announced, requested or sent.</summary>
@@ -225,10 +234,6 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     /// <summary>Wrapper hashes this node announced to the peer under the current verification rules: the only ones it serves
     /// (EIP-8437).</summary>
     public WrapperBoundedSet Announced { get; } = new(WrapperTransportLimits.MaxKnownPerPeer);
-
-    /// <summary>Wrappers sent to or received from this peer, or announced by it: the coverage it already has, against which
-    /// a redundant announcement is suppressed. Unlike <see cref="Known"/>, wrappers this node merely announced are excluded.</summary>
-    public WrapperBoundedSet Exchanged { get; } = new(WrapperTransportLimits.MaxKnownPerPeer);
 
     public long LastIssued { get; set; }
 
@@ -294,9 +299,12 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
 }
 
 /// <summary>An outstanding GetProofWrappers request; its wanted wrappers in request order.</summary>
-internal sealed class WrappersRequest(long id, long created, long reserved, WrapperFetch[] fetches, bool compact)
+internal sealed class WrappersRequest(long id, long created, long reserved, WrapperFetch[] fetches, bool compact, bool manifests = false)
 {
     public long Id { get; } = id;
+
+    /// <summary>Whether this is a GetProofWrapperManifests request rather than a GetProofWrappers one.</summary>
+    public bool Manifests { get; } = manifests;
 
     /// <summary>Whether the request permitted hash references.</summary>
     public bool Compact { get; } = compact;
@@ -326,11 +334,18 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     /// <summary>Tried sources that answered with an empty response, a spent serving budget, which do not count toward
     /// <see cref="WrapperTransportLimits.MaxSourcesPerWrapper"/>.</summary>
     public HashSet<WrapperPeer> AnsweredEmpty { get; } = [];
+
+    /// <summary>Tried sources whose manifest showed the wrapper adds no coverage, which do not count toward
+    /// <see cref="WrapperTransportLimits.MaxSourcesPerWrapper"/>, so false manifests cannot use up the sources asked.</summary>
+    public HashSet<WrapperPeer> ClaimedCovered { get; } = [];
     public bool Requested { get; set; }
 
     /// <summary>Set after a compact response referenced an encoding this node no longer holds: the wrapper is requested again
     /// with <c>compact = 0</c>.</summary>
     public bool RequiresComplete { get; set; }
+
+    /// <summary>Whether the wrapper's <c>eth/76</c> manifest is to be requested before the wrapper.</summary>
+    public bool WantsManifest { get; set; }
 
     /// <summary>Set once an <c>eth/75</c> peer served the wrapper with a scheme that version does not carry: only aggregating
     /// sources are asked from then on.</summary>
@@ -348,6 +363,14 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     /// <summary>What each source announced; a response is held to its own server's claims, so one peer's false claims cannot
     /// make an honest server's response look mismatched (EIP-8437).</summary>
     private readonly Dictionary<WrapperPeer, WrapperAnnouncement> _claims = [];
+
+    /// <summary>The manifests sources returned, held to their senders like their announcements.</summary>
+    private Dictionary<WrapperPeer, WrapperManifest>? _manifests;
+
+    /// <summary>The manifest <paramref name="peer"/> returned, or null.</summary>
+    public WrapperManifest? ManifestFrom(WrapperPeer peer) => _manifests?.GetValueOrDefault(peer);
+
+    public void SetManifest(WrapperPeer peer, WrapperManifest manifest) => (_manifests ??= [])[peer] = manifest;
 
     public void AddSource(WrapperPeer peer, WrapperAnnouncement announcement)
     {
@@ -369,11 +392,14 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     public WrapperCoverage? CoverageFrom(WrapperPeer peer) => ClaimFrom(peer).Coverage;
 
     /// <summary>Sources other than <paramref name="server"/> whose claims about a wrapper with a verified hash are false.</summary>
-    public List<WrapperPeer> FalseClaimants(WrapperPeer server, int mode, int length, WrapperMetadata? metadata)
+    /// <param name="metadata">The wrapper's inline metadata, if it has any.</param>
+    /// <param name="manifest">The wrapper's manifest, which a source's manifest must equal.</param>
+    public List<WrapperPeer> FalseClaimants(WrapperPeer server, int mode, int length, WrapperMetadata? metadata, WrapperManifest manifest)
     {
         List<WrapperPeer> claimants = [];
         foreach ((WrapperPeer peer, WrapperAnnouncement claim) in _claims)
-            if (peer != server && !peer.Closed && (claim.Mode != mode || claim.Length != length || !Equals(claim.Metadata, metadata)))
+            if (peer != server && !peer.Closed && (claim.Mode != mode || claim.Length != length || !Equals(claim.Metadata, metadata)
+                || ManifestFrom(peer) is { } claimed && !claimed.Equals(manifest)))
                 claimants.Add(peer);
         return claimants;
     }
@@ -383,7 +409,7 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     /// lowest failure score first.</remarks>
     public WrapperPeer? NextSource()
     {
-        if (Tried.Count - AnsweredEmpty.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return null;
+        if (Tried.Count - AnsweredEmpty.Count - ClaimedCovered.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return null;
         WrapperPeer? deprioritized = null;
         foreach (WrapperPeer peer in Sources)
         {

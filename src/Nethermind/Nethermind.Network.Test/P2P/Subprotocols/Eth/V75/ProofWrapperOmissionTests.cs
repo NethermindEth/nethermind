@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V75.WrapperTestObjects;
 
@@ -41,12 +42,23 @@ public class ProofWrapperOmissionTests
         {
             Holder.Tick(System.TimeSpan.FromSeconds(1));
             Assert.That(Holder.Broadcaster.PublishWrapper(wrapper), Is.True);
-            Node.Broadcaster.OnAnnounce(HolderPeer, ToNode.Sent<NewProofWrapperHashesMessage>()[^1]);
+            Announce(ToNode.Sent<NewProofWrapperHashesMessage>()[^1].Announcements.Single(), wrapper);
             GetProofWrappersMessage request = ToHolder.Sent<GetProofWrappersMessage>()[^1];
             Holder.Broadcaster.OnGetProofWrappers(NodePeer, request);
             ProofWrappersMessage response = ToNode.Sent<ProofWrappersMessage>()[^1];
             Node.Broadcaster.OnProofWrappers(HolderPeer, response);
             return (request, response);
+        }
+
+        /// <summary>Carries <paramref name="announcement"/> to the requester and answers its manifest request, if it makes one,
+        /// with <paramref name="wrapper"/>'s manifest.</summary>
+        public void Announce(WrapperAnnouncement announcement, byte[] wrapper)
+        {
+            int asked = ToHolder.Sent<GetProofWrapperManifestsMessage>().Length;
+            Node.Broadcaster.OnAnnounce(HolderPeer, new([announcement]));
+            GetProofWrapperManifestsMessage[] requests = ToHolder.Sent<GetProofWrapperManifestsMessage>();
+            if (requests.Length > asked)
+                Node.Broadcaster.OnProofWrapperManifests(HolderPeer, new(requests[^1].RequestId, [new(announcement.Hash, ManifestOf(wrapper))]));
         }
 
         public Task Stored(byte[] wrapper) =>
@@ -82,6 +94,33 @@ public class ProofWrapperOmissionTests
             Assert.That(pair.Node.Pending.Select(static t => t.Hash), Is.EquivalentTo(new[] { a.Hash, b.Hash }));
             Assert.That(pair.ToHolder.Penalties, Is.Empty);
             Assert.That(pair.Node.Broadcaster.ChargedBytes, Is.Zero);
+        }
+    }
+
+    // eth/76: references resolve from any locally cached, validated encoding, whichever peer supplied it.
+    [Test]
+    public async Task Compact_response_is_reconstructed_from_encodings_another_peer_supplied()
+    {
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
+        byte[] first = Wrapper(64, a), second = Wrapper(64, a, b);
+        using Pair pair = new();
+        pair.Exchange(first);
+        await pair.Stored(first);
+        FakeWrapperLink link = new("other");
+        WrapperPeer other = pair.Node.Connect(link);
+        pair.Node.Broadcaster.OnAnnounce(other, new([Describe(second)]));
+        pair.Node.Broadcaster.OnProofWrapperManifests(other,
+            new(link.Sent<GetProofWrapperManifestsMessage>().Single().RequestId, [new(Describe(second).Hash, ManifestOf(second))]));
+        GetProofWrappersMessage request = link.Sent<GetProofWrappersMessage>().Single();
+        byte[] compact = WrapperCompaction.Compact(second, hash => hash == ValueKeccak.Compute(Envelope(a)));
+        pair.Node.Broadcaster.OnProofWrappers(other, new(request.RequestId, [new(Describe(second).Hash, compact)]));
+        await pair.Stored(second);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.Compact, Is.True, "encodings are cached from another peer");
+            Assert.That(WrapperCompaction.HasReferences(compact), Is.True);
+            Assert.That(link.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(1), "no full retry is needed");
+            Assert.That(link.Penalties, Is.Empty);
         }
     }
 
@@ -128,7 +167,7 @@ public class ProofWrapperOmissionTests
         using Pair pair = new();
         pair.Exchange(first);
         await pair.Stored(first);
-        pair.Node.Broadcaster.OnAnnounce(pair.HolderPeer, new([Describe(second)]));
+        pair.Announce(Describe(second), second);
         GetProofWrappersMessage compactRequest = pair.ToHolder.Sent<GetProofWrappersMessage>()[^1];
         Assert.That(compactRequest.Compact, Is.True);
         // References to b and c, which this connection never carried in full.
@@ -156,7 +195,7 @@ public class ProofWrapperOmissionTests
         using Pair pair = new();
         pair.Exchange(first);
         await pair.Stored(first);
-        pair.Node.Broadcaster.OnAnnounce(pair.HolderPeer, new([Describe(second)]));
+        pair.Announce(Describe(second), second);
         GetProofWrappersMessage compactRequest = pair.ToHolder.Sent<GetProofWrappersMessage>()[^1];
         // A cache miss forces the next request to be complete; the peer answers it with references anyway.
         pair.Node.Broadcaster.OnProofWrappers(pair.HolderPeer, new(compactRequest.RequestId,
@@ -184,7 +223,7 @@ public class ProofWrapperOmissionTests
         await pair.Stored(first);
         byte[] compact = WrapperCompaction.Compact(second, hash => hash == ValueKeccak.Compute(Envelope(a)));
         WrapperAnnouncement understated = Announcement(1, compact.Length, Describe(second).Hash, Describe(second).Coverage);
-        pair.Node.Broadcaster.OnAnnounce(pair.HolderPeer, new([understated]));
+        pair.Announce(understated, second);
         GetProofWrappersMessage request = pair.ToHolder.Sent<GetProofWrappersMessage>()[^1];
         Assert.That(request.Compact, Is.True);
         pair.Node.Broadcaster.OnProofWrappers(pair.HolderPeer, new(request.RequestId, [new(Describe(second).Hash, compact)]));

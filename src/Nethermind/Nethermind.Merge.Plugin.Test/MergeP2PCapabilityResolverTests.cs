@@ -106,6 +106,7 @@ public class MergeP2PCapabilityResolverTests
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.False, "EIP-8408 eth/73 is not implemented");
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 74)), Is.EqualTo(scheduled), "EIP-8512 eth/74 activates with EIP-8288");
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 75)), Is.EqualTo(scheduled), "EIP-8437 eth/75 activates with EIP-8288");
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 76)), Is.EqualTo(scheduled), "eth/76 activates with EIP-8288");
         }
     }
 
@@ -135,6 +136,7 @@ public class MergeP2PCapabilityResolverTests
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 72)), Is.EqualTo(advertised));
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 74)), Is.EqualTo(advertised));
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 75)), Is.EqualTo(advertised));
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 76)), Is.EqualTo(advertised));
         }
     }
 

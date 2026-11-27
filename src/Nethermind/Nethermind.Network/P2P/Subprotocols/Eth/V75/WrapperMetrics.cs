@@ -26,6 +26,7 @@ internal enum WrapperEvent
     EquivalentSkipped,
     BudgetDropped,
     HeldSkipped,
+    ManifestRequested,
     UnsupportedScheme
 }
 
@@ -36,7 +37,7 @@ internal static class WrapperMetrics
         "announced", "announcement_received", "requested", "received", "validated", "invalid", "malformed", "local_failure",
         "expired", "published", "served", "request_expired", "violation", "upgrade_dropped", "announcement_suppressed",
         "reference_resolved", "reference_missed", "reference_sent", "equivalent_skipped", "budget_dropped",
-        "held_skipped", "unsupported_scheme"
+        "held_skipped", "manifest_requested", "unsupported_scheme"
     ];
 
     public static void Record(WrapperEvent wrapperEvent, long count = 1) =>

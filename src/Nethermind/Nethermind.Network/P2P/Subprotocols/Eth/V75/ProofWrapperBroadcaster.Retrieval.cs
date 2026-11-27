@@ -10,6 +10,8 @@ using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
@@ -46,7 +48,6 @@ public sealed partial class ProofWrapperBroadcaster
                 WrapperMetrics.Record(WrapperEvent.AnnouncementReceived);
                 ValueHash256 wrapperHash = announcement.Hash;
                 peer.Known.Add(wrapperHash);
-                peer.Exchanged.Add(wrapperHash);
                 if (!enabled) continue;
                 if (FalseAgainstHeld(announcement) is { } falseClaim)
                 {
@@ -79,7 +80,7 @@ public sealed partial class ProofWrapperBroadcaster
                     evictable = false;
                     continue;
                 }
-                WrapperFetch fetch = new(announcement, now) { Announcer = peer };
+                WrapperFetch fetch = new(announcement, now) { Announcer = peer, WantsManifest = WantsManifest(peer, announcement) };
                 peer.PendingFetches++;
                 fetch.AddSource(peer, announcement);
                 _fetches.Add(wrapperHash, fetch);
@@ -102,7 +103,12 @@ public sealed partial class ProofWrapperBroadcaster
                 || announcement.Coverage is { } coverage && coverage != truth.Coverage
                 ? $"announced false claims for held {truth}" : null;
         }
-        if (announcement.Metadata is not { } metadata) return null;
+        return announcement.Metadata is { } metadata ? FalseAgainstHeld(metadata) : null;
+    }
+
+    /// <summary>Why <paramref name="metadata"/> is false against a transaction held in a validated wrapper, or null.</summary>
+    private string? FalseAgainstHeld(WrapperMetadata metadata)
+    {
         for (int i = 0; i < metadata.Count; i++)
         {
             ValueHash256 transaction = metadata.Hashes[i];
@@ -133,6 +139,27 @@ public sealed partial class ProofWrapperBroadcaster
             if (TryGetOffered(wrapperHash, out WrapperStore.Entry entry) && entry.Shape is { Mode: MempoolWrapper.ModeDirect, LeanSphincsOnly: true }) return true;
         return false;
     }
+
+    /// <summary>Whether one held mode-1 wrapper offered under the current rules carries every one of <paramref name="transactions"/>,
+    /// so a mode-1 wrapper of them adds no reusable proof.</summary>
+    private bool HeldRecursively(ValueHash256[] transactions)
+    {
+        foreach (ValueHash256 wrapperHash in _store.Listing(transactions[0]))
+        {
+            if (!TryGetOffered(wrapperHash, out WrapperStore.Entry entry) || entry.Shape.Mode != MempoolWrapper.ModeRecursive) continue;
+            bool covers = true;
+            foreach (ValueHash256 transaction in transactions) covers &= Array.BinarySearch(entry.Hashes, transaction) >= 0;
+            if (covers) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Whether a mode-1 wrapper announced by <paramref name="peer"/> is fetched only once its <c>eth/76</c> manifest
+    /// shows it adds coverage.</summary>
+    /// <remarks>The manifest costs a round trip, so it is requested only while a held mode-1 wrapper could make the announced one
+    /// redundant.</remarks>
+    private bool WantsManifest(WrapperPeer peer, WrapperAnnouncement announcement) =>
+        peer.Aggregates && announcement.Mode == MempoolWrapper.ModeRecursive && _store.RecursiveCount > 0;
 
     /// <summary>Makes room in the full pending cache for <paramref name="announcer"/> by dropping an unrequested wrapper every open
     /// source of which is deprioritized or holds at least its share.</summary>
@@ -168,6 +195,8 @@ public sealed partial class ProofWrapperBroadcaster
             if (fetch.NextSource() is not { } source) (exhausted ??= []).Add(fetch);
             else if (source.CanRequest)
             {
+                // Only an eth/76 source serves manifests.
+                fetch.WantsManifest &= source.Aggregates;
                 bySource ??= [];
                 if (!bySource.TryGetValue(source, out List<WrapperFetch>? queued)) bySource[source] = queued = [];
                 queued.Add(fetch);
@@ -181,13 +210,21 @@ public sealed partial class ProofWrapperBroadcaster
         {
             WrapperPeer peer = _peers[(first + p) % count];
             if (!bySource.TryGetValue(peer, out List<WrapperFetch>? queued)) continue;
-            int next = 0;
-            while (next < queued.Count && peer.CanRequest && RequestFrom(peer, queued, ref next, now, outbox)) _nextPeer = (first + p + 1) % count;
+            foreach (bool manifests in (ReadOnlySpan<bool>)[true, false])
+            {
+                List<WrapperFetch> wanted = queued.FindAll(fetch => fetch.WantsManifest == manifests);
+                int next = 0;
+                while (next < wanted.Count && peer.CanRequest && RequestFrom(peer, wanted, manifests, ref next, now, outbox))
+                    _nextPeer = (first + p + 1) % count;
+            }
         }
     }
 
-    /// <summary>Sends one GetProofWrappers for the next queued wrappers of <paramref name="peer"/>, within the soft limit.</summary>
-    private bool RequestFrom(WrapperPeer peer, List<WrapperFetch> queued, ref int next, long now, Outbox outbox)
+    /// <summary>Sends one GetProofWrappers, or with <paramref name="manifests"/> one GetProofWrapperManifests, for the next queued
+    /// wrappers of <paramref name="peer"/>, within the soft limit.</summary>
+    /// <remarks>A manifest describes transactions in fewer bytes than the wrapper carries them, so the wrappers' announced lengths
+    /// bound either response.</remarks>
+    private bool RequestFrom(WrapperPeer peer, List<WrapperFetch> queued, bool manifests, ref int next, long now, Outbox outbox)
     {
         List<WrapperFetch> batch = [];
         long bytes = 0;
@@ -208,14 +245,22 @@ public sealed partial class ProofWrapperBroadcaster
         {
             WrapperFetch fetch = batch[i];
             fetch.Requested = true;
-            fetch.Tried.Add(peer);
+            if (!manifests) fetch.Tried.Add(peer);
             fetch.Started ??= now;
             ids[i] = fetch.Announcement.Hash;
             peer.Known.Add(ids[i]);
         }
+        if (manifests)
+        {
+            WrappersRequest manifestRequest = new(++peer.LastIssued, now, reserved, [.. batch], false, true);
+            peer.Requests.Add(manifestRequest.Id, manifestRequest);
+            outbox.Send(peer, new GetProofWrapperManifestsMessage(manifestRequest.Id, ids));
+            WrapperMetrics.Record(WrapperEvent.ManifestRequested, ids.Length);
+            return true;
+        }
         // References are useful only once this node holds encodings the peer sent in full; a wrapper whose compact form
         // referenced an evicted encoding is fetched complete.
-        bool compact = peer.Aggregates && !peer.Received.IsEmpty && batch.TrueForAll(static fetch => !fetch.RequiresComplete);
+        bool compact = peer.Aggregates && _encodingBudget.Used > 0 && batch.TrueForAll(static fetch => !fetch.RequiresComplete);
         WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch], compact);
         peer.Requests.Add(request.Id, request);
         outbox.Send(peer, new GetProofWrappersMessage(request.Id, compact, ids));
@@ -224,7 +269,7 @@ public sealed partial class ProofWrapperBroadcaster
     }
 
     /// <summary>Matches returned entries, in order, to distinct requested hashes, resolves hash references from encodings
-    /// cached from this peer, checks each wrapper's canonical hash and the responding peer's announced mode, length, metadata and
+    /// cached from any peer, checks each wrapper's canonical hash and the responding peer's announced mode, length, metadata and
     /// coverage hints, then queues the wrappers for validation.</summary>
     /// <remarks>Requested wrappers skipped before the last one returned were unavailable from this peer; those after it were cut
     /// by the soft limit and are requested again from the same peer. A compact item referencing an encoding this node no longer
@@ -237,9 +282,9 @@ public sealed partial class ProofWrapperBroadcaster
         lock (_gate)
         {
             if (peer.Closed) return;
-            // Resolution parses and hashes every body, so a response to no outstanding request is settled before it.
-            outstanding = peer.Requests.ContainsKey(message.RequestId);
-            if (!outstanding) TakeRequest(peer, message.RequestId, outbox);
+            // Resolution parses and hashes every body, so a response to no outstanding wrapper request is settled before it.
+            outstanding = peer.Requests.TryGetValue(message.RequestId, out WrappersRequest? pending) && !pending.Manifests;
+            if (!outstanding && TakeRequest(peer, message.RequestId, outbox) is { } manifestRequest) MismatchedResponse(peer, manifestRequest, outbox);
         }
         if (!outstanding)
         {
@@ -274,8 +319,9 @@ public sealed partial class ProofWrapperBroadcaster
                 else if (fetches[cursor].LengthFrom(peer) != item.Wrapper.Length)
                     violation = "a returned wrapper does not match its announced mode or length";
                 // EIP-8437: false metadata and hints are penalized before, and independently of, proof verification.
-                else if (item.Parsed && !Equals(item.Metadata, fetches[cursor].ClaimFrom(peer).Metadata))
-                    violation = "a returned wrapper does not match its announced transaction metadata";
+                else if (item.Parsed && (!Equals(item.Metadata, fetches[cursor].ClaimFrom(peer).Metadata)
+                    || fetches[cursor].ManifestFrom(peer) is { } manifest && !manifest.Equals(item.Manifest)))
+                    violation = "a returned wrapper does not match its announced transaction metadata or manifest";
                 else if (item.Coverage is { } coverage && fetches[cursor].CoverageFrom(peer) is { } announced && coverage != announced)
                     violation = "a returned wrapper does not match its announced dependency or transaction digest";
                 else matched[i] = cursor++;
@@ -297,7 +343,6 @@ public sealed partial class ProofWrapperBroadcaster
                 if (next < matched.Length && matched[next] == position)
                 {
                     Returned item = returned[next++];
-                    peer.Exchanged.Add(fetch.Announcement.Hash);
                     if (item.Wrapper is not { } wrapper)
                     {
                         // A cache miss: retry the same peer with a fresh request for the complete wrapper.
@@ -318,7 +363,7 @@ public sealed partial class ProofWrapperBroadcaster
                     fetch.Server = peer;
                     // EIP-8437: other announcers' claims found false against the verified hash are discarded with their senders.
                     if (item.Parsed)
-                        foreach (WrapperPeer claimant in fetch.FalseClaimants(peer, item.Mode, wrapper.Length, item.Metadata))
+                        foreach (WrapperPeer claimant in fetch.FalseClaimants(peer, item.Mode, wrapper.Length, item.Metadata, item.Manifest!))
                             Violation(claimant, $"announced false mode, length or metadata for {fetch.Announcement}", outbox);
                     Enqueue(fetch);
                 }
@@ -336,20 +381,103 @@ public sealed partial class ProofWrapperBroadcaster
         outbox.Flush();
     }
 
-    /// <summary>A returned entry after reference resolution: the complete wrapper, its hash, coverage hints, inline metadata and
-    /// admission charge, or no wrapper on a cache miss, or the reason it is malformed.</summary>
+    /// <summary>Matches returned manifests, in order, to distinct requested hashes, checks each on arrival and against held
+    /// transactions, and does not fetch from <paramref name="peer"/> a wrapper its manifest shows adds no coverage; the rest are
+    /// fetched next (<c>eth/76</c>).</summary>
+    /// <remarks>A manifest is <paramref name="peer"/>'s claim alone: one showing no new coverage only retires that peer as a
+    /// source, so a false one cannot keep the wrapper from other announcers, who are asked for their own manifest. It is checked
+    /// against the wrapper if it is fetched. Hashes after the last one returned were cut by the soft limit and are asked again;
+    /// a wrapper whose manifest was unavailable, or that an empty response or a timeout left without one, is fetched without it.</remarks>
+    internal void OnProofWrapperManifests(WrapperPeer peer, ProofWrapperManifestsMessage message)
+    {
+        ProofWrapperManifest[] entries = message.Manifests;
+        Outbox outbox = new();
+        lock (_gate)
+        {
+            if (peer.Closed) return;
+            WrappersRequest? request = TakeRequest(peer, message.RequestId, outbox);
+            if (request is not null && !request.Manifests) MismatchedResponse(peer, request, outbox);
+            else if (request is not null) MatchManifests(peer, request, entries, outbox);
+        }
+        outbox.Flush();
+    }
+
+    /// <summary>A ProofWrappers answering a manifest request, or the reverse: the request's wrappers go back to the queue and the
+    /// peer is disconnected.</summary>
+    private void MismatchedResponse(WrapperPeer peer, WrappersRequest request, Outbox outbox)
+    {
+        Abandon(peer, request);
+        Violation(peer, $"response of the wrong type to request {request.Id}", outbox);
+        Schedule(outbox);
+    }
+
+    private void MatchManifests(WrapperPeer peer, WrappersRequest request, ProofWrapperManifest[] entries, Outbox outbox)
+    {
+        Release(peer, request.Reserved);
+        WrapperFetch[] fetches = request.Fetches;
+        int[] matched = new int[entries.Length];
+        int cursor = 0;
+        string? violation = null;
+        for (int i = 0; i < entries.Length && violation is null; i++)
+        {
+            while (cursor < fetches.Length && fetches[cursor].Announcement.Hash != entries[i].Hash) cursor++;
+            violation = cursor == fetches.Length ? "a returned manifest is unrequested, repeated or reordered" : ManifestError(fetches[cursor], peer, entries[i].Manifest);
+            matched[i] = cursor++;
+        }
+        if (violation is not null)
+        {
+            foreach (WrapperFetch fetch in fetches) fetch.Requested = false;
+            Violation(peer, violation, outbox);
+            Schedule(outbox);
+            return;
+        }
+        int last = entries.Length == 0 ? -1 : matched[^1];
+        int next = 0;
+        for (int position = 0; position < fetches.Length; position++)
+        {
+            WrapperFetch fetch = fetches[position];
+            fetch.Requested = false;
+            if (next < matched.Length && matched[next] == position)
+            {
+                WrapperManifest manifest = entries[next++].Manifest;
+                fetch.SetManifest(peer, manifest);
+                fetch.WantsManifest = false;
+                if (fetch.Removed || !HeldRecursively(manifest.Hashes)) continue;
+                // The next source, if any, is asked for its own manifest; without one the fetch ends as every source tried.
+                fetch.Tried.Add(peer);
+                fetch.ClaimedCovered.Add(peer);
+                fetch.WantsManifest = true;
+                WrapperMetrics.Record(WrapperEvent.HeldSkipped);
+            }
+            else if (position <= last || entries.Length == 0) fetch.WantsManifest = false;
+        }
+        Schedule(outbox);
+    }
+
+    /// <summary>Why <paramref name="manifest"/>, returned by <paramref name="peer"/>, is malformed against its announcement, or
+    /// null.</summary>
+    private static string? ManifestError(WrapperFetch fetch, WrapperPeer peer, WrapperManifest manifest)
+    {
+        if (manifest.Encoded.Length >= fetch.LengthFrom(peer)) return "a returned manifest is not smaller than its announced wrapper";
+        return fetch.CoverageFrom(peer) is { } coverage && manifest.TransactionsDigest != coverage.TxsHash
+            ? "a returned manifest does not match its announced txs-hash" : null;
+    }
+
+    /// <summary>A returned entry after reference resolution: the complete wrapper, its hash, coverage hints, inline and full
+    /// metadata and admission charge, or no wrapper on a cache miss, or the reason it is malformed.</summary>
     /// <remarks>A wrapper that does not parse has no hints or metadata to check; validation then rejects it as malformed.</remarks>
     private readonly record struct Returned(int Mode, ValueHash256 Hash, byte[]? Wrapper, bool Referenced, string? Error, long Charge = 0,
-        WrapperCoverage? Coverage = null, WrapperMetadata? Metadata = null, bool Parsed = false);
+        WrapperCoverage? Coverage = null, WrapperMetadata? Metadata = null, bool Parsed = false, WrapperManifest? Manifest = null);
 
     private static Returned Complete(int mode, byte[] wrapper, bool referenced)
     {
         WrapperCoverage? coverage = null;
         WrapperMetadata? metadata = null;
+        WrapperManifest? manifest = null;
         bool parsed = false;
         try
         {
-            WrapperBodies.ParseWrapper(wrapper, out _, out WrapperCoverage hints);
+            manifest = WrapperManifest.Of(WrapperBodies.ParseWrapper(wrapper, out _, out WrapperCoverage hints));
             coverage = hints;
             parsed = true;
             metadata = WrapperMetadata.InlineFor(wrapper);
@@ -358,7 +486,7 @@ public sealed partial class ProofWrapperBroadcaster
         {
             if (parsed) return new(mode, default, null, referenced, $"malformed wrapper transaction: {exception.Message}");
         }
-        return new(mode, ValueKeccak.Compute(wrapper), wrapper, referenced, null, AdmissionCharge(wrapper), coverage, metadata, parsed);
+        return new(mode, ValueKeccak.Compute(wrapper), wrapper, referenced, null, AdmissionCharge(wrapper), coverage, metadata, parsed, manifest);
     }
 
     /// <summary>What a held wrapper is charged to its server's byte budgets until validated: as ordinary transaction gossip, the
@@ -374,6 +502,7 @@ public sealed partial class ProofWrapperBroadcaster
         ProofWrapperEntry[] entries = message.Entries;
         Returned[] returned = new Returned[entries.Length];
         Dictionary<ValueHash256, int>? lengths = null;
+        WrapperPeer[]? holders = null;
         for (int i = 0; i < entries.Length; i++)
         {
             byte[] wire = entries[i].Wrapper;
@@ -390,7 +519,9 @@ public sealed partial class ProofWrapperBroadcaster
                 returned[i] = new(mode, default, wire, true, null);
                 continue;
             }
-            WrapperCompaction.Outcome outcome = WrapperCompaction.Reconstruct(wire, announced, hash => peer.Received.Get(hash),
+            // Each cache has its own lock, so the peers are read under the broadcaster lock once per response.
+            if (holders is null) lock (_gate) holders = [.. _peers];
+            WrapperCompaction.Outcome outcome = WrapperCompaction.Reconstruct(wire, announced, hash => CachedEncoding(holders, hash),
                 out byte[]? wrapper, out string? error);
             returned[i] = outcome switch
             {
@@ -401,6 +532,14 @@ public sealed partial class ProofWrapperBroadcaster
             if (outcome == WrapperCompaction.Outcome.Complete) WrapperMetrics.Record(WrapperEvent.ReferenceResolved);
         }
         return returned;
+    }
+
+    /// <summary>A validated encoding with the given encoding hash, cached from whichever of <paramref name="holders"/> supplied it.</summary>
+    private static byte[]? CachedEncoding(WrapperPeer[] holders, in ValueHash256 encodingHash)
+    {
+        foreach (WrapperPeer peer in holders)
+            if (peer.Received.Get(encodingHash) is { } encoding) return encoding;
+        return null;
     }
 
     /// <summary>The lengths <paramref name="peer"/> announced for the wrappers of an outstanding request.</summary>
@@ -587,7 +726,7 @@ public sealed partial class ProofWrapperBroadcaster
         }
         (Verdict verdict, string? error, Eip8288Verifier? verifier) =
             await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token, fetch.Server?.Link), cancellation).ConfigureAwait(false);
-        // Encodings received in full within a validated wrapper resolve the server's later references.
+        // Encodings received in full within a validated wrapper resolve later references from any peer (eth/76).
         if (verdict is Verdict.Valid or Verdict.PoolRejected && fetch.Server is { Closed: false } server)
             foreach ((ValueHash256 hash, byte[] encoding) in WrapperCompaction.Encodings(wrapper)) server.Received.Add(hash, encoding);
         Conclude(fetch, verdict, error, verifier);

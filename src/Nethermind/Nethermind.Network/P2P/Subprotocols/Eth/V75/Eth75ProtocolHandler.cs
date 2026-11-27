@@ -99,14 +99,27 @@ public class Eth75ProtocolHandler(
             if (Volatile.Read(ref _disposed) != 0 && Volatile.Read(ref _wrapperPeer) is { } registered) wrapperBroadcaster.Remove(registered);
             return handled;
         }
-        if (!Eth75MessageCode.IsWrapperMessage(message.PacketType)) return base.HandleMessageCore(message);
+        if (!IsWrapperMessage(message.PacketType)) return base.HandleMessageCore(message);
         // A wrapper message before Status is a protocol violation, rejected like any other eth message before this is reached.
         // Until EIP-8288 is enabled for local mempool validation, wrapper messages are ignored without penalty (EIP-8437).
         if (!wrapperBroadcaster.IsEnabled || Volatile.Read(ref _wrapperPeer) is not { } peer)
         {
-            ReportIn($"eth/75 wrapper message {message.PacketType} ignored without wrapper exchange", size);
+            ReportIn($"eth/{ProtocolVersion} wrapper message {message.PacketType} ignored without wrapper exchange", size);
             return true;
         }
+        HandleWrapperMessage(peer, message);
+        ReportIn($"eth/{ProtocolVersion} wrapper message {message.PacketType}", size);
+        return true;
+    }
+
+    private protected ProofWrapperBroadcaster WrapperBroadcaster => wrapperBroadcaster;
+
+    /// <summary>Whether <paramref name="code"/> is a wrapper message of the negotiated version.</summary>
+    private protected virtual bool IsWrapperMessage(int code) => Eth75MessageCode.IsWrapperMessage(code);
+
+    /// <summary>Decodes a wrapper message in the negotiated version's form and hands it to the broadcaster.</summary>
+    private protected virtual void HandleWrapperMessage(WrapperPeer peer, ZeroPacket message)
+    {
         switch (message.PacketType)
         {
             case Eth75MessageCode.NewProofWrapperHashes:
@@ -119,8 +132,6 @@ public class Eth75ProtocolHandler(
                 wrapperBroadcaster.OnProofWrappers(peer, Deserialize<ProofWrappersMessage>(message.Content));
                 break;
         }
-        ReportIn($"eth/75 wrapper message {message.PacketType}", size);
-        return true;
     }
 
     void IWrapperLink.Send(P2PMessage message)
@@ -130,7 +141,13 @@ public class Eth75ProtocolHandler(
             message.Dispose();
             return;
         }
-        // Serializers are resolved by the static message type, so each message is sent as its concrete type.
+        SendWrapperMessage(message);
+    }
+
+    /// <summary>Sends a wrapper message in the negotiated version's form.</summary>
+    /// <remarks>Serializers are resolved by the static message type, so each message is sent as its concrete type.</remarks>
+    private protected virtual void SendWrapperMessage(P2PMessage message)
+    {
         switch (message)
         {
             case NewProofWrapperHashesMessage announce: Send(announce); break;
