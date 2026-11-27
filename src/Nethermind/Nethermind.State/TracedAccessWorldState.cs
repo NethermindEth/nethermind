@@ -89,6 +89,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     public override IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
 
+    public override void GetUnrecorded(in StorageCell storageCell, out UInt256 value) => Get(in storageCell, out value);
+
     public override void Get(in StorageCell storageCell, out UInt256 value)
     {
         if (_generatingBlockAccessList is null)

@@ -669,6 +669,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private void LoadFromTree(in StorageCell storageCell, out UInt256 value) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTree(in storageCell, out value);
 
+    /// <summary>Reads a slot as <see cref="PartialStorageProviderBase.Get"/> does, but leaves an unwritten slot out of the block's changes.</summary>
+    /// <remarks>
+    /// A written slot is answered by the journal, one the block already holds by its change, and a contract whose storage was cleared
+    /// takes the recording path; any other slot still holds its value before the block, which the tree answers. A later write reads
+    /// the slot through the recording path first, so its original is captured then.
+    /// </remarks>
+    internal void GetUnrecorded(in StorageCell storageCell, out UInt256 value)
+    {
+        if (TryGetCachedValue(in storageCell, out value)) return;
+        GetOrCreateStorage(storageCell.Address).LoadUnrecorded(in storageCell, out value);
+    }
+
     internal void GetPureRead(in StorageCell storageCell, out UInt256 value) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTreeStorage(in storageCell, out value);
 
@@ -1502,6 +1514,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _lastReadIndex = storageCell.Index;
             _lastReadValue = value;
             _lastReadRound = round;
+        }
+
+        /// <summary>The slot's value as <see cref="LoadFromTree"/> finds it, without adding an unwritten slot to the block's changes.</summary>
+        public void LoadUnrecorded(in StorageCell storageCell, out UInt256 value)
+        {
+            if (BlockChange.HasClear)
+            {
+                LoadFromTree(in storageCell, out value);
+                return;
+            }
+
+            ref StorageChangeTrace change = ref BlockChange.GetValueRefOrNullRef(in storageCell.Index);
+            if (Unsafe.IsNullRef(ref change))
+            {
+                LoadFromTreeStorage(in storageCell, out value);
+                return;
+            }
+
+            value = change.After;
         }
 
         public void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)

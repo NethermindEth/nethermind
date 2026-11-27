@@ -329,6 +329,15 @@ public static partial class EvmInstructions
             return inlineResult;
         }
 
+        // A registered storage-read function (StorageReadCalls), served as its SLOAD without a frame where its charges hold.
+        if (TOpCall.ExecutionType == ExecutionType.STATICCALL && StorageReadCalls.Any && delegated is null &&
+            TSpec.UseHotAndColdStorage && !TSpec.IsEip8038Enabled && !TSpec.IsEip8279Enabled && !TSpec.IsEip8360Enabled &&
+            TryServeStorageReadCall<TGasPolicy, TTracingInst>(vm, ref stack, ref gas, in dataOffset, in dataLength, in outputOffset,
+                in outputLength, codeInfo, target, gasLimitUl, out EvmExceptionType storageReadResult))
+        {
+            return storageReadResult;
+        }
+
         return TSpec.IsEip8360Enabled
             ? CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OnFlag>(vm, ref stack, ref gas, in dataOffset, in dataLength, in outputOffset, in outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount)
             : CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OffFlag>(vm, ref stack, ref gas, in dataOffset, in dataLength, in outputOffset, in outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
