@@ -59,8 +59,8 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             // Backs the discovery subnet limiter's managed exemptions. Slim hosts without this
             // registration (e.g. the bootnode) run the limiter without managed exemptions;
             // flag-based exemptions (IsStatic/IsTrusted) still apply.
-            .AddSingleton<IDiscoveryNodeExemptions, IStaticNodesManager, ITrustedNodesManager>((staticNodes, trustedNodes) =>
-                new ManagedNodeExemptions(staticNodes, trustedNodes))
+            .AddSingleton<IDiscoveryNodeExemptions, IStaticNodesManager, ITrustedNodesManager, INetworkConfig, ILogManager>((staticNodes, trustedNodes, networkConfig, logManager) =>
+                new ManagedNodeExemptions(staticNodes, trustedNodes, networkConfig, logManager))
 
             .Bind<INodeSource, IStaticNodesManager>()
             .Bind<INodeSource, ITrustedNodesManager>()

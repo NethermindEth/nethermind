@@ -133,6 +133,12 @@ Option<bool> useDefaultDiscv5BootnodesOption = new("--use-default-discv5-bootnod
     DefaultValueFactory = _ => true
 };
 
+Option<bool> filterDiscoveryNodesByRecentIpOption = new("--filter-discovery-nodes-by-recent-ip")
+{
+    Description = "Limit discovery table entries per subnet key (2/bucket, 10/table, LAN bypassed). Disable for public-IP testnets sharing few subnets.",
+    DefaultValueFactory = _ => true
+};
+
 Option<string> logLevelOption = new("--log-level", "-l")
 {
     Description = "Log level: Trace, Debug, Info, Warn, Error.",
@@ -188,6 +194,7 @@ RootCommand rootCommand =
     externalIpV6Option,
     bootnodesOption,
     useDefaultDiscv5BootnodesOption,
+    filterDiscoveryNodesByRecentIpOption,
     logLevelOption,
     logFileOption,
     privateKeyOption,
@@ -364,6 +371,7 @@ BootnodeOptions CreateOptions(ParseResult parseResult)
         ExternalIpV6 = externalIpV6,
         Bootnodes = bootnodes,
         UseDefaultDiscv5Bootnodes = parseResult.GetRequiredValue(useDefaultDiscv5BootnodesOption),
+        FilterDiscoveryNodesByRecentIp = parseResult.GetRequiredValue(filterDiscoveryNodesByRecentIpOption),
         LogLevel = parseResult.GetRequiredValue(logLevelOption),
         LogFile = parseResult.GetValue(logFileOption),
         PrivateKey = parseResult.GetValue(privateKeyOption),

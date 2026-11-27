@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Net;
+using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
@@ -284,6 +287,31 @@ public class DiscoveryNodeLimiterTests
         Assert.That(limiter.TryAdmit(CreateNode(TestItem.PrivateKeys[20].PublicKey, "192.0.2.20"), bucket), Is.True);
 
         Assert.That(limiter.TryAdmit(CreateNode(TestItem.PrivateKeys[25].PublicKey, "192.0.2.100"), bucket), Is.False);
+    }
+
+    [Test]
+    public void ManagedNodeExemptions_keep_config_static_peer_exempt_without_flag()
+    {
+        // Discovery builds routing-table entries with flags unset and refresh merges ENR state only,
+        // so a static peer from the config string must stay exempt by id after a plain refresh.
+        string staticEnode = new Enode(TestItem.PrivateKeys[50].PublicKey, IPAddress.Parse("192.0.2.50"), 30303).ToString();
+        NetworkConfig configWithStatic = new() { StaticPeers = staticEnode };
+        ManagedNodeExemptions exemptions = new(
+            Substitute.For<IStaticNodesManager>(),
+            Substitute.For<ITrustedNodesManager>(),
+            configWithStatic,
+            LimboLogs.Instance);
+        DiscoveryNodeLimiter limiter = new(_currentNode, [_bootNode], configWithStatic, exemptions);
+
+        AdmitNodes(limiter);
+
+        Node refreshed = CreateNode(TestItem.PrivateKeys[50].PublicKey, "192.0.2.50");
+        Assert.That(refreshed.IsStatic, Is.False);
+        Assert.That(limiter.TryAdmit(refreshed, []), Is.True);
+        Assert.That(limiter.WouldAdmit(refreshed), Is.True);
+
+        // No slot was consumed: the table is still full for ordinary nodes in the same subnet.
+        Assert.That(limiter.TryAdmit(CreateNode(TestItem.PrivateKeys[51].PublicKey, "192.0.2.51"), []), Is.False);
     }
 
     [Test]

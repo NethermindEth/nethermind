@@ -32,9 +32,11 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
             .AddSingleton<DiscoveryHandler>()
 
             // The limiter is built inline (not registered) so that `NodeSource` gets it only through the
-            // config; the config leaves `NodeLimiter` null when filtering is disabled, which keeps the
-            // routing table unguarded. Exemptions are optional: outside the full client they are absent and
-            // nothing is exempt beyond self/bootnodes/flags.
+            // config; the config leaves `NodeLimiter` null when filtering is disabled
+            // (`Network.FilterDiscoveryNodesByRecentIp`), which keeps the routing table unguarded.
+            // When enabled it caps entries per subnet key (2/bucket, 10/table), filters peer candidates,
+            // and bypasses LAN addresses. Exemptions are optional: outside the full client they are absent
+            // and nothing is exempt beyond self/bootnodes/flags.
             .AddSingleton<KademliaConfig<Node>>(ctx =>
                 {
                     KademliaConfig<Node> config = CreateKademliaConfig(ctx.Resolve<IDiscoveryConfig>());
