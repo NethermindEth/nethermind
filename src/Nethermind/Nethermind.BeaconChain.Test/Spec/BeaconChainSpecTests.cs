@@ -6,6 +6,9 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Autofac;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -190,6 +193,19 @@ public class BeaconChainSpecTests
     public void A_network_config_file_accepts_an_uppercase_hex_prefix() =>
         Assert.That(ForDevnet(DevnetConfig.Replace("0x", "0X"), writeGenesisState: true, chainspecGenesisTime: null).Forks[0].Version,
             Is.EqualTo(Bytes.FromHexString("0x10000038")));
+
+    [Test]
+    public void A_network_without_a_Gloas_version_accepts_a_Fulu_checkpoint([Values] bool resumed)
+    {
+        BeaconChainSpec spec = ForDevnet(DevnetConfig.Replace("GENESIS_FORK_VERSION: 0x10000038", "GENESIS_FORK_VERSION: 0x00000000")
+            .Replace("GLOAS_FORK_VERSION: 0x80000038", ""), writeGenesisState: true, chainspecGenesisTime: null);
+        ForkedBeaconState state = new ForkedBeaconState.OfFulu(new BeaconStateFulu
+        {
+            Fork = new Fork { CurrentVersion = Bytes.FromHexString("0x70000038") },
+        });
+
+        Assert.That(() => CheckpointSync.ThrowIfUnsupportedFork(state, spec, resumed), Throws.Nothing);
+    }
 
     [Test]
     public void A_duplicate_Gloas_version_from_the_file_names_the_fork()

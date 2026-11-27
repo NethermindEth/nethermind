@@ -350,7 +350,8 @@ public class CheckpointSync(
             ForkedBeaconState.OfGloas gloas => gloas.State.Fork!.CurrentVersion!,
             _ => throw new NotSupportedException($"Unhandled beacon state shape {state.GetType().Name}"),
         };
-        int gloasIndex = Array.FindIndex(spec.Forks, entry => entry.Version.AsSpan().SequenceEqual(spec.GloasForkVersion));
+        int gloasIndex = spec.GloasForkEpoch == Presets.FarFutureEpoch ? -1
+            : Array.FindIndex(spec.Forks, entry => entry.Version.AsSpan().SequenceEqual(spec.GloasForkVersion));
         for (int index = 0; index < spec.Forks.Length; index++)
         {
             ForkScheduleEntry entry = spec.Forks[index];
