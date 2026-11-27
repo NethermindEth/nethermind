@@ -26,14 +26,32 @@ public sealed class ResolvedCodeMemo
     private readonly Dictionary<AddressAsKey, CodeInfo> _resolved = [];
     private readonly HashSet<AddressAsKey> _codeWritten = [];
 
+    // The last address found, which answers a repeat without the dictionary probe: a call's frames often ask for the same
+    // code in a row, as a quoter calling one pool manager thousands of times does.
+    private Address? _lastAddress;
+    private CodeInfo? _lastCode;
+
     /// <summary>Gets the code remembered for <paramref name="address"/> in this scope.</summary>
-    public bool TryGet(Address address, [NotNullWhen(true)] out CodeInfo? codeInfo) =>
-        _resolved.TryGetValue(address, out codeInfo);
+    public bool TryGet(Address address, [NotNullWhen(true)] out CodeInfo? codeInfo)
+    {
+        if (_lastCode is not null && (ReferenceEquals(address, _lastAddress) || address.Equals(_lastAddress)))
+        {
+            codeInfo = _lastCode;
+            return true;
+        }
+
+        if (!_resolved.TryGetValue(address, out codeInfo)) return false;
+        _lastAddress = address;
+        _lastCode = codeInfo;
+        return true;
+    }
 
     /// <summary>Remembers <paramref name="codeInfo"/> unless the code at <paramref name="address"/> changed in this scope.</summary>
     public void Remember(Address address, CodeInfo codeInfo)
     {
-        if (_resolved.Count < MaxRemembered && !_codeWritten.Contains(address)) _resolved[address] = codeInfo;
+        if (_resolved.Count >= MaxRemembered || _codeWritten.Contains(address)) return;
+        _resolved[address] = codeInfo;
+        if (address.Equals(_lastAddress)) _lastCode = codeInfo;
     }
 
     /// <summary>Drops <paramref name="address"/>, whose code is changing, and keeps it out until <see cref="Clear"/>.</summary>
@@ -41,11 +59,13 @@ public sealed class ResolvedCodeMemo
     {
         _codeWritten.Add(address);
         _resolved.Remove(address);
+        if (address.Equals(_lastAddress)) (_lastAddress, _lastCode) = (null, null);
     }
 
     /// <summary>Forgets everything, including which addresses had their code changed, before the next scope.</summary>
     public void Clear()
     {
+        (_lastAddress, _lastCode) = (null, null);
         bool grown = _resolved.Count > RetainedCapacity;
         _resolved.Clear();
         if (grown) _resolved.TrimExcess(RetainedCapacity);
