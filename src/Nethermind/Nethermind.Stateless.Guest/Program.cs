@@ -38,8 +38,18 @@ partial class Program
         }
 
         WriteOutput(output);
+        PrintHeapUse();
 
         return 0;
+    }
+
+    // Diagnostic only: the bump pointer and heap floor cells every 64-bit zkVM target keeps at fixed addresses.
+    private static unsafe void PrintHeapUse()
+    {
+        const ulong HeapTop = 0xbffeffe8;
+        ulong bump = *(ulong*)0xbffefff8UL;
+        ulong floor = *(ulong*)0xbffefff0UL;
+        IO.PrintLine($"HEAPUSE used={HeapTop - bump} free={bump - floor} floor={floor:x}");
     }
 
     private const string OutOfMemoryMessage = "The guest ran out of memory and has no result to prove.";
