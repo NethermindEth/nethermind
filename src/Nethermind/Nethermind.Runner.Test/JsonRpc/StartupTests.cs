@@ -73,7 +73,8 @@ public class StartupTests
         IEngineRpcModule? engineModule = null,
         JsonRpcConfig? rpcConfig = null,
         IJsonRpcLocalStats? jsonRpcLocalStats = null,
-        ILogManager? processorLogManager = null)
+        ILogManager? processorLogManager = null,
+        ILogger logger = default)
     {
         rpcConfig ??= new JsonRpcConfig { EnabledModules = [ModuleType.Engine] };
         engineModule ??= CreateEngineModule();
@@ -86,7 +87,7 @@ public class StartupTests
         JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig, GcKeeper);
         JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), processorLogManager ?? LimboLogs.Instance);
 
-        return new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig, rpcAuthentication);
+        return new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig, rpcAuthentication, logger);
     }
 
     private static IEngineRpcModule CreateEngineModule()
@@ -821,7 +822,7 @@ public class StartupTests
     [Test]
     public void IsTrustedSource_AcceptsAdditionalTrustedNetworks()
     {
-        Startup.TrustedCidr[] networks = Startup.ParseTrustedNetworks(["100.64.0.0/10"], LimboLogs.Instance.GetClassLogger<StartupTests>());
+        Startup.TrustedCidr[] networks = Startup.ParseTrustedNetworks(["100.64.0.0/10"], nameof(IJsonRpcConfig.AdditionalTrustedNetworks), LimboLogs.Instance.GetClassLogger<StartupTests>());
 
         using (Assert.EnterMultipleScope())
         {
@@ -1287,8 +1288,10 @@ public class StartupTests
         }
     }
 
-    [Test]
-    public async Task ProcessJsonRpcRequest_LimitsLargeUnsentResponsesPerAddress()
+    [TestCase("10.0.0.3", true, TestName = "Third large unsent response of a direct caller is refused")]
+    [TestCase("127.0.0.1", false, TestName = "Loopback caller has no large unsent response count")]
+    [TestCase("::ffff:127.0.0.1", false, TestName = "IPv4-mapped loopback caller has no large unsent response count")]
+    public async Task ProcessJsonRpcRequest_LimitsLargeUnsentResponsesPerAddress(string remoteAddress, bool refused)
     {
         Startup startup = CreateStartup(NoAuthentication.Instance, CreateLargeResultEngineModule(), new JsonRpcConfig
         {
@@ -1297,7 +1300,7 @@ public class StartupTests
             MaxUnsentResponsesPerAddress = 2
         });
         string request = CreateJsonRpcRequest(GetBlobsV2Method);
-        IPAddress address = IPAddress.Parse("10.0.0.3");
+        IPAddress address = IPAddress.Parse(remoteAddress);
         List<(Task Processing, TaskCompletionSource Sent)> pending = [];
         for (int i = 0; i < 2; i++)
         {
@@ -1305,14 +1308,18 @@ public class StartupTests
             pending.Add((startup.ProcessJsonRpcRequestCoreAsync(context, UnauthenticatedEngineUrl), sent));
         }
 
-        (DefaultHttpContext rejected, TaskCompletionSource rejectedSent) = CreateUnreadContext(request, remoteAddress: address);
-        await startup.ProcessJsonRpcRequestCoreAsync(rejected, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        TaskCompletionSource thirdCompleting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (DefaultHttpContext third, TaskCompletionSource thirdSent) = CreateUnreadContext(request, remoteAddress: address, completing: thirdCompleting);
+        Task thirdProcessing = startup.ProcessJsonRpcRequestCoreAsync(third, UnauthenticatedEngineUrl);
+        await Task.WhenAny(thirdProcessing, thirdCompleting.Task).WaitAsync(TimeSpan.FromSeconds(10));
         foreach ((Task processing, TaskCompletionSource sent) in pending)
         {
             sent.SetResult();
             await processing.WaitAsync(TimeSpan.FromSeconds(10));
         }
 
+        thirdSent.TrySetResult();
+        await thirdProcessing.WaitAsync(TimeSpan.FromSeconds(10));
         (DefaultHttpContext next, TaskCompletionSource nextSent) = CreateUnreadContext(request, remoteAddress: address);
         Task nextProcessing = startup.ProcessJsonRpcRequestCoreAsync(next, UnauthenticatedEngineUrl);
         nextSent.SetResult();
@@ -1320,9 +1327,88 @@ public class StartupTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rejectedSent.Task.IsFaulted, Is.True);
-            Assert.That(pending.Select(static item => item.Sent.Task.IsFaulted), Is.All.False);
-            Assert.That(nextSent.Task.IsFaulted, Is.False);
+            Assert.That(thirdSent.Task.IsFaulted, Is.EqualTo(refused), "the third large unsent response of the address");
+            Assert.That(pending.Select(static item => item.Sent.Task.IsFaulted), Is.All.False, "the first two responses");
+            Assert.That(nextSent.Task.IsFaulted, Is.False, "a response after the first two were sent");
+        }
+    }
+
+    [TestCase("127.0.0.1", null, null, null, false, TestName = "Loopback caller without X-Forwarded-For has no address share")]
+    [TestCase("::1", null, null, null, false, TestName = "IPv6 loopback caller without X-Forwarded-For has no address share")]
+    [TestCase("203.0.113.7", null, null, null, true, TestName = "Direct caller keeps its address share")]
+    [TestCase("203.0.113.7", null, "198.51.100.1", "198.51.100.2", true, TestName = "X-Forwarded-For from an untrusted peer is ignored")]
+    [TestCase("127.0.0.1", null, "198.51.100.1", "198.51.100.2", false, TestName = "Clients behind a loopback proxy each get their own share")]
+    [TestCase("127.0.0.1", null, "198.51.100.1", "198.51.100.1", true, TestName = "One client behind a loopback proxy keeps its share")]
+    [TestCase("127.0.0.1", null, "198.51.100.1, 198.51.100.9", "198.51.100.2, 198.51.100.9", true, TestName = "Only the right-most untrusted X-Forwarded-For entry is used")]
+    [TestCase("127.0.0.1", null, "2001:db8::1", "2001:db8::2", true, TestName = "Forwarded IPv6 clients in one /64 share one address share")]
+    [TestCase("127.0.0.1", null, "198.51.100.1:4000", "198.51.100.1:5000", true, TestName = "Forwarded address with another port is the same client")]
+    [TestCase("10.1.2.3", "10.1.0.0/16", "[2001:db8::1]:4000", "198.51.100.2:4000", false, TestName = "Forwarded addresses with ports are used")]
+    [TestCase("10.1.2.3", "10.1.0.0/16", "198.51.100.1", "198.51.100.2", false, TestName = "Clients behind a configured trusted proxy each get their own share")]
+    [TestCase("10.1.2.3", null, "198.51.100.1", "198.51.100.2", true, TestName = "X-Forwarded-For from a proxy that is not configured is ignored")]
+    [TestCase("127.0.0.1", "10.1.0.0/16", "198.51.100.1, 10.1.2.3", "198.51.100.2, 10.1.2.3", false, TestName = "Trusted proxies in X-Forwarded-For are skipped")]
+    [TestCase("10.1.2.3", "10.1.0.0/16", "unknown", "unknown", true, TestName = "Unparsable X-Forwarded-For counts against the proxy address")]
+    [TestCase("127.0.0.1", null, "127.0.0.1", "127.0.0.1", true, TestName = "Loopback X-Forwarded-For counts against the proxy address")]
+    [TestCase("10.1.2.3", "10.1.0.0/16", "198.51.100.1, 127.0.0.1", "198.51.100.2, 127.0.0.1", true, TestName = "Loopback X-Forwarded-For entries of a remote proxy are not skipped")]
+    public async Task ProcessJsonRpcRequest_AppliesTheAddressShareToTheForwardedClient(string peer, string? trustedProxyNetwork, string? firstForwardedFor, string? secondForwardedFor, bool secondRefused)
+    {
+        int responseSize = await SingleResponseSize();
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
+            MaxUnsentResponsesSize = 16 * (responseSize - 1),
+            TrustedProxyNetworks = trustedProxyNetwork is null ? [] : [trustedProxyNetwork]
+        });
+        IPAddress peerAddress = IPAddress.Parse(peer);
+        TaskCompletionSource heldCompleting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (DefaultHttpContext held, TaskCompletionSource heldSent) = CreateUnreadContext(remoteAddress: peerAddress, completing: heldCompleting, forwardedFor: firstForwardedFor);
+        (DefaultHttpContext next, TaskCompletionSource nextSent) = CreateUnreadContext(remoteAddress: peerAddress, forwardedFor: secondForwardedFor);
+
+        Task heldProcessing = startup.ProcessJsonRpcRequestCoreAsync(held, UnauthenticatedEngineUrl);
+        await heldCompleting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task nextProcessing = startup.ProcessJsonRpcRequestCoreAsync(next, UnauthenticatedEngineUrl);
+        nextSent.TrySetResult();
+        heldSent.TrySetResult();
+        await Task.WhenAll(heldProcessing, nextProcessing).WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldSent.Task.IsFaulted, Is.False, "the first unsent response");
+            Assert.That(nextSent.Task.IsFaulted, Is.EqualTo(secondRefused), "the second response while the first is unsent");
+        }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_WhenResponsesAreRefused_WarnsOncePerIntervalAndCountsEachOne()
+    {
+        int responseSize = await SingleResponseSize();
+        TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
+            MaxUnsentResponsesSize = 16 * (responseSize - 1)
+        }, logger: new ILogger(logger));
+        IPAddress address = IPAddress.Parse("203.0.113.8");
+        TaskCompletionSource heldCompleting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (DefaultHttpContext held, TaskCompletionSource heldSent) = CreateUnreadContext(remoteAddress: address, completing: heldCompleting);
+        (DefaultHttpContext first, TaskCompletionSource firstSent) = CreateUnreadContext(remoteAddress: address);
+        (DefaultHttpContext second, TaskCompletionSource secondSent) = CreateUnreadContext(remoteAddress: address);
+        long abortsBefore = JsonRpcMetrics.JsonRpcHttpUnsentLimitAborts.GetValueOrDefault("address_size");
+
+        Task heldProcessing = startup.ProcessJsonRpcRequestCoreAsync(held, UnauthenticatedEngineUrl);
+        await heldCompleting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await startup.ProcessJsonRpcRequestCoreAsync(first, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        await startup.ProcessJsonRpcRequestCoreAsync(second, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        heldSent.TrySetResult();
+        await heldProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(firstSent.Task.IsFaulted && secondSent.Task.IsFaulted, Is.True, "precondition: both responses are refused");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonRpcMetrics.JsonRpcHttpUnsentLimitAborts.GetValueOrDefault("address_size"), Is.GreaterThanOrEqualTo(abortsBefore + 2), "each refused response is counted");
+            Assert.That(logger.LogList, Has.Count.EqualTo(1), "one warning per interval");
+            Assert.That(logger.LogList, Has.Some.Contains(GetBlobsV1Method).And.Contains("203.0.113.8").And.Contains("share of one address").And.Contains($"of {responseSize} bytes"), "the warning names the method, the address, the limit and the size");
         }
     }
 
@@ -1576,13 +1662,14 @@ public class StartupTests
 
     private static readonly JsonRpcUrl UnauthenticatedEngineUrl = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
 
-    private static (DefaultHttpContext Context, TaskCompletionSource Sent) CreateUnreadContext(string? requestJson = null, string? connectionId = null, IPAddress? remoteAddress = null, TaskCompletionSource? completing = null)
+    private static (DefaultHttpContext Context, TaskCompletionSource Sent) CreateUnreadContext(string? requestJson = null, string? connectionId = null, IPAddress? remoteAddress = null, TaskCompletionSource? completing = null, string? forwardedFor = null)
     {
         TaskCompletionSource sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         byte[] request = Encoding.UTF8.GetBytes(requestJson ?? CreateJsonRpcRequest());
         DefaultHttpContext context = new();
         context.Connection.Id = connectionId ?? Guid.NewGuid().ToString();
         context.Connection.RemoteIpAddress = remoteAddress;
+        if (forwardedFor is not null) context.Request.Headers["X-Forwarded-For"] = forwardedFor;
         context.Request.Method = "POST";
         context.Request.ContentType = "application/json";
         context.Request.Body = new MemoryStream(request);

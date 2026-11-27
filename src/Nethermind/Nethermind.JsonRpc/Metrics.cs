@@ -61,6 +61,11 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcBytesSentIpc;
 
         [CounterMetric]
+        [KeyIsLabel("limit")]
+        [Description("Number of HTTP JSON-RPC responses that were not sent, and whose connections were closed, because the unsent responses were above a limit, by limit: node (JsonRpc.MaxUnsentResponsesSize), address_size (the share of one address) or address_responses (JsonRpc.MaxUnsentResponsesPerAddress).")]
+        public static ConcurrentDictionary<string, long> JsonRpcHttpUnsentLimitAborts { get; } = new();
+
+        [CounterMetric]
         [Description("Number of JSON RPC bytes received.")]
         public static long JsonRpcBytesReceived => JsonRpcBytesReceivedHttp + JsonRpcBytesReceivedWebSockets + JsonRpcBytesReceivedIpc;
 

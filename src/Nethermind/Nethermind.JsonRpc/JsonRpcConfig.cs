@@ -110,4 +110,5 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int FeeHistoryMaxBlockCount { get; set; } = 1024;
     public int? FeeHistoryMaxConcurrentRequests { get; set; } = null;
     public string[] AdditionalTrustedNetworks { get; set; } = [];
+    public string[] TrustedProxyNetworks { get; set; } = [];
 };
