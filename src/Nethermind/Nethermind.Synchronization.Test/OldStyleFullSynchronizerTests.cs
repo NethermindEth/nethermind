@@ -19,6 +19,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.History;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;

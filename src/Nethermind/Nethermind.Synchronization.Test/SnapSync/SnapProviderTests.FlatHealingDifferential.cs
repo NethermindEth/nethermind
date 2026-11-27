@@ -638,27 +638,24 @@ public partial class SnapProviderTests
         private static BlockHeader Commit(TestRawTrieStore store, GeneratedAccount[] accounts, GeneratedState?[] states, ulong blockNumber, out Hash256[] storageRoots)
         {
             storageRoots = new Hash256[accounts.Length];
-            using (store.BeginBlockCommit(blockNumber))
+            StateTree stateTree = new(store, LimboLogs.Instance);
+            for (int i = 0; i < accounts.Length; i++)
             {
-                StateTree stateTree = new(store, LimboLogs.Instance);
-                for (int i = 0; i < accounts.Length; i++)
+                storageRoots[i] = Keccak.EmptyTreeHash;
+                if (states[i] is not { } state) continue;
+                if (state.Slots.Count > 0)
                 {
-                    storageRoots[i] = Keccak.EmptyTreeHash;
-                    if (states[i] is not { } state) continue;
-                    if (state.Slots.Count > 0)
-                    {
-                        StorageTree storageTree = new(store.GetTrieStore(accounts[i].Path.ToCommitment()), LimboLogs.Instance);
-                        foreach ((ValueHash256 slot, byte[] value) in state.Slots) storageTree.Set(slot, value);
-                        storageTree.Commit();
-                        storageRoots[i] = storageTree.RootHash;
-                    }
-
-                    stateTree.Set(accounts[i].Path, new Account(state.Nonce, state.Balance, storageRoots[i], state.CodeHash));
+                    StorageTree storageTree = new(store.GetTrieStore(accounts[i].Path.ToCommitment()), LimboLogs.Instance);
+                    foreach ((ValueHash256 slot, byte[] value) in state.Slots) storageTree.Set(slot, value);
+                    storageTree.Commit();
+                    storageRoots[i] = storageTree.RootHash;
                 }
 
-                stateTree.Commit();
-                return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(stateTree.RootHash).TestObject;
+                stateTree.Set(accounts[i].Path, new Account(state.Nonce, state.Balance, storageRoots[i], state.CodeHash));
             }
+
+            stateTree.Commit();
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(stateTree.RootHash).TestObject;
         }
 
         /// <summary>One change to one of the free accounts, chosen among those that apply, described for the report.</summary>
