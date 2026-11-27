@@ -261,7 +261,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         _collisions.Clear();
     }
 
-    /// <summary>Marks the batch as published but never confirmed by RocksDB; disposing it then poisons the shard instead of sealing.</summary>
+    /// <summary>Marks a batch whose commit may have reached disk but was never confirmed by RocksDB, whether or not it was published; disposing it then poisons the shard instead of sealing.</summary>
     public void Poison() => _poisoned = true;
 
     public void Dispose()
