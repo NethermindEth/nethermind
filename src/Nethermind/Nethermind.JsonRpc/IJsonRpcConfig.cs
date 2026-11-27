@@ -329,7 +329,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(
         Description = """
             IPv4 CIDR networks of reverse proxies whose `X-Forwarded-For` header the HTTP JSON-RPC unsent response limits per address use. Loopback addresses are always trusted.
-            The header is used only from trusted proxies. The limits per address apply to the right-most address in it that is not itself a trusted proxy, so the proxy must append the address of its caller.
+            The header is used only from trusted proxies. The limits per address apply to the right-most address in it that is not itself a trusted proxy, so the proxy must append the address of its caller to the header. This applies to loopback proxies too. A proxy that passes its caller's header through without appending to it, or a TCP tunnel, gives no reliable client address.
             Without the header, or if it has no such address, the proxy address is used.
             Invalid entries are logged and ignored.
             """,

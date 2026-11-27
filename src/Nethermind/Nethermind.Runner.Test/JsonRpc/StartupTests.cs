@@ -1288,10 +1288,10 @@ public class StartupTests
         }
     }
 
-    [TestCase("10.0.0.3", true, TestName = "Third large unsent response of a direct caller is refused")]
-    [TestCase("127.0.0.1", true, TestName = "Third large unsent response of a loopback caller is refused")]
-    [TestCase("::ffff:127.0.0.1", true, TestName = "Third large unsent response of an IPv4-mapped loopback caller is refused")]
-    public async Task ProcessJsonRpcRequest_LimitsLargeUnsentResponsesPerAddress(string remoteAddress, bool refused)
+    [TestCase("10.0.0.3", TestName = "Third large unsent response of a direct caller is refused")]
+    [TestCase("127.0.0.1", TestName = "Third large unsent response of a loopback caller is refused")]
+    [TestCase("::ffff:127.0.0.1", TestName = "Third large unsent response of an IPv4-mapped loopback caller is refused")]
+    public async Task ProcessJsonRpcRequest_LimitsLargeUnsentResponsesPerAddress(string remoteAddress)
     {
         Startup startup = CreateStartup(NoAuthentication.Instance, CreateLargeResultEngineModule(), new JsonRpcConfig
         {
@@ -1327,7 +1327,7 @@ public class StartupTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(thirdSent.Task.IsFaulted, Is.EqualTo(refused), "the third large unsent response of the address");
+            Assert.That(thirdSent.Task.IsFaulted, Is.True, "the third large unsent response of the address");
             Assert.That(pending.Select(static item => item.Sent.Task.IsFaulted), Is.All.False, "the first two responses");
             Assert.That(nextSent.Task.IsFaulted, Is.False, "a response after the first two were sent");
         }
@@ -1349,7 +1349,21 @@ public class StartupTests
     [TestCase("10.1.2.3", "10.1.0.0/16", "unknown", "unknown", true, TestName = "Unparsable X-Forwarded-For counts against the proxy address")]
     [TestCase("127.0.0.1", null, "127.0.0.1", "127.0.0.1", true, TestName = "Loopback X-Forwarded-For counts against the proxy address")]
     [TestCase("10.1.2.3", "10.1.0.0/16", "198.51.100.1, 127.0.0.1", "198.51.100.2, 127.0.0.1", true, TestName = "Loopback X-Forwarded-For entries of a remote proxy are not skipped")]
-    public async Task ProcessJsonRpcRequest_AppliesTheAddressShareToTheForwardedClient(string peer, string? trustedProxyNetwork, string? firstForwardedFor, string? secondForwardedFor, bool secondRefused)
+    public Task ProcessJsonRpcRequest_AppliesTheAddressShareToTheForwardedClient(string peer, string? trustedProxyNetwork, string? firstForwardedFor, string? secondForwardedFor, bool secondRefused) =>
+        AssertAddressShareOfSecondResponse(peer, trustedProxyNetwork, firstForwardedFor, secondForwardedFor, secondRefused);
+
+    [Test]
+    public Task ProcessJsonRpcRequest_ClientsBeyondTheParsedXForwardedForLengthAreNotUsed()
+    {
+        string trustedHops = string.Join(", ", Enumerable.Repeat("10.1.2.4", UnsentResponseCounter.MaxForwardedForLength / 10 + 1));
+        return AssertAddressShareOfSecondResponse("10.1.2.3", "10.1.0.0/16", $"198.51.100.1, {trustedHops}", $"198.51.100.2, {trustedHops}", secondRefused: true);
+    }
+
+    [Test]
+    public Task ProcessJsonRpcRequest_ReadsRepeatedXForwardedForHeaderLinesFromTheLastOne() =>
+        AssertAddressShareOfSecondResponse("10.1.2.3", "10.1.0.0/16", new StringValues(["198.51.100.9", "198.51.100.1", "10.1.2.4"]), new StringValues(["198.51.100.9", "198.51.100.2", "10.1.2.4"]), secondRefused: false);
+
+    private static async Task AssertAddressShareOfSecondResponse(string peer, string? trustedProxyNetwork, StringValues firstForwardedFor, StringValues secondForwardedFor, bool secondRefused)
     {
         int responseSize = await SingleResponseSize();
         Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
@@ -1662,14 +1676,14 @@ public class StartupTests
 
     private static readonly JsonRpcUrl UnauthenticatedEngineUrl = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
 
-    private static (DefaultHttpContext Context, TaskCompletionSource Sent) CreateUnreadContext(string? requestJson = null, string? connectionId = null, IPAddress? remoteAddress = null, TaskCompletionSource? completing = null, string? forwardedFor = null)
+    private static (DefaultHttpContext Context, TaskCompletionSource Sent) CreateUnreadContext(string? requestJson = null, string? connectionId = null, IPAddress? remoteAddress = null, TaskCompletionSource? completing = null, StringValues forwardedFor = default)
     {
         TaskCompletionSource sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         byte[] request = Encoding.UTF8.GetBytes(requestJson ?? CreateJsonRpcRequest());
         DefaultHttpContext context = new();
         context.Connection.Id = connectionId ?? Guid.NewGuid().ToString();
         context.Connection.RemoteIpAddress = remoteAddress;
-        if (forwardedFor is not null) context.Request.Headers["X-Forwarded-For"] = forwardedFor;
+        if (forwardedFor.Count > 0) context.Request.Headers["X-Forwarded-For"] = forwardedFor;
         context.Request.Method = "POST";
         context.Request.ContentType = "application/json";
         context.Request.Body = new MemoryStream(request);
