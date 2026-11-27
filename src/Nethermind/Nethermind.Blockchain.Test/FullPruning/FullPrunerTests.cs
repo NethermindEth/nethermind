@@ -227,10 +227,10 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             logManager: new OneLoggerLogManager(new(logger)));
         using CancellationTokenSource processExit = new();
         test.ProcessExitSource.Token.Returns(processExit.Token);
-        // A cancellation raised inside the run while the process keeps running is a failure, not a shutdown:
-        // the first read lets the run pass the persisted-state wait, the next one fails inside the run itself.
-        int reads = 0;
-        test.StateBoundary.BestPersistedState.Returns(_ => Interlocked.Increment(ref reads) == 1 ? (ulong?)1 : throw new TaskCanceledException());
+        // Throw inside the pruning task, rather than an event callback that runs on the publisher's thread.
+        test.StateBoundary.BestPersistedState.Returns(1ul);
+        test.BlockTree.Head.Returns(Build.A.Block.WithNumber(long.MaxValue).TestObject);
+        test.BlockTree.FindHeader(1).Returns(_ => throw new TaskCanceledException());
 
         test.TriggerPruningViaEvent();
         Assert.That(() => test.FullPruningDb.Context, Is.Not.Null.After(Timeout.MaxTestTime, 1));
