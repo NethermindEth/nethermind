@@ -33,6 +33,7 @@ namespace Nethermind.LightClient;
 /// <summary>Obtains light-client SSZ messages directly from connected beacon peers.</summary>
 internal sealed class BeaconPeerTransport : IAsyncDisposable
 {
+    private const int MaxPeerCount = 32;
     private static readonly TimeSpan PeerRequestTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan PeerSearchInterval = TimeSpan.FromSeconds(3);
     private readonly IPResolver _ipResolver;
@@ -84,7 +85,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             QuicPort = quicSupported ? quicPort : 0,
             MinPeerCount = 4,
             TargetPeerCount = 16,
-            MaxPeerCount = 32,
+            MaxPeerCount = MaxPeerCount,
             CustodyGroupCount = 0,
         };
         BeaconChainStore store = new(db, spec);
@@ -254,8 +255,20 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
 
     internal async Task<LightClientBootstrap> BootstrapAsync(Hash256 root, Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken token)
     {
-        try { return await RequestAsync(_bootstrapRequests, (peer, peerToken) => peer.RequestLightClientBootstrapAsync(root, peerToken), validate, token); }
+        try
+        {
+            return await RequestAsync(_bootstrapRequests, (peer, peerToken) => peer.RequestLightClientBootstrapAsync(root, peerToken),
+                validate, token, WatchBootstrapPeers);
+        }
         finally { Volatile.Write(ref _bootstrapPeerAdmission, null); }
+    }
+
+    private (IReadOnlyList<IBeaconSyncPeer> Peers, Task Admission) WatchBootstrapPeers()
+    {
+        // Arm before taking the snapshot so a newly admitted peer outside it can wake the request loop.
+        TaskCompletionSource admission = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Volatile.Write(ref _bootstrapPeerAdmission, admission);
+        return (_peers.GetBestPeers(0, _bootstrapRequests.CanRequest<LightClientBootstrap>), admission.Task);
     }
 
     internal Task<LightClientUpdate> UpdateAsync(ulong period, Func<LightClientUpdate, CancellationToken, Task> validate, CancellationToken token) =>
@@ -270,7 +283,8 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             (peer, peerToken) => peer.RequestLightClientOptimisticAsync(peerToken), validate, token);
 
     private async Task<T> RequestAsync<T>(PeerRequests requests, Func<IBeaconSyncPeer, CancellationToken, Task<T>> request,
-        Func<T, CancellationToken, Task> validate, CancellationToken token) where T : class
+        Func<T, CancellationToken, Task> validate, CancellationToken token,
+        Func<(IReadOnlyList<IBeaconSyncPeer> Peers, Task Admission)>? watch = null) where T : class
     {
         Func<T, CancellationToken, Task<bool>> validateAndAccept = async (response, cancellationToken) =>
         {
@@ -282,14 +296,8 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            TaskCompletionSource? admission = null;
-            if (typeof(T) == typeof(LightClientBootstrap))
-            {
-                // Arm before taking the snapshot so a newly admitted peer outside that snapshot can wake the retry.
-                admission = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                Volatile.Write(ref _bootstrapPeerAdmission, admission);
-            }
-            (T? response, bool sawInapplicable) = await requests.RequestAsync(_peers.GetBestPeers(0, isEligible), request, validateAndAccept, token);
+            IReadOnlyList<IBeaconSyncPeer> peers = watch is null ? _peers.GetBestPeers(0, isEligible) : [];
+            (T? response, bool sawInapplicable) = await requests.RequestAsync(peers, request, validateAndAccept, token, watch);
             if (response is not null) return response;
             if (sawInapplicable) throw new IrrelevantLightClientUpdateException();
 
@@ -299,15 +307,16 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 lastStatus = _time.GetTimestamp();
             }
 
+            Task? admission = watch is null ? null : Volatile.Read(ref _bootstrapPeerAdmission)?.Task;
             if (admission is null)
             {
                 await Task.Delay(PeerSearchInterval, _time, token);
             }
-            else if (!admission.Task.IsCompleted)
+            else if (!admission.IsCompleted)
             {
                 using CancellationTokenSource retry = CancellationTokenSource.CreateLinkedTokenSource(token);
                 Task delay = Task.Delay(PeerSearchInterval, _time, retry.Token);
-                if (await Task.WhenAny(delay, admission.Task) != delay)
+                if (await Task.WhenAny(delay, admission) != delay)
                     await retry.CancelAsync();
             }
         }
@@ -338,34 +347,51 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
 
         internal async Task<(T? Response, bool SawInapplicable)> RequestAsync<T>(IReadOnlyList<IBeaconSyncPeer> peers,
             Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task<bool>> validate,
-            CancellationToken token) where T : class
+            CancellationToken token, Func<(IReadOnlyList<IBeaconSyncPeer> Peers, Task Admission)>? watch = null) where T : class
         {
-            int start = 0;
-            for (int i = 0; i < peers.Count; i++)
+            int start = 0, preferred = -1, offset = 0;
+            void OrderPeers()
             {
-                if (peers[i].Id == _lastAttemptedPeerId) start = (i + 1) % peers.Count;
+                start = 0;
+                for (int i = 0; i < peers.Count; i++)
+                {
+                    if (peers[i].Id == _lastAttemptedPeerId) start = (i + 1) % peers.Count;
+                }
+                preferred = providers?.Preferred<T>(peers, start) ?? -1;
+                offset = preferred >= 0 ? -1 : 0;
             }
-            int preferred = providers?.Preferred<T>(peers, start) ?? -1;
+
+            Task? admission = null;
+            if (watch is not null) (peers, admission) = watch();
+            OrderPeers();
+            // A round with a changing peer set still attempts at most one pool's worth of sessions.
+            int attemptLimit = watch is null ? peers.Count : MaxPeerCount;
+            HashSet<IBeaconSyncPeer>? requested = watch is null ? null : new(ReferenceEqualityComparer.Instance);
             int fanOut = providers?.FanOut<T>(_concurrency) ?? _concurrency;
             bool sawInapplicable = false;
-            int offset = preferred >= 0 ? -1 : 0;
             int attempted = 0, unavailableCount = 0, failedCount = 0, inapplicableCount = 0, accepted = 0, validated = 0;
             List<Task<(IBeaconSyncPeer Peer, T? Response, Exception? Failure, bool TimedOut)>> pending = [with(fanOut)];
+            List<Task>? wakeups = watch is null ? null : [with(fanOut + 1)];
             using CancellationTokenSource owner = CancellationTokenSource.CreateLinkedTokenSource(token);
             try
             {
-                while (offset < peers.Count || pending.Count > 0)
+                while (true)
                 {
                     token.ThrowIfCancellationRequested();
                     bool completed = false;
                     foreach (Task attempt in pending) completed |= attempt.IsCompleted;
-                    while (!completed && pending.Count < fanOut && offset < peers.Count)
+                    if (!completed && pending.Count < fanOut && attempted < attemptLimit && admission is { IsCompleted: true })
+                    {
+                        (peers, admission) = watch!();
+                        OrderPeers();
+                    }
+                    while (!completed && pending.Count < fanOut && attempted < attemptLimit && offset < peers.Count)
                     {
                         int index = offset < 0 ? preferred : (start + offset) % peers.Count;
                         bool skip = offset++ >= 0 && index == preferred;
                         if (skip) continue;
                         IBeaconSyncPeer next = peers[index];
-                        if (!CanRequest<T>(next)) continue;
+                        if (!CanRequest<T>(next) || requested?.Add(next) is false) continue;
                         attempted++;
                         _lastAttemptedPeerId = next.Id;
                         Task<(IBeaconSyncPeer, T?, Exception?, bool)> fetching = FetchAsync(next, request, owner.Token);
@@ -373,7 +399,17 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                         completed = fetching.IsCompleted;
                     }
                     if (pending.Count == 0) break;
-                    Task<(IBeaconSyncPeer Peer, T? Response, Exception? Failure, bool TimedOut)> finished = await Task.WhenAny(pending);
+                    Task<(IBeaconSyncPeer Peer, T? Response, Exception? Failure, bool TimedOut)> finished;
+                    if (admission is not null && pending.Count < fanOut && attempted < attemptLimit)
+                    {
+                        wakeups!.Clear();
+                        wakeups.AddRange(pending);
+                        wakeups.Add(admission);
+                        Task ready = await Task.WhenAny(wakeups);
+                        if (ready == admission) continue;
+                        finished = (Task<(IBeaconSyncPeer Peer, T? Response, Exception? Failure, bool TimedOut)>)ready;
+                    }
+                    else finished = await Task.WhenAny(pending);
                     pending.Remove(finished);
                     (IBeaconSyncPeer peer, T? value, Exception? failure, bool timedOut) = await finished;
                     token.ThrowIfCancellationRequested();

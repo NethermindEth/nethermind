@@ -93,15 +93,6 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            out ReadOnlyMemory<byte> cellProofs)
-        {
-            blob = null;
-            cellProofs = default;
-            return false;
-        }
-
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs) => 0;
 
@@ -134,8 +125,6 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) => false;
-
         public BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) => BlobCellMergeResult.TransactionUnavailable;
 
         public ulong GetLatestPendingNonce(Address address) => 0;
@@ -159,7 +148,6 @@ namespace Nethermind.TxPool
             add { }
             remove { }
         }
-        public bool AcceptTxWhenNotSynced { get; set; }
         public void ResetTxPoolState() { }
     }
 }

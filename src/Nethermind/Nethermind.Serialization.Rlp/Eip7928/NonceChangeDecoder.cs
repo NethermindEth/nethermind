@@ -16,6 +16,13 @@ public sealed class NonceChangeDecoder : IndexedChangeDecoder<NonceChange>, IInd
     static NonceChange IIndexedChangeReader<NonceChange>.ReadFields<TCanonicalChecks>(ref RlpReader fields)
         => new(fields.DecodeUInt<TCanonicalChecks>(), fields.DecodeULong<TCanonicalChecks>());
 
+    static uint IIndexedChangeReader<NonceChange>.ValidateFields(ref RlpReader fields)
+    {
+        uint index = fields.DecodeUInt();
+        fields.DecodeULong();
+        return index;
+    }
+
     protected override void EncodeValue(ref RlpWriter writer, NonceChange item)
         => writer.Encode(item.Value);
 

@@ -16,18 +16,14 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
-using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.DataAvailability;
 using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
-using Nethermind.BeaconChain.ValidatorApi;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
-using NSubstitute;
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
 namespace Nethermind.BeaconChain.Test.Api;
@@ -260,9 +256,12 @@ public class BeaconApiBlobsTests : BeaconApiFixture
     [Test]
     public async Task Rebuilds_past_the_bound_are_refused_until_one_response_completes([Values(Json, OctetStream)] string accept)
     {
-        ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
-        BeaconApiContext ctx = new(Spec, _host.StatusHolder, new SlotClock(Spec, time), _host.Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null, Substitute.For<IBeaconNodeValidatorApi>());
+        BeaconApiHead view = BeaconApiHead.Capture(_host.StatusHolder);
+        using System.Threading.RateLimiting.ConcurrencyLimiter rebuilds = new(new()
+        {
+            PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds,
+            QueueLimit = 0,
+        });
         using BlockingResponse first = new();
         using BlockingResponse second = new();
         Task firstRequest = GetBlobs(Request(first));
@@ -287,10 +286,9 @@ public class BeaconApiBlobsTests : BeaconApiFixture
             first.Release.TrySetResult();
             second.Release.TrySetResult();
             await Task.WhenAll(firstRequest, secondRequest);
-            ctx.BlobRebuilds.Dispose();
         }
 
-        Task GetBlobs(HttpContext context) => new BlobsEndpoint(ctx).GetBlobs(SystematicRoot.ToString(), []).ExecuteAsync(context);
+        Task GetBlobs(HttpContext context) => new BlobsEndpoint(Spec, _host.Store, view, rebuilds).GetBlobs(SystematicRoot.ToString(), []).ExecuteAsync(context);
 
         DefaultHttpContext Request(Stream stream)
         {

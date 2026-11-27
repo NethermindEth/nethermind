@@ -312,7 +312,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                 return (verified, ExecutionTime(verified));
             }
             Hash256 hash = header.ExecutionBlockHash ?? throw new InvalidDataException("Verified Gloas header has no execution block hash.");
-            BlockHeader executionHeader = await execution.GetHeaderByHashAsync(hash, token);
+            BlockHeader executionHeader = await execution.GetConsensusHeaderAsync(hash, token);
             return (new(header.Beacon!.Slot, executionHeader.Number, hash, executionHeader.StateRoot!), executionHeader.Timestamp);
         }
         ConsensusPublisher publisher = new(() => Volatile.Read(ref persistedFinalized),
@@ -414,7 +414,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                 else if (finalized)
                     logger.LogWarning(exception, "Waiting for an execution header authenticated by finalized consensus");
                 else
-                    logger.LogWarning(exception, "Publishing consensus progress failed; retaining the last verified finalized head");
+                    logger.LogWarning(exception, "Publishing optimistic consensus progress failed; retaining the last authenticated head");
             }
 
             void Observe(ConsensusPublisher.PublishedHeads snapshot)

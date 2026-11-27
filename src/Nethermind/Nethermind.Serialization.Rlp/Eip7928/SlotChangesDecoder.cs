@@ -57,6 +57,19 @@ public sealed class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         return slotChanges;
     }
 
+    internal static UInt256 Validate(ref RlpReader reader)
+    {
+        RlpReader fields = reader.EnterSequence(out int length);
+        UInt256 slot = fields.DecodeUInt256();
+        if (IndexedChangeDecoder<StorageChange>.ValidateArray<StorageChangeDecoder>(ref fields, ChangesLimit, "Storage") == 0)
+        {
+            ThrowEmptyStorageChanges();
+        }
+
+        reader.ExitSequence(in fields, length);
+        return slot;
+    }
+
     public override int GetLength(ReadOnlySlotChanges? item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item ?? throw new ArgumentNullException(nameof(item)), rlpBehaviors));
 

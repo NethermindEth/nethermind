@@ -1188,7 +1188,7 @@ public static partial class EvmInstructions
         // Logging is not permitted in static call contexts.
         if (vmState.IsStatic)
         {
-            // Geth raises write protection while executing LOG, after a step that carries no error and prices it.
+            // Geth raises write protection while executing LOG, after it prices the step.
             // Geth checks the stack first, but a static LOG missing operands halts with write protection here, as REVM does:
             // Taiko's zk gas (RevmFailedStepGas) charges a static violation REVM's static gas, and an underflow the LOG body.
             if (stack.Head < 2 + TOpCount.Count)
@@ -1279,7 +1279,15 @@ public static partial class EvmInstructions
             return;
 
         ulong emissionCost = GasCostOf.Log + (ulong)TOpCount.Count * GasCostOf.LogTopic;
-        if (length <= (ulong.MaxValue - emissionCost) / GasCostOf.LogData)
+        // Geth sizes the memory before its gas function prices it, and no gas limit pays an expansion past the
+        // allocation cap, so such a step runs out of gas before it reaches write protection.
+        if (!TryGetTraceMemorySize(in position, in length, out ulong size))
+            vm.TraceOperationReady(emissionCost, "gas uint64 overflow");
+        else if (size > 0x1FFFFFFFE0UL)
+            vm.TraceOperationReady(emissionCost, "out of gas: gas uint64 overflow");
+        else if (size > EvmPooledMemory.MaxMemorySize)
+            vm.TraceOperationReady(emissionCost, "out of gas");
+        else
             vm.TraceMemoryOperationGasCost(in position, in length, emissionCost + (ulong)length * GasCostOf.LogData);
     }
 }

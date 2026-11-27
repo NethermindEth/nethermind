@@ -496,8 +496,8 @@
   },
   {
     "pname": "Nethermind.Crypto.SecP256k1",
-    "version": "0.8.0.42",
-    "hash": "sha256-vD2tgPHg0RTtHZrJE+IFmmkxekcdCIIjOUUEFg40ruM="
+    "version": "0.8.0.52",
+    "hash": "sha256-4nway6gOqprLEcrZo6Fu13Krww9F26In2ICaoHVMSy0="
   },
   {
     "pname": "Nethermind.Crypto.SecP256r1",
@@ -531,8 +531,8 @@
   },
   {
     "pname": "Nethermind.GmpBindings",
-    "version": "6.3.0.195",
-    "hash": "sha256-R0q85Lhsjpjepk1Y7LUvYSUEBDpHc21Qs3R+aooORgw="
+    "version": "6.3.0.203",
+    "hash": "sha256-wEab9bNjvVl89ii+jLi47XzpWL8uSmwv0cTblrgZmEM="
   },
   {
     "pname": "Nethermind.Libp2p.Core",

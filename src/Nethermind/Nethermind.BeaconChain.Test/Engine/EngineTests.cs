@@ -536,6 +536,29 @@ public class EngineTests
     }
 
     [Test]
+    public void Engine_driver_sends_an_already_encoded_request_list_to_newPayloadV5_unchanged()
+    {
+        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
+        Hash256 latestValid = CreateHash(0x66);
+        engine.engine_newPayloadV5(default!, default!, default, default)
+            .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Invalid, LatestValidHash = latestValid })));
+        ExternalClDetector detector = CreateDetector(engine, out _);
+        EngineDriver driver = TestEngineDriver.Create(detector);
+        byte[][] requests = [Bytes.FromHexString("0x01aa"), Bytes.FromHexString("0x0abbcc")];
+
+        ExecutionStatus verdict = driver.NotifyNewPayload(GloasPayload(slotNumber: 93), [], TestHash, requests, out Hash256? latestValidHash);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdict, Is.EqualTo(ExecutionStatus.Invalid));
+        Assert.That(latestValidHash, Is.EqualTo(latestValid));
+        engine.Received(1).engine_newPayloadV5(
+            Arg.Is<ExecutionPayloadV4>(p => p.SlotNumber == 93ul),
+            Arg.Any<Hash256?[]>(),
+            TestHash,
+            Arg.Is<byte[][]>(r => ReferenceEquals(r, requests)));
+    }
+
+    [Test]
     public void Engine_driver_refuses_to_turn_a_failed_newPayloadV5_call_into_a_verdict()
     {
         EngineDriver driver = CreateSyncingDriver(out IEngineRpcModule engine);

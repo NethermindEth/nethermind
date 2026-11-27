@@ -9,7 +9,6 @@ using DotNetty.Common;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.FluentRlp;
@@ -28,17 +27,11 @@ public class ZeroNettyFrameEncodeDecodeTests
     {
         (EncryptionSecrets expectedSecrets, _) = NetTestVectors.GetSecretsPair();
         (EncryptionSecrets actualSecrets, _) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor expectedMac = new(TestItem.IgnoredPublicKey, expectedSecrets);
-        using FrameMacProcessor actualMac = new(TestItem.IgnoredPublicKey, actualSecrets);
-        FrameCipher actualCipher = new(actualSecrets.AesSecret);
-        IFrameCipher switchingCipher = Substitute.For<IFrameCipher>();
-        ZeroPacketSplitter splitter = new(switchingCipher, actualMac);
-        switchingCipher.When(x => x.Encrypt(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<byte[]>(), Arg.Any<int>()))
-            .Do(call =>
-            {
-                actualCipher.Encrypt(call.ArgAt<byte[]>(0), call.ArgAt<int>(1), call.ArgAt<int>(2), call.ArgAt<byte[]>(3), call.ArgAt<int>(4));
-                splitter.EnableSnappy(LimboLogs.Instance);
-            });
+        using FrameMacProcessor expectedMac = new(expectedSecrets);
+        using FrameMacProcessor actualMac = new(actualSecrets);
+        ZeroPacketSplitter? splitter = null;
+        CallbackCipher switchingCipher = new(new FrameCipher(actualSecrets.AesSecret), () => splitter!.EnableSnappy(LimboLogs.Instance));
+        splitter = new(switchingCipher, actualMac);
         EmbeddedChannel expectedChannel = new(new ZeroPacketSplitter(new FrameCipher(expectedSecrets.AesSecret), expectedMac));
         EmbeddedChannel actualChannel = new(splitter);
         try
@@ -58,17 +51,89 @@ public class ZeroNettyFrameEncodeDecodeTests
     }
 
     [Test]
+    public void Enabling_snappy_after_sizing_the_output_encodes_the_packet_with_snappy()
+    {
+        (EncryptionSecrets expectedSecrets, _) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets actualSecrets, _) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor expectedMac = new(expectedSecrets);
+        using FrameMacProcessor actualMac = new(actualSecrets);
+        ZeroPacketSplitter expectedSplitter = new(new FrameCipher(expectedSecrets.AesSecret), expectedMac);
+        expectedSplitter.EnableSnappy(LimboLogs.Instance);
+        EmbeddedChannel expectedChannel = new(expectedSplitter);
+        CombinedEncoder actual = new(new FrameCipher(actualSecrets.AesSecret), actualMac);
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        // Exactly the size asked for: a pooled allocator rounds it up, which can leave room for Snappy by chance.
+        context.Allocator.Returns(UnpooledByteBufferAllocator.Default);
+        // A 15-byte packet takes 80 bytes with Snappy, one more than its framed size: its compressed payload of 17 bytes
+        // takes the longest padding.
+        byte[] packet = new byte[15];
+        new Random(7).NextBytes(packet);
+        packet[0] = 2;
+        try
+        {
+            using DisposableByteBuffer input = Unpooled.WrappedBuffer(packet).AsDisposable();
+            Assert.That(actual.AcceptOutboundMessage(input), Is.True);
+            using DisposableByteBuffer output = actual.Allocate(context).AsDisposable();
+            actual.EnableSnappy(LimboLogs.Instance);
+            actual.Encode(input, output);
+
+            expectedChannel.WriteOutbound(Unpooled.WrappedBuffer(packet));
+            using DisposableByteBuffer expected = expectedChannel.ReadOutbound<IByteBuffer>().AsDisposable();
+            Assert.That(output.AsSpan(), Is.SequenceEqualTo(expected.AsSpan()));
+        }
+        finally
+        {
+            expectedChannel.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
+    public void Packet_over_buffer_components_encodes_as_in_one_buffer([Values] bool snappy)
+    {
+        (EncryptionSecrets contiguousSecrets, _) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets segmentedSecrets, _) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor contiguousMac = new(contiguousSecrets);
+        using FrameMacProcessor segmentedMac = new(segmentedSecrets);
+        ZeroPacketSplitter contiguousSplitter = new(new FrameCipher(contiguousSecrets.AesSecret), contiguousMac);
+        ZeroPacketSplitter segmentedSplitter = new(new FrameCipher(segmentedSecrets.AesSecret), segmentedMac);
+        if (snappy)
+        {
+            contiguousSplitter.EnableSnappy(LimboLogs.Instance);
+            segmentedSplitter.EnableSnappy(LimboLogs.Instance);
+        }
+
+        EmbeddedChannel contiguous = new(contiguousSplitter);
+        EmbeddedChannel segmented = new(segmentedSplitter);
+        byte[] packet = new byte[Frame.DefaultMaxFrameSize * 2 + 100];
+        new Random(11).NextBytes(packet);
+        packet[0] = 2;
+        try
+        {
+            contiguous.WriteOutbound(Unpooled.WrappedBuffer(packet));
+            segmented.WriteOutbound(Unpooled.WrappedBuffer(Unpooled.WrappedBuffer(packet, 0, 700), Unpooled.WrappedBuffer(packet, 700, packet.Length - 700)));
+            using DisposableByteBuffer expected = contiguous.ReadOutbound<IByteBuffer>().AsDisposable();
+            using DisposableByteBuffer actual = segmented.ReadOutbound<IByteBuffer>().AsDisposable();
+            Assert.That(actual.AsSpan(), Is.SequenceEqualTo(expected.AsSpan()));
+        }
+        finally
+        {
+            contiguous.FinishAndReleaseAll();
+            segmented.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
     public async Task Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall, [Values] bool snappy)
     {
         using PooledBufferLeakDetector detector = new();
-        IFrameCipher cipher = Substitute.For<IFrameCipher>();
         int calls = 0;
-        cipher.When(x => x.Encrypt(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<byte[]>(), Arg.Any<int>()))
-            .Do(_ =>
-            {
-                if (++calls == failingCall) throw new InvalidOperationException("Encryption failed");
-            });
-        ZeroPacketSplitter splitter = new(cipher, Substitute.For<IFrameMacProcessor>());
+        CallbackCipher cipher = new(new FrameCipher(NetTestVectors.AesSecret), () =>
+        {
+            if (++calls == failingCall) throw new InvalidOperationException("Encryption failed");
+        });
+        (EncryptionSecrets secrets, _) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor mac = new(secrets);
+        ZeroPacketSplitter splitter = new(cipher, mac);
         if (snappy) splitter.EnableSnappy(LimboLogs.Instance);
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
@@ -86,8 +151,8 @@ public class ZeroNettyFrameEncodeDecodeTests
     {
         (EncryptionSecrets oldSecrets, _) = NetTestVectors.GetSecretsPair();
         (EncryptionSecrets newSecrets, _) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor oldMac = new(TestItem.IgnoredPublicKey, oldSecrets);
-        using FrameMacProcessor newMac = new(TestItem.IgnoredPublicKey, newSecrets);
+        using FrameMacProcessor oldMac = new(oldSecrets);
+        using FrameMacProcessor newMac = new(newSecrets);
         ZeroPacketSplitter oldSplitter = new();
         ZeroPacketSplitter newSplitter = new(new FrameCipher(newSecrets.AesSecret), newMac);
         if (disableFraming)
@@ -138,8 +203,8 @@ public class ZeroNettyFrameEncodeDecodeTests
     {
         (EncryptionSecrets a, _) = NetTestVectors.GetSecretsPair();
         (EncryptionSecrets b, _) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor referenceMac = new(TestItem.IgnoredPublicKey, a);
-        using FrameMacProcessor combinedMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor referenceMac = new(a);
+        using FrameMacProcessor combinedMac = new(b);
         ZeroPacketSplitter referenceSplitter = new();
         CombinedEncoder combined = new(new FrameCipher(b.AesSecret), combinedMac);
         EmbeddedChannel reference = new(new ZeroFrameEncoder(new FrameCipher(a.AesSecret), referenceMac), referenceSplitter);
@@ -175,10 +240,25 @@ public class ZeroNettyFrameEncodeDecodeTests
         }
     }
 
+    /// <summary>Encrypts with <paramref name="cipher"/>, then runs <paramref name="afterEncrypt"/>.</summary>
+    /// <remarks>Stands in for a substitute, which cannot intercept calls with span arguments.</remarks>
+    private sealed class CallbackCipher(IFrameCipher cipher, Action afterEncrypt) : IFrameCipher
+    {
+        public void Encrypt(ReadOnlySpan<byte> input, Span<byte> output)
+        {
+            cipher.Encrypt(input, output);
+            afterEncrypt();
+        }
+
+        public void Decrypt(ReadOnlySpan<byte> input, Span<byte> output) => cipher.Decrypt(input, output);
+    }
+
     private sealed class CombinedEncoder(IFrameCipher cipher, IFrameMacProcessor mac)
         : ZeroPacketSplitter(cipher, mac)
     {
         public void Encode(IByteBuffer input, IByteBuffer output) => base.Encode(null, input, output);
+
+        public IByteBuffer Allocate(IChannelHandlerContext context) => AllocateBuffer(context);
     }
 
     [Test]
@@ -187,10 +267,10 @@ public class ZeroNettyFrameEncodeDecodeTests
         (EncryptionSecrets A, EncryptionSecrets B) = NetTestVectors.GetSecretsPair();
 
         FrameCipher frameCipher = new(B.AesSecret);
-        FrameMacProcessor macProcessor = new(TestItem.IgnoredPublicKey, B);
+        FrameMacProcessor macProcessor = new(B);
 
         FrameCipher frameCipher2 = new(A.AesSecret);
-        FrameMacProcessor macProcessor2 = new(TestItem.IgnoredPublicKey, A);
+        FrameMacProcessor macProcessor2 = new(A);
 
         Task t1 = Task.Factory.StartNew(() => RunStreamTests(frameCipher, macProcessor, frameCipher2, macProcessor2), TaskCreationOptions.LongRunning);
         Task t2 = Task.Factory.StartNew(() => RunStreamTests(frameCipher2, macProcessor2, frameCipher, macProcessor), TaskCreationOptions.LongRunning);

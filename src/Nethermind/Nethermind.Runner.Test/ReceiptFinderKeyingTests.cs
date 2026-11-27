@@ -41,8 +41,6 @@ public class ReceiptFinderKeyingTests
         "Nethermind.Consensus.AuRa.AuRaValidatorFactory",
         "Nethermind.Consensus.AuRa.Validators.ContractBasedValidator",
         "Nethermind.Consensus.AuRa.InitializationSteps.TxAuRaFilterBuilders",
-        "Nethermind.Shutter.ShutterApi",
-        "Nethermind.Shutter.ShutterBlockHandler",
         "Nethermind.Merge.Plugin.FrameTxWidthFinalizer",
         // OTS requires retained receipts and must not re-execute blocks against historical state.
         "Nethermind.JsonRpc.TraceStore.Ots.OtsRpcModule",

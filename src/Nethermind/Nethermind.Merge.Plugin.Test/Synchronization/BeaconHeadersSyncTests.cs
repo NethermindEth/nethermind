@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -27,6 +29,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -697,6 +700,62 @@ public class BeaconHeadersSyncTests
         }
         ctx.PeerPool.Received().ReportBreachOfProtocol(peer, DisconnectReason.UnexpectedHeaderHash, Arg.Any<string>());
     }
+
+    // With the memory budget full, PrepareRequest keeps inserting the dependencies that connect, as tracked by the lowest
+    // inserted beacon header, before it requests more headers.
+    [Test]
+    public async Task PrepareRequest_inserts_every_dependency_that_connects_before_requesting_more()
+    {
+        IBlockTree remote = Build.A.BlockTree().WithPostMergeRules().OfHeadersOnly.OfChainLength(5001).TestObject;
+        BlockHeader pivot = remote.FindHeader(5000, BlockTreeLookupOptions.None)!;
+        SyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotNumber = pivot.Number,
+            PivotHash = pivot.Hash!.ToString(),
+            PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!,
+            FastHeadersMemoryBudget = 1
+        };
+        BlockTreeBuilder builder = Build.A.BlockTree().WithoutSettingHead.WithSyncConfig(syncConfig);
+        builder.TestObject.SyncPivot = (pivot.Number, pivot.Hash!);
+        IPivot beaconPivot = Substitute.For<IPivot>();
+        beaconPivot.PivotNumber.Returns(pivot.Number);
+        beaconPivot.PivotHash.Returns(pivot.Hash);
+        beaconPivot.PivotDestinationNumber.Returns(100UL);
+        using BeaconHeadersSyncFeed feed = new(Substitute.For<IPoSSwitcher>(), builder.TestObject, Substitute.For<ISyncPeerPool>(),
+            syncConfig, new NullSyncReport(), beaconPivot, Substitute.For<IInvalidChainTracker>(), LimboLogs.Instance,
+            builder.ChainLevelInfoRepository, builder.HeaderStore);
+        feed.InitializeFeed();
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        void Answer(HeadersSyncBatch batch)
+        {
+            batch.Response = remote.FindHeaders(
+                remote.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash!, batch.RequestSize, 0, false)!;
+            batch.ResponseSourcePeer = peer;
+            feed.HandleResponse(batch);
+        }
+
+        using HeadersSyncBatch top = (await feed.PrepareRequest())!;
+        List<HeadersSyncBatch> lower = [];
+        for (int i = 0; i < 10; i++) lower.Add((await feed.PrepareRequest())!);
+        foreach (HeadersSyncBatch batch in lower) Answer(batch);
+        Assert.That(Dependencies(feed).Count, Is.EqualTo(lower.Count));
+        Answer(top);
+
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+        using HeadersSyncBatch? next = await Task.Run(() => feed.PrepareRequest(timeout.Token)).WaitAsync(timeout.Token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next?.EndNumber, Is.EqualTo(lower[^1].StartNumber - 1), "the next request continues below the dependencies");
+            Assert.That(builder.TestObject.LowestInsertedBeaconHeader?.Number, Is.EqualTo(lower[^1].StartNumber));
+            Assert.That(Dependencies(feed).Count, Is.Zero);
+        }
+    }
+
+    private static IDictionary<ulong, HeadersSyncBatch> Dependencies(HeadersSyncFeed feed) =>
+        (IDictionary<ulong, HeadersSyncBatch>)typeof(HeadersSyncFeed)
+            .GetField("_dependencies", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(feed)!;
 
     /// <summary>
     /// Creates a context whose local tree holds the sync pivot header, as stored by the fast headers sync, and whose

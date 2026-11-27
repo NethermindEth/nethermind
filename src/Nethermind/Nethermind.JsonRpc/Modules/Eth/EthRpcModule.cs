@@ -487,7 +487,7 @@ public partial class EthRpcModule(
     }
 
     protected static ResultWrapper<Hash256> InvalidRawTransaction() =>
-        ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
+        ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected, isRequestError: true);
 
     public virtual ResultWrapper<SignTransactionResult> eth_signTransaction(SignableTransactionForRpc rpcTx)
     {
@@ -730,7 +730,7 @@ public partial class EthRpcModule(
         ResultWrapper<Hash256> sendResult = await eth_sendRawTransaction(transaction);
         if (sendResult.Result.ResultType != ResultType.Success)
         {
-            return ResultWrapper<ReceiptForRpc?>.Fail(sendResult.Result.Error ?? "Send failed", sendResult.ErrorCode);
+            return ResultWrapper<ReceiptForRpc?>.Fail(sendResult.Result.Error ?? "Send failed", sendResult.ErrorCode, sendResult.IsTemporary, sendResult.IsRequestError);
         }
         Hash256 hash = sendResult.Data;
 
@@ -784,9 +784,12 @@ public partial class EthRpcModule(
             if (acceptTxResult.Equals(AcceptTxResult.Accepted))
                 return ResultWrapper<Hash256>.Success(txHash);
 
+            // A rejected transaction is the caller's error, so it is logged like a request error rather than a warning
+            // per request. A result that reports the node's state rather than the transaction keeps its warning.
             return acceptTxResult.Equals(AcceptTxResult.SignFailed)
                 ? ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked)
-                : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
+                : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected,
+                    isRequestError: acceptTxResult is { } rejection && !IsNodeState(rejection));
         }
         catch (Exception e)
         {
@@ -794,6 +797,10 @@ public partial class EthRpcModule(
             return ResultWrapper<Hash256>.Fail(e.Message, ErrorCodes.TransactionRejected);
         }
     }
+
+    /// <summary>Whether a rejection reports this node's state, so it is not the caller's fault.</summary>
+    private static bool IsNodeState(AcceptTxResult rejection) =>
+        rejection.Equals(AcceptTxResult.Syncing) || rejection.Equals(AcceptTxResult.FrameSimulationDeferred);
 
     public virtual ResultWrapper<HexBytes> eth_call(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null, CancellationToken cancellationToken = default) =>
         ExecuteWithFrameGas(new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),

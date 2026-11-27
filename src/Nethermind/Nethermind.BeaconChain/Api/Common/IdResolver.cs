@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Microsoft.AspNetCore.Http;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Common;
@@ -13,7 +14,7 @@ namespace Nethermind.BeaconChain.Api.Common;
 /// </summary>
 internal static class IdResolver
 {
-    public static bool TryResolveRoot(BeaconApiContext ctx, string id, out Hash256? root, out int errorStatus, out string? errorMessage)
+    public static bool TryResolveRoot(BeaconChainStore store, BeaconApiHead view, string id, out Hash256? root, out int errorStatus, out string? errorMessage)
     {
         root = null;
         errorStatus = 0;
@@ -22,7 +23,7 @@ internal static class IdResolver
         switch (id)
         {
             case "head":
-                root = ctx.StatusSource.CurrentStatus.HeadRoot;
+                root = view.StatusSource.CurrentStatus.HeadRoot;
                 if (root == Hash256.Zero)
                 {
                     root = null;
@@ -33,7 +34,7 @@ internal static class IdResolver
                 return true;
 
             case "finalized":
-                root = ctx.StatusSource.CurrentStatus.FinalizedRoot;
+                root = view.StatusSource.CurrentStatus.FinalizedRoot;
                 if (root == Hash256.Zero)
                 {
                     root = null;
@@ -44,7 +45,7 @@ internal static class IdResolver
                 return true;
 
             case "genesis":
-                if (!ctx.Store.TryGetCanonicalRoot(0, out root))
+                if (!store.TryGetCanonicalRoot(0, out root))
                 {
                     errorStatus = StatusCodes.Status404NotFound;
                     errorMessage = "The genesis block is not retained by this node: it checkpoint-synced from a later finalized state.";
@@ -53,7 +54,7 @@ internal static class IdResolver
                 return true;
 
             case "justified":
-                root = ctx.StatusSource.JustifiedRoot;
+                root = view.StatusSource.JustifiedRoot;
                 if (root == Hash256.Zero)
                 {
                     root = null;
@@ -66,7 +67,7 @@ internal static class IdResolver
             default:
                 if (ulong.TryParse(id, out ulong slot))
                 {
-                    if (!ctx.Store.TryGetCanonicalRoot(slot, out root))
+                    if (!store.TryGetCanonicalRoot(slot, out root))
                     {
                         errorStatus = StatusCodes.Status404NotFound;
                         errorMessage = $"No canonical block is retained at slot {slot}.";

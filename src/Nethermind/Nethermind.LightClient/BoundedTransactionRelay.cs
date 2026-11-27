@@ -253,13 +253,11 @@ internal sealed class BoundedTransactionRelay : ITxPool, IDisposable
     AcceptTxResult ITxPool.ValidateTxForBlobSampling(Transaction tx) => AcceptTxResult.Invalid;
     void ITxPool.ForgetRejectedBlobTransaction(Hash256 hash) { }
     bool ITxPool.ForgetInvalidBlobProofs(Hash256 hash) => false;
-    bool ITxPool.TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) => false;
     BlobCellMergeResult ITxPool.MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) =>
         BlobCellMergeResult.TransactionUnavailable;
     Transaction? ITxPool.GetBestTx() => null;
     IEnumerable<Transaction> ITxPool.GetBestTxOfEachSender() => [];
     ulong ITxPool.GetLatestPendingNonce(Address address) => 0;
-    bool ITxPool.AcceptTxWhenNotSynced { get; set; }
     long ITxPool.PendingTransactionsAdded => 0;
     Transaction[] IPendingTxsBySender.GetPendingLightBlobTransactionsBySender(Address address) => [];
     long IPendingTxsBySender.GetRemovalGeneration(Address sender) => 0;

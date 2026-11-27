@@ -18,14 +18,14 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// and encodes the result. <see cref="BeaconApiEndpoints"/> turns a <see cref="BeaconNodeApiException"/> into its status, and every
 /// other <c>/eth/v1/validator/*</c> route answers through it as not supported.
 /// </summary>
-internal sealed class ValidatorEndpoints(BeaconApiContext ctx)
+internal sealed class ValidatorEndpoints(IBeaconNodeValidatorApi validatorApi)
 {
     [HttpPost("/eth/v1/validator/duties/attester/{epoch}"), Negotiated]
     public async Task<IResult> AttesterDuties(string epoch, [FromBody] string[] ids, CancellationToken cancellationToken)
     {
         if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
         if (!TryParseValidatorIndices(ids, out ulong[]? indices, out string? invalidId)) return Invalid($"Invalid validator index '{invalidId}'.");
-        DutiesResult<AttesterDuty> duties = await ctx.ValidatorApi.GetAttesterDuties(parsedEpoch, indices, cancellationToken);
+        DutiesResult<AttesterDuty> duties = await validatorApi.GetAttesterDuties(parsedEpoch, indices, cancellationToken);
         return Duties(duties, static duty => new AttesterDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.CommitteeIndex.ToString(),
             duty.CommitteeLength.ToString(), duty.CommitteesAtSlot.ToString(), duty.ValidatorCommitteeIndex.ToString(), duty.Slot.ToString()));
     }
@@ -34,7 +34,7 @@ internal sealed class ValidatorEndpoints(BeaconApiContext ctx)
     public async Task<IResult> ProposerDuties(string epoch, CancellationToken cancellationToken)
     {
         if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
-        DutiesResult<ProposerDuty> duties = await ctx.ValidatorApi.GetProposerDuties(parsedEpoch, cancellationToken);
+        DutiesResult<ProposerDuty> duties = await validatorApi.GetProposerDuties(parsedEpoch, cancellationToken);
         return Duties(duties, static duty => new ProposerDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), duty.Slot.ToString()));
     }
 
@@ -43,7 +43,7 @@ internal sealed class ValidatorEndpoints(BeaconApiContext ctx)
     {
         if (!TryParseUInt(epoch, out ulong parsedEpoch)) return Invalid($"Invalid epoch '{epoch}'.");
         if (!TryParseValidatorIndices(ids, out ulong[]? indices, out string? invalidId)) return Invalid($"Invalid validator index '{invalidId}'.");
-        DutiesResult<SyncDuty> duties = await ctx.ValidatorApi.GetSyncDuties(parsedEpoch, indices, cancellationToken);
+        DutiesResult<SyncDuty> duties = await validatorApi.GetSyncDuties(parsedEpoch, indices, cancellationToken);
         return Duties(duties, static duty => new SyncDutyDto(duty.PublicKey.ToString(), duty.ValidatorIndex.ToString(), ToStrings(duty.ValidatorSyncCommitteeIndices)));
     }
 
@@ -56,7 +56,7 @@ internal sealed class ValidatorEndpoints(BeaconApiContext ctx)
             return Invalid($"Invalid slot '{slot}' or committee index '{committeeIndex}'.");
         }
 
-        AttestationData data = await ctx.ValidatorApi.ProduceAttestationData(parsedSlot, parsedCommitteeIndex, cancellationToken);
+        AttestationData data = await validatorApi.ProduceAttestationData(parsedSlot, parsedCommitteeIndex, cancellationToken);
         return ApiResults.Data(ToDto(data));
     }
 
@@ -77,7 +77,7 @@ internal sealed class ValidatorEndpoints(BeaconApiContext ctx)
             attestations[i] = attestation;
         }
 
-        IReadOnlyList<SubmissionFailure> failures = await ctx.ValidatorApi.SubmitAttestations(attestations, cancellationToken);
+        IReadOnlyList<SubmissionFailure> failures = await validatorApi.SubmitAttestations(attestations, cancellationToken);
         if (failures.Count == 0) return Results.Ok();
         FailureDto[] refused = new FailureDto[failures.Count];
         for (int i = 0; i < refused.Length; i++) refused[i] = new FailureDto(failures[i].Index, failures[i].Message);

@@ -87,22 +87,17 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
         return await _data.SendRawTransactionAsync(await LatestHeadAsync(cancellationToken), raw, calls, cancellationToken);
     }
 
-    internal async Task<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> SimulateAsync(JsonElement payload, JsonElement block,
-        CancellationToken cancellationToken)
-    {
-        if (calls is null) throw new RpcException(-32601, "Method is not supported by the verified RPC.");
-        (VerifiedHead head, bool historical) = block.ValueKind == JsonValueKind.Undefined
-            ? (await LatestHeadAsync(cancellationToken), false) : await ResolveStateHeadAsync(block, cancellationToken);
-        try { return await calls.SimulateAsync(head, payload, cancellationToken); }
-        finally { if (historical) _historicalStateRequests.Release(); }
-    }
+    internal Task<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> SimulateAsync(JsonElement payload, JsonElement block,
+        CancellationToken cancellationToken) =>
+        WithCallHeadAsync(UseLatestForPending(block),
+            (executor, head) => executor.SimulateAsync(head, payload, cancellationToken), cancellationToken);
 
     internal async Task<UInt256> GetBalanceAsync(Address address, JsonElement block, CancellationToken cancellationToken) =>
         (await GetAccountAsync(address, block, cancellationToken)).Balance;
 
     internal async Task<ulong> GetNonceAsync(Address address, JsonElement block, CancellationToken cancellationToken)
     {
-        bool pending = block.ValueKind == JsonValueKind.String && block.ValueEquals("pending"u8);
+        bool pending = IsPendingTag(block);
         Account account = await GetAccountAsync(address, pending ? default : block, cancellationToken);
         return pending ? execution.GetPendingAccount(address, account).Nonce : account.Nonce;
     }
@@ -325,8 +320,7 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
             {
                 return await GetLogsAsync(selector, cancellationToken);
             }
-            if (kind is DataKind.Header or DataKind.BlockAccessList && selector.ValueKind == JsonValueKind.String
-                && selector.ValueEquals("pending")) return BoundedJson.Null;
+            if (kind is DataKind.Header or DataKind.BlockAccessList && IsPendingTag(selector)) return BoundedJson.Null;
             selector = ParseBlockSelector(selector, hashOnly, out bool requireCanonical, out bool byHash);
             VerifiedHead? latest = await LatestForSelectorAsync(selector, cancellationToken);
             using DataRequest admission = new(cancellationToken);
@@ -575,6 +569,9 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
     private static bool IsFinalizedTag(JsonElement selector) =>
         selector.ValueKind == JsonValueKind.String && selector.ValueEquals("finalized"u8);
 
+    private static bool IsPendingTag(JsonElement selector) =>
+        selector.ValueKind == JsonValueKind.String && selector.ValueEquals("pending"u8);
+
     private static ulong? ParseLogBlockNumber(JsonElement selector)
     {
         if (selector.ValueKind == JsonValueKind.Undefined) return null;
@@ -771,7 +768,7 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
 
     private static void RejectUnavailableTag(JsonElement selector)
     {
-        if (selector.ValueEquals("pending"u8)) throw new RpcException(-32001, "Pending state cannot be authenticated from execution peers.");
+        if (IsPendingTag(selector)) throw new RpcException(-32001, "Pending state cannot be authenticated from execution peers.");
         if (selector.ValueEquals("safe"u8)) throw new RpcException(-32001, "A distinct authenticated safe execution head is unavailable; select finalized or latest explicitly.");
         if (selector.ValueEquals("earliest"u8)) throw new RpcException(-32001, "Genesis is outside the bounded authenticated history; use a recent block selector.");
     }

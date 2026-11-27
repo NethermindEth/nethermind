@@ -959,6 +959,7 @@ public class FinalizedHeaderHistoryTests
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
         public byte ProtocolVersion => 69;
+        public bool CanGetNodeData => false;
         public string ProtocolCode => "eth";
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int count, int skip, CancellationToken token) => read(number, count, token);
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 hash, int count, int skip, CancellationToken token) => throw new NotSupportedException();

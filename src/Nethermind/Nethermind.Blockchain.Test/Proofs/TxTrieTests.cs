@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
-using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -75,7 +74,7 @@ public class TxTrieTests(bool useEip2718)
 
     private static void AssertRootAndLengthCalls(int count, bool multiBlock, int outlierIndex, int outlierLength, bool canBeParallel, bool allOtherValuesEligible = false)
     {
-        if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
+        if (KeccakHash.MaxBatchWidth == 0) Assert.Ignore("Requires a Keccak batch kernel.");
         byte[][] values = new byte[count][];
         int[] lengthCalls = new int[count];
         using TrackingCappedArrayPool pool = new();
@@ -126,7 +125,7 @@ public class TxTrieTests(bool useEip2718)
     public void Terminal_branch_batches_include_eligible_tail(
         [Values(144, 160, 176, 200, 256, 272, 400)] int count)
     {
-        if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
+        if (KeccakHash.MaxBatchWidth == 0) Assert.Ignore("Requires a Keccak batch kernel.");
         byte[][] values = new byte[count][];
         IndexedTrieRoot.NodeReference[] references = new IndexedTrieRoot.NodeReference[count];
         for (int i = 0; i < count; i++)
@@ -137,7 +136,7 @@ public class TxTrieTests(bool useEip2718)
 
         int eligible = count / 16 - 1;
         // A cleared hash-kernel lane costs nothing extra, so only a lone leftover (remainder 1) stays unbatched.
-        int branchBatchSize = Avx512F.IsSupported ? 8 : 4;
+        int branchBatchSize = KeccakHash.MaxBatchWidth;
         int expectedBatched = eligible - (eligible % branchBatchSize == 1 ? 1 : 0);
         Assert.That(references.Count(reference => reference.Length == -Keccak.Size), Is.EqualTo(expectedBatched));
         byte[] branch = new byte[KeccakHash.Hash532InputLength];
@@ -160,7 +159,7 @@ public class TxTrieTests(bool useEip2718)
     public void Terminal_branch_batch_excludes_group_with_one_unhashed_child(
         [Values(1, 4, 7)] int groupIndex, [Values(0, 7, 15)] int childOffset)
     {
-        if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
+        if (KeccakHash.MaxBatchWidth == 0) Assert.Ignore("Requires a Keccak batch kernel.");
         // 128 / 16 - 1 = 7 groups, all below the position-127 remap kink, so every group start is 16 * k - 1.
         const int count = 128;
         byte[][] values = new byte[count][];
@@ -176,7 +175,7 @@ public class TxTrieTests(bool useEip2718)
         IndexedTrieRoot.Calculator<byte[], TestValueEncoder> calculator = new(values, default);
         calculator.BatchTerminalBranches(references);
 
-        // One group is disqualified out of the 7 that would otherwise all batch, leaving 6 - divisible by both batch widths.
+        // One group is disqualified out of the 7 that would otherwise all batch, leaving six eligible branches.
         Assert.That(references.Count(reference => reference.Length == -Keccak.Size), Is.EqualTo(6));
         byte[] branch = new byte[KeccakHash.Hash532InputLength];
         for (int k = 1; k <= 7; k++)

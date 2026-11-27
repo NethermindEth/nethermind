@@ -2453,6 +2453,37 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Invalid RLP.\"},\"id\":67}"));
     }
 
+    [TestCase("eth_sendRawTransaction", true, nameof(AcceptTxResult.AlreadyKnown), true)]
+    [TestCase("eth_sendRawTransaction", false, nameof(AcceptTxResult.AlreadyKnown), true)]
+    [TestCase("eth_sendRawTransactionSync", true, nameof(AcceptTxResult.AlreadyKnown), true)]
+    [TestCase("eth_sendRawTransactionSync", false, nameof(AcceptTxResult.AlreadyKnown), true)]
+    [TestCase("eth_sendRawTransaction", false, nameof(AcceptTxResult.Syncing), false, TestName = "Syncing node is not a request error")]
+    [TestCase("eth_sendRawTransaction", false, nameof(AcceptTxResult.FrameSimulationDeferred), false, TestName = "Deferred frame simulation is not a request error")]
+    public async Task Send_raw_transaction_rejection_is_a_request_error(string method, bool invalidRlp, string rejection, bool expectRequestError)
+    {
+        AcceptTxResult result = (AcceptTxResult)typeof(AcceptTxResult).GetField(rejection)!.GetValue(null)!;
+        ITxSender sender = Substitute.For<ITxSender>();
+        sender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(new ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)>((TestItem.KeccakA, result)));
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new JsonRpcConfig()))
+            .AddSingleton(sender)
+            .Build();
+        IJsonRpcService service = container.Resolve<IJsonRpcService>();
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        string raw = invalidRlp ? "0xc0" : TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).ToHexString(true);
+
+        using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest(method, raw), new JsonRpcContext(RpcEndpoint.Http));
+
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
+            Assert.That(error.RequestError, Is.EqualTo(expectRequestError));
+            Assert.That(error.SuppressWarning, Is.False, "the rejection must stay visible at Debug");
+        }
+    }
+
     [Test]
     public async Task Send_raw_transaction_returns_failed_to_recover_sender_when_sender_recovery_fails()
     {

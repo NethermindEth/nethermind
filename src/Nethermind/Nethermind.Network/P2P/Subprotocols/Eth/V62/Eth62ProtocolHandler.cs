@@ -62,8 +62,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _txGossipPolicy = transactionsGossipPolicy ?? TxPool.ShouldGossip.Instance;
             _handleSlow = HandleSlow;
             _handlePooledTransactionsSlow = HandlePooledTransactionsSlow;
-
-            EnsureGossipPolicy();
         }
 
         public void DisableTxFiltering() => _floodController.IsEnabled = false;
@@ -211,18 +209,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        private bool CanGossip => EnsureGossipPolicy();
-
-        private bool EnsureGossipPolicy()
-        {
-            if (!_gossipPolicy.CanGossipBlocks)
-            {
-                SyncServer.StopNotifyingPeersAboutNewBlocks();
-                return false;
-            }
-
-            return true;
-        }
+        private bool CanGossip => _gossipPolicy.CanGossipBlocks;
 
         private void Handle(StatusMessage status)
         {

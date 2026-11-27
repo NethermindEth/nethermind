@@ -7,7 +7,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
@@ -15,7 +17,7 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// <summary>
 /// <c>/eth/v1/debug/*</c>: the persisted state as SSZ (the checkpoint-provider path) or JSON, and fork choice.
 /// </summary>
-internal sealed class DebugEndpoints(BeaconApiContext ctx)
+internal sealed class DebugEndpoints(BeaconChainSpec spec, BeaconChainStore store, BeaconApiHead view)
 {
     /// <summary>
     /// The beacon-api <c>getDebugForkChoice</c> shape (no <c>data</c> envelope): the checkpoints,
@@ -25,7 +27,7 @@ internal sealed class DebugEndpoints(BeaconApiContext ctx)
     [HttpGet("/eth/v1/debug/beacon/fork_choice"), HttpGet("/eth/v1/debug/fork_choice"), Negotiated]
     public IResult ForkChoice()
     {
-        if (ctx.ForkChoiceSnapshot is not { } snapshot)
+        if (view.ForkChoiceSnapshot is not { } snapshot)
         {
             return ApiResults.Error(StatusCodes.Status503ServiceUnavailable,
                 "Fork choice has not computed a head yet.");
@@ -75,17 +77,17 @@ internal sealed class DebugEndpoints(BeaconApiContext ctx)
 
     private IResult StateSsz(string stateId)
     {
-        if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState resolved, out int errorStatus, out string? errorMessage))
+        if (!StateIdResolver.TryResolveRaw(store, view, stateId, out ResolvedRawState resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiResults.Error(errorStatus, errorMessage!);
         }
 
         ulong slot;
-        if (ctx.GetCheckpointState(stateId) is { } checkpoint)
+        if (view.GetCheckpointState(stateId) is { } checkpoint)
         {
             slot = checkpoint.State.Slot;
         }
-        else if (!ctx.Store.TryGetBlockSlot(resolved.Root, out slot))
+        else if (!store.TryGetBlockSlot(resolved.Root, out slot))
         {
             // consensus-specs v1.7.0-beta.2, Electra/Fulu BeaconState: slot follows the 40-byte genesis fields.
             const int slotOffset = 40;
@@ -98,14 +100,14 @@ internal sealed class DebugEndpoints(BeaconApiContext ctx)
             slot = BinaryPrimitives.ReadUInt64LittleEndian(resolved.Ssz.AsSpan(slotOffset));
         }
 
-        return ApiResults.Ssz(resolved.Ssz).WithConsensusVersion(ctx.Spec, slot);
+        return ApiResults.Ssz(resolved.Ssz).WithConsensusVersion(spec, slot);
     }
 
     private IResult StateJson(string stateId)
     {
-        if (!StateIdResolver.TryResolveHeld(ctx, stateId, out ResolvedState resolved))
+        if (!StateIdResolver.TryResolveHeld(spec, store, view, stateId, out ResolvedState resolved))
         {
-            if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState raw, out int errorStatus, out string? errorMessage))
+            if (!StateIdResolver.TryResolveRaw(store, view, stateId, out ResolvedRawState raw, out int errorStatus, out string? errorMessage))
             {
                 return ApiResults.Error(errorStatus, errorMessage!);
             }
@@ -113,7 +115,7 @@ internal sealed class DebugEndpoints(BeaconApiContext ctx)
             try
             {
                 // A fork before Electra throws UnsupportedForkException, which the host middleware turns into a labelled 501.
-                resolved = new ResolvedState(raw.Root, ApiStateDecoding.Decode(raw.Ssz, ctx.Spec));
+                resolved = new ResolvedState(raw.Root, ApiStateDecoding.Decode(raw.Ssz, spec));
             }
             catch (BeaconStateException e)
             {
@@ -124,11 +126,11 @@ internal sealed class DebugEndpoints(BeaconApiContext ctx)
 
         ApiState state = resolved.State;
         return ApiResults.VersionedEnvelope(ResponseEnvelope.ForkName(state.Fork),
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
+            ResponseEnvelope.ExecutionOptimistic(spec, store, view, resolved.Root),
+            ResponseEnvelope.IsFinalized(spec, store, view, state, resolved.Root),
             s => state.Electra is { } electra
                 ? BeaconJsonWriter.WriteBeaconStateAsync(s, electra)
-                : BeaconJsonWriter.WriteBeaconStateAsync(s, state.Gloas!)).WithConsensusVersion(ctx.Spec, state.Slot);
+                : BeaconJsonWriter.WriteBeaconStateAsync(s, state.Gloas!)).WithConsensusVersion(spec, state.Slot);
     }
 
     // parent_root and execution_block_hash are required by the beacon-API Node schema, so a node

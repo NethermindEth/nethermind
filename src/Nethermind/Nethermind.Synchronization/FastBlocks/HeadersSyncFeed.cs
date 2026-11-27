@@ -403,7 +403,10 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     do
                     {
+                        ulong? lowestBefore = LowestInsertedBlockHeader?.Number;
                         HandleDependentBatches(cancellationToken);
+                        // A stalled dependency must not keep the reset read lock busy.
+                        if (LowestInsertedBlockHeader?.Number == lowestBefore) break;
                     } while (PendingIsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
                 }
 

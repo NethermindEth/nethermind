@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
@@ -18,6 +19,18 @@ namespace Nethermind.Db.Test
         private static readonly string Marker = Path.Join(DbPath, DbSettings.DeletingMarkerFileName);
         private static readonly string Current = Path.Join(DbPath, "CURRENT");
         private static readonly string Table = Path.Join(DbPath, "000001.sst");
+
+        [Test]
+        public void Warmup_reads_to_the_end_after_a_short_read()
+        {
+            using ShortReadStream stream = new(new byte[7]);
+            Assert.That(RocksDbFactory.ReadForWarmup(stream, new byte[4]), Is.EqualTo(stream.Length));
+        }
+
+        private sealed class ShortReadStream(byte[] bytes) : MemoryStream(bytes)
+        {
+            public override int Read(Span<byte> buffer) => base.Read(buffer[..Math.Min(2, buffer.Length)]);
+        }
 
         [Test]
         public void Delete_keeps_the_marker_when_a_file_cannot_be_deleted([Values] bool canDeleteFolder)

@@ -109,7 +109,6 @@ jobs:
               Nethermind.OpcodeTracing.Plugin.Test
               Nethermind.Serialization.FluentRlp.Test
               Nethermind.Serialization.JsonGenerator.Test
-              Nethermind.Shutter.Test
               Nethermind.State.Flat.Test
               Nethermind.TrustedInput.Test
           - name: Nethermind tests 6
@@ -466,7 +465,7 @@ jobs:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,engineReorgTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
+      test_types: engineTest,engineXTest,blockTest,stateTest,syncTest,engineReorgTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
       setup_group: all
 
   tests-consensus-spec:

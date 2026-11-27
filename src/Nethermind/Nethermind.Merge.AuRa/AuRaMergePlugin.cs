@@ -6,6 +6,8 @@ using Autofac.Core;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Processing;
@@ -23,6 +25,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Network;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -70,6 +73,13 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<ISealer, MergeSealer>()
 
                 .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
+
+                // Overrides AuRaModule's registration (relies on Aura loading before AuRaMerge in Plugin.PluginOrder).
+                // A post-merge head skips the startup scan; see AuRaBlockFinalizationManager's loadLastFinalizedBlockLevel.
+                .AddSingleton<IAuRaBlockFinalizationManager, IBlockTree, IChainLevelInfoRepository, IValidatorStore, ILogManager, AuRaChainSpecEngineParameters, IPoSSwitcher>(
+                    static (blockTree, chainLevelInfoRepository, validatorStore, logManager, param, poSSwitcher) =>
+                        new AuRaBlockFinalizationManager(blockTree, chainLevelInfoRepository, validatorStore, logManager, param.TwoThirdsMajorityTransition,
+                            loadLastFinalizedBlockLevel: !poSSwitcher.IsHeadPostMerge(blockTree)))
 
                 // Disposes the AuRa finalization manager at the merge transition. Resolved eagerly in
                 // InitializeBlockchainAuRaMerge for its constructor side-effect; Autofac owns disposal.

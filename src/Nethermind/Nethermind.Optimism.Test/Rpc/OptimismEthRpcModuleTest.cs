@@ -161,6 +161,12 @@ public class OptimismEthRpcModuleTest
     [TestCase("""{"jsonrpc":"2.0","id":67,"error":{"code":-32000,"message":"nonce too low"}}""",
         """{"jsonrpc":"2.0","error":{"code":-32000,"message":"nonce too low"},"id":67}""",
         TestName = "Forwarded transaction rejected by the sequencer returns its error")]
+    [TestCase("""{"jsonrpc":"2.0","id":67,"error":{"code":-32000,"message":"Failed to send transaction."}}""",
+        """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Failed to send transaction."},"id":67}""",
+        TestName = "Forwarded transaction hitting a sequencer server failure with -32000 returns its error")]
+    [TestCase("""{"jsonrpc":"2.0","id":67,"error":{"code":-32603,"message":"internal error"}}""",
+        """{"jsonrpc":"2.0","error":{"code":-32603,"message":"internal error"},"id":67}""",
+        TestName = "Forwarded transaction hitting a sequencer failure returns its error")]
     [TestCase($$"""{"jsonrpc":"2.0","id":67,"result":"{{ForwardedHash}}"}""",
         $$"""{"jsonrpc":"2.0","result":"{{ForwardedHash}}","id":67}""",
         TestName = "Forwarded transaction accepted by the sequencer returns its hash")]
@@ -182,9 +188,16 @@ public class OptimismEthRpcModuleTest
             .Build();
 
         Transaction tx = Build.A.Transaction.Signed(TestItem.PrivateKeyA).TestObject;
-        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).ToHexString());
+        byte[] raw = Rlp.Encode(item: tx, behaviors: RlpBehaviors.None);
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", raw.ToHexString());
+        ResultWrapper<Hash256> result = await rpcBlockchain.EthRpcModule.eth_sendRawTransaction(raw);
 
-        Assert.That(serialized, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Is.EqualTo(expected));
+            // The sequencer's -32000 covers its own failures too, so no forwarded error is demoted.
+            Assert.That(result.IsRequestError, Is.False);
+        }
     }
 
     [TestCase(TxType.Legacy)]
