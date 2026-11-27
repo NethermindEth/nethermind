@@ -52,6 +52,11 @@ on:
         description: Maximum concurrent matrix jobs (blank = no cap)
         required: false
         type: number
+      hive-timeout:
+        description: Hive's time limit per simulator, n whole minutes from 1 to 340 (--sim.timelimit); Hive gets TERM n+10 minutes after it starts (KILL a minute later if still running), and the job limit is n+20
+        required: false
+        default: 40
+        type: number
   workflow_call:
 
 concurrency:
@@ -67,7 +72,25 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      hive-timeout: ${{ steps.limits.outputs.hive-timeout }}
+      job-minutes: ${{ steps.limits.outputs.job-minutes }}
     steps:
+      - name: Check hive-timeout
+        id: limits
+        env:
+          HIVE_TIMEOUT: ${{ github.event.inputs.hive-timeout || '40' }}
+        run: |
+          # Hive's time limit per simulator, n whole minutes. In the test job, GNU timeout sends TERM to the Hive command
+          # n+10 minutes after it starts, and the job limit is n+20 minutes, which must stay within GitHub's 360-minute
+          # job maximum. Expressions have no arithmetic, so the job limit is computed here. Three digits at most keep the
+          # shell arithmetic from overflowing.
+          if [[ ! "$HIVE_TIMEOUT" =~ ^[1-9][0-9]{0,2}$ ]] || (( HIVE_TIMEOUT > 340 )); then
+            echo "::error::hive-timeout must be a whole number of minutes from 1 to 340."
+            exit 1
+          fi
+          echo "hive-timeout=$HIVE_TIMEOUT" >> "$GITHUB_OUTPUT"
+          echo "job-minutes=$(( HIVE_TIMEOUT + 20 ))" >> "$GITHUB_OUTPUT"
+
       - id: matrix
         env:
           SUITE: ${{ github.event.inputs.test-suite }}
@@ -159,7 +182,8 @@ jobs:
     name: Run Hive (${{ matrix.name || matrix.suite }})
     needs: [setup, build-image]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Hive's per-simulator limit plus 20 minutes (60 by default), computed by the setup job.
+    timeout-minutes: ${{ fromJSON(needs.setup.outputs.job-minutes) }}
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(github.event.inputs.max-parallel || '256') }}
@@ -170,6 +194,7 @@ jobs:
       BUILDARG: ${{ github.event.inputs.buildarg || '' }}
       HIVE_REPO: ${{ github.event.inputs.hive-repo || 'ethereum/hive' }}
       HIVE_BRANCH: ${{ github.event.inputs.hive-branch || 'master' }}
+      HIVE_TIMEOUT: ${{ needs.setup.outputs.hive-timeout }}
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
@@ -199,18 +224,35 @@ jobs:
         run: go build .
 
       - name: Run Hive
+        id: hive
         continue-on-error: true
         working-directory: hive
         env:
           LIMIT: ${{ matrix.limit }}
         run: |
+          # A hung simulator must not reach the job timeout, which uploads and checks nothing. At its own time limit
+          # Hive ends the running cases as failed with "timeout": true, writes the suite files, removes its containers
+          # and exits 1, as with failed tests; the results step fails the cases it ended.
           hive_args=(--client nethermind
             --sim "${{ matrix.suite }}"
             --sim.loglevel "$LOG_LEVEL"
-            --sim.parallelism "${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}")
+            --sim.parallelism "${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}"
+            --sim.timelimit "${HIVE_TIMEOUT}m")
           [[ -n "$LIMIT" ]] && hive_args+=(--sim.limit "$LIMIT")
           [[ -n "$BUILDARG" ]] && hive_args+=(--sim.buildarg "$BUILDARG")
-          ./hive "${hive_args[@]}"
+          # The outer limit covers what Hive's per-simulator limit does not (image builds, a stuck shutdown, a second
+          # simulator): with n = HIVE_TIMEOUT, GNU timeout sends TERM n+10 minutes after it starts ./hive (50 by
+          # default) and KILL a minute later if Hive is still running. The job limit is n+20 minutes from the start of
+          # the job, which leaves about 9 minutes in total for the steps before this one and the upload, .NET and the
+          # results check after it; those took under 2 minutes in the runs so far. That is an estimate, not a bound: the
+          # upload action makes up to ten attempts, with no separate total timeout. Image builds, an earlier simulator
+          # and Hive's shutdown count against the outer limit too, so it can still stop Hive before Hive's own limit
+          # ends a simulator. The status (124, or 137 if Hive had to be killed) tells the results step the run is
+          # incomplete. The setup job has checked that HIVE_TIMEOUT is a number.
+          status=0
+          timeout --kill-after=1m "$(( HIVE_TIMEOUT + 10 ))m" ./hive "${hive_args[@]}" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
 
       - name: Upload results
         uses: ./nethermind/.github/actions/upload-artifact
@@ -226,6 +268,30 @@ jobs:
 
       - name: Print results
         working-directory: nethermind
+        env:
+          # Empty when "Run Hive" ended without an output, which the results script rejects as a usage error.
+          HIVE_STATUS: ${{ steps.hive.outputs.status }}
+          LIMIT: ${{ matrix.limit }}
         run: |
           rm -f ../hive/workspace/logs/hive.json
-          dotnet run --file scripts/hive-results.cs -- "../hive/workspace/logs/*.json"
+          options=(--hive-exit-code "$HIVE_STATUS")
+          # Hive splits a limit into a suite and a test pattern at the first unescaped / at which its bracket and
+          # parenthesis counters are both zero (splitRegexp in hivesim/testmatch.go, mirrored below). With a test
+          # pattern (/<test>, eth/<test>), Hive still starts every suite that matches, also those where no test
+          # matches. Without one (eth, eth/, ^[^/]+$ or no limit), every suite it starts runs all its tests.
+          has_test_part() {
+            local s=$1 i cs=0 cp=0
+            for (( i = 0; i < ${#s}; i++ )); do
+              case ${s:i:1} in
+                '[') cs=$(( cs + 1 )) ;;
+                ']') cs=$(( cs > 0 ? cs - 1 : 0 )) ;; # an unmatched ] is a literal
+                '(') (( cs )) || cp=$(( cp + 1 )) ;;
+                ')') (( cs )) || cp=$(( cp - 1 )) ;;
+                '\') i=$(( i + 1 )) ;; # the next character is escaped
+                /) if (( cs == 0 && cp == 0 )); then [[ -n "${s:i+1}" ]]; return; fi ;;
+              esac
+            done
+            return 1
+          }
+          if has_test_part "$LIMIT"; then options+=(--allow-empty-suites); fi
+          dotnet run --file scripts/hive-results.cs -- "${options[@]}" "../hive/workspace/logs/*.json"

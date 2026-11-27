@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -144,6 +145,31 @@ public class SharedHostingTests
             Assert.That(block.Memory.Length, Is.EqualTo(64 * 1024));
             Assert.That(runtime.Lifetime.ApplicationStarted.IsCancellationRequested, Is.True);
             Assert.That(runtime.Host.Services.GetRequiredService<IHostApplicationLifetime>(), Is.SameAs(runtime.Lifetime));
+        }
+    }
+
+    [Test]
+    [CancelAfter(15_000)]
+    public async Task Metrics_support_gzip_without_compressing_status(CancellationToken token)
+    {
+        await using TestHost runtime = await TestHost.CreateAsync("http://127.0.0.1:0", token);
+        await runtime.Host.StartAsync(token);
+        using HttpClient client = new() { BaseAddress = runtime.Address };
+        client.DefaultRequestHeaders.AcceptEncoding.ParseAdd("gzip");
+
+        using HttpResponseMessage metrics = await client.GetAsync("/metrics", token);
+        metrics.EnsureSuccessStatusCode();
+        Assert.That(metrics.Content.Headers.ContentEncoding, Is.EqualTo(new[] { "gzip" }));
+        using GZipStream uncompressed = new(await metrics.Content.ReadAsStreamAsync(token), CompressionMode.Decompress);
+        using StreamReader reader = new(uncompressed);
+        string text = await reader.ReadToEndAsync(token);
+        using HttpResponseMessage status = await client.GetAsync("/status", token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metrics.Headers.Vary, Does.Contain("Accept-Encoding"));
+            Assert.That(text, Does.Contain("nethermind_light_client_startup_stage"));
+            Assert.That(status.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(status.Content.Headers.ContentEncoding, Is.Empty);
         }
     }
 

@@ -80,7 +80,7 @@ public class GethLikeCodeDepositErrorTests : VirtualMachineTestsBase
         {
             Deposit.StorageOutOfGas => "contract creation code storage out of gas",
             Deposit.InvalidCode => "invalid code: must not begin with 0xef",
-            _ => "max code size exceeded"
+            _ => "max code size exceeded: code size 24577 limit 24576"
         };
         return frame switch
         {
