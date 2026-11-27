@@ -138,6 +138,10 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV5), SszRestPaths.PostForkchoice, GateWithWarn(spec.IsEip7805Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7805Enabled));
 
+        // EIP-8141, over JSON-RPC only: no SSZ-REST container carries the dependency proof yet.
+        jsonLocal[nameof(IEngineRpcModule.engine_newPayloadV7)] = GateWithWarn(spec.IsEip8141Enabled);
+        jsonLocal[nameof(IEngineRpcModule.engine_getPayloadV7)] = GateWithWarn(spec.IsEip8141Enabled);
+
         json = jsonLocal;
         ssz = sszLocal;
     }

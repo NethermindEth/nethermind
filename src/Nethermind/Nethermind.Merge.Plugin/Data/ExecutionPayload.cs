@@ -79,10 +79,12 @@ public class ExecutionPayload : IExecutionPayloadParams, IExecutionPayloadFactor
         ExcessBlobGas = 1 << 16,
         BlockAccessList = 1 << 17,
         SlotNumber = 1 << 18,
+        DependencyProof = 1 << 19,
         V1 = (1 << 14) - 1,
         V2 = V1 | Withdrawals,
         V3 = V2 | BlobGasUsed | ExcessBlobGas,
-        V4 = V3 | BlockAccessList | SlotNumber
+        V4 = V3 | BlockAccessList | SlotNumber,
+        V5 = V4 | DependencyProof
     }
 
     // Defaults hide an omitted JSON key once binding is done, so setters record presence while it runs.
@@ -178,7 +180,7 @@ public class ExecutionPayload : IExecutionPayloadParams, IExecutionPayloadFactor
     /// <remarks>Neither header nor body: its Keccak-256 becomes the header's <c>dependency_proof_hash</c> before the
     /// block hash is checked.</remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public byte[]? DependencyProof { get; set; }
+    public virtual byte[]? DependencyProof { get; set; }
 
     /// <summary>
     /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in

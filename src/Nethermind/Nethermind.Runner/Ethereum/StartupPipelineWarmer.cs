@@ -504,14 +504,15 @@ internal static class StartupPipelineWarmer
 
     private static (string Method, object[] Parameters) CreatePayloadRequest(Block block, IReleaseSpec spec)
     {
-        string method = spec.IsEip7805Enabled ? "engine_newPayloadV6"
+        string method = spec.IsEip8141Enabled ? "engine_newPayloadV7"
+            : spec.IsEip7805Enabled ? "engine_newPayloadV6"
             : spec.IsEip7928Enabled ? "engine_newPayloadV5"
             : spec.RequestsEnabled ? "engine_newPayloadV4"
             : spec.IsEip4844Enabled ? "engine_newPayloadV3"
             : spec.WithdrawalsEnabled ? "engine_newPayloadV2" : "engine_newPayloadV1";
-        ExecutionPayload payload = spec.IsEip7928Enabled
-            ? ExecutionPayloadV4.Create(block) : ExecutionPayloadV3.Create(block);
-        object[] parameters = spec.IsEip7805Enabled
+        ExecutionPayload payload = spec.IsEip8141Enabled ? ExecutionPayloadV5.Create(block)
+            : spec.IsEip7928Enabled ? ExecutionPayloadV4.Create(block) : ExecutionPayloadV3.Create(block);
+        object[] parameters = spec.IsEip7805Enabled || spec.IsEip8141Enabled
             ? [payload, Array.Empty<Hash256>(), Keccak.Zero, Array.Empty<byte[]>(), Array.Empty<byte[]>()]
             : spec.RequestsEnabled
             ? [payload, Array.Empty<Hash256>(), Keccak.Zero, Array.Empty<byte[]>()]
