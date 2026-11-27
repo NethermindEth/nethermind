@@ -9,7 +9,10 @@ using Microsoft.AspNetCore.Mvc;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
@@ -20,7 +23,7 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// column must serve blobs, and others may rebuild them; this node rebuilds them from any half of the columns
 /// (fulu/das-core.md recover_matrix), and answers 404 when it holds fewer.
 /// </remarks>
-internal sealed class BlobsEndpoint(BeaconApiContext ctx)
+internal sealed class BlobsEndpoint(BeaconChainSpec spec, BeaconChainStore store, BeaconApiHead view, ConcurrencyLimiter blobRebuilds, DataColumnSidecarPool? columnPool = null)
 {
     /// <summary>The most blob rebuilds that run at once; each reads up to half of a block's columns and may run cell recovery per blob.</summary>
     internal const int MaxConcurrentRebuilds = 2;
@@ -33,7 +36,7 @@ internal sealed class BlobsEndpoint(BeaconApiContext ctx)
     [HttpGet("/eth/v1/beacon/blobs/{blockId}"), Negotiated(Ssz = true)]
     public IResult GetBlobs(string blockId, [FromQuery(Name = "versioned_hashes")] string[] versionedHashes)
     {
-        if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
+        if (!BlockIdResolver.TryResolve(store, view, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiResults.Error(errorStatus, errorMessage!);
         }
@@ -57,7 +60,7 @@ internal sealed class BlobsEndpoint(BeaconApiContext ctx)
 
     private async Task WriteBlobs(HttpContext c, ResolvedBlock resolved, bool gloas, int blobCount, List<int> rows)
     {
-        using RateLimitLease? lease = rows.Count > 0 ? ctx.BlobRebuilds.AttemptAcquire() : null;
+        using RateLimitLease? lease = rows.Count > 0 ? blobRebuilds.AttemptAcquire() : null;
         byte[][] blobs = [];
         if (rows.Count > 0)
         {
@@ -68,7 +71,7 @@ internal sealed class BlobsEndpoint(BeaconApiContext ctx)
                 return;
             }
 
-            SszBlobCell[]?[] cellsByColumn = ReadColumns(ctx, resolved.Root, gloas, blobCount, out int held);
+            SszBlobCell[]?[] cellsByColumn = ReadColumns(resolved.Root, gloas, blobCount, out int held);
             if (held < Eip7594DasConstants.RequiredColumnsForReconstruction)
             {
                 await ApiErrors.Write(c, StatusCodes.Status404NotFound,
@@ -100,8 +103,8 @@ internal sealed class BlobsEndpoint(BeaconApiContext ctx)
         Utf8JsonWriter w = json.Writer;
         w.WriteStartObject();
         // The blobs are those of the block's execution payload, which under EIP-7732 the bid only commits to.
-        w.WriteBoolean("execution_optimistic", ResponseEnvelope.PayloadExecutionOptimistic(ctx, resolved));
-        w.WriteBoolean("finalized", ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root));
+        w.WriteBoolean("execution_optimistic", ResponseEnvelope.PayloadExecutionOptimistic(spec, store, view, resolved));
+        w.WriteBoolean("finalized", ResponseEnvelope.IsFinalized(spec, store, view, resolved.Slot, resolved.Root));
         w.WriteStartArray("data");
         foreach (byte[] blob in blobs)
         {
@@ -165,17 +168,17 @@ internal sealed class BlobsEndpoint(BeaconApiContext ctx)
 
     /// <summary>Reads accepted columns of the block in index order until half of them are held, so columns 0 to 63 are preferred.</summary>
     /// <exception cref="InvalidDataException">A stored column is unreadable, or its cell count is not <paramref name="blobCount"/>.</exception>
-    private static SszBlobCell[]?[] ReadColumns(BeaconApiContext ctx, Hash256 root, bool gloas, int blobCount, out int held)
+    private SszBlobCell[]?[] ReadColumns(Hash256 root, bool gloas, int blobCount, out int held)
     {
         SszBlobCell[]?[] cellsByColumn = new SszBlobCell[]?[Eip7594DasConstants.NumberOfColumns];
         held = 0;
         for (ulong column = 0; column < Eip7594DasConstants.NumberOfColumns && held < Eip7594DasConstants.RequiredColumnsForReconstruction; column++)
         {
             // Read queued columns first: the writer removes them only after persistence completes.
-            SszBlobCell[]? cells = ctx.ColumnPool?.GetUnwrittenCells(root, column, gloas);
+            SszBlobCell[]? cells = columnPool?.GetUnwrittenCells(root, column, gloas);
             cells ??= gloas
-                ? ctx.Store.TryGetDataColumnSidecarGloas(root, column, out DataColumnSidecarGloas? gloasSidecar) ? gloasSidecar.Column ?? [] : null
-                : ctx.Store.TryGetDataColumnSidecar(root, column, out DataColumnSidecar? sidecar) ? sidecar.Column ?? [] : null;
+                ? store.TryGetDataColumnSidecarGloas(root, column, out DataColumnSidecarGloas? gloasSidecar) ? gloasSidecar.Column ?? [] : null
+                : store.TryGetDataColumnSidecar(root, column, out DataColumnSidecar? sidecar) ? sidecar.Column ?? [] : null;
             if (cells is null)
             {
                 continue;

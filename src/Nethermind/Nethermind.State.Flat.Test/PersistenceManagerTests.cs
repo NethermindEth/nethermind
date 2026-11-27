@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
@@ -13,9 +14,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
@@ -24,6 +27,7 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -162,6 +166,56 @@ public class PersistenceManagerTests
             Assert.That(wroteOnMovedState, Is.False);
             Assert.That(wroteAfterRelease, Is.True, "the lock is released");
             Assert.That(batch.DisposeCount, Is.EqualTo(2));
+            Assert.That(batch.AbortCount, Is.Zero, "a write that completes is committed");
+        }
+    }
+
+    [Test]
+    public void TryWriteOnPersistedState_WhenTheWriteThrows_CommitsNothingAndReleasesTheLock()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        Account seeded = new(3, 300);
+        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, Block0, WriteFlags.None))
+            batch.SetAccount(TestItem.AddressC, seeded);
+        using PersistenceManager persistenceManager = CreatePersistenceManager(persistence);
+
+        Account account = new(1, 100);
+        MigrationCursor cursor = new(ValueKeccak.Compute("cursor"), null);
+        InvalidOperationException failure = new("write failed");
+        InvalidOperationException? thrown = Assert.Throws<InvalidOperationException>(() =>
+            persistenceManager.TryWriteOnPersistedState(Block0, b =>
+            {
+                Write(b);
+                throw failure;
+            }));
+
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(failure));
+            Assert.That(reader.CurrentState, Is.EqualTo(Block0));
+            Assert.That(reader.GetAccount(TestItem.AddressA), Is.Null, "the write of the failed callback is not committed");
+            Assert.That(BasePersistence.ReadMigrationCursor(metadata), Is.Null, "neither is its migration cursor");
+            Assert.That(reader.GetAccount(TestItem.AddressC), Is.EqualTo(seeded));
+        }
+
+        bool wrote = persistenceManager.TryWriteOnPersistedState(Block0, Write);
+
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrote, Is.True, "the failed write released the lock");
+            Assert.That(reader.CurrentState, Is.EqualTo(Block0));
+            Assert.That(reader.GetAccount(TestItem.AddressA), Is.EqualTo(account));
+            Assert.That(BasePersistence.ReadMigrationCursor(metadata), Is.EqualTo(cursor));
+        }
+
+        void Write(IPersistence.IWriteBatch batch)
+        {
+            batch.SetAccount(TestItem.AddressA, account);
+            batch.SetMigrationCursor(cursor);
         }
     }
 
@@ -1617,6 +1671,7 @@ public class PersistenceManagerTests
             Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, UInt256? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1));
             Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, UInt256? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2));
             Assert.That(writeBatch.SetStateTrieNodeCalls, Has.Some.Matches<(TreePath Path, byte[] Rlp)>(c => c.Path == path && c.Rlp.AsSpan().SequenceEqual(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))));
+            Assert.That(writeBatch.AbortCount, Is.Zero, "a persist that completes is committed");
         }
     }
 
@@ -1639,17 +1694,7 @@ public class PersistenceManagerTests
             snapshot.Content.SetStorageNodeRlp(buffer, contractPath, TreePath.Empty, FlatTestHelpers.LeafRlpA);
 
             using PersistedSnapshot persisted = _tier.ConvertToPersistedBase(snapshot);
-            using PersistenceManager persistenceManager = new(
-                _config,
-                _tier.Resolve<ICompactionSchedule>(),
-                _finalizedStateProvider,
-                persistence,
-                _snapshotRepository,
-                NullStatePersistenceBarrier.Instance,
-                LimboLogs.Instance,
-                _persistedSnapshotCompactor,
-                _tier.Loader,
-                Substitute.For<IProcessExitSource>());
+            using PersistenceManager persistenceManager = CreatePersistenceManager(persistence);
             persistenceManager.PersistPersistedSnapshot(persisted);
         }
 
@@ -1664,6 +1709,142 @@ public class PersistenceManagerTests
             Assert.That(storageRootRlp, Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
         }
     }
+
+    // The first write, a middle one and one in the last loop; both persist paths call all three.
+    private static readonly string[] FailingWrites =
+    [
+        nameof(IPersistence.IWriteBatch.SelfDestruct),
+        nameof(IPersistence.IWriteBatch.SetStorage),
+        nameof(IPersistence.IWriteBatch.SetStorageTrieNode),
+    ];
+
+    [Test]
+    public void Persist_WhenAWriteThrows_AbortsTheBatchBeforeDisposingIt([Values] bool persistedTier, [ValueSource(nameof(FailingWrites))] string failingWrite)
+    {
+        StateId to = CreateStateId(1);
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using Snapshot snapshot = CreateSnapshotToPersist(buffer, Block0, to);
+        using PersistedSnapshot? persisted = persistedTier ? _tier.ConvertToPersistedBase(snapshot) : null;
+        FakeWriteBatch batch = new();
+        InvalidOperationException failure = new("write failed");
+        batch.ThrowOn(failingWrite, failure);
+        _persistence.CreateWriteBatch(Block0, to).Returns(batch);
+
+        InvalidOperationException? thrown = Assert.Throws<InvalidOperationException>(() => Persist(_persistenceManager, snapshot, persisted));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(failure));
+            Assert.That(failingWrite switch
+            {
+                nameof(IPersistence.IWriteBatch.SelfDestruct) => batch.SelfDestructCalls.Count,
+                nameof(IPersistence.IWriteBatch.SetStorage) => batch.SetStorageCalls.Count,
+                _ => batch.SetStorageTrieNodeCalls.Count,
+            }, Is.EqualTo(1), "the failing write was reached");
+            Assert.That(batch.AbortedAtDispose, Is.True, "the batch is aborted before it is disposed");
+            Assert.That(batch.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Persist_WhenAWriteThrows_LeavesTheStoreAtItsStateAndARetryPersists(
+        [Values] bool persistedTier, [Values] bool trieNodeLog, [ValueSource(nameof(FailingWrites))] string failingWrite)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        await using TrieNodeLog? log = trieNodeLog
+            ? new TrieNodeLog(directory.Path, new RealFileSystem(), db, new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 }, LimboLogs.Instance)
+            : null;
+        RocksDbPersistence store = new(db, LimboLogs.Instance, (ITrieNodeLog?)log ?? NullTrieNodeLog.Instance);
+        Account seeded = new(3, 300);
+        using (IPersistence.IWriteBatch seed = store.CreateWriteBatch(StateId.PreGenesis, Block0, WriteFlags.None))
+        {
+            seed.SetAccount(TestItem.AddressA, seeded);
+            seed.SetStateTrieNode(TreePath.Empty, Bytes.FromHexString(FlatTestHelpers.LeafRlpB));
+        }
+
+        StateId to = CreateStateId(1);
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using Snapshot snapshot = CreateSnapshotToPersist(buffer, Block0, to);
+        using PersistedSnapshot? persisted = persistedTier ? _tier.ConvertToPersistedBase(snapshot) : null;
+        InvalidOperationException failure = new("write failed");
+        using PersistenceManager persistenceManager = CreatePersistenceManager(new FailingWritePersistence(store, failingWrite, failure));
+
+        InvalidOperationException? thrown = Assert.Throws<InvalidOperationException>(() => Persist(persistenceManager, snapshot, persisted));
+
+        using (IPersistence.IPersistenceReader reader = store.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(failure));
+            Assert.That(reader.CurrentState, Is.EqualTo(Block0), "the snapshot is not recorded as persisted");
+            Assert.That(reader.GetAccount(TestItem.AddressA), Is.EqualTo(seeded));
+            Assert.That(reader.GetAccount(TestItem.AddressB), Is.Null);
+            Assert.That(ReadSlot(reader, TestItem.AddressB, 1), Is.Null);
+            Assert.That(reader.LoadStateRlp(TreePath.Empty, ReadFlags.None), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+            Assert.That(reader.LoadStorageRlp(ContractPath, TreePath.Empty, ReadFlags.None), Is.Null);
+        }
+
+        Persist(persistenceManager, snapshot, persisted);
+
+        using (IPersistence.IPersistenceReader reader = store.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(to));
+            Assert.That(reader.GetAccount(TestItem.AddressA), Is.EqualTo(PersistedEoa));
+            Assert.That(reader.GetAccount(TestItem.AddressB), Is.EqualTo(PersistedContract));
+            Assert.That(ReadSlot(reader, TestItem.AddressB, 1), Is.EqualTo(PersistedSlotValue));
+            Assert.That(reader.LoadStateRlp(TreePath.Empty, ReadFlags.None), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
+            Assert.That(reader.LoadStorageRlp(ContractPath, TreePath.Empty, ReadFlags.None), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpC)));
+        }
+    }
+
+    private static readonly Account PersistedEoa = new(1, 100);
+    private static readonly Account PersistedContract = new(2, 200, TestItem.KeccakA, TestItem.KeccakB);
+    private static readonly UInt256 PersistedSlotValue = BaseFlatPersistence.DecodeSlotValue([42]);
+    private static readonly Hash256 ContractPath = Keccak.Compute(TestItem.AddressB.Bytes);
+
+    // The lowest address, so its self-destruct is the first write on the persisted tier too, which writes by address.
+    private static readonly Address SelfDestructedAddress = new("0x0000000000000000000000000000000000000001");
+
+    /// <summary>
+    /// A snapshot with a self-destruct of an address that holds nothing, an account, a slot, a state node and a storage
+    /// node, in the order the persist writes them.
+    /// </summary>
+    private Snapshot CreateSnapshotToPersist(INodeRecordBuffer buffer, StateId from, StateId to)
+    {
+        Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing, buffer);
+        snapshot.Content.SelfDestructedStorageAddresses[SelfDestructedAddress] = false; // false: the storage is to be deleted
+        snapshot.Content.Accounts[TestItem.AddressA] = PersistedEoa;
+        snapshot.Content.Accounts[TestItem.AddressB] = PersistedContract;
+        snapshot.Content.Storages[(TestItem.AddressB, (UInt256)1)] = PersistedSlotValue;
+        snapshot.Content.SetStateNodeRlp(buffer, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+        snapshot.Content.SetStorageNodeRlp(buffer, ContractPath, TreePath.Empty, FlatTestHelpers.LeafRlpC);
+        return snapshot;
+    }
+
+    private static void Persist(PersistenceManager persistenceManager, Snapshot snapshot, PersistedSnapshot? persisted)
+    {
+        if (persisted is null) persistenceManager.PersistSnapshot(snapshot);
+        else persistenceManager.PersistPersistedSnapshot(persisted);
+    }
+
+    private static UInt256? ReadSlot(IPersistence.IPersistenceReader reader, Address address, UInt256 slot)
+    {
+        UInt256 value = default;
+        return reader.TryGetSlot(address, slot, ref value) ? value : null;
+    }
+
+    private PersistenceManager CreatePersistenceManager(IPersistence persistence) => new(
+        _config,
+        _tier.Resolve<ICompactionSchedule>(),
+        _finalizedStateProvider,
+        persistence,
+        _snapshotRepository,
+        NullStatePersistenceBarrier.Instance,
+        LimboLogs.Instance,
+        _persistedSnapshotCompactor,
+        _tier.Loader,
+        Substitute.For<IProcessExitSource>());
 
     [Test]
     public void PersistSnapshot_WithSelfDestructedAddresses_CallsSelfDestruct()
@@ -1775,6 +1956,54 @@ public class PersistenceManagerTests
         _persistence.Received(2).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
     }
 
+    // A single base wider than CompactSize — the state a bulk import commits in one step on top of the persisted
+    // base — is the only edge out of it. It cannot be split, so it must be persistable; skipping it
+    // wedges persistence for good while snapshots pile up behind it.
+    [Test]
+    public void FlushToPersistence_WhenTheOnlyEdgeFromThePersistedBaseIsAWideBase_PersistsIt()
+    {
+        StateId imported = CreateStateId(1000);
+        CreateSnapshot(Block0, imported);
+        StateId previous = imported;
+        for (ulong block = 1001; block <= 1003; block++)
+        {
+            StateId next = CreateStateId(block);
+            CreateSnapshot(previous, next);
+            previous = next;
+        }
+        _snapshotRepository.SetLastCommittedStateId(previous);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(previous), "the wide base and the chain after it must be drained");
+        _persistence.Received().CreateWriteBatch(Block0, imported);
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_BackstopExceeded_PersistsAWideBaseFromThePersistedState()
+    {
+        // The backstop engages past LongFinalityMaxReorgDepth of depth; a single bulk-imported base can span it.
+        StateId imported = CreateStateId(_config.LongFinalityMaxReorgDepth);
+        using Snapshot wide = CreateSnapshot(Block0, imported);
+        StateId previous = imported;
+        for (ulong block = imported.BlockNumber + 1; block <= imported.BlockNumber + 3; block++)
+        {
+            StateId next = CreateStateId(block);
+            CreateSnapshot(previous, next).Dispose();
+            previous = next;
+        }
+
+        (PersistedSnapshot? persisted, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(previous);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persisted, Is.Null);
+            Assert.That(toPersist?.To, Is.EqualTo(imported), "a wide base is a persistable unit, not a skip pointer");
+        }
+        toPersist?.Dispose();
+    }
+
     [Test]
     public void FlushToPersistence_WhenBacklogIsPersistedOnly_DrainsConvertedChunks()
     {
@@ -1854,6 +2083,9 @@ public class PersistenceManagerTests
         StateId head = CreateStateId(64);
         CreateSnapshot(Block0, head);
         _snapshotRepository.SetLastCommittedStateId(head);
+        // A head that finality contradicts: the backstop may not persist it, so it has no candidate.
+        _finalizedStateProvider.SetFinalizedBlockNumber(head.BlockNumber);
+        _finalizedStateProvider.SetFinalizedStateRootAt(head.BlockNumber, new Hash256(CreateStateId(head.BlockNumber, rootByte: 1).StateRoot));
 
         (PersistedSnapshot? persisted, Snapshot? inMemory, PersistenceManager.ConversionCandidate? conversion) =
             manager.DetermineSnapshotAction(head);
@@ -2483,5 +2715,64 @@ public class PersistenceManagerTests
 
         public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>
             BarrierAtCapture = readBarrier();
+    }
+
+    /// <summary>
+    /// Forwards to a real persistence, except that the first call to the write named <paramref name="failingWrite"/>
+    /// (<c>SelfDestruct</c>, <c>SetStorage</c> or <c>SetStorageTrieNode</c>) throws <paramref name="exception"/> once it has
+    /// been forwarded.
+    /// </summary>
+    private sealed class FailingWritePersistence(IPersistence inner, string failingWrite, Exception exception) : IPersistence
+    {
+        private string? _failingWrite = failingWrite;
+
+        public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
+        public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new WriteBatch(this, inner.CreateWriteBatch(from, to, flags));
+        public void Flush() => inner.Flush();
+        public void Clear() => inner.Clear();
+
+        private void ThrowIfFailing([CallerMemberName] string write = "")
+        {
+            if (write != _failingWrite) return;
+            _failingWrite = null;
+            throw exception;
+        }
+
+        private sealed class WriteBatch(FailingWritePersistence parent, IPersistence.IWriteBatch inner) : IPersistence.IWriteBatch
+        {
+            public void SelfDestruct(Address addr)
+            {
+                inner.SelfDestruct(addr);
+                parent.ThrowIfFailing();
+            }
+
+            public void SetAccount(Address addr, Account? account) => inner.SetAccount(addr, account);
+            public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp) => inner.SetSlimAccount(addr, slimRlp);
+
+            public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
+            {
+                inner.SetStorage(addr, slot, value);
+                parent.ThrowIfFailing();
+            }
+
+            public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
+
+            public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp)
+            {
+                inner.SetStorageTrieNode(address, path, rlp);
+                parent.ThrowIfFailing();
+            }
+
+            public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) => inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
+            public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) => inner.SetAccountRaw(addrHash, account);
+            public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteAccountRange(fromPath, toPath);
+            public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteStorageRange(addressHash, fromPath, toPath);
+            public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) => inner.SelfDestructRange(fromPath, toPath, keptAccount);
+            public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => inner.DeleteStateTrieNodeRange(from, to);
+            public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
+            public void SetMigrationCursor(in MigrationCursor? cursor) => inner.SetMigrationCursor(cursor);
+            public void Abort() => inner.Abort();
+            public void Dispose() => inner.Dispose();
+        }
     }
 }

@@ -264,6 +264,32 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _syncManager.Received().FindHeadersRlp(TestItem.KeccakA, 3, 1, true);
         }
 
+        /// <remarks>The skip goes through the message serializer, which decodes it as an unsigned 32-bit integer.</remarks>
+        [TestCase(0x7FFFFFFFL, 3, 3, int.MaxValue)]
+        [TestCase(0x80000000L, 3, 1, 0)]
+        [TestCase(0xFFFFFFFEL, 3, 1, 0)]
+        [TestCase(0xFFFFFFFFL, 3, 1, 0)]
+        [TestCase(0xFFFFFFFFL, 0, 0, 0)]
+        public void Get_headers_with_a_skip_above_int_range_asks_only_for_the_first_header(long skip, long maxHeaders, int expectedMaxHeaders, int expectedSkip)
+        {
+            byte[] directions = [0, 1];
+            HandleIncomingStatusMessage();
+            foreach (byte reverse in directions)
+            {
+                using GetBlockHeadersMessage msg = new();
+                msg.StartBlockHash = TestItem.KeccakA;
+                msg.MaxHeaders = maxHeaders;
+                msg.Skip = skip;
+                msg.Reverse = reverse;
+
+                HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
+
+                _syncManager.Received(1).FindHeadersRlp(TestItem.KeccakA, expectedMaxHeaders, expectedSkip, reverse == 1);
+            }
+
+            _syncManager.ReceivedWithAnyArgs(2).FindHeadersRlp(default!, default, default, default);
+        }
+
         [Test]
         public void Receiving_request_before_status_fails()
         {

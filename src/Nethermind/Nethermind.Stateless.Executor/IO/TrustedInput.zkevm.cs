@@ -3,7 +3,11 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Zkvm.Abstractions;
 using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Stateless.Execution.IO;
@@ -90,6 +94,41 @@ public static partial class TrustedInput
 
             MethodTable = *(nint*)array;
         }
+    }
+
+    private static partial bool TryTakePrehashedCode(ReadOnlySpan<byte> code, int index, out ValueHash256 hash)
+    {
+        hash = default;
+        if (!AirbenderFlag.IsActive) return false;
+        unsafe
+        {
+            fixed (byte* data = code)
+            fixed (ValueHash256* output = &hash)
+            {
+                return Accelerators.AirbenderPrehashedCode(data, (uint)index, (byte*)output);
+            }
+        }
+    }
+
+    private static unsafe partial IOwnedReadOnlyList<byte[]> ReadStateNodes(ReadOnlySpan<byte> data)
+    {
+        if (AirbenderFlag.IsActive)
+        {
+            (int position, int count) = ListStart(data, StateNodesList);
+            byte* first, last;
+            uint read;
+            byte* input = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(data));
+            if (count > 0 && Accelerators.AirbenderMptNodes(&first, &last, &read)
+                && read == (uint)count && first == input + position + ItemPrefixLength)
+            {
+                // Airbender's input lives in nonmoving RAM for the entire guest execution.
+                int length = data.Length;
+                return new AirbenderWitnessNodes(first, last, count,
+                    () => ReadItems(new ReadOnlySpan<byte>(input, length), StateNodesList, 0));
+            }
+        }
+
+        return new ItemList(ReadItems(data, StateNodesList, 0));
     }
 
     private static partial bool RetainHints => AirbenderFlag.IsActive;
