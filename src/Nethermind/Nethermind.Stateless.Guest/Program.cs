@@ -43,12 +43,12 @@ partial class Program
         return 0;
     }
 
-    // Diagnostic only: the bump pointer and heap floor cells every 64-bit zkVM target keeps at fixed addresses.
+    // Diagnostic only: the bump pointer and heap floor cells of the ZisK runtime (zisk.ld).
     private static unsafe void PrintHeapUse()
     {
-        const ulong HeapTop = 0xbffeffe8;
-        ulong bump = *(ulong*)0xbffefff8UL;
-        ulong floor = *(ulong*)0xbffefff0UL;
+        const ulong HeapTop = 0xbffbffe8;
+        ulong bump = *(ulong*)0xbffbfff8UL;
+        ulong floor = *(ulong*)0xbffbfff0UL;
         IO.PrintLine($"HEAPUSE used={HeapTop - bump} free={bump - floor} floor={floor:x}");
     }
 
