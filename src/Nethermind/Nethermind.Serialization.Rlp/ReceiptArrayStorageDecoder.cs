@@ -803,19 +803,28 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
     public IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData) =>
         IsCompactEncoding(receiptsData)
-            ? GetCompactRefDecoder()
+            ? (IReceiptRefDecoder)GetCompactDecoder()
             : Decoder;
 
-    /// <summary>The compact decoder a plugin registered as the storage receipt decoder, or <see langword="null"/> for the built-in one.</summary>
-    private static IRlpDecoder<TxReceipt>? GetRegisteredCompactDecoder() =>
-        Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Storage) is { } decoder && decoder is not CompactReceiptStorageDecoder ? decoder : null;
-
-    private static IRlpDecoder<TxReceipt> GetCompactDecoder() =>
+    /// <summary>Gets the decoder of compact stored receipts, which also implements <see cref="IReceiptRefDecoder"/>.</summary>
+    /// <remarks>Resolved on each call, since plugins register their decoders after this type initializes.</remarks>
+    /// <returns>The decoder registered under <see cref="RlpDecoderKey.Storage"/>, or <see cref="CompactReceiptStorageDecoder"/>.</returns>
+    /// <exception cref="InvalidOperationException">The registered decoder does not implement <see cref="IReceiptRefDecoder"/>.</exception>
+    public static IRlpDecoder<TxReceipt> GetCompactDecoder() =>
         GetRegisteredCompactDecoder() ?? CompactReceiptStorageDecoder.Instance;
 
-    private static IReceiptRefDecoder GetCompactRefDecoder() =>
-        GetCompactDecoder() as IReceiptRefDecoder
-        ?? throw new RlpReaderException($"The registered compact receipt decoder must implement {nameof(IReceiptRefDecoder)}.");
+    /// <inheritdoc cref="GetCompactDecoder"/>
+    /// <returns>The decoder a plugin registered, or <see langword="null"/> for <see cref="CompactReceiptStorageDecoder"/>.</returns>
+    private static IRlpDecoder<TxReceipt>? GetRegisteredCompactDecoder()
+    {
+        IRlpDecoder<TxReceipt>? decoder = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Storage);
+        return decoder switch
+        {
+            null or CompactReceiptStorageDecoder => null,
+            IReceiptRefDecoder => decoder,
+            _ => throw new InvalidOperationException($"The registered compact receipt decoder {decoder.GetType().Name} must implement {nameof(IReceiptRefDecoder)}.")
+        };
+    }
 
     /// <summary>Decodes one item of a compact list with a registered decoder, as the built-in one does: an empty item is a missing receipt.</summary>
     private static TxReceipt? DecodeRegistered(IRlpDecoder<TxReceipt> decoder, ref RlpReader items, RlpBehaviors rlpBehaviors) =>

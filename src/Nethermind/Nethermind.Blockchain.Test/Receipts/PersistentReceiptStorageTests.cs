@@ -1657,6 +1657,37 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
+    /// <summary>
+    /// <c>eth_getLogs</c> needs the registered compact decoder to implement <see cref="IReceiptRefDecoder"/>, so every
+    /// compact receipt read rejects one that does not, the single-receipt read included.
+    /// </summary>
+    /// <remarks>The registered decoder fails every compact receipt read, so the test does not run alongside others.</remarks>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
+    public void Compact_receipt_reads_reject_a_registered_storage_decoder_without_ref_decoding()
+    {
+        Assume.That(useCompactReceipts, "Only compact receipts use the storage decoder.");
+        (Block block, _) = InsertBlock();
+        _storage.ClearCache();
+        RlpDecoderKey key = new(typeof(TxReceipt), RlpDecoderKey.Storage);
+        IRlpDecoder<TxReceipt> registered = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Storage)!;
+        Rlp.RegisterDecoder(key, new StorageDecoderWithoutRefDecoding());
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => _storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[0].Hash!, out _, out _, out _),
+                    Throws.InvalidOperationException, "single receipt read");
+                Assert.That(() => _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out _), Throws.InvalidOperationException, "iterator");
+                Assert.That(() => _storage.Get(block), Throws.InvalidOperationException, "block receipts read");
+            }
+        }
+        finally
+        {
+            Rlp.RegisterDecoder(key, registered);
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Log_recovery_reads_the_body_for_compact_receipts_without_transaction_hashes()
     {
@@ -2345,6 +2376,18 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             _innerRef.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
         public Hash256[] DecodeTopics(RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => _innerRef.DecodeTopics(reader, rlpBehaviors);
+    }
+
+    private sealed class StorageDecoderWithoutRefDecoding : RlpDecoder<TxReceipt>
+    {
+        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            CompactReceiptStorageDecoder.Instance.GetLength(item, rlpBehaviors);
+
+        public override void Encode(ref RlpWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            CompactReceiptStorageDecoder.Instance.Encode(ref writer, item, rlpBehaviors);
+
+        protected override TxReceipt? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            CompactReceiptStorageDecoder.Instance.Decode(ref reader, rlpBehaviors);
     }
 
     private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, ulong? headNumber = null, WriteFlags writeFlags = WriteFlags.None)
