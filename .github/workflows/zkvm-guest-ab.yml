@@ -90,7 +90,7 @@ env:
   # The scripts measure both arms, so they come from this workflow's revision, not from either arm.
   # A called workflow sees the caller in github.*, so the checkouts read job.workflow_* first.
   TOOLS_REF: ${{ inputs.tools_ref || (github.repository == 'NethermindEth/nethermind' && github.sha) || 'master' }}
-  OPENVM_RUNNER_SHA: 3ff11ea29497a1dbeb1eb5c563b31022f285c688
+  OPENVM_RUNNER_SHA: e7a6fe5f6b2676e3e98b2429af8bb54c345794a4
 
 jobs:
   resolve:
