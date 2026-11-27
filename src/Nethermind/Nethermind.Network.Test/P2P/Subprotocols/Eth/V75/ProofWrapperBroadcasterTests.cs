@@ -1134,16 +1134,18 @@ public class ProofWrapperBroadcasterTests
     }
 
     // EIP-8437: an eth/75 connection exchanges only mode-0 wrappers, announced with their inline metadata and requested complete.
+    // EIP-8437: eth/75 carries only mode-0 wrappers whose dependencies are all leanSPHINCS.
     [Test]
-    public void Eth75_connection_exchanges_only_mode0_wrappers()
+    public void Eth75_connection_exchanges_only_mode0_leanSphincs_wrappers()
     {
         using WrapperTestNode node = new();
-        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
-        node.AddPending(a, b);
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2), c = FrameTransaction(4, Eip8288Constants.LeanStarkScheme);
+        node.AddPending(a, b, c);
         byte[] direct = DirectWrapper(a);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node.Broadcaster.PublishWrapper(Wrapper(64, b)), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(DirectWrapper(c)), Is.True);
             Assert.That(node.Broadcaster.PublishWrapper(direct), Is.True);
         }
         FakeWrapperLink link = new() { ProtocolVersion = EthVersions.Eth75 };
@@ -1157,6 +1159,58 @@ public class ProofWrapperBroadcasterTests
             Assert.That(announced.Hash, Is.EqualTo(Describe(direct).Hash));
             Assert.That(announced.Metadata, Is.EqualTo(WrapperMetadata.InlineFor(direct)));
             Assert.That(link.Sent<GetProofWrappersMessage>().Single().Compact, Is.False);
+        }
+    }
+
+    // EIP-8437: a wrapper with a dependency scheme other than leanSPHINCS, served on eth/75, is discarded unverified and without
+    // penalty; an aggregating connection carries every scheme the mempool fork enables.
+    [Test]
+    public async Task Other_schemes_served_on_eth75_are_discarded_without_penalty([Values] bool eth75)
+    {
+        using WrapperTestNode node = new();
+        Transaction transaction = FrameTransaction(1, Eip8288Constants.LeanStarkScheme);
+        byte[] wrapper = DirectWrapper(transaction);
+        FakeWrapperLink link = new() { ProtocolVersion = eth75 ? EthVersions.Eth75 : FakeWrapperLink.AggregatingVersion };
+        WrapperPeer peer = node.Connect(link);
+        node.Broadcaster.OnAnnounce(peer, new([Describe(wrapper)]));
+        Answer(node, peer, link, wrapper);
+        await WrapperTestNode.Until(() => node.Broadcaster.FetchCount == 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Is.Empty);
+            Assert.That(node.Pending.Select(static t => t.Hash), eth75 ? Is.Empty : Is.EqualTo(new[] { transaction.Hash }));
+            Assert.That(node.Broadcaster.IsStored(Describe(wrapper).Hash), Is.EqualTo(!eth75));
+            Assert.That(peer.IsDeprioritized, Is.False);
+        }
+    }
+
+    // Support depends on the connection, not the wrapper: an eth/75 serve of another scheme neither tombstones the hash nor stops
+    // its fetch from an aggregating announcer, while another eth/75 announcement of it is not fetched again.
+    [Test]
+    public async Task Other_scheme_served_on_eth75_is_still_fetched_from_an_aggregating_peer()
+    {
+        using WrapperTestNode node = new();
+        Transaction transaction = FrameTransaction(1, Eip8288Constants.LeanStarkScheme);
+        byte[] wrapper = DirectWrapper(transaction);
+        ValueHash256 hash = Describe(wrapper).Hash;
+        FakeWrapperLink eth75Link = new("eth75") { ProtocolVersion = EthVersions.Eth75 }, otherEth75Link = new("eth75-other") { ProtocolVersion = EthVersions.Eth75 };
+        FakeWrapperLink aggregatingLink = new("eth76");
+        WrapperPeer eth75 = node.Connect(eth75Link), otherEth75 = node.Connect(otherEth75Link), aggregating = node.Connect(aggregatingLink);
+        node.Broadcaster.OnAnnounce(eth75, new([Describe(wrapper)]));
+        node.Broadcaster.OnAnnounce(aggregating, new([Describe(wrapper)]));
+        Answer(node, eth75, eth75Link, wrapper);
+        await WrapperTestNode.Until(() => aggregatingLink.Sent<GetProofWrappersMessage>().Length != 0);
+        node.Broadcaster.OnAnnounce(otherEth75, new([Describe(wrapper)]));
+        Answer(node, aggregating, aggregatingLink, wrapper);
+        await WrapperTestNode.Until(() => node.Broadcaster.IsStored(hash) && node.Broadcaster.FetchCount == 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Broadcaster.IsTombstoned(hash), Is.False);
+            Assert.That(node.Pending.Select(static t => t.Hash), Is.EqualTo(new[] { transaction.Hash }));
+            Assert.That(otherEth75Link.Sent<GetProofWrappersMessage>(), Is.Empty);
+            Assert.That(eth75Link.Penalties.Concat(otherEth75Link.Penalties).Concat(aggregatingLink.Penalties), Is.Empty);
         }
     }
 

@@ -208,13 +208,12 @@ public class Eth75MessagesTests
     // and more than 17 transactions make the announcement malformed.
     [TestCase("valid", false)]
     [TestCase("no transactions", true)]
-    [TestCase("six fields", true)]
+    [TestCase("four fields", true)]
     [TestCase("uneven lists", true)]
     [TestCase("zero size", true)]
     [TestCase("sizes reach the length", true)]
     [TestCase("unordered hashes", true)]
     [TestCase("short source", true)]
-    [TestCase("nonce over 64 bits", true)]
     [TestCase("fee over 256 bits", true)]
     [TestCase("fee not a list", true)]
     [TestCase("gas over 64 bits", true)]
@@ -237,30 +236,28 @@ public class Eth75MessagesTests
         };
         List<byte[]> fields =
         [
-            Eth75Rlp.EncodeBytes(scenario == "no transactions" ? [] : [.. Enumerable.Repeat((byte)TxType.FrameTx, count)]),
             scenario switch { "zero size" => Ints(0, 1), "sizes reach the length" => Ints(length / 2, length / 2), _ => Repeat(Eth75Rlp.EncodeUInt(10)) },
             scenario == "unordered hashes" ? Eth75Rlp.EncodeList(hashes[1], hashes[0]) : Eth75Rlp.EncodeList(hashes),
             scenario == "short source" ? Repeat(Eth75Rlp.EncodeBytes(new byte[19])) : Repeat(Eth75Rlp.EncodeBytes(new byte[20])),
-            scenario == "nonce over 64 bits" ? Repeat(Eth75Rlp.EncodeBytes([1, .. new byte[8]])) : Repeat(Eth75Rlp.EncodeUInt(ulong.MaxValue)),
             scenario == "fee not a list" ? Repeat(Eth75Rlp.EncodeUInt(1)) : Repeat(fee),
             scenario == "gas over 64 bits" ? Repeat(Eth75Rlp.EncodeBytes([1, .. new byte[8]])) : Repeat(Eth75Rlp.EncodeUInt(ulong.MaxValue)),
         ];
+        if (scenario == "no transactions") fields = [.. fields.Select(static _ => Eth75Rlp.EncodeList())];
         if (scenario == "uneven lists") fields[4] = Ints(1);
-        if (scenario == "six fields") fields.RemoveAt(6);
+        if (scenario == "four fields") fields.RemoveAt(4);
         byte[] metadata = Eth75Rlp.EncodeList([.. fields]);
         byte[] entry = Entry(Eth75Rlp.EncodeUInt(0), length, Hash32(), metadata);
         if (malformed) Assert.That(() => WrapperAnnouncement.Decode(entry, out _), Throws.InstanceOf<RlpException>());
         else Assert.That(WrapperAnnouncement.Decode(entry, out _)!.Metadata!.Encoded, Is.EqualTo(metadata));
     }
 
-    // Transaction metadata reads the explicit sender, nonce_seq under EIP-8250 nonce keys, the fees list and the summed frame
-    // limits; it is inline only for mode-0 wrappers of at most 17 transactions.
+    // Transaction metadata reads the explicit sender, past EIP-8250 nonce keys, the fees list and the summed frame limits; it is
+    // inline only for mode-0 wrappers of at most 17 transactions.
     [Test]
     public void Metadata_is_derived_from_the_wrapper_transactions()
     {
         Transaction[] transactions = [.. Enumerable.Range(0, 18).Select(WrapperTestObjects.FrameTransaction)];
         transactions[0].SenderAddress = TestItem.AddressA;
-        transactions[0].Nonce = 5;
         transactions[0].MaxFee = 7;
         transactions[0].GasPrice = 3;
         transactions[0].Hash = new Hash256(ValueKeccak.Compute(WrapperTestObjects.Envelope(transactions[0])));
@@ -270,14 +267,13 @@ public class Eth75MessagesTests
         Eth75RlpReader fields = outer.ReadList();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(fields.ReadBytes().ToArray(), Is.EqualTo(new[] { (byte)TxType.FrameTx }));
             Assert.That(fields.ReadList().ReadUInt64(), Is.EqualTo((ulong)WrapperTestObjects.Envelope(transactions[0]).Length));
             Assert.That(fields.ReadList().ReadHash(), Is.EqualTo(transactions[0].Hash!.ValueHash256));
             Assert.That(fields.ReadList().ReadBytes().ToArray(), Is.EqualTo(TestItem.AddressA.Bytes.ToArray()));
-            Assert.That(fields.ReadList().ReadUInt64(), Is.EqualTo(5UL));
             Eth75RlpReader fees = fields.ReadList().ReadList();
             Assert.That((fees.ReadUInt64(), fees.ReadUInt64()), Is.EqualTo((7UL, 3UL)));
             Assert.That(fields.ReadList().ReadUInt64(), Is.EqualTo(FrameTxValidation.TotalGasLimit(transactions[0].Frames)));
+            fields.End();
             Assert.That(WrapperAnnouncement.Create(direct).Metadata, Is.EqualTo(metadata));
             Assert.That(WrapperMetadata.InlineFor(WrapperTestObjects.Wrapper(64, transactions[0])), Is.Null, "mode 1 carries no inline metadata");
             Assert.That(WrapperMetadata.InlineFor(WrapperTestObjects.DirectWrapper(transactions[..17])), Is.Not.Null);
@@ -334,15 +330,14 @@ public class Eth75MessagesTests
     }
 
     // check_vectors.py: 64 announcements without metadata encode in 2,563 bytes, with the widest 17-transaction metadata in
-    // 197,508, and 32 requested hashes in 1,071.
+    // 186,436, and 32 requested hashes in 1,071.
     [Test]
     public void Messages_at_their_entry_limits_match_eip8437_lengths()
     {
         byte[][] widestHashes = [.. Enumerable.Range(0, 17).Select(static i => ValueKeccak.Compute([(byte)i])).Order().Select(static h => Eth75Rlp.EncodeBytes(h.Bytes))];
         byte[] Repeat(byte[] item) => Eth75Rlp.EncodeList([.. Enumerable.Repeat(item, 17)]);
-        byte[] widest = Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes([.. Enumerable.Repeat((byte)TxType.FrameTx, 17)]),
-            Repeat(Eth75Rlp.EncodeUInt((Eth75Protocol.MaxWrapperBytes - 1) / 17)), Eth75Rlp.EncodeList(widestHashes),
-            Repeat(Eth75Rlp.EncodeBytes(Enumerable.Repeat((byte)0xff, 20).ToArray())), Repeat(Eth75Rlp.EncodeUInt(ulong.MaxValue)),
+        byte[] widest = Eth75Rlp.EncodeList(Repeat(Eth75Rlp.EncodeUInt((Eth75Protocol.MaxWrapperBytes - 1) / 17)), Eth75Rlp.EncodeList(widestHashes),
+            Repeat(Eth75Rlp.EncodeBytes(Enumerable.Repeat((byte)0xff, 20).ToArray())),
             Repeat(Eth75Rlp.EncodeList([.. Enumerable.Repeat(Eth75Rlp.EncodeBytes(Enumerable.Repeat((byte)0xff, 32).ToArray()), 3)])),
             Repeat(Eth75Rlp.EncodeUInt(ulong.MaxValue)));
         byte[] Announcements(params byte[][] metadata) => Eth75Rlp.EncodeList([.. Enumerable.Range(1, Eth75Protocol.MaxAnnouncements)
@@ -354,13 +349,40 @@ public class Eth75MessagesTests
             byte[] bare = Announcements();
             Assert.That(serializer.Encode(serializer.Decode(bare)), Has.Length.EqualTo(2563));
             byte[] full = Announcements(widest);
-            Assert.That(full, Has.Length.EqualTo(Eth75Protocol.MaxNewProofWrapperHashesBytes).And.Length.EqualTo(197_508));
+            Assert.That(full, Has.Length.EqualTo(186_436).And.Length.LessThan(Eth75Protocol.MaxNewProofWrapperHashesBytes));
             Assert.That(serializer.Encode(serializer.Decode(full)), Is.EqualTo(full));
             Assert.That(() => serializer.Decode(Eth75Rlp.EncodeList([.. Enumerable.Range(1, Eth75Protocol.MaxAnnouncements + 1)
                 .Select(static i => Entry(Eth75Rlp.EncodeUInt(0), 1, Eth75Rlp.EncodeBytes(Word(i))))])), Throws.InstanceOf<RlpException>());
             Assert.That(new GetProofWrappersMessageSerializer().Encode(new(-1, false, requested)), Has.Length.EqualTo(Eth75Protocol.MaxGetProofWrappersBytes).And.Length.EqualTo(1071));
             Assert.That(new GetProofWrappersMessageSerializer().Encode(new(7, false, [default])).ToHexString(), Is.EqualTo("e307e1a0" + new string('0', 64)));
             Assert.That(() => new GetProofWrappersMessageSerializer().Encode(new(7, true, [default])), Throws.ArgumentException, "eth/75 has no compact form");
+        }
+    }
+
+    // check_vectors.py: fee lists have no fixed length, but the whole announcement, metadata included and whatever its mode, is
+    // bounded at 256 KiB.
+    [Test]
+    public void Announcement_payload_is_bounded_at_256_KiB([Values(0, 2)] int mode)
+    {
+        byte[] maxFee = Eth75Rlp.EncodeBytes(Enumerable.Repeat((byte)0xff, 32).ToArray());
+        List<byte[]> fees = [.. Enumerable.Repeat(maxFee, Eth75Protocol.MaxNewProofWrapperHashesBytes / 66)];
+        byte[] Payload() => Eth75Rlp.EncodeList(Entry(Eth75Rlp.EncodeUInt((ulong)mode), Eth75Protocol.MaxWrapperBytes, Hash32(),
+            Eth75Rlp.EncodeList(Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt(10)), Eth75Rlp.EncodeList(Hash32()),
+                Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes(new byte[20])), Eth75Rlp.EncodeList(Eth75Rlp.EncodeList([.. fees])),
+                Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt(1)))));
+        int remaining = Eth75Protocol.MaxNewProofWrapperHashesBytes - Payload().Length;
+        fees.AddRange(Enumerable.Repeat(maxFee, remaining / maxFee.Length));
+        fees.AddRange(Enumerable.Repeat(Eth75Rlp.EncodeUInt(1), remaining % maxFee.Length));
+        byte[] largest = Payload();
+        fees.Add(Eth75Rlp.EncodeUInt(1));
+        byte[] oversized = Payload();
+        NewProofWrapperHashesMessageSerializer serializer = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(largest, Has.Length.EqualTo(1 << 18));
+            Assert.That(serializer.Decode(largest).Announcements, Has.Length.EqualTo(mode == 0 ? 1 : 0));
+            Assert.That(oversized, Has.Length.EqualTo(largest.Length + 1));
+            Assert.That(() => serializer.Decode(oversized), Throws.InstanceOf<RlpException>());
         }
     }
 

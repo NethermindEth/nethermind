@@ -12,13 +12,12 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
-/// <summary>EIP-8437 transaction metadata <c>[txtypes, [txsize, ...], [txhash, ...], [txsource, ...], [txnonce, ...],
-/// [txfees, ...], [txgas, ...]]</c> of a wrapper's transactions, in wrapper order.</summary>
+/// <summary>EIP-8437 transaction metadata <c>[[txsize, ...], [txhash, ...], [txsource, ...], [txfees, ...], [txgas, ...]]</c> of a
+/// wrapper's transactions, in wrapper order.</summary>
 /// <remarks>Held in its canonical encoding, so a claim matches what a wrapper's transactions give exactly when the bytes are
 /// equal. Metadata establishes neither coverage nor validity.</remarks>
 public sealed class WrapperMetadata
 {
-    private const int Fields = 7;
     private const int SourceLength = 20;
     private const int MaxFeeBytes = 32;
 
@@ -46,26 +45,25 @@ public sealed class WrapperMetadata
 
     private byte[][]? _identities;
 
-    /// <summary>Whether transaction <paramref name="index"/> is described with the type, source, nonce, fees and frame gas that
-    /// transaction <paramref name="otherIndex"/> of <paramref name="other"/> is.</summary>
+    /// <summary>Whether transaction <paramref name="index"/> is described with the source, fees and frame gas that transaction
+    /// <paramref name="otherIndex"/> of <paramref name="other"/> is.</summary>
     /// <remarks>The pooled size is not compared: a consensus transaction hash does not bind it (EIP-8437).</remarks>
     internal bool DescribesAlike(int index, WrapperMetadata other, int otherIndex) =>
         Identities[index].AsSpan().SequenceEqual(other.Identities[otherIndex]);
 
-    /// <summary>Per transaction, its type byte followed by its canonical source, nonce, fees and gas items.</summary>
+    /// <summary>Per transaction, its canonical source, fees and gas items.</summary>
     private byte[][] Identities => _identities ??= ReadIdentities();
 
     private byte[][] ReadIdentities()
     {
         Eth75RlpReader outer = new(Encoded);
         Eth75RlpReader fields = outer.ReadList();
-        ReadOnlySpan<byte> types = fields.ReadBytes();
         fields.ReadList();
         fields.ReadList();
-        Eth75RlpReader sources = fields.ReadList(), nonces = fields.ReadList(), fees = fields.ReadList(), gas = fields.ReadList();
+        Eth75RlpReader sources = fields.ReadList(), fees = fields.ReadList(), gas = fields.ReadList();
         byte[][] identities = new byte[Count][];
         for (int i = 0; i < identities.Length; i++)
-            identities[i] = [types[i], .. sources.ReadItem(), .. nonces.ReadItem(), .. fees.ReadItem(), .. gas.ReadItem()];
+            identities[i] = [.. sources.ReadItem(), .. fees.ReadItem(), .. gas.ReadItem()];
         return identities;
     }
 
@@ -79,10 +77,10 @@ public sealed class WrapperMetadata
         Eth75RlpReader outer = new(encoded);
         Eth75RlpReader fields = outer.ReadList();
         outer.End();
-        int count = fields.ReadBytes().Length;
-        if (count == 0 || count > maxTransactions) throw new RlpException("Transaction metadata count is out of bounds");
+        Eth75RlpReader sizes = fields.ReadList();
+        int count = sizes.CountRemaining(maxTransactions);
+        if (count == 0) throw new RlpException("Transaction metadata describes no transactions");
 
-        Eth75RlpReader sizes = ReadField(ref fields, count);
         long total = 0;
         while (sizes.HasMore)
         {
@@ -103,9 +101,6 @@ public sealed class WrapperMetadata
         Eth75RlpReader sources = ReadField(ref fields, count);
         while (sources.HasMore)
             if (sources.ReadBytes().Length != SourceLength) throw new RlpException("Transaction metadata source must be 20 bytes");
-
-        Eth75RlpReader nonces = ReadField(ref fields, count);
-        while (nonces.HasMore) nonces.ReadUInt64();
 
         Eth75RlpReader fees = ReadField(ref fields, count);
         while (fees.HasMore)
@@ -149,8 +144,7 @@ public sealed class WrapperMetadata
     {
         Eth75RlpReader outer = new(wrapper);
         Eth75RlpReader transactions = outer.ReadList().ReadList();
-        List<byte> types = [];
-        List<byte[]> sizes = [], hashItems = [], sources = [], nonces = [], fees = [], gas = [];
+        List<byte[]> sizes = [], hashItems = [], sources = [], fees = [], gas = [];
         List<ValueHash256> hashes = [];
         long transactionBytes = 0;
         while (transactions.HasMore)
@@ -158,7 +152,6 @@ public sealed class WrapperMetadata
             ReadOnlySpan<byte> encoding = transactions.ReadBytes();
             transactionBytes += encoding.Length;
             ValueHash256 hash = WrapperBodies.TransactionHash(encoding);
-            types.Add(encoding[0]);
             sizes.Add(Eth75Rlp.EncodeUInt((ulong)encoding.Length));
             hashes.Add(hash);
             hashItems.Add(Eth75Rlp.EncodeBytes(hash.Bytes));
@@ -168,9 +161,9 @@ public sealed class WrapperMetadata
             // A blob-carrying transaction's pooled form wraps the payload with its sidecar.
             Eth75RlpReader body = payload.IsListNext ? payload.ReadList() : payload;
             body.ReadItem();
-            // EIP-8250 keyed nonces put nonce_keys before nonce_seq, which is announced as the nonce.
+            // Skips nonce_seq and, under EIP-8250 keyed nonces, the nonce_keys before it.
             if (body.IsListNext) body.ReadItem();
-            nonces.Add(Eth75Rlp.EncodeUInt(body.ReadUInt64()));
+            body.ReadItem();
             ReadOnlySpan<byte> source = body.ReadBytes();
             if (source.Length != SourceLength) throw new RlpException("Frame transaction sender must be 20 bytes");
             sources.Add(Eth75Rlp.EncodeBytes(source));
@@ -182,8 +175,8 @@ public sealed class WrapperMetadata
             while (feeList.HasMore) feeItems.Add(Eth75Rlp.EncodeBytes(feeList.ReadInteger(MaxFeeBytes)));
             fees.Add(Eth75Rlp.EncodeList([.. feeItems]));
         }
-        byte[] encoded = Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes([.. types]), Eth75Rlp.EncodeList([.. sizes]), Eth75Rlp.EncodeList([.. hashItems]),
-            Eth75Rlp.EncodeList([.. sources]), Eth75Rlp.EncodeList([.. nonces]), Eth75Rlp.EncodeList([.. fees]), Eth75Rlp.EncodeList([.. gas]));
+        byte[] encoded = Eth75Rlp.EncodeList(Eth75Rlp.EncodeList([.. sizes]), Eth75Rlp.EncodeList([.. hashItems]), Eth75Rlp.EncodeList([.. sources]),
+            Eth75Rlp.EncodeList([.. fees]), Eth75Rlp.EncodeList([.. gas]));
         return new(encoded, [.. hashes], transactionBytes);
     }
 

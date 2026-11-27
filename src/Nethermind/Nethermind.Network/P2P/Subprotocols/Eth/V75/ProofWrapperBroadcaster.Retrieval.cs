@@ -54,7 +54,8 @@ public sealed partial class ProofWrapperBroadcaster
                     Violation(peer, falseClaim, outbox);
                     break;
                 }
-                if (_store.Contains(wrapperHash) || IsTombstoned(wrapperHash, now)) continue;
+                if (_store.Contains(wrapperHash) || IsTombstoned(wrapperHash, now) || !peer.Aggregates && _unsupportedOnEth75.Contains(wrapperHash, now))
+                    continue;
                 if (_fetches.TryGetValue(wrapperHash, out WrapperFetch? existing))
                 {
                     existing.AddSource(peer, announcement);
@@ -135,7 +136,7 @@ public sealed partial class ProofWrapperBroadcaster
     private bool HeldDirectly(in ValueHash256 transaction)
     {
         foreach (ValueHash256 wrapperHash in _store.Listing(transaction))
-            if (TryGetOffered(wrapperHash, out WrapperStore.Entry entry) && entry.Shape.Mode == MempoolWrapper.ModeDirect) return true;
+            if (TryGetOffered(wrapperHash, out WrapperStore.Entry entry) && entry.Shape is { Mode: MempoolWrapper.ModeDirect, LeanSphincsOnly: true }) return true;
         return false;
     }
 
@@ -668,9 +669,10 @@ public sealed partial class ProofWrapperBroadcaster
     private async Task ValidateAndReleaseAsync(WrapperFetch fetch)
     {
         CancellationTokenSource processing = fetch.Processing!;
+        bool settled = true;
         try
         {
-            await ValidateAsync(fetch, processing.Token).ConfigureAwait(false);
+            settled = await ValidateAsync(fetch, processing.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (processing.IsCancellationRequested)
         {
@@ -686,7 +688,7 @@ public sealed partial class ProofWrapperBroadcaster
             lock (_gate)
             {
                 fetch.Processing = null;
-                Remove(fetch, "validated");
+                if (settled) Remove(fetch, "validated");
                 Schedule(outbox);
             }
             outbox.Flush();
@@ -695,14 +697,23 @@ public sealed partial class ProofWrapperBroadcaster
     }
 
     /// <summary>Checks the canonical encoding and fully validates the wrapper under EIP-8288.</summary>
-    private async Task ValidateAsync(WrapperFetch fetch, CancellationToken cancellation)
+    /// <returns>False when the wrapper was discarded unverified and the fetch goes on with other sources.</returns>
+    private async Task<bool> ValidateAsync(WrapperFetch fetch, CancellationToken cancellation)
     {
         byte[] wrapper = fetch.Wrapper!;
-        try { WrapperBodies.ParseWrapper(wrapper, out _); }
+        WrapperShape shape;
+        try { WrapperBodies.ParseWrapper(wrapper, out shape); }
         catch (RlpException exception)
         {
             Conclude(fetch, Verdict.Malformed, $"noncanonical wrapper: {exception.Message}");
-            return;
+            return true;
+        }
+        // EIP-8437: an eth/75 peer carries only leanSPHINCS dependencies; any other scheme is discarded unverified, without penalty.
+        // Support depends on the connection, not the wrapper, so the hash is not tombstoned and aggregating sources are still asked.
+        if (fetch.Server is { } source && !source.Supports(shape))
+        {
+            Unsupported(fetch, source);
+            return false;
         }
         (Verdict verdict, string? error, Eip8288Verifier? verifier) =
             await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token, fetch.Server?.Link), cancellation).ConfigureAwait(false);
@@ -710,6 +721,23 @@ public sealed partial class ProofWrapperBroadcaster
         if (verdict is Verdict.Valid or Verdict.PoolRejected && fetch.Server is { Closed: false } server)
             foreach ((ValueHash256 hash, byte[] encoding) in WrapperCompaction.Encodings(wrapper)) server.Received.Add(hash, encoding);
         Conclude(fetch, verdict, error, verifier);
+        return true;
+    }
+
+    private void Unsupported(WrapperFetch fetch, WrapperPeer source)
+    {
+        WrapperMetrics.Record(WrapperEvent.UnsupportedScheme);
+        lock (_gate)
+        {
+            _unsupportedOnEth75.Add(fetch.Announcement.Hash, _clock.GetTimestamp()
+                + (long)(WrapperTransportLimits.SoftTombstone.TotalSeconds * _clock.TimestampFrequency));
+            Release(source, fetch.ChargedBytes);
+            fetch.ChargedBytes = 0;
+            fetch.Wrapper = null;
+            fetch.Server = null;
+            fetch.RequiresAggregating = true;
+        }
+        if (_logger.IsDebug) _logger.Debug($"eth/75 discarded {fetch.Announcement} from {source}: a dependency scheme other than leanSPHINCS");
     }
 
     /// <param name="verifier">For an invalid verdict, the verifier it was reached under; it suppresses fetching only while that

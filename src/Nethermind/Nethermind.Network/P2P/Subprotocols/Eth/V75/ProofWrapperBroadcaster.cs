@@ -42,6 +42,9 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
     // Wrappers that failed proof or dependency rules, keyed by InvalidKey with the verifier they were judged under: another
     // target fork verifier may accept them.
     private readonly WrapperBoundedSet _invalid = new(WrapperTransportLimits.MaxTombstones);
+    // Wrappers carrying a scheme eth/75 does not, recently served by an eth/75 peer: not fetched again on that version, while
+    // aggregating peers may still serve them.
+    private readonly WrapperBoundedSet _unsupportedOnEth75 = new(WrapperTransportLimits.MaxTombstones);
     // Received wrappers awaiting validation per server, dequeued round-robin so one peer's backlog cannot delay the others'.
     private readonly Dictionary<WrapperPeer, Queue<WrapperFetch>> _validation = [];
     private readonly Queue<WrapperPeer> _validationTurns = [];
@@ -131,7 +134,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             foreach (WrapperStore.Entry entry in _store.Recent())
             {
                 if (peer.ToAnnounce.Count == WrapperTransportLimits.MaxConnectAnnouncements) break;
-                if (entry.Verifier != _verifier || !peer.Supports(entry.Shape.Mode)) continue;
+                if (entry.Verifier != _verifier || !peer.Supports(entry.Shape)) continue;
                 if (_wrappers.IsAnyPending(entry.Hashes)) peer.ToAnnounce.Add(entry.Announcement);
                 else (stale ??= []).Add(entry.Announcement.Hash);
             }
@@ -399,7 +402,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
                 peer.Exchanged.Clear();
                 peer.ToAnnounce.Clear();
                 foreach (WrapperStore.Entry entry in _store.Recent())
-                    if (entry.Verifier == verifier && peer.Supports(entry.Shape.Mode)) peer.ToAnnounce.Add(entry.Announcement);
+                    if (entry.Verifier == verifier && peer.Supports(entry.Shape)) peer.ToAnnounce.Add(entry.Announcement);
                 FlushAnnouncements(peer, outbox);
             }
         }
@@ -433,7 +436,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers)
             {
-                if (peer.Known.Contains(announcement.Hash, now) || !peer.Supports(shape.Mode)) continue;
+                if (peer.Known.Contains(announcement.Hash, now) || !peer.Supports(shape)) continue;
                 peer.ToAnnounce.Add(announcement);
                 FlushAnnouncements(peer, outbox);
             }
