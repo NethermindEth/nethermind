@@ -9,6 +9,7 @@ using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -60,16 +61,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
         if (config is null || config.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return [];
         if (config.Value.ValueKind != JsonValueKind.Object)
-        {
-            string type = config.Value.ValueKind switch
-            {
-                JsonValueKind.Array => "array",
-                JsonValueKind.String => "string",
-                JsonValueKind.Number => "number",
-                _ => "bool"
-            };
-            throw new InvalidDataException($"json: cannot unmarshal {type} into Go value of type map[string]jsontext.Value");
-        }
+            throw new InvalidDataException($"json: cannot unmarshal {GethLikeNativeTracerFactory.GoJsonKind(config.Value.ValueKind)} into Go value of type map[string]jsontext.Value");
         return TypeInfoJsonSerializer.Deserialize<Dictionary<string, JsonElement>>(config.Value, EthereumJsonSerializer.JsonOptions)!;
     }
 

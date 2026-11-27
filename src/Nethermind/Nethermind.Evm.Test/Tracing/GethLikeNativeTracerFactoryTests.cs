@@ -57,6 +57,22 @@ public class GethLikeNativeTracerFactoryTests
         Assert.That(_createdTracer.DisposeCalls, Is.EqualTo(1));
     }
 
+    [TestCase("callTracer", """{"onlyTopCall":"abc"}""", "json: cannot unmarshal string into Go struct field callTracerConfig.onlyTopCall of type bool")]
+    [TestCase("callTracer", """{"withLog":1}""", "json: cannot unmarshal number into Go struct field callTracerConfig.withLog of type bool")]
+    [TestCase("prestateTracer", """{"diffMode":{}}""", "json: cannot unmarshal object into Go struct field prestateTracerConfig.diffMode of type bool")]
+    [TestCase("prestateTracer", """{"disableStorage":[]}""", "json: cannot unmarshal array into Go struct field prestateTracerConfig.disableStorage of type bool")]
+    [TestCase("callTracer", "\"x\"", "json: cannot unmarshal string into Go value of type native.callTracerConfig")]
+    [TestCase("prestateTracer", "[]", "json: cannot unmarshal array into Go value of type native.prestateTracerConfig")]
+    [TestCase("prestateTracer", "1", "json: cannot unmarshal number into Go value of type native.prestateTracerConfig")]
+    public void ValidateTracerConfig_ReportsGoUnmarshalError(string tracer, string config, string message)
+    {
+        using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(config);
+        GethTraceOptions options = new() { Tracer = tracer, TracerConfig = document.RootElement };
+
+        Assert.That(() => GethLikeNativeTracerFactory.ValidateTracerConfig(options),
+            Throws.TypeOf<NativeTracerConfigException>().With.Message.EqualTo(message));
+    }
+
     private sealed class DisposeTrackingTracer(GethTraceOptions options) : GethLikeNativeTxTracer(options)
     {
         public int DisposeCalls { get; private set; }

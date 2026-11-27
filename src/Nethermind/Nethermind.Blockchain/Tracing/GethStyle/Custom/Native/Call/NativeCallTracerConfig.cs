@@ -15,7 +15,7 @@ public class NativeCallTracerConfig
 
     internal static NativeCallTracerConfig FromJson(JsonElement? json, JsonSerializerOptions options)
     {
-        JsonConfig? config = GethLikeNativeTracerFactory.ParseConfig<JsonConfig>(json, options);
+        JsonConfig? config = GethLikeNativeTracerFactory.ParseConfig<JsonConfig>(json, options, "callTracerConfig");
         return config is null ? DefaultConfig : new()
         {
             OnlyTopCall = config.OnlyTopCall ?? false,

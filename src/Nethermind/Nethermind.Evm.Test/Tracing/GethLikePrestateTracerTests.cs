@@ -435,7 +435,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     public void Constructor_RejectsDiffModeWithIncludeEmpty() =>
         Assert.That(() => new NativePrestateTracer(TestState,
             GetGethTraceOptions("""{"diffMode":true,"includeEmpty":true}"""), Hash256.Zero, TestItem.AddressA),
-            Throws.ArgumentException.With.Message.EqualTo("cannot use diffMode with includeEmpty"));
+            Throws.TypeOf<NativeTracerConfigException>().With.Message.EqualTo("cannot use diffMode with includeEmpty"));
 
     private static readonly JsonSerializerOptions SerializerOptions = EthereumJsonSerializer.JsonOptionsIndented;
     private const string DiffMode = """{"diffMode":true}""";

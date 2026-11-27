@@ -1014,7 +1014,7 @@ public partial class DebugRpcModuleTests
             new { tracer, timeout = "0s", tracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"{{field}}":[]}""") });
         JToken json = JToken.Parse(response);
         Assert.That(json["error"], Is.Not.Null, response);
-        Assert.That(json["error"]!.ToString(), Does.Contain("Cannot convert").And.Not.Contain("execution timeout"), response);
+        Assert.That(json["error"]!.ToString(), Does.Contain("cannot unmarshal").And.Not.Contain("execution timeout"), response);
     }
 
     [Test]
@@ -1280,7 +1280,7 @@ public partial class DebugRpcModuleTests
         {
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
             Assert.That(json["result"], Is.Null, response);
-            Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot convert").And.Not.Contain("time: invalid duration"), response);
+            Assert.That((string?)json["error"]?["message"], Does.Contain("cannot unmarshal").And.Not.Contain("time: invalid duration"), response);
         }
     }
 
@@ -1343,7 +1343,7 @@ public partial class DebugRpcModuleTests
         {
             Assert.That((int?)buffered["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), buffered.ToString());
             Assert.That((int?)streamed["error"]?["code"], Is.EqualTo((int?)buffered["error"]?["code"]), streamed.ToString());
-            Assert.That((string?)streamed["error"]?["message"], Does.Contain("Cannot convert").And.Not.Contain("time: invalid duration"));
+            Assert.That((string?)streamed["error"]?["message"], Does.Contain("cannot unmarshal").And.Not.Contain("time: invalid duration"));
         }
     }
 
@@ -1496,7 +1496,7 @@ public partial class DebugRpcModuleTests
 #pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(error, Is.Not.Null, response);
 #pragma warning restore NUnit2045
-        Assert.That((string?)error["data"] ?? (string?)error["message"], Does.Contain("Cannot convert"), "native config errors remain top-level even with an expired timeout");
+        Assert.That((string?)error["data"] ?? (string?)error["message"], Does.Contain("cannot unmarshal"), "native config errors remain top-level even with an expired timeout");
     }
 
     [Test]
@@ -1577,10 +1577,10 @@ public partial class DebugRpcModuleTests
             ("unmatched", "bad", false, "muxTracer", "{}", raw, null, null),
             ("nonempty", "5s", false, "muxTracer", "{}", raw, null, null),
             ("nonempty", "5", false, "muxTracer", "{}", raw, null, null),
-            ("nonempty", "bad", false, "muxTracer", "{\"prestateTracer\":{\"diffMode\":[]}}", raw, ErrorCodes.InvalidInput, "Cannot convert"),
+            ("nonempty", "bad", false, "muxTracer", "{\"prestateTracer\":{\"diffMode\":[]}}", raw, ErrorCodes.InvalidInput, "cannot unmarshal"),
             ("nonempty", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "time: invalid duration"),
-            ("nonempty", "bad", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "Cannot convert"),
-            ("nonempty", "5s", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "Cannot convert"),
+            ("nonempty", "bad", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "cannot unmarshal"),
+            ("nonempty", "5s", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "cannot unmarshal"),
             ("nonempty", "5s", null, noop, null, raw, null, null),
             ("nonempty", "bad", null, "callTracer", nullConfig, raw, ErrorCodes.InvalidInput, "time: invalid duration"),
             ("nonempty", "5s", null, "callTracer", nullConfig, raw, null, null),
