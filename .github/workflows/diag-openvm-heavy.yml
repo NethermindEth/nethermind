@@ -7,7 +7,7 @@ on:
   # workflow_dispatch needs the workflow on the default branch, so a push to this branch runs it with the defaults.
   push:
     branches: [diag/zkvm-guest-heap-use]
-    paths: [.github/workflows/diag-openvm-heavy.yml, .github/diag/openvm-heavy.json]
+    paths: [.github/workflows/diag-openvm-heavy.yml, .github/diag/openvm-heavy.json, .github/zkvm-ab/**]
   workflow_dispatch:
     inputs:
       bflat_openvm_run:
