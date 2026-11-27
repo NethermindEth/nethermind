@@ -50,6 +50,9 @@ internal static class SnapshotDatabase
     /// <exception cref="IOException">
     /// The database holds content or another extraction's marker, or the marker could not be created or written.
     /// </exception>
+    /// <exception cref="UnauthorizedAccessException">
+    /// The database directory or the marker could not be created for lack of permission.
+    /// </exception>
     public static void BeginExtraction(string dbPath)
     {
         // Checked here too: content or another extraction can appear during a long download, and the extraction would write

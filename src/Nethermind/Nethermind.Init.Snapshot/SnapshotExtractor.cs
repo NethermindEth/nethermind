@@ -116,8 +116,9 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         }
     }
 
-    // On Windows the renaming below turns the colon of a drive-absolute name into an underscore, which would make it a
-    // relative name inside the destination. Such an entry is refused by its original name, as before.
+    // On Windows the renaming below turns the colon of a drive-absolute name into an underscore, which makes it a
+    // relative name inside the destination: ZipFile.ExtractToDirectory extracts such an entry there. This extraction
+    // refuses an entry whose original name resolves outside the destination.
     private static bool IsInsideByOriginalName(string destinationRoot, string name) =>
         !OperatingSystem.IsWindows()
         || Path.GetFullPath(Path.Combine(destinationRoot, name.Replace('\0', '_'))).StartsWith(destinationRoot, StringComparison.Ordinal);
