@@ -51,6 +51,11 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
             {
                 if (_logger.IsError) _logger.Error($"Error in verify trie", e);
             }
+            finally
+            {
+                // Free the starter only once this run is over, however it ended, so the next request can start one.
+                Volatile.Write(ref _alreadyRunning, false);
+            }
 
         }, TaskCreationOptions.LongRunning);
 
