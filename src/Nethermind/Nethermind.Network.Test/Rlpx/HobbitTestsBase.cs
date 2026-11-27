@@ -6,7 +6,6 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
@@ -30,10 +29,10 @@ public abstract class HobbitTestsBase
         (EncryptionSecrets A, EncryptionSecrets B) = NetTestVectors.GetSecretsPair();
 
         _frameCipherA = new FrameCipher(A.AesSecret);
-        _macProcessorA = new FrameMacProcessor(TestItem.IgnoredPublicKey, A);
+        _macProcessorA = new FrameMacProcessor(A);
 
         _frameCipherB = new FrameCipher(B.AesSecret);
-        _macProcessorB = new FrameMacProcessor(TestItem.IgnoredPublicKey, B);
+        _macProcessorB = new FrameMacProcessor(B);
 
         _frame = new byte[16 + 16 + 16 + 16];
         _frame[2] = 16; // size

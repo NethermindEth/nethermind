@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -796,6 +799,474 @@ public class TrieNodeLogTests
             Assert.That(_db.GetColumnDb(FlatDbColumns.StateTopNodes).Get(key), Is.Null);
             Assert.That(() => Batch(0, 1).Dispose(), Throws.Nothing);
         }
+    }
+
+    [Test]
+    public async Task An_aborted_batch_leaves_no_record_and_the_log_takes_the_next_batch([Values] bool beyondOneStagingChunk)
+    {
+        WriteTop(0, 1, Rlp1);
+        TreePath[] paths = WriteAbortedBatch(beyondOneStagingChunk ? 24 : 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadTop(), Is.EqualTo(Rlp1));
+            Assert.That(paths.Select(ReadState), Has.All.Null, "no aborted record is readable");
+            Assert.That(LogFiles().Select(static file => new FileInfo(file).Length), Has.All.LessThan(AbortedRecordLength), "the appended records are truncated");
+            Assert.That(BasePersistence.ReadCurrentState(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.EqualTo(State(1)));
+        }
+
+        WriteTop(1, 2, Rlp3);
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the log takes the next batch");
+
+        await Reopen();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadTop(), Is.EqualTo(Rlp3));
+            Assert.That(paths.Select(ReadState), Has.All.Null, "no aborted record is recovered");
+        }
+    }
+
+    // A power loss keeps the directory entry of a file whose content was never synced, but can drop that content. The
+    // generations an aborted batch rolled hold only their header, and the next commit confirms a newer generation of the
+    // shard; unless those headers were synced, the first open after the loss drops the emptied files and the next open finds
+    // generations the database confirms missing.
+    [Test]
+    public async Task Generations_an_aborted_batch_rolled_survive_a_power_loss_after_the_next_commit()
+    {
+        FileSystemProbe probe = new();
+        await _log.DisposeAsync();
+        OpenProbed(probe);
+        // A generation's header is durable before the roll publishes it, and so before the next one is created.
+        probe.BeforeFlush = (path, length) =>
+        {
+            if (length == TrieNodeLogGeneration.FileHeaderLength && _log.Shards.Any(shard => shard.Active is { } active && Path.GetFullPath(active.Path) == path))
+                probe.OrderViolations.Enqueue($"{path} was published before its header was synced");
+        };
+
+        WriteTop(0, 1, Rlp1);
+        WriteAbortedBatch(24);
+        WriteTop(1, 2, Rlp3);
+        await _log.DisposeAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LogFiles().Select(static file => new FileInfo(file).Length), Has.Some.EqualTo(TrieNodeLogGeneration.FileHeaderLength),
+                "the aborted batch left header-only generations between the two committed ones");
+            Assert.That(probe.OrderViolations, Is.Empty);
+        }
+        LoseUnsyncedHeaders(probe);
+
+        Open();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the first open after the loss");
+        await Reopen();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the second open after the loss");
+    }
+
+    // A process that exits between a roll's header write and its sync leaves a header-only file the OS still holds. The
+    // warm restart that adopts it must make it durable, as the next commit confirms a newer generation of the shard.
+    [Test]
+    public async Task A_header_only_generation_adopted_on_restart_survives_a_power_loss_after_the_next_commit()
+    {
+        FileSystemProbe probe = new();
+        await _log.DisposeAsync();
+        OpenProbed(probe);
+        WriteTop(0, 1, Rlp1);
+        await _log.DisposeAsync();
+
+        // The file image of the exit: generation 2 holds its header, never synced.
+        string path = Path.Combine(_directory.Path, "state-0", "gen-00000002.log");
+        using (TrieNodeLogGeneration interrupted = new(2, path, FileSystem, 1024, static (_, exception) => throw exception))
+        {
+            interrupted.WriteFileHeader();
+            interrupted.PreserveOnDispose();
+        }
+
+        OpenProbed(probe);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(probe.DurableLength.GetValueOrDefault(Path.GetFullPath(path)), Is.GreaterThanOrEqualTo(TrieNodeLogGeneration.FileHeaderLength),
+                "the open made the adopted header durable");
+            Assert.That(ReadTop(), Is.EqualTo(Rlp1), "the warm restart");
+        }
+        WriteTop(1, 2, Rlp3);
+        await _log.DisposeAsync();
+        LoseUnsyncedHeaders(probe);
+
+        Open();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the first open after the loss");
+        await Reopen();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the second open after the loss");
+    }
+
+    public enum RollFault
+    {
+        HeaderWrite,
+        PartialHeaderWrite,
+        HeaderSync,
+    }
+
+    // A roll whose header write or sync fails leaves its number unused and its file behind. The next roll takes the same
+    // number and file name and rewrites the file with a full header and a sync, so the failed roll must not delete the
+    // file, now or through a deletion queued for later, which would remove the generation that next roll commits.
+    [Test]
+    public async Task A_failed_roll_is_retried_into_the_same_number([Values] RollFault fault)
+    {
+        IOException failure = new("roll failed");
+        int fired = 0;
+        bool FirstFault(string path) => IsStateGeneration(path, 1) && Interlocked.Exchange(ref fired, 1) == 0;
+        FileSystemProbe probe = new()
+        {
+            FailWrite = (path, offset, length) => fault != RollFault.HeaderSync && offset == 0 && length == TrieNodeLogGeneration.FileHeaderLength && FirstFault(path)
+                ? (failure, fault == RollFault.PartialHeaderWrite ? TrieNodeLogGeneration.FileHeaderLength / 2 : 0)
+                : null,
+            FailFlush = (path, length) => fault == RollFault.HeaderSync && length == TrieNodeLogGeneration.FileHeaderLength && FirstFault(path) ? failure : null,
+            FailDelete = static path => IsStateGeneration(path, 1),
+        };
+        _config.TrieNodeLogSecondLevelMergeLag = -1; // a merge goes straight to RocksDB, whose trie column flush fails below
+        await _log.DisposeAsync();
+        OpenProbed(probe, logDb: WithUnflushable(static column => column != FlatDbColumns.Metadata));
+
+        IOException? thrown = Assert.Throws<IOException>(() => WriteTop(0, 1, Rlp1));
+        WriteTop(0, 1, Rlp3);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(failure), "the roll's own failure reaches the caller");
+            Assert.That(_log.Shards[0].Active?.Number, Is.EqualTo(1UL), "the retry rolled into the same number, with no restart");
+            Assert.That(ReadTop(), Is.EqualTo(Rlp3));
+        }
+
+        // A merge pass first retries the deletions queued for later; its flush fails, so the merged marker stays below the
+        // recorded generation and the file the retry committed into is still required.
+        Assert.That(() => _log.Drain(), Throws.TypeOf<AggregateException>().With.InnerException.TypeOf<IOException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(probe.DeleteAttempts.GetValueOrDefault(Path.GetFullPath(Path.Combine(_directory.Path, "state-0", "gen-00000001.log"))), Is.Zero,
+                "the failed roll's file is never deleted");
+            Assert.That(FlushedGeneration(_log.Shards[0]), Is.LessThan(RecordedGeneration(_log.Shards[0])));
+        }
+
+        await _log.DisposeAsync();
+        Open();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the first open");
+        await Reopen();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp3), "the second open");
+    }
+
+    // A batch aborted after rolling leaves the generations before its last roll unsealed, the oldest of them holding the only
+    // copy of a committed record. A drain merges every generation in order, so its marker never passes over that record.
+    [Test]
+    public async Task A_drain_after_a_rolled_abort_merges_every_generation([Values] bool secondLevel)
+    {
+        _config.TrieNodeLogMergeLag = 1000; // nothing is merged before the drain
+        _config.TrieNodeLogSecondLevelMergeLag = secondLevel ? 1000 : -1;
+        await Reopen();
+
+        WriteTop(0, 1, Rlp1);
+        Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.Null, "the committed node is only in the log");
+        int filesBefore = ShardFiles("state-0").Length;
+        TreePath[] aborted = WriteAbortedBatch(24);
+        string[] files = ShardFiles("state-0");
+        Assert.That(files, Has.Length.GreaterThan(filesBefore), "the aborted batch rolled");
+        ulong lastGeneration = files.Max(GenerationNumber);
+
+        _persistence.Flush();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().LoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1), "the drain merged the committed node into RocksDB");
+            Assert.That(ReadTop(), Is.EqualTo(Rlp1));
+            Assert.That(aborted.Select(ReadState), Has.All.Null);
+            Assert.That(FlushedGeneration(_log.Shards[0]), Is.EqualTo(lastGeneration), "the marker covers the last drained file");
+        }
+
+        await Reopen();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp1), "the first open");
+        await Reopen();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp1), "the second open");
+    }
+
+    // A first-level merge copies a sealed generation into the second level, whose roll can fail. The copy is retried, and a
+    // write waiting on the merge backlog completes once it succeeds, with no restart.
+    [Test]
+    public async Task A_failed_second_level_copy_is_retried_and_the_waiting_write_completes()
+    {
+        IOException failure = new("second-level header sync failed");
+        using ManualResetEventSlim copyFailed = new();
+        int fired = 0;
+        FileSystemProbe probe = new()
+        {
+            FailFlush = (path, length) =>
+            {
+                if (length != TrieNodeLogGeneration.FileHeaderLength || ShardOf(path) != "state-0-l2" || Interlocked.Exchange(ref fired, 1) != 0) return null;
+                copyFailed.Set();
+                return failure;
+            },
+            FailDelete = static path => ShardOf(path) == "state-0-l2",
+        };
+        _config.TrieNodeLogMergeBacklogMargin = 1; // one sealed, unmerged generation makes the next roll wait
+        _config.TrieNodeLogSecondLevelMergeLag = 1000;
+        await _log.DisposeAsync();
+        OpenProbed(probe, mergeLag: 0);
+
+        // Fills its generation, so the commit seals it and the merge copies it at once.
+        byte[] first = Value(1, 5000);
+        WriteTop(0, 1, first);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copyFailed.Wait(TimeSpan.FromSeconds(10)), Is.True, "the copy reached the second level's roll");
+            Assert.That(FlushedGeneration(_log.Shards[0]), Is.Zero, "a failed copy leaves the source unmerged");
+        }
+
+        TreePath secondPath = TreePath.FromHexString("1abcd");
+        byte[] second = Value(2, 5000);
+        Task write = Task.Run(() =>
+        {
+            using IPersistence.IWriteBatch batch = Batch(1, 2);
+            batch.SetStateTrieNode(secondPath, second);
+        });
+        Assert.That(write.Wait(TimeSpan.FromSeconds(20)), Is.True, "the write waiting on the backlog completed, with no restart");
+
+        await _log.DisposeAsync();
+        LoseUnsyncedHeaders(probe);
+        Open();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadTop(), Is.EqualTo(first), "the first open");
+            Assert.That(ReadState(secondPath), Is.EqualTo(second), "the first open");
+        }
+        await Reopen();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadTop(), Is.EqualTo(first), "the second open");
+            Assert.That(ReadState(secondPath), Is.EqualTo(second), "the second open");
+        }
+    }
+
+    // A commit can sync its records into one file and fail to sync them into the next. Its rollback truncates both files
+    // without a sync, so after a power loss the first file may still end with the failed version's commit record, for a
+    // later version to confirm. The shard takes no batch until a restart, whose recovery cuts that tail.
+    [Test]
+    public async Task A_commit_that_synced_only_part_of_its_records_stops_the_shard_until_a_restart()
+    {
+        IOException failure = new("commit record sync failed");
+        int fired = 0;
+        FileSystemProbe probe = new()
+        {
+            FailFlush = (path, length) => length > TrieNodeLogGeneration.FileHeaderLength && IsStateGeneration(path, 2) && Interlocked.Exchange(ref fired, 1) == 0 ? failure : null,
+        };
+        await _log.DisposeAsync();
+        OpenProbed(probe);
+        WriteTop(0, 1, Rlp1); // the confirmed value, at version 1 in generation 1
+        string firstFile = Path.GetFullPath(Path.Combine(_directory.Path, "state-0", "gen-00000001.log"));
+        TreePath rolledPath = TreePath.FromHexString("12346"); // the same shard as the top node
+        TreePath unrelatedPath = TreePath.FromHexString("1abcd"); // the same shard again
+
+        // Version 2 overwrites the value with one that fills generation 1, so its next record rolls into generation 2.
+        Exception? thrown = Assert.Catch(() =>
+        {
+            using IPersistence.IWriteBatch batch = Batch(1, 2);
+            batch.SetStateTrieNode(TopPath, Value(9, 6000));
+            batch.SetStateTrieNode(rolledPath, Rlp2);
+        });
+        byte[] syncedFirstFile = probe.DurableImage[firstFile];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown is AggregateException aggregate ? aggregate.InnerException : thrown, Is.SameAs(failure));
+            Assert.That(ShardFiles("state-0"), Has.Length.EqualTo(2), "the version-2 batch rolled into generation 2");
+            Assert.That(syncedFirstFile, Has.Length.GreaterThan(6000), "generation 1 was synced with the failed version's records");
+            Assert.That(() => WriteTop(1, 2, Rlp3), Throws.InvalidOperationException.With.Message.Contains("restart"), "a version-advancing write is refused until a restart");
+        }
+
+        // The power loss: generation 1's truncation by the rollback was never synced.
+        await _log.DisposeAsync();
+        File.WriteAllBytes(firstFile, syncedFirstFile);
+        Open();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp1), "the first open");
+        using (IPersistence.IWriteBatch batch = Batch(1, 2)) batch.SetStateTrieNode(unrelatedPath, Rlp3);
+        await Reopen();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadTop(), Is.EqualTo(Rlp1), "the second open, after a later commit");
+            Assert.That(ReadState(unrelatedPath), Is.EqualTo(Rlp3));
+        }
+    }
+
+    /// <summary>Whether <paramref name="path"/> is generation <paramref name="number"/> of the first state shard.</summary>
+    private static bool IsStateGeneration(string path, ulong number) =>
+        ShardOf(path) == "state-0" && Path.GetFileName(path) == $"gen-{number:D8}.log";
+
+    private static string? ShardOf(string path) => Path.GetFileName(Path.GetDirectoryName(path));
+
+    private static ulong GenerationNumber(string path) => ulong.Parse(Path.GetFileNameWithoutExtension(path)["gen-".Length..]);
+
+    private ulong FlushedGeneration(TrieNodeLogShard shard) => ReadMetadata(shard.FlushedGenerationKey);
+
+    private ulong RecordedGeneration(TrieNodeLogShard shard) => ReadMetadata(shard.GenerationKey);
+
+    private ulong ReadMetadata(byte[] key) =>
+        _db.GetColumnDb(FlatDbColumns.Metadata).Get(key) is { Length: 8 } bytes ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
+
+    private const int AbortedRecordLength = 60_000;
+
+    /// <summary>
+    /// Aborts a batch from state 1 that overwrites the top node and writes <paramref name="keys"/> large records to the
+    /// first state shard; past one 1 MiB staging chunk the records are appended to its files, rolling generations, before
+    /// the batch is disposed.
+    /// </summary>
+    /// <returns>The paths of the large records.</returns>
+    private TreePath[] WriteAbortedBatch(int keys)
+    {
+        TreePath[] paths = new TreePath[keys];
+        for (int i = 0; i < keys; i++) paths[i] = TreePath.FromHexString($"1{i:x4}");
+        using IPersistence.IWriteBatch batch = Batch(1, 2);
+        batch.SetStateTrieNode(TopPath, Rlp2);
+        for (int i = 0; i < keys; i++) batch.SetStateTrieNode(paths[i], Value((byte)i, AbortedRecordLength));
+        batch.Abort();
+        return paths;
+    }
+
+    private byte[]? ReadState(TreePath path)
+    {
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        return reader.LoadStateRlp(path, ReadFlags.None);
+    }
+
+    /// <summary>
+    /// Opens the log over the real file system as <paramref name="probe"/> observes and faults it, with a merge lag by
+    /// default so high that nothing is merged and every generation stays confirmed.
+    /// </summary>
+    /// <param name="logDb">The database the log itself uses; the store always uses the test database.</param>
+    private void OpenProbed(FileSystemProbe probe, int mergeLag = 1000, IColumnsDb<FlatDbColumns>? logDb = null)
+    {
+        _config.TrieNodeLogMergeLag = mergeLag;
+        _log = new TrieNodeLog(_directory.Path, ProbedFileSystem(probe), logDb ?? _db, _config, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, _log);
+    }
+
+    /// <summary>Models a power loss: a log file whose header no flush made durable keeps its directory entry and loses its content.</summary>
+    private void LoseUnsyncedHeaders(FileSystemProbe probe)
+    {
+        foreach (string file in LogFiles())
+        {
+            if (probe.DurableLength.GetValueOrDefault(Path.GetFullPath(file)) < TrieNodeLogGeneration.FileHeaderLength)
+                File.WriteAllBytes(file, Array.Empty<byte>());
+        }
+    }
+
+    /// <summary>What <see cref="ProbedFileSystem"/> observed, and the faults it injects. Paths are full paths.</summary>
+    private sealed class FileSystemProbe
+    {
+        /// <summary>Per file, the longest file length a successful flush made durable.</summary>
+        public ConcurrentDictionary<string, long> DurableLength { get; } = new();
+
+        /// <summary>Per file, its content at its last successful flush.</summary>
+        public ConcurrentDictionary<string, byte[]> DurableImage { get; } = new();
+
+        /// <summary>Per file, how many times its deletion was attempted.</summary>
+        public ConcurrentDictionary<string, int> DeleteAttempts { get; } = new();
+
+        /// <summary>A generation file created before its predecessor's header was durable, or flushed after it was published.</summary>
+        public ConcurrentQueue<string> OrderViolations { get; } = new();
+
+        /// <summary>The exception the flush of a file (by path and length) throws instead of flushing, or null.</summary>
+        public Func<string, long, Exception?> FailFlush { get; init; } = static (_, _) => null;
+
+        /// <summary>The exception a write (by path, offset and length) throws instead, after writing a prefix of the given length; or null.</summary>
+        public Func<string, long, int, (Exception Failure, int Prefix)?> FailWrite { get; init; } = static (_, _, _) => null;
+
+        /// <summary>Whether the deletion of a file throws instead of deleting.</summary>
+        public Func<string, bool> FailDelete { get; init; } = static _ => false;
+
+        /// <summary>Called with each file and its length before it is flushed.</summary>
+        public Action<string, long>? BeforeFlush { get; set; }
+
+        private readonly ConcurrentDictionary<string, byte> _created = new();
+
+        /// <summary>Records a generation file being created, checking that the previous one of its shard has a durable header.</summary>
+        public void OnCreated(string path)
+        {
+            if (Path.GetFileName(path).StartsWith("gen-", StringComparison.Ordinal))
+            {
+                string previous = Path.Combine(Path.GetDirectoryName(path)!, $"gen-{GenerationNumber(path) - 1:D8}.log");
+                if (_created.ContainsKey(previous) && DurableLength.GetValueOrDefault(previous) < TrieNodeLogGeneration.FileHeaderLength)
+                    OrderViolations.Enqueue($"{path} was created before the header of {previous} was durable");
+            }
+            _created[path] = 0;
+        }
+    }
+
+    /// <summary>The real file system, as <paramref name="probe"/> observes and faults it.</summary>
+    private static IFileSystem ProbedFileSystem(FileSystemProbe probe)
+    {
+        ConcurrentDictionary<SafeFileHandle, string> paths = new();
+        IFile file = Substitute.For<IFile>();
+        file.OpenHandle(Arg.Any<string>(), Arg.Any<FileMode>(), Arg.Any<FileAccess>(), Arg.Any<FileShare>(), Arg.Any<FileOptions>(), Arg.Any<long>())
+            .Returns(call =>
+            {
+                string path = Path.GetFullPath(call.ArgAt<string>(0));
+                bool created = call.ArgAt<FileMode>(1) != FileMode.Open && !FileSystem.File.Exists(path);
+                SafeFileHandle handle = FileSystem.File.OpenHandle(path, call.ArgAt<FileMode>(1), call.ArgAt<FileAccess>(2), call.ArgAt<FileShare>(3), call.ArgAt<FileOptions>(4), call.ArgAt<long>(5));
+                paths[handle] = path;
+                if (created) probe.OnCreated(path);
+                return handle;
+            });
+        file.Exists(Arg.Any<string?>()).Returns(static call => FileSystem.File.Exists(call.ArgAt<string?>(0)));
+        file.When(static f => f.Delete(Arg.Any<string>())).Do(call =>
+        {
+            string path = Path.GetFullPath(call.ArgAt<string>(0));
+            probe.DeleteAttempts.AddOrUpdate(path, 1, static (_, attempts) => attempts + 1);
+            if (probe.FailDelete(path)) throw new IOException($"deleting {path} failed");
+            FileSystem.File.Delete(path);
+        });
+
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.File.Returns(file);
+        fileSystem.Directory.Returns(FileSystem.Directory);
+        fileSystem.FileInfo.Returns(FileSystem.FileInfo);
+        fileSystem.Path.Returns(FileSystem.Path);
+        fileSystem.RandomAccess.Returns(new ProbedRandomAccess(FileSystem.RandomAccess, probe, paths));
+        return fileSystem;
+    }
+
+    /// <summary>Forwards to the real random access; a flush records what it made durable, and a flush or write may throw the probe's fault.</summary>
+    private sealed class ProbedRandomAccess(IRandomAccess inner, FileSystemProbe probe, ConcurrentDictionary<SafeFileHandle, string> paths) : IRandomAccess
+    {
+        public IFileSystem FileSystem => inner.FileSystem;
+
+        public void FlushToDisk(SafeFileHandle handle)
+        {
+            string path = paths[handle];
+            long length = inner.GetLength(handle);
+            probe.BeforeFlush?.Invoke(path, length);
+            if (probe.FailFlush(path, length) is { } failure) throw failure;
+            inner.FlushToDisk(handle);
+
+            byte[] image = new byte[length];
+            int read = 0;
+            while (read < image.Length && inner.Read(handle, image.AsSpan(read), read) is > 0 and int count) read += count;
+            probe.DurableImage[path] = image[..read];
+            probe.DurableLength.AddOrUpdate(path, length, (_, durable) => Math.Max(durable, length));
+        }
+
+        public void Write(SafeFileHandle handle, ReadOnlySpan<byte> buffer, long fileOffset)
+        {
+            if (probe.FailWrite(paths[handle], fileOffset, buffer.Length) is { } fault)
+            {
+                if (fault.Prefix > 0) inner.Write(handle, buffer[..fault.Prefix], fileOffset);
+                throw fault.Failure;
+            }
+            inner.Write(handle, buffer, fileOffset);
+        }
+
+        public long GetLength(SafeFileHandle handle) => inner.GetLength(handle);
+        public int Read(SafeFileHandle handle, Span<byte> buffer, long fileOffset) => inner.Read(handle, buffer, fileOffset);
+        public long Read(SafeFileHandle handle, IReadOnlyList<Memory<byte>> buffers, long fileOffset) => inner.Read(handle, buffers, fileOffset);
+        public ValueTask<int> ReadAsync(SafeFileHandle handle, Memory<byte> buffer, long fileOffset, CancellationToken cancellationToken = default) => inner.ReadAsync(handle, buffer, fileOffset, cancellationToken);
+        public ValueTask<long> ReadAsync(SafeFileHandle handle, IReadOnlyList<Memory<byte>> buffers, long fileOffset, CancellationToken cancellationToken = default) => inner.ReadAsync(handle, buffers, fileOffset, cancellationToken);
+        public void SetLength(SafeFileHandle handle, long length) => inner.SetLength(handle, length);
+        public void Write(SafeFileHandle handle, IReadOnlyList<ReadOnlyMemory<byte>> buffers, long fileOffset) => inner.Write(handle, buffers, fileOffset);
+        public ValueTask WriteAsync(SafeFileHandle handle, ReadOnlyMemory<byte> buffer, long fileOffset, CancellationToken cancellationToken = default) => inner.WriteAsync(handle, buffer, fileOffset, cancellationToken);
+        public ValueTask WriteAsync(SafeFileHandle handle, IReadOnlyList<ReadOnlyMemory<byte>> buffers, long fileOffset, CancellationToken cancellationToken = default) => inner.WriteAsync(handle, buffers, fileOffset, cancellationToken);
     }
 
     [Test]

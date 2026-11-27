@@ -30,7 +30,6 @@ public class FrameDecoderBenchmarks
     private KeccakHash _macTemplate = null!;
     private byte[] _wire = null!;
     private int _packets;
-    private PublicKey _key = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -42,12 +41,9 @@ public class FrameDecoderBenchmarks
         random.NextBytes(_macSecret);
         _macTemplate = KeccakHash.Create();
         _macTemplate.Update(_aes);
-        byte[] keyBytes = new byte[64];
-        random.NextBytes(keyBytes);
-        _key = new PublicKey(keyBytes);
         _packets = Math.Max(1, StreamBytes / PacketSize);
 
-        using FrameMacProcessor mac = new(_key, Secrets());
+        using FrameMacProcessor mac = new(Secrets());
         ZeroPacketSplitter splitter = new(new FrameCipher(_aes), mac);
         if (!Framed)
         {
@@ -89,7 +85,7 @@ public class FrameDecoderBenchmarks
     [Benchmark]
     public int Decode()
     {
-        using FrameMacProcessor mac = new(_key, Secrets());
+        using FrameMacProcessor mac = new(Secrets());
         EmbeddedChannel channel = new(new ZeroFrameDecoder(new FrameCipher(_aes), mac));
         channel.Configuration.Allocator = PooledByteBufferAllocator.Default;
         int frames = 0;
