@@ -30,6 +30,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
     private bool _isDisposed;
     private Hash256? _currentTxHash;
     private GethLikeTxDirectStreamingTracer? _reusableTxTracer;
+    private bool _isPostMerge;
 
     public GethLikeBlockEnvelopeStreamingTracer(
         GethTraceOptions options,
@@ -65,7 +66,15 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         {
             _reusableTxTracer.ResetForNextTx(tx);
         }
+        _reusableTxTracer.IsPostMerge = _isPostMerge;
         return _reusableTxTracer;
+    }
+
+    /// <inheritdoc/>
+    public override void StartNewBlockTrace(Block block)
+    {
+        base.StartNewBlockTrace(block);
+        _isPostMerge = block.Header.IsPostMerge;
     }
 
     protected override GethLikeTxTrace OnEnd(GethLikeTxDirectStreamingTracer txTracer)

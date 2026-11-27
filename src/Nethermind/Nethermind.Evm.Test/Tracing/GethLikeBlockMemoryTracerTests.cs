@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -107,5 +111,40 @@ public class GethLikeBlockMemoryTracerTests
         ((IBlockTracer)blockTracer2).StartNewTxTrace(block.Transactions[0]);
         Assert.DoesNotThrow(() => ((IBlockTracer)blockTracer2).EndTxTrace());
         Assert.Throws<InvalidOperationException>(() => ((IBlockTracer)blockTracer2).EndTxTrace());
+    }
+
+    /// <remarks>EIP-4399: from the merge, opcode 0x44 is PREVRANDAO.</remarks>
+    [Test]
+    public void Names_opcode_0x44_by_the_traced_block([Values] bool postMerge, [Values("memory", "streaming", "envelope")] string tracer)
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        block.Header.IsPostMerge = postMerge;
+        using MemoryStream stream = new();
+        using Utf8JsonWriter writer = new(stream);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
+        GethLikeBlockMemoryTracer? memoryTracer = tracer == "memory" ? new(GethTraceOptions.Default) : null;
+        IBlockTracer blockTracer = tracer switch
+        {
+            "memory" => memoryTracer!,
+            "streaming" => new GethLikeBlockStreamingMemoryTracer(GethTraceOptions.Default, writer, null, CancellationToken.None),
+            _ => new GethLikeBlockEnvelopeStreamingTracer(GethTraceOptions.Default, writer, null, CancellationToken.None)
+        };
+
+        writer.WriteStartArray();
+        blockTracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = blockTracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+        txTracer.StartOperation(0, Instruction.PREVRANDAO, 100, in environment);
+        txTracer.ReportOperationRemainingGas(98);
+        blockTracer.EndTxTrace();
+        blockTracer.EndBlockTrace();
+        writer.WriteEndArray();
+        writer.Flush();
+
+        string expected = postMerge ? "PREVRANDAO" : "DIFFICULTY";
+        if (memoryTracer is not null)
+            Assert.That(memoryTracer.BuildResult().Single().Entries.Single().Opcode, Is.EqualTo(expected));
+        else
+            Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Does.Contain($"\"op\":\"{expected}\""));
     }
 }

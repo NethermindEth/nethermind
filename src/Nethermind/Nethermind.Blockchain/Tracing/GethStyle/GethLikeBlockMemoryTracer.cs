@@ -12,6 +12,7 @@ public class GethLikeBlockMemoryTracer(GethTraceOptions options, long destroyRef
 {
     private readonly ISpecProvider? _specProvider;
     private long _destroyRefund = destroyRefund;
+    private bool _isPostMerge;
 
     /// <summary>
     /// Creates a tracer that selects the self-destruct refund from the active specification for each block.
@@ -25,12 +26,13 @@ public class GethLikeBlockMemoryTracer(GethTraceOptions options, long destroyRef
     public override void StartNewBlockTrace(Block block)
     {
         base.StartNewBlockTrace(block);
+        _isPostMerge = block.Header.IsPostMerge;
 
         if (_specProvider is not null)
             _destroyRefund = (long)_specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
     }
 
-    protected override GethLikeTxMemoryTracer OnStart(Transaction? tx) => new(tx, options, _destroyRefund);
+    protected override GethLikeTxMemoryTracer OnStart(Transaction? tx) => new(tx, options, _destroyRefund) { IsPostMerge = _isPostMerge };
 
     protected override GethLikeTxTrace OnEnd(GethLikeTxMemoryTracer txTracer) => txTracer.BuildResult();
 }

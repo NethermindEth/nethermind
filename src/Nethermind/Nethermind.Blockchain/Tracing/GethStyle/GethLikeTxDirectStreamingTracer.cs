@@ -370,7 +370,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         if (_pendingUndefined)
             _writer.WriteString("op"u8, OpcodeJsonNames.GetUndefinedName(_pendingOpcode));
         else
-            _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
+            _writer.WriteString("op"u8, GetOpcodeJsonName(_pendingOpcode));
         _writer.WriteNumber("gas"u8, _pendingGas);
         _writer.WriteNumber("gasCost"u8, _pendingGasCost);
         _writer.WriteNumber("depth"u8, _pendingDepth);
