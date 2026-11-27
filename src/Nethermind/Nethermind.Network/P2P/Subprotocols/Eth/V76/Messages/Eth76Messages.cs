@@ -23,10 +23,10 @@ public sealed class GetProofWrapperManifestsMessage(long requestId, ValueHash256
     public ValueHash256[] Hashes { get; } = hashes;
 }
 
-/// <summary>A ProofWrapperManifests entry <c>[hash, txs-meta]</c>: a wrapper's hash and the metadata of all its transactions.</summary>
-public readonly record struct ProofWrapperManifest(ValueHash256 Hash, WrapperMetadata Manifest);
+/// <summary>A ProofWrapperManifests entry <c>[hash, [txhash, ...]]</c>: a wrapper's hash and its manifest.</summary>
+public readonly record struct ProofWrapperManifest(ValueHash256 Hash, WrapperManifest Manifest);
 
-/// <summary><c>ProofWrapperManifests (0x1c) = [request-id, [[hash, txs-meta], ...]]</c>.</summary>
+/// <summary><c>ProofWrapperManifests (0x1c) = [request-id, [[hash, [txhash, ...]], ...]]</c>.</summary>
 public sealed class ProofWrapperManifestsMessage(long requestId, ProofWrapperManifest[] manifests) : Eth75Message
 {
     public override int PacketType => Eth76MessageCode.ProofWrapperManifests;
@@ -84,8 +84,8 @@ public sealed class ProofWrapperManifestsMessageSerializer() : Eth75MessageSeria
         return Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt((ulong)message.RequestId), Eth75Rlp.EncodeList(entries));
     }
 
-    /// <remarks>Manifests have no 17-transaction limit; each must fit a wrapper within <c>MAX_WRAPPER_BYTES</c>, and the
-    /// requester checks it against the announced length and <c>txs-hash</c>.</remarks>
+    /// <remarks>Manifests have no 17-transaction limit; the requester checks each against the announced length and
+    /// <c>txs-hash</c>.</remarks>
     protected override ProofWrapperManifestsMessage Decode(ref Eth75RlpReader fields)
     {
         long requestId = ReadRequestId(ref fields);
@@ -96,7 +96,7 @@ public sealed class ProofWrapperManifestsMessageSerializer() : Eth75MessageSeria
         {
             Eth75RlpReader entry = list.ReadList();
             ValueHash256 hash = entry.ReadHash();
-            manifests[i] = new(hash, WrapperMetadata.Decode(entry.ReadItem(), Eth75Protocol.MaxWrapperBytes, int.MaxValue));
+            manifests[i] = new(hash, WrapperManifest.Decode(entry.ReadItem()));
             entry.End();
         }
         list.End();

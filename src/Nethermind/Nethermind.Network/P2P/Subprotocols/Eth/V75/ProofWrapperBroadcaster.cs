@@ -399,7 +399,6 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             {
                 peer.Known.Clear();
                 peer.Announced.Clear();
-                peer.Exchanged.Clear();
                 peer.ToAnnounce.Clear();
                 foreach (WrapperStore.Entry entry in _store.Recent())
                     if (entry.Verifier == verifier && peer.Supports(entry.Shape)) peer.ToAnnounce.Add(entry.Announcement);
@@ -485,13 +484,13 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
     /// <summary>Whether wrappers exchanged with <paramref name="peer"/> already cover every transaction of
     /// <paramref name="entry"/> under the same verifier, with no more proof bytes and no more verification work.</summary>
     /// <remarks>
-    /// EIP-8437: a wrapper is not announced when its transactions are covered by held, validated wrappers exchanged with the
-    /// recipient or announced by it, unless it reduces proof bytes or verification work, or provides an IL-bounded mode-1
-    /// proof where existing coverage cannot. Only held wrappers can be compared, since an announcement alone does not reveal
-    /// what a wrapper covers. The cover is chosen greedily, preferring wrappers that cover more of the remaining transactions
-    /// and then cheaper ones; verification work prices direct dependencies at their EIP-8288 verification gas and a recursive
-    /// STARK at one leanSTARK verification. A mode-1 wrapper is a single proof within the wrapper dependency limits, which an
-    /// inclusion list can reuse whole; it is only redundant when one held mode-1 wrapper already covers all its transactions.
+    /// <c>eth/76</c>: a wrapper is not announced when its transactions are covered by held, validated wrappers whose hashes either
+    /// peer announced on the connection or whose bodies were exchanged, unless it reduces proof bytes or verification work. A
+    /// mode-0 offer is compared only against mode-0 coverage, and a mode-1 one is announced while some of its transactions have
+    /// only mode-0 coverage. Only held wrappers can be compared, since an announcement alone does not reveal what a wrapper
+    /// covers. The cover is chosen greedily, preferring wrappers that cover more of the remaining transactions and then cheaper
+    /// ones; verification work prices direct dependencies at their EIP-8288 verification gas and a recursive STARK at one
+    /// leanSTARK verification.
     /// </remarks>
     private bool IsRedundantFor(WrapperPeer peer, WrapperStore.Entry entry, long now)
     {
@@ -501,10 +500,11 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             foreach (ValueHash256 wrapperHash in _store.Listing(transaction))
                 if (wrapperHash != entry.Announcement.Hash && !candidates.ContainsKey(wrapperHash)
                     && _store.TryGet(wrapperHash, out WrapperStore.Entry candidate) && candidate.Verifier == entry.Verifier
-                    && peer.Exchanged.Contains(wrapperHash, now))
+                    && (entry.Shape.Mode == MempoolWrapper.ModeRecursive || candidate.Shape.Mode == MempoolWrapper.ModeDirect)
+                    && peer.Known.Contains(wrapperHash, now))
                     candidates[wrapperHash] = candidate;
         if (candidates.Count == 0) return false;
-        if (entry.Shape.Mode == MempoolWrapper.ModeRecursive && !HasSingleRecursiveCover(entry, candidates.Values)) return false;
+        if (entry.Shape.Mode == MempoolWrapper.ModeRecursive && !IsCoveredRecursively(entry, candidates.Values)) return false;
         long proofBytes = 0, work = 0;
         while (uncovered.Count > 0)
         {
@@ -530,15 +530,12 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
         return entry.Shape.ProofBytes >= proofBytes && entry.Shape.VerificationWork >= work;
     }
 
-    private static bool HasSingleRecursiveCover(WrapperStore.Entry entry, IEnumerable<WrapperStore.Entry> candidates)
+    private static bool IsCoveredRecursively(WrapperStore.Entry entry, IEnumerable<WrapperStore.Entry> candidates)
     {
+        HashSet<ValueHash256> covered = [];
         foreach (WrapperStore.Entry candidate in candidates)
-        {
-            if (candidate.Shape.Mode != MempoolWrapper.ModeRecursive) continue;
-            HashSet<ValueHash256> covered = [.. candidate.Hashes];
-            if (Array.TrueForAll(entry.Hashes, covered.Contains)) return true;
-        }
-        return false;
+            if (candidate.Shape.Mode == MempoolWrapper.ModeRecursive) covered.UnionWith(candidate.Hashes);
+        return Array.TrueForAll(entry.Hashes, covered.Contains);
     }
 
     // ---- Responder ---------------------------------------------------------------------------------------------------
@@ -573,7 +570,6 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             if (served.Count > 0 && !TryChargeServing(peer, content)) served.Clear();
             foreach ((WrapperStore.Entry entry, _) in served)
             {
-                peer.Exchanged.Add(entry.Announcement.Hash);
                 // Every encoding of the wrapper is now held by the peer, whether sent now or earlier.
                 foreach (ValueHash256 encoding in entry.EncodingHashes) peer.Delivered.Add(encoding);
             }
@@ -619,8 +615,8 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             {
                 if (!peer.Announced.Contains(wrapperHash, now) || !TryGetOffered(wrapperHash, out WrapperStore.Entry entry)) continue;
                 if (ResponseLength(request.RequestId, content) >= Eth75Protocol.SoftResponseLimit) break;
-                served.Add(new(wrapperHash, entry.Manifest));
-                content += Eth75Rlp.LengthOfList(1 + ValueHash256.MemorySize + entry.Manifest.Encoded.Length);
+                served.Add(new(wrapperHash, entry.HashManifest));
+                content += Eth75Rlp.LengthOfList(1 + ValueHash256.MemorySize + entry.HashManifest.Encoded.Length);
             }
             if (served.Count > 0 && !TryChargeServing(peer, content)) served.Clear();
             outbox.Send(peer, new ProofWrapperManifestsMessage(request.RequestId, [.. served]));

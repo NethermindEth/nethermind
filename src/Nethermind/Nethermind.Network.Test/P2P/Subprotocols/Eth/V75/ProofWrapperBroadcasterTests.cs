@@ -16,6 +16,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76;
 using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -1308,7 +1309,7 @@ public class ProofWrapperBroadcasterTests
         ValueHash256 hash = Describe(wrapper).Hash;
         node.Broadcaster.OnGetProofWrapperManifests(peer, new(5, [TestItem.KeccakA.ValueHash256, hash]));
         ProofWrapperManifestsMessage response = link.Sent<ProofWrapperManifestsMessage>().Single();
-        Assert.That((response.RequestId, response.Manifests), Is.EqualTo((5L, new[] { new ProofWrapperManifest(hash, WrapperMetadata.Of(wrapper)) })));
+        Assert.That((response.RequestId, response.Manifests), Is.EqualTo((5L, new[] { new ProofWrapperManifest(hash, ManifestOf(wrapper)) })));
 
         node.Broadcaster.OnProofWrapperManifests(peer, new(9, []));
         Assert.That(link.Penalties, Has.One.Contains("unissued request"));
@@ -1316,7 +1317,7 @@ public class ProofWrapperBroadcasterTests
 
     /// <summary>Answers the last GetProofWrapperManifests sent to <paramref name="link"/> with <paramref name="manifests"/>,
     /// each under the hash of the wrapper it describes.</summary>
-    private static void AnswerManifests(WrapperTestNode node, WrapperPeer peer, FakeWrapperLink link, params (byte[] Wrapper, WrapperMetadata Manifest)[] manifests) =>
+    private static void AnswerManifests(WrapperTestNode node, WrapperPeer peer, FakeWrapperLink link, params (byte[] Wrapper, WrapperManifest Manifest)[] manifests) =>
         node.Broadcaster.OnProofWrapperManifests(peer, new(link.Sent<GetProofWrapperManifestsMessage>()[^1].RequestId,
             [.. manifests.Select(static m => new ProofWrapperManifest(Describe(m.Wrapper).Hash, m.Manifest))]));
 
@@ -1348,7 +1349,7 @@ public class ProofWrapperBroadcasterTests
             Assert.That(link.Sent<GetProofWrapperManifestsMessage>().Single().Hashes, Is.EqualTo(new[] { Describe(wrapper).Hash }));
             Assert.That(link.Sent<GetProofWrappersMessage>(), Is.Empty, "the manifest is awaited first");
         }
-        AnswerManifests(node, peer, link, (wrapper, WrapperMetadata.Of(wrapper)));
+        AnswerManifests(node, peer, link, (wrapper, ManifestOf(wrapper)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1372,9 +1373,9 @@ public class ProofWrapperBroadcasterTests
         node.Broadcaster.OnAnnounce(liarPeer, new([Announcement(1, truth.Length, truth.Hash, Describe(decoy).Coverage)]));
         node.Broadcaster.OnAnnounce(honestPeer, new([truth]));
 
-        AnswerManifests(node, liarPeer, liar, (wrapper, WrapperMetadata.Of(decoy)));
+        AnswerManifests(node, liarPeer, liar, (wrapper, ManifestOf(decoy)));
         Assert.That(honest.Sent<GetProofWrapperManifestsMessage>().SelectMany(static m => m.Hashes), Is.EqualTo(new[] { truth.Hash }));
-        AnswerManifests(node, honestPeer, honest, (wrapper, WrapperMetadata.Of(wrapper)));
+        AnswerManifests(node, honestPeer, honest, (wrapper, ManifestOf(wrapper)));
         Answer(node, honestPeer, honest, wrapper);
         await WrapperTestNode.Until(() => node.Broadcaster.IsStored(truth.Hash));
 
@@ -1386,39 +1387,29 @@ public class ProofWrapperBroadcasterTests
         }
     }
 
-    // eth/76: a manifest is checked on arrival against its announcement and held transactions, and against the wrapper fetched
-    // from the same peer, before proof verification.
+    // eth/76: a manifest is checked on arrival against its announced txs-hash and length, before proof verification.
     [TestCase("txs-hash")]
     [TestCase("length")]
     [TestCase("unrequested")]
-    [TestCase("held transaction")]
-    [TestCase("fetched wrapper")]
     [TestCase("wrappers in reply")]
     public void False_or_malformed_manifest_is_a_violation(string scenario)
     {
-        using WrapperTestNode node = AggregatingNode(out Transaction a, out Transaction _);
+        using WrapperTestNode node = AggregatingNode(out Transaction _, out Transaction _);
         Transaction c = FrameTransaction(3), d = FrameTransaction(4);
-        byte[] wrapper = scenario == "held transaction" ? Wrapper(64, 7, a, c) : Wrapper(64, 7, c, d), other = Wrapper(64, 8, d);
+        byte[] wrapper = Wrapper(64, 7, c, d), other = Wrapper(64, 8, d);
         WrapperAnnouncement truth = Describe(wrapper);
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
         node.Broadcaster.OnAnnounce(peer, new([scenario == "length" ? Announcement(1, 64, truth.Hash, truth.Coverage) : truth]));
-        WrapperMetadata falseGas = WrapperMetadata.Of(wrapper, static (ref Eth75RlpReader _) => 1);
-        (byte[], WrapperMetadata) answer = scenario switch
+        (byte[], WrapperManifest) answer = scenario switch
         {
-            "txs-hash" => (wrapper, WrapperMetadata.Of(other)),
-            "unrequested" => (other, WrapperMetadata.Of(other)),
-            "held transaction" or "fetched wrapper" => (wrapper, falseGas),
-            _ => (wrapper, WrapperMetadata.Of(wrapper))
+            "txs-hash" => (wrapper, ManifestOf(other)),
+            "unrequested" => (other, ManifestOf(other)),
+            _ => (wrapper, ManifestOf(wrapper))
         };
         if (scenario == "wrappers in reply")
             node.Broadcaster.OnProofWrappers(peer, new(link.Sent<GetProofWrapperManifestsMessage>()[^1].RequestId, [Entry(wrapper)]));
         else AnswerManifests(node, peer, link, answer);
-        if (scenario == "fetched wrapper")
-        {
-            Assert.That(link.Penalties, Is.Empty, "a manifest describing no held transaction is a claim until the wrapper arrives");
-            Answer(node, peer, link, wrapper);
-        }
 
         using (Assert.EnterMultipleScope())
         {

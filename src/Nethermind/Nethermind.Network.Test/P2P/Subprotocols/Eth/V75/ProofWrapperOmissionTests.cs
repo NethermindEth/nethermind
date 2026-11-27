@@ -58,7 +58,7 @@ public class ProofWrapperOmissionTests
             Node.Broadcaster.OnAnnounce(HolderPeer, new([announcement]));
             GetProofWrapperManifestsMessage[] requests = ToHolder.Sent<GetProofWrapperManifestsMessage>();
             if (requests.Length > asked)
-                Node.Broadcaster.OnProofWrapperManifests(HolderPeer, new(requests[^1].RequestId, [new(announcement.Hash, WrapperMetadata.Of(wrapper))]));
+                Node.Broadcaster.OnProofWrapperManifests(HolderPeer, new(requests[^1].RequestId, [new(announcement.Hash, ManifestOf(wrapper))]));
         }
 
         public Task Stored(byte[] wrapper) =>
@@ -94,6 +94,33 @@ public class ProofWrapperOmissionTests
             Assert.That(pair.Node.Pending.Select(static t => t.Hash), Is.EquivalentTo(new[] { a.Hash, b.Hash }));
             Assert.That(pair.ToHolder.Penalties, Is.Empty);
             Assert.That(pair.Node.Broadcaster.ChargedBytes, Is.Zero);
+        }
+    }
+
+    // eth/76: references resolve from any locally cached, validated encoding, whichever peer supplied it.
+    [Test]
+    public async Task Compact_response_is_reconstructed_from_encodings_another_peer_supplied()
+    {
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
+        byte[] first = Wrapper(64, a), second = Wrapper(64, a, b);
+        using Pair pair = new();
+        pair.Exchange(first);
+        await pair.Stored(first);
+        FakeWrapperLink link = new("other");
+        WrapperPeer other = pair.Node.Connect(link);
+        pair.Node.Broadcaster.OnAnnounce(other, new([Describe(second)]));
+        pair.Node.Broadcaster.OnProofWrapperManifests(other,
+            new(link.Sent<GetProofWrapperManifestsMessage>().Single().RequestId, [new(Describe(second).Hash, ManifestOf(second))]));
+        GetProofWrappersMessage request = link.Sent<GetProofWrappersMessage>().Single();
+        byte[] compact = WrapperCompaction.Compact(second, hash => hash == ValueKeccak.Compute(Envelope(a)));
+        pair.Node.Broadcaster.OnProofWrappers(other, new(request.RequestId, [new(Describe(second).Hash, compact)]));
+        await pair.Stored(second);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.Compact, Is.True, "encodings are cached from another peer");
+            Assert.That(WrapperCompaction.HasReferences(compact), Is.True);
+            Assert.That(link.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(1), "no full retry is needed");
+            Assert.That(link.Penalties, Is.Empty);
         }
     }
 

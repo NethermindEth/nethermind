@@ -65,10 +65,10 @@ public class Eip8437ClientCaseTests
         }
     }
 
-    // Suppression exception: a mode-1 proof is announced where the peer's existing coverage is not one reusable mode-1 proof,
-    // even if the direct witnesses it holds are cheaper to verify.
+    // eth/76: the first mode-1 aggregate is announced to a peer that knows only mode-0 coverage, even if the direct witnesses are
+    // cheaper to verify; once either peer has announced it, another with the same coverage and no saving is suppressed.
     [Test]
-    public void Mode1_proof_is_announced_over_cheaper_direct_coverage()
+    public void Mode1_proof_is_announced_over_cheaper_direct_coverage([Values] bool served)
     {
         Transaction a = FrameTransaction(1), b = FrameTransaction(2);
         byte[] direct = DirectWrapper(a, b), aggregate = Wrapper(64, a, b), another = Wrapper(64, 5, a, b);
@@ -81,13 +81,33 @@ public class Eip8437ClientCaseTests
             Assert.That(node.Broadcaster.PublishWrapper(direct), Is.True);
             Assert.That(node.Broadcaster.PublishWrapper(aggregate), Is.True);
         }
-        node.Broadcaster.OnGetProofWrappers(peer, new(1, true, [Describe(aggregate).Hash]));
+        if (served) node.Broadcaster.OnGetProofWrappers(peer, new(1, true, [Describe(aggregate).Hash]));
         node.Tick(TimeSpan.FromSeconds(1));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node.Broadcaster.PublishWrapper(another), Is.True);
             Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(aggregate).Hash }),
-                "the first aggregate is IL-reusable where the direct witnesses are not; the second adds nothing over it");
+                "the first aggregate supplies mode-1 coverage; the second adds nothing over the announced one");
+        }
+    }
+
+    // eth/76: a mode-0 offer is compared only against mode-0 coverage, so a known aggregate does not suppress it.
+    [Test]
+    public void Direct_offer_is_not_suppressed_by_aggregate_coverage()
+    {
+        // Ten direct witnesses cost as much to verify as one recursive proof, and outweigh its single proof byte.
+        Transaction[] transactions = [.. Enumerable.Range(1, 10).Select(FrameTransaction)];
+        byte[] aggregate = Wrapper(1, transactions), direct = DirectWrapper(transactions);
+        using WrapperTestNode node = new();
+        node.AddPending(transactions);
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Broadcaster.OnAnnounce(peer, new([Describe(aggregate)]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Broadcaster.PublishWrapper(aggregate), Is.True);
+            Assert.That(node.Broadcaster.PublishWrapper(direct), Is.True);
+            Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(direct).Hash }));
         }
     }
 

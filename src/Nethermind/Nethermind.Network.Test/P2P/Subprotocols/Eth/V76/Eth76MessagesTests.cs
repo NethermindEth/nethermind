@@ -22,7 +22,7 @@ public class Eth76MessagesTests
     private static readonly string VectorDirectory = Path.Combine(TestContext.CurrentContext.TestDirectory, "P2P", "Subprotocols", "Eth", "V76", "Vectors");
 
     private static JsonElement LoadVectors(string name) =>
-        JsonDocument.Parse(File.ReadAllText(Path.Combine(VectorDirectory, $"eth76-{name}-vectors.json"))).RootElement;
+        JsonDocument.Parse(File.ReadAllText(Path.Combine(VectorDirectory, $"eip8518-{name}-vectors.json"))).RootElement;
 
     private static IEnumerable<TestCaseData> AnnouncementVectors()
     {
@@ -40,7 +40,7 @@ public class Eth76MessagesTests
 
     private static WrapperCoverage Coverage(JsonElement vector) => new(new ValueHash256(Hex(vector, "deps_hash")), new ValueHash256(Hex(vector, "txs_hash")));
 
-    // ethereum/EIPs#12713, assets/eip-wrapper-aggregation/announcement-vectors.json: wrapper[i] = i % 251 with fixed hints.
+    // ethereum/EIPs#12713, assets/eip-8518/announcement-vectors.json: wrapper[i] = i % 251 with fixed hints.
     [TestCaseSource(nameof(AnnouncementVectors))]
     public void Announcement_matches_eth76_announcement_vectors(JsonElement vector)
     {
@@ -57,7 +57,7 @@ public class Eth76MessagesTests
         }
     }
 
-    // ethereum/EIPs#12713, assets/eip-wrapper-aggregation/wrapper-vectors.json: mode-0, mode-1 and blob-carrying mode-1 wrappers
+    // ethereum/EIPs#12713, assets/eip-8518/wrapper-vectors.json: mode-0, mode-1 and blob-carrying mode-1 wrappers
     // with their hints, metadata, announcement, full and compact responses, requests and manifests. The synthetic frames carry no
     // gas limits, so the checker's fixed 100,000 stands in.
     [TestCaseSource(nameof(WrapperVectors))]
@@ -65,7 +65,7 @@ public class Eth76MessagesTests
     {
         byte[] body = Hex(vector, "body");
         ValueHash256 hash = new(Hex(vector, "content_hash"));
-        WrapperBodies.ParseWrapper(body, out WrapperShape shape, out WrapperCoverage coverage);
+        WrapperManifest manifest = WrapperManifest.Of(WrapperBodies.ParseWrapper(body, out WrapperShape shape, out WrapperCoverage coverage));
         WrapperMetadata metadata = WrapperMetadata.Of(body, static (ref Eth75RlpReader frames) => 100_000);
         WrapperMetadata? inline = shape.Mode == MempoolWrapper.ModeDirect ? metadata : null;
         Dictionary<ValueHash256, byte[]> cache = WrapperCompaction.Encodings(body).ToDictionary(static e => e.Hash, static e => e.Encoding);
@@ -89,16 +89,17 @@ public class Eth76MessagesTests
             Assert.That(new GetProofWrappersMessage76Serializer().Encode(new(7, true, [hash])), Is.EqualTo(Hex(vector, "compact_request_rlp")));
             Assert.That(new GetProofWrappersMessage76Serializer().Encode(new(8, false, [hash])), Is.EqualTo(Hex(vector, "full_request_rlp")));
             Assert.That(new GetProofWrapperManifestsMessageSerializer().Encode(new(9, [hash])), Is.EqualTo(Hex(vector, "manifest_request_rlp")));
-            Assert.That(new ProofWrapperManifestsMessageSerializer().Encode(new(9, [new(hash, metadata)])), Is.EqualTo(Hex(vector, "manifest_response_rlp")));
-            Assert.That(manifests.Manifests.Single(), Is.EqualTo(new ProofWrapperManifest(hash, metadata)));
+            Assert.That(new ProofWrapperManifestsMessageSerializer().Encode(new(9, [new(hash, manifest)])), Is.EqualTo(Hex(vector, "manifest_response_rlp")));
+            Assert.That(manifests.Manifests.Single(), Is.EqualTo(new ProofWrapperManifest(hash, manifest)));
+            Assert.That(manifest.TransactionsDigest, Is.EqualTo(coverage.TxsHash));
         }
     }
 
     private static byte[] Entry(ulong mode, byte[] txsHash, byte[] metadata) => Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt(mode), Eth75Rlp.EncodeUInt(1000),
         Eth75Rlp.EncodeBytes(new byte[32]), Eth75Rlp.EncodeBytes(new byte[32]), Eth75Rlp.EncodeBytes(txsHash), metadata);
 
-    private static byte[] Metadata(byte[] hash) => Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes([6]), Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt(10)),
-        Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes(hash)), Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes(new byte[20])), Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt(1)),
+    private static byte[] Metadata(byte[] hash) => Eth75Rlp.EncodeList(Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt(10)),
+        Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes(hash)), Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes(new byte[20])),
         Eth75Rlp.EncodeList(Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt(1))), Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt(1)));
 
     // check_vectors.py: inline metadata on mode 1, metadata whose hashes do not hash to txs-hash and the eth/75 entry shape are
@@ -124,8 +125,51 @@ public class Eth76MessagesTests
         else Assert.That(WrapperAnnouncement.Decode76(entry, out _) is null, Is.EqualTo(scenario == "mode 2"));
     }
 
-    // check_vectors.py: 64 announcements without metadata encode in 6,851 bytes, with the widest 17-transaction metadata in
-    // 201,732, and 32 requested hashes in 1,072 with the compact flag and 1,071 for manifests.
+    // check_vectors.py: an announcement of exactly 256 KiB, metadata of an unsupported mode included, is accepted; one byte more is
+    // rejected before decoding.
+    [Test]
+    public void Announcement_payload_is_bounded_at_256_KiB()
+    {
+        static byte[] Payload(int padding) => Eth75Rlp.EncodeList(Entry(2, new byte[32], Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes(new byte[padding]))));
+        int padding = Eth76Protocol.MaxNewProofWrapperHashesBytes;
+        while (Payload(padding).Length > Eth76Protocol.MaxNewProofWrapperHashesBytes) padding--;
+        NewProofWrapperHashesMessage76Serializer serializer = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Payload(padding), Has.Length.EqualTo(1 << 18));
+            Assert.That(serializer.Decode(Payload(padding)).Announcements, Is.Empty);
+            Assert.That(Payload(padding + 1), Has.Length.EqualTo((1 << 18) + 1));
+            Assert.That(() => serializer.Decode(Payload(padding + 1)), Throws.InstanceOf<RlpException>());
+        }
+    }
+
+    // check_vectors.py: a manifest is a nonempty, strictly ascending list of 32-byte hashes, with no 17-transaction limit.
+    [TestCase("valid", false)]
+    [TestCase("4,097 transactions", false)]
+    [TestCase("empty", true)]
+    [TestCase("unordered", true)]
+    [TestCase("repeated", true)]
+    [TestCase("short hash", true)]
+    [TestCase("nested list", true)]
+    public void Manifests_are_checked_on_arrival(string scenario, bool malformed)
+    {
+        byte[][] hashes = [.. Enumerable.Range(1, scenario == "4,097 transactions" ? 4097 : 2)
+            .Select(static i => Eth75Rlp.EncodeBytes([.. new byte[30], (byte)(i >> 8), (byte)i]))];
+        byte[] encoded = scenario switch
+        {
+            "empty" => Eth75Rlp.EncodeList(),
+            "unordered" => Eth75Rlp.EncodeList(hashes[1], hashes[0]),
+            "repeated" => Eth75Rlp.EncodeList(hashes[0], hashes[0]),
+            "short hash" => Eth75Rlp.EncodeList(Eth75Rlp.EncodeBytes(new byte[31])),
+            "nested list" => Eth75Rlp.EncodeList(Eth75Rlp.EncodeList(hashes[0])),
+            _ => Eth75Rlp.EncodeList(hashes)
+        };
+        if (malformed) Assert.That(() => WrapperManifest.Decode(encoded), Throws.InstanceOf<RlpException>());
+        else Assert.That(WrapperManifest.Decode(encoded).Encoded, Is.EqualTo(encoded));
+    }
+
+    // check_vectors.py: 64 announcements without metadata encode in 6,851 bytes, any announcement is bounded at 256 KiB, and 32
+    // requested hashes encode in 1,072 with the compact flag and 1,071 for manifests.
     [Test]
     public void Messages_at_their_entry_limits_match_eth76_lengths()
     {
@@ -144,7 +188,7 @@ public class Eth76MessagesTests
             Assert.That(new NewProofWrapperHashesMessage76Serializer().Encode(new(announced)), Has.Length.EqualTo(6851));
             Assert.That(new GetProofWrappersMessage76Serializer().Encode(new(-1, true, requested)), Has.Length.EqualTo(Eth76Protocol.MaxGetProofWrappersBytes));
             Assert.That(new GetProofWrapperManifestsMessageSerializer().Encode(new(-1, requested)), Has.Length.EqualTo(Eth76Protocol.MaxGetProofWrapperManifestsBytes));
-            Assert.That(Eth76Protocol.MaxNewProofWrapperHashesBytes, Is.EqualTo(201_732));
+            Assert.That(Eth76Protocol.MaxNewProofWrapperHashesBytes, Is.EqualTo(1 << 18));
             Assert.That(new[] { Eth76MessageCode.GetProofWrapperManifests, Eth76MessageCode.ProofWrapperManifests, Eth76Protocol.MessageIdSpaceSize },
                 Is.EqualTo(new[] { 0x1b, 0x1c, 0x1d }));
             Assert.That(Eth76Protocol.ExceedsMessageLimit(Eth75MessageCode.ProofWrappers, Eth75Protocol.LocalMaxResponseBytes + 1), Is.True);

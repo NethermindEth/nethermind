@@ -10,6 +10,7 @@ using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76;
 using Nethermind.Network.P2P.Subprotocols.Eth.V76.Messages;
 using Nethermind.Serialization.Rlp;
 
@@ -47,7 +48,6 @@ public sealed partial class ProofWrapperBroadcaster
                 WrapperMetrics.Record(WrapperEvent.AnnouncementReceived);
                 ValueHash256 wrapperHash = announcement.Hash;
                 peer.Known.Add(wrapperHash);
-                peer.Exchanged.Add(wrapperHash);
                 if (!enabled) continue;
                 if (FalseAgainstHeld(announcement) is { } falseClaim)
                 {
@@ -260,7 +260,7 @@ public sealed partial class ProofWrapperBroadcaster
         }
         // References are useful only once this node holds encodings the peer sent in full; a wrapper whose compact form
         // referenced an evicted encoding is fetched complete.
-        bool compact = peer.Aggregates && !peer.Received.IsEmpty && batch.TrueForAll(static fetch => !fetch.RequiresComplete);
+        bool compact = peer.Aggregates && _encodingBudget.Used > 0 && batch.TrueForAll(static fetch => !fetch.RequiresComplete);
         WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch], compact);
         peer.Requests.Add(request.Id, request);
         outbox.Send(peer, new GetProofWrappersMessage(request.Id, compact, ids));
@@ -269,7 +269,7 @@ public sealed partial class ProofWrapperBroadcaster
     }
 
     /// <summary>Matches returned entries, in order, to distinct requested hashes, resolves hash references from encodings
-    /// cached from this peer, checks each wrapper's canonical hash and the responding peer's announced mode, length, metadata and
+    /// cached from any peer, checks each wrapper's canonical hash and the responding peer's announced mode, length, metadata and
     /// coverage hints, then queues the wrappers for validation.</summary>
     /// <remarks>Requested wrappers skipped before the last one returned were unavailable from this peer; those after it were cut
     /// by the soft limit and are requested again from the same peer. A compact item referencing an encoding this node no longer
@@ -343,7 +343,6 @@ public sealed partial class ProofWrapperBroadcaster
                 if (next < matched.Length && matched[next] == position)
                 {
                     Returned item = returned[next++];
-                    peer.Exchanged.Add(fetch.Announcement.Hash);
                     if (item.Wrapper is not { } wrapper)
                     {
                         // A cache miss: retry the same peer with a fresh request for the complete wrapper.
@@ -440,7 +439,7 @@ public sealed partial class ProofWrapperBroadcaster
             fetch.Requested = false;
             if (next < matched.Length && matched[next] == position)
             {
-                WrapperMetadata manifest = entries[next++].Manifest;
+                WrapperManifest manifest = entries[next++].Manifest;
                 fetch.SetManifest(peer, manifest);
                 fetch.WantsManifest = false;
                 if (fetch.Removed || !HeldRecursively(manifest.Hashes)) continue;
@@ -455,34 +454,33 @@ public sealed partial class ProofWrapperBroadcaster
         Schedule(outbox);
     }
 
-    /// <summary>Why <paramref name="manifest"/>, returned by <paramref name="peer"/>, is malformed against its announcement or
-    /// false against a held transaction, or null.</summary>
-    private string? ManifestError(WrapperFetch fetch, WrapperPeer peer, WrapperMetadata manifest)
+    /// <summary>Why <paramref name="manifest"/>, returned by <paramref name="peer"/>, is malformed against its announcement, or
+    /// null.</summary>
+    private static string? ManifestError(WrapperFetch fetch, WrapperPeer peer, WrapperManifest manifest)
     {
-        if (manifest.TransactionBytes >= fetch.LengthFrom(peer)) return "a returned manifest does not fit its announced length";
-        if (fetch.CoverageFrom(peer) is { } coverage && manifest.TransactionsDigest != coverage.TxsHash)
-            return "a returned manifest does not match its announced txs-hash";
-        return FalseAgainstHeld(manifest);
+        if (manifest.Encoded.Length >= fetch.LengthFrom(peer)) return "a returned manifest is not smaller than its announced wrapper";
+        return fetch.CoverageFrom(peer) is { } coverage && manifest.TransactionsDigest != coverage.TxsHash
+            ? "a returned manifest does not match its announced txs-hash" : null;
     }
 
     /// <summary>A returned entry after reference resolution: the complete wrapper, its hash, coverage hints, inline and full
     /// metadata and admission charge, or no wrapper on a cache miss, or the reason it is malformed.</summary>
     /// <remarks>A wrapper that does not parse has no hints or metadata to check; validation then rejects it as malformed.</remarks>
     private readonly record struct Returned(int Mode, ValueHash256 Hash, byte[]? Wrapper, bool Referenced, string? Error, long Charge = 0,
-        WrapperCoverage? Coverage = null, WrapperMetadata? Metadata = null, bool Parsed = false, WrapperMetadata? Manifest = null);
+        WrapperCoverage? Coverage = null, WrapperMetadata? Metadata = null, bool Parsed = false, WrapperManifest? Manifest = null);
 
     private static Returned Complete(int mode, byte[] wrapper, bool referenced)
     {
         WrapperCoverage? coverage = null;
-        WrapperMetadata? metadata = null, manifest = null;
+        WrapperMetadata? metadata = null;
+        WrapperManifest? manifest = null;
         bool parsed = false;
         try
         {
-            WrapperBodies.ParseWrapper(wrapper, out WrapperShape shape, out WrapperCoverage hints);
+            manifest = WrapperManifest.Of(WrapperBodies.ParseWrapper(wrapper, out _, out WrapperCoverage hints));
             coverage = hints;
             parsed = true;
-            manifest = WrapperMetadata.Of(wrapper);
-            if (shape.Mode == MempoolWrapper.ModeDirect && manifest.Count <= Eth75Protocol.MaxInlineTransactions) metadata = manifest;
+            metadata = WrapperMetadata.InlineFor(wrapper);
         }
         catch (RlpException exception)
         {
@@ -520,7 +518,7 @@ public sealed partial class ProofWrapperBroadcaster
                 returned[i] = new(mode, default, wire, true, null);
                 continue;
             }
-            WrapperCompaction.Outcome outcome = WrapperCompaction.Reconstruct(wire, announced, hash => peer.Received.Get(hash),
+            WrapperCompaction.Outcome outcome = WrapperCompaction.Reconstruct(wire, announced, CachedEncoding,
                 out byte[]? wrapper, out string? error);
             returned[i] = outcome switch
             {
@@ -531,6 +529,17 @@ public sealed partial class ProofWrapperBroadcaster
             if (outcome == WrapperCompaction.Outcome.Complete) WrapperMetrics.Record(WrapperEvent.ReferenceResolved);
         }
         return returned;
+    }
+
+    /// <summary>A validated encoding with the given encoding hash, cached from whichever peer supplied it.</summary>
+    private byte[]? CachedEncoding(ValueHash256 encodingHash)
+    {
+        lock (_gate)
+        {
+            foreach (WrapperPeer peer in _peers)
+                if (peer.Received.Get(encodingHash) is { } encoding) return encoding;
+        }
+        return null;
     }
 
     /// <summary>The lengths <paramref name="peer"/> announced for the wrappers of an outstanding request.</summary>
@@ -717,7 +726,7 @@ public sealed partial class ProofWrapperBroadcaster
         }
         (Verdict verdict, string? error, Eip8288Verifier? verifier) =
             await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token, fetch.Server?.Link), cancellation).ConfigureAwait(false);
-        // Encodings received in full within a validated wrapper resolve the server's later references.
+        // Encodings received in full within a validated wrapper resolve later references from any peer (eth/76).
         if (verdict is Verdict.Valid or Verdict.PoolRejected && fetch.Server is { Closed: false } server)
             foreach ((ValueHash256 hash, byte[] encoding) in WrapperCompaction.Encodings(wrapper)) server.Received.Add(hash, encoding);
         Conclude(fetch, verdict, error, verifier);

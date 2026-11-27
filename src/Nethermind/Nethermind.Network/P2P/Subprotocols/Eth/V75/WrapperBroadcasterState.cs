@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V75;
 
@@ -103,8 +104,11 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
     internal sealed class Entry(WrapperAnnouncement announcement, byte[] wrapper, ValueHash256[] hashes, Eip8288Verifier verifier, WrapperShape shape,
         ValueHash256[] encodingHashes, WrapperMetadata manifest)
     {
-        /// <summary>The metadata of all the wrapper's transactions, served as its <c>eth/76</c> manifest.</summary>
+        /// <summary>The metadata of all the wrapper's transactions, against which announced metadata is checked.</summary>
         public WrapperMetadata Manifest { get; } = manifest;
+
+        /// <summary>The wrapper's <c>eth/76</c> manifest, kept rather than derived per request.</summary>
+        public WrapperManifest HashManifest { get; } = WrapperManifest.Of(hashes);
 
         /// <summary>The encoding hashes of the wrapper's transactions, in order, against which hash references are made.</summary>
         public ValueHash256[] EncodingHashes { get; } = encodingHashes;
@@ -220,8 +224,8 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     /// may replace with hash references (EIP-8437).</summary>
     public WrapperBoundedSet Delivered { get; } = new(WrapperTransportLimits.MaxKnownPerPeer);
 
-    /// <summary>Encodings received in full from the peer within wrappers that validated, from which its references are
-    /// resolved; while it is empty, requests to the peer ask for complete wrappers.</summary>
+    /// <summary>Encodings received in full from the peer within wrappers that validated, from which any peer's references are
+    /// resolved; held per peer so one connection cannot evict another's, and released when it closes.</summary>
     public WrapperEncodingCache Received { get; } = new(encodingBudget);
 
     /// <summary>Wrapper hashes exchanged on the connection in either direction: announced, requested or sent.</summary>
@@ -230,10 +234,6 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     /// <summary>Wrapper hashes this node announced to the peer under the current verification rules: the only ones it serves
     /// (EIP-8437).</summary>
     public WrapperBoundedSet Announced { get; } = new(WrapperTransportLimits.MaxKnownPerPeer);
-
-    /// <summary>Wrappers sent to or received from this peer, or announced by it: the coverage it already has, against which
-    /// a redundant announcement is suppressed. Unlike <see cref="Known"/>, wrappers this node merely announced are excluded.</summary>
-    public WrapperBoundedSet Exchanged { get; } = new(WrapperTransportLimits.MaxKnownPerPeer);
 
     public long LastIssued { get; set; }
 
@@ -365,12 +365,12 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     private readonly Dictionary<WrapperPeer, WrapperAnnouncement> _claims = [];
 
     /// <summary>The manifests sources returned, held to their senders like their announcements.</summary>
-    private Dictionary<WrapperPeer, WrapperMetadata>? _manifests;
+    private Dictionary<WrapperPeer, WrapperManifest>? _manifests;
 
     /// <summary>The manifest <paramref name="peer"/> returned, or null.</summary>
-    public WrapperMetadata? ManifestFrom(WrapperPeer peer) => _manifests?.GetValueOrDefault(peer);
+    public WrapperManifest? ManifestFrom(WrapperPeer peer) => _manifests?.GetValueOrDefault(peer);
 
-    public void SetManifest(WrapperPeer peer, WrapperMetadata manifest) => (_manifests ??= [])[peer] = manifest;
+    public void SetManifest(WrapperPeer peer, WrapperManifest manifest) => (_manifests ??= [])[peer] = manifest;
 
     public void AddSource(WrapperPeer peer, WrapperAnnouncement announcement)
     {
@@ -393,8 +393,8 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
 
     /// <summary>Sources other than <paramref name="server"/> whose claims about a wrapper with a verified hash are false.</summary>
     /// <param name="metadata">The wrapper's inline metadata, if it has any.</param>
-    /// <param name="manifest">The metadata of all the wrapper's transactions, which a source's manifest must equal.</param>
-    public List<WrapperPeer> FalseClaimants(WrapperPeer server, int mode, int length, WrapperMetadata? metadata, WrapperMetadata manifest)
+    /// <param name="manifest">The wrapper's manifest, which a source's manifest must equal.</param>
+    public List<WrapperPeer> FalseClaimants(WrapperPeer server, int mode, int length, WrapperMetadata? metadata, WrapperManifest manifest)
     {
         List<WrapperPeer> claimants = [];
         foreach ((WrapperPeer peer, WrapperAnnouncement claim) in _claims)

@@ -22,11 +22,8 @@ public static class Eth76Protocol
     /// <summary>One past the last message ID, <c>ProofWrapperManifests</c>.</summary>
     public const int MessageIdSpaceSize = Eth76MessageCode.ProofWrapperManifests + 1;
 
-    /// <summary>The largest NewProofWrapperHashes accepted, 64 <c>[mode, length, hash, deps-hash, txs-hash, txs-meta]</c> entries
-    /// with 17-transaction metadata at the widest wire integers and three fees each, bounding message data before decompression
-    /// (check_vectors.py).</summary>
-    /// <remarks>A local cap: fee lists have no fixed length, but an EIP-8141 transaction carries two fees.</remarks>
-    public const int MaxNewProofWrapperHashesBytes = 201_732;
+    /// <summary>The largest NewProofWrapperHashes payload, metadata included, as on <c>eth/75</c> (256 KiB).</summary>
+    public const int MaxNewProofWrapperHashesBytes = Eth75Protocol.MaxNewProofWrapperHashesBytes;
 
     /// <summary>The largest valid GetProofWrappers, 32 hashes under the widest request ID and the compact flag, bounding message
     /// data before decompression (check_vectors.py).</summary>
@@ -37,9 +34,8 @@ public static class Eth76Protocol
 
     /// <summary>The largest ProofWrapperManifests accepted, checked before decompression.</summary>
     /// <remarks>A local cap. A responder stops adding manifests once the response reaches the soft limit, so the last one may
-    /// take it past the limit; a manifest of a wrapper within <c>MAX_WRAPPER_BYTES</c> describes transactions of at least a few
-    /// dozen bytes each with under two hundred bytes of metadata, so it is allowed several wrappers' worth.</remarks>
-    public const int LocalMaxManifestsBytes = Eth75Protocol.SoftResponseLimit + 4 * Eth75Protocol.MaxWrapperBytes;
+    /// take it past the limit by at most one manifest, which is smaller than its wrapper.</remarks>
+    public const int LocalMaxManifestsBytes = Eth75Protocol.LocalMaxResponseBytes;
 
     /// <summary>Whether an advertised uncompressed size exceeds this client's cap for an <c>eth/76</c> wrapper message, checked
     /// before decompression.</summary>

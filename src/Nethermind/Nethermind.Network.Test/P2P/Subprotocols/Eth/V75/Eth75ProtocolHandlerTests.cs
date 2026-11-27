@@ -400,7 +400,7 @@ public class Eth75ProtocolHandlerTests
             Assert.That(Delivered<NewProofWrapperHashesMessage>().Select(static m => m.GetType()), Is.EqualTo(new[] { typeof(NewProofWrapperHashesMessage76) }));
             Assert.That(Delivered<NewProofWrapperHashesMessage76>().Single().Announcements.Single().Hash, Is.EqualTo(hash));
             ProofWrapperManifestsMessage manifests = Delivered<ProofWrapperManifestsMessage>().Single();
-            Assert.That((manifests.RequestId, manifests.Manifests.Single()), Is.EqualTo((3L, new ProofWrapperManifest(hash, WrapperMetadata.Of(wrapper)))));
+            Assert.That((manifests.RequestId, manifests.Manifests.Single()), Is.EqualTo((3L, new ProofWrapperManifest(hash, ManifestOf(wrapper)))));
         }
 
         byte[] announced = Wrapper(64, 7, transaction, FrameTransaction(2));

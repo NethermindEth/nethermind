@@ -20,6 +20,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75;
 using Nethermind.Network.P2P.Subprotocols.Eth.V75.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V76;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -244,6 +245,9 @@ internal static class WrapperTestObjects
     }
 
     public static WrapperAnnouncement Describe(byte[] wrapper) => WrapperAnnouncement.Create(wrapper);
+
+    /// <summary>The <c>eth/76</c> manifest of a canonical wrapper.</summary>
+    public static WrapperManifest ManifestOf(byte[] wrapper) => WrapperManifest.Of(WrapperBodies.ParseWrapper(wrapper));
 
     /// <summary>Describes bytes that need not parse as a wrapper, as mode 1 with zero hints.</summary>
     public static WrapperAnnouncement DescribeOpaque(byte[] wrapper) => Announcement(1, wrapper.Length, ValueKeccak.Compute(wrapper));
