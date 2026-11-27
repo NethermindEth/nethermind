@@ -24,12 +24,14 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// A build without a deadline proves in place. The aggregated proof is used only when smaller than the raw one: a recursive
 /// STARK outweighs a few signatures.
 /// </remarks>
+/// <param name="blockTransactionsExecutor">The scope's executor; only a production executor aggregates, and a scope that
+/// registers none, such as one supplying its own block processor, never does.</param>
 public sealed class AggregatingBlockProcessor(
     IBlockProcessor inner,
-    IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
     DependencyProofCache proofCache,
     IBlocksConfig blocksConfig,
-    ILogManager logManager) : IBlockProcessor
+    ILogManager logManager,
+    IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<AggregatingBlockProcessor>();
 

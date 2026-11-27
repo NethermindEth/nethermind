@@ -221,8 +221,8 @@ public class AggregatedDependencyProofTests
             return (processed, Array.Empty<TxReceipt>());
         });
 
-        AggregatingBlockProcessor processor = new(inner, Substitute.For<BlockProcessor.IBlockProductionTransactionsExecutor>(),
-            cache ?? new DependencyProofCache(verifier, LimboLogs.Instance), new BlocksConfig { DependencyProofAggregation = mode }, LimboLogs.Instance);
+        AggregatingBlockProcessor processor = new(inner, cache ?? new DependencyProofCache(verifier, LimboLogs.Instance),
+            new BlocksConfig { DependencyProofAggregation = mode }, LimboLogs.Instance, Substitute.For<BlockProcessor.IBlockProductionTransactionsExecutor>());
         using CancellationTokenSource cts = new();
         (Block produced, _) = processor.ProcessOne(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, Spec, deadline ? cts.Token : CancellationToken.None);
         return (produced, raw);

@@ -52,6 +52,7 @@ public class GethGenesisParityTests
     [
         // Prototypes and devnet forks riding on Amsterdam's blob parameters; devnets key blob changes by the fork they run on.
         nameof(Eip8141Prototype),
+        nameof(Eip8288Prototype),
         nameof(Eip8250Prototype),
         nameof(Eip8272Prototype),
         nameof(Eip7906Prototype),
