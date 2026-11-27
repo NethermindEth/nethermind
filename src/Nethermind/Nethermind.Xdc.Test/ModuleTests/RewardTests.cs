@@ -441,10 +441,13 @@ public class RewardTests
 
     // The rewarded epoch 901..1799 holds 59 sign slots (915, 930, ..., 1785). A fixed payout gives every signer its
     // full tier reward; a proportional one scales it by the slots signed, e.g. 500 * 2 / 59 = 16 for signer2.
-    [TestCase(false, 450, 450, 360, 360, 270, 210, 2100)]
-    [TestCase(true, 7, 14, 5, 11, 4, 2, 43)]
-    public void TestHookRewardAfterUpgrade(bool proportional, int signer1Reward, int signer2Reward, int protector1Reward,
-        int protector2Reward, int observer1Reward, int foundationReward, int expectedTotalMinted)
+    // A V1 checkpoint has no standby nodes, so only its masternodes are paid.
+    [TestCase(false, false, 450, 450, 360, 360, 270, 210, 2100)]
+    [TestCase(true, false, 7, 14, 5, 11, 4, 2, 43)]
+    [TestCase(false, true, 450, 450, 0, 0, 0, 100, 1000)]
+    public void TestHookRewardAfterUpgrade(bool proportional, bool rewardedCheckpointIsSwitchBlock, int signer1Reward,
+        int signer2Reward, int protector1Reward, int protector2Reward, int observer1Reward, int foundationReward,
+        int expectedTotalMinted)
     {
         const ulong epochLength = 900;
         const ulong mergeSignRange = 15;
@@ -473,7 +476,8 @@ public class RewardTests
         xdcSpec.EpochLength.Returns(epochLength);
         xdcSpec.FoundationWallet.Returns(foundationWalletAddr);
         xdcSpec.BlockSignerContract.Returns(blockSignerContract);
-        xdcSpec.SwitchBlock.Returns(0UL);
+        ulong switchBlock = rewardedCheckpointIsSwitchBlock ? epochLength : 0;
+        xdcSpec.SwitchBlock.Returns(switchBlock);
         xdcSpec.MergeSignRange.Returns(mergeSignRange);
         xdcSpec.IsTipUpgradeRewardEnabled.Returns(true);
         xdcSpec.IsTipProportionalRewardEnabled.Returns(proportional);
@@ -496,7 +500,7 @@ public class RewardTests
             XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader()
                 .WithNumber(i)
                 .WithValidators(masternodes);
-            if (i == 0)
+            if (i <= switchBlock)
             {
                 builder.WithExtraData(XdcTestHelper.BuildV1ExtraData(masternodes));
             }
@@ -585,18 +589,17 @@ public class RewardTests
 
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks[(int)checkpointNumber]);
 
-        using (Assert.EnterMultipleScope())
+        Dictionary<Address, UInt256> expectedRewards = new()
         {
-            Assert.That(rewards, Has.Length.EqualTo(6));
-            Assert.That(rewards.Single(r => r.Address == signer1.Address).Value, Is.EqualTo((UInt256)signer1Reward));
-            Assert.That(rewards.Single(r => r.Address == signer2.Address).Value, Is.EqualTo((UInt256)signer2Reward));
-            Assert.That(rewards.Single(r => r.Address == protector1.Address).Value, Is.EqualTo((UInt256)protector1Reward));
-            Assert.That(rewards.Single(r => r.Address == protector2.Address).Value, Is.EqualTo((UInt256)protector2Reward));
-            Assert.That(rewards.Single(r => r.Address == observer1.Address).Value, Is.EqualTo((UInt256)observer1Reward));
-            Assert.That(rewards.Single(r => r.Address == foundationWalletAddr).Value, Is.EqualTo((UInt256)foundationReward));
-            Assert.That(rewards.Any(r => r.Address == observer2.Address), Is.False);
-            Assert.That(rewards.Any(r => r.Address == candidateAfterRewardedEpoch.Address), Is.False);
-        }
+            [signer1.Address] = (UInt256)signer1Reward,
+            [signer2.Address] = (UInt256)signer2Reward,
+            [protector1.Address] = (UInt256)protector1Reward,
+            [protector2.Address] = (UInt256)protector2Reward,
+            [observer1.Address] = (UInt256)observer1Reward,
+            [foundationWalletAddr] = (UInt256)foundationReward,
+        };
+        Assert.That(rewards.ToDictionary(r => r.Address, r => r.Value),
+            Is.EquivalentTo(expectedRewards.Where(r => !r.Value.IsZero)));
 
         // Validate minted-record accounting side effects produced by the reward upgrade path.
         UInt256 epochNumber = 3;

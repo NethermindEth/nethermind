@@ -170,8 +170,10 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
                     if (spec.IsTipUpgradeRewardEnabled)
                     {
                         // Protectors and observers come from the rewarded epoch's own standby nodes, not the
-                        // current candidates, as in XinFinOrg/XDPoSChain#2612.
-                        Address[] standbyNodes = _epochSwitchManager.GetEpochSwitchInfo(h)?.StandbyNodes ?? [];
+                        // current candidates, as in XinFinOrg/XDPoSChain#2612. A V1 checkpoint has none.
+                        Address[] standbyNodes = h.Number > spec.SwitchBlock
+                            ? _epochSwitchManager.GetEpochSwitchInfo(h)?.StandbyNodes ?? []
+                            : [];
                         int protectorEnd = Math.Min(spec.MaxProtectorNodes, standbyNodes.Length);
                         int observerEnd = (int)Math.Min((long)protectorEnd + spec.MaxObserverNodes, standbyNodes.Length);
                         protectors.UnionWith(standbyNodes[..protectorEnd]);
