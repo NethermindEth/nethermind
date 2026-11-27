@@ -502,6 +502,7 @@ public sealed partial class ProofWrapperBroadcaster
         ProofWrapperEntry[] entries = message.Entries;
         Returned[] returned = new Returned[entries.Length];
         Dictionary<ValueHash256, int>? lengths = null;
+        WrapperPeer[]? holders = null;
         for (int i = 0; i < entries.Length; i++)
         {
             byte[] wire = entries[i].Wrapper;
@@ -518,7 +519,9 @@ public sealed partial class ProofWrapperBroadcaster
                 returned[i] = new(mode, default, wire, true, null);
                 continue;
             }
-            WrapperCompaction.Outcome outcome = WrapperCompaction.Reconstruct(wire, announced, CachedEncoding,
+            // Each cache has its own lock, so the peers are read under the broadcaster lock once per response.
+            if (holders is null) lock (_gate) holders = [.. _peers];
+            WrapperCompaction.Outcome outcome = WrapperCompaction.Reconstruct(wire, announced, hash => CachedEncoding(holders, hash),
                 out byte[]? wrapper, out string? error);
             returned[i] = outcome switch
             {
@@ -531,14 +534,11 @@ public sealed partial class ProofWrapperBroadcaster
         return returned;
     }
 
-    /// <summary>A validated encoding with the given encoding hash, cached from whichever peer supplied it.</summary>
-    private byte[]? CachedEncoding(ValueHash256 encodingHash)
+    /// <summary>A validated encoding with the given encoding hash, cached from whichever of <paramref name="holders"/> supplied it.</summary>
+    private static byte[]? CachedEncoding(WrapperPeer[] holders, in ValueHash256 encodingHash)
     {
-        lock (_gate)
-        {
-            foreach (WrapperPeer peer in _peers)
-                if (peer.Received.Get(encodingHash) is { } encoding) return encoding;
-        }
+        foreach (WrapperPeer peer in holders)
+            if (peer.Received.Get(encodingHash) is { } encoding) return encoding;
         return null;
     }
 
