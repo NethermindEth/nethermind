@@ -168,10 +168,14 @@ public class FlatTrieVerifier
         return isOk;
     }
 
-    /// <summary>Starts a run's result counters from zero, so that <see cref="Stats"/> and the result describe that run only.</summary>
+    /// <summary>
+    /// Starts a run's result counters from zero, so that the result and, once the run's sweep has completed and its
+    /// workers have exited, <see cref="Stats"/> describe that run only.
+    /// </summary>
     /// <remarks>
     /// The node keeps one verifier, and its callers run verifications one at a time, so a retry after a failed
-    /// verification must not inherit the failed run's counts. The storage-worker and offload counters are left alone:
+    /// verification must not inherit the failed run's counts. An account partition that outlives a cancelled run can
+    /// still update the counters after that run's call returns. The storage-worker and offload counters are left alone:
     /// they balance themselves within each run.
     /// </remarks>
     private void ResetCounters()
