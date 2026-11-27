@@ -413,6 +413,45 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         }
     }
 
+    [Test]
+    public void Verify_AgainAfterTheFlatStateIsCorrected_CountsFromZero()
+    {
+        // The node keeps one verifier, so a retry must not report the mismatches of the run before it.
+        Address address = TestItem.AddressA;
+        StorageTree storageTree = CreateStorageTree(address, [((UInt256)1, [0x11])]);
+        Account account = new(1, 100, storageTree.RootHash, Keccak.Compute([1]));
+
+        _stateTree.Set(address, account);
+        _stateTree.Commit();
+        Hash256 stateRoot = _stateTree.RootHash;
+
+        WriteAccountToFlat(address, account, new StateId(1, stateRoot));
+        CorruptAccountInFlat(address, new Account(1, 200, storageTree.RootHash, Keccak.Compute([1])));
+        WriteStorageDirectToDb(address, 1, [0xFF]);
+
+        FlatTrieVerifier verifier = new(_logManager);
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        {
+            Assert.That(verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None), Is.False);
+        }
+
+        // Make flat agree with the trie again.
+        CorruptAccountInFlat(address, account);
+        WriteStorageDirectToDb(address, 1, [0x11]);
+
+        using IPersistence.IPersistenceReader correctedReader = _persistence.CreateReader();
+        bool isOkAgain = verifier.Verify(correctedReader, _trieStore, stateRoot, CancellationToken.None);
+        FlatTrieVerifier freshVerifier = new(_logManager);
+        bool isOkFresh = freshVerifier.Verify(correctedReader, _trieStore, stateRoot, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isOkFresh, Is.True, "the corrected state verifies on a fresh verifier");
+            Assert.That(isOkAgain, Is.True);
+            Assert.That(verifier.Stats, Is.EqualTo(freshVerifier.Stats));
+        }
+    }
+
     [TestCase(false, Description = "Stale account trie node")]
     [TestCase(true, Description = "Stale storage trie node")]
     public void Verify_TrieNodeRlpNotMatchingHash_Fails(bool inStorageTrie)
