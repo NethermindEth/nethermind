@@ -658,7 +658,8 @@ jobs:
   destroy_rpc_runner:
     name: Destroy runner for rpc_int
     runs-on: ubuntu-latest
-    needs: [create_rpc_runner, compare]
+    # After node teardown: the nodes allowlist this runner's ephemeral address, which GCE reassigns once released.
+    needs: [create_rpc_runner, compare, cleanup_spawned_nodes]
     # Also runs on cancellation. A failed create still needs teardown: creation may have got part way.
     if: always() && needs.create_rpc_runner.result != 'skipped'
     permissions:
