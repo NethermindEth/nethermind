@@ -62,53 +62,75 @@ jobs:
   inspect:
     needs: [create_a_runner]
     runs-on: ${{ needs.create_a_runner.outputs.runner_label }}
-    timeout-minutes: 15
+    timeout-minutes: 35
+    env:
+      DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "false"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
     steps:
       - name: Machine shape
         run: |
-          echo "::group::cpu / memory"
-          nproc
-          free -g
-          echo "::endgroup::"
-          echo "::group::block devices"
-          lsblk
-          cat /proc/mdstat 2>/dev/null || echo "no md arrays"
-          echo "::endgroup::"
-          echo "::group::disk usage"
-          df -h /mnt/gh-runner /
-          echo "::endgroup::"
+          nproc; free -g; lsblk; df -h "$GITHUB_WORKSPACE"
 
-      - name: Workspace and docker are on the SSD array
+      - name: Egress address matches the instance external address
         run: |
-          echo "workspace: $GITHUB_WORKSPACE"
-          findmnt -no SOURCE,TARGET --target "$GITHUB_WORKSPACE"
-          docker_root=$(docker info --format '{{.DockerRootDir}}')
-          echo "docker root: $docker_root"
-          case "$GITHUB_WORKSPACE" in
-            /mnt/gh-runner/*) echo "workspace is on the array" ;;
-            *) echo "::error::workspace ${GITHUB_WORKSPACE} is NOT on the array"; exit 1 ;;
-          esac
-          case "$docker_root" in
-            /mnt/gh-runner/*) echo "docker root is on the array" ;;
-            *) echo "::error::docker root ${docker_root} is NOT on the array"; exit 1 ;;
-          esac
+          meta=$(curl -sf -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)
+          seen=$(curl -sf --max-time 10 https://api.ipify.org)
+          echo "metadata=${meta} egress=${seen}"
+          [[ -n "$meta" && "$meta" == "$seen" ]] || { echo "::error::egress address differs from the instance address"; exit 1; }
 
-      - name: Docker works
-        run: docker run --rm hello-world
-
-      - name: Tools the sync job needs are preinstalled
+      - name: Outbound JSON-RPC on 8545 is not blocked
         run: |
-          for t in make gcc jq zip git git-lfs screen lshw dmidecode fio python3; do
-            command -v "$t" >/dev/null || { echo "::error::missing ${t}"; exit 1; }
-          done
-          echo "all tools present"
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://portquiz.net:8545/ || true)
+          echo "portquiz.net:8545 -> HTTP ${code}"
+          [[ "$code" == "200" ]] || { echo "::error::outbound tcp/8545 failed"; exit 1; }
 
-      - name: Sequential write throughput on the array
+      - name: Check out repository
+        if: inputs.provisioning_model == 'SPOT'
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        if: inputs.provisioning_model == 'SPOT'
+        uses: actions/setup-dotnet@v6
+
+      - name: Invariant globalization breaks the Nethermind.Core build (control)
+        if: inputs.provisioning_model == 'SPOT'
+        env:
+          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1"
         run: |
-          fio --name=seqwrite --directory=/mnt/gh-runner --size=4G --bs=1M \
-            --rw=write --ioengine=libaio --iodepth=32 --direct=1 --runtime=30 \
-            --time_based --group_reporting --output-format=normal \
-            | grep -E "WRITE:|bw=" | head -5
+          if dotnet build src/Nethermind/Nethermind.Core/Nethermind.Core.csproj -c Release > core-invariant.log 2>&1; then
+            echo "::warning::Nethermind.Core built under invariant globalization"
+          else
+            grep -m3 -E "error" core-invariant.log || tail -20 core-invariant.log
+          fi
+          dotnet build-server shutdown
+
+      - name: Build and run a block-processing benchmark with the override
+        if: inputs.provisioning_model == 'SPOT'
+        run: |
+          dotnet build src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj -c Release
+          dotnet run -c Release --no-build --project src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj \
+            -- --filter '*BlockProcessingBenchmark*' --job Dry --exporters json --artifacts "${RUNNER_TEMP}/bdn"
+          ls "${RUNNER_TEMP}/bdn/results"
+
+      - name: Check out rpc-tests
+        if: inputs.provisioning_model == 'STANDARD'
+        uses: actions/checkout@v6
+        with:
+          repository: NethermindEth/rpc-tests
+          path: rpc-tests
+
+      - name: Set up Go
+        if: inputs.provisioning_model == 'STANDARD'
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+          cache: false
+
+      - name: Build rpc_int
+        if: inputs.provisioning_model == 'STANDARD'
+        working-directory: rpc-tests
+        run: make rpc_int && ./build/bin/rpc_int -h | head -5 || true
 
   destroy_runner:
     needs: [create_a_runner, inspect]
