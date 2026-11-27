@@ -31,6 +31,7 @@ using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using V72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
+using V74 = Nethermind.Network.P2P.Subprotocols.Eth.V74.Messages;
 using SnapV1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using SnapV2 = Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
@@ -166,6 +167,10 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V72.GetCellsMessage72, V72.GetCellsMessageSerializer72>()
             .AddMessageSerializer<V72.CellsMessage72, V72.CellsMessageSerializer72>()
 
+            // V74
+            .AddMessageSerializer<V74.GetDependencyProofsMessage, V74.GetDependencyProofsMessageSerializer>()
+            .AddMessageSerializer<V74.DependencyProofsMessage, V74.DependencyProofsMessageSerializer>()
+
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
             .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)
 
@@ -181,6 +186,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddProtocolHandler<Subprotocols.Eth.V70.Eth70ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V71.Eth71ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V72.Eth72ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V74.Eth74ProtocolHandler>()
 
             ;
     }

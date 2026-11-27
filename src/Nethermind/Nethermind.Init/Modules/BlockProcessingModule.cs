@@ -15,6 +15,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Tracing;
@@ -41,6 +42,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 {
     protected override void Load(ContainerBuilder builder)
     {
+        builder
+            .AddModule(new Eip8288Module())
+            .AddDecorator<IBlockProcessor, StoredDependencyProofBlockProcessor>();
+
         builder
             // Validators
             .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))

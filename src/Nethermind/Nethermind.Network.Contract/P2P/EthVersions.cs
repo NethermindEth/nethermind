@@ -16,4 +16,8 @@ public static class EthVersions
     public const byte Eth70 = 70;
     public const byte Eth71 = 71;
     public const byte Eth72 = 72;
+
+    /// <summary>EIP-8512 dependency proof exchange; built on <see cref="Eth72"/>, as EIP-8408's <c>eth/73</c> is not
+    /// implemented, and advertised once EIP-8141, which introduces the dependency proof, is scheduled.</summary>
+    public const byte Eth74 = 74;
 }

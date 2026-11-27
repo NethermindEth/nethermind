@@ -30,13 +30,22 @@ public static class FrameTxClaimVerifier
     public static bool IsWitnessError(string? error) =>
         error is InvalidClaim or MissingWitnesses or WitnessCountMismatch or InvalidWitnessLength;
 
+    /// <summary>The witness a block assigns a leanSPHINCS claim its EIP-8288 aggregated dependency proof has already proven.</summary>
+    /// <remarks>Recognized by reference, and only where a block assigned it: <see cref="CheckWitnesses"/> refuses it
+    /// unless asked to accept it, so a transaction a reorg returns to the pool is not admitted on it.</remarks>
+#pragma warning disable CA1825 // A distinct instance, never Array.Empty, so no decoded witness can be it.
+    public static readonly byte[] AggregatedWitness = new byte[0];
+#pragma warning restore CA1825
+
     /// <summary>Address of the secp256r1 (P256VERIFY) precompile — EIP-7951 / RIP-7212.</summary>
     public static readonly Address P256VerifyPrecompileAddress = PrecompiledAddresses.P256Verify;
 
     /// <summary>The structural checks of the witnesses against the claims: one per claim, each of its resolved length.</summary>
     /// <param name="allowPlaceholders">Accepts an empty witness as a placeholder for a claim that is then not checked;
     /// for simulation, where no signature exists yet.</param>
-    public static bool CheckWitnesses(Transaction tx, bool allowPlaceholders, out string? error)
+    /// <param name="acceptAggregated">Accepts <see cref="AggregatedWitness"/> for a leanSPHINCS claim; for a block
+    /// whose aggregated dependency proof has been verified.</param>
+    public static bool CheckWitnesses(Transaction tx, bool allowPlaceholders, out string? error, bool acceptAggregated = false)
     {
         TxFrameClaim[] claims = tx.FrameClaims ?? [];
         byte[][]? witnesses = tx.ClaimWitnesses;
@@ -58,6 +67,7 @@ public static class FrameTxClaimVerifier
 
         for (int i = 0; i < claims.Length; i++)
         {
+            if (acceptAggregated && IsAggregated(claims[i], witnesses[i])) continue;
             if ((ulong)witnesses[i].Length != claims[i].ResolvedWitnessLength && !(allowPlaceholders && witnesses[i].Length == 0))
             {
                 return Fail(InvalidWitnessLength, out error);
@@ -157,6 +167,10 @@ public static class FrameTxClaimVerifier
         ArrayPool<byte>.Shared.Return(input);
         return result && result.Data is { Length: > 0 };
     }
+
+    /// <summary>Whether <paramref name="witness"/> stands for <paramref name="claim"/>'s proof in an aggregated dependency proof.</summary>
+    public static bool IsAggregated(TxFrameClaim claim, byte[] witness) =>
+        ReferenceEquals(witness, AggregatedWitness) && Eip8288Dependencies.IsAggregatable(claim.Verifier);
 
     private static bool Fail(string message, out string? error)
     {

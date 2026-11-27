@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -38,6 +39,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IBlocksConfig blocksConfig,
         BlockAccessListServingWindow balServingWindow,
         IBlockAccessListStore balStore,
+        IDependencyProofStore proofStore,
         ILogManager logManager,
         FinalizedBlockAccessListPolicy? finalizedBalPolicy = null)
         : BlockDownloader(
@@ -54,6 +56,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             blockProcessingQueue,
             syncConfig,
             balServingWindow,
+            proofStore,
             logManager)
     {
         private readonly IBlockTree _blockTree = blockTree;

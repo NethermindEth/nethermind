@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Crypto.LeanFfi.Test" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.Zkvm.Abstractions\Nethermind.Zkvm.Abstractions.csproj" Condition="'$(EnableZkEvm)' == 'true'" />
@@ -19,6 +20,7 @@
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <PackageReference Include="Nethermind.Crypto.Bls" />
+    <PackageReference Include="Nethermind.Crypto.Lean" />
   </ItemGroup>
 
   <ItemGroup>

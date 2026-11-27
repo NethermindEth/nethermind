@@ -35,6 +35,12 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
             request.OwnedBodies = await peerInfo.SyncPeer.GetBlockBodies(bodiesHash, cancellationToken);
         }
 
+        if (request.DependencyProofsRequests.Count > 0 && peerInfo.SyncPeer.SupportsDependencyProofs())
+        {
+            using ArrayPoolList<Hash256> dependencyProofsHash = BuildHashList(request.DependencyProofsRequests);
+            request.DependencyProofs = await peerInfo.SyncPeer.GetDependencyProofs(dependencyProofsHash, cancellationToken);
+        }
+
         if (request.BlockAccessListsRequests.Count > 0 && peerInfo.SyncPeer.SupportsBlockAccessLists())
         {
             using ArrayPoolList<Hash256> blockAccessListsHash = BuildHashList(request.BlockAccessListsRequests);

@@ -163,7 +163,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // eth_call and the simulator may leave a witness out, as no signature exists yet; one they supply still verifies.
         ValueHash256? sigHash = null;
-        if (!VerifyFrameClaims(tx, ref sigHash, spec, allowPlaceholders: SkipSenderChecks || !ShouldValidate(opts), skipVerification: SkipSenderChecks, out string? claimError))
+        if (!VerifyFrameClaims(tx, ref sigHash, spec, allowPlaceholders: SkipSenderChecks || !ShouldValidate(opts), skipVerification: SkipSenderChecks, acceptAggregated: true, out string? claimError))
         {
             WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(claimError!);
@@ -765,7 +765,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         Address sender = tx.SenderAddress!;
         ValueHash256? sigHash = null;
         if (!opts.HasFlag(ExecutionOptions.FrameClaimsPreVerified)
-            && !VerifyFrameClaims(tx, ref sigHash, spec, allowPlaceholders: false, skipVerification: false, out string? claimError))
+            && !VerifyFrameClaims(tx, ref sigHash, spec, allowPlaceholders: false, skipVerification: false, acceptAggregated: false, out string? claimError))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(claimError!);
         }
@@ -1038,7 +1038,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// checked; see <see cref="FrameTxClaimVerifier.CheckWitnesses"/>.</param>
     /// <param name="skipVerification">Checks only the witnesses' shape: execution-apis#907 exempts signature checks
     /// from eth_simulateV1.</param>
-    private bool VerifyFrameClaims(Transaction tx, ref ValueHash256? sigHash, IReleaseSpec spec, bool allowPlaceholders, bool skipVerification, out string? error)
+    /// <param name="acceptAggregated">Skips the leanSPHINCS claims a block's verified EIP-8288 dependency proof has
+    /// proven; see <see cref="FrameTxClaimVerifier.AggregatedWitness"/>.</param>
+    private bool VerifyFrameClaims(Transaction tx, ref ValueHash256? sigHash, IReleaseSpec spec, bool allowPlaceholders, bool skipVerification, bool acceptAggregated, out string? error)
     {
         error = null;
         TxFrameClaim[] claims = tx.FrameClaims ?? [];
@@ -1050,7 +1052,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return false;
         }
 
-        if (!FrameTxClaimVerifier.CheckWitnesses(tx, allowPlaceholders, out error)) return false;
+        if (!FrameTxClaimVerifier.CheckWitnesses(tx, allowPlaceholders, out error, acceptAggregated)) return false;
         if (skipVerification) return true;
 
         Address sender = tx.SenderAddress!;
@@ -1059,7 +1061,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             TxFrameClaim claim = claims[i];
             byte[] witness = witnesses[i];
-            // A placeholder: CheckWitnesses admits one only when placeholders are allowed.
+            // A placeholder, which CheckWitnesses admits only when placeholders are allowed, or a claim the block's
+            // aggregated dependency proof has proven.
             if (witness.Length == 0 && claim.ResolvedWitnessLength != 0) continue;
 
             ValueHash256 key = claim.ResolveKey(sender);

@@ -47,7 +47,8 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager)
+    IBlockAccessListManager balManager,
+    ILeanProofVerifier? leanProofVerifier = null)
     : IBlockProcessor
 {
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
@@ -239,7 +240,7 @@ public partial class BlockProcessor(
         bool isProducing = _blockTransactionsExecutor is IBlockProductionTransactionsExecutor;
         if (spec.IsEip8141Enabled && !isProducing && !options.ContainsFlag(ProcessingOptions.NoValidation))
         {
-            FrameTxDependencyProof.AssignWitnesses(block);
+            FrameTxDependencyProof.AssignWitnesses(block, spec, leanProofVerifier);
             FrameTxDependencyProof.CheckVerifiersDeployed(block, _stateProvider, spec);
         }
 

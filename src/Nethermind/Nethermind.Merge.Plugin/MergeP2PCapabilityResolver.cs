@@ -74,10 +74,17 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         capabilities.Add(new Capability(Protocol.Eth, 69));
         capabilities.Add(new Capability(Protocol.Eth, 70));
         capabilities.Add(new Capability(Protocol.Eth, 71));
+        // A node without blob support exchanges no cells, so before PeerDAS it can still take eth/72 as the base of eth/74;
+        // otherwise a chain without EIP-7594 would never exchange dependency proofs.
         if (_txPoolConfig.BlobsSupport.IsEnabled()
-            && IsEip7594Enabled())
+            ? IsEip7594Enabled()
+            : IsEip8141Scheduled())
         {
             capabilities.Add(new Capability(Protocol.Eth, 72));
+            // EIP-8512 eth/74 adds the exchange of the EIP-8141 dependency proofs, which block sync needs as they are in
+            // neither headers nor bodies. It is advertised once EIP-8141 is scheduled, not active: a session keeps its
+            // negotiated version, so a peer connected before the fork would otherwise stay on eth/72.
+            if (IsEip8141Scheduled()) capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth74));
         }
     }
 
@@ -94,6 +101,8 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     }
 
     private bool IsEip7594Enabled() => _specProvider?.GetCurrentHeadSpec().IsEip7594Enabled ?? false;
+
+    private bool IsEip8141Scheduled() => _specProvider?.GetFinalSpec().IsEip8141Enabled ?? false;
 
     public void Dispose()
     {

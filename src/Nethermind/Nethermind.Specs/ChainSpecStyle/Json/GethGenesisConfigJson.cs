@@ -70,6 +70,8 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? Bpo5Time { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8141 frame transactions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
     public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>EIP-8288 prototype activation in Unix timestamp seconds; null leaves it unscheduled.</summary>
+    public ulong? Eip8288PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8250 keyed nonces, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
     public ulong? Eip8250PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8272 recent roots, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>

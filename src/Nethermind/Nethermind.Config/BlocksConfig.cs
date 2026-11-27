@@ -60,6 +60,7 @@ namespace Nethermind.Config
 
         public ulong SecondsPerSlot { get; set; } = 12;
 
+        public DependencyProofAggregation DependencyProofAggregation { get; set; } = DependencyProofAggregation.None;
         public PreWarmMode PreWarming { get; set; } = PreWarmMode.BlockAndMempool;
 
         // A caller buys at most ~3.4 bytes of cache per gas spent, so a 60M-gas block could ask at max for ~200 MB.

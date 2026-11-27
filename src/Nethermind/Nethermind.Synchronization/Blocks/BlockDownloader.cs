@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
@@ -50,6 +51,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly IBlockProcessingQueue _processingQueue;
         private readonly BlockAccessListServingWindow _balServingWindow;
+        private readonly IDependencyProofStore _proofStore;
         private readonly ILogger _logger;
 
         // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
@@ -95,6 +97,7 @@ namespace Nethermind.Synchronization.Blocks
             IBlockProcessingQueue processingQueue,
             ISyncConfig syncConfig,
             BlockAccessListServingWindow balServingWindow,
+            IDependencyProofStore proofStore,
             ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -113,6 +116,7 @@ namespace Nethermind.Synchronization.Blocks
             _receiptsRecovery = receiptsRecovery;
             _processingQueue = processingQueue;
             _balServingWindow = balServingWindow;
+            _proofStore = proofStore;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
@@ -358,15 +362,17 @@ namespace Nethermind.Synchronization.Blocks
             ArrayPoolList<int> expectedReceiptCounts = [with(headers.Count)];
             ArrayPoolList<BlockHeader> bodiesToDownload = [with(headers.Count)];
             ArrayPoolList<BlockHeader> blockAccessListsToDownload = [with(headers.Count)];
+            ArrayPoolList<BlockHeader> dependencyProofsToDownload = [with(Math.Min(headers.Count, BlocksRequest.MaxDependencyProofsPerRequest))];
             try
             {
-                return await FillRequest(headers, shouldProcess, shouldDownloadReceipt, receiptsToDownload, expectedReceiptCounts, bodiesToDownload, blockAccessListsToDownload, cancellation);
+                return await FillRequest(headers, shouldProcess, shouldDownloadReceipt, receiptsToDownload, expectedReceiptCounts, bodiesToDownload, blockAccessListsToDownload, dependencyProofsToDownload, cancellation);
             }
             catch
             {
                 // The lists go to the request only on success, and the empty request disposes them itself.
                 bodiesToDownload.Dispose();
                 blockAccessListsToDownload.Dispose();
+                dependencyProofsToDownload.Dispose();
                 receiptsToDownload.Dispose();
                 expectedReceiptCounts.Dispose();
                 throw;
@@ -381,6 +387,7 @@ namespace Nethermind.Synchronization.Blocks
             ArrayPoolList<int> expectedReceiptCounts,
             ArrayPoolList<BlockHeader> bodiesToDownload,
             ArrayPoolList<BlockHeader> blockAccessListsToDownload,
+            ArrayPoolList<BlockHeader> dependencyProofsToDownload,
             CancellationToken cancellation)
         {
             BlocksRequestContentType? requestContentType = null;
@@ -451,6 +458,16 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
+                // EIP-8512: a proof is requested only once its block has a body, and in requests of its own, so a slow proof
+                // response neither holds back nor re-triggers the body request.
+                if ((requestContentType is null or BlocksRequestContentType.DependencyProofs) && entry.NeedDependencyProofDownload
+                    && dependencyProofsToDownload.Count < BlocksRequest.MaxDependencyProofsPerRequest)
+                {
+                    entry.MarkDependencyProofRequestSent();
+                    dependencyProofsToDownload.Add(blockHeader);
+                    requestContentType = BlocksRequestContentType.DependencyProofs;
+                }
+
                 if (
                     ShouldDownloadReceipts(blockHeader, shouldProcess, shouldDownloadReceipt) &&
                     (requestContentType is null or BlocksRequestContentType.Receipts) &&
@@ -485,10 +502,11 @@ namespace Nethermind.Synchronization.Blocks
 
             if (_logger.IsTrace) _logger.Trace($"Assembled request of {bodiesToDownload.Count} bodies, {blockAccessListsToDownload.Count} access lists and {receiptsToDownload.Count} receipts.");
 
-            if (receiptsToDownload.Count + bodiesToDownload.Count + blockAccessListsToDownload.Count == 0)
+            if (receiptsToDownload.Count + bodiesToDownload.Count + blockAccessListsToDownload.Count + dependencyProofsToDownload.Count == 0)
             {
                 bodiesToDownload.Dispose();
                 blockAccessListsToDownload.Dispose();
+                dependencyProofsToDownload.Dispose();
                 receiptsToDownload.Dispose();
                 expectedReceiptCounts.Dispose();
                 return null;
@@ -498,6 +516,7 @@ namespace Nethermind.Synchronization.Blocks
             {
                 BodiesRequests = bodiesToDownload,
                 BlockAccessListsRequests = blockAccessListsToDownload,
+                DependencyProofsRequests = dependencyProofsToDownload,
                 ReceiptsRequests = receiptsToDownload,
                 ExpectedReceiptCounts = expectedReceiptCounts,
             };
@@ -527,6 +546,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (blockEntry.Block is null) break;
                     // A peer that answered without the list sleeps for lists, so the block need not wait for the next request.
                     UpdateNoAccessListPeer(blockEntry, ref blockAccessListsPeerHead, ref blockAccessListsPeerHeadKnown);
+                    if (!blockEntry.HasDependencyProof) break;
                     if (ShouldDownloadAccessList(blockHeader, shouldProcess) && !blockEntry.HasAccessList) break;
                     if (ShouldDownloadReceipts(blockHeader, shouldProcess, shouldDownloadReceipt) && !blockEntry.HasReceipt) break;
 
@@ -628,7 +648,10 @@ namespace Nethermind.Synchronization.Blocks
 
                 Block block = new(entry.Header, body)
                 {
-                    EncodedBlockAccessList = entry.EncodedAccessList
+                    EncodedBlockAccessList = entry.EncodedAccessList,
+                    // A block committing to the empty proof carries it, so it is stored and served as for a block from newPayload.
+                    DependencyProof = entry.DependencyProof
+                        ?? (entry.Header.DependencyProofHash == Keccak.OfAnEmptyString ? [] : null)
                 };
 
                 if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
@@ -658,6 +681,8 @@ namespace Nethermind.Synchronization.Blocks
                     _estimateTxPerBlock = (int)Math.Max(txCount / blocks.Count, MinEstimateTxPerBlock);
                 }
             }
+
+            int dependencyProofsCount = HandleDependencyProofsResponse(response, peer, ref result);
 
             for (int i = 0; i < response.ReceiptsRequests.Count; i++)
             {
@@ -765,7 +790,7 @@ namespace Nethermind.Synchronization.Blocks
             if (result == SyncResponseHandlingResult.OK)
             {
                 // Request and body does not have the same size so this heuristic is wrong.
-                if (bodiesCount + blockAccessListsCount + answeredWithoutStoredListCount + receiptsCount == 0)
+                if (bodiesCount + blockAccessListsCount + answeredWithoutStoredListCount + receiptsCount + dependencyProofsCount == 0)
                 {
                     // Trigger sleep
                     result = SyncResponseHandlingResult.LesserQuality;
@@ -775,6 +800,50 @@ namespace Nethermind.Synchronization.Blocks
             HandleSyncRequestResult(response.DownloadTask, peer);
 
             return result;
+        }
+
+        /// <summary>Takes the EIP-8141 dependency proofs of a response, by EIP-8512 rules.</summary>
+        /// <remarks>An empty entry, or one past a response the soft limit cut short, is requested again without penalty; a
+        /// non-empty proof not hashing to its header's <c>dependency_proof_hash</c> is a breach of protocol.</remarks>
+        /// <returns>How many proofs were taken.</returns>
+        private int HandleDependencyProofsResponse(BlocksRequest response, PeerInfo? peer, ref SyncResponseHandlingResult result)
+        {
+            IOwnedReadOnlyList<byte[]>? proofs = response.DependencyProofs;
+            int served = proofs?.Count ?? 0;
+            if (served > response.DependencyProofsRequests.Count)
+            {
+                if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "more dependency proofs than requested");
+                result = SyncResponseHandlingResult.LesserQuality;
+                served = 0;
+            }
+
+            int taken = 0;
+            for (int i = 0; i < response.DependencyProofsRequests.Count; i++)
+            {
+                BlockHeader header = response.DependencyProofsRequests[i];
+                if (!_downloadRequests.TryGetValue(header.Hash!, out BlockEntry? entry)) continue;
+
+                byte[]? proof = i < served ? proofs![i] : null;
+                if (proof is null or { Length: 0 })
+                {
+                    entry.RetryDependencyProofRequest();
+                    continue;
+                }
+
+                if (Keccak.Compute(proof) != header.DependencyProofHash)
+                {
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"dependency proof does not match its header. Block: {header.ToString(BlockHeader.Format.Short)}");
+                    result = SyncResponseHandlingResult.LesserQuality;
+                    entry.RetryDependencyProofRequest();
+                    continue;
+                }
+
+                entry.DependencyProof = proof;
+                if (entry.Block is not null) entry.Block.DependencyProof = proof;
+                taken++;
+            }
+
+            return taken;
         }
 
         private bool TryHandleBlockAccessListResponse(
@@ -879,6 +948,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             Bodies,
             BlockAccessLists,
+            DependencyProofs,
             Receipts
         }
 
@@ -916,7 +986,11 @@ namespace Nethermind.Synchronization.Blocks
                 return null;
             }
 
-            return new Block(header, localBlock.Body);
+            // A block inserted by newPayload has its EIP-8141 dependency proof in the proof store.
+            return new Block(header, localBlock.Body)
+            {
+                DependencyProof = header.DependencyProofHash is null ? null : _proofStore.Get(header.Number, header.Hash!)
+            };
         }
 
         protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock) =>
@@ -1148,6 +1222,22 @@ namespace Nethermind.Synchronization.Blocks
 
             public void MarkReceiptRequestSent() => _receiptRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
             public void RetryReceiptRequest() => _receiptRequestDeadline = DateTimeOffset.MinValue;
+
+            public byte[]? DependencyProof { get; set; }
+
+            /// <remarks>A block committing to the empty proof needs none.</remarks>
+            public bool HasDependencyProof =>
+                Header.DependencyProofHash is not { } proofHash || proofHash == Keccak.OfAnEmptyString
+                || DependencyProof is not null || Block?.DependencyProof is not null;
+
+            private DateTimeOffset _dependencyProofRequestDeadline = DateTimeOffset.MinValue;
+            public bool NeedDependencyProofDownload =>
+                Block is not null &&
+                !HasDependencyProof &&
+                _dependencyProofRequestDeadline < DateTimeOffset.Now;
+
+            public void MarkDependencyProofRequestSent() => _dependencyProofRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
+            public void RetryDependencyProofRequest() => _dependencyProofRequestDeadline = DateTimeOffset.MinValue;
 
             public PeerInfo? PeerInfo { get; set; } = PeerInfo;
             public Block? Block { get; set; } = Block;

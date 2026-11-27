@@ -32,7 +32,14 @@ namespace Nethermind.Network.P2P
         void OnSessionDisconnected(Session session, DisconnectEventArgs args);
     }
 
-    public class Session : ISession
+    internal interface IMessageLimitSession
+    {
+        /// <summary>Whether a packet exceeds its protocol's message-data ceiling, checked against the advertised uncompressed
+        /// size before decompression.</summary>
+        bool ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength);
+    }
+
+    public class Session : ISession, IMessageLimitSession
     {
         private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
         private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new(concurrencyLevel: 1, capacity: 4);
@@ -279,6 +286,16 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this:hide}");
+        }
+
+        /// <remarks>Caps <c>eth/74</c> DependencyProofs; data within the cap needs no protocol lookup.</remarks>
+        bool IMessageLimitSession.ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength)
+        {
+            if (uncompressedLength <= Subprotocols.Eth.V74.Eth74Protocol.LocalMaxResponseBytes || _routes is not { } routes) return false;
+            (string? protocol, int messageId) = routes.Resolver.ResolveProtocol(adaptivePacketType);
+            return protocol == Protocol.Eth && _protocols.TryGetValue(Protocol.Eth, out IProtocolHandler? eth)
+                && eth.ProtocolVersion >= EthVersions.Eth74
+                && Subprotocols.Eth.V74.Eth74Protocol.ExceedsMessageLimit(messageId, uncompressedLength);
         }
 
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);

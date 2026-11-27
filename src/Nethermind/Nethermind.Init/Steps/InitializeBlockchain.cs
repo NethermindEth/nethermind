@@ -16,6 +16,7 @@ namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(
         typeof(InitializeBlockTree),
+        typeof(InitializeLeanBackend),
         typeof(SetupKeyStore)
     )]
     public class InitializeBlockchain(INethermindApi api) : IStep
