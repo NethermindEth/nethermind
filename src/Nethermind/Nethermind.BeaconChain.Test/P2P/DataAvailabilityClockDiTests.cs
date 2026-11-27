@@ -3,11 +3,14 @@
 
 using Autofac;
 using Autofac.Core;
+using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
+using Nethermind.Config;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -36,11 +39,35 @@ public class DataAvailabilityClockDiTests
     }
 
     [Test]
+    public void Importer_factory_and_api_share_the_node_committee_cache()
+    {
+        List<(Type Consumer, Type Dependency, object? Instance)> resolved = [];
+        ContainerBuilder builder = BeaconChainTestContainer.Builder(BlockchainIds.Sepolia)
+            .AddSingleton(Substitute.For<IProcessExitSource>());
+        using IContainer container = BeaconChainTestContainer.BuildTrackingDependencies(builder, resolved, typeof(CommitteeCacheLru));
+
+        container.Resolve<IBlockImporterFactory>();
+        container.Resolve<BeaconApiHost>();
+        CommitteeCacheLru registered = container.Resolve<CommitteeCacheLru>();
+        using ILifetimeScope scope = container.BeginLifetimeScope();
+        using IContainer otherNode = BeaconChainTestContainer.Builder(BlockchainIds.Sepolia).Build();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved.Select(static r => r.Consumer), Is.SupersetOf(new[] { typeof(BlockImporterFactory), typeof(BeaconApiHost) }));
+            Assert.That(resolved.Select(static r => r.Instance), Is.All.SameAs(registered));
+            Assert.That(scope.Resolve<CommitteeCacheLru>(), Is.SameAs(registered));
+            Assert.That(otherNode.Resolve<CommitteeCacheLru>(), Is.Not.SameAs(registered));
+        }
+    }
+
+    [Test]
     public void Range_sync_and_the_importer_factory_do_not_resolve_without_a_registered_clock([Values] bool registerClock)
     {
         ContainerBuilder builder = new();
         builder.RegisterType<RangeSync>();
         builder.RegisterType<BlockImporterFactory>();
+        builder.RegisterType<CommitteeCacheLru>();
         builder.RegisterInstance(BeaconChainSpec.Mainnet);
         builder.RegisterInstance(Substitute.For<IBeaconSyncPeerPool>());
         builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();

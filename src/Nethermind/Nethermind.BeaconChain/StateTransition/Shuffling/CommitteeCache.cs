@@ -90,7 +90,7 @@ public sealed class CommitteeCache
 /// <c>(epoch, shuffling decision root)</c>, so equal shufflings are shared across forks and slots.
 /// </summary>
 /// <remarks>
-/// Not thread-safe: each owner (e.g. a state-transition context) should hold its own instance.
+/// Thread-safe. Shared by state transitions and API requests within one node.
 /// Only epochs whose decision root is reachable from the state (previous/current/next epoch)
 /// can be cached; see <see cref="BeaconStateAccessors.GetShufflingDecisionRoot"/>.
 /// The fork is not part of the key: Gloas leaves every committee accessor unmodified
@@ -100,18 +100,42 @@ public sealed class CommitteeCacheLru(int capacity = CommitteeCacheLru.DefaultCa
 {
     public const int DefaultCapacity = 4;
 
+    private readonly Lock _lock = new();
     private readonly List<(ulong Epoch, Hash256 DecisionRoot, CommitteeCache Cache)> _entries = [with(capacity)];
 
     /// <summary>Returns the cached committees for <paramref name="epoch"/>, building them if absent.</summary>
-    public CommitteeCache GetOrBuild(BeaconStateFulu state, ulong epoch) =>
-        TryGet(epoch, state.GetShufflingDecisionRoot(epoch)) ?? Add(epoch, state.GetShufflingDecisionRoot(epoch), CommitteeCache.Build(state, epoch));
+    public CommitteeCache GetOrBuild(BeaconStateElectra state, ulong epoch)
+    {
+        Hash256 decisionRoot = state.GetShufflingDecisionRoot(epoch);
+        lock (_lock)
+        {
+            if (TryGet(epoch, decisionRoot) is { } cached) return cached;
+        }
 
-    /// <summary><see cref="GetOrBuild(BeaconStateFulu, ulong)"/> for a post-fork <see cref="BeaconStateGloas"/>; the two overloads share one LRU, keyed identically.</summary>
+        CommitteeCache built = CommitteeCache.Build(state, epoch);
+        lock (_lock)
+        {
+            return TryGet(epoch, decisionRoot) ?? Add(epoch, decisionRoot, built);
+        }
+    }
+
+    /// <summary><see cref="GetOrBuild(BeaconStateElectra, ulong)"/> for a post-fork <see cref="BeaconStateGloas"/>; the two overloads share one LRU, keyed identically.</summary>
     public CommitteeCache GetOrBuild(BeaconStateGloas state, ulong epoch) =>
-        TryGet(epoch, state.GetShufflingDecisionRoot(epoch)) ?? Add(epoch, state.GetShufflingDecisionRoot(epoch), CommitteeCache.Build(state, epoch));
+        GetOrBuild(state, epoch, state.GetShufflingDecisionRoot(epoch));
 
-    internal CommitteeCache GetOrBuild(BeaconStateGloas state, ulong epoch, Hash256 decisionRoot) =>
-        TryGet(epoch, decisionRoot) ?? Add(epoch, decisionRoot, CommitteeCache.Build(state, epoch));
+    internal CommitteeCache GetOrBuild(BeaconStateGloas state, ulong epoch, Hash256 decisionRoot)
+    {
+        lock (_lock)
+        {
+            if (TryGet(epoch, decisionRoot) is { } cached) return cached;
+        }
+
+        CommitteeCache built = CommitteeCache.Build(state, epoch);
+        lock (_lock)
+        {
+            return TryGet(epoch, decisionRoot) ?? Add(epoch, decisionRoot, built);
+        }
+    }
 
     private CommitteeCache? TryGet(ulong epoch, Hash256 decisionRoot)
     {

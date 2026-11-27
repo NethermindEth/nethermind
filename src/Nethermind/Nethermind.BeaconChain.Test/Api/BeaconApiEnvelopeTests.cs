@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.Api.Endpoints;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
@@ -46,8 +47,9 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         status.CurrentStatus = first;
         HeadSnapshotHolder? heads = publishedHead ? new() { Current = new(first, first.HeadRoot, Hash256.Zero, false) } : null;
         ServiceCollection services = new();
+        CommitteeCacheLru committees = new();
         BeaconApiEndpoints.AddServices(services, Spec, status, _host.Clock, _host.Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, Substitute.For<IBeaconNodeValidatorApi>(), headSnapshots: heads);
+            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, Substitute.For<IBeaconNodeValidatorApi>(), committees, headSnapshots: heads);
         using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
         using IServiceScope firstScope = provider.CreateScope();
         BeaconApiHead firstView = firstScope.ServiceProvider.GetRequiredService<BeaconApiHead>();
@@ -64,6 +66,8 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
             Assert.That(secondView, Is.Not.SameAs(firstView));
             Assert.That(firstScope.ServiceProvider.GetRequiredService<ValidatorIndexCache>(),
                 Is.SameAs(secondScope.ServiceProvider.GetRequiredService<ValidatorIndexCache>()));
+            Assert.That(firstScope.ServiceProvider.GetRequiredService<CommitteeCacheLru>(), Is.SameAs(committees));
+            Assert.That(secondScope.ServiceProvider.GetRequiredService<CommitteeCacheLru>(), Is.SameAs(committees));
             Assert.That(firstScope.ServiceProvider.GetRequiredService<StateCommitteeCache>(),
                 Is.SameAs(secondScope.ServiceProvider.GetRequiredService<StateCommitteeCache>()));
             Assert.That(firstScope.ServiceProvider.GetRequiredService<System.Threading.RateLimiting.ConcurrencyLimiter>(),

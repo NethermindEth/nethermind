@@ -495,7 +495,7 @@ public class BeaconApiHostTests : BeaconApiFixture
     {
         BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
         BeaconApiHost host = new(apiConfig, Spec, _host.StatusHolder, _host.Clock, _host.Store,
-            new LocalMetadataSource(), _engine, exitSource, LimboLogs.Instance, Substitute.For<IBeaconNodeValidatorApi>());
+            new LocalMetadataSource(), _engine, exitSource, LimboLogs.Instance, Substitute.For<IBeaconNodeValidatorApi>(), new());
 
         await host.StartAsync(CancellationToken.None);
         await host.DisposeAsync();

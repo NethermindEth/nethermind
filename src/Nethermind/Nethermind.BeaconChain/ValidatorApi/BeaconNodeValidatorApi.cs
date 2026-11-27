@@ -37,6 +37,7 @@ public sealed class BeaconNodeValidatorApi(
     SlotClock slotClock,
     HeadSnapshotHolder headSnapshots,
     PubkeyCache pubkeys,
+    CommitteeCacheLru committeeCache,
     IEngineDriver engine,
     BeaconSyncOrchestrator orchestrator,
     BeaconP2P p2p) : IBeaconNodeValidatorApi
@@ -47,8 +48,6 @@ public sealed class BeaconNodeValidatorApi(
     /// <summary>phase0/p2p-interface.md <c>ATTESTATION_SUBNET_COUNT</c>.</summary>
     private const ulong AttestationSubnetCount = 64;
 
-    // Keep this separate from the import worker's non-thread-safe cache; concurrent API requests lock this instance.
-    private readonly CommitteeCacheLru _committees = new();
     private readonly ConditionalWeakTable<BeaconStateFulu, Lazy<Checkpoint>> _unrealizedJustification = [];
 
     /// <summary>Publishes a gossip message on a topic, subscribed or not; tests script it, otherwise <see cref="BeaconP2P.Publish"/>.</summary>
@@ -87,7 +86,7 @@ public sealed class BeaconNodeValidatorApi(
         if (epoch > headEpoch + 1) throw NotReady($"The head at epoch {headEpoch} is too far behind to know the committees of epoch {epoch}.");
         if (epoch + 1 < headEpoch) throw InvalidRequest($"Epoch {epoch} is before the previous epoch of the head at epoch {headEpoch}.");
 
-        CommitteeCache committees = GetCommittees(state, epoch);
+        CommitteeCache committees = committeeCache.GetOrBuild(state, epoch);
         ReadOnlySpan<Validator> validators = state.ReadOnlyValidators;
         HashSet<ulong> wanted = [.. validatorIndices];
         List<AttesterDuty> duties = [];
@@ -317,11 +316,6 @@ public sealed class BeaconNodeValidatorApi(
         return (earliest, latest);
     }
 
-    private CommitteeCache GetCommittees(BeaconStateFulu state, ulong epoch)
-    {
-        lock (_committees) return _committees.GetOrBuild(state, epoch);
-    }
-
     /// <summary>The electra/p2p-interface.md <c>beacon_attestation_{subnet_id}</c> checks of a locally submitted attestation.</summary>
     /// <returns>Why the attestation is refused, or <c>null</c> with its subnet and its fork-choice form.</returns>
     private string? Validate(SingleAttestation attestation, BeaconStateFulu state, CheckpointRef finalized, Dictionary<Hash256, ForkChoiceSnapshotNode> nodes,
@@ -339,7 +333,7 @@ public sealed class BeaconNodeValidatorApi(
         ulong headEpoch = state.GetCurrentEpoch();
         if (epoch > headEpoch + 1) return $"The head at epoch {headEpoch} is too far behind to know the committees of epoch {epoch}.";
 
-        CommitteeCache committees = GetCommittees(state, epoch);
+        CommitteeCache committees = committeeCache.GetOrBuild(state, epoch);
         if (attestation.CommitteeIndex >= (ulong)committees.CommitteesPerSlot) return $"Committee index {attestation.CommitteeIndex} is out of range ({committees.CommitteesPerSlot} committees per slot).";
         ReadOnlySpan<int> committee = committees.GetBeaconCommittee(data.Slot, (int)attestation.CommitteeIndex);
         int position = attestation.AttesterIndex < int.MaxValue ? committee.IndexOf((int)attestation.AttesterIndex) : -1;

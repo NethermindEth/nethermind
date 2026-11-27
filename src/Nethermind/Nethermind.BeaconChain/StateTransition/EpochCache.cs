@@ -10,8 +10,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.BeaconChain.StateTransition;
 
 /// <summary>
-/// Caller-owned per-epoch caches used by the state transition: the memoized total active balance
-/// and an LRU of committee shufflings.
+/// Caller-owned per-epoch transition caches backed by shared committee shufflings.
 /// </summary>
 /// <remarks>
 /// Not thread-safe: own one instance per state lineage (e.g. per block-processing context). The
@@ -28,7 +27,7 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// the decision-root key used to hand across silently. Same-slot siblings within one epoch share
 /// both keys and both values legitimately. Instances sharing the stateful <see cref="Hasher"/> must be used serially.
 /// </remarks>
-public sealed class EpochCache
+public sealed class EpochCache(CommitteeCacheLru committees)
 {
     internal BeaconChainSpec? SigningSpec { get; set; }
 
@@ -97,14 +96,11 @@ public sealed class EpochCache
     }
 
     private (ulong Epoch, ulong Balance, Hash256 BoundaryRoot)? _totalActiveBalance;
-    private readonly CommitteeCacheLru _committees;
+    private readonly CommitteeCacheLru _committees = committees;
     private (SyncCommittee Committee, int[] Indices)? _syncCommitteeIndices;
 
     public EpochCache() : this(new CommitteeCacheLru()) { }
 
-    private EpochCache(CommitteeCacheLru committees) => _committees = committees;
-
-    // Speculative and committed states run on the same import worker. Shufflings can share an LRU keyed by decision root.
     internal EpochCache ForSpeculativeImport() => new(_committees)
     {
         Hasher = Hasher,

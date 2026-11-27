@@ -15,6 +15,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.ValidatorApi;
@@ -33,7 +34,7 @@ internal static class BeaconApiEndpoints
     public static void AddServices(IServiceCollection services,
         BeaconChainSpec spec, IBeaconChainStatusSource statusSource, SlotClock slotClock,
         BeaconChainStore store, LocalMetadataSource metadataSource, IEngineDriver engine,
-        ILogManager logManager, IBeaconNodeValidatorApi validatorApi, BeaconP2P? p2p = null, PeerManager? peerManager = null,
+        ILogManager logManager, IBeaconNodeValidatorApi validatorApi, CommitteeCacheLru committees, BeaconP2P? p2p = null, PeerManager? peerManager = null,
         BeaconDiscovery? discovery = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
         HeadSnapshotHolder? headSnapshots = null, DataColumnSidecarPool? columnPool = null)
     {
@@ -53,6 +54,7 @@ internal static class BeaconApiEndpoints
         services.AddSingleton(captureHead);
         services.AddScoped(_ => captureHead());
         services.AddSingleton<ValidatorIndexCache>();
+        services.AddSingleton(committees);
         services.AddSingleton<StateCommitteeCache>();
         services.AddSingleton(_ => new System.Threading.RateLimiting.ConcurrencyLimiter(new()
         {
