@@ -56,7 +56,7 @@ namespace Nethermind.Merge.Plugin
 
             (bool isTerminal, bool isPostMerge) = poSSwitcher.GetBlockConsensusInfo(header);
             return isPostMerge
-                ? ValidateTheMergeChecks(header, isTerminal) && base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash)
+                ? ValidateTheMergeChecks(header, isTerminal, ref error) && base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash)
                 : ValidatePoWTotalDifficulty(header, ref error) && (
                     typeof(TOrphaned) == typeof(OnFlag)
                         ? preMergeHeaderValidator.ValidateOrphaned(header, out error)
@@ -92,12 +92,12 @@ namespace Nethermind.Merge.Plugin
             return true;
         }
 
-        private bool ValidateTheMergeChecks(BlockHeader header, bool isTerminal)
+        private bool ValidateTheMergeChecks(BlockHeader header, bool isTerminal, ref string? error)
         {
-            bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, isTerminal);
-            bool valid = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty))
-                        && ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce))
-                        && ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash));
+            bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, isTerminal, ref error);
+            bool valid = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty), BlockErrorMessages.InvalidPostMergeDifficulty, ref error)
+                        && ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce), BlockErrorMessages.InvalidPostMergeNonce, ref error)
+                        && ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash), BlockErrorMessages.InvalidPostMergeUnclesHash, ref error);
 
             return terminalTotalDifficultyChecks && valid;
         }
@@ -119,7 +119,7 @@ namespace Nethermind.Merge.Plugin
             return base.ValidateExtraData(header, spec, isUncle, ref error);
         }
 
-        private bool ValidateTerminalTotalDifficultyChecks(BlockHeader header, bool isTerminal)
+        private bool ValidateTerminalTotalDifficultyChecks(BlockHeader header, bool isTerminal, ref string? error)
         {
             if ((header.TotalDifficulty ?? 0) == 0 || poSSwitcher.TerminalTotalDifficulty is null)
             {
@@ -143,16 +143,19 @@ namespace Nethermind.Merge.Plugin
             if (!isValid)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - total difficulty is incorrect because of TTD, TerminalTotalDifficulty: {poSSwitcher.TerminalTotalDifficulty}, IsPostMerge {header.IsPostMerge} IsTerminalBlock: {isTerminal}");
+                error = BlockErrorMessages.InvalidTotalDifficulty;
             }
 
             return isValid;
         }
 
-        private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
+        private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name, string errorMessage, ref string? error)
         {
             if (!EqualityComparer<T>.Default.Equals(value, expected))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Full)} - the {name} is incorrect expected {expected}, got {value}. TransitionFinished: {poSSwitcher.TransitionFinished}, TTD: {_specProvider.TerminalTotalDifficulty}, IsTerminal: {header.IsTerminalBlock(_specProvider)}");
+                // The total difficulty check runs first and keeps its error.
+                error ??= errorMessage;
                 return false;
             }
 

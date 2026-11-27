@@ -74,6 +74,15 @@ public static class BlockErrorMessages
     public const string InvalidTotalDifficulty =
         "InvalidTotalDifficulty: Could not be validated.";
 
+    public const string InvalidPostMergeDifficulty =
+        "InvalidPostMergeDifficulty: Difficulty must be zero in a proof-of-stake block.";
+
+    public const string InvalidPostMergeNonce =
+        "InvalidPostMergeNonce: Nonce must be zero in a proof-of-stake block.";
+
+    public const string InvalidPostMergeUnclesHash =
+        "InvalidPostMergeUnclesHash: Uncles hash must be the hash of an empty list in a proof-of-stake block.";
+
     public const string InvalidSealParameters =
         "InvalidSealParameters: Could not be validated.";
 
