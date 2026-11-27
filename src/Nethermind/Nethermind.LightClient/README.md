@@ -282,10 +282,17 @@ Example request:
 Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/json -Body '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0x0000000000000000000000000000000000000000","latest"]}'
 ```
 
+### Runtime defaults
+
+The light client uses a 4 MiB Keccak cache and workstation garbage collection.
+Set `DOTNET_gcServer=1` to use server garbage collection.
+
 ## Metrics
 
 `GET /metrics` exports Prometheus metrics on the same HTTP listener, under the
-same Host/origin policy. The [Docker deployment](Deployment/README.md)
+same Host/origin policy. Plain HTTP scrapes can negotiate compression with
+`Accept-Encoding`. Direct HTTPS scrapes receive uncompressed responses.
+The [Docker deployment](Deployment/README.md)
 includes a scraper and Grafana dashboard. Keep these operational endpoints private.
 
 The `nethermind_light_client_` metrics cover startup/readiness, authenticated

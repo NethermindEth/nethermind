@@ -248,11 +248,12 @@ public partial class BlockDownloaderTests
     }
 
     /// <summary>Creates a node whose finalized beacon chain holds <paramref name="blockCount"/> blocks awaiting catch-up.</summary>
-    private CatchUp CreateCatchUp(int blockCount, bool reconstruct = true, IBlocksConfig? blocksConfig = null, Action<ContainerBuilder>? configurer = null)
+    /// <param name="blockAccessList">The encoded list every block commits to; an empty list by default.</param>
+    private CatchUp CreateCatchUp(int blockCount, bool reconstruct = true, IBlocksConfig? blocksConfig = null, Action<ContainerBuilder>? configurer = null, byte[]? blockAccessList = null)
     {
         IForwardHeaderProvider headers = Substitute.For<IForwardHeaderProvider>();
         IBeaconSyncStrategy beacon = Substitute.For<IBeaconSyncStrategy>();
-        byte[] bal = Rlp.Encode(new ReadOnlyBlockAccessList());
+        byte[] bal = blockAccessList ?? Rlp.Encode(new ReadOnlyBlockAccessList());
         IContainer node = CreateMergeNode(builder =>
             {
                 builder

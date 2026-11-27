@@ -349,16 +349,53 @@ public sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public List<(ValueHash256 AddressHash, ValueHash256 From, ValueHash256 To)> DeleteStorageTrieNodeRangeCalls { get; } = [];
     public List<MigrationCursor?> SetMigrationCursorCalls { get; } = [];
     public int DisposeCount { get; private set; }
+    public int AbortCount { get; private set; }
 
-    public void SelfDestruct(Address addr) => SelfDestructCalls.Add(addr);
+    /// <summary>Whether <see cref="Abort"/> had been called when the batch was last disposed.</summary>
+    public bool AbortedAtDispose { get; private set; }
+
+    private string? _throwOn;
+    private Exception? _exception;
+
+    /// <summary>
+    /// Makes the next call to the write named <paramref name="method"/>, one of <see cref="SelfDestruct"/>,
+    /// <see cref="SetStorage"/> and <see cref="SetStorageTrieNode"/>, throw <paramref name="exception"/> after recording it.
+    /// </summary>
+    public void ThrowOn(string method, Exception exception)
+    {
+        _throwOn = method;
+        _exception = exception;
+    }
+
+    private void ThrowIfRequested([CallerMemberName] string method = "")
+    {
+        if (method != _throwOn) return;
+        _throwOn = null;
+        throw _exception!;
+    }
+
+    public void SelfDestruct(Address addr)
+    {
+        SelfDestructCalls.Add(addr);
+        ThrowIfRequested();
+    }
+
     public void SetAccount(Address addr, Account? account) => SetAccountCalls.Add((addr, account));
-    public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) => SetStorageCalls.Add((addr, slot, value));
+
+    public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
+    {
+        SetStorageCalls.Add((addr, slot, value));
+        ThrowIfRequested();
+    }
 
     public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
         SetStateTrieNodeCalls.Add((path, rlp.ToArray()));
 
-    public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
+    public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp)
+    {
         SetStorageTrieNodeCalls.Add((address, path, rlp.ToArray()));
+        ThrowIfRequested();
+    }
 
     public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
         SetStorageRawEncodedCalls.Add((addrHash, slotHash, rlpValue.ToArray()));
@@ -382,7 +419,13 @@ public sealed class FakeWriteBatch : IPersistence.IWriteBatch
 
     public void SetMigrationCursor(in MigrationCursor? cursor) => SetMigrationCursorCalls.Add(cursor);
 
-    public void Dispose() => DisposeCount++;
+    public void Abort() => AbortCount++;
+
+    public void Dispose()
+    {
+        AbortedAtDispose = AbortCount > 0;
+        DisposeCount++;
+    }
 }
 
 internal sealed class ForwardingNodeRecordBuffer(INodeRecordBuffer inner) : INodeRecordBuffer

@@ -3,15 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
-using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx
@@ -21,8 +17,7 @@ namespace Nethermind.Network.Rlpx
         private readonly ILogger _logger = logManager?.GetClassLogger<ZeroFrameMerger>() ?? throw new ArgumentNullException(nameof(logManager));
 
         private NettyBufferPacket? _zeroPacket;
-        private int? _currentContextId;
-        private readonly FrameHeaderReader _headerReader = new();
+        private readonly FrameMerger _merger = new();
 
         public override void HandlerRemoved(IChannelHandlerContext context)
         {
@@ -43,8 +38,14 @@ namespace Nethermind.Network.Rlpx
             {
                 DecodeFrame(context, input, output);
             }
+            catch (InvalidFrameException exception)
+            {
+                ReleaseInProgressPacket();
+                throw exception.ToCorruptedFrameException();
+            }
             catch
             {
+                // Storing a chunk can fail after the merger accepted it, so both halves drop the packet.
                 ReleaseInProgressPacket();
                 throw;
             }
@@ -52,163 +53,39 @@ namespace Nethermind.Network.Rlpx
 
         private void DecodeFrame(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
-            FrameHeaderReader.FrameInfo frame = _headerReader.ReadFrameHeader(input);
-            if (input.ReadableBytes != frame.PayloadSize)
-                ThrowInvalidFrameLength(input.ReadableBytes, frame.PayloadSize);
-            if (frame.TotalPacketSize.HasValue || _zeroPacket is null)
+            MergedFrame frame = _merger.Read(input.AsSpan());
+            int contentIndex = input.ReaderIndex + frame.ContentOffset;
+            switch (frame.Kind)
             {
-                if (_zeroPacket is not null)
-                {
-                    // Offending frame is intentionally not processed; the CorruptedFrameException propagates
-                    // through the pipeline for the peer handler to classify.
-                    ReleaseInProgressPacket();
-                    throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a new first chunk before the in-progress packet completed");
-                }
-
-                ReadFirstChunk(context, input, frame);
-                if (!frame.TotalPacketSize.HasValue)
-                {
-                    output.Add(_zeroPacket!);
-                    ResetInProgressPacket();
+                case MergedFrameKind.SinglePacket:
+                    input.SetIndex(contentIndex, contentIndex + frame.ContentLength);
+                    // The message decoder releases its input after Decode; the packet owns the retained reference.
+                    output.Add(new NettyBufferPacket((IByteBuffer)input.Retain()) { PacketType = frame.PacketType });
                     return;
-                }
-                _currentContextId = frame.ContextId;
-            }
-            else
-            {
-                if (frame.ContextId != _currentContextId)
-                {
-                    int? expectedContextId = _currentContextId;
-                    ReleaseInProgressPacket();
-                    ThrowUnexpectedContextId(frame.ContextId, expectedContextId);
-                }
-
-                ReadChunk(input, frame);
+                case MergedFrameKind.FirstChunk:
+                    _zeroPacket = new NettyBufferPacket(context.Allocator.Buffer(frame.ContentLength, frame.TotalContentLength))
+                    {
+                        PacketType = frame.PacketType
+                    };
+                    break;
             }
 
-            input.SkipBytes(frame.Padding);
+            _zeroPacket!.Buffer.EnsureWritable(frame.ContentLength);
+            _zeroPacket.Buffer.WriteBytes(input, contentIndex, frame.ContentLength);
+            input.SkipBytes(input.ReadableBytes);
 
-            if (_zeroPacket.Buffer.MaxWritableBytes == 0)
+            if (frame.IsComplete)
             {
-                NettyBufferPacket completedPacket = _zeroPacket!;
-                if (input.IsReadable())
-                {
-                    throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a corrupted frame - {input.ReadableBytes} longer than expected");
-                }
-
-                output.Add(completedPacket);
-                ResetInProgressPacket();
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
-        {
-            if (frame.Size > _zeroPacket.Buffer.MaxWritableBytes)
-            {
-                int remainingPacketSize = _zeroPacket.Buffer.MaxWritableBytes;
-                ReleaseInProgressPacket();
-                ThrowFrameSizeExceedsRemaining(frame.Size, remainingPacketSize);
-            }
-
-            _zeroPacket.Buffer.EnsureWritable(frame.Size);
-            input.ReadBytes(_zeroPacket.Buffer, frame.Size);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
-        {
-            ulong rlpPacketType = DecodePacketType(input, out int read);
-
-            if (read > frame.Size)
-            {
-                ThrowPacketTypeLengthExceedsFrameSize(read, frame.Size);
-            }
-
-            if (rlpPacketType > byte.MaxValue)
-            {
-                ThrowPacketTypeOutOfRange(rlpPacketType);
-            }
-
-            input.SkipBytes(read);
-            IByteBuffer content;
-            if (frame.TotalPacketSize.HasValue)
-            {
-                int initialContentSize = frame.Size - read;
-                int totalContentSize = frame.TotalPacketSize.Value - read;
-                content = context.Allocator.Buffer(initialContentSize, totalContentSize);
-            }
-            else
-            {
-                input.SetWriterIndex(input.WriterIndex - frame.Padding);
-                // The message decoder releases its input after Decode; the packet owns the retained reference.
-                content = (IByteBuffer)input.Retain();
-            }
-
-            _zeroPacket = new NettyBufferPacket(content)
-            {
-                PacketType = (byte)rlpPacketType
-            };
-
-            if (frame.TotalPacketSize.HasValue)
-            {
-                input.ReadBytes(_zeroPacket.Buffer, frame.Size - read);
+                output.Add(_zeroPacket);
+                _zeroPacket = null;
             }
         }
 
         private void ReleaseInProgressPacket()
         {
             _zeroPacket?.Release();
-            ResetInProgressPacket();
-        }
-
-        private void ResetInProgressPacket()
-        {
             _zeroPacket = null;
-            _currentContextId = null;
+            _merger.Reset();
         }
-
-        /// <remarks>
-        /// The try/catch lives here rather than in <see cref="ReadFirstChunk"/> so that the caller stays free of an
-        /// exception handling region, which RyuJIT refuses to inline.
-        /// </remarks>
-        private static ulong DecodePacketType(IByteBuffer input, out int read)
-        {
-            try
-            {
-                RlpReader reader = new(input.AsSpan());
-                ulong packetType = reader.DecodeULong();
-                read = reader.BytesRead;
-                return packetType;
-            }
-            catch (Exception exception) when (exception is RlpReaderException or ArgumentOutOfRangeException or IndexOutOfRangeException)
-            {
-                throw new CorruptedFrameException(exception);
-            }
-        }
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowInvalidFrameLength(int actual, int expected)
-            => throw new CorruptedFrameException($"Decoded frame has {actual} payload bytes, expected {expected}");
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowFrameSizeExceedsRemaining(int frameSize, int remainingPacketSize)
-            => throw new CorruptedFrameException(
-                $"{nameof(ZeroFrameMerger)} frame size {frameSize} exceeds remaining packet size {remainingPacketSize}");
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowPacketTypeLengthExceedsFrameSize(int packetTypeLength, int frameSize)
-            => throw new CorruptedFrameException(
-                $"{nameof(ZeroFrameMerger)} packet type length {packetTypeLength} exceeds frame size {frameSize}");
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowPacketTypeOutOfRange(ulong packetType)
-            => throw new CorruptedFrameException(
-                $"{nameof(ZeroFrameMerger)} packet type {packetType} does not fit in a byte");
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowUnexpectedContextId(int? contextId, int? expectedContextId)
-            => throw new CorruptedFrameException(
-                $"{nameof(ZeroFrameMerger)} continuation frame context id {contextId} does not match in-progress packet context id {expectedContextId}");
     }
 }
