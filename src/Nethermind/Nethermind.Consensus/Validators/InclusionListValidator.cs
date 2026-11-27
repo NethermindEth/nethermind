@@ -174,7 +174,7 @@ public static class InclusionListValidator
     {
         if (claims is not { Length: > 0 }) return null;
 
-        Dictionary<Hash256AsKey, int?> indices = new(claims.Length);
+        Dictionary<Hash256AsKey, int?> indices = [with(claims.Length)];
         foreach (OmissionClaim claim in claims)
         {
             if (claim.TransactionHash is not { } hash) continue;
