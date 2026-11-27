@@ -130,14 +130,8 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier,
         return ProverThread.Run(() => ProveNative(hash, vk, witness));
     }
 
-    private static int _lastProverThreadId;
-
-    /// <summary>The managed thread that ran the most recent native proof; a test seam.</summary>
-    internal static int LastProverThreadId => Volatile.Read(ref _lastProverThreadId);
-
     private static byte[] ProveNative(in ValueHash256 depsHash, byte[] aggregatedVk, byte[] witness)
     {
-        Volatile.Write(ref _lastProverThreadId, Environment.CurrentManagedThreadId);
         byte* proof = null;
         nuint length = 0;
         try
@@ -208,7 +202,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier,
         }
     }
 
-    internal static byte[] SerializeInput(AggregationInput input)
+    private static byte[] SerializeInput(AggregationInput input)
     {
         if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxRawWitnessesPerStep
             || input.RecursiveProofs.Count > Eip8288Constants.MaxInnerProofsPerStep

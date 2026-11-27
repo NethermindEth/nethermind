@@ -34,6 +34,7 @@ internal sealed class FakeLeanProofVerifier : ILeanProofVerifier
 
     public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
     {
+        if (Fault) throw new InvalidOperationException("native fault");
         ProvingGate?.Wait();
         Interlocked.Increment(ref _proofCalls);
         LargestRawInput = Math.Max(LargestRawInput, input.Deps.Count);

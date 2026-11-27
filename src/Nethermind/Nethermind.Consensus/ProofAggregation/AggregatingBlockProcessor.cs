@@ -98,7 +98,18 @@ public sealed class AggregatingBlockProcessor(
                 return;
             }
 
-            stark = DependencyProofAggregator.Prove(input, proofCache, depsHash, token);
+            try
+            {
+                stark = DependencyProofAggregator.Prove(input, proofCache, depsHash, token);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The raw proof is already valid, so a prover failure costs only the aggregation, not the block.
+                if (_logger.IsWarn) _logger.Warn($"EIP-8288 aggregation of block {block.ToString(Block.Format.Short)} failed, keeping raw witnesses: {exception.Message}");
+                Interlocked.Increment(ref Metrics.LeanRawFallbacks);
+                return;
+            }
+
             proofCache.Remember(canonical, depsHash, stark);
         }
 

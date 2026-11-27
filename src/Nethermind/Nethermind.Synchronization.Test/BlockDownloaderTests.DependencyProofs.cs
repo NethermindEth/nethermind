@@ -55,6 +55,23 @@ public partial class BlockDownloaderTests
         }
     }
 
+    // Proofs may be pruned (EIP-8512), so blocks inserted without processing neither request nor wait for them.
+    [Test]
+    public async Task Inserted_blocks_neither_request_nor_wait_for_dependency_proofs()
+    {
+        (IContainer node, Context ctx, BlockHeader[] headers) = await DependencyProofNode();
+        await using IContainer scope = node;
+
+        BlocksRequest bodies = await Prepare(ctx, DownloaderOptions.Insert);
+        using BlocksRequest? afterBodies = await ServeBodiesAndPrepareOrNull(ctx, bodies, DownloaderOptions.Insert);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterBodies?.DependencyProofsRequests, Is.Null.Or.Empty);
+            Assert.That(ctx.BlockTree.BestSuggestedHeader?.Hash, Is.EqualTo(headers[^1].Hash));
+        }
+    }
+
     // A proof response that times out, or one still in flight, neither requests the bodies again nor duplicates the proofs.
     [Test]
     public async Task Slow_dependency_proofs_do_not_request_bodies_again()
@@ -64,7 +81,7 @@ public partial class BlockDownloaderTests
         BlocksRequest bodies = await Prepare(ctx);
         BlocksRequest proofs = await ServeBodiesAndPrepare(ctx, bodies);
 
-        using BlocksRequest? whileInFlight = await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None);
+        using BlocksRequest? whileInFlight = await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
         proofs.DownloadTask = Task.FromException(new TimeoutException());
         ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(proofs, Peer(EthVersions.Eth74));
         using BlocksRequest afterTimeout = await Prepare(ctx);
@@ -167,18 +184,19 @@ public partial class BlockDownloaderTests
         return Task.FromResult((node, ctx, chain[1..]));
     }
 
-    private static async Task<BlocksRequest> Prepare(Context ctx) =>
-        (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))
+    private static async Task<BlocksRequest> Prepare(Context ctx, DownloaderOptions options = DownloaderOptions.Process) =>
+        (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(options, 0, CancellationToken.None))
         ?? throw new AssertionException("No request was prepared.");
 
     private static async Task<BlocksRequest> ServeBodiesAndPrepare(Context ctx, BlocksRequest bodies) =>
         await ServeBodiesAndPrepareOrNull(ctx, bodies) ?? throw new AssertionException("No request was prepared.");
 
-    private static async Task<BlocksRequest?> ServeBodiesAndPrepareOrNull(Context ctx, BlocksRequest bodies)
+    private static async Task<BlocksRequest?> ServeBodiesAndPrepareOrNull(Context ctx, BlocksRequest bodies,
+        DownloaderOptions options = DownloaderOptions.Process)
     {
         bodies.OwnedBodies = new OwnedBlockBodies([.. bodies.BodiesRequests.Select(static _ => new BlockBody([BodyTransaction], []))]);
         ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(bodies, Peer(EthVersions.Eth74));
-        return await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None);
+        return await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(options, 0, CancellationToken.None);
     }
 
     private static PeerInfo Peer(byte version, ulong head = 100)

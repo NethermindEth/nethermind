@@ -459,8 +459,9 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 // EIP-8512: a proof is requested only once its block has a body, and in requests of its own, so a slow proof
-                // response neither holds back nor re-triggers the body request.
-                if ((requestContentType is null or BlocksRequestContentType.DependencyProofs) && entry.NeedDependencyProofDownload
+                // response neither holds back nor re-triggers the body request. Only a block that will be processed needs it:
+                // proofs may be pruned, so an inserted block must not wait on peers that no longer hold them.
+                if (shouldProcess && (requestContentType is null or BlocksRequestContentType.DependencyProofs) && entry.NeedDependencyProofDownload
                     && dependencyProofsToDownload.Count < BlocksRequest.MaxDependencyProofsPerRequest)
                 {
                     entry.MarkDependencyProofRequestSent();
@@ -546,7 +547,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (blockEntry.Block is null) break;
                     // A peer that answered without the list sleeps for lists, so the block need not wait for the next request.
                     UpdateNoAccessListPeer(blockEntry, ref blockAccessListsPeerHead, ref blockAccessListsPeerHeadKnown);
-                    if (!blockEntry.HasDependencyProof) break;
+                    if (shouldProcess && !blockEntry.HasDependencyProof) break;
                     if (ShouldDownloadAccessList(blockHeader, shouldProcess) && !blockEntry.HasAccessList) break;
                     if (ShouldDownloadReceipts(blockHeader, shouldProcess, shouldDownloadReceipt) && !blockEntry.HasReceipt) break;
 

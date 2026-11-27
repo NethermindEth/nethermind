@@ -164,6 +164,15 @@ public class AggregatedDependencyProofTests
     }
 
     [Test]
+    public void Production_BuilderOnly_KeepsRawWitnessesWhenTheProverFails()
+    {
+        FakeLeanProofVerifier verifier = new() { Fault = true };
+        (Block produced, byte[] raw) = Produce(DependencyProofAggregation.BuilderOnly, verifier, deadline: false);
+
+        Assert.That(produced.DependencyProof, Is.EqualTo(raw));
+    }
+
+    [Test]
     public void Production_BuilderOnly_KeepsRawWitnessesWhenTheStarkIsLarger()
     {
         FakeLeanProofVerifier verifier = new() { ProofLength = 3 * Eip8141Constants.LeanSphincsSignatureSize };

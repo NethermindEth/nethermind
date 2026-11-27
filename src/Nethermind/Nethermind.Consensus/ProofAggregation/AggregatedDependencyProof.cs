@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// Encoded as <c>DEPENDENCY_PROOF_VERSION_AGGREGATED || rlp([stark_proof, [witness, ...]])</c>, the witnesses those of the
 /// dependencies that are not leanSPHINCS ones, in <c>block_dependencies</c> order. The STARK proves
 /// <c>get_deps_hash</c> of the leanSPHINCS dependencies, as <c>(data_hash, verification_key_hash) = (resolved_msg,
-/// resolved_key)</c>, under the fork's <c>AGGREGATED_VK</c>. A block without leanSPHINCS dependencies uses the raw form.
+/// resolved_key)</c>, under the protocol's <c>AGGREGATED_VK</c>. A block without leanSPHINCS dependencies uses the raw form.
 /// </remarks>
 public static class AggregatedDependencyProof
 {
