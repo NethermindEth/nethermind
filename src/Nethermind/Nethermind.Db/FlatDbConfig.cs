@@ -8,6 +8,15 @@ namespace Nethermind.Db;
 
 public class FlatDbConfig : IFlatDbConfig
 {
+    /// <summary>
+    /// EIP-8252 REORG_RETENTION_WINDOW: 262144 blocks = 8192 epochs x 32 slots = 2^18 (~36.4 days at
+    /// 12s slots). The inactivity-leak-bounded non-finality span across which an execution client MUST
+    /// be able to reconstruct any canonical block's post-state (measured from head, not from finalized)
+    /// without external sync. Used as the default long-finality force-persist backstop depth, i.e. the
+    /// deepest reorg the persisted-snapshot tier retains reconstructable state for while finality stalls.
+    /// </summary>
+    public const ulong ReorgRetentionWindow = 262_144;
+
     public bool Enabled { get; set; } = true;
     public FlatDbOnRepair OnRepair { get; set; } = FlatDbOnRepair.Resync;
     public bool HistoryEnabled { get; set; } = false;
@@ -61,7 +70,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong TrieCacheMemoryBudget { get; set; } = 512UL.MiB;
     public ulong CompressedNodeRecordBufferMemoryBudget { get; set; } = 500UL.MiB;
     public bool EnableLongFinality { get; set; } = true;
-    public ulong LongFinalityMaxReorgDepth { get; set; } = 90000;
+    public ulong LongFinalityMaxReorgDepth { get; set; } = ReorgRetentionWindow;
     public int MaxInMemoryBaseSnapshotCount { get; set; } = 160;
     public long ArenaFileSizeBytes { get; set; } = 1.GiB;
     public long PersistedSnapshotDedicatedArenaThresholdBytes { get; set; } = 1.GiB;

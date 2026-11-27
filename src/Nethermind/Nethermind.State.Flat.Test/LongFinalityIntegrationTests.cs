@@ -648,7 +648,12 @@ public class LongFinalityIntegrationTests
         {
             Assert.That(config.EnableLongFinality, Is.True);
             Assert.That(config.MaxReorgDepth, Is.EqualTo(256));
-            Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(90000));
+            // EIP-8252: the default long-finality backstop is the REORG_RETENTION_WINDOW, so a node
+            // running the default config retains reconstructable state across the whole non-finality span.
+            Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(262144));
+            Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(FlatDbConfig.ReorgRetentionWindow));
+            Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(8192UL * 32),
+                "EIP-8252 REORG_RETENTION_WINDOW must equal 8192 epochs x 32 slots");
             Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(1L * 1024 * 1024 * 1024));
         }
     }
