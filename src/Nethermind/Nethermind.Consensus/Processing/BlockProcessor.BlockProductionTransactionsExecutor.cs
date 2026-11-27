@@ -319,7 +319,6 @@ namespace Nethermind.Consensus.Processing
                     => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
             }
 
-            /// <summary>Block access list items left for transactions; a disabled budget admits everything.</summary>
             /// <summary>Whether a custom verifier of <paramref name="tx"/> may not have its pre-state code, which EIP-8141
             /// verifies dependencies against.</summary>
             /// <remarks>Deployed code is immutable (EIP-6780), so a verifier whose code this block has not changed still
@@ -336,6 +335,7 @@ namespace Nethermind.Consensus.Processing
                 return false;
             }
 
+            /// <summary>Block access list items left for transactions; a disabled budget admits everything.</summary>
             private struct BlockAccessListItemBudget(long remaining)
             {
                 public readonly bool Enabled = true;
