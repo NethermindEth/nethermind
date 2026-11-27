@@ -31,6 +31,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Utils;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -1445,6 +1446,32 @@ public partial class EngineModuleTests
             });
         headState.Inner = chain.StateReader;
         return chain;
+    }
+
+    /// <summary>Occupies the block processor so the payload sent next has to queue and its newPayload times out.</summary>
+    /// <returns>The block that holds the processor until <paramref name="processingRelease"/> completes.</returns>
+    internal static Block OccupyBlockProcessor(MergeTestBlockchain chain, Block parent, Task processingRelease)
+    {
+        using ManualResetEventSlim processingStarted = new(false);
+        TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
+        branchProcessor.ProcessingStarted = processingStarted;
+        branchProcessor.ProcessingRelease = processingRelease;
+        Block occupyBlock = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent)
+            .WithNonce(0).WithDifficulty(0).WithStateRoot(parent.StateRoot!).TestObject;
+        occupyBlock.Header.TotalDifficulty = parent.TotalDifficulty;
+        try
+        {
+            _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
+                occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
+            Assert.That(processingStarted.Wait(TimeSpan.FromSeconds(5)), Is.True, "the block processor was never occupied");
+        }
+        finally
+        {
+            // Later blocks must not signal an event disposed here while the chain is still processing.
+            branchProcessor.ProcessingStarted = null;
+        }
+
+        return occupyBlock;
     }
 
     /// <summary>A transfer that fits an empty Bogota payload, so a list holding it is unsatisfied unless the block includes it.</summary>

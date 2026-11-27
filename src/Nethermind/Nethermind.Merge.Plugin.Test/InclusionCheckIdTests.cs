@@ -24,11 +24,11 @@ public class InclusionCheckIdTests
         byte[][][] inclusionLists = Lists([TxA, TxB, TxA], [], [TxB]);
         OmissionClaim[] claims = [new(TestItem.KeccakB, 0), new(TestItem.KeccakC, 1UL << 40)];
 
-        Rlp encoded = Rlp.Encode(
+        byte[] encoded = Sequence(
             Rlp.Encode(TestItem.KeccakA),
-            Rlp.Encode([.. inclusionLists.Select(static list => Rlp.Encode([.. list.Select(static tx => Rlp.Encode(tx))]))]),
-            Rlp.Encode([.. claims.Select(static claim => Rlp.Encode(Rlp.Encode(claim.TransactionHash), Rlp.Encode(claim.EvaluationIndex)))]));
-        Hash256 expected = Keccak.Compute([.. "engine/inclusion-check/v1"u8.ToArray(), .. encoded.Bytes]);
+            Sequence([.. inclusionLists.Select(static list => Sequence([.. list.Select(static tx => Rlp.Encode(tx))]))]),
+            Sequence([.. claims.Select(static claim => Sequence(Rlp.Encode(claim.TransactionHash), Rlp.Encode(claim.EvaluationIndex)))]));
+        Hash256 expected = Keccak.Compute([.. "engine/inclusion-check/v1"u8.ToArray(), .. encoded]);
 
         Assert.That(InclusionCheckId.Compute(TestItem.KeccakA, inclusionLists, claims), Is.EqualTo(expected));
     }
@@ -54,4 +54,18 @@ public class InclusionCheckIdTests
 
     private static byte[][][] Lists(params byte[][][] lists) =>
         [.. lists, .. Enumerable.Repeat<byte[][]>([], Eip7805Constants.InclusionListCommitteeSize - lists.Length)];
+
+    private static byte[] Sequence(params byte[][] items)
+    {
+        int contentLength = items.Sum(static item => item.Length);
+        byte[] result = new byte[Rlp.LengthOfSequence(contentLength)];
+        int position = Rlp.StartSequence(result, 0, contentLength);
+        foreach (byte[] item in items)
+        {
+            item.CopyTo(result, position);
+            position += item.Length;
+        }
+
+        return result;
+    }
 }
