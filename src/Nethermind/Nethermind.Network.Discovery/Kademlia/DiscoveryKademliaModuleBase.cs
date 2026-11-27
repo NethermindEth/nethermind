@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Logging.Microsoft;
-using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
 
