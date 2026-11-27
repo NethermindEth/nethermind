@@ -523,12 +523,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out RefundResult refundResult) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out refundResult);
 
-            if (refundResult.Result)
-            {
 #if !ZK_EVM
+            if (refundResult.Result)
                 refundResult = AdjustSettledGas(tx, header, spec, opts, in opcodeGasPrice, refundResult.Gas);
 #endif
-            }
 
             if (!refundResult.Result)
                 return InvalidStateGasResult(tx, spec, restore, deleteCallerAccount, in senderReservedGasPayment, refundResult.Result);
@@ -663,12 +661,10 @@ namespace Nethermind.Evm.TransactionProcessing
             TGasPolicy standardGas = intrinsicGas.Standard;
             long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
             RefundResult refundResult = Refund(tx, header, spec, opts, in substate, in gasAvailable, in opcodeGasPrice, codeInsertRefunds: 0, in floorGas, in standardGas, postIntrinsicStateReservoir);
-            if (refundResult.Result)
-            {
 #if !ZK_EVM
+            if (refundResult.Result)
                 refundResult = AdjustSettledGas(tx, header, spec, opts, in opcodeGasPrice, refundResult.Gas);
 #endif
-            }
 
             if (!refundResult.Result)
                 return InvalidStateGasResult(tx, spec, restore, deleteCallerAccount, in senderReservedGasPayment, refundResult.Result);
@@ -2044,6 +2040,7 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <see cref="GasConsumed.SpentGas"/>; block gas used follows <see cref="GasConsumed.EffectiveBlockGas"/>, plus
         /// <see cref="GasConsumed.BlockStateGas"/> under EIP-8037. Return an adjusted copy of <paramref name="gas"/>: a bare
         /// <c>ulong</c> converts to a result with zero <see cref="GasConsumed.BlockGas"/> and <see cref="GasConsumed.BlockStateGas"/>.
+        /// The zkEVM guest uses unadjusted Ethereum settlement and omits this host extension hook.
         /// Unspent gas is already refunded, so an override that lowers the gas credits the sender the difference through
         /// <see cref="PayRefund"/>. Returning <see cref="RefundResult.Invalid"/> rejects the transaction, but block building
         /// does not roll back its state changes.
