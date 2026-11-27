@@ -25,7 +25,6 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     public ReceiptArrayStorageDecoder() : this(true, true) { }
 
     private static readonly ReceiptStorageDecoder Decoder = new();
-    private static readonly CompactReceiptStorageDecoder CompactDecoder = CompactReceiptStorageDecoder.Instance;
 
     public const int CompactEncoding = 127;
 
@@ -57,10 +56,11 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     {
         if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
+            IRlpDecoder<TxReceipt> compactDecoder = GetCompactDecoder();
             int totalLength = 0;
             for (int i = 0; i < items.Length; i++)
             {
-                totalLength += CompactDecoder.GetLength(items[i], rlpBehaviors);
+                totalLength += compactDecoder.GetLength(items[i], rlpBehaviors);
             }
 
             return totalLength;
@@ -109,6 +109,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
         if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
+            IRlpDecoder<TxReceipt> compactDecoder = GetCompactDecoder();
             int totalLength = GetContentLength(items, rlpBehaviors);
             if (WritesTxHashes(items))
             {
@@ -130,7 +131,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
             for (int i = 0; i < items.Length; i++)
             {
-                CompactDecoder.Encode(ref writer, items[i], rlpBehaviors);
+                compactDecoder.Encode(ref writer, items[i], rlpBehaviors);
             }
         }
         else
@@ -667,12 +668,15 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     private static TxReceipt?[] DecodeCompact<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {
         RlpReader items = EnterCompactReceiptList<TCanonicalChecks>(ref reader);
+        IRlpDecoder<TxReceipt>? registered = GetRegisteredCompactDecoder();
         TxReceipt?[] result = new TxReceipt?[items.CountItems<TCanonicalChecks>(RlpLimit.DefaultLimit)];
         // A span store has no covariance check, unlike an array store of a reference type.
         Span<TxReceipt?> span = result;
         for (int i = 0; i < span.Length; i++)
         {
-            span[i] = CompactReceiptStorageDecoder.Decode<TCanonicalChecks>(ref items, rlpBehaviors);
+            span[i] = registered is null
+                ? CompactReceiptStorageDecoder.Decode<TCanonicalChecks>(ref items, rlpBehaviors)
+                : DecodeRegistered(registered, ref items, rlpBehaviors);
         }
 
         return result;
@@ -799,6 +803,30 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
     public IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData) =>
         IsCompactEncoding(receiptsData)
-            ? CompactDecoder
+            ? (IReceiptRefDecoder)GetCompactDecoder()
             : Decoder;
+
+    /// <summary>Gets the decoder of compact stored receipts, which also implements <see cref="IReceiptRefDecoder"/>.</summary>
+    /// <remarks>Resolved on each call, since plugins register their decoders after this type initializes.</remarks>
+    /// <returns>The decoder registered under <see cref="RlpDecoderKey.Storage"/>, or <see cref="CompactReceiptStorageDecoder"/>.</returns>
+    /// <exception cref="InvalidOperationException">The registered decoder does not implement <see cref="IReceiptRefDecoder"/>.</exception>
+    public static IRlpDecoder<TxReceipt> GetCompactDecoder() =>
+        GetRegisteredCompactDecoder() ?? CompactReceiptStorageDecoder.Instance;
+
+    /// <inheritdoc cref="GetCompactDecoder"/>
+    /// <returns>The decoder a plugin registered, or <see langword="null"/> for <see cref="CompactReceiptStorageDecoder"/>.</returns>
+    private static IRlpDecoder<TxReceipt>? GetRegisteredCompactDecoder()
+    {
+        IRlpDecoder<TxReceipt>? decoder = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Storage);
+        return decoder switch
+        {
+            null or CompactReceiptStorageDecoder => null,
+            IReceiptRefDecoder => decoder,
+            _ => throw new InvalidOperationException($"The registered compact receipt decoder {decoder.GetType().Name} must implement {nameof(IReceiptRefDecoder)}.")
+        };
+    }
+
+    /// <summary>Decodes one item of a compact list with a registered decoder, as the built-in one does: an empty item is a missing receipt.</summary>
+    private static TxReceipt? DecodeRegistered(IRlpDecoder<TxReceipt> decoder, ref RlpReader items, RlpBehaviors rlpBehaviors) =>
+        items.TryReadEmptySequence() ? null : decoder.Decode(ref items, rlpBehaviors);
 }
