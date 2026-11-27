@@ -52,7 +52,7 @@ jobs:
           set -euo pipefail
           line=$(dotnet run --file .github/zkvm-ab/fetch-extlib.cs -- "openvm=run:$RUN_ID" "$RUNNER_TEMP/candidate")
           echo "$line"
-          FORMATS=ssz EXTLIB_PATH=$(echo "$line" | awk '{print $3}') CANDIDATE_DIR="$RUNNER_TEMP/candidate" \
+          FORMATS=Ssz EXTLIB_PATH=$(echo "$line" | awk '{print $3}') CANDIDATE_DIR="$RUNNER_TEMP/candidate" \
             dotnet run --file .github/zkvm-ab/build.cs -- openvm Nethermind.Stateless.OpenVMGuest . "$RUNNER_TEMP/elf"
           python3 - "$RUNNER_TEMP/elf/nethermind" <<'EOF'
           import struct, sys
