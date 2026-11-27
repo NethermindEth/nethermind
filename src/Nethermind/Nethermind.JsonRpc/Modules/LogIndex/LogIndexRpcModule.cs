@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Facade.Filters;
@@ -20,6 +21,10 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         if (!storage.Enabled)
             return ResultWrapper<IEnumerable<long>>.Fail("Log index is disabled.", ErrorCodes.ResourceUnavailable);
 
+        // Null when nothing is indexed yet or the index stopped at a reorg it could not revert and may hold stale blocks
+        if (storage.MinBlockNumber is not { } indexFrom || storage.MaxBlockNumber is not { } indexTo)
+            return ResultWrapper<IEnumerable<long>>.Fail("Log index is not available.", ErrorCodes.ResourceUnavailable);
+
         LogFilter logFilter = blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics);
 
         // The log index can only narrow blocks by address or topic, so it cannot serve a filter that matches every block
@@ -32,6 +37,12 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         if (GetBlockNumber(logFilter.ToBlock) is not { } to)
             return ResultWrapper<IEnumerable<long>>.Fail($"Block {logFilter.ToBlock} is not found.", ErrorCodes.UnknownBlockError);
 
+        // Postings outside the indexed range are not guaranteed to be canonical, so only the indexed part of the range
+        // is served; unlike eth_getLogs, the rest is not scanned. Kept unsigned so block numbers above long.MaxValue
+        // stay above the index. A range entirely outside the index ends up with from > to and yields no blocks.
+        from = Math.Max(from, (ulong)indexFrom);
+        to = Math.Min(to, (ulong)indexTo);
+
         // Enumerated here so storage failures become JSON-RPC errors instead of breaking response serialization,
         // stopping one block past the limit so a long indexed range is not loaded in full.
         // The pooled list is the result itself; the response returns it to the pool once serialized
@@ -40,7 +51,7 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         bool transferred = false;
         try
         {
-            foreach (long blockNumber in storage.EnumerateBlockNumbersFor(logFilter, (ulong)from, (ulong)to))
+            foreach (long blockNumber in storage.EnumerateBlockNumbersFor(logFilter, from, to))
             {
                 if (maxResults > 0 && blockNumbers.Count == maxResults)
                     return ResultWrapper<IEnumerable<long>>.Fail($"Too many blocks requested. Max blocks per response is {maxResults}.", ErrorCodes.LimitExceeded);
@@ -75,6 +86,6 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         DbSize = storage.GetDbSize()
     });
 
-    private long? GetBlockNumber(BlockParameter parameter) =>
-        (long?)(parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number);
+    private ulong? GetBlockNumber(BlockParameter parameter) =>
+        parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number;
 }

@@ -43,7 +43,7 @@ namespace Nethermind.Network.Benchmarks
 
             FrameCipher frameCipher = new(secrets.A.AesSecret);
             _frameMacProcessor?.Dispose();
-            _frameMacProcessor = new(TestItem.IgnoredPublicKey, secrets.A);
+            _frameMacProcessor = new(secrets.A);
             _zeroSplitter = new TestZeroSplitter(frameCipher, _frameMacProcessor);
             _zeroSplitter.EnableSnappy(NullLogManager.Instance);
             Transaction a = Build.A.Transaction.TestObject;
@@ -67,7 +67,7 @@ namespace Nethermind.Network.Benchmarks
         private void Check()
         {
             (EncryptionSecrets secrets, _) = NetTestVectors.GetSecretsPair();
-            using FrameMacProcessor mac = new(TestItem.IgnoredPublicKey, secrets);
+            using FrameMacProcessor mac = new(secrets);
             ZeroPacketSplitter splitter = new();
             splitter.DisableFraming();
             EmbeddedChannel oracle = new(

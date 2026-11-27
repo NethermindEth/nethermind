@@ -63,7 +63,10 @@ try
         var manifests = guest == "airbender"
             ? Directory.GetFiles(unpacked, "libairbender.bflat.manifest", SearchOption.AllDirectories)
             : Directory.GetFiles(unpacked, "lib*.bflat.manifest", SearchOption.AllDirectories)
-                .Where(file => Path.GetFileName(Path.GetDirectoryName(file)) == "native").ToArray();
+                .Where(file => Path.GetFileName(Path.GetDirectoryName(file)) == "native")
+                // The OpenVM package also ships the runtime of its RV32 line; these guests are RV64.
+                .Where(file => Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(file))) != "linux-riscv32")
+                .ToArray();
         if (manifests.Length != 1)
             throw new InvalidOperationException($"expected one runtime manifest in the {guest} package, found {manifests.Length}");
 

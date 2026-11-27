@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
-using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Snappier;
 
@@ -22,26 +20,12 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
     private readonly ILogger _logger = logManager?.GetClassLogger<ZeroSnappyEncoder>() ?? throw new ArgumentNullException(nameof(logManager));
 
     protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
-        => Compress(input, output, _logger);
-
-    internal static void Compress(IByteBuffer input, IByteBuffer output, ILogger logger)
     {
-        int packetTypeLen = new RlpReader(input.AsSpan()).ReadEncodedItem().Length;
-
-        int maxLength = Snappy.GetMaxCompressedLength(input.ReadableBytes - packetTypeLen);
-        output.EnsureWritable(packetTypeLen + maxLength);
-        output.WriteBytes(input, packetTypeLen);
-
-        if (logger.IsTrace) TraceCompressing(input.ReadableBytes);
-
-        int length = Snappy.Compress(
-            input.Array.AsSpan(input.ArrayOffset + input.ReaderIndex, input.ReadableBytes),
-            output.Array.AsSpan(output.ArrayOffset + output.WriterIndex, maxLength));
-
-        input.SetReaderIndex(input.ReaderIndex + input.ReadableBytes);
-        output.SetWriterIndex(output.WriterIndex + length);
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceCompressing(int readableBytes) => logger.Trace($"Compressing with Snappy a message of length {readableBytes}");
+        ReadOnlySpan<byte> packet = input.AsSpan();
+        // Covers the packet type, which is copied as is, and the compressed content.
+        output.EnsureWritable(Snappy.GetMaxCompressedLength(packet.Length));
+        int written = FrameEncoder.Compress(packet, output.Array.AsSpan(output.ArrayOffset + output.WriterIndex, output.WritableBytes), _logger);
+        input.SkipBytes(packet.Length);
+        output.SetWriterIndex(output.WriterIndex + written);
     }
 }
