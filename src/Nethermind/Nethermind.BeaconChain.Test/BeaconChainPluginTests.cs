@@ -14,7 +14,9 @@ using Nethermind.Config;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.ValidatorClient;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
@@ -177,6 +179,31 @@ public class BeaconChainPluginTests
             .Build();
 
         Assert.That(container.Resolve<BeaconApiHost>(), Is.Not.Null);
+    }
+
+    private const string ValidatorKey = "0x989d34725a2bfc3f15105f3f5fc8741f436c25ee1ee4f948e425d6bcb8c56bce6e06c269635b7e985a7ffa639e2409bf";
+
+    [TestCase(true, "http://127.0.0.1:9000", ValidatorKey, null)]
+    [TestCase(true, "ftp://127.0.0.1:9000", ValidatorKey, "RemoteSignerUrl")]
+    [TestCase(true, null, ValidatorKey, "RemoteSignerUrl")]
+    [TestCase(true, "http://127.0.0.1:9000", "0x1234", "PublicKeys")]
+    [TestCase(true, "http://127.0.0.1:9000", null, "PublicKeys")]
+    [TestCase(false, null, null, null)]
+    public async Task Plugin_wiring_starts_the_validator_client_only_when_enabled_and_refuses_a_bad_config(bool enabled, string? remoteSignerUrl, string? publicKey, string? refusedItem)
+    {
+        ValidatorClientConfig config = new() { Enabled = enabled, RemoteSignerUrl = remoteSignerUrl, PublicKeys = publicKey is null ? [] : [publicKey] };
+        await using IContainer container = BeaconChainTestContainer.Builder().AddSingleton<IValidatorClientConfig>(config).Build();
+        StartValidatorClient step = container.Resolve<StartValidatorClient>();
+
+        if (refusedItem is not null)
+        {
+            Assert.That(Assert.Catch(() => step.Execute(CancellationToken.None))?.GetBaseException(),
+                Is.TypeOf<InvalidConfigurationException>().With.Message.Contains($"ValidatorClient.{refusedItem}"));
+            return;
+        }
+
+        await step.Execute(CancellationToken.None);
+        if (enabled) await container.Resolve<AttesterDutyRunner>().StopAsync();
     }
 
     [Test]

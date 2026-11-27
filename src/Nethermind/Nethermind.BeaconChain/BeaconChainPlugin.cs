@@ -17,6 +17,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.ValidatorApi;
+using Nethermind.BeaconChain.ValidatorClient;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -88,6 +89,9 @@ public class BeaconChainModule : Module
             .AddSingleton<ForkChoiceSnapshotHolder>()
             .AddSingleton<ProposerLookaheadHolder>()
             .AddSingleton<IBeaconNodeValidatorApi, BeaconNodeValidatorApi>()
+            .AddSingleton<IValidatorSigner, Web3SignerClient>()
+            .AddSingleton<AttesterDutyRunner>()
+            .AddStep(typeof(StartValidatorClient))
             .AddSingleton<FailedBlockRoots>()
             .AddSingleton<IBlockImporterFactory, BlockImporterFactory>()
             .AddSingleton<INodeColumnCustodySource, BeaconDiscovery>(discovery => new DiscoveryNodeCustodySource(discovery))
