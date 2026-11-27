@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -20,44 +21,37 @@ public static class InclusionCheckId
 
     public static Hash256 Compute(Hash256 blockHash, byte[][][] inclusionLists, OmissionClaim[] claims)
     {
-        int listsLength = 0;
-        foreach (byte[][] inclusionList in inclusionLists) listsLength += Rlp.LengthOfSequence(TransactionsLength(inclusionList));
+        byte[] encoded = RlpCodec.Write((blockHash, inclusionLists, claims), static (ref RlpWriter writer, (Hash256 BlockHash, byte[][][] InclusionLists, OmissionClaim[] Claims) input) =>
+            writer.WriteSequence(input, static (ref RlpWriter writer, (Hash256 BlockHash, byte[][][] InclusionLists, OmissionClaim[] Claims) input) =>
+            {
+                writer.Encode(input.BlockHash);
+                writer.WriteSequence(input.InclusionLists, WriteInclusionLists);
+                writer.WriteSequence(input.Claims, WriteClaims);
+            }));
 
-        int claimsLength = 0;
-        foreach (OmissionClaim claim in claims) claimsLength += Rlp.LengthOfSequence(ClaimLength(claim));
+        return Keccak.Compute([.. Domain, .. encoded]);
+    }
 
-        KeccakRlpWriter writer = new();
-        WriteRaw(ref writer, Domain);
-        writer.StartSequence(Rlp.LengthOfKeccakRlp + Rlp.LengthOfSequence(listsLength) + Rlp.LengthOfSequence(claimsLength));
-        writer.Encode(blockHash);
-
-        writer.StartSequence(listsLength);
+    private static void WriteInclusionLists(ref RlpWriter writer, byte[][][] inclusionLists)
+    {
         foreach (byte[][] inclusionList in inclusionLists)
         {
-            writer.StartSequence(TransactionsLength(inclusionList));
-            foreach (byte[] transaction in inclusionList) writer.Encode(transaction);
+            writer.WriteSequence(inclusionList, static (ref RlpWriter writer, byte[][] transactions) =>
+            {
+                foreach (byte[] transaction in transactions) writer.Write(transaction);
+            });
         }
+    }
 
-        writer.StartSequence(claimsLength);
+    private static void WriteClaims(ref RlpWriter writer, OmissionClaim[] claims)
+    {
         foreach (OmissionClaim claim in claims)
         {
-            writer.StartSequence(ClaimLength(claim));
-            writer.Encode(claim.TransactionHash);
-            writer.Encode(claim.EvaluationIndex);
+            writer.WriteSequence(claim, static (ref RlpWriter writer, OmissionClaim claim) =>
+            {
+                writer.Encode(claim.TransactionHash);
+                writer.Write(claim.EvaluationIndex);
+            });
         }
-
-        return writer.GetHash();
     }
-
-    private static void WriteRaw<TWriter>(ref TWriter writer, byte[] bytes) where TWriter : struct, IRlpWriteBackend, allows ref struct
-        => writer.Write(bytes);
-
-    private static int TransactionsLength(byte[][] inclusionList)
-    {
-        int length = 0;
-        foreach (byte[] transaction in inclusionList) length += Rlp.LengthOf(transaction);
-        return length;
-    }
-
-    private static int ClaimLength(OmissionClaim claim) => Rlp.LengthOfKeccakRlp + Rlp.LengthOf(claim.EvaluationIndex);
 }
