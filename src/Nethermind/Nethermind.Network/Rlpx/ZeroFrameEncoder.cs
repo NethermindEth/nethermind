@@ -20,7 +20,7 @@ namespace Nethermind.Network.Rlpx
     {
         private readonly IFrameCipher _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
         private readonly IFrameMacProcessor _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
-        private readonly FrameHeaderReader _headerReader = new();
+        private readonly byte[] _headerBytes = new byte[Frame.HeaderSize];
 
         private readonly byte[] _encryptBuffer = new byte[Frame.BlockSize];
         private readonly byte[] _macBuffer = new byte[16];
@@ -34,7 +34,8 @@ namespace Nethermind.Network.Rlpx
                     throw new CorruptedFrameException($"Frame prepared for sending was in incorrect format: length was {input.ReadableBytes}");
                 }
 
-                FrameHeaderReader.FrameInfo frame = _headerReader.ReadFrameHeader(input);
+                input.ReadBytes(_headerBytes);
+                FrameHeaderReader.FrameInfo frame = ReadFrameHeader();
 
                 output.EnsureWritable(Frame.HeaderSize + Frame.MacSize + frame.PayloadSize + Frame.MacSize);
 
@@ -49,17 +50,29 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
+        private FrameHeaderReader.FrameInfo ReadFrameHeader()
+        {
+            try
+            {
+                return FrameHeaderReader.ReadFrameHeader(_headerBytes);
+            }
+            catch (InvalidFrameException exception)
+            {
+                throw exception.ToCorruptedFrameException();
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteHeader(IByteBuffer output)
         {
-            _frameCipher.Encrypt(_headerReader.HeaderBytes, 0, 16, _encryptBuffer, 0);
+            _frameCipher.Encrypt(_headerBytes, _encryptBuffer);
             output.WriteBytes(_encryptBuffer);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteHeaderMac(IByteBuffer output)
         {
-            _frameMacProcessor.AddMac(_encryptBuffer, 0, 16, _macBuffer, 0, true);
+            _frameMacProcessor.AddMac(_encryptBuffer, _macBuffer, true);
             output.WriteBytes(_macBuffer);
         }
 
@@ -74,7 +87,7 @@ namespace Nethermind.Network.Rlpx
         private void WritePayloadBlock(IByteBuffer input, IByteBuffer output)
         {
             input.ReadBytes(_encryptBuffer);
-            _frameCipher.Encrypt(_encryptBuffer, 0, 16, _encryptBuffer, 0);
+            _frameCipher.Encrypt(_encryptBuffer, _encryptBuffer);
             _frameMacProcessor.UpdateEgressMac(_encryptBuffer);
             output.WriteBytes(_encryptBuffer);
         }

@@ -550,6 +550,80 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     }
 
     [Test]
+    public void TestAbortedBatch_CommitsNothingAndTheNextBatchCommits()
+    {
+        StateId s1 = new(1, ValueKeccak.Compute("s1"));
+        StateId s2 = new(2, ValueKeccak.Compute("s2"));
+        Address address = TestItem.AddressA;
+        Address newAddress = TestItem.AddressB;
+        UInt256 slot = 7;
+        TreePath topPath = TreePath.FromHexString("12345");
+        TreePath deepPath = TreePath.FromHexString("123456789abc");
+        Hash256 storageAccount = TestItem.KeccakA;
+        TreePath storagePath = TreePath.FromHexString("abcd");
+        byte[] oldRlp = [0xc1, 0x01];
+        byte[] newRlp = [0xc1, 0x02];
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+            Write(writer, TestItem.GenerateIndexedAccount(0), [1], oldRlp);
+
+        // Fills the reader caches at s1.
+        using (IPersistence.IPersistenceReader cached = _persistence.CreateReader())
+            AssertState(cached, s1, TestItem.GenerateIndexedAccount(0), [1], oldRlp, newAccount: null);
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None))
+        {
+            Write(writer, TestItem.GenerateIndexedAccount(1), [2], newRlp);
+            writer.SetAccount(newAddress, TestItem.GenerateIndexedAccount(2));
+            writer.Abort();
+            writer.Abort();
+        }
+
+        using (IPersistence.IPersistenceReader cached = _persistence.CreateReader())
+        using (IPersistence.IPersistenceReader direct = _persistence.CreateReader(ReaderFlags.Sync))
+        {
+            foreach (IPersistence.IPersistenceReader reader in new[] { cached, direct })
+                AssertState(reader, s1, TestItem.GenerateIndexedAccount(0), [1], oldRlp, newAccount: null);
+        }
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None))
+        {
+            Write(writer, TestItem.GenerateIndexedAccount(1), [2], newRlp);
+            writer.SetAccount(newAddress, TestItem.GenerateIndexedAccount(2));
+        }
+
+        using (IPersistence.IPersistenceReader cached = _persistence.CreateReader())
+        using (IPersistence.IPersistenceReader direct = _persistence.CreateReader(ReaderFlags.Sync))
+        {
+            foreach (IPersistence.IPersistenceReader reader in new[] { cached, direct })
+                AssertState(reader, s2, TestItem.GenerateIndexedAccount(1), [2], newRlp, TestItem.GenerateIndexedAccount(2));
+        }
+
+        void Write(IPersistence.IWriteBatch writer, Account account, byte[] slotValue, byte[] rlp)
+        {
+            writer.SetAccount(address, account);
+            writer.SetStorage(address, slot, BaseFlatPersistence.DecodeSlotValue(slotValue));
+            writer.SetStateTrieNode(in topPath, rlp);
+            writer.SetStateTrieNode(in deepPath, rlp);
+            writer.SetStorageTrieNode(storageAccount, in storagePath, rlp);
+        }
+
+        void AssertState(IPersistence.IPersistenceReader reader, StateId state, Account account, byte[] slotValue, byte[] rlp, Account? newAccount)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.CurrentState, Is.EqualTo(state));
+                Assert.That(reader.GetAccount(address), Is.EqualTo(account));
+                Assert.That(reader.GetAccount(newAddress), Is.EqualTo(newAccount));
+                Assert.That(GetSlot(reader, address, slot), Is.EqualTo(slotValue));
+                Assert.That(reader.LoadStateRlp(in topPath, ReadFlags.None), Is.EqualTo(rlp));
+                Assert.That(reader.LoadStateRlp(in deepPath, ReadFlags.None), Is.EqualTo(rlp));
+                Assert.That(reader.LoadStorageRlp(storageAccount, in storagePath, ReadFlags.None), Is.EqualTo(rlp));
+            }
+        }
+    }
+
+    [Test]
     public void TestTrieNodeSnapshot()
     {
         TreePath path = TreePath.FromHexString("abcdef");

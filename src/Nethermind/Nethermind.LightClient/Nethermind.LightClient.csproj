@@ -2,11 +2,13 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
     <DefaultItemExcludes>$(DefaultItemExcludes);src/**;Deployment/**</DefaultItemExcludes>
     <VersionPrefix>1.0.1</VersionPrefix>
     <VersionSuffix></VersionSuffix>
   </PropertyGroup>
   <ItemGroup>
+    <RuntimeHostConfigurationOption Include="Nethermind.Core.KeccakCache.Compact" Value="true" />
     <PackageReference Include="prometheus-net.AspNetCore" />
   </ItemGroup>
   <ItemGroup>

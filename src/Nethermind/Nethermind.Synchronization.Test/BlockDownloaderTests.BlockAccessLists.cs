@@ -371,6 +371,40 @@ public partial class BlockDownloaderTests
         }
     }
 
+    [Test]
+    public async Task Keeps_a_downloaded_access_list_only_in_an_encoding_newPayload_accepts([Values] bool canonical)
+    {
+        // Either list matches the header's commitment.
+        byte[] accessList = canonical ? BlockAccessListEncodings.Canonical : BlockAccessListEncodings.LeadingZero;
+        await using CatchUp catchUp = CreateCatchUp(1, reconstruct: false, new BlocksConfig { ParallelExecution = true }, blockAccessList: accessList);
+        Block block = catchUp.Blocks[0];
+        bool suggested = false;
+        catchUp.Ctx.BlockTree.NewBestSuggestedBlock += (_, args) => suggested |= args.Block.Hash == block.Hash;
+
+        BlocksRequest bodyRequest = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        bodyRequest.OwnedBodies = new OwnedBlockBodies([block.Body]);
+        catchUp.Downloader.HandleResponse(bodyRequest, catchUp.Peer);
+        BlocksRequest accessListRequest = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        Assert.That(accessListRequest.BlockAccessListsRequests, Has.Count.EqualTo(1));
+        accessListRequest.BlockAccessLists = BuildBlockAccessLists(accessList);
+
+        SyncResponseHandlingResult result = catchUp.Downloader.HandleResponse(accessListRequest, catchUp.Peer);
+        using BlocksRequest? next = await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(canonical ? SyncResponseHandlingResult.OK : SyncResponseHandlingResult.LesserQuality));
+            catchUp.Ctx.PeerPool.Received(canonical ? 0 : 1).ReportBreachOfProtocol(
+                catchUp.Peer,
+                DisconnectReason.ForwardSyncFailed,
+                Arg.Is<string>(static message => message.Contains("error decoding block access list")));
+            // A rejected list is requested again rather than attached to the block.
+            Assert.That(next?.BlockAccessListsRequests.Count ?? 0, Is.EqualTo(canonical ? 0 : 1));
+            Assert.That(suggested, Is.EqualTo(canonical));
+            Assert.That(catchUp.BalStore.Exists(block.Number, block.Hash!), Is.EqualTo(canonical));
+        }
+    }
+
     private static PeerInfo CreateBlockAccessListsPeer(ulong headNumber)
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();

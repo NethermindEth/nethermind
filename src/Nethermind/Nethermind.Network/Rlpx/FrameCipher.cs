@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Modes;
@@ -30,7 +31,7 @@ public class FrameCipher : IFrameCipher
         _decryptionCipher.Init(false, new ParametersWithIV(ParameterUtilities.CreateKeyParameter("AES", aesKey), new byte[BlockSize]));
     }
 
-    public void Encrypt(byte[] input, int offset, int length, byte[] output, int outputOffset) => _encryptionCipher.ProcessBytes(input, offset, length, output, outputOffset);
+    public void Encrypt(ReadOnlySpan<byte> input, Span<byte> output) => _encryptionCipher.ProcessBytes(input, output);
 
-    public void Decrypt(byte[] input, int offset, int length, byte[] output, int outputOffset) => _decryptionCipher.ProcessBytes(input, offset, length, output, outputOffset);
+    public void Decrypt(ReadOnlySpan<byte> input, Span<byte> output) => _decryptionCipher.ProcessBytes(input, output);
 }

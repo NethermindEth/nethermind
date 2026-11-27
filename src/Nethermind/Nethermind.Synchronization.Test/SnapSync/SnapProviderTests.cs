@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,7 +52,7 @@ using AccountRange = Nethermind.State.Snap.AccountRange;
 namespace Nethermind.Synchronization.Test.SnapSync;
 
 [TestFixture]
-public class SnapProviderTests
+public partial class SnapProviderTests
 {
 
     private ContainerBuilder CreateContainerBuilder(
@@ -1284,6 +1285,7 @@ public class SnapProviderTests
         {
             Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
             Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+            AssertSameColumns(atLastRootDb, db, "at the last root");
         }
 
         BlockHeader CommitSource(ulong blockNumber, byte toggledValue)
@@ -1345,6 +1347,8 @@ public class SnapProviderTests
 
         using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
         await RunSnapSync(CreateFlatSnapTrieFactory(atLastRootDb, syncConfig), syncConfig, new HealingPivot(withoutFirstSlots, withoutFirstSlots), server);
+        // Heal the fixed-pivot reference at its final root before comparing the state columns.
+        await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(withoutFirstSlots, withoutFirstSlots), sourceStore);
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         TestErrorLogManager verifierErrors = new();
@@ -1357,6 +1361,8 @@ public class SnapProviderTests
             Assert.That(ReadColumn(db, FlatDbColumns.Account), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Account)), "account column");
             Assert.That(verifier.Stats, Is.EqualTo(new FlatTrieVerifier.VerificationStats(accounts.Count, 2 * pairCount, 0, 0, 0, 0)), "flat against trie");
             Assert.That(verifierErrors.Errors, Is.Empty, "trie node hashes");
+            // Metadata holds the snap checkpoint and wipe state of each run, so it is left out.
+            AssertSameColumns(atLastRootDb, db, "at the last root", withMetadata: false);
         }
 
         BlockHeader CommitSource(ulong blockNumber)
@@ -1420,6 +1426,7 @@ public class SnapProviderTests
         {
             Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
             Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+            AssertSameColumns(atLastRootDb, db, "at the last root");
         }
 
         BlockHeader CommitSource(ulong blockNumber, byte value)
@@ -1481,6 +1488,7 @@ public class SnapProviderTests
         {
             Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
             Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+            AssertSameColumns(atLastRootDb, db, "at the last root");
         }
 
         BlockHeader CommitSource(ulong blockNumber, params (ValueHash256 Slot, byte Value)[] slots)
@@ -1539,6 +1547,7 @@ public class SnapProviderTests
         {
             Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
             Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+            AssertSameColumns(atLastRootDb, db, "at the last root");
         }
 
         BlockHeader CommitSource(ulong blockNumber, byte slotValue, bool withSibling)
@@ -1599,6 +1608,7 @@ public class SnapProviderTests
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         SortedDictionary<string, string>? slotsAtEmptyStorage = null;
         SortedDictionary<string, string>? nodesAtEmptyStorage = null;
+        Dictionary<FlatDbColumns, SortedDictionary<string, string>>? columnsAtEmptyStorage = null;
         HealingPivot pivot = new(headers[0], headers)
         {
             CanFinalizeAt = header => header == headers[^1],
@@ -1608,6 +1618,7 @@ public class SnapProviderTests
                 if (round != 2) return;
                 slotsAtEmptyStorage = ReadColumn(db, FlatDbColumns.Storage);
                 nodesAtEmptyStorage = ReadColumn(db, FlatDbColumns.StorageNodes);
+                columnsAtEmptyStorage = ReadColumns(db);
             }
         };
         await HealWithTrieNodes(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, pivot, sourceStore);
@@ -1616,8 +1627,10 @@ public class SnapProviderTests
         {
             Assert.That(slotsAtEmptyStorage, Is.EqualTo(ReadColumn(atEmptyStorageDb, FlatDbColumns.Storage)), "storage column at the second root");
             Assert.That(nodesAtEmptyStorage, Is.EqualTo(ReadColumn(atEmptyStorageDb, FlatDbColumns.StorageNodes)), "storage trie nodes at the second root");
+            AssertSameColumns(ReadColumns(atEmptyStorageDb), columnsAtEmptyStorage!, "at the second root");
             Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
             Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+            AssertSameColumns(atLastRootDb, db, "at the last root");
         }
 
         BlockHeader CommitSource(ulong blockNumber, params byte[] values)
@@ -1696,6 +1709,7 @@ public class SnapProviderTests
             Assert.That(movedOnWithTheLeafWaiting, Is.True, "the round at the second root moved on with the leaf at 1 waiting");
             Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
             Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+            AssertSameColumns(atLastRootDb, db, "at the last root");
         }
 
         BlockHeader CommitSource(ulong blockNumber, byte slotValue, bool withNeighbor)
@@ -1724,26 +1738,45 @@ public class SnapProviderTests
     /// each pivot until one can finalize.
     /// </summary>
     /// <param name="afterRequest">Called with the number of each request, and the request, once it is answered.</param>
-    private static async Task HealWithTrieNodes(IPersistence persistence, ISyncConfig syncConfig, IStateSyncPivot pivot, TestRawTrieStore source, Action<int, StateSyncBatch>? afterRequest = null)
+    /// <param name="answeredCount">
+    /// Called with the number of each request, and the request, before it is answered; returns how many of its first
+    /// items to answer, leaving the rest unanswered. It may reorder the requested items first. All are answered without it.
+    /// </param>
+    /// <param name="decorateStore">Wraps the store healing writes through.</param>
+    /// <param name="maxRequestsPerRound">Fails a round that has not finished after this many requests.</param>
+    /// <param name="beforeHandle">Called with the number of each request, and the request with its responses, just before healing handles them.</param>
+    private static async Task HealWithTrieNodes(IPersistence persistence, ISyncConfig syncConfig, IStateSyncPivot pivot, TestRawTrieStore source, Action<int, StateSyncBatch>? afterRequest = null,
+        Func<int, StateSyncBatch, int>? answeredCount = null, Func<ITreeSyncStore, ITreeSyncStore>? decorateStore = null, int maxRequestsPerRound = int.MaxValue,
+        Action<int, StateSyncBatch>? beforeHandle = null)
     {
-        TreeSync treeSync = new(new MemDb(), new FlatTreeSyncStore(persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance),
-            Substitute.For<IBlockTree>(), pivot, syncConfig, LimboLogs.Instance);
+        ITreeSyncStore store = new FlatTreeSyncStore(persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        TreeSync treeSync = new(new MemDb(), decorateStore?.Invoke(store) ?? store, Substitute.For<IBlockTree>(), pivot, syncConfig, LimboLogs.Instance);
         PeerInfo peer = new(Substitute.For<ISyncPeer>());
         int request = 0;
         BlockHeader? roundPivot;
         do
         {
             roundPivot = treeSync.ResetStateRootToBestSuggested();
+            int roundRequests = 0;
             while (!treeSync.IsSyncRoundFinished())
             {
+                if (++roundRequests > maxRequestsPerRound) Assert.Fail($"healing did not finish the round at {roundPivot} within {maxRequestsPerRound} requests");
                 StateSyncBatch? batch = await treeSync.PrepareRequest();
                 Assert.That(batch?.RequestedNodes, Is.Not.Null.And.Not.Empty, "healing stalled before the root was saved");
 
-                ArrayPoolList<byte[]> responses = [with(batch!.RequestedNodes!.Count)];
-                foreach (StateSyncItem item in batch.RequestedNodes) responses.Add(source.GetTrieStore(item.Address).LoadRlp(item.Path, item.Hash)!);
-                batch.Responses = new ByteArrayListAdapter(responses);
+                int answered = answeredCount?.Invoke(request, batch!) ?? batch!.RequestedNodes!.Count;
+                ArrayPoolList<byte[]> responses = [with(answered)];
+                for (int i = 0; i < answered; i++)
+                {
+                    StateSyncItem item = batch!.RequestedNodes![i];
+                    responses.Add(source.GetTrieStore(item.Address).LoadRlp(item.Path, item.Hash)!);
+                }
+
+                batch!.Responses = new ByteArrayListAdapter(responses);
+                beforeHandle?.Invoke(request, batch);
                 Assert.That(treeSync.HandleResponse(batch, peer), Is.EqualTo(SyncResponseHandlingResult.OK));
-                afterRequest?.Invoke(request++, batch);
+                afterRequest?.Invoke(request, batch);
+                request++;
             }
         }
         while (!treeSync.CanFinalize(roundPivot!));
@@ -1983,6 +2016,65 @@ public class SnapProviderTests
 
     private static SortedDictionary<string, string> ReadColumn(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
         [with(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)))];
+
+    /// <summary>The flat columns healing writes, with the metadata last.</summary>
+    private static readonly FlatDbColumns[] HealedColumns =
+    [
+        FlatDbColumns.Account, FlatDbColumns.Storage, FlatDbColumns.StateTopNodes, FlatDbColumns.StateNodes,
+        FlatDbColumns.StorageNodes, FlatDbColumns.FallbackNodes, FlatDbColumns.Metadata,
+    ];
+
+    /// <summary>Every column of <see cref="HealedColumns"/>, as <see cref="ReadColumn"/> reads it.</summary>
+    /// <param name="withMetadata">Whether to read the metadata, which a snap sync fills with its own progress.</param>
+    private static Dictionary<FlatDbColumns, SortedDictionary<string, string>> ReadColumns(IColumnsDb<FlatDbColumns> db, bool withMetadata = true) =>
+        HealedColumns.Where(column => withMetadata || column != FlatDbColumns.Metadata).ToDictionary(static column => column, column => ReadColumn(db, column));
+
+    /// <summary>
+    /// Asserts that <paramref name="actualMoving"/> holds exactly the rows of <paramref name="expectedClean"/>, a clean
+    /// heal of the same root, in every column healing writes.
+    /// </summary>
+    private static void AssertSameColumns(IColumnsDb<FlatDbColumns> expectedClean, IColumnsDb<FlatDbColumns> actualMoving, string context, bool withMetadata = true) =>
+        AssertSameColumns(ReadColumns(expectedClean, withMetadata), ReadColumns(actualMoving, withMetadata), context);
+
+    /// <inheritdoc cref="AssertSameColumns(IColumnsDb{FlatDbColumns}, IColumnsDb{FlatDbColumns}, string, bool)"/>
+    private static void AssertSameColumns(Dictionary<FlatDbColumns, SortedDictionary<string, string>> expectedClean, Dictionary<FlatDbColumns, SortedDictionary<string, string>> actualMoving, string context)
+    {
+        string? differences = DescribeColumnDifferences(expectedClean, actualMoving);
+        Assert.That(differences, Is.Null, $"{context}: the flat columns differ from a clean heal{Environment.NewLine}{differences}");
+    }
+
+    /// <summary>
+    /// Describes, column by column, the keys missing from <paramref name="actualMoving"/>, the keys only it has and the
+    /// keys whose values differ, with a few examples of each; <c>null</c> when the columns are equal.
+    /// </summary>
+    private static string? DescribeColumnDifferences(Dictionary<FlatDbColumns, SortedDictionary<string, string>> expectedClean, Dictionary<FlatDbColumns, SortedDictionary<string, string>> actualMoving)
+    {
+        const int examplesPerKind = 5;
+        StringBuilder text = new();
+        foreach ((FlatDbColumns column, SortedDictionary<string, string> expected) in expectedClean)
+        {
+            SortedDictionary<string, string> actual = actualMoving[column];
+            List<string> missing = [];
+            List<string> extra = [];
+            List<string> changed = [];
+            foreach (string key in expected.Keys.Union(actual.Keys).Order(StringComparer.Ordinal))
+            {
+                bool inExpected = expected.TryGetValue(key, out string? expectedValue);
+                bool inActual = actual.TryGetValue(key, out string? actualValue);
+                if (!inActual) missing.Add($"  missing {key}: clean {Describe(expectedValue)}, moving absent");
+                else if (!inExpected) extra.Add($"  extra {key}: clean absent, moving {Describe(actualValue)}");
+                else if (expectedValue != actualValue) changed.Add($"  changed {key}: clean {Describe(expectedValue)}, moving {Describe(actualValue)}");
+            }
+
+            if (missing.Count + extra.Count + changed.Count == 0) continue;
+            text.AppendLine($"{column}: missing {missing.Count}, extra {extra.Count}, changed {changed.Count}");
+            foreach (string example in missing.Take(examplesPerKind).Concat(extra.Take(examplesPerKind)).Concat(changed.Take(examplesPerKind))) text.AppendLine(example);
+        }
+
+        return text.Length == 0 ? null : text.ToString();
+
+        static string Describe(string? hex) => $"{hex!.Length / 2} bytes {(hex.Length > 64 ? $"{hex[..64]}..." : hex)}";
+    }
 
     /// <summary>A pivot at <see cref="Header"/>, which each healing round moves to the next of <paramref name="rounds"/>, staying at the last.</summary>
     private sealed class HealingPivot(BlockHeader header, params BlockHeader[] rounds) : IStateSyncPivot

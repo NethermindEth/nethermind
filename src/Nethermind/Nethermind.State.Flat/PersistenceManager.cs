@@ -676,7 +676,16 @@ public class PersistenceManager(
             // Held until the batch is disposed: a from == to batch rewrites the state pointer on dispose without
             // checking it again, so a persist committed meanwhile would be rolled back.
             using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(expected, expected);
-            write(batch);
+            try
+            {
+                write(batch);
+            }
+            catch
+            {
+                // Disposal alone would commit the part written so far.
+                batch.Abort();
+                throw;
+            }
             return true;
         }
         finally
@@ -715,49 +724,58 @@ public class PersistenceManager(
         long sw = Stopwatch.GetTimestamp();
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
+            try
             {
-                if (toSelfDestructStorage.Value)
+                foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
                 {
-                    continue;
+                    if (toSelfDestructStorage.Value)
+                    {
+                        continue;
+                    }
+
+                    batch.SelfDestruct(toSelfDestructStorage.Key.Key);
                 }
 
-                batch.SelfDestruct(toSelfDestructStorage.Key.Key);
-            }
+                foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
+                {
+                    batch.SetAccount(kv.Key.Key, kv.Value);
+                }
 
-            foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
+                foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
+                {
+                    (Address addr, UInt256 slot) = kv.Key.Key;
+
+                    batch.SetStorage(addr, slot, kv.Value);
+                }
+
+                // Traversal skips nodes written before the snapshot's pin, so only this snapshot's nodes are persisted.
+                long stateNodesSize = 0;
+                foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
+                {
+                    ReadOnlySpan<byte> rlp = record.Rlp;
+
+                    stateNodesSize += rlp.Length;
+                    batch.SetStateTrieNode(path, rlp);
+                }
+
+                long storageNodesSize = 0;
+                foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
+                {
+                    ReadOnlySpan<byte> rlp = record.Rlp;
+
+                    storageNodesSize += rlp.Length;
+                    batch.SetStorageTrieNode(address, path, rlp);
+                }
+
+                Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: _stateNodesLabel);
+                Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: _storageNodesLabel);
+            }
+            catch
             {
-                batch.SetAccount(kv.Key.Key, kv.Value);
+                // Disposal alone would commit the part written so far and record snapshot.To as persisted.
+                batch.Abort();
+                throw;
             }
-
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
-            {
-                (Address addr, UInt256 slot) = kv.Key.Key;
-
-                batch.SetStorage(addr, slot, kv.Value);
-            }
-
-            // Traversal skips nodes written before the snapshot's pin, so only this snapshot's nodes are persisted.
-            long stateNodesSize = 0;
-            foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
-            {
-                ReadOnlySpan<byte> rlp = record.Rlp;
-
-                stateNodesSize += rlp.Length;
-                batch.SetStateTrieNode(path, rlp);
-            }
-
-            long storageNodesSize = 0;
-            foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
-            {
-                ReadOnlySpan<byte> rlp = record.Rlp;
-
-                storageNodesSize += rlp.Length;
-                batch.SetStorageTrieNode(address, path, rlp);
-            }
-
-            Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: _stateNodesLabel);
-            Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: _storageNodesLabel);
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
@@ -780,29 +798,38 @@ public class PersistenceManager(
         WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
-            // same per-address inner table, so one outer pass + TryResolveAll resolves all
-            // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
-            // is preserved within the row; cross-address ordering is irrelevant to the
-            // write batch.
-            foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
+            try
             {
-                Address address = entry.Address.ToAddress();
-                if (entry.SelfDestructFlag is false)
-                    batch.SelfDestruct(address);
+                // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
+                // same per-address inner table, so one outer pass + TryResolveAll resolves all
+                // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
+                // is preserved within the row; cross-address ordering is irrelevant to the
+                // write batch.
+                foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
+                {
+                    Address address = entry.Address.ToAddress();
+                    if (entry.SelfDestructFlag is false)
+                        batch.SelfDestruct(address);
 
-                if (entry.HasAccount)
-                    entry.WriteAccount(batch, address);
+                    if (entry.HasAccount)
+                        entry.WriteAccount(batch, address);
 
-                foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
-                    batch.SetStorage(address, slot.Slot, slot.Value);
+                    foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
+                        batch.SetStorage(address, slot.Slot, slot.Value);
+                }
+
+                foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
+                    entry.Write(batch);
+
+                foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
+                    entry.Write(batch);
             }
-
-            foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
-                entry.Write(batch);
-
-            foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
-                entry.Write(batch);
+            catch
+            {
+                // Disposal alone would commit the part written so far and record snapshot.To as persisted.
+                batch.Abort();
+                throw;
+            }
         }
 
         // The CompactSized is now in RocksDB — drop the prefetched base blob ranges from the
