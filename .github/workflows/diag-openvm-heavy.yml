@@ -4,6 +4,10 @@
 name: Diag OpenVM heavy blocks
 
 on:
+  # workflow_dispatch needs the workflow on the default branch, so a push to this branch runs it with the defaults.
+  push:
+    branches: [diag/zkvm-guest-heap-use]
+    paths: [.github/workflows/diag-openvm-heavy.yml, .github/diag/openvm-heavy.json]
   workflow_dispatch:
     inputs:
       bflat_openvm_run:
@@ -29,9 +33,9 @@ jobs:
     timeout-minutes: 300
     env:
       GH_TOKEN: ${{ github.token }}
-      RUN_ID: ${{ inputs.bflat_openvm_run }}
-      RELEASE: ${{ inputs.release }}
-      GAS: ${{ inputs.gas }}
+      RUN_ID: ${{ inputs.bflat_openvm_run || '46044364870' }}
+      RELEASE: ${{ inputs.release || 'tests-zkevm-benchmark@v21.0.7' }}
+      GAS: ${{ inputs.gas || '200M' }}
       GUEST_DIR: src/Nethermind/Nethermind.Stateless.OpenVMGuest
     steps:
       - name: Check out repository
