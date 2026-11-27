@@ -156,7 +156,7 @@ public static class FrameTxDependencyProof
         {
             if (proof.Length != 0) throw new InvalidBlockException(block, Malformed);
         }
-        else if (proof[0] == Eip8288Constants.DependencyProofVersionAggregated && spec?.IsEip8288Enabled == true)
+        else if (proof is [Eip8288Constants.DependencyProofVersionAggregated, ..] && spec?.IsEip8288Enabled == true)
         {
             witnesses = AggregatedDependencyProof.Verify(block, dependencies, proof,
                 leanProofVerifier ?? throw new InvalidOperationException($"No EIP-8288 verifier to check block {block.ToString(Block.Format.Short)}"));

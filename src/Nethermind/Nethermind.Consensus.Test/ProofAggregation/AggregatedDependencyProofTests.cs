@@ -66,13 +66,15 @@ public class AggregatedDependencyProofTests
         }
     }
 
-    public enum Defect { StarkRejected, ForkWithoutEip8288, WitnessMissing, NothingAggregated, Malformed }
+    public enum Defect { StarkRejected, ForkWithoutEip8288, WitnessMissing, NothingAggregated, Malformed, EmptyProof }
 
     [TestCase(Defect.StarkRejected, AggregatedDependencyProof.InvalidStark)]
     [TestCase(Defect.ForkWithoutEip8288, FrameTxDependencyProof.Malformed)]
     [TestCase(Defect.WitnessMissing, FrameTxDependencyProof.WitnessCountMismatch)]
     [TestCase(Defect.NothingAggregated, AggregatedDependencyProof.NothingAggregated)]
     [TestCase(Defect.Malformed, AggregatedDependencyProof.Malformed)]
+    // A header committing to the empty proof over a body with claims, as a synced block defaults to.
+    [TestCase(Defect.EmptyProof, FrameTxDependencyProof.Malformed)]
     public void AssignWitnesses_AggregatedProofThatDoesNotFit_InvalidatesTheBlock(Defect defect, string expectedError)
     {
         FakeLeanProofVerifier verifier = new();
@@ -83,6 +85,7 @@ public class AggregatedDependencyProofTests
             Defect.WitnessMissing => AggregatedDependencyProof.Encode(Stark(received), []),
             Defect.NothingAggregated => AggregatedDependencyProof.Encode([1], [new byte[Eip8141Constants.Secp256k1WitnessLength]]),
             Defect.Malformed => [Eip8288Constants.DependencyProofVersionAggregated, 0xc0],
+            Defect.EmptyProof => [],
             _ => null
         };
         if (defect == Defect.NothingAggregated)
