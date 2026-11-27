@@ -49,12 +49,25 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _logManager = LimboLogs.Instance;
 
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
+        _persistence = CreatePersistence(_columnsDb);
+    }
+
+    private IPersistence CreatePersistence(SnapshotableMemColumnsDb<FlatDbColumns> columnsDb)
+    {
         // These tests seed the Storage column with raw (un-wrapped) bytes after the persistence is built,
         // so slot-presence detection can't kick in — pin the raw encoding up front.
-        BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
-        _persistence = IsPreimage
-            ? new PreimageRocksdbPersistence(_columnsDb, _logManager, layout, NullTrieNodeLog.Instance)
-            : new RocksDbPersistence(_columnsDb, _logManager, NullTrieNodeLog.Instance);
+        BasePersistence.SetSlotEncoding(columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
+        return IsPreimage
+            ? new PreimageRocksdbPersistence(columnsDb, _logManager, layout, NullTrieNodeLog.Instance)
+            : new RocksDbPersistence(columnsDb, _logManager, NullTrieNodeLog.Instance);
+    }
+
+    /// <summary>A sweep of an empty state on the same verifier succeeds only if no count of an earlier sweep is left.</summary>
+    private void AssertCleanSweepSucceeds(FlatTrieVerifier verifier)
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> emptyDb = new();
+        using IPersistence.IPersistenceReader reader = CreatePersistence(emptyDb).CreateReader();
+        Assert.That(verifier.Verify(reader, _trieStore, Keccak.EmptyTreeHash, CancellationToken.None), Is.True, "a clean sweep on the same verifier");
     }
 
     [TearDown]
@@ -297,6 +310,8 @@ public class FlatTrieVerifierTests(FlatLayout layout)
             Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1));
             Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(0));
         }
+
+        AssertCleanSweepSucceeds(verifier);
     }
 
     [Test]
@@ -322,6 +337,8 @@ public class FlatTrieVerifierTests(FlatLayout layout)
             Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(0));
             Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(1));
         }
+
+        AssertCleanSweepSucceeds(verifier);
     }
 
     [Test]
@@ -498,6 +515,8 @@ public class FlatTrieVerifierTests(FlatLayout layout)
             Assert.That(verifier.Stats, Is.EqualTo(new FlatTrieVerifier.VerificationStats(
                 AccountCount: 1, SlotCount: 1, MismatchedAccount: 0, MismatchedSlot: 0, MissingInFlat: 0, MissingInTrie: 0)));
         }
+
+        AssertCleanSweepSucceeds(verifier);
     }
 
     // Enough slots that the root and all 16 children are full branches, triggering the partitioned path.
