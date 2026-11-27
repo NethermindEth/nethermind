@@ -371,9 +371,8 @@ public partial class BlockDownloaderTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Keeps_a_downloaded_access_list_only_in_an_encoding_newPayload_accepts(bool canonical)
+    [Test]
+    public async Task Keeps_a_downloaded_access_list_only_in_an_encoding_newPayload_accepts([Values] bool canonical)
     {
         // Either list matches the header's commitment.
         byte[] accessList = canonical ? BlockAccessListEncodings.Canonical : BlockAccessListEncodings.LeadingZero;

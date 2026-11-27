@@ -183,9 +183,8 @@ public class BalFetcherTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Stores_only_a_bal_in_an_encoding_newPayload_accepts(bool canonical)
+    [Test]
+    public async Task Stores_only_a_bal_in_an_encoding_newPayload_accepts([Values] bool canonical)
     {
         BlockHeader from = Block(10, bal: null);
         // Either BAL matches the header's commitment.

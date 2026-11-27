@@ -118,9 +118,8 @@ public class BlockAccessListsSyncFeedTests
             Arg.Is<string>(static message => message.Contains("invalid block access list")));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Stores_only_block_access_lists_in_an_encoding_newPayload_accepts(bool canonical)
+    [Test]
+    public async Task Stores_only_block_access_lists_in_an_encoding_newPayload_accepts([Values] bool canonical)
     {
         // Either list matches the commitment of every header.
         byte[] blockAccessList = canonical ? BlockAccessListEncodings.Canonical : BlockAccessListEncodings.LeadingZero;
