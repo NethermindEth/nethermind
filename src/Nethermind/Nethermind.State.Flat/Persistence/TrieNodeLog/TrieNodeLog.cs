@@ -389,7 +389,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         private readonly IColumnsWriteBatch<FlatDbColumns> _rocksDbBatch;
         private readonly ArrayPoolList<TrieNodeLogWriteBatch> _batches;
         private readonly ArrayPoolList<ShardWriter> _writers;
-        private bool _durable;
+        private bool _commitRecordsStarted;
         private bool _committed;
         private bool _confirmed;
 
@@ -413,6 +413,10 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             try
             {
                 foreach (ShardWriter writer in _writers) writer.Complete();
+                // Commit records can reach disk from here on, so a failure takes the shards out of service until a
+                // restart (see Dispose). A body abort skips Commit, and a roll failure reported by Complete precedes
+                // this flag, so either path permits a new batch after successful rollback.
+                _commitRecordsStarted = true;
                 Parallel.ForEach(_batches, static batch => batch.MakeDurable());
             }
             catch
@@ -422,7 +426,6 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 foreach (TrieNodeLogWriteBatch batch in _batches) batch.Abort();
                 throw;
             }
-            _durable = true;
 
             Parallel.ForEach(_batches, static batch => batch.Publish());
             // The RocksDB batch is not thread-safe.
@@ -437,7 +440,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         public void Dispose()
         {
             _writers.DisposeRecursive();
-            if (!_durable)
+            if (!_commitRecordsStarted)
             {
                 foreach (TrieNodeLogWriteBatch batch in _batches) batch.Abort();
             }
@@ -445,6 +448,10 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             {
                 // Fsynced records RocksDB never confirmed, possibly published: they cannot be unpublished under readers,
                 // and a later confirmed version would vouch for them, so the shards stop taking batches until a restart.
+                // This also covers a commit that failed while making its records durable: one file may hold the commit
+                // synced while another file's sync failed, the rollback truncated them without a sync, and a later commit
+                // syncs only the files it writes to, so a power loss would bring the failed version back. Restart
+                // recovery cuts the unconfirmed tail.
                 foreach (TrieNodeLogWriteBatch batch in _batches) batch.Poison();
             }
             _batches.DisposeRecursive();

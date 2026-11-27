@@ -403,20 +403,22 @@ public class SessionTests
     }
 
     [Test]
-    public void Error_on_connection_when_disconnecting_does_not_prevent_the_event([Values] bool initialized)
+    public void Error_on_connection_when_disconnecting_is_traced_and_does_not_prevent_the_event()
     {
         bool wasCalled = false;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        TestLogger logger = new();
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, new OneLoggerLogManager(new ILogger(logger)));
         _connection.DisconnectAsync().Returns(Task.FromException<Exception>(new Exception()));
         session.Disconnected += (s, e) => wasCalled = true;
-        if (initialized)
-        {
-            session.Handshake(TestItem.PublicKeyA);
-            session.Init(5, _packetSender);
-        }
 
+        // Before init, the connection closes right away, so the error is handled before this returns
         session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
-        Assert.That(wasCalled, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wasCalled, Is.True, "Disconnected");
+            Assert.That(logger.LogList, Has.One.StartsWith("Error while disconnecting"));
+        }
     }
 
     [Test]
