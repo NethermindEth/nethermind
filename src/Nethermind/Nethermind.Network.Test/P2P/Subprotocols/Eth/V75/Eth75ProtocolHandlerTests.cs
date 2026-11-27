@@ -226,6 +226,23 @@ public class Eth75ProtocolHandlerTests
         }
     }
 
+    // EIP-8518: the activation condition holds for all five wrapper messages, the eth/76 manifest messages included.
+    [Test]
+    public void Manifest_messages_are_ignored_without_penalty_while_eip8288_is_inactive()
+    {
+        _node.Tree.Head.Returns((Block?)null);
+        using Eth75ProtocolHandler eth76 = Connect(eth76: true);
+        using GetProofWrapperManifestsMessage request = new(1, [TestItem.KeccakA.ValueHash256]);
+        Handle(eth76, request, Eth76MessageCode.GetProofWrapperManifests);
+        using ProofWrapperManifestsMessage response = new(2, [new(TestItem.KeccakA.ValueHash256, WrapperManifest.Of([TestItem.KeccakB.ValueHash256]))]);
+        Handle(eth76, response, Eth76MessageCode.ProofWrapperManifests);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Delivered<ProofWrapperManifestsMessage>(), Is.Empty);
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
     private void AnnounceCells(Transaction transaction, BlobCellMask mask)
     {
         using NewPooledTransactionHashesMessage72 message = new([(byte)transaction.Type], [transaction.GetElidedNetworkEncodingSize()],

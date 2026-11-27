@@ -125,6 +125,19 @@ public class Eth76MessagesTests
         else Assert.That(WrapperAnnouncement.Decode76(entry, out _) is null, Is.EqualTo(scenario == "mode 2"));
     }
 
+    private static byte[] WidestAnnouncements()
+    {
+        byte[][] hashes = [.. Enumerable.Range(0, 17).Select(static i => ValueKeccak.Compute([(byte)i])).Order().Select(static h => Eth75Rlp.EncodeBytes(h.Bytes))];
+        static byte[] Repeat(byte[] item) => Eth75Rlp.EncodeList([.. Enumerable.Repeat(item, 17)]);
+        byte[] metadata = Eth75Rlp.EncodeList(Repeat(Eth75Rlp.EncodeUInt((Eth75Protocol.MaxWrapperBytes - 1) / 17)), Eth75Rlp.EncodeList(hashes),
+            Repeat(Eth75Rlp.EncodeBytes(Enumerable.Repeat((byte)0xff, 20).ToArray())),
+            Repeat(Eth75Rlp.EncodeList([.. Enumerable.Repeat(Eth75Rlp.EncodeBytes(Enumerable.Repeat((byte)0xff, 32).ToArray()), 3)])),
+            Repeat(Eth75Rlp.EncodeUInt(ulong.MaxValue)));
+        return Eth75Rlp.EncodeList([.. Enumerable.Range(1, Eth75Protocol.MaxAnnouncements).Select(i => Eth75Rlp.EncodeList(Eth75Rlp.EncodeUInt(0),
+            Eth75Rlp.EncodeUInt(Eth75Protocol.MaxWrapperBytes), Eth75Rlp.EncodeBytes([.. new byte[31], (byte)i]), Eth75Rlp.EncodeBytes(new byte[32]),
+            Eth75Rlp.EncodeBytes(new byte[32]), metadata))]);
+    }
+
     // check_vectors.py: an announcement of exactly 256 KiB, metadata of an unsupported mode included, is accepted; one byte more is
     // rejected before decoding.
     [Test]
@@ -168,8 +181,9 @@ public class Eth76MessagesTests
         else Assert.That(WrapperManifest.Decode(encoded).Encoded, Is.EqualTo(encoded));
     }
 
-    // check_vectors.py: 64 announcements without metadata encode in 6,851 bytes, any announcement is bounded at 256 KiB, and 32
-    // requested hashes encode in 1,072 with the compact flag and 1,071 for manifests.
+    // check_vectors.py: 64 announcements without metadata encode in 6,851 bytes and with the widest 17-transaction metadata, at the
+    // largest wire integers and three fees each, in 190,660; any announcement is bounded at 256 KiB, and 32 requested hashes
+    // encode in 1,072 with the compact flag and 1,071 for manifests.
     [Test]
     public void Messages_at_their_entry_limits_match_eth76_lengths()
     {
@@ -186,6 +200,7 @@ public class Eth76MessagesTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(new NewProofWrapperHashesMessage76Serializer().Encode(new(announced)), Has.Length.EqualTo(6851));
+            Assert.That(WidestAnnouncements(), Has.Length.EqualTo(190_660).And.Length.LessThan(Eth76Protocol.MaxNewProofWrapperHashesBytes));
             Assert.That(new GetProofWrappersMessage76Serializer().Encode(new(-1, true, requested)), Has.Length.EqualTo(Eth76Protocol.MaxGetProofWrappersBytes));
             Assert.That(new GetProofWrapperManifestsMessageSerializer().Encode(new(-1, requested)), Has.Length.EqualTo(Eth76Protocol.MaxGetProofWrapperManifestsBytes));
             Assert.That(Eth76Protocol.MaxNewProofWrapperHashesBytes, Is.EqualTo(1 << 18));
