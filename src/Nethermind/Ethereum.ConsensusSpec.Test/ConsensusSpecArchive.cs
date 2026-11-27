@@ -26,6 +26,11 @@ public static class ConsensusSpecArchive
 
     public static readonly string[] StateTransitionForks = ["electra", "fulu", "gloas"];
 
+    /// <summary>The forks that are only replayed, and Fulu, which the last of them upgrades to.</summary>
+    public static readonly string[] LegacyForks = ["phase0", "altair", "bellatrix", "capella", "deneb", "electra", "fulu"];
+
+    private static readonly string[] AllStateTransitionForks = [.. LegacyForks, "gloas"];
+
     public static readonly string[] ForkUpgradeForks = ["gloas"];
 
     public static readonly string[] TransitionForks = ["gloas"];
@@ -34,17 +39,17 @@ public static class ConsensusSpecArchive
     private static readonly (string Suite, string[]? Forks)[] ExtractedSuites =
     [
         ("ssz_static", null),
-        ("operations", StateTransitionForks),
-        ("epoch_processing", StateTransitionForks),
-        ("sanity", StateTransitionForks),
+        ("operations", AllStateTransitionForks),
+        ("epoch_processing", AllStateTransitionForks),
+        ("sanity", AllStateTransitionForks),
         ("fork_choice", ["fulu", "gloas"]),
         ("fast_confirmation", ["fulu", "gloas"]),
-        ("fork", ForkUpgradeForks),
-        ("transition", TransitionForks),
+        ("fork", AllStateTransitionForks),
+        ("transition", AllStateTransitionForks),
         ("networking", ["fulu", "gloas"]),
-        ("finality", StateTransitionForks),
-        ("random", StateTransitionForks),
-        ("rewards", StateTransitionForks),
+        ("finality", AllStateTransitionForks),
+        ("random", AllStateTransitionForks),
+        ("rewards", AllStateTransitionForks),
         ("shuffling", ["phase0"]),
         ("merkle_proof", ["electra", "fulu"]),
         ("light_client", StateTransitionForks),

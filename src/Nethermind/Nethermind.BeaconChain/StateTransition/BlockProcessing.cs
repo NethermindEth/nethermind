@@ -334,7 +334,7 @@ public static partial class BlockProcessing
     /// returned as a bitmask over the participation flag indices.
     /// </summary>
     /// <exception cref="BeaconStateException">The attestation source does not match the justified checkpoint.</exception>
-    private static partial byte GetAttestationParticipationFlagIndices(BeaconStateFulu state, AttestationData data, ulong inclusionDelay);
+    internal static partial byte GetAttestationParticipationFlagIndices(BeaconStateFulu state, AttestationData data, ulong inclusionDelay);
 
     /// <summary>Spec <c>process_deposit</c>: verifies the Eth1 deposit tree Merkle branch, then applies the deposit.</summary>
     public static void ProcessDeposit(BeaconStateFulu state, Deposit deposit, BeaconChainSpec? spec = null, EpochCache? cache = null)
@@ -351,7 +351,7 @@ public static partial class BlockProcessing
     }
 
     /// <summary>Spec <c>is_valid_merkle_branch</c>.</summary>
-    private static bool IsValidMerkleBranch(Hash256 leaf, Hash256[] branch, int depth, ulong index, Hash256 root)
+    internal static bool IsValidMerkleBranch(Hash256 leaf, Hash256[] branch, int depth, ulong index, Hash256 root)
     {
         Span<byte> preimage = stackalloc byte[64];
         Span<byte> value = stackalloc byte[32];
@@ -411,7 +411,7 @@ public static partial class BlockProcessing
     private static partial void SwitchToCompoundingValidator(BeaconStateFulu state, int index);
 
     /// <summary>Spec <c>queue_excess_active_balance</c>.</summary>
-    private static void QueueExcessActiveBalance(BeaconStateFulu state, int index)
+    internal static void QueueExcessActiveBalance(BeaconStateFulu state, int index)
     {
         ulong balance = state.Balances![index];
         if (balance <= Presets.MinActivationBalance)

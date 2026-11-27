@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
+using Legacy = Nethermind.BeaconChain.Legacy;
 
 namespace Ethereum.ConsensusSpec.Test;
 
@@ -55,6 +56,7 @@ public class SszStaticTests
     private static readonly string[] AllForks = ["phase0", "altair", "bellatrix", "capella", "deneb", "electra", "fulu", "gloas"];
     private static readonly string[] AltairPlus = ["altair", "bellatrix", "capella", "deneb", "electra", "fulu", "gloas"];
     private static readonly string[] CapellaPlus = ["capella", "deneb", "electra", "fulu", "gloas"];
+    private static readonly string[] BeforeElectraForks = ["phase0", "altair", "bellatrix", "capella", "deneb"];
     private static readonly string[] DenebElectraFulu = ["deneb", "electra", "fulu"];
     private static readonly string[] ElectraPlus = ["electra", "fulu", "gloas"];
     private static readonly string[] ElectraFulu = ["electra", "fulu"];
@@ -76,6 +78,16 @@ public class SszStaticTests
                 r[name] = byFork = [with(StringComparer.Ordinal)];
             foreach (string fork in forks)
                 byFork[fork] = new Entry(new Handler<T>(wireRoundTrip), presetDependent);
+        }
+
+        void MapBlocks<TBody, TBlock, TSigned>(string fork, bool presetDependent)
+            where TBody : ISszCodec<TBody>
+            where TBlock : ISszCodec<TBlock>
+            where TSigned : ISszCodec<TSigned>
+        {
+            Map<TBody>("BeaconBlockBody", [fork], presetDependent);
+            Map<TBlock>("BeaconBlock", [fork], presetDependent);
+            Map<TSigned>("SignedBeaconBlock", [fork], presetDependent);
         }
 
         void MapLightClient<TLegacy, TGloas>(string name, Func<byte[], BeaconChainSpec, byte[]> roundTrip)
@@ -155,7 +167,26 @@ public class SszStaticTests
         Map<SignedBeaconBlock>("SignedBeaconBlock", ElectraFulu, presetDependent: true);
         Map<SignedBeaconBlockGloas>("SignedBeaconBlock", GloasOnly, presetDependent: true);
 
+        Map<Legacy.Attestation>("Attestation", BeforeElectraForks);
+        Map<Legacy.IndexedAttestation>("IndexedAttestation", BeforeElectraForks);
+        Map<Legacy.AttesterSlashing>("AttesterSlashing", BeforeElectraForks);
+        Map<Legacy.Phase0.PendingAttestation>("PendingAttestation", ["phase0"]);
+        Map<Legacy.Bellatrix.ExecutionPayload>("ExecutionPayload", ["bellatrix"]);
+        Map<Legacy.Bellatrix.ExecutionPayloadHeader>("ExecutionPayloadHeader", ["bellatrix"]);
+        Map<Legacy.Capella.ExecutionPayload>("ExecutionPayload", ["capella"], presetDependent: true);
+        Map<Legacy.Capella.ExecutionPayloadHeader>("ExecutionPayloadHeader", ["capella"]);
+        MapBlocks<Legacy.Phase0.BeaconBlockBody, Legacy.Phase0.BeaconBlock, Legacy.Phase0.SignedBeaconBlock>("phase0", presetDependent: false);
+        MapBlocks<Legacy.Altair.BeaconBlockBody, Legacy.Altair.BeaconBlock, Legacy.Altair.SignedBeaconBlock>("altair", presetDependent: true);
+        MapBlocks<Legacy.Bellatrix.BeaconBlockBody, Legacy.Bellatrix.BeaconBlock, Legacy.Bellatrix.SignedBeaconBlock>("bellatrix", presetDependent: true);
+        MapBlocks<Legacy.Capella.BeaconBlockBody, Legacy.Capella.BeaconBlock, Legacy.Capella.SignedBeaconBlock>("capella", presetDependent: true);
+        MapBlocks<Legacy.Deneb.BeaconBlockBody, Legacy.Deneb.BeaconBlock, Legacy.Deneb.SignedBeaconBlock>("deneb", presetDependent: true);
+
         // All modeled states embed preset-sized vectors and list bounds.
+        Map<Legacy.Phase0.BeaconState>("BeaconState", ["phase0"], presetDependent: true);
+        Map<Legacy.Altair.BeaconState>("BeaconState", ["altair"], presetDependent: true);
+        Map<Legacy.Bellatrix.BeaconState>("BeaconState", ["bellatrix"], presetDependent: true);
+        Map<Legacy.Capella.BeaconState>("BeaconState", ["capella"], presetDependent: true);
+        Map<Legacy.Deneb.BeaconState>("BeaconState", ["deneb"], presetDependent: true);
         Map<BeaconStateElectra>("BeaconState", ["electra"], presetDependent: true);
         Map<BeaconStateFulu>("BeaconState", ["fulu"], presetDependent: true);
         Map<BeaconStateGloas>("BeaconState", GloasOnly, presetDependent: true);
@@ -194,17 +225,17 @@ public class SszStaticTests
 
     private static readonly IReadOnlyDictionary<string, int> RegisteredContainerCounts = new Dictionary<string, int>(StringComparer.Ordinal)
     {
-        ["phase0"] = 15,
-        ["altair"] = 17,
-        ["bellatrix"] = 17,
-        ["capella"] = 21,
-        ["deneb"] = 24,
+        ["phase0"] = 23,
+        ["altair"] = 24,
+        ["bellatrix"] = 26,
+        ["capella"] = 30,
+        ["deneb"] = 31,
         ["electra"] = 45,
         ["fulu"] = 47,
         ["gloas"] = 59,
     };
 
-    private const string BeforeElectra = "the fork predates Electra, the oldest fork this node runs, and no container is modeled for it";
+    private const string BeforeElectra = "the fork is only replayed, and the container is not part of its blocks or states";
     private const string UnrunFork = "heze is not a fork this node runs";
     private const string LightClient = "light-client wire formats before Electra are not supported";
     private const string SyncCommitteeDuty = "the node neither produces nor consumes sync committee contributions or messages";
@@ -216,7 +247,7 @@ public class SszStaticTests
 
     private static readonly IReadOnlyDictionary<string, int> PinnedNotModeledCounts = new Dictionary<string, int>(StringComparer.Ordinal)
     {
-        [BeforeElectra] = 55,
+        [BeforeElectra] = 15,
         [UnrunFork] = 75,
         [LightClient] = 20,
         [SyncCommitteeDuty] = 35,

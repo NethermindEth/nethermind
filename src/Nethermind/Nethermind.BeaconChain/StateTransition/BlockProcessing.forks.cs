@@ -623,7 +623,7 @@ public static partial class BlockProcessing
 #if GLOAS
     private static partial byte GetAttestationParticipationFlagIndices(ForkState state, AttestationData data, ulong inclusionDelay, ulong parentSlot)
 #else
-    private static partial byte GetAttestationParticipationFlagIndices(ForkState state, AttestationData data, ulong inclusionDelay)
+    internal static partial byte GetAttestationParticipationFlagIndices(ForkState state, AttestationData data, ulong inclusionDelay)
 #endif
     {
         Checkpoint justifiedCheckpoint = data.Target!.Epoch == state.GetCurrentEpoch()

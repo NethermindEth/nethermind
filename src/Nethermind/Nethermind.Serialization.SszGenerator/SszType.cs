@@ -88,8 +88,8 @@ class SszType
     /// <summary><c>true</c> when this <see cref="SszType"/> represents an open type parameter (forces variable-size encoding).</summary>
     public bool IsTypeParameter { get; init; }
 
-    /// <summary>Filename-safe form of <see cref="TypeReferenceName"/> used as the <c>AddSource</c> hint.</summary>
-    public string HintName => TypeReferenceName
+    /// <summary>Filename-safe, namespace-qualified form of <see cref="TypeReferenceName"/> used as the <c>AddSource</c> hint.</summary>
+    public string HintName => (string.IsNullOrEmpty(Namespace) ? TypeReferenceName : $"{Namespace}.{TypeReferenceName}")
         .Replace('<', '_')
         .Replace('>', '_')
         .Replace(',', '_')

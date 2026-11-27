@@ -115,6 +115,10 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private readonly ContainerMemo<ExecutionPayloadHeader> _latestExecutionPayloadHeader = new();
     private readonly UInt256[] _fieldRoots = new UInt256[FieldCount];
 
+    /// <summary>The field roots of the last hashed <see cref="BeaconStateFulu"/>, in SSZ order.</summary>
+    internal ReadOnlySpan<UInt256> FieldRoots => _fieldRoots;
+
+
     private readonly ContainerListCache<Validator> _gloasValidators = new(new ProgressiveChunkTree());
     private readonly BasicListCache _gloasBalances = new(new ProgressiveChunkTree());
     private readonly BasicListCache _gloasInactivityScores = new(new ProgressiveChunkTree());
@@ -421,7 +425,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     /// Caches the root of a container field that the state transition replaces wholesale and never
     /// mutates in place (sync committees, the latest execution payload header), keyed by reference.
     /// </summary>
-    private sealed class ContainerMemo<T> where T : class, ISszCodec<T>, new()
+    internal sealed class ContainerMemo<T> where T : class, ISszCodec<T>, new()
     {
         private static readonly T s_default = new();
         private T? _last;
@@ -446,7 +450,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     /// plus the tree above, diffed by element reference against the previous call (elements are
     /// immutable-by-convention, so a mutation is always a replaced instance).
     /// </summary>
-    private sealed class ContainerListCache<T>(IChunkTree tree) where T : class, ISszCodec<T>
+    internal sealed class ContainerListCache<T>(IChunkTree tree) where T : class, ISszCodec<T>
     {
         private readonly IChunkTree _tree = tree;
         private T?[] _snapshot = [];
@@ -761,7 +765,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     }
 
     /// <summary>The chunk tree a list cache writes its leaves into; follows the <see cref="MerkleChunkTree"/> contract.</summary>
-    private interface IChunkTree
+    internal interface IChunkTree
     {
         void SetLeafCount(int count);
 
@@ -778,7 +782,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     }
 
     /// <summary>A bounded <c>List[T, N]</c> tree: one <see cref="MerkleChunkTree"/> as deep as the limit.</summary>
-    private sealed class BoundedChunkTree(int depth) : IChunkTree
+    internal sealed class BoundedChunkTree(int depth) : IChunkTree
     {
         private readonly MerkleChunkTree _tree = new(depth);
         private UInt256[] _leaves = [];

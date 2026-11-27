@@ -9,6 +9,7 @@ using Nethermind.Serialization.Ssz.Merkleization;
 using NUnit.Framework;
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 
@@ -459,6 +460,45 @@ public class SszGeneratorDiagnosticTest
         string generated = GetGeneratedSource(source, parseOptions, nameof(Converter_backed_type_named_byte_outside_system_merkleizes_through_its_converter), "Serialization.SszCodec.CustomByteContainer.cs");
 
         Assert.That(generated, Does.Contain("MerkleizeBasicListWithConverter<Byte>(container.Items"));
+    }
+
+    [Test]
+    public void Containers_sharing_a_name_across_namespaces_generate_separate_codecs()
+    {
+        const string source = """
+            using Nethermind.Serialization.Ssz;
+
+            namespace Forks
+            {
+                [SszContainer]
+                public partial class Body
+                {
+                    public ulong Newest { get; set; }
+                }
+            }
+
+            namespace Forks.Old
+            {
+                [SszContainer]
+                public partial class Body : Forks.Body
+                {
+                    [SszIgnore]
+                    public new ulong Newest { get; set; }
+                    public ulong Oldest { get; set; }
+                }
+
+                [SszContainer]
+                public partial class Block
+                {
+                    public Body? Body { get; set; }
+                }
+            }
+            """;
+
+        CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        RunGenerator(source, parseOptions, nameof(Containers_sharing_a_name_across_namespaces_generate_separate_codecs), out Compilation output);
+
+        Assert.That(output.GetDiagnostics().Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error), Is.Empty);
     }
 
     private static Diagnostic GetSsz003Diagnostic(string source, CSharpParseOptions parseOptions, string assemblyName)

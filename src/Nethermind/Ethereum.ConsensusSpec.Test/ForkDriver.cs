@@ -4,6 +4,7 @@
 using System.Reflection;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Legacy;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
@@ -52,23 +53,12 @@ public abstract class ForkDriver
         }
     }
 
-    /// <summary>Runs Electra using a Fulu working state, with Electra proposer sampling, epoch processing, blob limits and SSZ roots.</summary>
-    /// <remarks>
-    /// Refill lookahead at each epoch boundary: Electra samples against current balances, unlike Fulu's advance sampling.
-    /// Skip Fulu's process_proposer_lookahead, which can read an empty future active set Electra never accesses.
-    /// Hash the Electra base through EpochCache.Hasher and post-state comparison, excluding lookahead from roots.
-    /// </remarks>
+    /// <summary>Runs Electra using a Fulu working state, hashing it with the generated Electra codec.</summary>
     private sealed class Electra : ForkDriver<BeaconStateFulu>
     {
         public override string Fork => "electra";
 
-        public override BeaconStateFulu DecodePre(string path)
-        {
-            BeaconStateFulu state = new();
-            CopyElectraFields(DecodeElectra(path), state);
-            RefillProposerLookahead(state);
-            return state;
-        }
+        public override BeaconStateFulu DecodePre(string path) => NewTransition(FuluDriverSupport.DefaultSpec).DecodeState(SszConsensusTestLoader.ReadSszSnappy(path));
 
         public override (object State, Hash256 Root) DecodePost(string path)
         {
@@ -89,58 +79,19 @@ public abstract class ForkDriver
         public override ulong SlotOf(BeaconStateFulu state) => state.Slot;
         public override Validator[] ValidatorsOf(BeaconStateFulu state) => state.Validators!;
 
-        public override void ProcessSlots(BeaconStateFulu state, ulong targetSlot, EpochCache cache)
-        {
-            // Same guard as SlotProcessing.ProcessSlots, which the loop below would otherwise skip.
-            if (state.Slot >= targetSlot)
-                throw new BeaconStateException($"Cannot advance state at slot {state.Slot} to non-future slot {targetSlot}");
+        public override void ProcessSlots(BeaconStateFulu state, ulong targetSlot, EpochCache cache) =>
+            NewTransition(FuluDriverSupport.DefaultSpec).ProcessSlots(state, targetSlot, cache);
 
-            while (state.Slot < targetSlot)
-            {
-                SlotProcessing.ProcessSlot(state, cache.Hasher);
-                if ((state.Slot + 1) % Presets.SlotsPerEpoch == 0)
-                    ProcessEpoch(state, cache);
-                state.Slot++;
-                if (state.Slot % Presets.SlotsPerEpoch == 0)
-                    RefillProposerLookahead(state);
-            }
-        }
-
-        /// <summary>Electra <c>process_epoch</c>: <see cref="EpochProcessing.ProcessEpoch"/> without the Fulu-only <c>process_proposer_lookahead</c>.</summary>
-        private static void ProcessEpoch(BeaconStateFulu state, EpochCache cache)
-        {
-            EpochProcessing.ProcessJustificationAndFinalization(state, cache);
-            EpochProcessing.ProcessInactivityUpdates(state);
-            EpochProcessing.ProcessRewardsAndPenalties(state, cache);
-            EpochProcessing.ProcessRegistryUpdates(state, cache);
-            EpochProcessing.ProcessSlashings(state, cache);
-            EpochProcessing.ProcessEth1DataReset(state);
-            EpochProcessing.ProcessPendingDeposits(state, cache);
-            EpochProcessing.ProcessPendingConsolidations(state);
-            EpochProcessing.ProcessEffectiveBalanceUpdates(state, cache);
-            EpochProcessing.ProcessSlashingsReset(state);
-            EpochProcessing.ProcessRandaoMixesReset(state);
-            EpochProcessing.ProcessHistoricalSummariesUpdate(state);
-            EpochProcessing.ProcessParticipationFlagUpdates(state);
-            EpochProcessing.ProcessSyncCommitteeUpdates(state);
-        }
-
-        // Mirrors StateTransition.Apply statement for statement; that method cannot be reused because
-        // its slot advance has no seam for the per-epoch lookahead refill and its root check is Fulu-shaped.
         public override void ApplyBlock(BeaconStateFulu state, byte[] signedBlockSsz, BeaconChainSpec spec, EpochCache cache, PubkeyCache pubkeys, INewPayloadNotifier notifier, bool verifySignatures)
         {
-            SignedBeaconBlock.Decode(signedBlockSsz, out SignedBeaconBlock signedBlock);
-            BeaconBlock block = signedBlock.Message!;
-            ProcessSlots(state, block.Slot, cache);
-
-            if (verifySignatures && !SignatureSets.VerifyProposerSignature(state, signedBlock, pubkeys))
-                throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");
-
-            BlockProcessing.ProcessBlock(state, block, cache, pubkeys, notifier, spec.MaxBlobsPerBlockElectra, verifySignatures);
-
-            if (block.StateRoot != StateRoot(state))
-                throw new BeaconStateException($"Block state root {block.StateRoot} does not match the post-state root");
+            Nethermind.BeaconChain.Legacy.Electra.Transition transition = NewTransition(spec);
+            LegacyBlock block = transition.DecodeBlock(signedBlockSsz);
+            transition.ProcessSlots(state, block.Message.Slot, cache);
+            transition.Apply(state, block, cache, pubkeys, notifier, verifySignatures);
         }
+
+        private static Nethermind.BeaconChain.Legacy.Electra.Transition NewTransition(BeaconChainSpec spec) =>
+            new(spec with { FuluForkEpoch = Presets.FarFutureEpoch });
 
         private static BeaconStateElectra DecodeElectra(string path)
         {
