@@ -277,5 +277,6 @@ public class Profile2EligibilityReplayerTests
         FrameSignatures = [],
         GasPrice = 1.GWei,
         DecodedMaxFeePerGas = 1.GWei,
+        MaxFee = 1.Ether,
     };
 }

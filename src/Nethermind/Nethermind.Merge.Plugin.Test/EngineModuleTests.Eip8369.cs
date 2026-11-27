@@ -360,12 +360,12 @@ public partial class EngineModuleTests
         ChainId = chain.SpecProvider.ChainId,
         Nonce = 0,
         SenderAddress = sender,
-        // EIP-8250 replaces the scalar nonce; the zero key alone is the account nonce.
-        NonceKeys = [UInt256.Zero],
+        NonceKeys = [],
         Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
         FrameSignatures = [],
         GasPrice = 2.GWei,
         DecodedMaxFeePerGas = 10.GWei,
+        MaxFee = 1.Ether,
     };
 
     private static Transaction Profile2Enabler() => Build.A.Transaction

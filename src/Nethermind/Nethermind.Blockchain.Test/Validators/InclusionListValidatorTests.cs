@@ -620,8 +620,7 @@ public class InclusionListValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
             Nonce = 0,
-            // EIP-8250 replaces the scalar nonce; the zero key alone is the account nonce.
-            NonceKeys = [UInt256.Zero],
+            NonceKeys = [],
             Frames = frames,
             FrameSignatures = [],
             GasLimit = FrameTxValidation.TotalGasLimit(frames),

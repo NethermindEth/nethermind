@@ -136,7 +136,7 @@ public class InclusionListTxSourceTests
     {
         CountingEcdsa ecdsa = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId));
         InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), new TxValidator(MainnetSpecProvider.Instance.ChainId), LimboLogs.Instance);
-        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
         byte[][][] il = [.. Enumerable.Repeat<byte[][]>([Encode(tx), Encode(tx)], Eip7805Constants.InclusionListCommitteeSize)];
 
         source.Set(il, Bogota.Instance);
