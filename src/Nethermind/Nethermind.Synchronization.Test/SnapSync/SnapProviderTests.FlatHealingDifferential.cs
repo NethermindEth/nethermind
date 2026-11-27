@@ -50,7 +50,7 @@ public partial class SnapProviderTests
 
     private static readonly int[] GeneratedSeeds = [6700, 6701, 6702, 6703, 6704, 6705, 6706, 6707];
 
-    /// <summary>A seed whose emptied storage, refilled at the next root, keeps its storage trie nodes without #16408.</summary>
+    /// <summary>A seed whose emptied storage, refilled at the next root, keeps its storage trie nodes when emptying a storage deletes only its slots.</summary>
     private const int StoreKeepingStorageNodesSeed = 6700;
 
     private static IEnumerable<TestCaseData> GeneratedHealingCases()
@@ -66,7 +66,6 @@ public partial class SnapProviderTests
         {
             if (!int.TryParse(firstText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int first))
                 throw new InvalidOperationException($"NM_FLAT_HEAL_SEED={firstText} is not an Int32 seed");
-            // One seed when no count is given; a given count has to be a positive Int32.
             int count = 1;
             if (countText is not null && (!int.TryParse(countText, NumberStyles.Integer, CultureInfo.InvariantCulture, out count) || count <= 0))
                 throw new InvalidOperationException($"NM_FLAT_HEAL_SEED={firstText} with NM_FLAT_HEAL_COUNT={countText}: the count must be a positive Int32");
@@ -98,10 +97,10 @@ public partial class SnapProviderTests
     }
 
     /// <summary>
-    /// Through a store that deletes only the slots of an emptied storage, as before #16408, the storage trie nodes of the
-    /// refill owner survive the round at root 1, which empties its storage; healing at root 2 finds them saved, so the
-    /// slots under them are missing at the last root, which a clean heal has. The generated roots still exercise the
-    /// shape that change fixed.
+    /// Through a store that deletes only the slots of an emptied storage and keeps its storage trie nodes, the storage trie
+    /// nodes of the refill owner survive the round at root 1, which empties its storage; healing at root 2 finds them saved,
+    /// so the slots under them are missing at the last root, which a clean heal has. The generated roots still exercise
+    /// that shape, which healing handles by deleting the storage trie nodes of an emptied storage too.
     /// </summary>
     [Test]
     public async Task Flat_healing_over_generated_roots_tells_a_store_keeping_the_nodes_of_an_emptied_storage_from_a_clean_heal()
@@ -278,7 +277,7 @@ public partial class SnapProviderTests
         public GeneratedState Clone() => new() { Balance = Balance, Nonce = Nonce, Code = Code, Slots = new SortedDictionary<ValueHash256, byte[]>(Slots, PathOrder) };
 
         public bool SameAs(GeneratedState? other) =>
-            other is not null && Balance == other.Balance && Nonce == other.Nonce && Code == other.Code
+            other is not null && Balance == other.Balance && Nonce == other.Nonce && Code.AsSpan().SequenceEqual(other.Code)
             && Slots.Count == other.Slots.Count && Slots.All(slot => other.Slots.TryGetValue(slot.Key, out byte[]? value) && value.AsSpan().SequenceEqual(slot.Value));
     }
 
@@ -824,7 +823,7 @@ public partial class SnapProviderTests
         private readonly bool?[] _roundCompleted = new bool?[GeneratedRounds];
         private int _round = -1;
         private int _roundRequests;
-        private string? _partialAnswer;
+        private (int Request, int Requested, int Answered)? _plannedPartialAnswer;
         private (int Request, int Requested, int Answered)? _firstMultiItemRoot3Response;
         private string? _root3Cut;
         private string? _root4Cut;
@@ -859,7 +858,7 @@ public partial class SnapProviderTests
                 throw new InvalidOperationException($"request {request} at root {_round} asks for code {code.Hash}, which healing should not reach");
 
             int answered = items.Count;
-            if (_round == 3 && _partialAnswer is null && items.Count >= 2)
+            if (_round == 3 && _plannedPartialAnswer is null && items.Count >= 2)
             {
                 for (int i = items.Count - 1; i > 0; i--)
                 {
@@ -869,7 +868,7 @@ public partial class SnapProviderTests
 
                 int half = (items.Count + 1) / 2;
                 answered = half + _random.Next(items.Count - half);
-                _partialAnswer = $"request {request} selected {answered} of {items.Count}, shuffled";
+                _plannedPartialAnswer = (request, items.Count, answered);
             }
 
             _recentRequests.Enqueue($"  request {request} at root {_round}, selected {answered} of {items.Count}: {string.Join(", ", items.Take(8).Select(Describe))}{(items.Count > 8 ? ", ..." : "")}");
@@ -915,6 +914,14 @@ public partial class SnapProviderTests
             else _roundCompleted[_round] = HoldsRoot(_persistence, _roots.Headers[_round]);
             if (_root3Cut is null) ScheduleErrors.Add("round 3 never moved on");
             if (_root4Cut is null) ScheduleErrors.Add("round 4 never reached its target");
+            if (_plannedPartialAnswer is { } planned)
+            {
+                if (_firstMultiItemRoot3Response is not { } observed)
+                    ScheduleErrors.Add($"the partial answer planned for request {planned.Request}, {planned.Answered} of {planned.Requested} items, was not observed just before healing handled it");
+                else if (observed != planned)
+                    ScheduleErrors.Add($"the partial answer planned for request {planned.Request}, {planned.Answered} of {planned.Requested} items, reached healing as request {observed.Request} with {observed.Answered} responses to {observed.Requested} items");
+            }
+
             if (_firstMultiItemRoot3Response is { } partial && (partial.Answered >= partial.Requested || partial.Answered < (partial.Requested + 1) / 2))
                 ScheduleErrors.Add($"request {partial.Request}, the first of root 3 with more than one item, reached healing with {partial.Answered} responses to {partial.Requested} items, not with at least half and fewer than all");
             for (int round = 0; round < GeneratedRounds; round++)
@@ -931,7 +938,9 @@ public partial class SnapProviderTests
             text.AppendLine($"rounds completed: {string.Join(", ", _roundCompleted.Select((completed, round) => $"{round} {completed switch { true => "yes", false => "no", null => "not checked" }}"))}");
             text.AppendLine($"round 3 planned to move on after request {Root3RequestsBeforeMovingOn} at that root: {_root3Cut ?? "did not"}");
             text.AppendLine($"round 4: {_root4Cut ?? "did not move on"}");
-            text.AppendLine($"planned partial answer: {_partialAnswer ?? "none"}");
+            text.AppendLine(_plannedPartialAnswer is { } planned
+                ? $"planned partial answer: request {planned.Request} selected {planned.Answered} of {planned.Requested}, shuffled"
+                : "planned partial answer: none");
             text.AppendLine(_firstMultiItemRoot3Response is { } delivered
                 ? $"delivered: request {delivered.Request} reached healing with {delivered.Answered} responses to {delivered.Requested} items"
                 : "delivered: no multi-item request at root 3 was observed by the pre-handle hook");
@@ -953,7 +962,7 @@ public partial class SnapProviderTests
         }
     }
 
-    /// <summary>A store that deletes only the slots of an emptied storage, keeping its storage trie nodes, as before #16408.</summary>
+    /// <summary>A store that deletes only the slots of an emptied storage and keeps its storage trie nodes, as flat healing did before it deleted those nodes too.</summary>
     private sealed class SlotsOnlyStorageEmptying(ITreeSyncStore inner, IPersistence persistence) : ITreeSyncStore
     {
         public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) => inner.NodeExists(address, path, hash);
