@@ -1043,7 +1043,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         error = null;
         TxFrameClaim[] claims = tx.FrameClaims ?? [];
         byte[][]? witnesses = tx.ClaimWitnesses;
-        if (witnesses is null)
+        // The zkVM guest's input carries no dependency proof to take witnesses from, so it compiles no verifier.
+        if (ZkEvmFlag.IsActive || witnesses is null)
         {
             if (allowPlaceholders || claims.Length == 0) return true;
             error = FrameTxClaimVerifier.MissingWitnesses;
@@ -1088,6 +1089,25 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// succeeds; the full <c>gas_limit</c> is charged through the intrinsic gas whatever the call uses.
     /// </remarks>
     private bool ExecutePureVerifier(TxFrameClaim claim, in ValueHash256 key, in ValueHash256 msg, byte[] witness, IReleaseSpec spec)
+    {
+        // Claims are verified against the block's pre-state, outside any transaction, so nothing the verifier reads
+        // enters the block access list (EIP-7928).
+        IBlockAccessListSource? accessListSource = WorldState as IBlockAccessListSource;
+        BlockAccessListAtIndex? recording = accessListSource?.GeneratedBlockAccessList;
+        if (recording is null) return ExecutePureVerifierCore(claim, in key, in msg, witness, spec);
+
+        accessListSource!.SetGeneratingBlockAccessList(null);
+        try
+        {
+            return ExecutePureVerifierCore(claim, in key, in msg, witness, spec);
+        }
+        finally
+        {
+            accessListSource.SetGeneratingBlockAccessList(recording);
+        }
+    }
+
+    private bool ExecutePureVerifierCore(TxFrameClaim claim, in ValueHash256 key, in ValueHash256 msg, byte[] witness, IReleaseSpec spec)
     {
         Address verifier = claim.Verifier;
         bool isPrecompile = _codeInfoRepository.GetPrecompile(verifier, spec) is not null;
