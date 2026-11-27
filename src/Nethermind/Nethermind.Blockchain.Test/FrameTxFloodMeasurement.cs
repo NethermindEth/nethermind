@@ -123,6 +123,7 @@ public partial class FrameTxFloodMeasurement
     private ulong _frameExecutionGasLimit;
 
     private FloodTestBlockchain _chain = null!;
+    private BlockProcessingTracker _processingTracker = null!;
     private BlockHeader _parent = null!;
     private Block _workloadBlock = null!;
     private Transaction[] _floodTxs = null!;
@@ -353,18 +354,18 @@ public partial class FrameTxFloodMeasurement
     private void ProcessOnce() => ProcessImport(_workloadBlock);
 
     /// <summary>Processes <paramref name="block"/> on the main branch processor the way the import loop does: with the
-    /// block tree's processing flag raised, unless the arm measures a node without that signal.</summary>
+    /// block processing flag raised, unless the arm measures a node without that signal.</summary>
     private void ProcessImport(Block block)
     {
         bool signal = s_blockProcessingSignal;
-        if (signal) _chain.BlockTree.IsProcessingBlock = true;
+        if (signal) _processingTracker.IsProcessingBlock = true;
         try
         {
             _chain.BranchProcessor.Process(_parent, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         }
         finally
         {
-            if (signal) _chain.BlockTree.IsProcessingBlock = false;
+            if (signal) _processingTracker.IsProcessingBlock = false;
         }
     }
 
@@ -486,6 +487,7 @@ public partial class FrameTxFloodMeasurement
                 }));
         });
 
+        _processingTracker = _chain.Container.Resolve<BlockProcessingTracker>();
         _parent = _chain.BlockTree.Head!.Header;
         _workloadBlock = BuildWorkloadBlock();
         if (computeVictim) _computeBlock = BuildComputeBlock();

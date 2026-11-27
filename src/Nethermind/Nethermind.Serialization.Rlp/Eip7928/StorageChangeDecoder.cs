@@ -16,6 +16,13 @@ public sealed class StorageChangeDecoder : IndexedChangeDecoder<StorageChange>, 
     static StorageChange IIndexedChangeReader<StorageChange>.ReadFields<TCanonicalChecks>(ref RlpReader fields)
         => new(fields.DecodeUInt<TCanonicalChecks>(), fields.DecodeUInt256<TCanonicalChecks>());
 
+    static uint IIndexedChangeReader<StorageChange>.ValidateFields(ref RlpReader fields)
+    {
+        uint index = fields.DecodeUInt();
+        fields.DecodeUInt256();
+        return index;
+    }
+
     protected override void EncodeValue(ref RlpWriter writer, StorageChange item)
         => writer.Encode(item.Value);
 

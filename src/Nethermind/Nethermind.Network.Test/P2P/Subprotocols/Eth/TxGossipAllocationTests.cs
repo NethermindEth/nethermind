@@ -464,6 +464,8 @@ public class TxGossipAllocationTests
         public SessionState State => SessionState.Initialized;
         public SessionState BestStateReached => SessionState.Initialized;
         public bool IsClosing => false;
+        public bool IsChannelClosed => false;
+        public bool IsOutboundBufferFull => false;
         public PublicKey RemoteNodeId => node.Id;
         public PublicKey ObsoleteRemoteNodeId => null!;
         public string RemoteHost { get; set; } = string.Empty;
@@ -493,7 +495,6 @@ public class TxGossipAllocationTests
             throw new AssertionException($"peer {node.Id} disconnected: {disconnectReason} {details}");
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details) { }
         public void Handshake(PublicKey handshakeRemoteNodeId) { }
-        public void StartTrackingSession() { }
         public void Dispose() { }
 
         public event EventHandler<DisconnectEventArgs> Disconnecting { add { } remove { } }

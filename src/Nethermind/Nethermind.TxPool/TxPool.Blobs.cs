@@ -50,11 +50,6 @@ namespace Nethermind.TxPool
             return true;
         }
 
-        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            out ReadOnlyMemory<byte> cellProofs)
-            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
-
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs)
         {
@@ -107,9 +102,6 @@ namespace Nethermind.TxPool
                 ? found
                 : found + FillIncludedBlobCellsAndProofsV1(requestedBlobVersionedHashes, requestedMask, availableMasks, cells, proofs);
         }
-
-        public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) =>
-            MergeBlobCells(hash, cellMask, cells) == BlobCellMergeResult.Accepted;
 
         public BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells)
         {

@@ -1421,7 +1421,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         => block.Transactions.Length < MinTransactionsForReactiveWarming
         && !(IsBalReadWarmingEnabled(spec) && block.BlockAccessList is not null);
 
-    public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
+    internal bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
 
     /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>

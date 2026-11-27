@@ -3,6 +3,7 @@
 
 using Nethermind.Int256;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
@@ -17,5 +18,6 @@ public class GethGenesisAllocJson
 
     public byte[]? Code { get; set; }
 
+    [JsonConverter(typeof(GethGenesisStorageConverter))]
     public Dictionary<UInt256, byte[]>? Storage { get; set; }
 }

@@ -704,6 +704,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
+        // A snapshot whose trie nodes live in a private buffer must not outlive the bundle that frees that buffer.
+        Debug.Assert(!shouldAddSnapshot || !_snapshotBundle.OwnsNodeRecordBuffer, "Snapshots over a private node buffer cannot be added to the repository.");
         // Taken after the roots were published, so the next block's pin also bounds this snapshot's root lookups.
         INodeRecordBufferPin? nextBufferPin = _trieless ? null : _snapshotBundle.NodeRecordBuffer!.PinHead();
         (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 
 //TODO: Redo clique block producer
@@ -53,11 +54,15 @@ namespace Nethermind.Consensus.Producers
         public long TxByteLength { get; internal set; }
         public IReadOnlySet<Transaction>? TransactionsExemptFromByteLimit { get; set; }
         public Transaction[]? RequiredTransactions { get; set; }
+        public Transaction[]? InclusionList { get; set; }
+        public CancellationToken AbandonToken { get; internal set; }
 
         public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals)
         {
             TransactionsExemptFromByteLimit = TransactionsExemptFromByteLimit,
             RequiredTransactions = RequiredTransactions,
+            InclusionList = InclusionList,
+            AbandonToken = AbandonToken,
         };
     }
 }

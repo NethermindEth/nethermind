@@ -99,6 +99,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected virtual void Handle(NodeDataMessage msg, int size) => _nodeDataRequests.Handle(msg.Data, size);
 
+        public override bool CanGetNodeData => true;
+
         public override Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
         {
             if (keys.Count == 0)

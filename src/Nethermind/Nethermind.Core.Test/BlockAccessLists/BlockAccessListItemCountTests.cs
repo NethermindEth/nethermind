@@ -189,6 +189,33 @@ public class BlockAccessListItemCountTests
     }
 
     [Test]
+    public void Merge_appends_changes_of_an_account_and_slot_written_in_several_slices()
+    {
+        GeneratedBlockAccessList bal = new();
+        BlockAccessListAtIndex first = new() { Index = 1 };
+        first.AddBalanceChange(TestItem.AddressA, before: UInt256.Zero, after: (UInt256)10);
+        first.AddStorageRead(TestItem.AddressA, 1);
+        bal.Merge(first);
+        for (uint index = 2; index <= 3; index++)
+        {
+            BlockAccessListAtIndex next = new() { Index = index };
+            next.AddBalanceChange(TestItem.AddressA, before: (UInt256)(10 * (index - 1)), after: (UInt256)(10 * index));
+            next.AddStorageChange(TestItem.AddressA, 1, before: (UInt256)(index - 1), after: (UInt256)index);
+            bal.Merge(next);
+        }
+
+        GeneratedAccountChanges account = bal.GetAccountChanges(TestItem.AddressA)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.BalanceChanges, Is.EqualTo(new BalanceChange[] { new(1, 10), new(2, 20), new(3, 30) }));
+            Assert.That(account.TryGetSlotChanges(1, out GeneratedSlotChanges? slot), Is.True);
+            Assert.That(slot!.Changes, Is.EqualTo(new StorageChange[] { new(2, 2), new(3, 3) }));
+            Assert.That(account.StorageReads, Is.Empty);
+            Assert.That(bal.ItemCount, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
     public void Reset_trims_oversized_account_dictionary()
     {
         const int OversizedCapacity = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1;

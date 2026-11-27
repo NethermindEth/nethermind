@@ -610,7 +610,7 @@ public class FrameTxProducerRetryMeasurement
             .AddScoped<IComparer<MempoolTransaction>, ITransactionComparerProvider>(comparers => comparers.GetDefaultComparer())
             // The registered provider reads state through an IStateReader at the chain's state root; this pool's
             // state lives at a head of its own, so the provider is built on that state instead.
-            .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider>(spec => new ChainHeadInfoProvider(spec, _poolHeadTree, poolState)
+            .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider>(spec => new ChainHeadInfoProvider(spec, _poolHeadTree, poolState, new())
             {
                 // The pool raises TxPoolHeadChanged only while it considers itself synced, and AdvancePoolHead
                 // waits on that event, so pin it rather than leaving it to the pinned head's block number.

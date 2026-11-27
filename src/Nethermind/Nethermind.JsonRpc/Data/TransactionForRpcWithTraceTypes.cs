@@ -28,7 +28,8 @@ public class TransactionForRpcWithTraceTypes
 
             reader.Read();
 
-            value.Transaction = TypeInfoJsonSerializer.Deserialize<TransactionForRpc>(ref reader, options);
+            value.Transaction = TypeInfoJsonSerializer.Deserialize<TransactionForRpc>(ref reader, options)
+                ?? throw new JsonException("The trace call transaction must not be null.");
             reader.Read();
             value.TraceTypes = TypeInfoJsonSerializer.Deserialize<string[]>(ref reader, options);
 

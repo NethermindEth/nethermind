@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -131,7 +131,7 @@ public static partial class GloasEpochProcessing
         for (int i = 0; i < proposerIndices.Length; i++)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], startSlot + (ulong)i);
-            SHA256.HashData(preimage, slotSeed);
+            ThreadSha256.HashData(preimage, slotSeed);
             proposerIndices[i] = (ulong)GloasForkTransition.ComputeBalanceWeightedSelection(validators, indices, slotSeed, size: 1, shuffleIndices: true)[0];
         }
         return proposerIndices;

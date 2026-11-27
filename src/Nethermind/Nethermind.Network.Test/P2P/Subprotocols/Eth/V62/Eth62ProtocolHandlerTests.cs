@@ -87,7 +87,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             RecreateHandler();
         }
 
-        private void RecreateHandler(INodeStatsManager? stats = null, IBackgroundTaskScheduler? scheduler = null, bool init = true)
+        private void RecreateHandler(INodeStatsManager? stats = null, IBackgroundTaskScheduler? scheduler = null)
         {
             _handler?.Dispose();
             _handler = new Eth62ProtocolHandler(
@@ -100,7 +100,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _gossipPolicy,
                 LimboLogs.Instance,
                 _txGossipPolicy);
-            if (init) _handler.Init();
+            _handler.Init();
         }
 
         [TearDown]
@@ -133,16 +133,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             _syncManager.Head.Returns((BlockHeader)null);
             Assert.Throws<InvalidOperationException>(() => _handler.Init());
-        }
-
-        [Test]
-        public void Should_stop_notifying_about_new_blocks_and_new_block_hashes_if_in_PoS()
-        {
-            _gossipPolicy.CanGossipBlocks.Returns(false);
-
-            RecreateHandler(init: false);
-
-            _syncManager.Received().StopNotifyingPeersAboutNewBlocks();
         }
 
         [Test]

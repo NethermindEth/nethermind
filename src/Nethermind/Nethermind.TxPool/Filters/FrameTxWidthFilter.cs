@@ -83,7 +83,9 @@ internal sealed class FrameTxWidthFilter(
             Metrics.PendingTransactionsTooLowFee++;
             if (logger.IsTrace)
                 logger.Trace($"Skipped adding frame transaction {tx.Hash}, max fee per gas {tx.MaxFeePerGas} is below the next base fee {nextBaseFee}.");
-            return AcceptTxResult.FeeTooLow.WithMessage($"MaxFeePerGas needs to be at least the next block's base fee ({nextBaseFee}) beyond the baseline, is {tx.MaxFeePerGas}.");
+            return (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) == 0
+                ? AcceptTxResult.FeeTooLow
+                : AcceptTxResult.FeeTooLow.WithMessage($"MaxFeePerGas needs to be at least the next block's base fee ({nextBaseFee}) beyond the baseline, is {tx.MaxFeePerGas}.");
         }
 
         UInt256 cost = FrameTxWidthCharge.For(tx.Transaction, state.HeadSpec, txPoolConfig.FrameTxWidthSafetyFactorPermille);

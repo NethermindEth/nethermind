@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -39,14 +41,20 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             ConstantDifficulty.Zero,
             blocksConfig)
     {
-        /// <remarks>The fallback payload still has to satisfy the inclusion list, so the empty block carries
-        /// the list even though it skips mempool selection (EIP-7805).</remarks>
+        /// <remarks>Every prepared block records the inclusion list, so the entries still missing after the main
+        /// transaction loop can be offered again. The fallback payload still has to satisfy the list, so the empty
+        /// block also takes its transactions from it even though it skips mempool selection (EIP-7805).</remarks>
         protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             BlockToProduce blockToProduce = base.PrepareBlock(parent, payloadAttributes, flags);
-            if (inclusionListTxSource is not null && (flags & IBlockProducer.Flags.EmptyBlock) != 0)
+            if (inclusionListTxSource is not null)
             {
-                blockToProduce.Transactions = inclusionListTxSource.GetTransactions(parent, blockToProduce.Header, blockToProduce.Header.GasLimit, payloadAttributes);
+                IEnumerable<MempoolTransaction> inclusionList = inclusionListTxSource.GetTransactions(parent, blockToProduce.Header, blockToProduce.Header.GasLimit, payloadAttributes);
+                blockToProduce.InclusionList = Array.ConvertAll(inclusionList as MempoolTransaction[] ?? [.. inclusionList], static tx => tx.Transaction);
+                if ((flags & IBlockProducer.Flags.EmptyBlock) != 0)
+                {
+                    blockToProduce.Transactions = inclusionList;
+                }
             }
             return blockToProduce;
         }

@@ -241,16 +241,6 @@ namespace Nethermind.Network
         {
             if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
 
-            if (handler.ProtocolVersion >= 5)
-            {
-                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session:hide} - enabling snappy");
-                session.EnableSnappy();
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session:hide} - disabling snappy");
-            }
-
             _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
             {
                 ClientId = args.ClientId,

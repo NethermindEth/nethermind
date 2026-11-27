@@ -62,8 +62,8 @@ public class InclusionListTxSource(
                 OrderForProduction(FilterUnusable(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec), spec)),
                 static tx => (MempoolTransaction)tx)));
 
-    // The producer offers each IL tx once, so a shuffled IL would skip a nonce that arrives after its
-    // dependent. Ordering by first-appearance rather than address avoids favouring low-address senders.
+    // Nonce order within a sender lets a shuffled IL go in on the first pass.
+    // Ordering by first-appearance rather than address avoids favouring low-address senders.
     private static Transaction[] OrderForProduction(Transaction[] txs)
     {
         if (txs.Length < 2) return txs;

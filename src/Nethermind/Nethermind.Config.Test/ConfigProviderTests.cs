@@ -191,6 +191,38 @@ namespace Nethermind.Config.Test
                 Assert.That(config.ExtraData, Is.EqualTo("previous"));
             }
         }
+
+        [TestCase(32, true)]
+        [TestCase(33, false)]
+        public void ExtraData_from_a_source_keeps_the_exit_code_of_the_setter(int length, bool accepted)
+        {
+            string extraData = new('a', length);
+            ConfigProvider provider = new();
+            provider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["Blocks.ExtraData"] = extraData }));
+
+            if (accepted)
+            {
+                Assert.That(provider.GetConfig<IBlocksConfig>().ExtraData, Is.EqualTo(extraData));
+                return;
+            }
+
+            // The setter's own exception, with its stack, rather than a wrapper that hides the exit code.
+            Assert.That(provider.Initialize, Throws.TypeOf<InvalidConfigurationException>()
+                .With.Message.Contains(extraData)
+                .And.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.TooLongExtraData)
+                .And.Property(nameof(Exception.StackTrace)).Contains($"{nameof(BlocksConfig)}.set_{nameof(BlocksConfig.ExtraData)}"));
+        }
+
+        [Test]
+        public void Setter_error_without_an_exit_code_is_wrapped_with_the_item_name()
+        {
+            ConfigProvider provider = new();
+            provider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["Pruning.DirtyNodeShardBit"] = "0" }));
+
+            Assert.That(provider.Initialize, Throws.TypeOf<InvalidOperationException>()
+                .With.Message.EqualTo($"Cannot set value of {nameof(PruningConfig)}.{nameof(PruningConfig.DirtyNodeShardBit)}")
+                .And.InnerException.TypeOf<TargetInvocationException>());
+        }
     }
 
     [TestFixture]
@@ -251,6 +283,118 @@ namespace Nethermind.Config.Test
                 Assert.That(value.ValueForLog(true), Is.EqualTo("[redacted]"));
                 Assert.That(provider.GetRawValue("JsonRpc", nameof(IJsonRpcConfig.AdditionalRpcUrls)), Is.Not.Null);
             }
+        }
+
+        [TestCase("JsonRpc")]
+        [TestCase("JsonRpcConfig")]
+        [TestCase("jsonrpc")]
+        public void Raw_value_is_returned_for_short_and_full_category_names(string category)
+        {
+            IEnvironment environment = Substitute.For<IEnvironment>();
+            environment.GetEnvironmentVariable(Arg.Any<string>()).Returns((string?)null);
+            environment.GetEnvironmentVariable("NETHERMIND_JSONRPCCONFIG_HOST").Returns("10.0.0.1");
+
+            ConfigProvider provider = new();
+            provider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["JsonRpc.Port"] = "1234" }));
+            provider.AddSource(new EnvConfigSource(environment));
+            provider.Initialize();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.GetRawValue(category, nameof(IJsonRpcConfig.Port)), Is.EqualTo("1234"));
+                Assert.That(provider.GetRawValue(category, nameof(IJsonRpcConfig.Host)), Is.EqualTo("10.0.0.1"));
+                Assert.That(provider.GetRawValue(category, nameof(IJsonRpcConfig.Timeout)), Is.EqualTo(new JsonRpcConfig().Timeout));
+            }
+        }
+
+        [TestCase("UnsuffixedCategory", "default", 1)]
+        [TestCase("UnsuffixedCategoryConfig", "default", 1)]
+        [TestCase("unsuffixedcategory", "default", 1)]
+        [TestCase("UnsuffixedCategory", "env", "71")]
+        [TestCase("UnsuffixedCategoryConfig", "env", "71")]
+        [TestCase("UnsuffixedCategory", "args", "72")]
+        [TestCase("UnsuffixedCategoryConfig", "args", "72")]
+        public void Raw_value_is_returned_for_category_without_config_suffix(string category, string source, object expected)
+        {
+            IEnvironment environment = Substitute.For<IEnvironment>();
+            environment.GetEnvironmentVariable(Arg.Any<string>()).Returns((string?)null);
+            ConfigProvider provider = new();
+            if (source == "env") environment.GetEnvironmentVariable("NETHERMIND_UNSUFFIXEDCATEGORY_VALUE").Returns("71");
+            if (source == "args") provider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["UnsuffixedCategory.Value"] = "72" }));
+            provider.AddSource(new EnvConfigSource(environment));
+            provider.Initialize();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.GetConfig<IUnsuffixedCategory>().Value.ToString(), Is.EqualTo(expected.ToString()));
+                Assert.That(provider.GetRawValue(category, nameof(IUnsuffixedCategory.Value)), Is.EqualTo(expected));
+            }
+        }
+
+        [TestCase("AliasCollision", 3)]
+        [TestCase("aliascollision", 3)]
+        [TestCase("AliasCollisionConfig", "40")]
+        public void Raw_value_prefers_exact_category_over_short_alias(string category, object expected)
+        {
+            IEnvironment environment = Substitute.For<IEnvironment>();
+            environment.GetEnvironmentVariable(Arg.Any<string>()).Returns((string?)null);
+            environment.GetEnvironmentVariable("NETHERMIND_ALIASCOLLISIONCONFIG_VALUE").Returns("40");
+            ConfigProvider provider = new();
+            provider.AddSource(new EnvConfigSource(environment));
+            provider.Initialize();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.GetConfig<IAliasCollision>().Value, Is.EqualTo(3));
+                Assert.That(provider.GetConfig<IAliasCollisionConfig>().Value, Is.EqualTo(40));
+                Assert.That(provider.GetRawValue(category, nameof(IAliasCollision.Value)), Is.EqualTo(expected));
+            }
+        }
+
+        [TestCase("AliasCollision", null)]
+        [TestCase("AliasCollisionConfig", 5)]
+        public void Raw_value_is_not_taken_from_short_alias_when_exact_category_lacks_the_item(string category, object? expected)
+        {
+            ConfigProvider provider = new();
+            provider.Initialize();
+
+            Assert.That(provider.GetRawValue(category, nameof(IAliasCollisionConfig.Other)), Is.EqualTo(expected));
+        }
+
+        // Built from private types, as a discovered INoCategoryConfig would change how the global options resolve
+        [TestCase("UncategorizedAlias")]
+        [TestCase("uncategorizedalias")]
+        [TestCase("UncategorizedAliasConfig")]
+        public void Short_alias_is_not_shadowed_by_uncategorized_config(string category)
+        {
+            (Type, Type)[] configTypes =
+            [
+                (typeof(IUncategorizedAlias), typeof(UncategorizedAlias)),
+                (typeof(IUncategorizedAliasConfig), typeof(UncategorizedAliasConfig))
+            ];
+
+            Assert.That(ConfigProvider.FindConfigTypes(configTypes, category, nameof(IUncategorizedAliasConfig.Value)),
+                Is.EqualTo(new[] { (typeof(IUncategorizedAliasConfig), typeof(UncategorizedAliasConfig)) }));
+        }
+
+        private interface IUncategorizedAlias : INoCategoryConfig
+        {
+        }
+
+        private class UncategorizedAlias : IUncategorizedAlias
+        {
+            public string? Config { get; set; }
+            public string? CliSwitchLocal { get; set; }
+        }
+
+        private interface IUncategorizedAliasConfig : IConfig
+        {
+            int Value { get; set; }
+        }
+
+        private class UncategorizedAliasConfig : IUncategorizedAliasConfig
+        {
+            public int Value { get; set; }
         }
 
         public static IEnumerable<TestCaseData> ReportedKeyCases()
@@ -355,5 +499,42 @@ namespace Nethermind.Config.Test
 
             public object? GetRawValue(string category, string name) => inner.GetRawValue(category, name);
         }
+    }
+
+    public interface IUnsuffixedCategory : IConfig
+    {
+        [ConfigItem(Description = "Test item of a category whose name has no Config suffix.", DefaultValue = "1")]
+        int Value { get; set; }
+    }
+
+    public class UnsuffixedCategory : IUnsuffixedCategory
+    {
+        public int Value { get; set; } = 1;
+    }
+
+    public interface IAliasCollision : IConfig
+    {
+        [ConfigItem(Description = "Test item of a category whose name is the short alias of another category.", DefaultValue = "3")]
+        int Value { get; set; }
+    }
+
+    public class AliasCollision : IAliasCollision
+    {
+        public int Value { get; set; } = 3;
+    }
+
+    public interface IAliasCollisionConfig : IConfig
+    {
+        [ConfigItem(Description = "Test item of a category whose short alias is another category's name.", DefaultValue = "4")]
+        int Value { get; set; }
+
+        [ConfigItem(Description = "Test item only the suffixed category declares.", DefaultValue = "5")]
+        int Other { get; set; }
+    }
+
+    public class AliasCollisionConfig : IAliasCollisionConfig
+    {
+        public int Value { get; set; } = 4;
+        public int Other { get; set; } = 5;
     }
 }

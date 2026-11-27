@@ -755,8 +755,8 @@ public class LightTxDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(typeof(LightTransaction).GetConstructor(constructorParameters), Is.Not.Null);
-            Assert.That(typeof(ITxPool).GetMethod(nameof(ITxPool.TryMergeBlobCells), [typeof(Hash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
-            Assert.That(typeof(BlobTxDistinctSortedPool).GetMethod(nameof(BlobTxDistinctSortedPool.TryMergeCells), [typeof(ValueHash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
+            Assert.That(typeof(ITxPool).GetMethod(nameof(ITxPool.MergeBlobCells), [typeof(Hash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
+            Assert.That(typeof(BlobTxDistinctSortedPool).GetMethod(nameof(BlobTxDistinctSortedPool.MergeCells), [typeof(ValueHash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
             Assert.That(lightTx.GetConsensusEncodingSize(), Is.EqualTo(fullTx.Transaction.GetLength()));
             Assert.That(lightTx.GetElidedNetworkEncodingSize(), Is.EqualTo(fullTx.GetElidedNetworkEncodingSize()));
         }

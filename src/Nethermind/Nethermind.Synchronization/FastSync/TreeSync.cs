@@ -58,8 +58,6 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ReaderWriterLockSlim _stateDbLock = new();
         private readonly ReaderWriterLockSlim _codeDbLock = new();
 
-        private long _handleWatch = new();
-
         private Hash256 _rootNode = Keccak.EmptyTreeHash;
         private int _rootSaved;
 
@@ -312,9 +310,7 @@ namespace Nethermind.Synchronization.FastSync
                                 $"Handle watch {elapsedTime:N0}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)elapsedTime / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
-                    Interlocked.Add(ref _handleWatch, (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds);
                     _data.LastDbReads = _data.DbChecks;
-                    _data.AverageTimeInHandler = _handleWatch / (decimal)_data.ProcessedRequestsCount;
 
                     Interlocked.Add(ref _data.HandledNodesCount, nonEmptyResponses);
                     return result;
@@ -923,12 +919,14 @@ namespace Nethermind.Synchronization.FastSync
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
                         bool isAccountComplete = false;
+                        bool waitsForCode = false;
                         RlpReader ctx = new(trieNode.Value.AsSpan());
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
                             AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, TreePath.Empty, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
                             if (addCodeResult == AddNodeResult.AlreadySaved) isAccountComplete |= dependentItem.ResolveDependency();
+                            else waitsForCode = true;
                         }
                         else
                         {
@@ -954,6 +952,12 @@ namespace Nethermind.Synchronization.FastSync
                         else
                         {
                             TreePath finalPath = currentStateSyncItem.Path.Append(trieNode.Key);
+                            // A leaf that waits for its code can be left unsaved by a round that moves on. A leaf of the
+                            // account that an earlier root left deeper on its path would then stay over the storage
+                            // cleared here, and a later root that has that leaf again would find it saved. So the nodes
+                            // on that path go first, down to the depth checked below a leaf with storage. Once saved,
+                            // this leaf removes what is left under it itself.
+                            if (waitsForCode) RemoveSkippedNodes(currentStateSyncItem, finalPath.Truncate(DeepestStateLeafPathChecked + 1));
                             _store.EnsureStorageEmpty(finalPath.Path);
                             isAccountComplete |= dependentItem.ResolveDependency();
                         }

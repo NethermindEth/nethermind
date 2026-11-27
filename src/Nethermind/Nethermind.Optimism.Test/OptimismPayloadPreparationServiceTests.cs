@@ -139,6 +139,8 @@ public class OptimismPayloadPreparationServiceTests
         IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
         blockProducer.BuildBlock(Arg.Any<BlockHeader?>(), Arg.Any<IBlockTracer?>(), Arg.Any<PayloadAttributes?>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
             .Returns(ci => Task.FromResult<Block?>(ci.ArgAt<IBlockProducer.Flags>(3) == IBlockProducer.Flags.PrepareEmptyBlock ? null : improved));
+        blockProducer.BuildBlock(Arg.Any<BlockHeader?>(), Arg.Any<IBlockTracer?>(), Arg.Any<PayloadAttributes?>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Block?>(improved));
 
         CapturingBlockImprovementContextFactory factory = new(new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(10)));
         using OptimismPayloadPreparationService service = new(

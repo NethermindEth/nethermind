@@ -83,10 +83,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             NetworkDiagTracer.IsEnabled = true;
 
             _disposables = [];
-            _session = Substitute.For<ISession>();
-            Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
-            _session.Node.Returns(node);
-            _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
             _specProvider = Substitute.For<ISpecProvider>();
@@ -100,8 +96,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _handler.Init();
         }
 
-        private Eth66ProtocolHandler CreateHandler(IBackgroundTaskScheduler backgroundTaskScheduler) =>
-            new(
+        // Each handler gets its own session: a replaced handler's protocol-init timeout keeps running after Dispose
+        // and would otherwise disconnect the session its replacement uses.
+        private Eth66ProtocolHandler CreateHandler(IBackgroundTaskScheduler backgroundTaskScheduler)
+        {
+            _session = Substitute.For<ISession>();
+            _session.Node.Returns(new Node(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303)));
+            _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
+            return new(
                 _session,
                 _svc,
                 new NodeStatsManager(_timerFactory, LimboLogs.Instance),
@@ -111,6 +113,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance);
+        }
 
         [TearDown]
         public void TearDown()
@@ -129,6 +132,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
                 Assert.That(_handler.Name, Is.EqualTo("eth66"));
                 Assert.That(_handler.ProtocolVersion, Is.EqualTo(66));
+                Assert.That(_handler.CanGetNodeData, Is.True);
                 Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
                 Assert.That(_handler.IncludeInTxPool, Is.True);
                 Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));

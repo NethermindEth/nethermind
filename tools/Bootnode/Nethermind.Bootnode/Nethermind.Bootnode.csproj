@@ -20,11 +20,10 @@
     <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Config\Nethermind.Config.csproj" />
     <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Crypto\Nethermind.Crypto.csproj" />
-    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Db\Nethermind.Db.csproj" />
     <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Kademlia\Nethermind.Kademlia.csproj" />
     <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Logging\Nethermind.Logging.csproj" />
     <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
-    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Network\Nethermind.Network.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Network.Core\Nethermind.Network.Core.csproj" />
     <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />
     <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Network.Enr\Nethermind.Network.Enr.csproj" />
     <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Network.Stats\Nethermind.Network.Stats.csproj" />

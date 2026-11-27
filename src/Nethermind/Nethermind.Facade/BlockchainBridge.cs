@@ -13,7 +13,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -59,14 +58,12 @@ namespace Nethermind.Facade
         ITxPool txPool,
         [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptStorage,
         FilterStore filterStore,
-        FilterManager filterManager,
         IEthereumEcdsa ecdsa,
         ITimestamper timestamper,
         IRpcLogFinder logFinder,
         IBlockAccessListStore balStore,
         ISpecProvider specProvider,
-        IBlocksConfig blocksConfig,
-        IMiningConfig miningConfig)
+        IBlocksConfig blocksConfig)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
@@ -78,8 +75,6 @@ namespace Nethermind.Facade
                 return blockTree.Head;
             }
         }
-
-        public bool IsMining { get; } = miningConfig.Enabled;
 
         private bool TryGetCanonicalTransaction(
             Hash256 txHash,
@@ -628,9 +623,6 @@ namespace Nethermind.Facade
 
         public ulong GetChainId() => blockTree.ChainId;
 
-        public bool FilterExists(int filterId) => filterStore.FilterExists(filterId);
-        public FilterType GetFilterType(int filterId) => filterStore.GetFilterType(filterId);
-
         public IEnumerable<FilterLog> GetLogs(
             BlockParameter fromBlock,
             BlockParameter toBlock,
@@ -653,34 +645,6 @@ namespace Nethermind.Facade
             BlockHeader fromBlock,
             BlockHeader toBlock,
             CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
-
-        public LogFilter? GetLogFilter(int filterId) => filterStore.GetFilter<LogFilter>(filterId);
-
-        public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
-            HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null)
-        {
-            LogFilter filter = filterStore.CreateLogFilter(fromBlock, toBlock, address, topics);
-            filterStore.SaveFilter(filter);
-            return filter.Id;
-        }
-
-        public int NewBlockFilter()
-        {
-            BlockFilter filter = filterStore.CreateBlockFilter();
-            filterStore.SaveFilter(filter);
-            return filter.Id;
-        }
-
-        public int NewPendingTransactionFilter()
-        {
-            PendingTransactionFilter filter = filterStore.CreatePendingTransactionFilter();
-            filterStore.SaveFilter(filter);
-            return filter.Id;
-        }
-
-        public bool UninstallFilter(int filterId) => filterStore.RemoveFilter(filterId);
-        public ArrayPoolList<FilterLog> GetLogFilterChanges(int filterId) => filterManager.PollLogs(filterId);
-        public ArrayPoolList<Hash256> GetBlockFilterChanges(int filterId) => filterManager.PollBlockHashes(filterId);
 
         public void RecoverTxSenders(Block block)
         {
@@ -763,9 +727,6 @@ namespace Nethermind.Facade
         public Address? RecoverTxSender(Transaction tx, bool useSignatureChainId) =>
             ecdsa.TryRecoverAddress(tx, out Address? senderAddress, useSignatureChainId) ? senderAddress : null;
 
-        public ArrayPoolList<Hash256> GetPendingTransactionFilterChanges(int filterId) =>
-            filterManager.PollPendingTransactionHashes(filterId);
-
         public Address? RecoverTxSender(Transaction tx) =>
             ecdsa.TryRecoverAddress(tx, out Address? senderAddress) ? senderAddress : null;
 
@@ -783,10 +744,6 @@ namespace Nethermind.Facade
 
         public MemoryManager<byte>? GetBlockAccessListRlp(ulong blockNumber, Hash256 blockHash)
             => balStore.GetRlp(blockNumber, blockHash);
-
-        // for testing
-        public void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash)
-            => balStore.Delete(blockNumber, blockHash);
 
         public Witness GenerateExecutionWitness(BlockHeader parent, Block block) =>
             GenerateExecutionWitness(parent, block, NullBlockTracer.Instance);

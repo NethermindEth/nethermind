@@ -119,6 +119,7 @@ public class BlockInvalidTxExecutorZkTests
 
     [TestCase(ProcessingOptions.ProducingBlock, false, TestName = "IllFormedTx_WhenProducing_IsDroppedWithoutExecution")]
     [TestCase(ProcessingOptions.None, true, TestName = "IllFormedTx_WhenNotProducing_IsLeftToBlockValidator")]
+    [TestCase(ProcessingOptions.EthereumMerge, true, TestName = "IllFormedTx_WhenValidatingPayload_IsLeftToBlockValidator")]
     public void IllFormedTx_IsDroppedOnlyWhenProducing(ProcessingOptions processingOptions, bool expectKept)
     {
         Transaction anchor = MakeTx(0);
@@ -388,7 +389,7 @@ public class BlockInvalidTxExecutorZkTests
     /// would be set during tx2.
     /// </summary>
     [Test]
-    public void ZkGas_NotEnforced_WhenNotProducingBlock()
+    public void ZkGas_NotEnforced_WhenNotProducingBlock([Values(ProcessingOptions.None, ProcessingOptions.EthereumMerge)] ProcessingOptions options)
     {
         Transaction anchor = MakeTx(0);
         Transaction tx2 = MakeTx(1);
@@ -412,7 +413,7 @@ public class BlockInvalidTxExecutorZkTests
             Substitute.For<ITxPool>(), LimboLogs.Instance, new TestSingleReleaseSpecProvider(London.Instance), Always.Valid, Substitute.For<IEthereumEcdsa>(), holder);
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
-        executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
+        executor.ProcessTransactions(block, options, receiptsTracer, CancellationToken.None);
 
         Assert.That(block.Transactions, Has.Length.EqualTo(2));
         txProcessor.Received(1).Execute(tx2, Arg.Any<ITxTracer>());

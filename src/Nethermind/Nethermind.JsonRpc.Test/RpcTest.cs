@@ -50,7 +50,8 @@ public static class RpcTest
             Code = resultWrapper.ErrorCode,
             Message = resultWrapper.Result.Error,
             Data = resultWrapper.HasErrorData ? resultWrapper.Data : null,
-            SuppressWarning = resultWrapper.IsTemporary
+            SuppressWarning = resultWrapper.IsTemporary,
+            RequestError = resultWrapper.IsRequestError
         };
     }
 

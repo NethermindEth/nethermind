@@ -37,6 +37,7 @@ public class DebugBridge : IDebugBridge
     private readonly BlockTreeMutationLock _mutationLock;
     private readonly IBlockProcessingPauseControl _pauseControl;
     private readonly IBlockProcessingQueue _processingQueue;
+    private readonly BlockProcessingTracker _processingTracker;
     private readonly ILogger _logger;
     private readonly IConfigProvider _configProvider;
     private readonly IGethStyleTracer _tracer;
@@ -71,6 +72,7 @@ public class DebugBridge : IDebugBridge
         BlockTreeMutationLock mutationLock,
         IBlockProcessingPauseControl pauseControl,
         IBlockProcessingQueue processingQueue,
+        BlockProcessingTracker processingTracker,
         ISyncProgressResolver syncProgressResolver,
         ISyncPointers syncPointers,
         ITxPool txPool)
@@ -80,6 +82,7 @@ public class DebugBridge : IDebugBridge
         _mutationLock = mutationLock;
         _pauseControl = pauseControl;
         _processingQueue = processingQueue;
+        _processingTracker = processingTracker;
         _syncProgressResolver = syncProgressResolver;
         _syncPointers = syncPointers;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
@@ -120,7 +123,10 @@ public class DebugBridge : IDebugBridge
 
     public IEnumerable<Block> GetBadBlocks() => _badBlockStore.GetAll();
 
-    public byte[] GetDbValue(string dbName, byte[] key) => _dbMappings[dbName][key];
+    public byte[] GetDbValue(string dbName, byte[] key) =>
+        _dbMappings.TryGetValue(dbName, out IDb? db)
+            ? db[key]
+            : throw new ArgumentException($"Unknown database, expected one of: {string.Join(", ", _dbMappings.Keys)}");
 
     public ChainLevelInfo GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
 
@@ -293,7 +299,7 @@ public class DebugBridge : IDebugBridge
 
     private bool CanMutateChain()
     {
-        if (_pauseControl.IsPaused && _processingQueue.IsEmpty && !_blockTree.IsProcessingBlock) return true;
+        if (_pauseControl.IsPaused && _processingQueue.IsEmpty && !_processingTracker.IsProcessingBlock) return true;
         if (_logger.IsWarn) _logger.Warn("Cannot mutate the chain: pause block processing and wait for it to drain.");
         return false;
     }

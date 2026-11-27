@@ -270,6 +270,108 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
         }
 
+        [Test]
+        public async Task Failed_explicit_migration_is_logged_and_does_not_fail_the_next_run()
+        {
+            IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
+            chainLevelInfoRepository.LoadLevel(Arg.Any<ulong>()).Returns(_ => throw new InvalidOperationException("Test failure"));
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
+            CollectingLogger logger = new();
+
+            ReceiptMigration migration = CreateExplicitMigration(chainLevelInfoRepository, syncModeSelector, new OneLoggerLogManager(new ILogger(logger)));
+
+            await migration.Run(0, 1);
+            await Task.WhenAny(migration._migrationTask!);
+            await migration.Run(0, 1);
+            await migration._migrationTask!;
+
+            Assert.That(logger.Errors, Has.Count.EqualTo(2));
+        }
+
+        [Test]
+        public async Task Replacing_a_waiting_explicit_migration_joins_it_without_logging_an_error([Values] bool waitHonoursCancellation)
+        {
+            TaskCompletionSource<CancellationToken> firstToken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource finishFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+            selector.WaitUntilMode(Arg.Any<Func<SyncMode, bool>>(), Arg.Any<CancellationToken>()).Returns(call =>
+                !firstToken.TrySetResult(call.Arg<CancellationToken>()) ? Task.CompletedTask
+                : waitHonoursCancellation ? Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>())
+                : finishFirst.Task);
+            IChainLevelInfoRepository levels = Substitute.For<IChainLevelInfoRepository>();
+            CollectingLogger logger = new();
+            ReceiptMigration migration = CreateExplicitMigration(levels, selector, new OneLoggerLogManager(new ILogger(logger)));
+
+            await migration.Run(1, 1);
+            await firstToken.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Task<bool> second = migration.Run(2, 2);
+            if (!waitHonoursCancellation)
+            {
+                Assert.That(second.IsCompleted, Is.False);
+                finishFirst.SetResult();
+            }
+
+            await second.WaitAsync(TimeSpan.FromSeconds(10));
+            await migration._migrationTask!.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(logger.Errors, Is.Empty);
+            levels.Received(1).LoadLevel(2);
+        }
+
+        [Test]
+        public async Task Overlapping_explicit_migrations_join_the_previous_run_before_replacing_it()
+        {
+            TaskCompletionSource<CancellationToken> firstToken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource finishFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+            selector.WaitUntilMode(Arg.Any<Func<SyncMode, bool>>(), Arg.Any<CancellationToken>()).Returns(call =>
+                firstToken.TrySetResult(call.Arg<CancellationToken>()) ? finishFirst.Task : Task.CompletedTask);
+            IChainLevelInfoRepository levels = Substitute.For<IChainLevelInfoRepository>();
+            ReceiptMigration migration = CreateExplicitMigration(levels, selector, LimboLogs.Instance);
+            await migration.Run(1, 1);
+            Task first = migration._migrationTask!;
+            CancellationToken token = await firstToken.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            TaskCompletionSource cancelling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim resumeCancellation = new();
+            using CancellationTokenRegistration registration = token.Register(() =>
+            {
+                cancelling.SetResult();
+                resumeCancellation.Wait(TimeSpan.FromSeconds(10));
+            });
+
+            Task<bool> second = Task.Run(() => migration.Run(2, 2));
+            Task<bool> third;
+            try
+            {
+                await cancelling.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                finishFirst.SetResult();
+                await first.WaitAsync(TimeSpan.FromSeconds(10));
+
+                third = migration.Run(3, 3);
+                Assert.That(third.IsCompleted, Is.False);
+            }
+            finally
+            {
+                finishFirst.TrySetResult();
+                resumeCancellation.Set();
+            }
+
+            await Task.WhenAll(second, third).WaitAsync(TimeSpan.FromSeconds(10));
+            await migration._migrationTask!.WaitAsync(TimeSpan.FromSeconds(10));
+            levels.Received(1).LoadLevel(3);
+        }
+
+        private static ReceiptMigration CreateExplicitMigration(IChainLevelInfoRepository levels, ISyncModeSelector selector, ILogManager logManager) =>
+            new(new TestReceiptStorage(new InMemoryReceiptStorage(), new InMemoryReceiptStorage()),
+                Substitute.For<IBlockTree>(),
+                selector,
+                levels,
+                new ReceiptConfig { StoreReceipts = true, ReceiptsMigration = true },
+                new TestMemColumnsDb<ReceiptsColumns>(),
+                Substitute.For<IReceiptsRecovery>(),
+                logManager);
+
         [TestCaseSource(nameof(PointerTrackerScenarios))]
         public void MigrationPointerTracker_advances_pointer_only_across_contiguously_completed_blocks(
             ulong to, ulong[] completionOrder, ulong[] expectedPointerAfterEachCompletion)
@@ -339,20 +441,21 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
         private sealed class CollectingLogger : InterfaceLogger
         {
             public List<string> Warnings { get; } = [];
+            public List<string> Errors { get; } = [];
 
             public void Info(string text) { }
             public void Warn(string text) => Warnings.Add(text);
             public void Debug(string text) { }
             public void Trace(string text) { }
-            public void Error(string text, Exception ex = null) { }
+            public void Error(string text, Exception ex = null) => Errors.Add(text);
             public bool IsInfo => false;
             public bool IsWarn => true;
             public bool IsDebug => false;
             public bool IsTrace => false;
-            public bool IsError => false;
+            public bool IsError => true;
         }
 
-        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptMigrationStore
+        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptMigrationStore outStorage) : IReceiptMigrationStore
         {
             public Hash256 FindBlockHash(Hash256 txHash) => inStorage.FindBlockHash(txHash);
 
@@ -383,10 +486,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
 
             public void RemoveReceipts(Block block)
-            {
-            }
-
-            public void RemoveReceipts(ulong blockNumber, Hash256 blockHash)
             {
             }
 

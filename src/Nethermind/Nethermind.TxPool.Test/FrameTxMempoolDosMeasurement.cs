@@ -836,7 +836,7 @@ public class FrameTxMempoolDosMeasurement
         ChainHeadInfoProvider headInfo = new(
             new ChainHeadSpecProvider(_specProvider, _blockTree),
             _blockTree,
-            _poolState);
+            _poolState, new());
 
         return new TxPool(
             _ethereumEcdsa,

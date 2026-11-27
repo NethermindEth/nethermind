@@ -20,12 +20,19 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
         public Stack stack { get; set; } = new();
         public Memory memory { get; set; } = new();
         public Contract contract { get; set; } = null!;
+        // Geth exposes these through the get* methods only, so JSON.stringify(log) leaves them out.
+        [NoScriptAccess]
         public long pc { get; set; }
 
+        [NoScriptAccess]
         public ulong gas { get; set; }
+        [NoScriptAccess]
         public ulong? gasCost { get; set; }
+        [NoScriptAccess]
         public int depth { get; set; }
+        [NoScriptAccess]
         public long refund { get; set; }
+        [NoScriptAccess]
         public string? error { get; set; }
 
         public ulong getPC() => (ulong)pc;
@@ -42,6 +49,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
 
             private Opcode(Instruction value) => Value = value;
 
+            [NoScriptAccess]
             public Instruction Value { get; }
 
             internal static Opcode Of(Instruction value) => All[(byte)value];
@@ -63,8 +71,18 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
 
         public class Stack
         {
+            /// <summary>Position of a salted create's salt, counted from the top of the stack.</summary>
+            internal const int SaltIndex = 3;
+
             internal TraceStack Items;
             internal Engine? InputErrorEngine { get; set; }
+
+            /// <summary>The salt of the CREATE2 or TCREATE being traced, read before the opcode runs.</summary>
+            /// <remarks>
+            /// The handler can reverse the salt slot when popping it and can reuse it for a zero result. Save the entry
+            /// value for later callbacks.
+            /// </remarks>
+            internal UInt256? Salt;
 
             public int length() => Items.Count;
             public IJavaScriptObject peek(int index)
@@ -74,12 +92,15 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
                     InputErrorEngine.AbortInput($"tracer accessed out of bound stack: size {Items.Count}, index {index}");
                     return null!;
                 }
-                return new BigInteger(Items[^(index + 1)].Span, true, true).ToBigInteger();
+                return index == SaltIndex && Salt is UInt256 salt
+                    ? salt.ToBigInteger()
+                    : new BigInteger(Items[^(index + 1)].Span, true, true).ToBigInteger();
             }
         }
 
         public class Memory
         {
+            [NoScriptAccess]
             public TraceMemory MemoryTrace;
             internal Engine? InputErrorEngine { get; set; }
 
@@ -134,6 +155,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
             private readonly Address _address = address;
             private readonly ReadOnlyMemory<byte>? _input = input;
             private IJavaScriptObject? _valueConverted;
+            [NoScriptAccess]
             public Address Caller { get; } = caller;
 
             public ITypedArray<byte> getAddress() => _address.Bytes.ToTypedScriptArray();

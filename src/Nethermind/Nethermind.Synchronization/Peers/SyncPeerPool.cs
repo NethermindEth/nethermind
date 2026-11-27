@@ -60,6 +60,7 @@ namespace Nethermind.Synchronization.Peers
         private Task? _refreshLoopTask;
 
         private volatile TaskCompletionSource _signal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly Action _signalPeersChanged;
         private readonly TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(DefaultUpgradeIntervalInMs);
         private Timer? _upgradeTimer;
 
@@ -93,6 +94,7 @@ namespace Nethermind.Synchronization.Peers
             PriorityPeerMaxCount = priorityPeerMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager.GetClassLogger<SyncPeerPool>();
+            _signalPeersChanged = SignalPeersChanged;
 
             // The packed AllocationAllowances representation reserves 1 byte (8 bits) per context but only honours
             // values up to MaxAllocationSlots; anything higher is clamped at registration time.
@@ -227,7 +229,9 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
-        public int PriorityPeerCount;
+        private readonly ConcurrentDictionary<PeerInfo, byte> _priorityPeers = new();
+        private int _priorityPeerCount;
+        internal int PriorityPeerCount => Volatile.Read(ref _priorityPeerCount);
         public int InitializedPeersCount => InitializedPeers.Count();
         public int PeerMaxCount { get; }
         private int PriorityPeerMaxCount { get; }
@@ -254,18 +258,10 @@ namespace Nethermind.Synchronization.Peers
             }
 
             PeerInfo peerInfo = new(syncPeer, _allocationAllowances);
-            if (!_peers.TryAdd(syncPeer.Node.Id, peerInfo))
-            {
-                return;
-            }
+            if (!_peers.TryAdd(syncPeer.Node.Id, peerInfo)) return;
+            if (syncPeer.IsPriority) TrackPriorityPeer(syncPeer.Node.Id, peerInfo);
 
             UpdatePeerCountMetric(peerInfo.PeerClientType, 1);
-
-            if (syncPeer.IsPriority)
-            {
-                Interlocked.Increment(ref PriorityPeerCount);
-                Metrics.PriorityPeers = PriorityPeerCount;
-            }
             if (_logger.IsTrace) TracePeerCount();
 
             BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -299,19 +295,16 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            if (!_peers.TryRemove(id, out _))
+            // Overlapping sessions can advertise the same node ID. Only the registered session owns the entry.
+            if (!_peers.TryGetValue(id, out PeerInfo peerInfo)
+                || !ReferenceEquals(peerInfo.SyncPeer, syncPeer)
+                || !_peers.TryRemove(KeyValuePair.Create(id, peerInfo)))
             {
-                // possible if sync failed - we remove peer and eventually initiate disconnect, which calls remove peer again
                 return;
             }
 
+            UntrackPriorityPeer(peerInfo);
             UpdatePeerCountMetric(syncPeer.ClientType, -1);
-
-            if (syncPeer.IsPriority)
-            {
-                Interlocked.Decrement(ref PriorityPeerCount);
-                Metrics.PriorityPeers = PriorityPeerCount;
-            }
             if (_logger.IsTrace) TracePeerCount();
 
             if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? initCancelTokenSource))
@@ -341,11 +334,23 @@ namespace Nethermind.Synchronization.Peers
 
         public void SetPeerPriority(PublicKey id)
         {
-            if (_peers.TryGetValue(id, out PeerInfo peerInfo) && !peerInfo.SyncPeer.IsPriority)
-            {
-                peerInfo.SyncPeer.IsPriority = true;
-                Interlocked.Increment(ref PriorityPeerCount);
-            }
+            if (!_peers.TryGetValue(id, out PeerInfo peerInfo)) return;
+            peerInfo.SyncPeer.IsPriority = true;
+            TrackPriorityPeer(id, peerInfo);
+        }
+
+        private void TrackPriorityPeer(PublicKey id, PeerInfo peerInfo)
+        {
+            if (!_priorityPeers.TryAdd(peerInfo, 0)) return;
+            Metrics.PriorityPeers = Interlocked.Increment(ref _priorityPeerCount);
+
+            // A concurrent RemovePeer can untrack before the add above, so re-check membership after it.
+            if (!_peers.TryGetValue(id, out PeerInfo? current) || !ReferenceEquals(current, peerInfo)) UntrackPriorityPeer(peerInfo);
+        }
+
+        private void UntrackPriorityPeer(PeerInfo peerInfo)
+        {
+            if (_priorityPeers.TryRemove(peerInfo, out _)) Metrics.PriorityPeers = Interlocked.Decrement(ref _priorityPeerCount);
         }
 
         // Cap for the allocation retry backoff. A shallow-sleep wake-up is time-based and never fires
@@ -361,7 +366,7 @@ namespace Nethermind.Synchronization.Peers
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default)
         {
-            SyncPeerAllocation allocation = new(allocationContexts, _isAllocatedChecks, SignalPeersChanged);
+            SyncPeerAllocation allocation = new(allocationContexts, _isAllocatedChecks, _signalPeersChanged);
             if (cancellationToken.IsCancellationRequested)
             {
                 return allocation;
@@ -370,36 +375,45 @@ namespace Nethermind.Synchronization.Peers
             int tryCount = 1;
             long timeStamp = Stopwatch.GetTimestamp();
 
-            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
-
-            while (true)
+            CancellationToken refreshLoopToken = _refreshLoopCancellation.Token;
+            // Most allocations succeed on the first try, so the linked source is created only when a wait is needed.
+            CancellationTokenSource? cts = null;
+            try
             {
-                // Snapshot the signal task before attempting allocation so that any
-                // signal fired during or after TryAllocateOnce is already on this task.
-                Task signal = _signal.Task;
-
-                if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
+                while (true)
                 {
-                    return allocation;
-                }
+                    // Snapshot the signal task before attempting allocation so that any
+                    // signal fired during or after TryAllocateOnce is already on this task.
+                    Task signal = _signal.Task;
 
-                long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(timeStamp).TotalMilliseconds;
-                bool timeoutReached = timeoutMilliseconds == 0
-                                      || elapsedMilliseconds < 0
-                                      || elapsedMilliseconds > timeoutMilliseconds;
-                if (timeoutReached) return allocation;
-
-                int waitTime = GetAllocationWaitTime(tryCount++);
-                waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
-
-                if (waitTime > 0)
-                {
-                    await Task.WhenAny(signal, Task.Delay(waitTime, cts.Token));
-                    if (cts.IsCancellationRequested)
+                    if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
                     {
                         return allocation;
                     }
+
+                    long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(timeStamp).TotalMilliseconds;
+                    bool timeoutReached = timeoutMilliseconds == 0
+                                          || elapsedMilliseconds < 0
+                                          || elapsedMilliseconds > timeoutMilliseconds;
+                    if (timeoutReached) return allocation;
+
+                    int waitTime = GetAllocationWaitTime(tryCount++);
+                    waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
+
+                    if (waitTime > 0)
+                    {
+                        cts ??= CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, refreshLoopToken);
+                        await Task.WhenAny(signal, Task.Delay(waitTime, cts.Token));
+                        if (cts.IsCancellationRequested)
+                        {
+                            return allocation;
+                        }
+                    }
                 }
+            }
+            finally
+            {
+                cts?.Dispose();
             }
         }
 
@@ -408,12 +422,23 @@ namespace Nethermind.Synchronization.Peers
             lock (_isAllocatedChecks)
             {
                 PeerInfo? selected = peerAllocationStrategy
-                    .Allocate(allocation.Current, InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts)),
+                    .Allocate(allocation.Current, GetAllocatablePeers(allocationContexts),
                     _stats,
                     _blockTree);
 
                 allocation.AllocatePeer(selected);
                 return allocation.HasPeer;
+            }
+        }
+
+        private IEnumerable<PeerInfo> GetAllocatablePeers(AllocationContexts allocationContexts)
+        {
+            foreach ((_, PeerInfo peerInfo) in _peers)
+            {
+                if (peerInfo.SyncPeer.IsInitialized && peerInfo.CanBeAllocated(allocationContexts))
+                {
+                    yield return peerInfo;
+                }
             }
         }
 
@@ -451,14 +476,14 @@ namespace Nethermind.Synchronization.Peers
                     {
                         UpgradeAllocations();
                         // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
-                        if (syncPeer.TotalDifficulty is { } syncPeerTD && syncPeerTD == _blockTree.BestSuggestedHeader?.TotalDifficulty &&
-                            syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
+                        if (NotifyPeerBlock is { } notifyPeerBlock && syncPeer.TotalDifficulty is { } syncPeerTD &&
+                            _blockTree.BestSuggestedHeader is { } best && syncPeerTD == best.TotalDifficulty && syncPeer.HeadHash != best.Hash)
                         {
-                            Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash!, BlockTreeLookupOptions.None);
+                            Block block = _blockTree.FindBlock(best.Hash!, BlockTreeLookupOptions.None);
                             if (block is not null) // can be null if fast syncing headers only
                             {
                                 if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {syncPeer:hide}");
-                                NotifyPeerBlock?.Invoke(this, new PeerBlockNotificationEventArgs(syncPeer, block));
+                                notifyPeerBlock(this, new PeerBlockNotificationEventArgs(syncPeer, block));
                             }
                         }
                     }
@@ -606,60 +631,49 @@ namespace Nethermind.Synchronization.Peers
             if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {syncPeer.Node.ToString("s"):hide}");
 
             Task<BlockHeader?> getHeadHeaderTask = syncPeer.GetHeadBlockHeader(refreshTotalDiffTask.BlockHash ?? syncPeer.HeadHash, token);
-            CancellationTokenSource delaySource = new();
-            CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(delaySource.Token, token);
-            Task delayTask = Task.Delay(Timeouts.Eth, linkedSource.Token);
+            using CancellationTokenSource delaySource = CancellationTokenSource.CreateLinkedTokenSource(token);
+            Task delayTask = Task.Delay(Timeouts.Eth, delaySource.Token);
             Task firstToComplete = await Task.WhenAny(getHeadHeaderTask, delayTask);
-            await firstToComplete.ContinueWith(
-                t =>
+            delaySource.Cancel();
+            token.ThrowIfCancellationRequested();
+
+            if (firstToComplete == delayTask)
+            {
+                ReportRefreshFailed(syncPeer, "timeout", new TimeoutException());
+            }
+            else if (firstToComplete.IsFaulted)
+            {
+                ReportRefreshFailed(syncPeer, "faulted", firstToComplete.Exception);
+            }
+            else if (firstToComplete.IsCanceled)
+            {
+                _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncCancelled : NodeStatsEventType.SyncInitCancelled);
+                token.ThrowIfCancellationRequested();
+            }
+            else
+            {
+                BlockHeader? header = getHeadHeaderTask.Result;
+                if (header is null)
                 {
-                    try
-                    {
-                        if (firstToComplete == delayTask)
-                        {
-                            ReportRefreshFailed(syncPeer, "timeout", new TimeoutException());
-                        }
-                        else if (firstToComplete.IsFaulted)
-                        {
-                            ReportRefreshFailed(syncPeer, "faulted", t.Exception);
-                        }
-                        else if (firstToComplete.IsCanceled)
-                        {
-                            _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncCancelled : NodeStatsEventType.SyncInitCancelled);
-                            token.ThrowIfCancellationRequested();
-                        }
-                        else
-                        {
-                            delaySource.Cancel();
-                            BlockHeader? header = getHeadHeaderTask.Result;
-                            if (header is null)
-                            {
-                                ReportRefreshFailed(syncPeer, "null response");
-                                return;
-                            }
+                    ReportRefreshFailed(syncPeer, "null response");
+                    return;
+                }
 
-                            if (!HeaderValidator.ValidateHash(header))
-                            {
-                                ReportRefreshFailed(syncPeer, "invalid header hash");
-                                return;
-                            }
+                if (!HeaderValidator.ValidateHash(header))
+                {
+                    ReportRefreshFailed(syncPeer, "invalid header hash");
+                    return;
+                }
 
-                            if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node?.ToString("c"):hide} with head block {header.ToString(BlockHeader.Format.Short)}, total difficulty {header.TotalDifficulty}");
-                            if (!syncPeer.IsInitialized) _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
+                if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node?.ToString("c"):hide} with head block {header.ToString(BlockHeader.Format.Short)}, total difficulty {header.TotalDifficulty}");
+                if (!syncPeer.IsInitialized) _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
 
-                            if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer:hide} from {syncPeer.HeadNumber} to {header.Number}");
+                if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer:hide} from {syncPeer.HeadNumber} to {header.Number}");
 
-                            UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
+                UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
 
-                            SignalPeersChanged();
-                        }
-                    }
-                    finally
-                    {
-                        linkedSource.Dispose();
-                        delaySource.Dispose();
-                    }
-                }, token);
+                SignalPeersChanged();
+            }
         }
 
         /// <summary>

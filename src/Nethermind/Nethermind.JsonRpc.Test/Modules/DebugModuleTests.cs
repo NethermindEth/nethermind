@@ -251,6 +251,17 @@ public class DebugModuleTests
         RpcTest.AssertSuccess<byte[]>(response);
     }
 
+    [TestCase("debug_traceBlockFromFile", "file")]
+    [TestCase("debug_dumpBlock", "latest")]
+    [TestCase("debug_gcStats")]
+    [TestCase("debug_memStats", "latest")]
+    [TestCase("debug_seedHash", "latest")]
+    public async Task Unimplemented_debug_methods_are_not_available(string method, params object[] parameters)
+    {
+        using JsonRpcResponse response = await Request(method, parameters);
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.MethodNotFound));
+    }
+
     [TestCase("0x1")]
     public async Task DebugGetChainLevel_WhenLevelExists_ReturnsChainLevel(object parameter)
     {
