@@ -298,6 +298,8 @@ public class InitDatabaseSnapshot(
 
         SnapshotDiskSpace.Check(drives, SnapshotDiskSpace.GetRequiredSpaceForExtraction(GetFileSize(snapshotPath)), "extract");
 
+        // A stop requested by now leaves no marker behind for an extraction that would not run.
+        cancellationToken.ThrowIfCancellationRequested();
         SnapshotDatabase.BeginExtraction(dbPath);
         SnapshotExtractor extractor = new(api.LogManager);
         try

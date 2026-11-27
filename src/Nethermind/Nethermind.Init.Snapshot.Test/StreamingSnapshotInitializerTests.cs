@@ -262,6 +262,46 @@ public class StreamingSnapshotInitializerTests
         }
     }
 
+    [Test]
+    public async Task InitializeAsync_StopRequestedBeforeTheClaim_LeavesNoMarkerAndTheNextStartInitializes()
+    {
+        Dictionary<string, byte[]> files = TestArchive.BuildFiles();
+        byte[] archive = TestArchive.BuildTarZst(files);
+        _server.Content = archive;
+        _config.Checksum = Convert.ToHexString(SHA256.HashData(archive));
+        using CancellationTokenSource stop = new();
+        // The disk space check comes after the probe and right before the claim: the stop is requested there, as Ctrl+C
+        // can be at any moment.
+        IDriveInfo drive = Substitute.For<IDriveInfo>();
+        drive.AvailableFreeSpace.Returns(_ =>
+        {
+            stop.Cancel();
+            return long.MaxValue;
+        });
+        drive.RootDirectory.FullName.Returns("/db-drive");
+        SnapshotCheckpoint checkpoint = CreateCheckpoint();
+
+        await Assert.CatchAsync<OperationCanceledException>(() => CreateInitializer(drives: [drive]).InitializeAsync(checkpoint, stop.Token),
+            "the stop must end the start");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stop.IsCancellationRequested, Is.True, "precondition: the stop was requested at the disk space check");
+            Assert.That(Path.Exists(_dbPath), Is.False, "a stop requested before the claim must leave no marker, nor a database directory");
+            Assert.That(_server.RequestCount, Is.EqualTo(1), "nothing but the probe may be requested");
+            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance");
+        }
+
+        await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
+
+        AssertExtracted(files);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(MarkerPath), Is.False, "the marker must be removed after success");
+            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Completed), "the next start must complete the checkpoint");
+        }
+    }
+
     [TestCase(false, false, TestName = "InitializeAsync_FileAtTheMarkerPath_TheClaimReportsTheOtherExtraction")]
     [TestCase(true, false, TestName = "InitializeAsync_DirectoryAtTheMarkerPath_TheClaimReportsTheOtherExtraction")]
     [TestCase(false, true, TestName = "InitializeAsync_FileAtTheMarkerPathWithMaskedPaths_TheClaimRedactsTheWholeChain")]

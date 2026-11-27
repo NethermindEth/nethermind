@@ -1302,12 +1302,12 @@ public class InitDatabaseSnapshotTests
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
         if (cancel)
         {
-            // Stopped as the extraction begins, as Ctrl+C would.
+            // Stopped before the extraction begins, as Ctrl+C would.
             WriteSnapshotTar();
             AdvanceCheckpoint(SnapshotStage.Verified);
             using CancellationTokenSource stopped = new();
             stopped.Cancel();
-            await Assert.CatchAsync<OperationCanceledException>(() => step.Execute(stopped.Token), "precondition: the extraction must be cancelled");
+            await Assert.CatchAsync<OperationCanceledException>(() => step.Execute(stopped.Token), "precondition: the run must be cancelled");
         }
         else
         {
@@ -1318,6 +1318,44 @@ public class InitDatabaseSnapshotTests
         {
             Assert.That(File.Exists(LockPath), Is.True, "the step must lock the database path with a file next to it");
             Assert.That(() => HoldLock().Dispose(), Throws.Nothing, "a run that failed or was cancelled must release its lock");
+        }
+    }
+
+    [TestCase(false, TestName = "Execute_StopRequestedBeforeTheClaim_LeavesNoMarkerAndTheNextStartInitializes")]
+    [TestCase(true, TestName = "Execute_StopRequestedBeforeTheClaimOnAnEmptyDatabaseDirectory_LeavesNoMarkerAndTheNextStartInitializes")]
+    public async Task Execute_StopRequestedBeforeTheClaim_LeavesNoMarkerAndTheNextStartInitializes(bool emptyDirectory)
+    {
+        // The archive is staged and verified, so the stop is first looked at just before the claim. A marker there would
+        // send the operator to empty a directory that this start never wrote into.
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        byte[] archive = File.ReadAllBytes(_snapshotPath);
+        if (emptyDirectory)
+            Directory.CreateDirectory(_dbPath);
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+        using CancellationTokenSource stopped = new();
+        stopped.Cancel();
+
+        await Assert.CatchAsync<OperationCanceledException>(() => step.Execute(stopped.Token), "the stop must end the start");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(MarkerPath), Is.False, "a stop requested before the claim must leave no marker");
+            if (emptyDirectory)
+                Assert.That(Directory.EnumerateFileSystemEntries(_dbPath), Is.Empty, "the database directory must stay empty");
+            else
+                Assert.That(Path.Exists(_dbPath), Is.False, "the database directory must not be created");
+            Assert.That(File.ReadAllBytes(_snapshotPath), Is.EqualTo(archive), "the staged archive must stay");
+            Assert.That(ReadCheckpoint(), Is.EqualTo(SnapshotStage.Verified), "the checkpoint must stay");
+        }
+
+        await step.Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True, "the next start must initialize the database");
+            Assert.That(File.Exists(MarkerPath), Is.False, "the marker must be removed after success");
+            Assert.That(ReadCheckpoint(), Is.EqualTo(SnapshotStage.Completed), "the checkpoint must complete");
         }
     }
 

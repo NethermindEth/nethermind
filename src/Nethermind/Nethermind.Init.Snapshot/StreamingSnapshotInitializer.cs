@@ -27,7 +27,9 @@ internal sealed class StreamingSnapshotInitializer(
         LogMode(remoteInfo);
         CheckDiskSpace(remoteInfo.Length);
 
-        // Before the first byte lands, and outside the try: a marker that cannot be written leaves no extraction behind.
+        // Before the first byte lands, and outside the try: a marker that cannot be written leaves no extraction behind,
+        // and a stop requested by now leaves no marker.
+        cancellationToken.ThrowIfCancellationRequested();
         SnapshotDatabase.BeginExtraction(dbPath);
 
         bool verified;
