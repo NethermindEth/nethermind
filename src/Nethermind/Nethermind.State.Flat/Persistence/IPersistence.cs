@@ -169,6 +169,19 @@ public interface IPersistence
 
         /// <summary>Saves the cursor of the HalfPath to flat migration with this batch's writes, or deletes it when <paramref name="cursor"/> is <c>null</c>.</summary>
         void SetMigrationCursor(in MigrationCursor? cursor);
+
+        /// <summary>
+        /// Discards this batch: <see cref="IDisposable.Dispose"/> then commits none of its writes and leaves the persisted
+        /// state where it was.
+        /// </summary>
+        /// <remarks>
+        /// For a caller whose writes did not complete, such as one unwinding an exception; without it
+        /// <see cref="IDisposable.Dispose"/> commits what was written so far. Call it before
+        /// <see cref="IDisposable.Dispose"/>; it does not throw, and calling it again does nothing more. The default does
+        /// nothing, so a batch that does not override it still commits on dispose. A <see cref="WriteFlags.DisableWAL"/>
+        /// batch may be written to the database in parts while it is filled, so only the part not yet written is discarded.
+        /// </remarks>
+        void Abort() { }
     }
 
     /// <summary>

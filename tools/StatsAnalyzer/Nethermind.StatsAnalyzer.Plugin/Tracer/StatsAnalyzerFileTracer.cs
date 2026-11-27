@@ -57,20 +57,35 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
 
         ResetBufferAndTracer();
 
-        if (!skip)
+        // A disabled queue bypasses cadence, ingestion and file writes, so it must not reach the modulo.
+        if (!skip && _fileTracingQueueSize >= 1)
         {
-            Enqueue(() =>
+            _pos = (_pos + 1) % _writeFreq;
+            if (_pos == 0)
             {
-                Ct.ThrowIfCancellationRequested();
-                WriteTrace(
-                    initialBlockNumber,
-                    currentBlockNumber,
-                    tracer,
-                    FileName,
-                    _fileSystem,
-                    _serializerOptions,
-                    Ct);
-            });
+                Enqueue(() =>
+                {
+                    Ct.ThrowIfCancellationRequested();
+                    WriteTrace(
+                        initialBlockNumber,
+                        currentBlockNumber,
+                        tracer,
+                        FileName,
+                        _fileSystem,
+                        _serializerOptions,
+                        Ct);
+                });
+            }
+            else if (tracer is IStatsAnalyzerIngest ingest)
+            {
+                // The built-in tracers feed every recorded buffer into the shared analyzer exactly once;
+                // only due blocks build and serialize the report. Other tracers keep the due-only path.
+                Enqueue(() =>
+                {
+                    Ct.ThrowIfCancellationRequested();
+                    ingest.Ingest();
+                });
+            }
         }
 
         base.EndBlockTrace();
@@ -78,11 +93,6 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
 
     private void Enqueue(Action work)
     {
-        if (_fileTracingQueueSize < 1) return;
-
-        _pos = (_pos + 1) % _writeFreq;
-        if (_pos != 0) return;
-
         // Chain via ContinueWith so the runtime starts the task itself rather
         // than leaving it in Created state where Wait/WaitAll would race.
         Task previous = _lastTask;

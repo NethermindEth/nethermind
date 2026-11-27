@@ -14,6 +14,17 @@ namespace Nethermind.Core.Test
 
         public List<string> LogList { get; set; } = [];
 
+        /// <summary>
+        /// Returns a copy of <see cref="LogList"/> that can be enumerated while other threads keep logging.
+        /// </summary>
+        public string[] GetSnapshot()
+        {
+            lock (_lock)
+            {
+                return [.. LogList];
+            }
+        }
+
         public void Info(string text) => Add(text);
 
         public void Warn(string text) => Add(text);
