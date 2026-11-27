@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Monitoring;
@@ -23,6 +24,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -31,6 +33,7 @@ using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -149,6 +152,9 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<FrameTxWidthLedger>()
                 .Bind<IFrameTxWidthLedger, FrameTxWidthLedger>()
             .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
+            .AddSingleton<IManualBlockProductionTrigger, BuildBlocksWhenRequested>()
+            .AddSingleton<InitializedBlockProducer>(static ctx => new(ResolveBlockProductionFactory<IBlockProducerFactory>(ctx).InitBlockProducer()))
+            .AddSingleton<IBlockProducerRunner>(CreateBlockProducerRunner)
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
                 new GasPriceOracle(
@@ -165,6 +171,14 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IGenesisBuilder, GenesisBuilder>()
             .AddScoped<IGenesisLoader, GenesisLoader>()
             ;
+
+        // InitializedBlockProducer owns the factory-created producer, so a plugin that overrides IBlockProducer
+        // does not leak it and the default producer is not disposed twice.
+        builder.Register(static ctx => ctx.Resolve<InitializedBlockProducer>().Producer
+                ?? throw new NotSupportedException($"Mining in {ctx.Resolve<ChainSpec>().SealEngineType} mode is not supported"))
+            .As<IBlockProducer>()
+            .SingleInstance()
+            .ExternallyOwned();
 
         // Metering costs a virtual dispatch and an atomic per precompile call, so it is only installed
         // when something is there to scrape it.
@@ -191,6 +205,24 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 .AddScoped<IProducedBlockSuggester, ProducedBlockSuggester>();
         }
     }
+
+    private static IBlockProducerRunner CreateBlockProducerRunner(IComponentContext ctx) =>
+        ctx.Resolve<IBlockProductionPolicy>().ShouldStartBlockProduction()
+        && ctx.Resolve<InitializedBlockProducer>().Producer is not null
+            ? ResolveBlockProductionFactory<IBlockProducerRunnerFactory>(ctx).InitBlockProducerRunner(ctx.Resolve<IBlockProducer>())
+            : new NoBlockProducerRunner();
+
+    // Autofac rejects null from a delegate registration, and a factory may return no producer (e.g. Ethash).
+    private sealed record InitializedBlockProducer(IBlockProducer? Producer) : IDisposable, IAsyncDisposable
+    {
+        public void Dispose() => Producer.TryDispose();
+        public ValueTask DisposeAsync() => Producer.TryDisposeAsync();
+    }
+
+    // An engine with no factory registered has no producer (e.g. Taiko).
+    private static T ResolveBlockProductionFactory<T>(IComponentContext ctx) where T : class =>
+        ctx.ResolveOptional<T>()
+        ?? throw new NotSupportedException($"Mining in {ctx.Resolve<ChainSpec>().SealEngineType} mode is not supported");
 
     private static ITransactionProcessorAdapter CreateExecuteAdapter(ITransactionProcessor transactionProcessor)
         => new ExecuteTransactionProcessorAdapter(transactionProcessor);

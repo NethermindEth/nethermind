@@ -11,7 +11,6 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -49,8 +48,6 @@ namespace Nethermind.Api
         private Dependencies _dependencies = dependencies;
 
         public IBlobTxStorage BlobTxStorage => Context.Resolve<IBlobTxStorage>();
-        public IBlockProducer? BlockProducer { get; set; }
-        public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
         public IBlockTree BlockTree => Context.Resolve<IBlockTree>();
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
         public IDbProvider DbProvider => Context.Resolve<IDbProvider>();
@@ -58,9 +55,6 @@ namespace Nethermind.Api
         public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
         public IFileSystem FileSystem => Context.Resolve<IFileSystem>();
         public IEngineRequestsTracker EngineRequestsTracker => Context.Resolve<IEngineRequestsTracker>();
-
-        public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
-            new BuildBlocksWhenRequested();
 
         public IIPResolver IpResolver => Context.Resolve<IIPResolver>();
         public EthereumJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;

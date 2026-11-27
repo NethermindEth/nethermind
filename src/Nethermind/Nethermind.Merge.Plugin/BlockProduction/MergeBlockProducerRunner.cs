@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
-public class MergeBlockProducerRunner : IBlockProducerRunner
+public class MergeBlockProducerRunner : IBlockProducerRunner, IAsyncDisposable
 {
     private readonly IBlockProducerRunner? _preMergeProducerRunner;
     private readonly IBlockProducerRunner _postMergeProducerRunner;
     private readonly IPoSSwitcher _poSSwitcher;
+    private int _disposed;
     private bool HasPreMergeProducerRunner => _preMergeProducerRunner is not null;
 
     public MergeBlockProducerRunner(IBlockProducerRunner? preMergeProducerRunner, IBlockProducerRunner? postMergeProducerRunner, IPoSSwitcher? poSSwitcher)
@@ -52,4 +55,21 @@ public class MergeBlockProducerRunner : IBlockProducerRunner
             : _preMergeProducerRunner!.IsProducingBlocks(maxProducingInterval);
 
     public event EventHandler<BlockEventArgs>? BlockProduced;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _poSSwitcher.TerminalBlockReached -= OnSwitchHappened;
+        if (_preMergeProducerRunner is not null)
+            _preMergeProducerRunner.BlockProduced -= OnBlockProduced;
+        _postMergeProducerRunner.BlockProduced -= OnBlockProduced;
+        try
+        {
+            await _preMergeProducerRunner.TryDisposeAsync();
+        }
+        finally
+        {
+            await _postMergeProducerRunner.TryDisposeAsync();
+        }
+    }
 }
