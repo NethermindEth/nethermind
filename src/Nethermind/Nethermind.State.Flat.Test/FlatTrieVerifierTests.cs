@@ -62,7 +62,10 @@ public class FlatTrieVerifierTests(FlatLayout layout)
             : new RocksDbPersistence(columnsDb, _logManager, NullTrieNodeLog.Instance);
     }
 
-    /// <summary>A sweep of an empty state on the same verifier succeeds only if no count of an earlier sweep is left.</summary>
+    /// <summary>
+    /// A sweep of an empty state on the same verifier succeeds only if no mismatch, missing-entry or storage-trie hash
+    /// count of an earlier sweep is left. The account and slot totals do not enter the result, so this does not check them.
+    /// </summary>
     private void AssertCleanSweepSucceeds(FlatTrieVerifier verifier)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> emptyDb = new();
