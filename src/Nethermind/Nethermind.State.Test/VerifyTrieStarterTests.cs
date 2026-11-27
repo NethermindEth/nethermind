@@ -61,13 +61,13 @@ public class VerifyTrieStarterTests
     }
 
     [Test]
-    public void Starts_again_after_a_verification_completes()
+    public void Starts_again_after_a_verification_completes([Values] bool verified)
     {
         int calls = 0;
         VerifyTrieStarter starter = CreateStarter(_ =>
         {
             Interlocked.Increment(ref calls);
-            return true;
+            return verified;
         });
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
@@ -76,11 +76,13 @@ public class VerifyTrieStarterTests
         Assert.That(() => Volatile.Read(ref calls), Is.EqualTo(2).After(FailsafeMs, PollMs));
     }
 
-    // The same exception takes the error path without process exit and the cancellation path with it.
+    // A cancellation, alone or aggregated as the parallel walk throws it, takes the error path without process exit
+    // and the cancellation path with it.
     [Test]
-    public void Starts_again_after_a_verification_throws([Values] bool processExiting)
+    public void Starts_again_after_a_verification_throws([Values] bool processExiting, [Values] bool aggregated)
     {
-        VerifyTrieStarter starter = CreateStarter(static _ => throw new OperationCanceledException(), processExiting: processExiting);
+        Exception exception = aggregated ? new AggregateException(new OperationCanceledException()) : new OperationCanceledException();
+        VerifyTrieStarter starter = CreateStarter(_ => throw exception, processExiting: processExiting);
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         Assert.That(starter.TryStartVerifyTrie(header), Is.True);
@@ -92,18 +94,27 @@ public class VerifyTrieStarterTests
     {
         TaskCompletionSource running = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The held run ends only when the test opens the gate; the failsafe bounds the test's own waits.
         VerifyTrieStarter starter = CreateStarter(_ =>
         {
             running.TrySetResult();
-            return gate.Task.Wait(FailsafeMs);
+            gate.Task.Wait();
+            return true;
         });
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        Assert.That(starter.TryStartVerifyTrie(header), Is.True);
-        await running.Task.WaitAsync(TimeSpan.FromMilliseconds(FailsafeMs));
-        Assert.That(starter.TryStartVerifyTrie(header), Is.False, "a second verification started while the first one runs");
+        try
+        {
+            // Started from a pool thread, so the run goes to the default scheduler and never runs inline on the test thread.
+            Assert.That(await Task.Run(() => starter.TryStartVerifyTrie(header)), Is.True);
+            await running.Task.WaitAsync(TimeSpan.FromMilliseconds(FailsafeMs));
+            Assert.That(starter.TryStartVerifyTrie(header), Is.False, "a second verification started while the first one runs");
+        }
+        finally
+        {
+            gate.SetResult();
+        }
 
-        gate.SetResult();
         Assert.That(() => starter.TryStartVerifyTrie(header), Is.True.After(FailsafeMs, PollMs));
     }
 
